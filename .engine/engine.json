@@ -13,5 +13,6 @@
   },
   "identity": "solo",
   "handle": "StarshipSuperjam",
-  "default_branch": "master"
+  "default_branch": "main",
+  "home_repository": "StarshipSuperjam/engine-template"
 }
