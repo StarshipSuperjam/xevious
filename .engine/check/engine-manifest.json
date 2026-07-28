@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/engine-manifest",
+  "target": { "path": ".engine/engine.json" },
+  "kind": "schema",
+  "params": { "schema": ".engine/schemas/engine.v1.json" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine manifest (.engine/engine.json) must match engine.v1.json — it needs an engine_release, a packages map of each installed module to its version, and an identity tier (solo or team). This file is the source of truth for what the engine is made of and for how upgrades read each module's starting version, so a malformed one would corrupt that record. The engine manifest is engine infrastructure, not a catalogued surface, so this rule names its schema directly. Fix the manifest to match the schema before merging."
+}

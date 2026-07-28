@@ -1,0 +1,48 @@
+# actionlint — the committed advisory workflow-grammar floor that travels to every repo.
+# Lints every .github/workflows/ file with actionlint: GitHub Actions expression syntax, job/step
+# keys, `if:` conditions, known-action input shapes, and shellcheck over the `run:` blocks. The
+# engine authors its own CI workflows, and nothing else validates their Actions grammar — the seed
+# validator checks engine SURFACES, not workflow YAML — so a malformed workflow could otherwise ship
+# unseen by a non-engineer who cannot read it.
+#
+# ADVISORY, never a merge gate. The job name `actionlint` is deliberately NOT in the branch ruleset's
+# required-check list (protection_guard.REQUIRED_CHECKS = engine-ci, engine-guard), so a finding is
+# SURFACED for the Engine to address but can never block a merge a non-engineer cannot clear
+# (control-plane: alerts are advisory, not a merge gate). This mirrors secret-scan.yml exactly.
+#
+# Runs the open-source actionlint binary DIRECTLY (no third-party Action), pinned to a specific
+# release, so the lint is fully self-contained and free on any plan or visibility. actionlint checks
+# how a workflow is WRITTEN — expression syntax, job/step keys, `if:` conditions, the input shapes of
+# the popular actions it bundles (it DOES know anthropics/claude-code-action's inputs and will warn on
+# a bad one), and shellcheck over the `run:` blocks. It does NOT check whether an un-run workflow
+# actually does what it intends — that a scheduled run truly produces its output, that a secret is set,
+# that a token has the right scope — so a clean lint means well-formed, not proven-to-work.
+name: actionlint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install actionlint (pinned)
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          curl -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            -o actionlint.tar.gz
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint --version
+      - name: Lint the workflows (advisory — warns, never blocks)
+        run: |
+          ./actionlint -color \
+            || { echo "::warning::actionlint found a problem in a workflow file. This is a WARNING only — it does not block your merge. Review the finding above and fix the workflow if it is real."; exit 1; }

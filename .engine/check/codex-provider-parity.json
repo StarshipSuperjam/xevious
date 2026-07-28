@@ -1,0 +1,15 @@
+{
+  "id": "engine/check/codex-provider-parity",
+  "target": {
+    "context": "codex-provider-parity"
+  },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/provider_parity_check.py"
+  },
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "Everything the engine gives one AI runtime must exist for the other — its session hooks, helper servers, typed commands, review personas, and instruction floors are compared in both directions, and the only sanctioned differences are the committed entries of the provider-exception ledger (.engine/policies/provider-exceptions.json), each carrying a reason and its governing decision record. This check goes red on an unsanctioned one-runtime capability in either direction. To fix: add the missing counterpart (usually by regenerating the renders and re-applying the wiring), or record the difference in the ledger with a reason."
+}

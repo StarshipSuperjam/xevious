@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "conduct.v1 — the frontmatter of a codes-of-conduct layer file",
+  "description": "A code of conduct is one plain-language behavioral stance for how the AI engages with the operator (the tier-3 guidance surface; pure posture, never an enforcement gate). The two committed layers — .engine/conduct/defaults.md (the engine's universal stance, engine-owned) and .engine/conduct/operator.md (this deployment's own stance, operator config) — are each a single Markdown file whose frontmatter carries the `codes` list (each code's stable id, short title, and lifecycle status) and, on the operator layer only, an optional `disables` list naming engine defaults to drop. The prose body holds one '## <title>' section per code (the rule itself, optionally a rationale); the body-to-frontmatter correspondence is checked separately by the conduct-shape rule. This schema governs only the frontmatter and is resolved through the surface catalog (the 'conduct' surface) by the conduct-frontmatter check at the merge. An empty codes list is valid — the public template ships an empty operator override that each deployment fills.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["codes"],
+  "properties": {
+    "codes": {
+      "description": "The codes of conduct this layer declares, in the order they are presented. May be empty (an as-yet-unfilled operator override). Each entry pairs with a matching '## <title>' section in the body.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "status"],
+        "properties": {
+          "id": {
+            "description": "The code's stable identifier: 'conduct-' followed by a lower-case, hyphenated slug (for example 'conduct-plain-language'). It stays fixed so composition by id (operator supersedes a matching default; a disables entry drops one) is deterministic.",
+            "type": "string",
+            "pattern": "^conduct-[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "title": {
+            "description": "A short, plain-language label for the stance (for example 'Speak in plain language'). One line, no trailing punctuation. It must match the text of this code's '## <title>' section heading in the body.",
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "description": "Where this code sits in the artifact lifecycle. active = in force; deprecated = on the way out but still read; retired = no longer in force, kept for history.",
+            "enum": ["active", "deprecated", "retired"]
+          }
+        }
+      }
+    },
+    "disables": {
+      "description": "OPERATOR LAYER ONLY. A list of engine default code ids to drop from the active stance (for example a default that does not fit this project). Present only in operator.md; on the defaults layer it is flagged by the conduct-shape check.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^conduct-[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "uniqueItems": true
+    }
+  }
+}

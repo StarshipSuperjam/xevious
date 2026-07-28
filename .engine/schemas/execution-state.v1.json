@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "execution-state.v1 — the committed record of which execution environments the operator has qualified",
+  "description": "The small committed file that records which AI execution environments (the runtimes that do the work — claude, codex) the operator has QUALIFIED for this repository, and a frozen snapshot of the behaviourally-relevant surfaces at the moment they did. It sits beside state.json but answers a different question and obeys the OPPOSITE writer discipline, and the difference is deliberate. state.json is a live cache: pointers and counts refreshed from live sources, never authoritative, meant to move. This file is the inverse — a FROZEN reference: each qualified environment records the instruction-floor hashes, engine release, and repository slug as they were when the operator qualified it, and those values must NEVER be auto-refreshed, because the whole point is to notice when the live environment DRIFTS away from the qualified snapshot. It holds one thing state.json deliberately never holds: an authoritative operator judgment (status: qualified). That judgment has no live home to be derived from — it is the operator's own act, recorded only here, and it becomes true only when the operator merges a change to this file (the merge IS the qualification). This is not a general-purpose store and does not grow: no history, no per-session observations, no narrative — only the current qualified snapshot per environment, each field a pointer, a hash, or a status. Everything the engine can derive live (which runtime is running now, the current file hashes) is derived fresh each boot and compared against this snapshot; only the snapshot and the judgment are committed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environments"],
+  "properties": {
+    "schema_version": {
+      "description": "Which version of this file's shape this is. It lets a future engine upgrade recognise an older record and update it safely. Today the only valid value is 1; a record stamped with anything else is deliberately refused until the upgrade machinery that understands it exists.",
+      "const": 1
+    },
+    "environments": {
+      "description": "One entry per execution environment the engine supports (claude, codex). Both keys are always present; a brand-new record has both at genesis (status unqualified, every snapshot field null, the floors map empty). An environment moves to qualified only when the operator records a qualification and merges it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claude", "codex"],
+      "properties": {
+        "claude": { "$ref": "#/$defs/environment" },
+        "codex": { "$ref": "#/$defs/environment" }
+      }
+    }
+  },
+  "$defs": {
+    "environment": {
+      "description": "One environment's qualification record — a self-contained frozen snapshot stamped at the moment the operator qualified it, or all-null at genesis. Never auto-refreshed: a writer that keeps these values 'fresh' against the live environment would zero out drift detection and turn the qualification gate into a no-op that reports success forever.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "as_of", "repo", "engine_release", "floors", "model_alias", "evidence"],
+      "properties": {
+        "status": {
+          "description": "Whether the operator has qualified this environment for this repository. 'unqualified' is the honest normal state for a fresh repo (and this repo's own committed state) — the engine then runs its most careful posture and asks for nothing. 'qualified' is an authoritative operator judgment, true only once the operator has merged a change that set it; the engine never sets it on its own behalf.",
+          "enum": ["qualified", "unqualified"]
+        },
+        "as_of": {
+          "description": "When this environment was qualified, written as a UTC moment ending in Z (for example 2026-07-27T14:30:00Z). Null until it is qualified. The trailing-Z UTC shape is what is actually enforced (the date-time format is only a hint).",
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+        },
+        "repo": {
+          "description": "The repository this qualification was made FOR, as its git-origin slug (owner/name). A qualification counts only in the repository it was made for: a record shipped or copied from another repository names that other repository here, so the live comparison reads it as not-qualified-here rather than as drift — the reason a fresh adopter never sees a spurious re-qualify alarm from a baseline that was never theirs. Null until qualified.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "engine_release": {
+          "description": "The engine release (engine.json engine_release) at the moment of qualification. A frozen snapshot value: the live release is read fresh each boot and compared against this, and a difference is drift. Null until qualified.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "floors": {
+          "description": "A per-file map from an instruction-floor file (its repo-relative path, e.g. 'CLAUDE.md', 'AGENTS.md', '.engine/conduct/defaults.md') to the sha256 of its bytes at qualification, written 'sha256:' + 64 hex, or null when that file could not be read at qualification time. This is deliberately an OPEN map, not a fixed set of keys, because the conduct floor is operator-variable (codes are added and removed) — a per-file map tracks the real set, names which floor drifted, and notices an added or removed floor file. Keys are constrained to repo-relative path characters (no whitespace or newlines) so a crafted key can never inject a line into the drift alarm the engine relays to the operator. Empty ({}) at genesis. A null value means 'recorded but unverifiable' and, on a qualified entry, forces the conservative posture rather than a false match — an un-checkable floor is never treated as a pass.",
+          "type": "object",
+          "propertyNames": { "pattern": "\\A[A-Za-z0-9._/-]+\\Z" },
+          "additionalProperties": {
+            "type": ["string", "null"],
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        },
+        "model_alias": {
+          "description": "The durable model alias (opus/sonnet/haiku — never a versioned id that rots) the operator recorded this environment as qualified for, or null. This is the operator's RECORDED assertion, not a live-observed value: the running model's identity is not reliably observable to the engine at session start, so this field is never used to raise a drift alarm. It is the operator's own note of the model class they qualified against, changed by editing this file. Null until qualified, and null-permitted afterwards.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "evidence": {
+          "description": "An optional pointer (a pull-request or issue URL) to the qualification act — where the operator recorded why this environment was qualified. Free text, not verified by the engine; the real authenticity is the operator's own merge of this file. Null when none was given.",
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

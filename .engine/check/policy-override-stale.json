@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/policy-override-stale",
+  "target": { "context": "policy-override-stale" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/policy_override_check.py" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A value saved with /engine-tune no longer matches the engine's current settings: it names a setting the engine has renamed or removed, or a fixed setting that cannot be adjusted. The saved value is being ignored and the engine's own default is used in its place, so a setting the operator meant to change has silently stopped applying. This check surfaces it at the merge rather than letting it be quietly forgotten. It reads only the committed saved-settings file (.engine/operator-overrides.json) and is silent when there is none. To fix: open /engine-tune to set the value again on a setting the engine still has, or remove the out-of-date entry from the saved-settings file."
+}

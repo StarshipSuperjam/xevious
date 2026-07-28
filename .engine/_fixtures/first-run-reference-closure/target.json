@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_ROOT": ".engine/_fixtures/first-run-reference-closure"
+  }
+}

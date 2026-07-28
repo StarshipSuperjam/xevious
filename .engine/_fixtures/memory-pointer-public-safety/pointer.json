@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "configured": true,
+  "owner": "EXAMPLE-FIXTURE-OWNER-NOT-REAL",
+  "repo": "example-fixture-vault-not-real",
+  "namespace": "fixture-namespace-not-real"
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "suites.v1 — the validation suite declarations",
+  "description": "Declares the engine's validation suites. A suite is a thin declaration: a name, the trigger that runs it, and the execution context that decides whether its failures block. It does NOT list its rules — each check rule declares which suites it joins, so a suite's roster is derived from the rules present, never hand-maintained here. This file is the validation engine's own configuration; the engine validates it against this schema on every run and stops loudly if it does not conform.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["suites"],
+  "properties": {
+    "$schema": {
+      "description": "Optional pointer from the declarations file to this governing schema, for editor and tooling validation.",
+      "type": "string"
+    },
+    "suites": {
+      "description": "One entry per suite, keyed by the suite's name.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/suite" }
+    }
+  },
+  "$defs": {
+    "suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger", "context"],
+      "properties": {
+        "trigger": {
+          "description": "When this suite runs. The closed v1 set: pre-commit (the commit boundary), pre-close (the end-of-session ritual), CI (the pull-request check), and audit-prep (a scheduled report). Adding a trigger is a deliberate, reviewed change, not a casual one.",
+          "enum": ["pre-commit", "pre-close", "CI", "audit-prep"]
+        },
+        "context": {
+          "description": "What a failure does in this suite. blocking-gate = a hard failure stops the merge (only the CI check can do this); local-nudge = a hard failure is a strong warning that never blocks; report-only = failures are recorded, never block.",
+          "enum": ["blocking-gate", "local-nudge", "report-only"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "first-run-assets.v1 — the first-run removed-asset manifest",
+  "description": "The committed list of the first-run-only assets the instantiator removes at the Retire step once setup is sound, at .engine/provisioning/first-run-assets.json. It mirrors instantiator.py's _FIRST_RUN_ASSET_FILES / _FIRST_RUN_ASSET_DIRS (a parity test binds them) so the first-run reference-closure check can read the removed set WITHOUT importing the instantiator it is about to verify nothing references. It is permanent provisioning data — it stays after retirement — and carries two load-bearing lists: `files` (repo-relative paths of the removed files) and `directories` (repo-relative paths of the removed directories), plus an optional plain-language `description`. This schema governs its shape only; the reference-closure check governs its presence and its readability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["files", "directories"],
+  "properties": {
+    "description": {
+      "description": "Optional. A plain-language note recording what the manifest is and the parity binding it must keep.",
+      "type": "string",
+      "minLength": 1
+    },
+    "files": {
+      "description": "The repo-relative paths of the first-run files the instantiator removes at retirement. Each a non-empty string; no duplicates.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "directories": {
+      "description": "The repo-relative paths of the first-run directories the instantiator removes at retirement. Each a non-empty string; no duplicates. May be empty.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

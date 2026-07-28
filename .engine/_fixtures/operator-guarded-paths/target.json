@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_GUARDED_PATHS_PATH": ".engine/_fixtures/operator-guarded-paths/guarded-paths.json"
+  }
+}

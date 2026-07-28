@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "finding-record.v1 — a finding the self-monitoring system has taken ownership of",
+  "description": "The shape the engine's self-monitoring stores for a finding it is tracking. It builds on the shared finding.v1 base (a severity, a message, a location) and adds the three things the self-monitoring needs to act on it: which signal it came from (so repeats of the same signal collapse onto one tracked item instead of piling up), and when that signal was first and most-recently seen (so a tracked item can be closed once its signal has stayed away). The severity here is narrowed to the self-monitoring's own two grades — distinct from the grades a check or a review uses. This file is reference data only: nothing is validated against it at commit time yet; its own correctness as a schema is checked automatically.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["severity", "message", "location", "source_id", "first_seen", "last_seen"],
+  "properties": {
+    "severity": {
+      "description": "How the self-monitoring grades this finding — one of exactly two. 'trust-critical' means a safety check or gate that could not run at all: it is tracked the moment it is seen, because the engine may be flying blind. 'persistent-but-benign' means a low-impact signal that keeps recurring: it is tracked only after it has shown up enough times to be worth your attention, so a one-off blip never bothers you. These two grades are internal and never shown to a person as-is; anything you see is translated into plain language first. The open severity of the finding.v1 base is narrowed to these two here, on purpose.",
+      "type": "string",
+      "enum": ["trust-critical", "persistent-but-benign"]
+    },
+    "message": {
+      "description": "A clear, complete, plain-language statement of what the self-monitoring noticed — what it is, why it matters, and what (if anything) you must decide — written so both a person and the engine can act on it, with no backstage vocabulary. This is the prose that becomes a tracked item's body, so it carries the plain-language contract: it names the engine noticing something about its OWN health, never a problem with your product.",
+      "type": "string",
+      "minLength": 1
+    },
+    "location": {
+      "description": "Where the finding is, or null when it is not tied to a file. This is per-occurrence detail that enriches the message only — it is NEVER part of how repeats are collapsed (that is the source below). When present it points to a file and, optionally, a line.",
+      "type": ["object", "null"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path of the file the finding concerns, relative to the repository root."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "description": "Line number within the file (counting from 1), or null when the finding is not tied to a specific line."
+        }
+      },
+      "required": ["file"],
+      "additionalProperties": false
+    },
+    "source_id": {
+      "description": "The stable identity of the SIGNAL the finding came from — the id of the rule, surface, or stream that emitted it — and nothing tied to a single occurrence (never the file, run, or value it happened to be seen on). This is how repeats are collapsed: every recurrence of the same signal lands on the one tracked item rather than opening a new one. Because it is tied to the signal's source and the self-monitoring only ever watches the engine's own surfaces, the number of tracked items can only grow with the engine's own list of signals — never with the size of your product or how often a signal recurs.",
+      "type": "string",
+      "minLength": 1
+    },
+    "first_seen": {
+      "description": "When this signal was first seen in its current run of appearances, written as a UTC moment ending in Z (for example 2026-06-02T14:30:00Z). Used to tell how long a recurring signal has persisted; it starts over if the signal goes away and later returns. The trailing-Z UTC shape is what is actually enforced (the date-time format is only a hint).",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "last_seen": {
+      "description": "When this signal was most recently seen, written as a UTC moment ending in Z. The self-monitoring reads how long it has been since this — counted in observations, not wall-clock — to decide when a now-quiet tracked item should be closed automatically. The trailing-Z UTC shape is what is actually enforced (the date-time format is only a hint).",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    }
+  }
+}

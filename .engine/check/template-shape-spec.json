@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/template-shape-spec",
+  "target": { "path": ".engine/templates/*.md" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/template_shape_spec_check.py" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Each template that a kind of engine file is written from sets out, at its top, the required shape for that kind of file — which sections must appear, which may, and a length budget. The engine now reads that shape straight from the template and checks every file of that kind against it, so a template with a broken shape setting would quietly break the check for all of them. This check makes sure every template's shape settings are well-formed. If it goes red, it names the template and what is wrong; the fix is to correct the settings at the top of that template to match the shape the others use."
+}

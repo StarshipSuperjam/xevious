@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/execution-state",
+  "target": { "path": ".engine/state/execution.json" },
+  "kind": "schema",
+  "params": { "schema": ".engine/schemas/execution-state.v1.json" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The execution-environment baseline (.engine/state/execution.json) must match execution-state.v1.json — the small committed record of which execution environments the operator has qualified, and a frozen snapshot of the instruction-floor hashes at qualification. If it is not valid JSON, or its shape is wrong, it is refused rather than read, because a corrupt baseline would silently mislead the engine about which environment it can trust. This check catches a broken SHAPE only: a baseline whose shape is fine but whose values are wrong (a hand-edited hash, a status flipped without evidence) passes here and is caught instead by the operator reviewing the committed change — which is the qualification act. Like the state cursor, this is engine infrastructure — a foundation with its own committed record, not a catalogued surface — so this rule names its schema directly rather than resolving it through the surface catalog. Fix the file to match execution-state.v1.json before merging."
+}

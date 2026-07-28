@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_SELF_MAP_PATH": ".engine/_fixtures/self-map-drift/self-map.md"
+  }
+}

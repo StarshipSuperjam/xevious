@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "operation.v1 — the frontmatter of one engine operation (a multi-step runbook)",
+  "description": "The per-instance state carried in an operation's YAML frontmatter: a short human title, and — only when a procedure is being phased out — where it sits in the artifact lifecycle. An operation is the single authoritative body of a multi-step procedure performed by reading-and-following, referenced by its invokers (skills, agents) through an ordinary link rather than restated ('one procedure, one home'). It is identified by its slug-named file under .engine/operations/, engine-namespaced by that location, so this schema carries no id field, mirroring the policy surface. This schema governs only the frontmatter's shape, presence, and types; the prose body (Purpose, Steps, Done when, and the optional Notes) is the operation template's domain, checked separately by the operation-shape rule. The status field is OPTIONAL and an omitted status means active: per the ontology an operation is born active on merge to the protected branch (draftness is a branch state, never a frontmatter value, so there is no 'draft' or 'proposed' status), and the deprecated and retired states record a managed phase-out that ties to module migrations — so in plain terms a runbook is live the moment it merges and needs no status line, and an author marks one deprecated (later retired) only while phasing it out. No core consumer reads this field yet; it is the spec-faithful slot the later migration machinery will read. This file is enforced live: the operation-frontmatter check (a validators-core schema rule) validates each operation's parsed YAML frontmatter against it at the merge, routed through the surface catalog (the 'operation' surface), reading the frontmatter with the validation foundation's YAML reader; its own well-formedness and a representative instance's conformance are also fixture-tested by the surface's unit tests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title"],
+  "properties": {
+    "title": {
+      "description": "A short, plain-language label for the procedure, written for a human scanning the operations directory (for example, 'Bootstrap the control plane' or 'Consolidate abandoned session deltas'). One line; no trailing punctuation needed.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Where this operation sits in the 'artifact' lifecycle. OPTIONAL — an omitted status means active. active = a live procedure (the default the moment it merges); deprecated = in managed phase-out, kept while its invokers are migrated off it; retired = no longer in use, kept for history. There is deliberately no 'draft' or 'proposed' state, because draftness is a branch state, not a governance value (an operation is born active on merge to the protected branch). Set this field only to mark a procedure deprecated or retired.",
+      "enum": ["active", "deprecated", "retired"]
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_SKILL_FIXTURE_DIR": ".engine/_fixtures/skill-coherence/skills"
+  }
+}

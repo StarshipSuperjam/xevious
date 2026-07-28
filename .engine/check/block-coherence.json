@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/block-coherence",
+  "target": { "context": "block-coherence" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/block_coherence_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine's hard-block declarations (the BLOCK_INVARIANT/REROUTE_BLOCK_INVARIANT entries in modes.py and close.py, assembled by module_coherence.block_eligible_registrations) must hold together on two rules. First, only the PreToolUse and Stop events may hard-block — every other hook event nudges or injects, because a local hard-block on any other event buys friction without proportional trust. Second, every block must declare the stances it is active in (its modes: a non-empty set drawn from explore/build/routine) — the mode dimension is declared data, not something that lives only in the handler's code, so a block that is active in a routine (unattended) run is visible as such at the merge. This check assembles the registry and runs the block-registry coherence leg over it, going red when a block is declared on an event that may not hard-block, or does not name the stances it is active in (an omitted or malformed modes list). It covers every DECLARED block; a deny that fires in code but is never registered in block_eligible_registrations is outside what this check can see. To fix: correct the flagged block's declaration in modes.py or close.py so it sits on PreToolUse/Stop and names a valid, non-empty modes set."
+}

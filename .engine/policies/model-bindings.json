@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "tiers": {
+    "judgment": { "model": "opus", "effort": "high" },
+    "mechanical": { "model": "haiku", "effort": "low" }
+  },
+  "overrides": {
+    "engine-qa-review-spec-conformance": { "model": "sonnet", "effort": "high" },
+    "engine-qa-review-technical-integrity": { "model": "sonnet", "effort": "high" },
+    "engine-qa-review-usability": { "model": "sonnet", "effort": "high" }
+  }
+}

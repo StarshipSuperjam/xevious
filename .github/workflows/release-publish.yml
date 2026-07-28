@@ -1,0 +1,79 @@
+# release-publish — publish the tag + GitHub Release when a release pull request merges. This is the
+# terminal half of a release: release.yml opens the release PR and stops; when the maintainer merges it,
+# THIS workflow tags the exact reviewed merge commit and publishes the GitHub Release the version points
+# at, then comments the outcome back onto the PR in plain language. WHAT it publishes follows the cut: the
+# ENGINE's version in the construction repo, the deployed repo's OWN PRODUCT version once deployed (#516) —
+# read automatically from the merged commit; either way the tag + Release land in THIS repository. The
+# maintainer's merge click is still the only go-ahead — this runs AFTER that consent, on a commit already
+# trusted (it landed on protected `main`).
+#
+# PRESENT-BUT-INERT UNTIL A RELEASE MERGES. The workflow ships committed in every repo but does nothing
+# until a `release/*` pull request merges. It is NOT exercised end-to-end during construction — the first
+# real publish is the `0.1.0` beta cut. It is validated by actionlint (grammar) + read-review; the publish
+# logic it drives (tools/release_terminal.py) is unit-tested + demoed offline against a stubbed network.
+#
+# SAFETY OF THE BROAD TRIGGER. The job fires on ANY merged pull request whose branch is named `release/*`.
+# That match is intentionally broad; the publisher (release_terminal.py) is the backstop that makes a stray
+# `release/*` merge safe: it makes a no-op when the recorded version is the dev sentinel or a pre-release,
+# it refuses a version that is not newer than the current latest release, and it never overwrites a tag
+# already on a different commit. So the branch name is not trusted as consent — those guards are.
+name: Publish a merged release
+
+# Not pull_request_target: the merged code is already on trusted `main`, so this reads the base workflow
+# and acts on the reviewed merge commit — never fork head code. (A fork pull request also gets a read-only
+# token, so a fork could never publish here regardless.)
+on:
+  pull_request:
+    types: [closed]
+
+# The built-in GITHUB_TOKEN is sufficient for a terminal cut (no downstream check-gating, so no PAT is
+# needed — unlike release.yml). It needs contents: write to create the tag + Release, and pull-requests:
+# write to post the plain-language outcome comment back onto the merged pull request.
+permissions:
+  contents: write
+  pull-requests: write
+
+# Single-flight publishing: a second publish QUEUES behind a running one, never cancels it mid-tag.
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    # Only a MERGED (not merely closed) release pull request publishes. A PR closed without merging, or any
+    # non-release branch, is ignored.
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    steps:
+      # Check out the EXACT reviewed merge commit (not main's tip, which may have moved) — the version is read
+      # from that commit (engine.json in the construction repo, product-version.json once deployed) and the tag
+      # is pinned to it, so the tag lands on the reviewed unit.
+      - name: Check out the merged release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - name: Set up uv (pinned)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.8"
+      - name: Materialize the engine tool-runtime
+        run: uv sync --directory .engine --frozen
+      # Publish the tag + Release, then comment the outcome onto the merged PR. The merge SHA and PR number
+      # reach the tool ONLY as quoted environment variables, never interpolated into the script body, so no
+      # event value can inject a shell command.
+      - name: Publish the tag and GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # This run's own URL, so a failed publish can give the maintainer a direct "re-run it here" link in
+          # the plain-language comment it posts back onto the merged pull request.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          uv run --directory .engine --frozen -- python tools/release_terminal.py publish \
+            --commit "${MERGE_SHA}" --pr "${PR_NUMBER}"

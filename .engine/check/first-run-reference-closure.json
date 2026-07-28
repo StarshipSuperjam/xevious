@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/first-run-reference-closure",
+  "target": { "path": ".engine/provisioning/first-run-assets.json" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/first_run_reference_closure_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "When a project is first set up from this template, the engine removes its own setup files (the first-run installer, its tests, and the setup walkthroughs) once setup is done. This check makes sure no file that STAYS behind still points at one of those removed files — by importing it, or by reading or running it by name. A leftover pointer would make the new project's very first automated check stop before it starts, with a programmer error its owner cannot read. The set of removed files is listed in .engine/provisioning/first-run-assets.json. If this check goes red, it names the leftover file and what it points at; the fix is to stop pointing at the removed setup code (move what you need into a file that stays), or to add the leftover file to that same removed-files list so it is taken away too — not to hide the pointer behind an error-catch. It catches the common cases (a file that names the removed setup code directly); a file that builds the name indirectly could slip past — a known limit, not a guarantee. The check reads the list as plain data and never loads the setup code itself, and it does nothing in a project where setup has already finished and the files are gone."
+}

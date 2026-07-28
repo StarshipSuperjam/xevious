@@ -1,0 +1,4 @@
+{
+  "severity": "hard",
+  "message_contains": "shape is not valid"
+}

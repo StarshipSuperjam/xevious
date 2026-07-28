@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge.v1 — the engine's derived structural knowledge graph (committed entities)",
+  "description": "The committed knowledge graph: one entity per engine surface-instance file (each schema, each check, each tool, and— as they appear — each contract, policy, conduct, operation, skill, agent, interface, and doc) plus one entity per installed module, with the mechanical edges between them. It is PURELY STRUCTURAL and PURELY DERIVED — it records how the engine is wired: which module owns a file, which schema governs it, what a check targets and which tool enforces it, which modules depend on which, which tool imports which other tool (code-level dependency) and which test exercises it, which tools a module wires as hooks, and which tool implements an interface's fallback — never WHY a choice was made (belief lives in memory, not here). It is generated, never hand-authored, and a fingerprint coverage check keeps it matching the surfaces it is derived from. This schema governs the single committed file .engine/knowledge/graph.json: a version stamp plus the array of entities, each carrying its id, type, source file + content fingerprint, owning module, and a closed-vocabulary map of outgoing edges. The derived query index and graph-query server are separate, regenerable, gitignored layers shipped later; this committed file is the source of truth and the offline cold-start readout.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "entities"],
+  "properties": {
+    "schema_version": {
+      "description": "The graph format's version stamp, so a future knowledge.v2 migration can recognise and transform an old graph. The only valid value is 1.",
+      "const": 1
+    },
+    "entities": {
+      "description": "Every entity in the graph, one per engine surface-instance file and one per installed module. Order is not significant (the generator sorts by id for a stable, reviewable diff).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/entity" }
+    }
+  },
+  "$defs": {
+    "entityId": {
+      "description": "An entity identifier: the surface name (or the literal 'module') followed by ':' and a slug. Stable and human-meaningful (e.g. 'check:state-cursor', 'schema:state.v1', 'module:core'); used as the join key a consumer hands to memory at read time.",
+      "type": "string",
+      "pattern": "^(contract|policy|conduct|schema|check|tool|operation|skill|agent|codex-skill|codex-agent|interface|doc|module):[A-Za-z0-9._-]+$"
+    },
+    "entity": {
+      "description": "One node: a surface-instance file or an installed module, with its mechanically-derived facts and outgoing edges. No field carries belief — every value is read from the catalog, a manifest, a check's target, or the file's own bytes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "name", "slug", "source", "owner", "predicates"],
+      "properties": {
+        "id": { "$ref": "#/$defs/entityId" },
+        "type": {
+          "description": "What this entity is: one of the eleven catalogued surface names, or 'module' for an installed module. Matches the prefix of the id.",
+          "enum": ["contract", "policy", "conduct", "schema", "check", "tool", "operation", "skill", "agent", "codex-skill", "codex-agent", "interface", "doc", "module"]
+        },
+        "name": {
+          "description": "A human-readable label for the entity — the repo-relative source path for a surface instance, the module id for a module.",
+          "type": "string",
+          "minLength": 1
+        },
+        "slug": {
+          "description": "The id's suffix: the source file's stem (filename without its final extension) for a surface instance, or the module id for a module.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "source": {
+          "description": "The canonical file this entity is derived from, with a content fingerprint so a change to that file without a regenerate is caught as drift.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "fingerprint"],
+          "properties": {
+            "path": {
+              "description": "The repo-relative path to the source file (forward slashes).",
+              "type": "string",
+              "minLength": 1
+            },
+            "fingerprint": {
+              "description": "A sha256 of the source file's raw bytes, prefixed 'sha256:'. The per-entity drift signal.",
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "owner": {
+          "description": "The id of the module that owns this entity's source file (the module whose 'provides' claims it); for a module entity, the module's own id; for a deployment-authored per-instance eADR (in no module's 'provides'), the reserved token 'deployment' — canon-ness is read from the absence of a 'provided_by' edge, never from this field.",
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "description": "The entity's declared lifecycle STATE TOKEN — never the why of a supersession. Harvested verbatim from a declared key for the two surfaces that declare one: a contract's frontmatter 'status' (proposed|accepted|superseded) and a module manifest's 'status' (required|default-on|optional|experimental|retired). Every other surface is 'active' (the 'else active' default; a surface's declared status is not echoed beyond those two). Optional only because a non-conforming source could omit it; the generator falls back to 'active'.",
+          "type": "string",
+          "enum": ["active", "proposed", "accepted", "superseded", "required", "default-on", "optional", "experimental", "retired"]
+        },
+        "tier": {
+          "description": "CHECKS ONLY: the bite level declared in a check rule's 'tier' key (hard = fails the build; soft = warns). Absent on every non-check entity. This is the check rule's own tier, never a policy's prose enforcement tier (that is a '##' section and is not parsed).",
+          "type": "string",
+          "enum": ["hard", "soft"]
+        },
+        "title": {
+          "description": "An IDENTITY label harvested verbatim from a declared single-line bare-name key: policy.title, interface.title, or skill.name. A noun-phrase identity field only — never a description, never a slug fallback; omitted entirely when the surface declares none or the declared value fails the noun-phrase shape-guard. Excluded for operation/doc/contract surfaces (their titles are purpose/decision clauses, not identities).",
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "description": "TOOLS (.py) ONLY: the tool's one-line self-description — the FIRST line of its module docstring, copied VERBATIM (control chars stripped, inner whitespace collapsed, truncated to 160 chars). The file's own declared words, never an interpretation of what the code means (the same 'declared, not belief' footing as 'title'); omitted when the module declares no docstring, and absent on every non-.py or non-tool entity.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "guarded": {
+          "description": "TOOLS ONLY: true iff this tool file is a protected guardrail (the weakening-guard classifier's verdict for the file's path — an enforcement script, a floor member, or a deployment-declared product guard), computed for EVERY tool entity regardless of extension (a guarded .sh launcher carries it too). ABSENCE means the value was not derived (a degraded live-walk rung), NEVER 'not guarded' — a committed graph always carries it on a tool, since a blanket fail-safe in the classifier fails generation loud rather than emitting an all-true value.",
+          "type": "boolean"
+        },
+        "entrypoint": {
+          "description": "TOOLS (.py) ONLY: how this tool is entered, by fixed precedence test > demo > hook > mcp-server > ci > cli > library. 'test'/'demo' are filename conventions; 'hook' is a manifest hook payload, 'mcp-server' a registered MCP server, 'ci' a check's params.script (all declared wirings); 'cli' has a __main__ guard; 'library' is imported only. Absent on non-.py and non-tool entities.",
+          "type": "string",
+          "enum": ["test", "demo", "hook", "mcp-server", "ci", "cli", "library"]
+        },
+        "kind": {
+          "description": "CHECK discriminator: the check-kind that evaluates this rule (e.g. schema|presence|shape|coverage|coherence|custom/script and module-provided kinds), from the check's 'kind' key. A free string mirroring check.v1; absent on non-check entities.",
+          "type": "string",
+          "minLength": 1
+        },
+        "suites": {
+          "description": "CHECK discriminator: the validation suites this rule joins, from the check's 'suites' key, sorted. May be empty (a directly-invoked rule); absent on non-check entities.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "role": {
+          "description": "AGENT discriminator: the persona's routing role, from the agent frontmatter 'role'. A free string (role membership is the coherence leg's, not enforced here); absent on non-agent entities.",
+          "type": "string",
+          "minLength": 1
+        },
+        "lens": {
+          "description": "AGENT discriminator: the review lens, from the agent frontmatter 'lens'. Present only on review-role agents that declare one.",
+          "type": "string",
+          "minLength": 1
+        },
+        "model-tier": {
+          "description": "AGENT discriminator: the execution-demand tier (e.g. judgment|mechanical), from the agent frontmatter 'model-tier'. A free string; absent on non-agent entities.",
+          "type": "string",
+          "minLength": 1
+        },
+        "invocation": {
+          "description": "SKILL discriminator: the invocation axis (e.g. model-auto|operator-typed|model-only), from the skill frontmatter 'invocation'. A free string (membership is the coherence leg's); absent on non-skill entities.",
+          "type": "string",
+          "minLength": 1
+        },
+        "operations": {
+          "description": "INTERFACE discriminator: the operation names the interface declares, from interface.operations[].name, sorted. Identity-only (the names, never the inline input/output schemas); absent on non-interface entities.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "fallback": {
+          "description": "INTERFACE discriminator: the named fallback implementation handle, from interface.fallback.handle (the engine-prefixed server name). Absent on non-interface entities.",
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "description": "MODULE discriminator: the module manifest's 'version' (a dotted number, optionally a pre-release suffix). Absent on non-module entities.",
+          "type": "string",
+          "minLength": 1
+        },
+        "predicates": {
+          "description": "The entity's OUTGOING edges, a closed mechanical vocabulary. Each value is an array of entity-ids that resolve to entities in this graph. Only non-empty edge kinds are present; an absent kind means no such edge. Reverse traversal (who governs/enforces/provides me) is computed by the derived index, not stored here.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provided_by": {
+              "description": "The module that owns this file (derived from the owning module's 'provides').",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "governed_by": {
+              "description": "The schema entity whose schema governs this file's shape (derived from the surface's catalog governing_schema; present only when that is an in-repo schema file, e.g. a check → schema:check.v1).",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "targets": {
+              "description": "For a check entity: the entities its target path selects (what the check validates). Derived from the check's target.path; file-path targets only.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "depends_on": {
+              "description": "For a module entity: the modules it declares a dependency on (derived from the manifest's 'depends').",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "supersedes": {
+              "description": "For a contract entity: the earlier contract this decision replaces (forward, contract->contract), derived from the contract frontmatter's 'supersedes' eADR id resolved to its entity. Scoped to DEPLOYMENT-STREAM (non-canon) contracts only — a canon eADR (one a module's 'provides' claims) is NEVER a target, so no persisted reference reaches the canon (the why-of-a-supersession stays in the surface's own frontmatter, not here). Present only when this contract supersedes another in-graph deployment-stream contract.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "imports": {
+              "description": "For a tool entity (a non-test .py tool): the in-repo tool files it imports, derived by resolving its import statements (module-scope and lazy in-function) against the .engine/tools/ root — package-before-module, deterministic. A dangling in-repo import (a reference to no file) fails generation loud rather than fabricating an edge. Stdlib/external imports are not recorded. Present only when the tool imports at least one other in-graph tool.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "tests": {
+              "description": "For a test tool entity (a `test_*.py` file): the in-repo tool files it MECHANICALLY EXERCISES — every tool it imports, by the same resolver as 'imports', routed to this predicate because the source is a test. It means 'exercises', NOT 'is the single unit under test' (a test that imports a helper alongside its subject records both). Present only when the test imports at least one other in-graph tool.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "enforced_by": {
+              "description": "For a check entity: the tool its `params.script` runs — the enforcement script that evaluates this rule (script-kind checks only; a built-in-kind check carries none). Derived from the check's declared `params.script`, resolved to its tool entity.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "wires_hook": {
+              "description": "For a module entity: the payload tools it wires as lifecycle hooks, derived from the manifest's `wires[]` entries of type 'hook' (the .engine/tools/*.py path in each hook command; the shared launcher .sh is not a payload). Present only when the module wires at least one hook.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            },
+            "implemented_by": {
+              "description": "For an interface entity: the tool that implements its named fallback, derived by joining the interface's `fallback.handle` through .mcp.json's server registration to the tool the server runs. Present only when the fallback handle resolves to an in-graph tool.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/entityId" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/operator-guarded-paths",
+  "target": { "context": "operator-guarded-paths" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/operator_guarded_paths_check.py" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Your project's list of extra files to protect (.engine/operator-guarded-paths.json) has a problem. That list lets your project add its own files — for example a security scanner it built — to the ones the engine's safety check watches, so an edit to them needs a deliberate acknowledgment. This check reads that list and goes red if it is malformed or if a folder prefix is so broad it would match every file (which would make every change need an acknowledgment, forever); it also gives a non-blocking warning if the list names a path that does not exist, since that path would silently protect nothing. It reads only the committed list and is silent when there is none. To clear a red, fix the flagged entry so each path is a real, non-empty path relative to the project root and each folder prefix names a real folder ending in a slash."
+}

@@ -1,0 +1,46 @@
+# engine-ci — the seed's required validator check (required check #1).
+# Materializes the engine tool-runtime, then runs the validator over the CI suite
+# (PR-body completeness, coverage, and the protection-detection check — re-homed as
+# a custom/script rule in core) plus the checker-of-checkers self-tests.
+# The job name `engine-ci` is the FROZEN check context bound in the branch
+# ruleset; renaming it is a guardrail-weakening change.
+name: engine-ci
+
+on:
+  pull_request:
+    # `labeled`/`unlabeled` so applying an acknowledgment label (e.g. `guardrail-ack`, the product-design
+    # lock-integrity re-acceptance) re-runs the suite and clears its check without needing a fresh push.
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+  # issues: read — least-privilege, read-only. The disposition-issue-resolution check (#292) resolves the
+  # follow-up issue numbers a PR's Review section cites against the live issue list; it never writes issues.
+  issues: read
+
+jobs:
+  engine-ci:
+    name: engine-ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up uv (pinned)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.8"
+      - name: Materialize the engine tool-runtime
+        run: uv sync --directory .engine --frozen
+      - name: Run the seed validator (CI suite)
+        # The validator reads the PR body from $GITHUB_EVENT_PATH (.pull_request.body),
+        # never from an interpolated shell argument.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PROTECTED_BRANCH: main
+        run: uv run --directory .engine --frozen -- python tools/validate.py --suite CI
+      - name: Run the self-tests (the checker-of-checkers)
+        # -b (buffer): unittest captures each test's stdout/stderr and discards it on
+        # success, replaying only a FAILING test's output. Keeps a green run's tail (the
+        # `Ran N tests … OK` summary) from being buried under demo-test walkthrough output.
+        run: uv run --directory .engine --frozen -- python -m unittest discover -s tools -p 'test_*.py' -b

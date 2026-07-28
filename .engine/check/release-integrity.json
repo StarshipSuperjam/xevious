@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/release-integrity",
+  "target": { "context": "release-integrity" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/release_integrity_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine manifest (.engine/engine.json) records a version for every installed module in its `packages` map, and each module's own manifest (.engine/modules/<id>/manifest.json) records its `version`; the two must agree, one-for-one. They are kept in sync only by construction — the instantiator writes the packages map from the manifests, and a release cut (release_cut.py) writes both together — so nothing else re-checks them. This hard check compares the two at merge and goes red on a SPLIT-BRAIN: a module whose engine-manifest version disagrees with its own manifest, a present module missing from the packages map, or a packages entry with no installed module. A split-brain would ship a silently mis-versioned release (a downstream instance could miss a migration), so it must be caught before merge. It reads only the committed manifests and changes nothing. To fix: set the flagged module's engine.json packages entry and its own manifest version to the same intended value (a version cut normally does this for you)."
+}

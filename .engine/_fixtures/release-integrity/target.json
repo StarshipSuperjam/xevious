@@ -1,0 +1,6 @@
+{
+  "env": {
+    "ENGINE_RELEASE_INTEGRITY_ENGINE": ".engine/_fixtures/release-integrity/engine.json",
+    "ENGINE_RELEASE_INTEGRITY_MODULES": ".engine/_fixtures/release-integrity/modules"
+  }
+}

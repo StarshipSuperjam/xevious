@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/knowledge-vocabulary",
+  "target": { "context": "knowledge-vocabulary" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/knowledge_vocabulary_check.py" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The knowledge graph's entity-type vocabulary is derived from the surface catalog (an entity's type is the catalogued surface its file lives under, plus 'module' for an installed module). Two files hard-code that vocabulary as a closed list — the graph schema (.engine/schemas/knowledge.v1.json) and the knowledge-retrieval interface (.engine/interfaces/knowledge-retrieval.json) — and the fingerprint gate cannot see them drift, because it re-derives types from the catalog the same way. This check asserts that every type enum and entity-id pattern in those files equals the catalogued surface names plus 'module', so a stray type (the way a retired 'state' type once lingered) or a new surface missing from a file is caught. To fix, add the surface to .engine/schemas/surface-catalog.json or remove the stray type from the file named in the finding."
+}

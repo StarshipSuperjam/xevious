@@ -1,0 +1,8 @@
+{
+  "id": "fixture/kind-shape",
+  "kind": "shape",
+  "tier": "hard",
+  "target": {},
+  "params": { "required_sections": ["Decision", "Rationale", "Status"], "allowed_sections": [] },
+  "message": "This file must follow the template's section shape and order."
+}

@@ -1,0 +1,15 @@
+{
+  "id": "engine/check/codex-agent-coherence",
+  "target": {
+    "context": "codex-agent-coherence"
+  },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/codex_agent_coherence_check.py"
+  },
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "The engine's Codex renders must stay true to their canonical Claude sources: every Codex review persona keeps its read-only sandbox and pins no model, and every rendered persona and command matches byte-for-byte what the render tool produces from its .claude/ source (a hand-edited, stale, or source-less render goes red). To fix: edit the canonical .claude/ source and regenerate (uv run --directory .engine --frozen -- python tools/codex_gen.py generate); never edit a render by hand."
+}

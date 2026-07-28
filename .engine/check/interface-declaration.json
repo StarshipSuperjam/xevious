@@ -1,0 +1,13 @@
+{
+  "id": "engine/check/interface-declaration",
+  "target": {
+    "path": ".engine/interfaces/*.json"
+  },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "An interface declaration under .engine/interfaces/ must match interface.v1.json — the protocol-contract grammar that says what operations the capability offers, the shape of each operation's input and output, and which built-in implementation answers by default. If a declaration is not valid JSON, or its shape is wrong, it is refused rather than read, because a malformed contract would mislead every implementation and caller that binds to it. This check reports the exact problem in plain language and the session does not crash. It catches a broken SHAPE only: a declaration whose shape is fine but whose operations or fallback are semantically wrong passes here and is caught instead by the unit tests and the operator reviewing the committed change. The schema is resolved through the surface catalog (the 'interface' surface), so this rule names no schema directly. Fix the file to match interface.v1.json before merging."
+}

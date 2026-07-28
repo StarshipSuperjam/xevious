@@ -1,0 +1,29 @@
+{
+  "id": "engine/check/catalog-coverage",
+  "target": { "context": "catalog-coverage" },
+  "kind": "coverage",
+  "params": {
+    "mode": "catalog",
+    "infra_dirs": [
+      ".engine/audits/",
+      ".engine/boot/",
+      ".engine/erasures/",
+      ".engine/knowledge/",
+      ".engine/modules/",
+      ".engine/state/",
+      ".engine/telemetry/",
+      ".engine/templates/",
+      ".engine/provisioning/",
+      ".engine/.venv/",
+      ".engine/.pytest_cache/",
+      ".engine/memory/",
+      ".engine/memory-backup/",
+      ".engine/projects-sync/",
+      ".engine/_fixtures/",
+      ".claude/worktrees/"
+    ]
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Every catalogued surface in the surface catalog (.engine/schemas/surface-catalog.json) must have its home directory present on disk, and every surface directory present on disk must be catalogued — so the engine's map of what kinds of file it governs stays honest, and a surface cannot quietly drift in (a directory with no catalog record) or vanish (a catalogued surface with no home). The non-surface foundation directories — knowledge, modules, state, templates, boot's machine-consumed orientation artifacts (its assembled cache, owned by the boot lifecycle system), the audit's seeded checklist, the provisioning data the first-run setup maintains, the local tool-runtime .venv, the local pytest run-cache, the reserved fixtures namespace (the deliberately-broken example inputs the engine uses to test that its own checks actually catch problems, never a governed surface), and the local git worktrees the engine's AI sessions work in (gitignored, never committed) — are listed here as infrastructure and are not expected to be catalogued surfaces. This check fails loud so the drift is caught before merge rather than silently misdescribing the engine to every future session. To fix: add the missing catalog record, or create the missing surface directory; or, if a newly-present directory is engine infrastructure rather than a surface, add it to this rule's infra_dirs. The surface catalog is the source of truth for the surface set; conform the directories and the records to it. What this check covers — and what it does not: it confirms, at directory granularity, that the catalog and the filesystem AGREE — every catalogued surface has its home, no surface directory is orphaned, and no infrastructure exemption above shadows a catalogued surface's own home. Two things it does NOT mechanically re-attest, by design: whether the catalogued governance fields (authority, lifecycle, schema, template) are right; and the spec's third coverage leg in full — 'no uncatalogued surface-shaped instance is in use' — because a general rule cannot tell an uncatalogued surface apart from a legitimate non-surface bucket (a module's provides may group non-surface files). Both are an authoring judgment, weighed when a surface is catalogued and at the pull request that adds it (a build-spec leaf), never re-attested by this check."
+}

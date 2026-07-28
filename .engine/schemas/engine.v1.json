@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "engine.v1 — the shape of the engine manifest",
+  "description": "The engine manifest is the one committed file that records what this repository's engine is made of: which engine release it runs, the version of each installed module, and the identity tier that governs how guardrail changes are gated. It is a lockfile-style inventory — the source of truth an upgrade reads to know each module's starting version — and doubles as the operator-readable record of the engine's contents. It lives at .engine/engine.json. This schema governs its shape only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["engine_release", "packages", "identity"],
+  "properties": {
+    "engine_release": {
+      "description": "The engine release this repository runs, as a version string (for example 1.2.0, or 0.0.0-dev while the engine is still being built). This is the single version an operator sees.",
+      "type": "string",
+      "minLength": 1
+    },
+    "min_upgradeable_from": {
+      "description": "The oldest engine release proven to have a clean one-run upgrade path to this release, as a version string (for example 0.3.2). A deployed engine older than this cannot update cleanly to this release — its own already-shipped update code predates the file-tidying machinery that removes what a release renamed or dropped — so the update refuses cleanly (nothing applied) and routes the operator to stay on their current version, rather than opening a broken pull request. The value pattern is enforced so a malformed floor cannot silently disable the guard. Optional: absent on releases cut before this floor shipped, in which case no floor check runs.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+    },
+    "packages": {
+      "description": "Each installed module mapped to its installed version (for example { \"core\": \"1.2.0\" }). These per-module versions are internal bookkeeping — the 'from' versions an upgrade reads before it overlays new code — not numbers the operator manages directly.",
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "identity": {
+      "description": "The identity tier governing how the engine's own guardrails may change. solo: a single gate-holder — a guardrail can never weaken silently, but a weakening can still happen with the operator's explicit consent (the engine acts with the operator's credentials). team: a distinct engine identity holds enforcement-admin, so a guardrail cannot weaken at all. This is per-repository and re-chosen at first-run setup; it is not inherited from a template.",
+      "enum": ["solo", "team"]
+    },
+    "handle": {
+      "description": "The operator's own account handle, captured at first-run setup and preserved as operator config. It is the owner the engine writes into the code-ownership block for its own files, so an engine update re-renders that block for the new release's files while keeping this owner. Optional: it is absent until first-run setup derives and records it (and absent in the engine's own home repository, which runs no first-run setup), so a manifest without it stays valid.",
+      "type": "string",
+      "minLength": 1
+    },
+    "default_branch": {
+      "description": "The repository's default branch name, derived from GitHub/git at first-run setup and preserved as operator config. The engine reads it offline to tell whether the operator's top-level checkout is sitting on its main line or has drifted off it, so the check does not depend on a refs/remotes/origin/HEAD that is frequently unset. Optional: absent until first-run setup derives and records it (and absent in the engine's own home repository, which runs no first-run setup), so a manifest without it stays valid.",
+      "type": "string",
+      "minLength": 1
+    },
+    "home_repository": {
+      "description": "The engine's home repository as an owner/repo slug (for example StarshipSuperjam/engine-template) — the single coordinate that is the source of truth for where the engine fetches its own updates from, and for where a fork-native deployment escalates a contribution to. A generated repo is detached from its home (no upstream remote), so the engine updates by pulling that home's tagged GitHub releases, never by a git pull and never from this repo's own origin. Seeded from the template's committed manifest and carried forward at first-run setup; because it selects where executable engine code is fetched from, changing it to a different value is a guardrail-weakening change that needs the operator's explicit acknowledgment. Optional: absent in a repository generated before this coordinate shipped, in which case the engine cannot update and says so plainly rather than guessing a home.",
+      "type": "string",
+      "minLength": 1
+    },
+    "product_repository": {
+      "description": "The repository this engine exists to build and work ON, as an owner/repo slug (for example StarshipSuperjam/engine-template) — the engine's PRODUCT, a DISTINCT coordinate from home_repository (which is where the engine's own code is fetched FROM). Recorded ONLY when the product is a repository DIFFERENT from the one the engine is deployed into (the fork-native / engine-mechanic arrangement of eADR-0026 'external-contribution-fork-native', where self = the deployed-into repo, product = the un-owned upstream it contributes to); when absent, the product IS this repository itself, derived live from the checkout's origin — so a self-building deployment stores nothing and cannot drift stale. INVARIANT (load-bearing): this is a display-only work-target LABEL. Nothing may fetch from, execute against, clone, or issue a GitHub write to this coordinate. A wrong value here can only mislabel a status line — never fetch or run code, which is exactly why (unlike home_repository) changing it is not a guardrail-weakening act. Giving it any consumer that fetches/executes/writes would inherit home_repository's supply-chain and command surface and is a re-classification event that must go back through the engine's guardrail-weakening analysis (eADR-0011) before it ships. Optional: absent on a self-building deployment and in a repository generated before this coordinate shipped.",
+      "type": "string",
+      "minLength": 1
+    },
+    "product_build_target": {
+      "description": "The executable twin of the display-only product_repository, and when set it is the product coordinate that governs (product_repository then need not be set). It is the repository this engine is authorized to BUILD and DELIVER pull requests INTO, as an owner/repo slug (for example StarshipSuperjam/engine-template). This is the engine-mechanic arrangement (eADR-0026): a deployed instance whose product is a repository the operator OWNS, checked out separately on the maintainer's machine, into which the mechanic opens direct pull requests. INVARIANT (load-bearing): UNLIKE product_repository (a display-only label that nothing may act on), this coordinate is EXECUTABLE — the engine may resolve it to branch, commit, and open a GitHub pull request against the matching local checkout — so it inherits home_repository's supply-chain and command surface: a wrong or tampered value redirects where the engine writes and runs code. Therefore SETTING it (absent -> present) OR changing it is a guardrail-weakening act that fires the operator's guardrail-ack (the weakening_guard product_build_target detector, which — unlike the home detector — flags the FIRST recording, because arming a previously-inert engine IS the re-classification event), and a fail-closed belt (mechanic_build.product_checkout_matches) refuses to act unless this slug matches the checkout's own origin. When present it is the SINGLE source of truth for the engine's product: product_repository is then the display label only and need not be set, and boot's orientation prefers this field. Optional: absent on every self-building deployment (the product IS this repository, derived live from origin) and in the engine's own home repository — an absent value is the safe default that records no executable target and keeps the engine building only its own repo.",
+      "type": "string",
+      "minLength": 1
+    },
+    "control_plane": {
+      "description": "What the engine did to this repository's branch protection at setup, recorded so a later clean removal can reverse exactly that and nothing of the operator's. Written by the control-plane apply step on a brownfield arrival (and on greenfield, to record that the engine owns its own ruleset). Optional: absent until the gate is turned on, and on a repo whose protection was already fully in force.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleset_mode"],
+      "properties": {
+        "ruleset_mode": {
+          "description": "created: the engine created and owns its own branch-protection ruleset (greenfield). augmented: the engine added its checks into a pre-existing PRODUCT ruleset in place (brownfield), so removal strips back only what it added and never deletes the operator's rule.",
+          "enum": ["created", "augmented"]
+        },
+        "augmented_ruleset_id": {
+          "description": "The id of the product ruleset the engine augmented (when ruleset_mode is augmented); null when the engine created its own.",
+          "type": ["integer", "null"]
+        },
+        "added": {
+          "description": "The exact pieces the engine added to a product ruleset, so removal reverses precisely them: the required-check contexts it unioned in, and any wholly-missing floor rule types it added. null when the engine created its own ruleset.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "checks": { "type": "array", "items": { "type": "string" } },
+            "rules": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "engine_identity": {
+      "description": "The distinct, non-admin GitHub identity that authors the engine's commits and pull requests in TEAM mode, so the operator becomes the enforced code-owner reviewer — a change cannot merge without a second sign-off, and this identity (holding no admin) cannot itself weaken the ruleset. Recorded when the operator switches solo->team via the team-switch operation; absent in solo (the default) and in the engine's own home repository (which runs no first-run setup), so a manifest without it stays valid. Records only the PUBLIC identity — never a token or any secret, which stays in the operator's own credential store, so switching back to solo simply drops this record.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["login"],
+      "properties": {
+        "login": {
+          "description": "The machine-user account's GitHub login (for example 'my-project-engine') — a second account the operator created and added as a non-admin (write) collaborator, whose credential the operator's build sessions authenticate as. Commits and pull requests are attributed to it, and the code-owner review requirement is measured against it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "description": "The commit-author email for that identity, set into git config so the engine's commits carry it. Optional: the login alone identifies the author; the email is the git-level attribution.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

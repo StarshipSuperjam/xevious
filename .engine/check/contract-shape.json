@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/contract-shape",
+  "target": {
+    "path": ".engine/contracts/**/*eADR-*.md"
+  },
+  "kind": "shape",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI", "audit-prep"],
+  "message": "A contract (a decision record under .engine/contracts/) must contain, as level-2 headings in this order, Decision, then Significance, then Rationale, then Anti-choice, then Status; it may also contain a Supersedes section, and no others. The Anti-choice and Significance sections are what make a record worth keeping forever — the alternative that was weighed and rejected, and why the decision matters — so a contract that omits them is structurally not a contract. This check catches a broken SHAPE only: that the required sections are present, correctly ordered, and that no stray section appears. It cannot judge whether a section's content is substantive — an empty or hand-wavy Anti-choice passes here and is caught instead by the contract-threshold policy's filled-presence check and by the operator reviewing the committed change. Length over the 120-line budget is only a soft nudge to trim, never a block. Add or reorder the flagged sections to match the contract template before merging."
+}

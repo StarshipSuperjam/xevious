@@ -1,0 +1,21 @@
+{
+  "id": "routine-mode",
+  "version": "0.1.0",
+  "status": "required",
+  "provides": {
+    "operation": [
+      ".engine/operations/routine-entry.md"
+    ],
+    "skill": [
+      ".claude/skills/engine-routine/SKILL.md"
+    ],
+    "codex-skill": [
+      ".agents/skills/engine-routine/SKILL.md",
+      ".agents/skills/engine-routine/agents/openai.yaml"
+    ]
+  },
+  "wires": [],
+  "depends": {
+    "core": ""
+  }
+}

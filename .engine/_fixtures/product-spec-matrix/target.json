@@ -1,0 +1,6 @@
+{
+  "env": {
+    "ENGINE_SPEC_ROOT": ".engine/_fixtures/product-spec-matrix",
+    "ENGINE_OBLIGATION_MATRIX_PATH": ".engine/_fixtures/product-spec-matrix/stale-matrix.json"
+  }
+}

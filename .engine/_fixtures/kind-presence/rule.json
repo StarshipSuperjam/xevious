@@ -1,0 +1,11 @@
+{
+  "id": "fixture/kind-presence",
+  "kind": "presence",
+  "tier": "hard",
+  "target": {},
+  "params": {
+    "sections": ["Purpose", "Scope", "Detail"],
+    "filled_subsection_label": "Impact"
+  },
+  "message": "Every required section must be present, filled in, and carry a filled Impact line."
+}

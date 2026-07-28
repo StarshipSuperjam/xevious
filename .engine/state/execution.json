@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "environments": {
+    "claude": {
+      "status": "unqualified",
+      "as_of": null,
+      "repo": null,
+      "engine_release": null,
+      "floors": {},
+      "model_alias": null,
+      "evidence": null
+    },
+    "codex": {
+      "status": "unqualified",
+      "as_of": null,
+      "repo": null,
+      "engine_release": null,
+      "floors": {},
+      "model_alias": null,
+      "evidence": null
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "interface.v1 — a protocol contract a swappable implementation satisfies",
+  "description": "One interface declaration: the stable callable boundary that lets the engine keep a lightweight built-in default while a heavier capability can slot in behind the same boundary, without the caller knowing which it got. A declaration names its operations (each with the shape of its input and output) and names its own default/fallback implementation, so degradability is stated at the contract rather than scattered into callers. This governs the slug-named files under .engine/interfaces/. An interface governs a PROTOCOL (a callable boundary); it is distinct from a schema (which governs a data payload's shape) and from the module-system wiring seam (which edits shared state). Implementations are discovered by presence and resolve single-active — exactly one answers; with none present the named fallback answers; more than one non-default present is a coherence finding. This schema fixes the declaration's shape; the per-operation input/output shapes are authored inline in each declaration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "title", "description", "status", "operations", "fallback"],
+  "properties": {
+    "schema_version": {
+      "description": "The interface-declaration format's version stamp, so a future interface.v2 migration can recognise and transform an old declaration. The only valid value is 1.",
+      "const": 1
+    },
+    "id": {
+      "description": "The interface's stable name — a lowercase kebab-case slug matching the declaration's filename stem (e.g. 'knowledge-retrieval', 'search'). It is the identity callers and implementations bind against; in the knowledge graph it appears as 'interface:<id>'.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "title": {
+      "description": "A short human-readable label for the capability this interface provides, in plain language (e.g. 'Knowledge graph retrieval').",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "What the capability is and what a caller can ask of it, in plain language — not the slug, not implementation detail. This is what an operator or a cold-booting session reads to understand the seam.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Where this interface is in its lifecycle (the 'artifact' lifecycle). 'active' is in force; 'deprecated' is on its way out but still answered; 'retired' is no longer offered.",
+      "enum": ["active", "deprecated", "retired"]
+    },
+    "operations": {
+      "description": "The operation set every conforming implementation provides — the fallback floor and any richer swap-in alike. Each operation names itself, says what it does, and carries the JSON Schema of its input and of its output (the per-operation shapes, authored inline here). At least one operation is required; operation names must be unique within the declaration.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "fallback": {
+      "description": "The default/fallback implementation this contract names, so the engine always has a working answer even with no module installed. For the v1 MCP-backed interfaces this is the engine-prefixed MCP server that ships as the conforming foundation floor; a richer module overrides it by presence at the same handle. The named fallback being present is what the conformance audit verifies; a protocol-only interface whose fallback ships with an optional module names it here and is an expected pending state until that module is installed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "handle"],
+      "properties": {
+        "kind": {
+          "description": "How the fallback is reached. For v1 the interfaces are MCP-backed: 'mcp' means the handle is an engine-prefixed MCP server name.",
+          "enum": ["mcp"]
+        },
+        "handle": {
+          "description": "The engine-namespaced handle of the fallback implementation. For kind 'mcp' this is the engine-prefixed MCP server name (e.g. 'engine-knowledge-graph') that a richer implementation overrides by presence at the same name.",
+          "type": "string",
+          "pattern": "^engine-[a-z][a-z0-9-]*$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "operation": {
+      "description": "One operation in the contract: its name, a plain-language description, and the JSON Schema of its input and output. The input/output schemas are themselves JSON Schemas (objects), validated structurally by this grammar; their internal correctness is a conformance/test concern, not enforced here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "input_schema", "output_schema"],
+      "properties": {
+        "name": {
+          "description": "The operation's name — a lowercase kebab-case identifier unique within the interface (e.g. 'get-entity', 'find', 'neighbors', 'relate').",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "description": {
+          "description": "What the operation does and what it returns, in plain language.",
+          "type": "string",
+          "minLength": 1
+        },
+        "input_schema": {
+          "description": "The JSON Schema of the operation's input (an object schema). Holds arbitrary JSON Schema keywords; not constrained further here.",
+          "type": "object"
+        },
+        "output_schema": {
+          "description": "The JSON Schema of the operation's output (an object schema). Holds arbitrary JSON Schema keywords; not constrained further here.",
+          "type": "object"
+        }
+      }
+    }
+  }
+}

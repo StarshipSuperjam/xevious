@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "audit-finding.v1 — one finding from the engine's self-audit",
+  "description": "The finding shape the engine's periodic self-audit (the `audit` role, cron-fired) reports on. It is the canonical finding shape (finding.v1 — a severity, a message, and a location) with one narrowing for this consumer: the audit declares its own severity axis — its recommendation kind, one of retire, reconcile, or escalate. The audit reports and recommends; it never blocks a merge and never acts. Its severity is distinct from, but aligned with, the finding-disposition two-lane routing (local retire/reconcile vs escalate-upstream): both rest on the same manifest-`provides` provenance the audit consults before nominating (a shipped-machinery artifact is an escalate, never a local retirement the overlay would only restore), so the severity is the audit's declared recommendation and the routing substrate that carries a finding to a GitHub Issue is a separate concern (kept deliberately apart). The severity is an internal field, never shown to a person as-is; anything an operator sees is translated into plain language first. This file is reference data: its own correctness as a schema is checked automatically, and a fixture test pins that it accepts a well-formed finding and rejects a bad severity or a missing field. No live check mechanically resolves the audit persona's output-contract to this file; the build-orchestration step consumes the roster and collects the findings, uniformly across every agent output-contract, following this shape as posture rather than a mechanical gate.",
+  "type": "object",
+  "required": ["severity", "message", "location"],
+  "properties": {
+    "severity": {
+      "type": "string",
+      "enum": ["retire", "reconcile", "escalate"],
+      "description": "The audit's recommendation kind — its own per-consumer severity axis, one of three: retire (accumulated local state that no longer earns its place should be removed — the audit's retirement default), reconcile (local state or code should be fixed or brought back in line with the current spec or reality — a divergence, drift, or a stale operator override), or escalate (the fix belongs upstream in the engine-template project — a machinery bug or mis-fit a local change cannot durably fix, since the next engine update would revert it). It is an internal field, never shown to a person as-is; anything an operator sees is translated into plain language first."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A clear, complete, plain-language statement of the finding — what the audit found, why it matters, and what it recommends the operator do about it — written so both a person and the engine can act on it, explaining any technical term rather than assuming it. The schema requires a message to be present; whether it truly meets that clarity bar is a judgment, not something this check can measure."
+    },
+    "location": {
+      "type": ["object", "null"],
+      "description": "Where the finding points, or null when it concerns the engine's state as a whole rather than one place (for example an accumulated-cruft pattern not tied to a single file). When present, it points to a file and, optionally, a line.",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path of the file the finding concerns, relative to the repository root."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "description": "Line number within the file (counting from 1), or null when the finding is not tied to a specific line."
+        }
+      },
+      "required": ["file"],
+      "additionalProperties": false
+    }
+  }
+}

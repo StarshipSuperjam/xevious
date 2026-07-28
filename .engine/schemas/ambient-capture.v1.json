@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ambient-capture.v1 — a best-effort local record that a check ran",
+  "description": "One record per time a local check fires while you work, appended to a private, regenerable cache by the hook that runs checks (that writer arrives in a later slice). The self-monitoring system OWNS this record's shape and where the cache lives; the hook only writes into it. It is deliberately NOT a finding — it just records that a named check ran and whether it passed, plus a couple of details derived from the moment it ran (what it touched, and when). This capture is best-effort and never complete — local runs can be skipped, and some hooks can't name a target — so nothing in the engine treats it as a guarantee: anything that must be reliable is read from the project's own checked-in record of passed checks, or tracked as its own item, never assumed from this cache. This file is reference data only; its own correctness as a schema is checked automatically.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rule_id", "outcome", "target", "observed_at"],
+  "properties": {
+    "rule_id": {
+      "description": "The id of the check that ran — the same signal identity the self-monitoring groups by.",
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome": {
+      "description": "Whether the check passed or failed this time. This is read from what the hook reported about the check, not from the hook program's own exit code — the hook relays the check's verdict, it does not decide it.",
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "target": {
+      "description": "What the check ran over this time — the file or context the run touched — or null when the moment names none. This is per-occurrence detail, kept for context only; it is never used to group repeats.",
+      "type": ["string", "null"]
+    },
+    "observed_at": {
+      "description": "When the run was seen, written as a UTC moment ending in Z (for example 2026-06-02T14:30:00Z). The trailing-Z UTC shape is what is actually enforced (the date-time format is only a hint).",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    }
+  }
+}

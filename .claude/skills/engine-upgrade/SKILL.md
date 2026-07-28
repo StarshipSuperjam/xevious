@@ -1,0 +1,51 @@
+---
+name: engine-upgrade
+description: Check for, apply, or undo an engine update — see exactly what an update would change, apply it as a pull request you review, or safely undo a half-finished or unwanted one. Nothing changes until you approve.
+invocation: operator-typed
+disable-model-invocation: true
+allowed-tools: Bash(uv run *)
+---
+
+## Steps
+
+1. See where the engine stands — this only checks and changes nothing — by running:
+   `uv run --directory .engine -- python tools/module_manager.py upgrade`
+   (add a specific version at the end to check that one instead of the latest). Show the operator the result
+   exactly as printed — the version they're on and the one available, and the files, settings, and stored-data
+   changes an update would make. Do not summarize or reword it. Then route on what it reports and what the
+   operator wants:
+   - **An update is available and they want it** → the apply path, steps 2–3.
+   - **It reports a consistency problem / an update left unfinished** → the engine is part-way through an update;
+     go to step 4 (finish it or undo it).
+   - **They want to undo an update** (a half-finished one, or one that's already merged) → step 4.
+   - **Up to date, or it couldn't reach the update home** → say so plainly and stop.
+2. Before applying, tell the operator plainly what applying does: it downloads the new version and runs its own
+   update steps, then opens the change as a **pull request for your review** — nothing about the running engine
+   changes until you merge it, and merging can be undone by reverting it. If the check flagged a stored-data
+   change with no backup set up, say a backup must be set up first or the update will refuse that step.
+3. Only after the operator says to go ahead, apply the update by running:
+   `uv run --directory .engine -- python tools/module_manager.py upgrade --confirm`
+   (add the same specific version if they named one). Show the result exactly, then point them to the pull
+   request it opened: reviewing and merging it is their approval; reverting it undoes the update.
+4. **Finish or undo an update.** See the undo options — this only checks and changes nothing — by running:
+   `uv run --directory .engine -- python tools/module_manager.py rollback`
+   Show the result exactly. Then, only after the operator says to go ahead:
+   - **Finish a half-finished update** → run `... module_manager.py upgrade --confirm` (step 3).
+   - **Undo a half-finished update** → run `uv run --directory .engine -- python tools/module_manager.py
+     rollback --confirm`. It saves a recovery point of the current state first, then puts the engine back the
+     way it was, and puts back any saved memory the update had changed. Show the result exactly, including the
+     recovery point it names.
+   - **Undo an update that's already merged** → the engine can't undo a merged change on its own. Prepare a
+     revert of that update's pull request as a normal reviewed change the operator merges; afterward, run
+     `rollback --confirm` (or accept the startup offer) to put their saved memory back to the copy from before
+     the update.
+
+## Notes
+
+This is the one command you type to manage your engine's version — checking, applying, or undoing an update. I
+won't start or undo an update on my own; that is your call. If you just mention wanting to update or undo in
+conversation, I'll point you here rather than run anything. Every apply and every undo waits for your explicit
+go-ahead after you've seen what it would do. Undoing a half-finished update saves a recovery point of your
+current state first, so nothing is lost — it resets the engine's own files and the shared setup files it
+changes (keeping your version of those on the recovery point), and it stops and asks first if you have unsaved
+work of your own in other files. The checks in steps 1 and 4 are safe to run any time: they only read.

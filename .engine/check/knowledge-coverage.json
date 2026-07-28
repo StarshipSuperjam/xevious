@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/knowledge-coverage",
+  "target": { "context": "knowledge-fingerprint" },
+  "kind": "coverage",
+  "params": { "mode": "fingerprint" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The knowledge graph (.engine/knowledge/graph.json) is a derived, committed map of every engine surface-instance file and how they relate; it is generated from the surfaces themselves, so it must always match them. This is the unbypassable CI backstop: it regenerates every entity in memory from the current surfaces and compares to the committed graph, going red when a surface changed but its entity was not regenerated (a stale entity), when a surface gained or lost a file with no regenerate (a coverage gap or an orphan entity), or when the committed file is missing. An unregenerated graph would silently misdescribe how the project is wired to every future session, so it must be captured before merge; there is no bypass at CI. To fix it, regenerate and commit: `uv run --directory .engine -- python tools/knowledge_gen.py generate`. What this check covers — and what it does not: it confirms only that the graph MATCHES the surfaces (no drift, full coverage); it does NOT confirm that the derived edges are semantically right — that is caught by the unit tests, and by the operator's review of the committed graph diff for gross divergences."
+}

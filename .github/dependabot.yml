@@ -1,0 +1,31 @@
+# dependabot.yml — the git-native dependency floor that travels to every repo.
+# (control-plane "The security floor", Dependencies pillar: `dependabot.yml` ships
+# for all repos, public or private, free on every plan — the git-native floor that
+# travels.) This configures Dependabot VERSION updates for the engine's own
+# tool-runtime (uv) and for the SHA-pinned GitHub Actions the engine's workflows use.
+#
+# Dependency *discipline* (pin policy, update cadence, review gates) is NOT part of
+# this floor — it belongs to the dependency-discipline module. This file is only the
+# floor's traveling presence: keep the engine's dependencies reachable for security
+# and version updates on any plan.
+#
+# `commit-message.prefix` carries the release notes' change-kind prefix. Dependabot titles its pull requests
+# from the commit message, so this makes each routine bump read "Maintenance: bump X from Y to Z" and group as
+# upkeep — keeping recurring dependency noise out of the list of what actually changed for a reader.
+# A SECURITY fix is NOT upkeep, and Dependabot writes its "[Security]" marker AFTER this prefix
+# ("Maintenance: [Security] bump ..."). The release notes read that marker and file such a fix under Security
+# regardless of this prefix, so a CVE fix is never presented as routine upkeep.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/.engine"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "Maintenance"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "Maintenance"

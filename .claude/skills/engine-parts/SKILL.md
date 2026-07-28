@@ -1,0 +1,19 @@
+---
+name: engine-parts
+description: Show what your engine is made of — its version, the kinds of files it governs, and the modules installed and how they depend on each other.
+invocation: operator-typed
+disable-model-invocation: true
+allowed-tools: Bash(uv run *)
+---
+
+## Steps
+
+1. Show what the engine is made of by running:
+   `uv run --directory .engine -- python tools/self_map.py show`
+2. Show the operator the readout exactly as it is printed — the engine version, the surfaces it defines,
+   and the modules installed with how they depend on each other. Do not summarize or reword it.
+
+## Notes
+
+This is a command you type any time to see what your engine is made of — the plain-language answer to
+"what is my engine made of." It only reads; it never changes anything.

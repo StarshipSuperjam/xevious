@@ -1,0 +1,4 @@
+{
+  "property": "no statically-decidable failure path in the CI environment",
+  "reason": "This check's aimed verdict — whether a settled product-spec document changed without the re-acceptance acknowledgment — compares each document's content at the pull request's base (read live from the GitHub Contents API at the base SHA) against its content at head. A committed fixture cannot manufacture a document that was 'settled at the base', because the settled-at-base record is read from the API, not from any committed file. So the aimed failure cannot be forced by a seeded input in CI. The only committed-seedable path is the fail-closed branch, and witnessing a fixture via it would be a false witness. So there is no seedable, validly-witnessable failure path."
+}

@@ -1,0 +1,5 @@
+# Negative fixture for engine/check/uv-group-drift. This committed default-groups is deliberately
+# empty, so it drifts from what the real installed module set derives — the gate must bite. Only the
+# committed side is read from here; the derived side still reads the real module manifests.
+[tool.uv]
+default-groups = []

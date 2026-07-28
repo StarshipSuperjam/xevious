@@ -1,0 +1,8 @@
+{
+  "id": "fixture/kind-coverage",
+  "kind": "coverage",
+  "tier": "hard",
+  "target": {},
+  "params": { "mode": "catalog", "infra_dirs": [] },
+  "message": "Every catalogued surface must have its directory, and every surface directory must be catalogued."
+}

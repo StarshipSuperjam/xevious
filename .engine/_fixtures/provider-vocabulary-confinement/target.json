@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_VOCAB_FIXTURE_DIR": ".engine/_fixtures/provider-vocabulary-confinement/tools"
+  }
+}

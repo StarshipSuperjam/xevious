@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/skill-coherence",
+  "target": { "context": "skill-coherence" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/skill_coherence_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine's own commands (the engine-prefixed skills under .claude/skills/, plus any legacy .claude/commands/engine-*.md) each declare who may invoke them, and that declaration must agree with the real platform flags the file carries. The load-bearing case is an operator-only command — one only the operator should type: it must carry disable-model-invocation: true so the model cannot start it itself (the self-election safety property). This check parses each engine command's frontmatter and runs the skill coherence leg over it, going red when a command's stated invocation disagrees with its flags — most importantly when an operator-typed command is missing disable-model-invocation: true (the model could still self-invoke it) — so a self-election regression is caught at merge rather than shipping silently. It governs only the engine's own (engine-prefixed) commands; operator-authored product skills in the same directory are not engine-governed. To fix: correct the command's frontmatter in .claude/skills/<name>/SKILL.md so its declared invocation and its platform flags agree (an operator-typed command carries disable-model-invocation: true)."
+}

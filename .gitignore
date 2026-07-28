@@ -1,0 +1,20 @@
+# BEGIN engine-managed block: foundation-ignores - do not edit inside
+.engine/.venv/
+.engine/.uv/
+.claude/worktrees/
+# END engine-managed block: foundation-ignores
+# BEGIN engine-managed block: core-knowledge-cache - do not edit inside
+.engine/knowledge/.cache/
+# END engine-managed block: core-knowledge-cache
+# BEGIN engine-managed block: core-telemetry-cache - do not edit inside
+.engine/telemetry/.cache/
+# END engine-managed block: core-telemetry-cache
+# BEGIN engine-managed block: core-boot-presentation-ledger - do not edit inside
+.engine/boot/.cache/
+# END engine-managed block: core-boot-presentation-ledger
+# BEGIN engine-managed block: mechanic-product-checkout - do not edit inside
+.engine/mechanic/
+# END engine-managed block: mechanic-product-checkout
+# BEGIN engine-managed block: memory-substrate-ledger - do not edit inside
+.engine/memory/
+# END engine-managed block: memory-substrate-ledger

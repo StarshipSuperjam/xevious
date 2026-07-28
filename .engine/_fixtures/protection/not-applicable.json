@@ -1,0 +1,4 @@
+{
+  "property": "no statically-decidable failure path in the CI environment",
+  "reason": "This check's aimed verdict — whether the protected branch's ruleset is in force — is read live from the GitHub branch-protection API for the real repository. No committed file can make that API report protection missing, so the aimed failure cannot be triggered by a seeded input in CI. The only committed-seedable path is the fail-closed branch (an unreadable API, e.g. a bogus repository), and asserting a fixture via that path would be a false witness: it would prove the script fail-closes on a bad input, not that it detects protection being off. So there is no seedable, validly-witnessable failure path."
+}

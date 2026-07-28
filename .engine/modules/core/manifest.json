@@ -1,0 +1,436 @@
+{
+  "id": "core",
+  "version": "0.3.0",
+  "status": "required",
+  "provides": {
+    "check": [
+      ".engine/check/guardrail-weakening.json",
+      ".engine/check/protection.json"
+    ],
+    "schema": [
+      ".engine/schemas/*.json"
+    ],
+    "tool": [
+      ".engine/tools/*.py",
+      ".engine/tools/*.sh"
+    ],
+    "interface": [
+      ".engine/interfaces/*.json"
+    ],
+    "operation": [
+      ".engine/operations/boot-session-start.md",
+      ".engine/operations/build-orchestration.md",
+      ".engine/operations/close-turn.md",
+      ".engine/operations/codex-validation.md",
+      ".engine/operations/conduct-author.md",
+      ".engine/operations/control-plane-bootstrap.md",
+      ".engine/operations/engine-arrival.md",
+      ".engine/operations/engine-development.md",
+      ".engine/operations/engine-remove.md",
+      ".engine/operations/engine-team-switch.md",
+      ".engine/operations/engine-upgrade.md",
+      ".engine/operations/first-run.md",
+      ".engine/operations/knowledge-impact-check.md",
+      ".engine/operations/memory-recall.md",
+      ".engine/operations/module-add.md",
+      ".engine/operations/module-remove.md",
+      ".engine/operations/onboarding-read.md",
+      ".engine/operations/operating-modes.md",
+      ".engine/operations/tune-policy.md"
+    ],
+    "skill": [
+      ".claude/skills/engine-conduct/SKILL.md",
+      ".claude/skills/engine-help/SKILL.md",
+      ".claude/skills/engine-parts/SKILL.md",
+      ".claude/skills/engine-recall/SKILL.md",
+      ".claude/skills/engine-setup/SKILL.md",
+      ".claude/skills/engine-start/SKILL.md",
+      ".claude/skills/engine-status/SKILL.md",
+      ".claude/skills/engine-tune/SKILL.md",
+      ".claude/skills/engine-upgrade/SKILL.md"
+    ],
+    "doc": [
+      ".engine/docs/getting-started.md"
+    ],
+    "state": [
+      ".engine/state/*.json"
+    ],
+    "knowledge": [
+      ".engine/knowledge/*.json"
+    ],
+    "contract": [
+      ".engine/contracts/*.md"
+    ],
+    "policy": [
+      ".engine/policies/attention.md",
+      ".engine/policies/contract-threshold.md",
+      ".engine/policies/escalation.md",
+      ".engine/policies/finding-disposition.md",
+      ".engine/policies/model-bindings.json",
+      ".engine/policies/model-routing.md",
+      ".engine/policies/triage-threshold.md"
+    ],
+    "conduct": [
+      ".engine/conduct/defaults.md"
+    ],
+    "template": [
+      ".engine/templates/*.md"
+    ],
+    "foundation": [
+      ".engine/suites.json",
+      ".engine/self-map.md"
+    ],
+    "provisioning": [
+      ".engine/provisioning/first-run-assets.json",
+      ".engine/provisioning/module-catalog.json"
+    ],
+    "codex-skill": [
+      ".agents/skills/engine-conduct/SKILL.md",
+      ".agents/skills/engine-conduct/agents/openai.yaml",
+      ".agents/skills/engine-help/SKILL.md",
+      ".agents/skills/engine-help/agents/openai.yaml",
+      ".agents/skills/engine-parts/SKILL.md",
+      ".agents/skills/engine-parts/agents/openai.yaml",
+      ".agents/skills/engine-recall/SKILL.md",
+      ".agents/skills/engine-recall/agents/openai.yaml",
+      ".agents/skills/engine-setup/SKILL.md",
+      ".agents/skills/engine-setup/agents/openai.yaml",
+      ".agents/skills/engine-start/SKILL.md",
+      ".agents/skills/engine-start/agents/openai.yaml",
+      ".agents/skills/engine-status/SKILL.md",
+      ".agents/skills/engine-status/agents/openai.yaml",
+      ".agents/skills/engine-tune/SKILL.md",
+      ".agents/skills/engine-tune/agents/openai.yaml",
+      ".agents/skills/engine-upgrade/SKILL.md",
+      ".agents/skills/engine-upgrade/agents/openai.yaml"
+    ],
+    "migration": [
+      ".engine/modules/core/migrations/*.py"
+    ]
+  },
+  "wires": [
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/boot.py\""
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/boot.py\""
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "clear",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/boot.py\""
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/telemetry.py\" run-ambient"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/telemetry.py\" run-ambient"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/telemetry.py\" drain-inbox"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/telemetry.py\" drain-inbox"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "PreToolUse",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/modes.py\""
+      }
+    },
+    {
+      "type": "hook",
+      "event": "PreToolUse",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/knowledge_gen.py\" hook"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "PreToolUse",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/self_map.py\" hook"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "PreToolUse",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/validate.py\" hook"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "PostToolUse",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/modes.py\" accept-hook"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "PostToolUse",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/validate.py\" accept-hook"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "Stop",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/close.py\""
+      }
+    },
+    {
+      "type": "hook",
+      "event": "UserPromptSubmit",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/scent.py\""
+      }
+    },
+    {
+      "type": "mcp",
+      "name": "engine-knowledge-graph",
+      "definition": {
+        "command": "uv",
+        "args": [
+          "run",
+          "--directory",
+          "${CLAUDE_PROJECT_DIR:-.}/.engine",
+          "--frozen",
+          "--",
+          "python",
+          "tools/knowledge_mcp_server.py"
+        ]
+      }
+    },
+    {
+      "type": "gitignore",
+      "key": "core-knowledge-cache",
+      "lines": [
+        ".engine/knowledge/.cache/"
+      ]
+    },
+    {
+      "type": "gitignore",
+      "key": "core-telemetry-cache",
+      "lines": [
+        ".engine/telemetry/.cache/"
+      ]
+    },
+    {
+      "type": "gitignore",
+      "key": "core-boot-presentation-ledger",
+      "lines": [
+        ".engine/boot/.cache/"
+      ]
+    },
+    {
+      "type": "gitignore",
+      "key": "mechanic-product-checkout",
+      "lines": [
+        ".engine/mechanic/"
+      ]
+    },
+    {
+      "type": "codex-mcp",
+      "name": "engine-knowledge-graph",
+      "definition": {
+        "command": "uv",
+        "args": [
+          "run",
+          "--directory",
+          ".engine",
+          "--frozen",
+          "--",
+          "python",
+          "tools/knowledge_mcp_server.py"
+        ],
+        "default_tools_approval_mode": "auto"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/boot.py\""
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/boot.py\""
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "clear",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/boot.py\""
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/telemetry.py\" run-ambient"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/telemetry.py\" run-ambient"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/telemetry.py\" drain-inbox"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/telemetry.py\" drain-inbox"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "PreToolUse",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/modes.py\""
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "PreToolUse",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/knowledge_gen.py\" hook"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "PreToolUse",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/self_map.py\" hook"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "PreToolUse",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/validate.py\" hook"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "PostToolUse",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/validate.py\" accept-hook"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "Stop",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/close.py\""
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "UserPromptSubmit",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/scent.py\""
+      }
+    }
+  ],
+  "depends": {},
+  "migrations": {
+    "0.3.0": {
+      "description": "Removes the per-prompt hint's strength setting from your saved settings \u2014 the reminder now appears on every message and no longer has a strength to set, so a saved value for it would be ignored.",
+      "run": "migrations/retire_scent_threshold.py",
+      "kind": "config"
+    }
+  }
+}

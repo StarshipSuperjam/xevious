@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/in-tool-demo-failure-path",
+  "target": { "path": ".engine/tools" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/in_tool_demo_failure_path_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine's in-tool `demo`/`demo-*` subcommands are a promoted standing falsification capability: each is a demonstration carried inside a shipped tool that travels into every generated repo, and every one must be able to FAIL — it drives the real surface and returns non-zero when the behaviour is broken (a recipe that can only succeed is not evidence). This check flags any in-tool demo whose only exit is a literal success (0/None) — a print-only showcase. The fix is to give it a self-check that acts on the result it already computes and returns non-zero on a mismatch (the .engine/tools/module_coherence.py demo is the pattern), or to demote it out of the `demo` subcommand convention. It excludes the standalone demo_*.py files (a separate population) and the one-time setup subcommands that are removed when a project is first set up."
+}

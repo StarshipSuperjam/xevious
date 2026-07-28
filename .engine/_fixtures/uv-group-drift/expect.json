@@ -1,0 +1,4 @@
+{
+  "severity": "hard",
+  "message_contains": "dependency-group selection is out of date"
+}

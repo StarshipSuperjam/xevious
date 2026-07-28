@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "codex-skill.v1 — the frontmatter of one Codex skill (an .agents/skills/<name>/SKILL.md)",
+  "description": "The frontmatter of a Codex-native skill. Codex itself requires exactly two frontmatter fields — `name` (the identifier behind the operator's typed `$name` invocation) and `description` (the line Codex uses to present the skill and decide when to surface it) — and this schema requires the same two. An engine-prefixed Codex skill is a COMMITTED RENDER of its canonical Claude twin (.claude/skills/<name>/SKILL.md), produced by the render tool and held in sync by the render-drift leg of the codex-agent coherence check; the Claude source stays the single authored original (eADR-0034). The Claude-side governance flags (invocation, disable-model-invocation, user-invocable) do NOT appear here because Codex does not read frontmatter flags for invocation control — the operator-only property is carried by the skill's companion `agents/openai.yaml` (policy.allow_implicit_invocation: false), and THAT pairing (an engine-prefixed skill must ship the companion policy) is a coherence finding produced by the codex-skill coherence check, not a schema constraint, mirroring how the Claude self-election guard lives in its coherence leg. This schema is OPEN (additionalProperties: true): operators may author their own un-prefixed product skills in the same .agents/skills/ directory, and Codex's frontmatter vocabulary is the platform's to grow — a closed key set would rot and reject legitimate skills. Enforced live by the codex-skill-frontmatter check (a validators-core schema rule) routed through the surface catalog (the 'codex-skill' surface) reading the parsed YAML frontmatter.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "description": "The skill identifier Codex reads — the name behind the operator's typed `$name` invocation and the key skill selectors show. For an engine skill this matches the engine-prefixed directory slug and the Claude twin's typed identity, so the operator types the same verb on either runtime (`/engine-status` there, `$engine-status` here).",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "The plain-language line Codex uses to present the skill and to decide when to surface it, and that the operator reads. One line, written for a human and the platform's own routing, with no engine governance jargon.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

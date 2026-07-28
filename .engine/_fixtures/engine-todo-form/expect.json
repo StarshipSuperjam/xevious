@@ -1,0 +1,4 @@
+{
+  "severity": "hard",
+  "message_contains": "carries a deferred-work marker with no description"
+}

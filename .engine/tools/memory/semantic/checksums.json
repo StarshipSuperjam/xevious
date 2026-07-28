@@ -1,0 +1,33 @@
+{
+  "derived_from": {
+    "dtype": "int8 rows + float32 per-row scale",
+    "license": "MIT",
+    "model": "minishlab/potion-retrieval-32M",
+    "quantization": "per-row symmetric int8: scale = max(abs(row)); q = round(row / scale * 127)",
+    "revision": "main",
+    "shape": [
+      63091,
+      512
+    ],
+    "source_files": {
+      "model.safetensors": {
+        "bytes": 129210456,
+        "sha256": "07609e5bd33aad37900b3fd62f4ec96f6daec88ca4d46b9d8b928bfababf6ea0"
+      },
+      "vocab.txt": {
+        "sha256": "4b3452e69455f96c6cfc1cdb212d3b7b1a3e9d2505ab6f61a50022f61467a6a3"
+      }
+    }
+  },
+  "files": {
+    "potion-retrieval-32m-int8.npz": {
+      "bytes": 32555454,
+      "sha256": "a082144d84c817d574d7f9d85151fcdbab0540a1a8f4e431e1da04e1fb1cbd47"
+    },
+    "vocab.txt": {
+      "bytes": 492156,
+      "sha256": "4b3452e69455f96c6cfc1cdb212d3b7b1a3e9d2505ab6f61a50022f61467a6a3"
+    }
+  },
+  "note": "Integrity + provenance for the vendored word table. embed.py verifies sha256 at load and refuses a mismatch."
+}

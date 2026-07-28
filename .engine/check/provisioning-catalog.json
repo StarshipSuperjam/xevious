@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/provisioning-catalog",
+  "target": { "path": ".engine/provisioning/module-catalog.json" },
+  "kind": "schema",
+  "params": { "schema": ".engine/schemas/provisioning-catalog.v1.json" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The optional-module catalog (.engine/provisioning/module-catalog.json) must match provisioning-catalog.v1.json — a list where each entry has an id, a one-line plain-language description, and a discipline category, and may also carry a command (verb) and a status. The first-run setup walkthrough and /engine-help both read this file to show which optional parts a project can add, so a malformed entry would silently mislead the walkthrough or drop a real choice with no error. This check validates the file and goes red on a bad entry. To clear it, fix the flagged entry so it has an id, a plain-language description, and a discipline category — plus a command (verb) only if the module has one — matching the shape of the other entries already in the catalog, before merging."
+}

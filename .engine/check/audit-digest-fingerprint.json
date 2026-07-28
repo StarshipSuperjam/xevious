@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/audit-digest-fingerprint",
+  "target": { "path": ".engine/audits/audit-digest.md" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/audit_digest_fingerprint_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine's self-review file (.engine/audits/audit-digest.md) is the plain-language record of the last time the engine reviewed its own health. It carries a check-value the audit writes over its own contents, so the file cannot be quietly altered after the fact. This rule re-computes that value from the file and compares: if the file was edited by hand after the audit wrote it — so its contents no longer match the recorded value — or is present but malformed, it goes red. To fix it, revert the hand-edit, or re-run the audit so it rewrites and re-records the file. While no self-review file exists yet, this rule passes — there is nothing to verify."
+}
