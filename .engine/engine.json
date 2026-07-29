@@ -14,5 +14,10 @@
   "identity": "solo",
   "handle": "StarshipSuperjam",
   "default_branch": "main",
-  "home_repository": "StarshipSuperjam/engine-template"
+  "home_repository": "StarshipSuperjam/engine-template",
+  "control_plane": {
+    "ruleset_mode": "created",
+    "augmented_ruleset_id": null,
+    "added": null
+  }
 }
