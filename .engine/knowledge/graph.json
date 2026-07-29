@@ -2,6 +2,7 @@
   "entities": [
     {
       "id": "agent:engine-audit",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-audit.md",
       "owner": "audit-library",
       "predicates": {
@@ -12,6 +13,7 @@
           "module:audit-library"
         ]
       },
+      "role": "audit",
       "slug": "engine-audit",
       "source": {
         "fingerprint": "sha256:70c19ad4e3718ab573f95be9b2d9ea2b3e626d07c869362d0ae80094faed1b7c",
@@ -22,6 +24,8 @@
     },
     {
       "id": "agent:engine-design-review-architecture",
+      "lens": "architecture",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-design-review-architecture.md",
       "owner": "design-review",
       "predicates": {
@@ -32,6 +36,7 @@
           "module:design-review"
         ]
       },
+      "role": "plan-review",
       "slug": "engine-design-review-architecture",
       "source": {
         "fingerprint": "sha256:a8efa30484f7f70e060d0cbb51bd0a1baeb1c41c4805fc9ebb202a28d09def23",
@@ -42,6 +47,8 @@
     },
     {
       "id": "agent:engine-design-review-feasibility",
+      "lens": "feasibility",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-design-review-feasibility.md",
       "owner": "design-review",
       "predicates": {
@@ -52,6 +59,7 @@
           "module:design-review"
         ]
       },
+      "role": "plan-review",
       "slug": "engine-design-review-feasibility",
       "source": {
         "fingerprint": "sha256:1b245ed1c9c0aa6339f9befa3b0791c2a43c83dcb879071f04993cdad72903d0",
@@ -62,6 +70,8 @@
     },
     {
       "id": "agent:engine-design-review-product-intent",
+      "lens": "product-intent",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-design-review-product-intent.md",
       "owner": "design-review",
       "predicates": {
@@ -72,6 +82,7 @@
           "module:design-review"
         ]
       },
+      "role": "plan-review",
       "slug": "engine-design-review-product-intent",
       "source": {
         "fingerprint": "sha256:07daf3af21e84d5fdd85225f26d05ce83d1eda275e53aecc8375e9529b9bd4c7",
@@ -82,6 +93,8 @@
     },
     {
       "id": "agent:engine-design-review-risk-governance",
+      "lens": "risk-governance",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-design-review-risk-governance.md",
       "owner": "design-review",
       "predicates": {
@@ -92,6 +105,7 @@
           "module:design-review"
         ]
       },
+      "role": "plan-review",
       "slug": "engine-design-review-risk-governance",
       "source": {
         "fingerprint": "sha256:37a9df7d2e1cf7503f56dcc7d19d36f2e9b7a3868325a9a96b585e39a08149c4",
@@ -102,6 +116,8 @@
     },
     {
       "id": "agent:engine-qa-review-divergence-hunter",
+      "lens": "divergence-hunter",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-qa-review-divergence-hunter.md",
       "owner": "qa-review",
       "predicates": {
@@ -112,6 +128,7 @@
           "module:qa-review"
         ]
       },
+      "role": "pre-submission-review",
       "slug": "engine-qa-review-divergence-hunter",
       "source": {
         "fingerprint": "sha256:98ed1d7d8628858b91287c1c5bf54b80d9623c89c79432d7b16588bdb5083e14",
@@ -122,6 +139,8 @@
     },
     {
       "id": "agent:engine-qa-review-security-governance",
+      "lens": "security-governance",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-qa-review-security-governance.md",
       "owner": "qa-review",
       "predicates": {
@@ -132,6 +151,7 @@
           "module:qa-review"
         ]
       },
+      "role": "pre-submission-review",
       "slug": "engine-qa-review-security-governance",
       "source": {
         "fingerprint": "sha256:96a274fcf495b0db12ce53100be0f36f1fba9d409255c27c4be0051a6c1b02db",
@@ -142,6 +162,8 @@
     },
     {
       "id": "agent:engine-qa-review-spec-conformance",
+      "lens": "spec-conformance",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-qa-review-spec-conformance.md",
       "owner": "qa-review",
       "predicates": {
@@ -152,6 +174,7 @@
           "module:qa-review"
         ]
       },
+      "role": "pre-submission-review",
       "slug": "engine-qa-review-spec-conformance",
       "source": {
         "fingerprint": "sha256:98441045b440f4cffb112b2bb3231b12f468b37f1601e27da8dc44e3b94d10b5",
@@ -162,6 +185,8 @@
     },
     {
       "id": "agent:engine-qa-review-technical-integrity",
+      "lens": "technical-integrity",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-qa-review-technical-integrity.md",
       "owner": "qa-review",
       "predicates": {
@@ -172,6 +197,7 @@
           "module:qa-review"
         ]
       },
+      "role": "pre-submission-review",
       "slug": "engine-qa-review-technical-integrity",
       "source": {
         "fingerprint": "sha256:ac54347d3a032dcb234e6db5b9ad325e813eb19d755206f31308f7277e4e6237",
@@ -182,6 +208,8 @@
     },
     {
       "id": "agent:engine-qa-review-usability",
+      "lens": "usability",
+      "model-tier": "judgment",
       "name": ".claude/agents/engine-qa-review-usability.md",
       "owner": "qa-review",
       "predicates": {
@@ -192,6 +220,7 @@
           "module:qa-review"
         ]
       },
+      "role": "pre-submission-review",
       "slug": "engine-qa-review-usability",
       "source": {
         "fingerprint": "sha256:7816c421aa3c17b2323f2d7d64e279d3c9f34e5a2575da13907d153049d3bd56",
@@ -3037,7 +3066,7 @@
         "fingerprint": "sha256:4bdccd156d705997e36cc35bed4f3ba12ddf0c9d198b4f58b45974ba985d7341",
         "path": ".engine/contracts/eADR-0001-versioned-template.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3057,7 +3086,7 @@
         "fingerprint": "sha256:10dd78c6593defc4d621f9a9c9baffa01c2d2d098d8a9a057cfcf68ee3f35112",
         "path": ".engine/contracts/eADR-0002-repo-authoritative-truth.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3077,7 +3106,7 @@
         "fingerprint": "sha256:5151e714d73e05b9a4409476e6b50a94b7c3b4d5a77fdf757e6ac54ce246838a",
         "path": ".engine/contracts/eADR-0003-ship-the-substrate-not-the-data.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3097,7 +3126,7 @@
         "fingerprint": "sha256:d85615bf5b2f40347a9e318fed645d22bb3a43b32cd2040412e815b0d0226ebb",
         "path": ".engine/contracts/eADR-0004-degrade-to-git-native.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3117,7 +3146,7 @@
         "fingerprint": "sha256:37ccd6483f8dbfc7985134eddae4d9e874ba6152ff499aec5654245a9f466e2b",
         "path": ".engine/contracts/eADR-0005-nudge-locally-hardgate-at-review.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3137,7 +3166,7 @@
         "fingerprint": "sha256:499d709a08cb45871c982060ab9b39bae7c44cff4633c5cf8944ce05efa580c1",
         "path": ".engine/contracts/eADR-0006-three-enforcement-tiers.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3157,7 +3186,7 @@
         "fingerprint": "sha256:970a02a20481a55955c7f19e98248eacca8a4c6e74d1f4902ea677adaa10853a",
         "path": ".engine/contracts/eADR-0007-engine-product-wall.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3177,7 +3206,7 @@
         "fingerprint": "sha256:699b27f542e6dcc4bf24a5590b8aff09fe5e1e0d8d878ddad5c6e8678469f6cc",
         "path": ".engine/contracts/eADR-0008-fault-containment-at-the-seams.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3197,7 +3226,7 @@
         "fingerprint": "sha256:f854773f5e19ec38cb5f9b29fb19bbc0fd339c96c2d5ae0c50d04b211f1d1a1d",
         "path": ".engine/contracts/eADR-0009-modules-declare-files-and-wiring.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3217,7 +3246,7 @@
         "fingerprint": "sha256:79f410401b3c3f7e510d2096323fdbe6abae1cab24a977def16b278d269bdc05",
         "path": ".engine/contracts/eADR-0010-derived-binding-by-presence.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3237,7 +3266,7 @@
         "fingerprint": "sha256:992473935a8aea09629154ed600ab2b93cbc9aa45f7e47aea80ca8509f98c201",
         "path": ".engine/contracts/eADR-0011-guardrail-integrity.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3257,7 +3286,7 @@
         "fingerprint": "sha256:fd0de6d770d24dfb340fa78217b4d5c215cf7bfb69815c137fa9d5bca41138e1",
         "path": ".engine/contracts/eADR-0012-deferral-seams.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3277,7 +3306,7 @@
         "fingerprint": "sha256:f5162f92de028da6e45cad07e79e73e59fab86f79dc9a10e02db3cd972fcd493",
         "path": ".engine/contracts/eADR-0013-one-trust-gate-evidence.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3297,7 +3326,7 @@
         "fingerprint": "sha256:d28af0de197bef90d35dd11a1dbccdf455bc5ee88c5601a425dab745942e15d8",
         "path": ".engine/contracts/eADR-0014-one-history-living-documents.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3317,7 +3346,7 @@
         "fingerprint": "sha256:6e69068917ae4cc7e7d38c6e5c4765616a031ba81cafeff5797bf45b35c5f253",
         "path": ".engine/contracts/eADR-0015-remediation-loop-not-self-healing.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3337,7 +3366,7 @@
         "fingerprint": "sha256:63163a6ce90cdbc79e56822843c5692ffdf9a8d260918cc21775e208090f6221",
         "path": ".engine/contracts/eADR-0016-ontology-surfaces-catalogued-ranked.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3357,7 +3386,7 @@
         "fingerprint": "sha256:2ebfa449c44288e940809d661f837ffbf665479f1230c3226c32d047e424dd8c",
         "path": ".engine/contracts/eADR-0017-engine-namespaced-identifiers.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3377,7 +3406,7 @@
         "fingerprint": "sha256:040543b286305b8d9ccab70926924da6864b9de7a0d0ce29b00590882fc50428",
         "path": ".engine/contracts/eADR-0018-cognitive-substrate-one-workflow.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3397,7 +3426,7 @@
         "fingerprint": "sha256:cfca6833a665c64e94ac07b1b17c133f71072f0ff9be2577709ba62ecdd05493",
         "path": ".engine/contracts/eADR-0019-memory-knowledge-distinct-substrates.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3417,7 +3446,7 @@
         "fingerprint": "sha256:fc4e29cebfb34ac9b7751b1a40509eb940225881795e25d6a10cdef1bbb0d1f2",
         "path": ".engine/contracts/eADR-0020-thin-dispatcher-kind-registry.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3437,7 +3466,7 @@
         "fingerprint": "sha256:e10d39bcc1ff8f366f364724f0cbf66012ab7409e01f223d1c9035d81483e869",
         "path": ".engine/contracts/eADR-0021-control-plane-enforcement-layer.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3457,7 +3486,7 @@
         "fingerprint": "sha256:a03ee685935073b08db350c23d2d30724a68ec3cd3b6354969c06b816174ceac",
         "path": ".engine/contracts/eADR-0022-hooks-lifecycle-bindings-block-budget.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3477,7 +3506,7 @@
         "fingerprint": "sha256:26da28f5390bd2c7ee4197ed06fcc21f2c0fb87091b6ad5b4e9d65988b58e7d2",
         "path": ".engine/contracts/eADR-0023-one-manifest-grammar-provisioning.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3497,7 +3526,7 @@
         "fingerprint": "sha256:cabd1e4e6a789a3a1aaf7ed3787ac05d05a8f961f64a6f757341b50df99c1229",
         "path": ".engine/contracts/eADR-0024-modes-three-stances-two-axes.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3517,7 +3546,7 @@
         "fingerprint": "sha256:3084239a6c645c8f55d8f0c994a4ead171d35c3609441422bde56c834cc223c1",
         "path": ".engine/contracts/eADR-0025-draft-pr-is-the-claim.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3537,7 +3566,7 @@
         "fingerprint": "sha256:b9c523cd54c99c10203e0dccca7b3bf0132c32079c3a1dbfb9d62ee4b1c08860",
         "path": ".engine/contracts/eADR-0026-external-contribution-fork-native.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3557,7 +3586,7 @@
         "fingerprint": "sha256:7001e048a2cb6cc439f2fdc1c391b94841f0229a3cd3fe5aea05adfb869ba8ab",
         "path": ".engine/contracts/eADR-0027-execution-substrate-uv-runtime.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3577,7 +3606,7 @@
         "fingerprint": "sha256:df4d76fbc0296e1bee1d328c7556506b5e05e5de3516b9e4366e9cc9bfb52e5d",
         "path": ".engine/contracts/eADR-0028-cold-adversarial-audit.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3597,7 +3626,7 @@
         "fingerprint": "sha256:6b40e201763bb58996c8db43be3866fcbe0da1d0b3670b935d425ff5d11f617b",
         "path": ".engine/contracts/eADR-0029-contract-threshold-standing-rule-tier.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3617,7 +3646,7 @@
         "fingerprint": "sha256:49ea1ae077e2cdb9d045cf49c67904d704c0d8e2da2b594264f9108edbbe227c",
         "path": ".engine/contracts/eADR-0030-operator-stance-floor.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3637,7 +3666,7 @@
         "fingerprint": "sha256:06342cdf049e4d08ef66376ef06a765c6040c3d690569ba2253ced2a4bfa6bea",
         "path": ".engine/contracts/eADR-0031-state-cursor-pointers-and-counts.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3657,7 +3686,7 @@
         "fingerprint": "sha256:71e3cbfe152a79a5999bcc1b360895e4206091d1e527b6853d71cc7142186b8c",
         "path": ".engine/contracts/eADR-0032-attention-policy-plus-function.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3677,7 +3706,7 @@
         "fingerprint": "sha256:95c19d8e9bab72d94d2f423c9f0ff7afaf0665d9ba98424e7c2cc29d2e1c6841",
         "path": ".engine/contracts/eADR-0033-boot-refresh-family.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3697,7 +3726,7 @@
         "fingerprint": "sha256:22dfa6eb20d62f07f682a436ff334ea6cd21bf7b00c9386514050966842ee639",
         "path": ".engine/contracts/eADR-0034-dual-provider-adapter-core.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3717,7 +3746,7 @@
         "fingerprint": "sha256:53f3fc7cd638f8a10903871a06db03cb48cd98082694e6d95e8336aa3d5aa2e4",
         "path": ".engine/contracts/eADR-0035-deferred-work-marker.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3737,7 +3766,7 @@
         "fingerprint": "sha256:10b9b1f8f8a21aac173660f50656036dd2bf0d99b6590a0bf7a82c339a969612",
         "path": ".engine/contracts/eADR-0037-upgrade-overwrite-disclosure.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -3757,7 +3786,7 @@
         "fingerprint": "sha256:807e73f32c6911796fb547c38ca0ab7adaecf596d3d0d5e35c5a0765be4150f6",
         "path": ".engine/contracts/eADR-0038-memory-transcript-first-recall.md"
       },
-      "status": "active",
+      "status": "accepted",
       "type": "contract"
     },
     {
@@ -4473,6 +4502,7 @@
         "path": ".engine/policies/attention.md"
       },
       "status": "active",
+      "title": "Attention",
       "type": "policy"
     },
     {
@@ -4493,6 +4523,7 @@
         "path": ".engine/policies/contract-threshold.md"
       },
       "status": "active",
+      "title": "Contract threshold",
       "type": "policy"
     },
     {
@@ -4513,6 +4544,7 @@
         "path": ".engine/policies/escalation.md"
       },
       "status": "active",
+      "title": "Escalation",
       "type": "policy"
     },
     {
@@ -4533,6 +4565,7 @@
         "path": ".engine/policies/finding-disposition.md"
       },
       "status": "active",
+      "title": "Finding disposition",
       "type": "policy"
     },
     {
@@ -4573,6 +4606,7 @@
         "path": ".engine/policies/model-routing.md"
       },
       "status": "active",
+      "title": "Model routing and execution posture",
       "type": "policy"
     },
     {
@@ -4613,6 +4647,7 @@
         "path": ".engine/policies/spec-structure-integrity.md"
       },
       "status": "active",
+      "title": "Spec structure integrity",
       "type": "policy"
     },
     {
@@ -4633,6 +4668,7 @@
         "path": ".engine/policies/triage-threshold.md"
       },
       "status": "active",
+      "title": "Triage threshold",
       "type": "policy"
     },
     {
@@ -5249,6 +5285,7 @@
     },
     {
       "id": "skill:engine-conduct",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-conduct/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5265,10 +5302,12 @@
         "path": ".claude/skills/engine-conduct/SKILL.md"
       },
       "status": "active",
+      "title": "engine-conduct",
       "type": "skill"
     },
     {
       "id": "skill:engine-design",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-design/SKILL.md",
       "owner": "product-design",
       "predicates": {
@@ -5285,10 +5324,12 @@
         "path": ".claude/skills/engine-design/SKILL.md"
       },
       "status": "active",
+      "title": "engine-design",
       "type": "skill"
     },
     {
       "id": "skill:engine-help",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-help/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5305,10 +5346,12 @@
         "path": ".claude/skills/engine-help/SKILL.md"
       },
       "status": "active",
+      "title": "engine-help",
       "type": "skill"
     },
     {
       "id": "skill:engine-parts",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-parts/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5325,10 +5368,12 @@
         "path": ".claude/skills/engine-parts/SKILL.md"
       },
       "status": "active",
+      "title": "engine-parts",
       "type": "skill"
     },
     {
       "id": "skill:engine-recall",
+      "invocation": "model-auto",
       "name": ".claude/skills/engine-recall/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5345,10 +5390,12 @@
         "path": ".claude/skills/engine-recall/SKILL.md"
       },
       "status": "active",
+      "title": "engine-recall",
       "type": "skill"
     },
     {
       "id": "skill:engine-routine",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-routine/SKILL.md",
       "owner": "routine-mode",
       "predicates": {
@@ -5365,10 +5412,12 @@
         "path": ".claude/skills/engine-routine/SKILL.md"
       },
       "status": "active",
+      "title": "engine-routine",
       "type": "skill"
     },
     {
       "id": "skill:engine-start",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-start/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5385,10 +5434,12 @@
         "path": ".claude/skills/engine-start/SKILL.md"
       },
       "status": "active",
+      "title": "engine-start",
       "type": "skill"
     },
     {
       "id": "skill:engine-status",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-status/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5405,10 +5456,12 @@
         "path": ".claude/skills/engine-status/SKILL.md"
       },
       "status": "active",
+      "title": "engine-status",
       "type": "skill"
     },
     {
       "id": "skill:engine-tune",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-tune/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5425,10 +5478,12 @@
         "path": ".claude/skills/engine-tune/SKILL.md"
       },
       "status": "active",
+      "title": "engine-tune",
       "type": "skill"
     },
     {
       "id": "skill:engine-upgrade",
+      "invocation": "operator-typed",
       "name": ".claude/skills/engine-upgrade/SKILL.md",
       "owner": "core",
       "predicates": {
@@ -5445,6 +5500,7 @@
         "path": ".claude/skills/engine-upgrade/SKILL.md"
       },
       "status": "active",
+      "title": "engine-upgrade",
       "type": "skill"
     },
     {
