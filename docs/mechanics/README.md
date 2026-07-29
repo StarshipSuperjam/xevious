@@ -13,7 +13,8 @@ non-empty and the attestation must remain checked.
 - Observation date: YYYY-MM-DD.
 - Scratch interpretation: Describe the original Scratch structure used.
 - Known deviations or uncertainty: State deviations, unknowns, or “None known.”
-- [x] No external code, ROM data, lookup tables, graphics, or audio were transferred.
+- [x] No external code, ROM data, or lookup tables were transferred.
+- [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
 ```
 
 Check the record locally against the pull request’s target branch:

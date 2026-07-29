@@ -24,6 +24,8 @@ scoring, lives, progression, or win condition yet.
 - `src/xevious/project.json` — canonical, order-preserving Scratch structure
 - `src/xevious/assets/` — only new or modified asset overlays, each with
   provenance
+- `docs/ASSET_CREDITS.md` — sources, credits, and license status for imported
+  third-party media
 - `dist/Xevious.sb3` — generated playable build; ignored by Git
 - `tools/scratch_project.py` — import, build, validation, and reproducibility
   boundary
@@ -114,5 +116,7 @@ dated web URLs, and each result in the pull request.
 
 The restoration targets the Namco arcade behavior. External reverse-engineered
 implementations may identify mechanics to investigate, but their code, ROM
-data, tables, graphics, audio, and converted assets are not copied. See
-[the reference policy](docs/REFERENCE_POLICY.md).
+data, tables, graphics, audio, and converted assets are not copied. Separately
+supplied third-party media may be imported only with per-file provenance and
+honest license status. See [the reference policy](docs/REFERENCE_POLICY.md) and
+[asset credits](docs/ASSET_CREDITS.md).

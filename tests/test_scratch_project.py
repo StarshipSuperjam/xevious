@@ -31,6 +31,23 @@ ASSET_TWO = (
     b"\x89PNG\r\n\x1a\n"
     b"project-test-asset-two"
 )
+SPRITE_SHEET_HASHES = {
+    "Logo & Title Screen": (
+        "c8b88f131701e4db2d79284eafda2f5fea7589b412ed47a3373b3e78811c42a0"
+    ),
+    "Solvalou": (
+        "0c88cd5cb440bebcc59aeeb20d8e141f62a5be4f4ff607be06a72ae1b8afdeaf"
+    ),
+    "Ground Enemies": (
+        "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf"
+    ),
+    "Andor Genesis": (
+        "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68"
+    ),
+    "Aerial Enemies": (
+        "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8"
+    ),
+}
 
 
 def asset_name(data: bytes) -> str:
@@ -45,6 +62,16 @@ def write_project(source: Path, project: dict) -> None:
 
 def load_source(source: Path) -> dict:
     return json.loads((source / scratch.PROJECT_JSON).read_text(encoding="utf-8"))
+
+
+def load_overlay_provenance(source: Path) -> dict[str, dict]:
+    return json.loads(
+        (
+            source
+            / scratch.OVERLAY_DIRNAME
+            / scratch.OVERLAY_PROVENANCE
+        ).read_text(encoding="utf-8")
+    )["assets"]
 
 
 def add_overlay(source: Path, name: str, data: bytes, *, origin: str = "test") -> None:
@@ -142,8 +169,8 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        self.assertEqual(14, len(project["targets"]))
-        self.assertEqual(52, len(assets))
+        self.assertEqual(15, len(project["targets"]))
+        self.assertEqual(57, len(assets))
 
     def test_canonical_source_preserves_original_json_values_and_order(self) -> None:
         original = json.loads(
@@ -152,7 +179,15 @@ class ScratchProjectTests(unittest.TestCase):
             ].decode("utf-8")
         )
         source = load_source(scratch.SOURCE_DIR)
-        self.assert_ordered_json_equal(original, source)
+        self.assertEqual(list(original), list(source))
+        self.assert_ordered_json_equal(
+            original["targets"],
+            source["targets"][:len(original["targets"])],
+            "$.targets[historical]",
+        )
+        self.assertEqual("sprite_sheets", source["targets"][-1]["name"])
+        for key in original.keys() - {"targets"}:
+            self.assert_ordered_json_equal(original[key], source[key], f"$.{key}")
 
     def test_two_clean_processes_build_identical_bytes(self) -> None:
         first = self.temp / "first.sb3"
@@ -177,7 +212,11 @@ class ScratchProjectTests(unittest.TestCase):
         built = self.temp / "built.sb3"
         imported = self.temp / "imported"
         scratch.build_project(output=built)
-        scratch.import_project(built, imported)
+        scratch.import_project(
+            built,
+            imported,
+            asset_provenance=load_overlay_provenance(scratch.SOURCE_DIR),
+        )
         self.assertEqual(
             (scratch.SOURCE_DIR / scratch.PROJECT_JSON).read_bytes(),
             (imported / scratch.PROJECT_JSON).read_bytes(),
@@ -210,6 +249,7 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_modified_and_new_assets_survive_import_build_roundtrip(self) -> None:
         source = self.copy_source()
+        existing_provenance = load_overlay_provenance(source)
         project = load_source(source)
         stage = next(target for target in project["targets"] if target["isStage"])
 
@@ -244,9 +284,10 @@ class ScratchProjectTests(unittest.TestCase):
             imported,
             asset_origin="Generated test fixture",
             asset_license="CC0-1.0",
+            asset_provenance=existing_provenance,
         )
         self.assertEqual(
-            {replacement_name, new_name},
+            set(existing_provenance) | {replacement_name, new_name},
             {
                 path.name
                 for path in (imported / scratch.OVERLAY_DIRNAME).iterdir()
@@ -258,6 +299,7 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_import_accepts_per_asset_provenance_for_mixed_media(self) -> None:
         source = self.copy_source()
+        existing_provenance = load_overlay_provenance(source)
         project = load_source(source)
         stage = next(target for target in project["targets"] if target["isStage"])
         records = {}
@@ -282,10 +324,11 @@ class ScratchProjectTests(unittest.TestCase):
         imported = self.temp / "imported"
         scratch.build_project(source, built)
 
+        all_records = {**existing_provenance, **records}
         scratch.import_project(
             built,
             imported,
-            asset_provenance=records,
+            asset_provenance=all_records,
         )
         actual = json.loads(
             (
@@ -294,10 +337,11 @@ class ScratchProjectTests(unittest.TestCase):
                 / scratch.OVERLAY_PROVENANCE
             ).read_text(encoding="utf-8")
         )["assets"]
-        self.assertEqual(records, actual)
+        self.assertEqual(all_records, actual)
 
     def test_import_names_every_asset_missing_provenance(self) -> None:
         source = self.copy_source()
+        existing_provenance = load_overlay_provenance(source)
         project = load_source(source)
         stage = next(target for target in project["targets"] if target["isStage"])
         names = []
@@ -319,7 +363,11 @@ class ScratchProjectTests(unittest.TestCase):
         scratch.build_project(source, built)
 
         with self.assertRaises(scratch.ScratchProjectError) as raised:
-            scratch.import_project(built, self.temp / "imported")
+            scratch.import_project(
+                built,
+                self.temp / "imported",
+                asset_provenance=existing_provenance,
+            )
         for name in names:
             self.assertIn(name, str(raised.exception))
 
@@ -682,6 +730,11 @@ class ScratchProjectTests(unittest.TestCase):
             ROOT / "docs" / "mechanics" / "000-historical-baseline.md"
         )
 
+    def test_sprite_sheet_mechanics_record_is_complete(self) -> None:
+        mechanics.validate_record(
+            ROOT / "docs" / "mechanics" / "001-sprite-sheet-library.md"
+        )
+
     def test_incomplete_mechanics_record_is_rejected(self) -> None:
         record = self.temp / "incomplete.md"
         record.write_text("# Incomplete\n", encoding="utf-8")
@@ -733,6 +786,63 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             self.assertEqual([ROOT / record_name], mechanics.check("unused"))
 
+    def test_media_transfer_record_requires_provenance_attestation(self) -> None:
+        record = self.temp / "missing-media-attestation.md"
+        text = (
+            ROOT / "docs" / "mechanics" / "001-sprite-sheet-library.md"
+        ).read_text(encoding="utf-8")
+        record.write_text(
+            text.replace(mechanics.MEDIA_PROVENANCE_ATTESTATION, ""),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            mechanics.MechanicsRecordError,
+            "required checked attestations",
+        ):
+            mechanics.validate_record(record)
+
+    def test_sprite_sheet_library_is_hidden_and_credited(self) -> None:
+        project, _project_bytes, assets = scratch.validate_source()
+        library = next(
+            target
+            for target in project["targets"]
+            if target["name"] == "sprite_sheets"
+        )
+        self.assertFalse(library["visible"])
+        self.assertEqual({}, library["blocks"])
+        self.assertEqual([], library["sounds"])
+        self.assertEqual(
+            list(SPRITE_SHEET_HASHES),
+            [costume["name"] for costume in library["costumes"]],
+        )
+        provenance = json.loads(
+            (
+                scratch.SOURCE_DIR
+                / scratch.OVERLAY_DIRNAME
+                / scratch.OVERLAY_PROVENANCE
+            ).read_text(encoding="utf-8")
+        )["assets"]
+        self.assertEqual(
+            {costume["md5ext"] for costume in library["costumes"]},
+            set(provenance),
+        )
+        for costume in library["costumes"]:
+            name = costume["name"]
+            asset = costume["md5ext"]
+            self.assertEqual(
+                SPRITE_SHEET_HASHES[name],
+                hashlib.sha256(assets[asset]).hexdigest(),
+            )
+            self.assertIn(
+                "spriters-resource.com/arcade/xevious",
+                provenance[asset]["origin"],
+            )
+            self.assertIn(
+                "No reusable license specified",
+                provenance[asset]["license"],
+            )
+            self.assertIn("did not create", provenance[asset]["notes"])
+
     def test_cli_formats_expected_filesystem_errors(self) -> None:
         errors = io.StringIO()
         with (
@@ -755,7 +865,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "7b95c6d710697f23478ed491fe59f890994be4bd3f6c1d1718d2c38cc65df8ca",
+            "78f214f7aa177207dba4dc9490fb63b4f531510feb7c5678f6ed6f610eddb76c",
             build_hash,
         )
 
