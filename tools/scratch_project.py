@@ -492,23 +492,38 @@ def validate_archive(path: Path) -> tuple[dict, dict[str, bytes]]:
     return project, assets
 
 
-def _read_overlay_provenance(overlay_dir: Path) -> dict[str, dict]:
-    path = overlay_dir / OVERLAY_PROVENANCE
+def _validate_asset_provenance(
+    assets: dict[str, dict],
+    label: str,
+) -> None:
+    for name, record in assets.items():
+        if not isinstance(name, str) or not isinstance(record, dict):
+            raise ScratchProjectError(f"invalid asset provenance entry for {name!r}")
+        _safe_member_name(name)
+        for field in ("origin", "license"):
+            if not isinstance(record.get(field), str) or not record[field].strip():
+                raise ScratchProjectError(
+                    f"{label} asset {name} has no recorded {field}"
+                )
+
+
+def _read_asset_provenance(path: Path) -> dict[str, dict]:
+    if path.is_symlink() or not path.is_file():
+        raise ScratchProjectError(
+            f"asset provenance must be a regular, non-symlink file: {path}"
+        )
     provenance = _load_provenance(path)
     if provenance.get("version") != 1 or not isinstance(provenance.get("assets"), dict):
         raise ScratchProjectError(
             f"{path} must contain version 1 and an assets object"
         )
     assets: dict[str, dict] = provenance["assets"]
-    for name, record in assets.items():
-        if not isinstance(name, str) or not isinstance(record, dict):
-            raise ScratchProjectError(f"invalid overlay provenance entry for {name!r}")
-        for field in ("origin", "license"):
-            if not isinstance(record.get(field), str) or not record[field].strip():
-                raise ScratchProjectError(
-                    f"overlay asset {name} has no recorded {field}"
-                )
+    _validate_asset_provenance(assets, str(path))
     return assets
+
+
+def _read_overlay_provenance(overlay_dir: Path) -> dict[str, dict]:
+    return _read_asset_provenance(overlay_dir / OVERLAY_PROVENANCE)
 
 
 def _read_overlay_assets(overlay_dir: Path) -> tuple[dict[str, bytes], dict[str, dict]]:
@@ -725,6 +740,34 @@ def _write_overlay_provenance(path: Path, assets: dict[str, dict]) -> None:
     path.write_bytes(_ordered_json_bytes({"version": 1, "assets": assets}))
 
 
+def _git_changes_for_source(source_dir: Path) -> list[str]:
+    try:
+        relative = source_dir.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        return []
+    if not (ROOT / ".git").exists():
+        return []
+    result = subprocess.run(
+        [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--",
+            str(relative),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ScratchProjectError(
+            f"cannot check source worktree state: {result.stderr.strip()}"
+        )
+    return [line for line in result.stdout.splitlines() if line]
+
+
 def import_project(
     archive: Path,
     source_dir: Path = SOURCE_DIR,
@@ -733,6 +776,7 @@ def import_project(
     asset_origin: str | None = None,
     asset_license: str | None = None,
     asset_notes: str | None = None,
+    asset_provenance: dict[str, dict] | None = None,
     original: Path = ORIGINAL_ARCHIVE,
     original_provenance: Path = ORIGINAL_PROVENANCE,
 ) -> list[str]:
@@ -745,6 +789,12 @@ def import_project(
         if not force:
             raise ScratchProjectError(
                 f"source already exists at {source_dir}; pass --force to replace it"
+            )
+        changes = _git_changes_for_source(source_dir)
+        if changes:
+            raise ScratchProjectError(
+                "source contains uncommitted work; commit or stash it before "
+                "importing: " + ", ".join(changes)
             )
         current_project_path = source_dir / PROJECT_JSON
         if current_project_path.is_file() and not current_project_path.is_symlink():
@@ -763,6 +813,9 @@ def import_project(
 
     overlay_assets: dict[str, bytes] = {}
     overlay_provenance: dict[str, dict] = {}
+    unresolved_provenance: list[str] = []
+    supplied_provenance = asset_provenance or {}
+    _validate_asset_provenance(supplied_provenance, "supplied provenance")
     for name, data in incoming_assets.items():
         if name in base_assets:
             if base_assets[name] != data:
@@ -773,16 +826,29 @@ def import_project(
         overlay_assets[name] = data
         if name in existing_provenance:
             overlay_provenance[name] = existing_provenance[name]
+        elif name in supplied_provenance:
+            overlay_provenance[name] = supplied_provenance[name]
         else:
             if not asset_origin or not asset_license:
-                raise ScratchProjectError(
-                    "import introduces new or modified assets; provide both "
-                    "--asset-origin and --asset-license"
-                )
+                unresolved_provenance.append(name)
+                continue
             record = {"origin": asset_origin, "license": asset_license}
             if asset_notes:
                 record["notes"] = asset_notes
             overlay_provenance[name] = record
+    if unresolved_provenance:
+        raise ScratchProjectError(
+            "import needs provenance for these new or modified assets: "
+            + ", ".join(sorted(unresolved_provenance))
+            + "; provide --asset-provenance or both --asset-origin and "
+            "--asset-license"
+        )
+    unused_provenance = supplied_provenance.keys() - overlay_assets.keys()
+    if unused_provenance:
+        raise ScratchProjectError(
+            "asset provenance contains entries not introduced by this import: "
+            + ", ".join(sorted(unused_provenance))
+        )
 
     source_parent = source_dir.parent
     source_parent.mkdir(parents=True, exist_ok=True)
@@ -918,6 +984,11 @@ def _parser() -> argparse.ArgumentParser:
     import_command.add_argument("--asset-origin")
     import_command.add_argument("--asset-license")
     import_command.add_argument("--asset-notes")
+    import_command.add_argument(
+        "--asset-provenance",
+        type=_path,
+        help="version 1 JSON map for assets with different origins or licenses",
+    )
 
     validate = commands.add_parser("validate", help="validate source or one SB3")
     validate.add_argument("--archive", type=_path)
@@ -936,6 +1007,11 @@ def main(argv: list[str] | None = None) -> int:
             digest = build_project(args.source, args.output)
             print(f"built {args.output} sha256={digest}")
         elif args.command == "import":
+            supplied_provenance = (
+                _read_asset_provenance(args.asset_provenance)
+                if args.asset_provenance
+                else None
+            )
             reordered = import_project(
                 args.archive,
                 args.source,
@@ -943,6 +1019,7 @@ def main(argv: list[str] | None = None) -> int:
                 asset_origin=args.asset_origin,
                 asset_license=args.asset_license,
                 asset_notes=args.asset_notes,
+                asset_provenance=supplied_provenance,
             )
             print(f"imported {args.archive} into {args.source}")
             if reordered:
@@ -968,7 +1045,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"original preserved: sha256={original_hash}")
             print(f"deterministic build verified: sha256={build_hash}")
         return 0
-    except ScratchProjectError as exc:
+    except (ScratchProjectError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

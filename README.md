@@ -42,11 +42,24 @@ produces identical output across supported systems.
 
 ## Bring visual-editor changes back into Git
 
-Scratch and TurboWarp export an `.sb3`. Import it through the guarded boundary:
+Always start the editor from the current generated build, not the historical
+archive or public Scratch project:
+
+1. Confirm `src/xevious/` has no uncommitted work.
+2. Run `python3 tools/scratch_project.py build`.
+3. Load `dist/Xevious.sb3` in Scratch 3 or TurboWarp.
+4. Edit, then export a new `.sb3`.
+5. Import that export through the guarded boundary.
+6. Add or update its mechanics record.
+7. Run `python3 tools/scratch_project.py verify` and review the Git diff.
 
 ```sh
 python3 tools/scratch_project.py import path/to/edited.sb3 --force
 ```
+
+`--force` authorizes replacing the existing canonical source, but the importer
+still refuses when `src/xevious/` has uncommitted work. Commit or stash first,
+so an incorrect or stale export remains recoverable through Git.
 
 If the export adds or changes media, also provide its origin and license:
 
@@ -55,6 +68,12 @@ python3 tools/scratch_project.py import path/to/edited.sb3 --force \
   --asset-origin "Created for this project" \
   --asset-license "CC0-1.0"
 ```
+
+That shorthand applies one origin and license to every new media file. For
+mixed sources or licenses, pass `--asset-provenance path/to/provenance.json`
+instead. The file uses the same version 1 shape as
+`src/xevious/assets/provenance.json`, with one `origin` and `license` record
+for each asset filename the import reports.
 
 The importer accepts PNG, WAV, MP3, and sanitized SVG media. SVG scripts,
 event handlers, embedded content, and external references are rejected.
@@ -65,7 +84,12 @@ appended in the editor's order.
 
 Any change to `src/xevious/project.json` must also add or update a structured
 record under `docs/mechanics/`. The required project check enforces that
-evidence and the no-transfer attestation are present.
+the mechanic, evidence, and no-transfer attestation are present. Copy the
+[mechanics record template](docs/mechanics/README.md), then check it locally:
+
+```sh
+python3 tools/check_mechanics_record.py origin/main
+```
 
 ## Runtime comparison
 

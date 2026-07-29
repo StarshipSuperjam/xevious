@@ -256,6 +256,73 @@ class ScratchProjectTests(unittest.TestCase):
         scratch.build_project(imported, rebuilt)
         self.assertEqual(built.read_bytes(), rebuilt.read_bytes())
 
+    def test_import_accepts_per_asset_provenance_for_mixed_media(self) -> None:
+        source = self.copy_source()
+        project = load_source(source)
+        stage = next(target for target in project["targets"] if target["isStage"])
+        records = {}
+        for index, data in enumerate((ASSET_ONE, ASSET_TWO), start=1):
+            name = asset_name(data)
+            asset_id, data_format = name.rsplit(".", 1)
+            costume = copy.deepcopy(stage["costumes"][0])
+            costume.update({
+                "name": f"mixed-provenance-{index}",
+                "assetId": asset_id,
+                "dataFormat": data_format,
+                "md5ext": name,
+            })
+            stage["costumes"].append(costume)
+            add_overlay(source, name, data)
+            records[name] = {
+                "origin": f"Independent source {index}",
+                "license": f"Test-License-{index}",
+            }
+        write_project(source, project)
+        built = self.temp / "mixed.sb3"
+        imported = self.temp / "imported"
+        scratch.build_project(source, built)
+
+        scratch.import_project(
+            built,
+            imported,
+            asset_provenance=records,
+        )
+        actual = json.loads(
+            (
+                imported
+                / scratch.OVERLAY_DIRNAME
+                / scratch.OVERLAY_PROVENANCE
+            ).read_text(encoding="utf-8")
+        )["assets"]
+        self.assertEqual(records, actual)
+
+    def test_import_names_every_asset_missing_provenance(self) -> None:
+        source = self.copy_source()
+        project = load_source(source)
+        stage = next(target for target in project["targets"] if target["isStage"])
+        names = []
+        for index, data in enumerate((ASSET_ONE, ASSET_TWO), start=1):
+            name = asset_name(data)
+            names.append(name)
+            asset_id, data_format = name.rsplit(".", 1)
+            costume = copy.deepcopy(stage["costumes"][0])
+            costume.update({
+                "name": f"missing-provenance-{index}",
+                "assetId": asset_id,
+                "dataFormat": data_format,
+                "md5ext": name,
+            })
+            stage["costumes"].append(costume)
+            add_overlay(source, name, data)
+        write_project(source, project)
+        built = self.temp / "missing-provenance.sb3"
+        scratch.build_project(source, built)
+
+        with self.assertRaises(scratch.ScratchProjectError) as raised:
+            scratch.import_project(built, self.temp / "imported")
+        for name in names:
+            self.assertIn(name, str(raised.exception))
+
     def test_repository_verification_supports_documented_overlays(self) -> None:
         source = self.copy_source()
         project = load_source(source)
@@ -595,6 +662,25 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertIn("imported source is installed", errors.getvalue())
         scratch.validate_source(source)
 
+    def test_forced_import_refuses_uncommitted_source_work(self) -> None:
+        source = self.copy_source()
+        built = self.temp / "built.sb3"
+        scratch.build_project(source, built)
+        before = (source / scratch.PROJECT_JSON).read_bytes()
+        with (
+            mock.patch.object(
+                scratch,
+                "_git_changes_for_source",
+                return_value=[" M src/xevious/project.json"],
+            ),
+            self.assertRaisesRegex(
+                scratch.ScratchProjectError,
+                "commit or stash",
+            ),
+        ):
+            scratch.import_project(built, source, force=True)
+        self.assertEqual(before, (source / scratch.PROJECT_JSON).read_bytes())
+
     def test_baseline_mechanics_record_is_complete(self) -> None:
         mechanics.validate_record(
             ROOT / "docs" / "mechanics" / "000-historical-baseline.md"
@@ -604,6 +690,20 @@ class ScratchProjectTests(unittest.TestCase):
         record = self.temp / "incomplete.md"
         record.write_text("# Incomplete\n", encoding="utf-8")
         with self.assertRaisesRegex(mechanics.MechanicsRecordError, "missing"):
+            mechanics.validate_record(record)
+
+    def test_mechanics_record_requires_a_named_mechanic(self) -> None:
+        baseline = (
+            ROOT / "docs" / "mechanics" / "000-historical-baseline.md"
+        ).read_text(encoding="utf-8")
+        without_mechanic = "\n".join(
+            line
+            for line in baseline.splitlines()
+            if not line.startswith("- Mechanic:")
+        )
+        record = self.temp / "unnamed.md"
+        record.write_text(without_mechanic, encoding="utf-8")
+        with self.assertRaisesRegex(mechanics.MechanicsRecordError, "Mechanic"):
             mechanics.validate_record(record)
 
     def test_symlink_mechanics_record_is_rejected(self) -> None:
@@ -636,6 +736,21 @@ class ScratchProjectTests(unittest.TestCase):
             return_value=[mechanics.PROJECT_SOURCE, record_name],
         ):
             self.assertEqual([ROOT / record_name], mechanics.check("unused"))
+
+    def test_cli_formats_expected_filesystem_errors(self) -> None:
+        errors = io.StringIO()
+        with (
+            mock.patch.object(
+                scratch,
+                "build_project",
+                side_effect=FileExistsError("destination is a directory"),
+            ),
+            redirect_stderr(errors),
+        ):
+            result = scratch.main(["build"])
+        self.assertEqual(2, result)
+        self.assertIn("error: destination is a directory", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
 
     def test_full_repository_verification(self) -> None:
         original_hash, build_hash = scratch.verify_repository()

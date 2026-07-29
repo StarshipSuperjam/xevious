@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROJECT_SOURCE = "src/xevious/project.json"
 RECORD_PREFIX = "docs/mechanics/"
 REQUIRED_FIELDS = (
+    "Mechanic:",
     "Observable arcade behavior:",
     "Independent evidence:",
     "Observation date:",

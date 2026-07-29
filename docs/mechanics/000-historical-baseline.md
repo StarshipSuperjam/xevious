@@ -1,5 +1,6 @@
 # Historical Scratch baseline
 
+- Mechanic: Infrastructure-only migration of the 2017 historical baseline.
 - Observable arcade behavior: No arcade behavior is added in this migration; it preserves the 2017 Scratch project as found.
 - Independent evidence: The guarded `assets/original/Xevious.sb3` archive at SHA-256 `3a870e4402d18027d26daa06c006be7ab9973f594558a282ac14b7ee032a274e`.
 - Observation date: 2026-07-28.
