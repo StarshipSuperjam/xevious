@@ -15,7 +15,13 @@ Original public project: <https://scratch.mit.edu/projects/195680409/>
 
 The current project is a proof of concept. It has scrolling terrain, movement,
 weapons, music, a death animation, and restart behavior, but no enemies,
-scoring, lives, progression, or win condition yet.
+scoring, lives, or progression yet. The arcade game has no conventional win
+screen: after area 16, play returns to area 7.
+
+The dependency-ordered restoration work is defined in the
+[end-to-end build plan](docs/BUILD_PLAN.md), with individual behaviors tracked
+in the [mechanics catalog](docs/MECHANICS_CATALOG.md). Gameplay-ready costumes
+will follow the [sprite extraction design](docs/SPRITE_EXTRACTION.md).
 
 ## Repository layout
 
@@ -26,6 +32,10 @@ scoring, lives, progression, or win condition yet.
   provenance
 - `docs/ASSET_CREDITS.md` — sources, credits, and license status for imported
   third-party media
+- `docs/BUILD_PLAN.md` — ordered implementation slices and acceptance gates
+- `docs/MECHANICS_CATALOG.md` — normal-game mechanic inventory and source
+  locators
+- `docs/SPRITE_EXTRACTION.md` — deterministic sprite-derivative design
 - `dist/Xevious.sb3` — generated playable build; ignored by Git
 - `tools/scratch_project.py` — import, build, validation, and reproducibility
   boundary
@@ -88,7 +98,8 @@ appended in the editor's order.
 
 Any change to `src/xevious/project.json` must also add or update a structured
 record under `docs/mechanics/`. The required project check enforces that
-the mechanic, evidence, and no-transfer attestation are present. Copy the
+the mechanic, provenance, implementation evidence, and attestations are
+present. Copy the
 [mechanics record template](docs/mechanics/README.md), then check it locally:
 
 ```sh
@@ -114,9 +125,11 @@ dated web URLs, and each result in the pull request.
 
 ## Arcade reference boundary
 
-The restoration targets the Namco arcade behavior. External reverse-engineered
-implementations may identify mechanics to investigate, but their code, ROM
-data, tables, graphics, audio, and converted assets are not copied. Separately
-supplied third-party media may be imported only with per-file provenance and
-honest license status. See [the reference policy](docs/REFERENCE_POLICY.md) and
+The restoration targets normal Namco arcade behavior. The pinned public
+`jotd666/xevious` source snapshot may provide mechanics, constants, timing,
+scores, formations, schedules, collision rules, and tables with exact
+commit/file/label provenance. Scratch code is independently expressed; arcade
+ROM files are not acquired, opened, extracted, or distributed. Separately
+supplied third-party media requires per-file provenance and honest license
+status. See [the reference policy](docs/REFERENCE_POLICY.md) and
 [asset credits](docs/ASSET_CREDITS.md).
