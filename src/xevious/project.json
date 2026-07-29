@@ -1099,6 +1099,33 @@
           "md5ext": "da6b3e55c38f740c96bd1dbfcb060a94.png",
           "rotationCenterX": 24,
           "rotationCenterY": 26
+        },
+        {
+          "name": "solvalou/flight/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "30ace72a60fb7cb015e10e9e1dbf833f",
+          "md5ext": "30ace72a60fb7cb015e10e9e1dbf833f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "solvalou/flight/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "d1d67090f8b01252ddda2cecab029f9b",
+          "md5ext": "d1d67090f8b01252ddda2cecab029f9b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "solvalou/flight/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "bc23b1c1b89f47febab9b142fa8a1064",
+          "md5ext": "bc23b1c1b89f47febab9b142fa8a1064.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         }
       ],
       "sounds": [
@@ -5341,6 +5368,91 @@
       "direction": 90,
       "draggable": false,
       "rotationStyle": "all around"
+    },
+    {
+      "isStage": false,
+      "name": "toroid_sprite_proof",
+      "variables": {},
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {},
+      "comments": {},
+      "currentCostume": 0,
+      "costumes": [
+        {
+          "name": "toroid/turn/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5f6c5612231b19b128153b50e870c43f",
+          "md5ext": "5f6c5612231b19b128153b50e870c43f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "toroid/turn/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9c94d37935a530827266b0da7deab258",
+          "md5ext": "9c94d37935a530827266b0da7deab258.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "toroid/turn/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f37d9821560eccb26a09feb525b21553",
+          "md5ext": "f37d9821560eccb26a09feb525b21553.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "toroid/turn/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "391af4cd01415bc036178a854a0ad70b",
+          "md5ext": "391af4cd01415bc036178a854a0ad70b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "toroid/turn/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "434a3bc9b66d286830efb2d4a11082b3",
+          "md5ext": "434a3bc9b66d286830efb2d4a11082b3.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "toroid/turn/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "2980159f223d1ac02cfdc5270e14a15d",
+          "md5ext": "2980159f223d1ac02cfdc5270e14a15d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "toroid/turn/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "80df5268ad39408371fa1be1fcbf8116",
+          "md5ext": "80df5268ad39408371fa1be1fcbf8116.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        }
+      ],
+      "sounds": [],
+      "volume": 100,
+      "layerOrder": 15,
+      "visible": false,
+      "x": 0,
+      "y": 0,
+      "size": 100,
+      "direction": 90,
+      "draggable": false,
+      "rotationStyle": "don't rotate"
     },
     {
       "isStage": false,

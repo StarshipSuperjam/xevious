@@ -169,8 +169,8 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        self.assertEqual(15, len(project["targets"]))
-        self.assertEqual(57, len(assets))
+        self.assertEqual(16, len(project["targets"]))
+        self.assertEqual(67, len(assets))
 
     def test_canonical_source_preserves_original_json_values_and_order(self) -> None:
         original = json.loads(
@@ -180,10 +180,30 @@ class ScratchProjectTests(unittest.TestCase):
         )
         source = load_source(scratch.SOURCE_DIR)
         self.assertEqual(list(original), list(source))
+        historical_targets = copy.deepcopy(
+            source["targets"][:len(original["targets"])]
+        )
+        original_solvalou = next(
+            target
+            for target in original["targets"]
+            if target["name"] == "solvalou"
+        )
+        source_solvalou = next(
+            target
+            for target in historical_targets
+            if target["name"] == "solvalou"
+        )
+        source_solvalou["costumes"] = source_solvalou["costumes"][
+            :len(original_solvalou["costumes"])
+        ]
         self.assert_ordered_json_equal(
             original["targets"],
-            source["targets"][:len(original["targets"])],
+            historical_targets,
             "$.targets[historical]",
+        )
+        self.assertEqual(
+            "toroid_sprite_proof",
+            source["targets"][-2]["name"],
         )
         self.assertEqual("sprite_sheets", source["targets"][-1]["name"])
         for key in original.keys() - {"targets"}:
@@ -735,6 +755,11 @@ class ScratchProjectTests(unittest.TestCase):
             ROOT / "docs" / "mechanics" / "001-sprite-sheet-library.md"
         )
 
+    def test_sprite_extraction_mechanics_record_is_complete(self) -> None:
+        mechanics.validate_record(
+            ROOT / "docs" / "mechanics" / "002-sprite-extraction-proof.md"
+        )
+
     def test_incomplete_mechanics_record_is_rejected(self) -> None:
         record = self.temp / "incomplete.md"
         record.write_text("# Incomplete\n", encoding="utf-8")
@@ -869,9 +894,9 @@ class ScratchProjectTests(unittest.TestCase):
                 / scratch.OVERLAY_PROVENANCE
             ).read_text(encoding="utf-8")
         )["assets"]
-        self.assertEqual(
-            {costume["md5ext"] for costume in library["costumes"]},
-            set(provenance),
+        self.assertTrue(
+            {costume["md5ext"] for costume in library["costumes"]}
+            <= set(provenance)
         )
         for costume in library["costumes"]:
             name = costume["name"]
@@ -912,7 +937,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "78f214f7aa177207dba4dc9490fb63b4f531510feb7c5678f6ed6f610eddb76c",
+            "7b82f7d8194b05cf23a0f906602cc7fa51b3b23de1a42f5d3c5b4d7c340585a1",
             build_hash,
         )
 

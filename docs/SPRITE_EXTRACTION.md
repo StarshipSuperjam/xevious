@@ -83,7 +83,16 @@ touching excluded labels/credits, incompatible animation anchors/canvases,
 nondeterministic output, missing provenance, and asset names that do not match
 their byte MD5.
 
-The proof slice uses Solvalou and Toroid. Visual review checks transparency,
+The proof slice uses three Solvalou flight frames and seven Toroid turn
+frames, all centered on native 16×16 canvases at anchor 8,8. The measured
+rectangles and excluded label/credit regions live in
+`assets/sprite-extraction/manifest.json`; its machine-readable shape is
+`assets/sprite-extraction/schema.json`.
+
+Run `python3 tools/sprite_extractor.py generate` after a manifest change and
+`python3 tools/sprite_extractor.py check` in validation. The generator writes
+the Scratch costumes, overlay provenance, source-to-derivative provenance, and
+`docs/images/sprite-extraction-proof.png`. Visual review checks transparency,
 native scale, stable anchors, continuity, and absence of labels/credits.
 Automated tests check hashes, schema failures, determinism, provenance, and
 Scratch validation.

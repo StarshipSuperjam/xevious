@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "generator_version": 1,
+  "matte": [0, 128, 0],
+  "contact_sheet": "docs/images/sprite-extraction-proof.png",
+  "sheets": {
+    "solvalou": {
+      "asset": "3d7fd3207d47fcad82619a0865789da7.png",
+      "sha256": "0c88cd5cb440bebcc59aeeb20d8e141f62a5be4f4ff607be06a72ae1b8afdeaf",
+      "source": "The Spriters Resource: Xevious (Arcade), Solvalou — https://www.spriters-resource.com/arcade/xevious/asset/42384/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "excluded_rects": [
+        [70, 58, 125, 12],
+        [5, 95, 229, 60]
+      ]
+    },
+    "aerial_enemies": {
+      "asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "excluded_rects": [
+        [87, 7, 61, 12],
+        [238, 7, 143, 12],
+        [5, 300, 229, 59]
+      ]
+    }
+  },
+  "frames": [
+    {
+      "name": "solvalou/flight/01",
+      "sheet": "solvalou",
+      "rect": [5, 27, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "solvalou",
+      "family": "solvalou",
+      "animation": "flight",
+      "duration_frames": 1
+    },
+    {
+      "name": "solvalou/flight/02",
+      "sheet": "solvalou",
+      "rect": [27, 27, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "solvalou",
+      "family": "solvalou",
+      "animation": "flight",
+      "duration_frames": 1
+    },
+    {
+      "name": "solvalou/flight/03",
+      "sheet": "solvalou",
+      "rect": [48, 27, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "solvalou",
+      "family": "solvalou",
+      "animation": "flight",
+      "duration_frames": 1
+    },
+    {
+      "name": "toroid/turn/01",
+      "sheet": "aerial_enemies",
+      "rect": [4, 7, 12, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "toroid",
+      "animation": "turn",
+      "duration_frames": 1
+    },
+    {
+      "name": "toroid/turn/02",
+      "sheet": "aerial_enemies",
+      "rect": [19, 7, 12, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "toroid",
+      "animation": "turn",
+      "duration_frames": 1
+    },
+    {
+      "name": "toroid/turn/03",
+      "sheet": "aerial_enemies",
+      "rect": [34, 7, 8, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "toroid",
+      "animation": "turn",
+      "duration_frames": 1
+    },
+    {
+      "name": "toroid/turn/04",
+      "sheet": "aerial_enemies",
+      "rect": [45, 7, 6, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "toroid",
+      "animation": "turn",
+      "duration_frames": 1
+    },
+    {
+      "name": "toroid/turn/05",
+      "sheet": "aerial_enemies",
+      "rect": [54, 7, 4, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "toroid",
+      "animation": "turn",
+      "duration_frames": 1
+    },
+    {
+      "name": "toroid/turn/06",
+      "sheet": "aerial_enemies",
+      "rect": [61, 7, 6, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "toroid",
+      "animation": "turn",
+      "duration_frames": 1
+    },
+    {
+      "name": "toroid/turn/07",
+      "sheet": "aerial_enemies",
+      "rect": [70, 7, 8, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "toroid",
+      "animation": "turn",
+      "duration_frames": 1
+    }
+  ]
+}
