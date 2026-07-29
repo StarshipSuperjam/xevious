@@ -22,6 +22,20 @@ rights to, the Xevious artwork or trademarks. A rights review is needed before
 broader distribution or promotion.
 
 The sheets are stored byte-for-byte as supplied, including their green
-backgrounds and embedded credit panels. They are loaded into the Scratch
-project as costumes on the hidden `sprite_sheets` target; this import does not
-slice them into gameplay-ready frames.
+backgrounds and embedded credit panels. They remain available on the hidden
+`sprite_sheets` target.
+
+## Gameplay-ready derivatives
+
+The versioned manifest in `assets/sprite-extraction/manifest.json` measures
+three Solvalou frames and seven Toroid frames from the credited sheets. The
+standard-library generator removes only edge-connected `(0, 128, 0)` matte,
+places every frame on a native 16×16 RGBA canvas, and records the exact source
+hash, rectangle, canvas, anchor, credit, and license status in
+`assets/sprite-extraction/provenance.json`. Scratch copies of the same records
+live in `src/xevious/assets/provenance.json`.
+
+The generated review contact sheet at
+`docs/images/sprite-extraction-proof.png` is also a derivative of the credited
+artwork. It exists for crop, transparency, and anchor review and carries the
+same no-reusable-license-specified status as its sources.
