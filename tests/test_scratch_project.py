@@ -483,6 +483,36 @@ class ScratchProjectTests(unittest.TestCase):
         mp3_name = hashlib.md5(mp3, usedforsecurity=False).hexdigest() + ".mp3"
         scratch._validate_asset(mp3_name, mp3)
 
+    def test_external_svg_references_are_rejected_in_every_supported_form(
+        self,
+    ) -> None:
+        fixtures = [
+            (
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<rect fill="url(https://example.com/fill)"/></svg>'
+            ),
+            (
+                b'<svg xmlns="http://www.w3.org/2000/svg"><style>'
+                b'rect { fill: url(data:image/png;base64,AAAA); }'
+                b"</style><rect/></svg>"
+            ),
+            (
+                b'<?xml-stylesheet href="https://example.com/style.css"?>'
+                b'<svg xmlns="http://www.w3.org/2000/svg"/>'
+            ),
+        ]
+        for data in fixtures:
+            with self.subTest(data=data):
+                name = (
+                    hashlib.md5(data, usedforsecurity=False).hexdigest()
+                    + ".svg"
+                )
+                with self.assertRaisesRegex(
+                    scratch.ScratchProjectError,
+                    "unsafe|external",
+                ):
+                    scratch._validate_asset(name, data)
+
     def test_asset_signature_must_match_extension(self) -> None:
         data = b"not a PNG"
         name = asset_name(data)

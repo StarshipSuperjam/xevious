@@ -377,9 +377,30 @@ def _asset_references(project: dict) -> set[str]:
     return references
 
 
+def _validate_svg_css(name: str, value: str) -> None:
+    lowered = value.strip().lower()
+    if any(
+        token in lowered
+        for token in ("@import", "expression(", "javascript:")
+    ):
+        raise ScratchProjectError(f"unsafe SVG style in asset: {name}")
+    references = re.findall(r"url\(([^)]*)\)", lowered)
+    if any(
+        not reference.strip(" '\"").startswith("#")
+        for reference in references
+    ):
+        raise ScratchProjectError(
+            f"external SVG style reference in asset: {name}"
+        )
+
+
 def _validate_svg(name: str, data: bytes) -> None:
     lowered = data.lower()
-    if b"<!doctype" in lowered or b"<!entity" in lowered:
+    if (
+        b"<!doctype" in lowered
+        or b"<!entity" in lowered
+        or b"<?xml-stylesheet" in lowered
+    ):
         raise ScratchProjectError(f"unsafe SVG declaration in asset: {name}")
     try:
         root = ET.fromstring(data)
@@ -402,6 +423,8 @@ def _validate_svg(name: str, data: bytes) -> None:
             raise ScratchProjectError(
                 f"unsafe SVG element {local_name} in asset: {name}"
             )
+        if local_name == "style":
+            _validate_svg_css(name, "".join(element.itertext()))
         for raw_attribute, raw_value in element.attrib.items():
             attribute = raw_attribute.rsplit("}", 1)[-1].lower()
             value = raw_value.strip().lower()
@@ -413,22 +436,7 @@ def _validate_svg(name: str, data: bytes) -> None:
                 raise ScratchProjectError(
                     f"external or embedded SVG reference in asset: {name}"
                 )
-            if attribute == "style":
-                if any(
-                    token in value
-                    for token in ("@import", "expression(", "javascript:")
-                ):
-                    raise ScratchProjectError(
-                        f"unsafe SVG style in asset: {name}"
-                    )
-                references = re.findall(r"url\(([^)]*)\)", value)
-                if any(
-                    not reference.strip(" '\"").startswith("#")
-                    for reference in references
-                ):
-                    raise ScratchProjectError(
-                        f"external SVG style reference in asset: {name}"
-                    )
+            _validate_svg_css(name, value)
 
 
 def _validate_asset(name: str, data: bytes) -> None:
