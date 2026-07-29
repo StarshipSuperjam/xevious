@@ -1,4 +1,30 @@
 {
   "version": 1,
-  "assets": {}
+  "assets": {
+    "3d7fd3207d47fcad82619a0865789da7.png": {
+      "origin": "The Spriters Resource: Xevious (Arcade), Solvalou — https://www.spriters-resource.com/arcade/xevious/asset/42384/",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "notes": "Sheet credit: CrazyCarl. The repository operator did not create this asset. Imported unchanged from supplied file 42384.png."
+    },
+    "6539018809b8f615d8bff260161036d7.png": {
+      "origin": "The Spriters Resource: Xevious (Arcade), Logo & Title Screen — https://www.spriters-resource.com/arcade/xevious/asset/168901/",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "notes": "Sheet credit: StarmanElite. The repository operator did not create this asset. Imported unchanged from supplied file 168901.png."
+    },
+    "658f7a13b186cf73d1ac4cb11e6fccb7.png": {
+      "origin": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "notes": "Sheet credit: CrazyCarl. The repository operator did not create this asset. Imported unchanged from supplied file 42386.png."
+    },
+    "b44c4854722d2ffbb70cebc545ee7bd0.png": {
+      "origin": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "notes": "Sheet credit: CrazyCarl. The repository operator did not create this asset. Imported unchanged from supplied file 42387.png."
+    },
+    "f403a157b02a3f785d8ab4e2bfcc0e43.png": {
+      "origin": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "notes": "Sheet credit: CrazyCarl. The repository operator did not create this asset. Imported unchanged from supplied file 42385.png."
+    }
+  }
 }

@@ -30,8 +30,15 @@ development or legal clearance.
 
 The historical `.sb3` remains intact instead of exposing each embedded media
 file as a separately tracked repository asset. New or modified overlay assets
-must record a non-empty origin and license in
-`src/xevious/assets/provenance.json`; validation fails otherwise.
+must record a non-empty origin and an honest license status in
+`src/xevious/assets/provenance.json`; validation fails otherwise. A source that
+states no reusable license is recorded as such rather than being treated as
+licensed merely because attribution is available.
+
+Third-party media may be imported only when the operator deliberately supplies
+or approves it and every file is covered by the provenance record. Attribution
+does not itself grant permission. Imported media credits and source links are
+summarized in `docs/ASSET_CREDITS.md`.
 
 The repository does not claim ownership of or grant a license to Namco's
 trademarks, artwork, audio, or other third-party material. A rights review is
@@ -48,5 +55,7 @@ required project check enforces this. Each record includes:
 - the independent evidence and observation date;
 - the Scratch interpretation chosen;
 - known deviations or uncertainty;
-- confirmation that no external code, ROM data, tables, graphics, or audio
-  were transferred.
+- confirmation that no external code, ROM data, or lookup tables were
+  transferred; and
+- confirmation that any transferred graphics or audio are covered by the
+  repository's provenance record.

@@ -5341,6 +5341,73 @@
       "direction": 90,
       "draggable": false,
       "rotationStyle": "all around"
+    },
+    {
+      "isStage": false,
+      "name": "sprite_sheets",
+      "variables": {},
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {},
+      "comments": {},
+      "currentCostume": 0,
+      "costumes": [
+        {
+          "name": "Logo & Title Screen",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "6539018809b8f615d8bff260161036d7",
+          "md5ext": "6539018809b8f615d8bff260161036d7.png",
+          "rotationCenterX": 93,
+          "rotationCenterY": 225
+        },
+        {
+          "name": "Solvalou",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3d7fd3207d47fcad82619a0865789da7",
+          "md5ext": "3d7fd3207d47fcad82619a0865789da7.png",
+          "rotationCenterX": 119.5,
+          "rotationCenterY": 83
+        },
+        {
+          "name": "Ground Enemies",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f403a157b02a3f785d8ab4e2bfcc0e43",
+          "md5ext": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+          "rotationCenterX": 196.5,
+          "rotationCenterY": 204.5
+        },
+        {
+          "name": "Andor Genesis",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "658f7a13b186cf73d1ac4cb11e6fccb7",
+          "md5ext": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+          "rotationCenterX": 393,
+          "rotationCenterY": 157.5
+        },
+        {
+          "name": "Aerial Enemies",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b44c4854722d2ffbb70cebc545ee7bd0",
+          "md5ext": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+          "rotationCenterX": 190.5,
+          "rotationCenterY": 187.5
+        }
+      ],
+      "sounds": [],
+      "volume": 100,
+      "layerOrder": 14,
+      "visible": false,
+      "x": 0,
+      "y": 0,
+      "size": 100,
+      "direction": 90,
+      "draggable": false,
+      "rotationStyle": "all around"
     }
   ],
   "monitors": [

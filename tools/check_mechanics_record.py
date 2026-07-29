@@ -19,9 +19,16 @@ REQUIRED_FIELDS = (
     "Scratch interpretation:",
     "Known deviations or uncertainty:",
 )
-NO_TRANSFER_ATTESTATION = (
+LEGACY_NO_TRANSFER_ATTESTATION = (
     "- [x] No external code, ROM data, lookup tables, graphics, or audio "
     "were transferred."
+)
+NO_LOGIC_TRANSFER_ATTESTATION = (
+    "- [x] No external code, ROM data, or lookup tables were transferred."
+)
+MEDIA_PROVENANCE_ATTESTATION = (
+    "- [x] Any transferred graphics or audio are recorded in "
+    "`src/xevious/assets/provenance.json`."
 )
 
 
@@ -43,9 +50,19 @@ def validate_record(path: Path) -> None:
         raise MechanicsRecordError(
             f"{path} is missing required fields: {', '.join(missing)}"
         )
-    if NO_TRANSFER_ATTESTATION not in text:
+    uses_legacy_attestation = LEGACY_NO_TRANSFER_ATTESTATION in text
+    missing_attestations = [
+        attestation
+        for attestation in (
+            NO_LOGIC_TRANSFER_ATTESTATION,
+            MEDIA_PROVENANCE_ATTESTATION,
+        )
+        if attestation not in text
+    ]
+    if not uses_legacy_attestation and missing_attestations:
         raise MechanicsRecordError(
-            f"{path} is missing the checked no-transfer attestation"
+            f"{path} is missing required checked attestations: "
+            + ", ".join(missing_attestations)
         )
     for field in REQUIRED_FIELDS:
         value = text.split(field, 1)[1].splitlines()[0].strip()
