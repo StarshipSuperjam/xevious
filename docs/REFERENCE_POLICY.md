@@ -9,22 +9,37 @@ ports differ.
 ## Reference boundary
 
 The public [`jotd666/xevious`](https://github.com/jotd666/xevious) repository
-is a useful index of mechanics to investigate. It describes itself as a
-line-by-line 68K transcode of reverse-engineered arcade ROM code and has no
-visible repository license as of 2026-07-28.
+is the primary mechanics reference. It describes itself as a line-by-line 68K
+transcode of reverse-engineered arcade ROM code and states no reusable
+repository license in the pinned snapshot.
 
-It is a reference, not an input:
+The project uses commit
+[`71473685a8c7856c8401c8519276cd97a38d4183`](https://github.com/jotd666/xevious/tree/71473685a8c7856c8401c8519276cd97a38d4183)
+unless a later pull request deliberately updates the pin.
 
-- Do not copy or translate its source code.
-- Do not copy ROM data, timing or lookup tables, graphics, audio, generated
-  assets, or binary files.
-- Use it to identify questions about observable behavior.
-- Record the independent evidence used to answer each mechanics question,
-  such as observation of legally accessed gameplay or published documentation.
-- Re-express confirmed behavior using original Scratch structure and naming.
+Allowed inputs from that public source repository include:
 
-This is a documented reference boundary, not a claim of clean-room
-development or legal clearance.
+- player-visible mechanics and rules;
+- numeric constants, timing, scores, hit behavior, and difficulty values;
+- structured formations, schedules, and lookup tables; and
+- normal-versus-Super branch information.
+
+Every mechanics record cites the exact commit, file, and source label, states
+which input classes were used, and re-expresses the result with original
+Scratch blocks, structure, and naming. Assembly or other source-code text is
+not copied into the Scratch project.
+
+The project does not acquire, distribute, open, or extract arcade ROM files.
+That prohibition is about handling ROM files; it does not turn the already
+published GitHub repository into a ROM file.
+
+Arcade observation is selective fidelity QA, not a prerequisite for each
+repository-derived mechanic. Use it to resolve the reference's acknowledged
+remaining gameplay bug, ambiguous behavior, normal-versus-Super differences,
+platform additions, and final feel.
+
+This is a documented provenance and implementation boundary, not a claim that
+attribution grants permission or legal clearance.
 
 ## Media and provenance
 
@@ -50,12 +65,13 @@ Every pull request that changes `src/xevious/project.json` must add or update a
 record under `docs/mechanics/`, including a non-gameplay migration. The
 required project check enforces this. Each record includes:
 
-- the mechanic being implemented;
-- the observable arcade behavior;
-- the independent evidence and observation date;
-- the Scratch interpretation chosen;
-- known deviations or uncertainty;
-- confirmation that no external code, ROM data, or lookup tables were
-  transferred; and
-- confirmation that any transferred graphics or audio are covered by the
+- the mechanic and its plain-language derived behavior;
+- exact reference provenance and transferred input class;
+- the Scratch interpretation and implementation evidence;
+- an acceptance criterion, fidelity status, license status, and known
+  deviations or uncertainty;
+- confirmation that no assembly or other source code was copied;
+- confirmation that no arcade ROM file was acquired, opened, extracted, or
+  distributed; and
+- confirmation that transferred graphics or audio are covered by the
   repository's provenance record.

@@ -13,18 +13,21 @@ PROJECT_SOURCE = "src/xevious/project.json"
 RECORD_PREFIX = "docs/mechanics/"
 REQUIRED_FIELDS = (
     "Mechanic:",
-    "Observable arcade behavior:",
-    "Independent evidence:",
-    "Observation date:",
+    "Derived behavior:",
+    "Reference provenance:",
+    "Transfer class:",
     "Scratch interpretation:",
+    "Scratch evidence:",
+    "Acceptance criteria:",
+    "Fidelity status:",
+    "License status:",
     "Known deviations or uncertainty:",
 )
-LEGACY_NO_TRANSFER_ATTESTATION = (
-    "- [x] No external code, ROM data, lookup tables, graphics, or audio "
-    "were transferred."
+NO_SOURCE_COPY_ATTESTATION = (
+    "- [x] No assembly or other source code was copied into the Scratch project."
 )
-NO_LOGIC_TRANSFER_ATTESTATION = (
-    "- [x] No external code, ROM data, or lookup tables were transferred."
+NO_ROM_HANDLING_ATTESTATION = (
+    "- [x] No arcade ROM files were acquired, opened, extracted, or distributed."
 )
 MEDIA_PROVENANCE_ATTESTATION = (
     "- [x] Any transferred graphics or audio are recorded in "
@@ -50,16 +53,16 @@ def validate_record(path: Path) -> None:
         raise MechanicsRecordError(
             f"{path} is missing required fields: {', '.join(missing)}"
         )
-    uses_legacy_attestation = LEGACY_NO_TRANSFER_ATTESTATION in text
     missing_attestations = [
         attestation
         for attestation in (
-            NO_LOGIC_TRANSFER_ATTESTATION,
+            NO_SOURCE_COPY_ATTESTATION,
+            NO_ROM_HANDLING_ATTESTATION,
             MEDIA_PROVENANCE_ATTESTATION,
         )
         if attestation not in text
     ]
-    if not uses_legacy_attestation and missing_attestations:
+    if missing_attestations:
         raise MechanicsRecordError(
             f"{path} is missing required checked attestations: "
             + ", ".join(missing_attestations)

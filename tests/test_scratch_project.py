@@ -801,6 +801,53 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             mechanics.validate_record(record)
 
+    def test_mechanics_record_requires_source_copy_attestation(self) -> None:
+        record = self.temp / "missing-source-copy-attestation.md"
+        text = (
+            ROOT / "docs" / "mechanics" / "001-sprite-sheet-library.md"
+        ).read_text(encoding="utf-8")
+        record.write_text(
+            text.replace(mechanics.NO_SOURCE_COPY_ATTESTATION, ""),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            mechanics.MechanicsRecordError,
+            "required checked attestations",
+        ):
+            mechanics.validate_record(record)
+
+    def test_mechanics_record_requires_rom_handling_attestation(self) -> None:
+        record = self.temp / "missing-rom-handling-attestation.md"
+        text = (
+            ROOT / "docs" / "mechanics" / "000-historical-baseline.md"
+        ).read_text(encoding="utf-8")
+        record.write_text(
+            text.replace(mechanics.NO_ROM_HANDLING_ATTESTATION, ""),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            mechanics.MechanicsRecordError,
+            "required checked attestations",
+        ):
+            mechanics.validate_record(record)
+
+    def test_legacy_blanket_no_transfer_attestation_is_rejected(self) -> None:
+        record = self.temp / "legacy-attestation.md"
+        text = (
+            ROOT / "docs" / "mechanics" / "000-historical-baseline.md"
+        ).read_text(encoding="utf-8")
+        text = text.replace(mechanics.NO_SOURCE_COPY_ATTESTATION, "")
+        text = text.replace(
+            mechanics.NO_ROM_HANDLING_ATTESTATION,
+            "- [x] No external code, ROM data, or lookup tables were transferred.",
+        )
+        record.write_text(text, encoding="utf-8")
+        with self.assertRaisesRegex(
+            mechanics.MechanicsRecordError,
+            "required checked attestations",
+        ):
+            mechanics.validate_record(record)
+
     def test_sprite_sheet_library_is_hidden_and_credited(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
         library = next(
