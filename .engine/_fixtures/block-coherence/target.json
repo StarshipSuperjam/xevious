@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_BLOCK_FIXTURE": ".engine/_fixtures/block-coherence/blocks.json"
+  }
+}

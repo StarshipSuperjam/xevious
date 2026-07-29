@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_PYPROJECT_PATH": ".engine/_fixtures/uv-group-drift/pyproject.toml"
+  }
+}

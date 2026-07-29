@@ -1,0 +1,4 @@
+{
+  "property": "no statically-decidable failure path in the CI environment",
+  "reason": "This check's aimed verdict — whether the pull request introduces a vulnerable or disallowed dependency — comes from GitHub's live Dependency Review comparison of the pull request's base..head. A committed fixture can seed the event (GITHUB_EVENT_PATH) but not the API's vulnerability result, so the aimed failure cannot be forced by a seeded input in CI. The only committed-seedable path is the fail-closed branch (a degraded or unreachable API), and witnessing a fixture via that path would be a false witness: it would prove fail-close, not vulnerability detection. So there is no seedable, validly-witnessable failure path."
+}

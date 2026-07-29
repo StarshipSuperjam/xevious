@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/operation-frontmatter",
+  "target": { "path": ".engine/operations/*.md" },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "An operation's settings block (the part at the very top of the file, between the --- lines) does not match the operation format — its title is missing or malformed, its status is set to something other than active, deprecated, or retired, or it carries a key the format does not allow (the exact problem is named just above). A malformed operation would mislead anything that reads its frontmatter rather than be quietly ignored, so it is caught at the merge. The schema is resolved through the surface catalog (the 'operation' surface), so this rule names no schema directly. Note that an operation needs no status line at all — an omitted status simply means active. Open the file and correct the entry named above to match operation.v1.json before merging."
+}

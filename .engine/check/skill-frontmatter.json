@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/skill-frontmatter",
+  "target": { "path": ".claude/skills/*/SKILL.md" },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A skill's settings block (the part at the very top of the SKILL.md file, between the --- lines) does not match the skill format — its description is missing or malformed, or a typed field (name, invocation, or a platform flag) has the wrong type (the exact problem is named just above). A malformed skill would misroute or fail to load rather than be quietly ignored, so it is caught at the merge. The schema is resolved through the surface catalog (the 'skill' surface), so this rule names no schema directly. Note that whether the invocation value is a recognized member, and whether it agrees with the skill's platform flags (the self-election safety property), is confirmed separately by the skill coherence check, not here. Open the file and correct the entry named above to match skill.v1.json before merging."
+}

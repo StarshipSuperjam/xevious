@@ -1,0 +1,53 @@
+{
+  "$schema": "../schemas/provider-exceptions.v1.json",
+  "exceptions": [
+    {
+      "kind": "hook",
+      "id": ".engine/tools/modes.py accept-hook",
+      "missing_or_weaker": "missing",
+      "provider": "codex",
+      "reason": "The plan-acceptance Build entry is Claude Code's plan-mode completion signal; Codex has no equivalent stable signal, and inferring build intent would break the explicit-entry law. On Codex, building starts only by the typed $engine-start — the absence of this hook is the enforcement of that, not a gap.",
+      "contract_ref": "eADR-0034"
+    },
+    {
+      "kind": "floor",
+      "id": "conduct-loading",
+      "missing_or_weaker": "weaker",
+      "provider": "codex",
+      "reason": "Claude Code pulls the codes of conduct into every session mechanically (the floor's @import); Codex has no import mechanism, so the AGENTS.md floor carries an imperative required-reading instruction instead — discipline where Claude has mechanics. The session-start briefing (when hooks run) independently carries the orientation, so the instruction is the fallback path, not the only one.",
+      "contract_ref": "eADR-0034"
+    },
+    {
+      "kind": "agent",
+      "id": "reviewer-shell-prohibition",
+      "missing_or_weaker": "weaker",
+      "provider": "codex",
+      "reason": "On Claude, the audit and plan-review personas mechanically denylist shell commands; the Codex agent format has no per-tool denylist field, so the renders carry the prohibition as instruction text inside a read-only sandbox (the sandbox bounds the blast radius; the wording is discipline).",
+      "contract_ref": "eADR-0034"
+    },
+    {
+      "kind": "enforcement",
+      "id": "hook-trust-gate",
+      "missing_or_weaker": "weaker",
+      "provider": "codex",
+      "reason": "Codex skips new or changed project hooks until the operator re-trusts them, so every engine update that touches the hook registration turns the engine's local guardrails OFF until /hooks re-approval. The engine says so at the moment it changes the registration; the status readout additionally warns when NO session in this project has run its hooks recently (a coarse net — a recent session on either runtime clears it for up to a day); and the per-session check is the floor's own grounding rule: verify the start-of-session briefing arrived, and treat the gates as off when it did not. Disclosure at three ranges, because no mechanism can re-trust on the operator's behalf.",
+      "contract_ref": "eADR-0034"
+    },
+    {
+      "kind": "mcp",
+      "id": "engine-helper-tool-approval",
+      "missing_or_weaker": "weaker",
+      "provider": "codex",
+      "reason": "The engine's two helper servers are registered on Codex with every tool auto-approved. The memory server now exposes six operations, three of which WRITE on the operator's say-so — pin, withhold and restore, beside the reads list-pins and list-withheld — so on Codex a model can save a standing note or take one out of recall without a fresh consent moment, where the Claude side records approval per tool and would prompt. Weighed and accepted as bounded rather than removed: all three append to the ledger and none deletes, withholding is reversed by restore, and permanent erasure stays behind a merged single-purpose pull request no tool here can reach. The wiring map's server remains read-only. The grant is still standing, so any FURTHER tool — in particular anything that removes rather than appends — must revisit this entry and the approval mode together.",
+      "contract_ref": "eADR-0034"
+    },
+    {
+      "kind": "enforcement",
+      "id": "shell-interception-coverage",
+      "missing_or_weaker": "weaker",
+      "provider": "codex",
+      "reason": "Codex's own documentation states its pre-tool hook is a guardrail rather than a complete enforcement boundary, and that interception of its newer shell path is incomplete — so the Explore write-gate on Codex can miss shell forms the platform does not surface. The protected main branch and the operator's merge remain the only wall, on every runtime.",
+      "contract_ref": "eADR-0034"
+    }
+  ]
+}

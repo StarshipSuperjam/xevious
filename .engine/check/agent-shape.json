@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/agent-shape",
+  "target": { "path": ".claude/agents/*.md" },
+  "kind": "shape",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI", "audit-prep"],
+  "message": "A persona (an agent file under .claude/agents/) must contain, as level-2 headings in this order, Mandate, then How you work, then What you produce, then Boundaries, and no others. These four are what make a persona a usable instruction set — who it is, how it works, what it hands back, and the lane it must stay in — so a persona that omits one is structurally incomplete. This check catches a broken SHAPE only: that the required sections are present, correctly ordered, and that no stray section appears. It cannot judge whether a section's content is substantive — an empty or hand-wavy section passes here and is caught instead by the operator reviewing the committed change. Whether the role/lens/model-tier values are recognized members is confirmed separately by the agent coherence check, not here. Length over the 80-line budget is only a soft nudge to trim, never a block. Add or reorder the flagged sections to match the persona template (.engine/templates/agent.md) before merging."
+}

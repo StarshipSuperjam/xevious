@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "template.v1 — the shape a surface template declares",
+  "description": "A template gives an engine prose surface its starting structure and its checkable shape in one file: a prose skeleton (the headings an author starts from) plus this shape-spec, which declares the sections an instance must and may contain and a gentle length budget. This schema governs the shape-spec itself — it checks that the shape-spec is well-formed. It does not, on its own, check any instance against it; that comparison is done by the engine's validation engine. A surface's template lives where that surface's catalog entry points to it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["required_sections"],
+  "properties": {
+    "required_sections": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "The sections every instance written from this template must contain, each named once. The order they are listed in is the order the sections are expected to appear in."
+    },
+    "allowed_sections": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "Optional sections an instance may include in addition to the required ones, each named once. A section that is neither required nor allowed is not part of this template's shape."
+    },
+    "length_budget": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "A gentle maximum length, in lines, for an instance's body. Going over it is a nudge to trim, never a refusal — length is guidance, not a hard limit."
+    }
+  },
+  "examples": [
+    {
+      "required_sections": ["Decision", "Significance", "Rationale", "Anti-choice", "Status"],
+      "allowed_sections": ["Supersedes"],
+      "length_budget": 120
+    }
+  ]
+}

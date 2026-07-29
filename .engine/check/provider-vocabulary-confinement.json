@@ -1,0 +1,15 @@
+{
+  "id": "engine/check/provider-vocabulary-confinement",
+  "target": {
+    "context": "provider-vocabulary-confinement"
+  },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/provider_vocab_check.py"
+  },
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "Runtime-specific vocabulary (a platform's session variables, its edit-tool names, the provider tag) may live only in the engine's provider seam — the normalization layer and the named adapter files — never scattered through gate or tool code, where it would make a future feature silently break on the other runtime while every other check stays green. This check goes red when a provider token appears in a tool file outside its seam allowlist. To fix: route the code through providers.py (session identity, tool identity), or — when a file genuinely joins the seam — add it to the allowlist in provider_vocab_check.py in the same reviewed change."
+}

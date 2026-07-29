@@ -1,0 +1,15 @@
+{
+  "id": "engine/check/engine-todo-form",
+  "target": {
+    "context": "engine-todo-form"
+  },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/engine_todo_form_check.py"
+  },
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "A marker that records unfinished work must say what is unfinished. This goes red when a deferred-work marker carries no description at all — it then occupies the recorded form while telling a later reader nothing, and the command that lists outstanding work reports an empty entry. To fix: write what is not built and what the code does instead, on the marker's own line or on the lines that continue it, or remove the marker if nothing is actually owed. Only that one case blocks; a parenthesised reference the grammar does not yet define is reported as a warning instead, because that shape is reserved for a later extension and must never redden source a repository has already committed. Named bound: a green result shows every marker present says something, not that what it says is true, nor that a deferral which was never marked at all has been caught."
+}

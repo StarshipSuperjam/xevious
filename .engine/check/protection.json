@@ -1,0 +1,12 @@
+{
+  "id": "engine/check/protection",
+  "target": { "context": "branch-protection" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/protection_guard.py",
+    "pass_token": true
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The protected-branch safety gate must be in force: the protected branch must require a pull request, require the engine checks to pass, require unresolved review conversations to be resolved, and block force-pushes and deletion. This is the gate that lets a non-engineer walk away trusting that nothing reaches the protected branch unchecked. In CI this is verified against the live branch ruleset; on your own machine it reports 'not checked here' because it has no access token, which is expected. If it reports the gate is not in force, apply the protected-branch ruleset using the setup recipe before relying on the merge gate."
+}

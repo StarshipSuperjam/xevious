@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "standing_situation": {
+    "milestone": null,
+    "phase": null
+  },
+  "integration_debt": {
+    "open_count": 0,
+    "as_of": null,
+    "register": null
+  }
+}

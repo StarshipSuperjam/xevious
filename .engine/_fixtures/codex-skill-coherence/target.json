@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_CODEX_SKILL_FIXTURE_DIR": ".engine/_fixtures/codex-skill-coherence/skills"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/ontology-authority-reservation",
+  "target": { "context": "ontology-authority-reservation" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/authority_reservation_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine ranks its own surfaces by authority — which one wins when two disagree — and keeps its two highest ranks for its own core: its core rulebook (the 'contract' surface, the highest rank) and its core standing rules (the 'policy' surface, the second-highest). By the ontology's reservation law those two ranks are the core's alone: nothing added to the engine — no module, no hand edit — may claim one of them, and neither of those two core surfaces may be quietly knocked off its rank. This check reads the surface catalog (.engine/schemas/surface-catalog.json) and every installed module's declared surfaces and goes red when an added surface claims one of the two reserved ranks, when a non-core module tries to define the 'contract' or 'policy' surface, or when 'contract'/'policy' is set to any other rank — so a governance-flattening edit is caught at merge rather than shipping silently. To fix: give the surface an ordinary rank in .engine/schemas/surface-catalog.json (and remove any non-core module's attempt to define the core rulebook or standing rules), or restore the core surface's own rank."
+}

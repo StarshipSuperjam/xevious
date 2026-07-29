@@ -1,0 +1,4 @@
+{
+  "severity": "hard",
+  "message_contains": "sandbox is not read-only"
+}

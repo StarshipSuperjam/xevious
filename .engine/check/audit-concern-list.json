@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/audit-concern-list",
+  "target": { "path": ".engine/audits/concern-list.json" },
+  "kind": "schema",
+  "params": { "schema": ".engine/schemas/concern-list.v1.json" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The self-audit's checklist file (.engine/audits/concern-list.json) must match concern-list.v1.json — a schema_version of 1 and a list of entries, where every entry names what it looks at, the question to ask of it, the kinds of finding it can raise, and — required — why it earns a place on the list. That checklist is data the engine's periodic self-review reads, not a catalogued surface, so this rule names its schema directly rather than resolving it through the surface catalog. A malformed entry, or one missing its reason-for-being, would let the list drift, so fix the file to match the schema before merging."
+}

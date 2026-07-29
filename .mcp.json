@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "engine-knowledge-graph": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${CLAUDE_PROJECT_DIR:-.}/.engine",
+        "--frozen",
+        "--",
+        "python",
+        "tools/knowledge_mcp_server.py"
+      ]
+    },
+    "engine-memory": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${CLAUDE_PROJECT_DIR:-.}/.engine",
+        "--frozen",
+        "--",
+        "python",
+        "tools/memory/mcp_server.py"
+      ]
+    }
+  }
+}

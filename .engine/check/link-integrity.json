@@ -1,0 +1,12 @@
+{
+  "id": "engine/check/link-integrity",
+  "target": { "path": "**/*.md" },
+  "kind": "coverage",
+  "params": {
+    "mode": "links",
+    "exclude_dirs": [".git", ".engine/.venv", ".engine/_fixtures"]
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Every relative Markdown link in the repository's documentation must resolve to a file that exists, so a reader (human or AI) following it lands somewhere real rather than on a dead end. The check resolves each relative link against its file's directory; a link that points outside the repository cannot be verified in a CI checkout, so it is reported as a note rather than a failure. Fix the link target, or restore the missing file, before merging."
+}

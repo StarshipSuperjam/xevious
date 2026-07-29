@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/product-spec-coverage",
+  "target": { "context": "product-spec" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/product_design/coverage.py" },
+  "tier": "hard",
+  "suites": ["CI", "pre-commit", "pre-close"],
+  "message": "Checks that every settled capability in your product description has a place in your build order — the list at `docs/spec/build-plan.md` that records, in order, the capabilities you'll build. Once you've settled a capability, the build order keeps it from being silently overlooked: a settled capability missing from the build order, or a build order that is malformed (no phases, or a row pointing at a document that doesn't exist or at something that isn't a capability), blocks the merge. The finding names exactly what to fix and is always self-clearable — add the capability to the build order, fix the row, or reopen the capability if it isn't settled after all. Moving a capability between phases is always fine; only leaving a settled one out is caught. Before you have settled anything, or before you have started a build order, it says so plainly and does nothing — a build can still go ahead, so this is never a dead end. It checks that your settled capabilities each have a place in the build order, not whether the built work matches them — that stays your call and the review's. It only ever reads your files; it never changes them."
+}

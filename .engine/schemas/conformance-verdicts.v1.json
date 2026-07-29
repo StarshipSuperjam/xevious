@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "conformance-verdicts.v1 — the standing conformance sweep's machine channel",
+  "description": "The structured payload the read-only audit persona appends (as one HTML-comment-wrapped block, invisible in the rendered digest) alongside its plain-language digest when it runs the standing product-spec-conformance sweep (issue #449). A follow-up tool (conformance_sweep.py promote) parses it, opens or updates one deduped engine issue per divergence, and strips the block before the digest is sealed — so the JSON is never committed and never feeds back into a later run as stale judgment. This is DISTINCT from audit-finding.v1 (the audit's own finding shape, a retire/reconcile/escalate recommendation): a conformance divergence is still reported as a reconcile finding in the digest; this block only carries the per-criterion verdicts a mechanical dedup needs. The digest prose remains the record; this block is a best-effort accelerator, so a consumer treats an absent, malformed, or duplicated block as a clean no-op, never a failure.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "items"],
+  "properties": {
+    "kind": {
+      "description": "A discriminator identifying this payload — today the only value is 'product-conformance'. Kept explicit so a stray or off-kind block is a clean no-op rather than a mis-parse.",
+      "enum": ["product-conformance"]
+    },
+    "items": {
+      "description": "The per-criterion verdicts. An empty array is valid (the persona ran the sweep and found no divergence). Only 'diverges' verdicts are promoted to a tracked issue; 'meets'/'unsure' are carried for completeness and the digest disclosure.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/product-conformance-item" }
+    }
+  },
+  "$defs": {
+    "product-conformance-item": {
+      "description": "One per-criterion conformance verdict: which settled criterion it is (by the matrix row identity (doc, digest)), whether the built code still meets it, and the persona's plain-language note. The verdict is AI judgment with no behavioural correlate at cron cadence — the promoted issue says exactly that.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc", "digest", "verdict"],
+      "properties": {
+        "doc": {
+          "description": "The repo-relative, forward-slashed `docs/spec/` document path the criterion came from (the doc half of the matrix row identity).",
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "description": "The criterion-cell content digest (the digest half of the matrix row identity — what the promoted issue dedups on, so recurring drift updates one draft rather than re-nagging).",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "verdict": {
+          "description": "The persona's read of whether the built code still meets this settled criterion. Only 'diverges' is promoted.",
+          "enum": ["diverges", "meets", "unsure"]
+        },
+        "note": {
+          "description": "The persona's plain-language explanation of the verdict — what it checked and why it read the built code as diverging (or not). Author-influenced text; the consumer neutralises it before it lands in a rendered issue body.",
+          "type": "string"
+        },
+        "criterion": {
+          "description": "The criterion text as the persona read it from the spec, for the operator's context in the promoted issue. Optional; author-influenced, neutralised on render.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

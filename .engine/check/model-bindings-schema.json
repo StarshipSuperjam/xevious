@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/model-bindings-schema",
+  "target": { "path": ".engine/policies/model-bindings.json" },
+  "kind": "schema",
+  "params": { "schema": ".engine/schemas/model-bindings.v1.json" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The model bindings (.engine/policies/model-bindings.json) do not match their format — a tier or override is missing its model or effort, or names a versioned model id rather than a durable alias (the exact problem is named just above). This file is the single home for which model realizes each capability tier, read to stamp every persona; a malformed entry would render personas against a broken binding. Fix it to match model-bindings.v1.json before merging."
+}

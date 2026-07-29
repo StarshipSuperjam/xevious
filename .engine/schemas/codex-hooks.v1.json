@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "codex-hooks.v1 — the engine's Codex hook registration file (.codex/hooks.json, whole file)",
+  "description": "The whole-file contract for the repository-level Codex hook registration the engine commits. The file shape is Codex's own: a top-level `hooks` object keyed by lifecycle event, each event holding a list of matcher groups, each group holding a list of command hooks. This schema pins the event keys to the closed set the Codex platform documents (SessionStart, SubagentStart, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStop, Stop) so a typo'd event cannot silently register nothing, and requires every hook to be a command hook with a non-empty command. It deliberately does NOT pin which events the engine binds, the matcher vocabulary, or the command form — the exact engine matrix (its mirror of the Claude registration, the deliberately absent plan-acceptance hook, the command grammar) is the provider-parity check's domain and the hook-command drift test's, so the registration policy lives in one leg rather than a schema that would have to change with every wiring edit. Per-hook platform extras (statusMessage, command_windows, timeouts, and whatever Codex adds next) pass through openly. Enforced live by the codex-hooks-schema check (a validators-core schema rule) via an explicit rule-level schema override, because this file is a wiring target, not a catalogued surface (eADR-0034).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["hooks"],
+  "properties": {
+    "hooks": {
+      "type": "object",
+      "description": "The registration body, keyed by Codex lifecycle event. Only documented platform events are legal keys.",
+      "additionalProperties": false,
+      "propertyNames": {
+        "enum": ["SessionStart", "SubagentStart", "PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "UserPromptSubmit", "SubagentStop", "Stop"]
+      },
+      "patternProperties": {
+        ".*": {
+          "type": "array",
+          "description": "The matcher groups registered on this event.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["hooks"],
+            "properties": {
+              "matcher": {
+                "description": "The platform's event filter (a tool-name pattern on PreToolUse, a session source such as startup/resume/clear on SessionStart). Omitted means the group fires on every occurrence of the event.",
+                "type": "string"
+              },
+              "hooks": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": ["type", "command"],
+                  "properties": {
+                    "type": {
+                      "description": "The hook mechanism. The engine registers command hooks only.",
+                      "const": "command"
+                    },
+                    "command": {
+                      "description": "The shell command Codex runs for this hook.",
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "policy.v1 — the frontmatter of one standing-rule (policy)",
+  "description": "The per-instance state carried in a policy's YAML frontmatter: a short human title, where the policy sits in its lifecycle, the date it reached that state, an optional block of machine-read tuning values the policy owns, and — only when a recorded decision established it — the contract that did so. A policy is a standing rule that governs behaviour across sessions (the second authority tier, below contracts and above mechanics); this schema governs only the frontmatter, while the prose body (Rule, Scope, Rationale, Enforcement-tier) is the template's domain and is checked separately by the policy-shape rule. A policy is identified by its slug-named file, not by a numbered id, so this schema carries no id field. The enforcement tier is stated in plain prose in the body's Enforcement-tier section rather than as a frontmatter field, because a single policy may bind a layered control (a posture expectation, a hard-fail check, and a soft-warn signal at once) that one fixed value could not honestly represent. This file is enforced live: the policy-frontmatter check (a validators-core schema rule) validates each policy's parsed YAML frontmatter against it at the merge, reading the frontmatter with the validation foundation's YAML reader; its own well-formedness and a representative instance's conformance are also fixture-checked by the surface's unit tests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "status", "date"],
+  "properties": {
+    "title": {
+      "description": "A short, plain-language label for the standing rule, written for a human scanning the index (for example, 'Contract threshold' or 'Finding disposition'). One line; no trailing punctuation needed.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Where this policy sits in the 'decision' lifecycle (the same vocabulary contracts use). proposed = drafted but not yet in force; accepted = in force and authoritative; superseded = replaced by a later policy and kept for history, never deleted. There is deliberately no 'rejected' state.",
+      "enum": ["proposed", "accepted", "superseded"]
+    },
+    "date": {
+      "description": "The date this policy reached its current status, written as a plain calendar date YYYY-MM-DD (for example 2026-06-03). The YYYY-MM-DD shape is what is actually enforced; the date format is only a hint.",
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "established_by": {
+      "description": "The eADR identifier of the contract that decided this policy — present ONLY when a recorded decision established it. This link is encouraged for auditability but is optional, because some policies are foundational: they ship with the engine from its first layer and predate any decision record, so they name no establishing contract and omit this field entirely. When present it is an 'eADR-' prefix followed by a four-digit zero-padded number.",
+      "type": "string",
+      "pattern": "^eADR-[0-9]{4}$"
+    },
+    "values": {
+      "description": "An optional map of machine-read tuning numbers this policy owns — telemetry's promotion thresholds, for example — kept legible and tunable in the frontmatter rather than buried as constants in code. Each key is a stable backstage identifier the reading machinery (telemetry, attention) looks up; each value is a plain number. This block is the single authoritative source for those numbers: the prose body may explain a dial in plain language but never re-owns its value, so the value is changed here, in one place. Omitted entirely by policies that carry no tunable values.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "number" },
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" }
+    }
+  }
+}

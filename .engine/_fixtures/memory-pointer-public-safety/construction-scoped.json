@@ -1,0 +1,4 @@
+{
+  "property": "no reachable failure path outside the construction repository",
+  "reason": "This check guards the memory-backup pointer committed in the engine's own repository, so a maintainer's private backup location can never ship to everyone who uses the template. Everywhere else it stops at its first gate and does nothing, so there is no failure here for its self-test to catch. In the engine's own repository this note does not apply and the self-test stays required. Whether this protection should also run in deployed projects is an open question tracked on issue #512; widening it would be a change to the check, not to this note."
+}

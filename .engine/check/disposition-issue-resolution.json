@@ -1,0 +1,12 @@
+{
+  "id": "engine/check/disposition-issue-resolution",
+  "target": { "context": "pull-request-body" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/disposition_issue_resolution_check.py",
+    "pass_token": true
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "When the engine logs a finding as out of scope and points to a follow-up issue in this change's Review section (\"tracked as #N\"), this confirms #N is a real engine-tracked issue — so \"logged as a follow-up\" cannot be a fabrication the merge takes on the engine's word. It reads every issue number cited in the Review section and checks each against GitHub: if a cited number doesn't exist, or isn't an engine issue, the check blocks and names it (file that issue, correct the number, or reword the reference if the number wasn't meant as a follow-up issue — every #N in the Review section is read as an issue reference). If the issue service can't be reached, the check blocks with a distinct, plainly-temporary message that clears on its own — so an outage never reads as a fabrication. Pull-request references are not treated as follow-ups. Named bound: a green result shows the cited issues are real; it does NOT show that every out-of-scope finding was logged, nor that a cited issue is the right one for that finding, nor that the disposition was the right call. In CI this runs against the live issue list; on your own machine it reports it wasn't checked when no access token is available, which is expected."
+}

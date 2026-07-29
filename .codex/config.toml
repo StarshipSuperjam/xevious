@@ -1,0 +1,12 @@
+# BEGIN engine-managed block: engine-knowledge-graph - do not edit inside
+[mcp_servers.engine-knowledge-graph]
+command = "uv"
+args = ["run", "--directory", ".engine", "--frozen", "--", "python", "tools/knowledge_mcp_server.py"]
+default_tools_approval_mode = "auto"
+# END engine-managed block: engine-knowledge-graph
+# BEGIN engine-managed block: engine-memory - do not edit inside
+[mcp_servers.engine-memory]
+command = "uv"
+args = ["run", "--directory", ".engine", "--frozen", "--", "python", "tools/memory/mcp_server.py"]
+default_tools_approval_mode = "auto"
+# END engine-managed block: engine-memory

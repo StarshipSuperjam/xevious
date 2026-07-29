@@ -1,0 +1,52 @@
+Third-party content vendored into this directory
+================================================
+
+Two files here are not this project's work. They are committed rather than downloaded so that
+meaning-based recall runs offline, needs no artifact fetcher in the engine's runtime, and can be
+verified byte-for-byte against the hashes in checksums.json.
+
+
+potion-retrieval-32m-int8.npz
+-----------------------------
+A quantized copy of the word table from minishlab/potion-retrieval-32M, a static embedding model
+published by the Minish Lab under the MIT License. The upstream file is a float32 table; the copy
+here stores each row as int8 with a float32 scale, which is a derivative of the original and carries
+the same licence and obligations. checksums.json records the upstream file's own sha256, the
+quantization rule, and the resulting shape, so the derivation can be checked or repeated.
+
+The authors ask that use of the model be cited:
+
+    The Minish Lab, "Model2Vec: Distilling Static Embedding Models"
+    https://github.com/MinishLab/model2vec
+    https://huggingface.co/minishlab/potion-retrieval-32M
+    DOI 10.5281/zenodo.17270888
+
+MIT License, Copyright (c) 2024 The Minish Lab
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial
+portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+vocab.txt
+---------
+The WordPiece vocabulary the table is keyed by. It is not the Minish Lab's own work: potion-retrieval-32M
+is distilled from BAAI/bge-base-en-v1.5 and inherits that model's tokenizer, so this file's provenance
+and licence are BAAI's. bge-base-en-v1.5 is published under the MIT License.
+
+    BAAI General Embedding, https://huggingface.co/BAAI/bge-base-en-v1.5
+
+It is vendored as vocab.txt rather than the publisher's tokenizer.json because only the vocabulary is
+needed: the tokenizer pipeline itself is implemented in wordpiece.py from the standard library, and its
+output is verified against the reference implementation.

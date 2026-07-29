@@ -1,0 +1,8 @@
+{
+  "id": "fixture/kind-custom-script-nonzero",
+  "kind": "custom/script",
+  "tier": "hard",
+  "target": {},
+  "params": { "script": "crash.py" },
+  "message": "A custom/script check whose script exits non-zero must fail closed."
+}

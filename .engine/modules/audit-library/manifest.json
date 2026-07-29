@@ -1,0 +1,22 @@
+{
+  "id": "audit-library",
+  "version": "0.2.0",
+  "status": "required",
+  "provides": {
+    "agent": [
+      ".claude/agents/engine-audit.md"
+    ],
+    "audits": [
+      ".engine/audits/concern-list.json",
+      ".engine/audits/self-review-setup.md",
+      ".engine/audits/audit-digest.md"
+    ],
+    "codex-agent": [
+      ".codex/agents/engine-audit.toml"
+    ]
+  },
+  "wires": [],
+  "depends": {
+    "validators-core": ""
+  }
+}

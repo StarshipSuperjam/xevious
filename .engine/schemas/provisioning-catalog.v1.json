@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "provisioning-catalog.v1 — the optional-module catalog",
+  "description": "The committed catalog of the engine's optional modules — the ones a non-engineer can choose to add — that provisioning maintains and two readers relay: the first-run setup walkthrough (which presents them, grouped by discipline, as opt-out-able choices) and the /engine-help command index (which shows an uninstalled module's command as 'available if you install it'). It records presentation data only — a one-line plain-language gloss, the discipline it belongs to, and, for a command-bearing module, the command an operator would type — keyed by module id; it is not the module manifest and decides nothing about what is installed. An optional module that adds no operator command (fired by a gate, not typed) carries no command and is still offered at setup by its description. It lives at .engine/provisioning/module-catalog.json and is a top-level array. It ships empty and grows as optional modules are built. This schema governs its shape only.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "description", "category"],
+    "properties": {
+      "id": {
+        "description": "The module's stable identifier, matching its module folder (.engine/modules/<id>/). Lower-case letters, digits, and hyphens.",
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "verb": {
+        "description": "Optional. The command an operator would type to use this module once it is installed (for example engine-board-setup), shown without the leading slash. This is what /engine-help lists under 'available if you install it'. Present only for command-bearing modules; an optional module that adds no operator command (for example a review-lens module fired by the build gate, never typed) omits it, and the first-run setup walkthrough still offers it by its plain-language description.",
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "description": {
+        "description": "One plain-language sentence answering what the module does and who it is for. It is shown to the operator in the setup walkthrough and in /engine-help, so it must read in plain language with no engine jargon.",
+        "type": "string",
+        "minLength": 1
+      },
+      "category": {
+        "description": "The software-discipline group the module is presented under in the setup walkthrough (recognized SDLC umbrellas). One of the three fixed groups.",
+        "enum": ["Product Management", "Software Configuration Management", "Verification & Validation"]
+      },
+      "status": {
+        "description": "How the module is carried, mirroring the module manifest's status for the opt-out-able set: optional (added only if chosen), default-on (added unless the operator opts out), or experimental (opt-in, not yet stable). Absent is treated as optional.",
+        "enum": ["optional", "default-on", "experimental"]
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "property": "the aimed bite is witnessable only with a live repository connection",
+  "env": ["GITHUB_REPOSITORY", "GITHUB_TOKEN"],
+  "reason": "The aimed bite is a LIVE witness by design: the fixture's PR body cites a sentinel-nonexistent issue and the check must resolve it against the real issue API (a 404 -> 'isn't a real engine-tracked issue'). Without a repository and token the check deliberately degrades to its honest local no-op, which can never carry the aimed token — so a token-less local rehearsal red-flagged the harness, not the check (#531). CI provides both variables and this declaration is ignored there; the live witness stays the enforced proof."
+}

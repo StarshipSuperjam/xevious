@@ -1,0 +1,13 @@
+{
+  "id": "engine/check/pr-behaviors-declared",
+  "target": { "context": "pull-request-body" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/scope_behaviors_check.py"
+  },
+  "tier": "soft",
+  "suites": ["CI"],
+  "ci_author_exempt": ["dependabot[bot]", "github-actions[bot]"],
+  "ci_label_exempt": ["engine-erasure"],
+  "message": "A pull request should declare its Behaviors — a `### Behaviors` subsection under Scope naming the falsifiable capabilities the change delivers, each with the test or demo that exercises it — so an operator weighs the change by the behaviour it completes, not its line count. This is a SOFT nudge that never blocks a merge; a change with no observable behaviour (a dependency bump, a docs-only edit, a pure refactor) can leave the section saying so. It reads the pull-request body from the trusted event context and is a disclosed no-op where no body is available (a local rehearsal). Whether a declared behaviour is genuinely whole — not a contrived fragment — is the reviewer's judgement, not this check's. To clear the nudge, fill the Behaviors subsection or state plainly that this change has no behaviour to demonstrate."
+}

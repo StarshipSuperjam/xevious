@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/doc-frontmatter",
+  "target": { "path": ".engine/docs/*.md" },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A doc's settings block (the part at the very top of the file, between the --- lines) does not match the doc format — its title is missing or malformed, its status is set to something other than active, deprecated, or retired, or it carries a key the format does not allow (the exact problem is named just above). A malformed doc would mislead its readers rather than be quietly ignored, so it is caught at the merge. The schema is resolved through the surface catalog (the 'doc' surface), so this rule names no schema directly. Note that a doc needs no status line at all — an omitted status simply means active. Open the file and correct the entry named above to match doc.v1.json before merging."
+}

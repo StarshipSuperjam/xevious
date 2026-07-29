@@ -1,0 +1,12 @@
+{
+  "id": "engine/check/product-lock-integrity",
+  "target": { "context": "pull-request-diff" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/product_design/lock_integrity.py",
+    "pass_token": true
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "This pull request changes a part of your product description under `docs/spec/` that you had settled — the ground the build works from. A settled description shouldn't change quietly. If you mean to make the change, confirm it by applying the `guardrail-ack` label to this pull request — one deliberate action, distinct from clicking merge — and this check clears on its own; the finding names each settled document that changed (reopening one counts as a change too). It reads which documents were settled from the pull request's starting point, so that record can't be edited away in the same change. This check judges only that a settled description doesn't change without your say-so — never whether the change is a good one; that stays your call. It reads your files and never changes them."
+}

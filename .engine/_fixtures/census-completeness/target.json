@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_CENSUS_ROOT": ".engine/_fixtures/census-completeness"
+  }
+}

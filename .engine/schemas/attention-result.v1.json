@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "attention-result.v1 — the ranking function's ordered-partition output",
+  "description": "What the attention ranking function hands back: an ordered partition of candidate work across the five fixed budget categories, under hard cross-category precedence, with each category's share of the bounded budget and the candidates ordered best-first inside it. This is the one result contract the orientation events (boot) and the build's risk read (build-orchestration) consume — they inherit this shape here, at the producer, rather than each re-deriving it. The form is fixed (an ordered partition over the five categories plus the budget split); only this serialization is settled here. The result is pure data: it records which inputs were missing in 'degraded_inputs' but never narrates that in prose — surfacing a degraded picture loudly and in plain language is boot's job, not this file's.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "as_of", "as_of_is_wallclock", "session_condition", "partition", "degraded_inputs"],
+  "properties": {
+    "schema_version": {
+      "description": "Which version of this result shape this is. It lets a later consumer recognise an older result and adapt safely. Today the only valid value is 1.",
+      "const": 1
+    },
+    "as_of": {
+      "description": "The single reference moment the ranking was computed against, echoed back exactly as it was supplied (a UTC moment ending in Z, for example 2026-06-04T00:00:00Z). Recency-dependent ordering is reproducible because this is recorded: the same candidates plus the same as_of always yield this same ordering. The ranking never reads the wall clock on its own — this value is always an input.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "as_of_is_wallclock": {
+      "description": "True when 'as_of' fell back to the machine's current clock because the cursor carried no refreshed debt timestamp; false when 'as_of' came from a real recorded source. A consumer must not treat a wall-clock as_of as a 'when the debt count was refreshed' timestamp — it only timestamps this ranking run.",
+      "type": "boolean"
+    },
+    "session_condition": {
+      "description": "The session-load reading that drove the budget flex: 'clean' (little or no blocking debt — more room is given to orientation) or 'high_debt' (enough blocking debt that orientation is compressed to make room). Recorded so a consumer inherits WHY the budget split flexed the way it did, rather than re-deriving the condition.",
+      "enum": ["clean", "high_debt"]
+    },
+    "partition": {
+      "description": "The five fixed budget categories, in their locked order of importance, each holding its candidates ordered best-first. The array order IS the cross-category precedence: index 0 outranks index 1, and so on, structurally — a lower-importance category can never overtake a higher one whatever the per-candidate weights. Every category is always present, even when it holds nothing, so a consumer sees the whole five-part frame every time; an empty category means its source was absent or yielded nothing, and that emptiness is recorded, never omitted.",
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "precedence_rank", "budget_fraction", "members"],
+        "properties": {
+          "category": {
+            "description": "Which of the five fixed categories this entry is, from the locked vocabulary: blocking_debt (what is blocking the work), in_flight (work already underway), recent_decisions (what was decided recently), structural_neighbors (the parts of the project next to what is being touched), orientation (general bearings).",
+            "enum": ["blocking_debt", "in_flight", "recent_decisions", "structural_neighbors", "orientation"]
+          },
+          "precedence_rank": {
+            "description": "The hard cross-category importance rank this category carried for this run (1 = surfaced first). Recorded so a consumer can SEE that the ordering was structural — and so the diagnostic 'precedence removed' state (every category at the same rank) is visible in the artifact itself rather than only in the tool's behaviour.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "budget_fraction": {
+            "description": "This category's share of the bounded budget for this run, after any flex was applied — a fraction between 0 and 1. This is the applied (post-flex) split the consumer uses directly; it never has to re-apply the flex. The five fractions are meant to sum to one whole.",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "budget_size": {
+            "description": "How many slots of the bounded budget this category was allotted, present only when the run was given a concrete total budget to apportion. The integer realisation of budget_fraction. Omitted when no total budget was supplied (the caller — boot — owns the event's budget total).",
+            "type": "integer",
+            "minimum": 0
+          },
+          "members": {
+            "description": "This category's candidates, ordered best-first by the within-category ranking. Each entry is a lightweight reference (the id a consumer resolves against the substrate, plus its position), not a copy of the candidate's full detail: this contract carries the ORDERING, while the substrate keeps the data. An optional 'signals' block carries the ranking inputs the function already computed, so a consumer that needs them (the build's debt-proximity read) need not recompute or re-resolve.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "rank"],
+              "properties": {
+                "id": {
+                  "description": "The candidate's stable identifier — a knowledge entity id, a tracked-issue reference, or a state pointer key — by which a consumer resolves its full detail.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "rank": {
+                  "description": "This candidate's 1-based position within its category, best-first. Deterministic; equal-ranked candidates are ordered by id so the result is stable.",
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "signals": {
+                  "description": "The within-category ranking inputs the function used for this candidate, surfaced so a consumer need not recompute them. Every field is optional — a candidate carries only the signals its category uses (severity for debt, proximity for structural neighbours, recency for time-ordered kinds).",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "severity": {
+                      "description": "The debt severity that fed ranking and the blocking decision, when this candidate is an open-debt item.",
+                      "type": "number"
+                    },
+                    "proximity": {
+                      "description": "How structurally close this candidate is to the work in hand (higher is closer), when this candidate is a structural neighbour.",
+                      "type": "number"
+                    },
+                    "recency": {
+                      "description": "The candidate's own reference moment used for recency ranking, as a UTC moment ending in Z, or null when it carries none.",
+                      "type": ["string", "null"]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "degraded_inputs": {
+      "description": "The substrate inputs that were ABSENT for this run, by name and sorted — the substrates the ranking could not consult. The ranking reads the live debt register (telemetry — open engine-labelled Issues), the project map (knowledge), the in-flight work record (git), and the committed cursor (state). telemetry appears here only when its live read failed (an outage or expired auth) or no reader was supplied (the offline CLI), in which case state's committed count stands in; on an outage any of state, knowledge, telemetry, or git can appear. An empty array means every substrate was available. This is the machine-readable hand-off boot reads and surfaces loudly in plain language; the result itself records the absence and narrates nothing.",
+      "type": "array",
+      "items": {
+        "enum": ["state", "knowledge", "telemetry", "git"]
+      },
+      "uniqueItems": true
+    }
+  }
+}

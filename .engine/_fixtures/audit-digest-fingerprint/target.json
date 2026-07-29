@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_AUDIT_DIGEST_PATH": ".engine/_fixtures/audit-digest-fingerprint/audit-digest.md"
+  }
+}

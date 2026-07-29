@@ -1,0 +1,4 @@
+{
+  "property": "no reachable failure path outside the construction repository",
+  "reason": "This check audits the engine's own committed demo files against the list of files removed when a project is first set up \u2014 work that only exists in the repository where the engine itself is built. Everywhere else it stops at its first gate and does nothing, so there is no failure here for its self-test to catch. In the engine's own repository this note does not apply and the self-test stays required."
+}

@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_CATALOG_FIXTURE": ".engine/_fixtures/ontology-authority-reservation/bad-catalog.json"
+  }
+}

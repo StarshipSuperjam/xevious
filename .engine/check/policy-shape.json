@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/policy-shape",
+  "target": {
+    "path": ".engine/policies/*.md"
+  },
+  "kind": "shape",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI", "audit-prep"],
+  "message": "A policy (a standing rule under .engine/policies/) must contain, as level-2 headings in this order, Rule, then Scope, then Rationale, then Enforcement-tier, and no others. Rule is the ongoing directive, Scope says where it applies, Rationale explains in plain language why it exists, and Enforcement-tier states honestly how it is held (posture, soft-warn, hard-fail, or a layered combination). This check catches a broken SHAPE only: that the required sections are present, correctly ordered, and that no stray section appears. It cannot judge whether a section's content is substantive or written in plain language — that genuineness is for the author and the operator reviewing the committed change. Length over the 120-line budget is only a soft nudge to trim, never a block. Add or reorder the flagged sections to match the policy template before merging."
+}

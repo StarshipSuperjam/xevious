@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/conduct-frontmatter",
+  "target": { "path": ".engine/conduct/*.md" },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A codes-of-conduct file's settings block (the part at the very top between the --- lines) does not match the conduct format. The exact mismatch is named just above — most often a code missing its id, title, or status, an id that is not a lower-case hyphenated 'conduct-…' slug, or a status that is not active/deprecated/retired. The engine reads the active stance from this block, so a malformed entry would mislead it. The schema is resolved through the surface catalog (the 'conduct' surface), so this rule names no schema directly. Open the file and correct the named entry so it matches conduct.v1.json before merging."
+}

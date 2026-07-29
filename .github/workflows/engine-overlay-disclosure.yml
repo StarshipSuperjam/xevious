@@ -1,0 +1,59 @@
+# engine-overlay-disclosure — the non-blocking, merge-time notice that a pull request changes engine files
+# the next engine update will overwrite. It posts one plain-language comment on the pull request; it NEVER
+# blocks a merge (ADVISORY — not a required check). Distinct from the guardrail-weakening acknowledgment
+# (`guardrail-ack` / `engine-guard`): see eADR-0037.
+#
+# Deployed-only: the tool discloses only when this repo's update HOME differs from its own origin (an
+# upstream that will overlay it). In the self-hosting engine repo it stays silent, so it does not fire on
+# engine-template's own pull requests.
+#
+# `pull_request`, NOT `pull_request_target`: this is a same-repo advisory. A same-repo pull request gets a
+# write token (the comment posts); a fork pull request gets a read-only token and the tool stays quiet
+# (it also skips fork pull requests explicitly). Using `pull_request` keeps the fork-write-token attack
+# surface that `pull_request_target` opens closed — the required, fail-closed guard (`engine-guard`) is the
+# one that needs the trusted-base trigger; this advisory does not.
+#
+# DEMO-VERIFIED, NOT END-TO-END HERE. GitHub grants the write token and a distinct update home only on a
+# live deployed repo, so in this construction repo the behaviour is proven by the tool's tests and
+# `demo_overlay_disclosure.py` (recorded fakes), not end-to-end. The first live firing on a deployed repo is
+# its end-to-end confirmation.
+name: engine-overlay-disclosure
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read           # for the checkout (to materialize the engine tool-runtime)
+  pull-requests: write     # to post/update the advisory comment on the pull request timeline (the correct
+  #                          GITHUB_TOKEN scope for the issues-comments endpoint on a pull request; this is
+  #                          deliberately NOT the `issues: write` that engine-issue-conformance uses — do not
+  #                          "align" the two)
+
+# Serialize runs for the SAME pull request so the comment-dedup (list comments → post/update once) cannot
+# race itself on rapid pushes (the control-plane single-flight concurrency-group law, applied to the
+# pull-request analog). cancel-in-progress: false — let an in-flight run finish, never half-apply.
+concurrency:
+  group: engine-overlay-disclosure-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  disclose:
+    name: engine-overlay-disclosure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up uv (pinned)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.8"
+      - name: Materialize the engine tool-runtime
+        run: uv sync --directory .engine --frozen
+      - name: Post the upgrade-overwrite disclosure
+        # The tool reads the pull request from $GITHUB_EVENT_PATH (.pull_request.*), never from an
+        # interpolated shell argument, and renders only engine-canonical paths — never a reported filename.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: uv run --directory .engine --frozen -- python tools/overlay_disclosure.py

@@ -1,0 +1,13 @@
+{
+  "id": "engine/check/contract-threshold",
+  "target": {
+    "path": ".engine/contracts/**/*eADR-*.md"
+  },
+  "kind": "presence",
+  "params": {
+    "sections": ["Significance", "Anti-choice"]
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "This is the hard-fail leg of the contract-threshold policy (.engine/policies/contract-threshold.md): a contract's Significance and Anti-choice sections must each be filled in — not left blank and not left as the template's placeholder. A record that does not say what it constrains (Significance) and what real alternative was weighed and rejected (Anti-choice) is structurally not a contract. This check verifies only that those two sections carry some real content (PRESENCE is checkable); whether that content is genuinely significant or a genuine alternative is a judgement that stays the author's and the operator's at the pull request (GENUINENESS stays posture). Fill the flagged section with substantive text before merging."
+}

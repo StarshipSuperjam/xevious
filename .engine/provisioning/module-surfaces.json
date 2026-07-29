@@ -1,0 +1,1855 @@
+{
+ "surfaces": {
+  ".agents/skills/engine-board-setup/SKILL.md": [
+   "github-projects-sync"
+  ],
+  ".agents/skills/engine-board-setup/agents/openai.yaml": [
+   "github-projects-sync"
+  ],
+  ".agents/skills/engine-conduct/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-conduct/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-design/SKILL.md": [
+   "product-design"
+  ],
+  ".agents/skills/engine-design/agents/openai.yaml": [
+   "product-design"
+  ],
+  ".agents/skills/engine-help/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-help/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-parts/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-parts/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-recall/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-recall/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-routine/SKILL.md": [
+   "routine-mode"
+  ],
+  ".agents/skills/engine-routine/agents/openai.yaml": [
+   "routine-mode"
+  ],
+  ".agents/skills/engine-setup/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-setup/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-start/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-start/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-status/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-status/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-tune/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-tune/agents/openai.yaml": [
+   "core"
+  ],
+  ".agents/skills/engine-upgrade/SKILL.md": [
+   "core"
+  ],
+  ".agents/skills/engine-upgrade/agents/openai.yaml": [
+   "core"
+  ],
+  ".claude/agents/engine-audit.md": [
+   "audit-library"
+  ],
+  ".claude/agents/engine-design-review-architecture.md": [
+   "design-review"
+  ],
+  ".claude/agents/engine-design-review-feasibility.md": [
+   "design-review"
+  ],
+  ".claude/agents/engine-design-review-product-intent.md": [
+   "design-review"
+  ],
+  ".claude/agents/engine-design-review-risk-governance.md": [
+   "design-review"
+  ],
+  ".claude/agents/engine-qa-review-divergence-hunter.md": [
+   "qa-review"
+  ],
+  ".claude/agents/engine-qa-review-security-governance.md": [
+   "qa-review"
+  ],
+  ".claude/agents/engine-qa-review-spec-conformance.md": [
+   "qa-review"
+  ],
+  ".claude/agents/engine-qa-review-technical-integrity.md": [
+   "qa-review"
+  ],
+  ".claude/agents/engine-qa-review-usability.md": [
+   "qa-review"
+  ],
+  ".claude/skills/engine-board-setup/SKILL.md": [
+   "github-projects-sync"
+  ],
+  ".claude/skills/engine-conduct/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-design/SKILL.md": [
+   "product-design"
+  ],
+  ".claude/skills/engine-help/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-parts/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-recall/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-routine/SKILL.md": [
+   "routine-mode"
+  ],
+  ".claude/skills/engine-setup/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-start/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-status/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-tune/SKILL.md": [
+   "core"
+  ],
+  ".claude/skills/engine-upgrade/SKILL.md": [
+   "core"
+  ],
+  ".codex/agents/engine-audit.toml": [
+   "audit-library"
+  ],
+  ".codex/agents/engine-design-review-architecture.toml": [
+   "design-review"
+  ],
+  ".codex/agents/engine-design-review-feasibility.toml": [
+   "design-review"
+  ],
+  ".codex/agents/engine-design-review-product-intent.toml": [
+   "design-review"
+  ],
+  ".codex/agents/engine-design-review-risk-governance.toml": [
+   "design-review"
+  ],
+  ".codex/agents/engine-qa-review-divergence-hunter.toml": [
+   "qa-review"
+  ],
+  ".codex/agents/engine-qa-review-security-governance.toml": [
+   "qa-review"
+  ],
+  ".codex/agents/engine-qa-review-spec-conformance.toml": [
+   "qa-review"
+  ],
+  ".codex/agents/engine-qa-review-technical-integrity.toml": [
+   "qa-review"
+  ],
+  ".codex/agents/engine-qa-review-usability.toml": [
+   "qa-review"
+  ],
+  ".engine/audits/audit-digest.md": [
+   "audit-library"
+  ],
+  ".engine/audits/concern-list.json": [
+   "audit-library"
+  ],
+  ".engine/audits/self-review-setup.md": [
+   "audit-library"
+  ],
+  ".engine/check/agent-coherence.json": [
+   "validators-core"
+  ],
+  ".engine/check/agent-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/agent-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/audit-concern-list.json": [
+   "validators-core"
+  ],
+  ".engine/check/audit-digest-fingerprint.json": [
+   "validators-core"
+  ],
+  ".engine/check/audit-digest-staleness.json": [
+   "validators-core"
+  ],
+  ".engine/check/block-coherence.json": [
+   "validators-core"
+  ],
+  ".engine/check/catalog-coverage.json": [
+   "validators-core"
+  ],
+  ".engine/check/census-completeness.json": [
+   "validators-core"
+  ],
+  ".engine/check/codex-agent-coherence.json": [
+   "validators-core"
+  ],
+  ".engine/check/codex-agent-schema.json": [
+   "validators-core"
+  ],
+  ".engine/check/codex-hooks-schema.json": [
+   "validators-core"
+  ],
+  ".engine/check/codex-provider-parity.json": [
+   "validators-core"
+  ],
+  ".engine/check/codex-skill-coherence.json": [
+   "validators-core"
+  ],
+  ".engine/check/codex-skill-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/codex-skill-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/conduct-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/conduct-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/conduct-weakening-guard.json": [
+   "validators-core"
+  ],
+  ".engine/check/contract-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/contract-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/contract-threshold.json": [
+   "validators-core"
+  ],
+  ".engine/check/dependency-pinning.json": [
+   "dependency-discipline"
+  ],
+  ".engine/check/dependency-review.json": [
+   "dependency-discipline"
+  ],
+  ".engine/check/disposition-issue-resolution.json": [
+   "validators-core"
+  ],
+  ".engine/check/doc-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/doc-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/engine-manifest.json": [
+   "validators-core"
+  ],
+  ".engine/check/engine-todo-form.json": [
+   "validators-core"
+  ],
+  ".engine/check/execution-state.json": [
+   "validators-core"
+  ],
+  ".engine/check/first-run-assets.json": [
+   "validators-core"
+  ],
+  ".engine/check/first-run-reference-closure.json": [
+   "validators-core"
+  ],
+  ".engine/check/guardrail-weakening.json": [
+   "core"
+  ],
+  ".engine/check/hard-check-bite.json": [
+   "validators-core"
+  ],
+  ".engine/check/in-tool-demo-failure-path.json": [
+   "validators-core"
+  ],
+  ".engine/check/interface-coherence.json": [
+   "validators-core"
+  ],
+  ".engine/check/interface-declaration.json": [
+   "validators-core"
+  ],
+  ".engine/check/knowledge-coverage.json": [
+   "validators-core"
+  ],
+  ".engine/check/knowledge-vocabulary.json": [
+   "validators-core"
+  ],
+  ".engine/check/lens-consumption.json": [
+   "validators-core"
+  ],
+  ".engine/check/link-integrity.json": [
+   "validators-core"
+  ],
+  ".engine/check/memory-pointer-public-safety.json": [
+   "validators-core"
+  ],
+  ".engine/check/migration-rollback.json": [
+   "migration-discipline"
+  ],
+  ".engine/check/model-bindings-schema.json": [
+   "validators-core"
+  ],
+  ".engine/check/module-manifest.json": [
+   "validators-core"
+  ],
+  ".engine/check/ontology-authority-reservation.json": [
+   "validators-core"
+  ],
+  ".engine/check/operation-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/operation-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/operator-guarded-paths.json": [
+   "validators-core"
+  ],
+  ".engine/check/operator-local-references.json": [
+   "validators-core"
+  ],
+  ".engine/check/policy-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/policy-override-stale.json": [
+   "validators-core"
+  ],
+  ".engine/check/policy-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/pr-behaviors-declared.json": [
+   "validators-core"
+  ],
+  ".engine/check/pr-body-completeness.json": [
+   "validators-core"
+  ],
+  ".engine/check/product-adr-form.json": [
+   "product-design"
+  ],
+  ".engine/check/product-design-form.json": [
+   "product-design"
+  ],
+  ".engine/check/product-lock-integrity.json": [
+   "product-design"
+  ],
+  ".engine/check/product-spec-coverage.json": [
+   "product-design"
+  ],
+  ".engine/check/product-spec-form.json": [
+   "product-design"
+  ],
+  ".engine/check/product-spec-matrix.json": [
+   "product-design"
+  ],
+  ".engine/check/protection.json": [
+   "core"
+  ],
+  ".engine/check/provider-exceptions-schema.json": [
+   "validators-core"
+  ],
+  ".engine/check/provider-vocabulary-confinement.json": [
+   "validators-core"
+  ],
+  ".engine/check/provisioning-catalog.json": [
+   "validators-core"
+  ],
+  ".engine/check/release-integrity.json": [
+   "validators-core"
+  ],
+  ".engine/check/self-map-drift.json": [
+   "validators-core"
+  ],
+  ".engine/check/skill-coherence.json": [
+   "validators-core"
+  ],
+  ".engine/check/skill-frontmatter.json": [
+   "validators-core"
+  ],
+  ".engine/check/skill-shape.json": [
+   "validators-core"
+  ],
+  ".engine/check/state-cursor.json": [
+   "validators-core"
+  ],
+  ".engine/check/template-shape-spec.json": [
+   "validators-core"
+  ],
+  ".engine/check/untracked-surface.json": [
+   "validators-core"
+  ],
+  ".engine/check/upstream-clean.json": [
+   "external-contribution"
+  ],
+  ".engine/check/uv-group-drift.json": [
+   "validators-core"
+  ],
+  ".engine/conduct/defaults.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0001-versioned-template.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0002-repo-authoritative-truth.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0003-ship-the-substrate-not-the-data.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0004-degrade-to-git-native.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0005-nudge-locally-hardgate-at-review.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0006-three-enforcement-tiers.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0007-engine-product-wall.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0008-fault-containment-at-the-seams.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0009-modules-declare-files-and-wiring.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0010-derived-binding-by-presence.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0011-guardrail-integrity.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0012-deferral-seams.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0013-one-trust-gate-evidence.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0014-one-history-living-documents.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0015-remediation-loop-not-self-healing.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0016-ontology-surfaces-catalogued-ranked.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0017-engine-namespaced-identifiers.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0018-cognitive-substrate-one-workflow.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0019-memory-knowledge-distinct-substrates.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0020-thin-dispatcher-kind-registry.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0021-control-plane-enforcement-layer.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0022-hooks-lifecycle-bindings-block-budget.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0023-one-manifest-grammar-provisioning.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0024-modes-three-stances-two-axes.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0025-draft-pr-is-the-claim.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0026-external-contribution-fork-native.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0027-execution-substrate-uv-runtime.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0028-cold-adversarial-audit.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0029-contract-threshold-standing-rule-tier.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0030-operator-stance-floor.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0031-state-cursor-pointers-and-counts.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0032-attention-policy-plus-function.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0033-boot-refresh-family.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0034-dual-provider-adapter-core.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0035-deferred-work-marker.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0037-upgrade-overwrite-disclosure.md": [
+   "core"
+  ],
+  ".engine/contracts/eADR-0038-memory-transcript-first-recall.md": [
+   "core"
+  ],
+  ".engine/docs/getting-started.md": [
+   "core"
+  ],
+  ".engine/docs/product-design.md": [
+   "product-design"
+  ],
+  ".engine/erasures/proposal.json": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/interfaces/knowledge-retrieval.json": [
+   "core"
+  ],
+  ".engine/interfaces/memory-control.json": [
+   "core"
+  ],
+  ".engine/interfaces/search.json": [
+   "core"
+  ],
+  ".engine/knowledge/graph.json": [
+   "core"
+  ],
+  ".engine/memory-backup/pointer.json": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/modules/core/migrations/retire_scent_threshold.py": [
+   "core"
+  ],
+  ".engine/modules/product-design/scaffold/adr.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/architecture.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/diataxis-explanation.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/diataxis-how-to.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/diataxis-reference.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/diataxis-tutorial.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/principles.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/spec-build-plan.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/spec-capability.md": [
+   "product-design"
+  ],
+  ".engine/modules/product-design/scaffold/spec-index.md": [
+   "product-design"
+  ],
+  ".engine/operations/boot-session-start.md": [
+   "core"
+  ],
+  ".engine/operations/build-orchestration.md": [
+   "core"
+  ],
+  ".engine/operations/close-turn.md": [
+   "core"
+  ],
+  ".engine/operations/codex-validation.md": [
+   "core"
+  ],
+  ".engine/operations/conduct-author.md": [
+   "core"
+  ],
+  ".engine/operations/control-plane-bootstrap.md": [
+   "core"
+  ],
+  ".engine/operations/engine-arrival.md": [
+   "core"
+  ],
+  ".engine/operations/engine-development.md": [
+   "core"
+  ],
+  ".engine/operations/engine-remove.md": [
+   "core"
+  ],
+  ".engine/operations/engine-team-switch.md": [
+   "core"
+  ],
+  ".engine/operations/engine-upgrade.md": [
+   "core"
+  ],
+  ".engine/operations/external-contribution-issue.md": [
+   "external-contribution"
+  ],
+  ".engine/operations/external-contribution-submit.md": [
+   "external-contribution"
+  ],
+  ".engine/operations/first-run.md": [
+   "core"
+  ],
+  ".engine/operations/knowledge-impact-check.md": [
+   "core"
+  ],
+  ".engine/operations/memory-recall.md": [
+   "core"
+  ],
+  ".engine/operations/module-add.md": [
+   "core"
+  ],
+  ".engine/operations/module-remove.md": [
+   "core"
+  ],
+  ".engine/operations/onboarding-read.md": [
+   "core"
+  ],
+  ".engine/operations/operating-modes.md": [
+   "core"
+  ],
+  ".engine/operations/product-intake.md": [
+   "product-design"
+  ],
+  ".engine/operations/projects-sync-setup.md": [
+   "github-projects-sync"
+  ],
+  ".engine/operations/routine-entry.md": [
+   "routine-mode"
+  ],
+  ".engine/operations/tune-policy.md": [
+   "core"
+  ],
+  ".engine/policies/attention.md": [
+   "core"
+  ],
+  ".engine/policies/contract-threshold.md": [
+   "core"
+  ],
+  ".engine/policies/dependency-discipline.md": [
+   "dependency-discipline"
+  ],
+  ".engine/policies/escalation.md": [
+   "core"
+  ],
+  ".engine/policies/external-contribution.md": [
+   "external-contribution"
+  ],
+  ".engine/policies/finding-disposition.md": [
+   "core"
+  ],
+  ".engine/policies/migration-discipline.md": [
+   "migration-discipline"
+  ],
+  ".engine/policies/model-bindings.json": [
+   "core"
+  ],
+  ".engine/policies/model-routing.md": [
+   "core"
+  ],
+  ".engine/policies/provider-exceptions.json": [
+   "validators-core"
+  ],
+  ".engine/policies/spec-structure-integrity.md": [
+   "product-design"
+  ],
+  ".engine/policies/triage-threshold.md": [
+   "core"
+  ],
+  ".engine/product-spec-matrix.json": [
+   "product-design"
+  ],
+  ".engine/provisioning/first-run-assets.json": [
+   "core"
+  ],
+  ".engine/provisioning/module-catalog.json": [
+   "core"
+  ],
+  ".engine/provisioning/module-surfaces.json": [
+   "core"
+  ],
+  ".engine/schemas/agent.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/ambient-capture.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/attention-result.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/audit-finding.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/check.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/codex-agent.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/codex-hooks.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/codex-skill.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/concern-list.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/conduct.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/conformance-verdicts.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/contract.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/doc.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/engine.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/execution-state.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/finding-record.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/finding.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/first-run-assets.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/interface.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/knowledge.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/model-bindings.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/module.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/operation.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/plan-review-finding.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/policy.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/pre-submission-review-finding.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/product-spec-matrix.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/projects-board.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/provider-exceptions.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/provisioning-catalog.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/skill.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/state.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/suites.v1.json": [
+   "core"
+  ],
+  ".engine/schemas/surface-catalog.json": [
+   "core"
+  ],
+  ".engine/schemas/surface-catalog.schema.json": [
+   "core"
+  ],
+  ".engine/schemas/template.v1.json": [
+   "core"
+  ],
+  ".engine/self-map.md": [
+   "core"
+  ],
+  ".engine/state/execution.json": [
+   "core"
+  ],
+  ".engine/state/state.json": [
+   "core"
+  ],
+  ".engine/suites.json": [
+   "core"
+  ],
+  ".engine/templates/agent.md": [
+   "core"
+  ],
+  ".engine/templates/build-issue.md": [
+   "core"
+  ],
+  ".engine/templates/codex-skill.md": [
+   "core"
+  ],
+  ".engine/templates/conduct.md": [
+   "core"
+  ],
+  ".engine/templates/contract.md": [
+   "core"
+  ],
+  ".engine/templates/control-plane-bootstrap.md": [
+   "core"
+  ],
+  ".engine/templates/doc.md": [
+   "core"
+  ],
+  ".engine/templates/first-run.md": [
+   "core"
+  ],
+  ".engine/templates/operation.md": [
+   "core"
+  ],
+  ".engine/templates/policy.md": [
+   "core"
+  ],
+  ".engine/templates/risk-assessment.md": [
+   "core"
+  ],
+  ".engine/templates/skill.md": [
+   "core"
+  ],
+  ".engine/tools/agent_bindings.py": [
+   "core"
+  ],
+  ".engine/tools/agent_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/attention.py": [
+   "core"
+  ],
+  ".engine/tools/attention_rank.py": [
+   "core"
+  ],
+  ".engine/tools/audit_digest.py": [
+   "core"
+  ],
+  ".engine/tools/audit_digest_fingerprint_check.py": [
+   "core"
+  ],
+  ".engine/tools/audit_digest_staleness_check.py": [
+   "core"
+  ],
+  ".engine/tools/audit_soft_findings.py": [
+   "core"
+  ],
+  ".engine/tools/audit_soft_promote.py": [
+   "core"
+  ],
+  ".engine/tools/authority_reservation_check.py": [
+   "core"
+  ],
+  ".engine/tools/block_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/boot.py": [
+   "core"
+  ],
+  ".engine/tools/boot_alarm_ledger.py": [
+   "core"
+  ],
+  ".engine/tools/boot_slice.py": [
+   "core"
+  ],
+  ".engine/tools/bootstrap.py": [
+   "core"
+  ],
+  ".engine/tools/build_readiness.py": [
+   "core"
+  ],
+  ".engine/tools/census_completeness_check.py": [
+   "core"
+  ],
+  ".engine/tools/checkout_health.py": [
+   "core"
+  ],
+  ".engine/tools/close.py": [
+   "core"
+  ],
+  ".engine/tools/close_linkage_preflight.py": [
+   "core"
+  ],
+  ".engine/tools/codex-hook-runner.sh": [
+   "core"
+  ],
+  ".engine/tools/codex_agent_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/codex_gen.py": [
+   "core"
+  ],
+  ".engine/tools/codex_skill_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/conduct_shape_check.py": [
+   "core"
+  ],
+  ".engine/tools/conduct_weakening_check.py": [
+   "core"
+  ],
+  ".engine/tools/conformance_sweep.py": [
+   "core"
+  ],
+  ".engine/tools/demo_467_deployment_eadr_namespace.py": [
+   "core"
+  ],
+  ".engine/tools/demo_594_rollback_discard.py": [
+   "core"
+  ],
+  ".engine/tools/demo_594_upgrade_tail_reexec.py": [
+   "core"
+  ],
+  ".engine/tools/demo_599_upgrade_reconcile.py": [
+   "core"
+  ],
+  ".engine/tools/demo_599c_migration_accumulation.py": [
+   "core"
+  ],
+  ".engine/tools/demo_599d_upgrade_floor.py": [
+   "core"
+  ],
+  ".engine/tools/demo_663_optional_module_upgrade.py": [
+   "core"
+  ],
+  ".engine/tools/demo_664_release_gate.py": [
+   "core"
+  ],
+  ".engine/tools/demo_actionlint.py": [
+   "core"
+  ],
+  ".engine/tools/demo_attention_live_dials.py": [
+   "core"
+  ],
+  ".engine/tools/demo_audit_concern_list.py": [
+   "core"
+  ],
+  ".engine/tools/demo_audit_digest.py": [
+   "core"
+  ],
+  ".engine/tools/demo_audit_soft_findings.py": [
+   "core"
+  ],
+  ".engine/tools/demo_audit_soft_promote.py": [
+   "core"
+  ],
+  ".engine/tools/demo_boot_alarm_collapse.py": [
+   "core"
+  ],
+  ".engine/tools/demo_boot_slice.py": [
+   "core"
+  ],
+  ".engine/tools/demo_build_entry_depth_gate.py": [
+   "core"
+  ],
+  ".engine/tools/demo_ci_author_exempt.py": [
+   "core"
+  ],
+  ".engine/tools/demo_contract_rate.py": [
+   "core"
+  ],
+  ".engine/tools/demo_control_plane_labels.py": [
+   "core"
+  ],
+  ".engine/tools/demo_derived_reconcile.py": [
+   "core"
+  ],
+  ".engine/tools/demo_first_run_guard.py": [
+   "core"
+  ],
+  ".engine/tools/demo_first_run_reference_closure.py": [
+   "core"
+  ],
+  ".engine/tools/demo_focus_read.py": [
+   "core"
+  ],
+  ".engine/tools/demo_home_repo_seam.py": [
+   "core"
+  ],
+  ".engine/tools/demo_hook_runner.py": [
+   "core"
+  ],
+  ".engine/tools/demo_inbox_drain.py": [
+   "core"
+  ],
+  ".engine/tools/demo_map_reachability.py": [
+   "core"
+  ],
+  ".engine/tools/demo_mechanic_build.py": [
+   "core"
+  ],
+  ".engine/tools/demo_mechanic_orientation.py": [
+   "core"
+  ],
+  ".engine/tools/demo_memory_degradation_backup.py": [
+   "core"
+  ],
+  ".engine/tools/demo_operator_backlog.py": [
+   "core"
+  ],
+  ".engine/tools/demo_overlay_disclosure.py": [
+   "core"
+  ],
+  ".engine/tools/demo_pr_reconcile.py": [
+   "core"
+  ],
+  ".engine/tools/demo_release_cut.py": [
+   "core"
+  ],
+  ".engine/tools/demo_release_pr_mergeable.py": [
+   "core"
+  ],
+  ".engine/tools/demo_release_product_mode.py": [
+   "core"
+  ],
+  ".engine/tools/demo_release_terminal.py": [
+   "core"
+  ],
+  ".engine/tools/demo_repo_behavior.py": [
+   "core"
+  ],
+  ".engine/tools/demo_restore_migration_routing.py": [
+   "core"
+  ],
+  ".engine/tools/demo_reverse_adjacency.py": [
+   "core"
+  ],
+  ".engine/tools/demo_scope_profile.py": [
+   "core"
+  ],
+  ".engine/tools/demo_secret_scan.py": [
+   "core"
+  ],
+  ".engine/tools/demo_security_floor.py": [
+   "core"
+  ],
+  ".engine/tools/demo_security_seed.py": [
+   "core"
+  ],
+  ".engine/tools/demo_state_cursor_honesty.py": [
+   "core"
+  ],
+  ".engine/tools/demo_weakening_guard_narrowed_set.py": [
+   "core"
+  ],
+  ".engine/tools/dependency_discipline/__init__.py": [
+   "dependency-discipline"
+  ],
+  ".engine/tools/dependency_discipline/pinning.py": [
+   "dependency-discipline"
+  ],
+  ".engine/tools/dependency_discipline/review.py": [
+   "dependency-discipline"
+  ],
+  ".engine/tools/dependency_discipline/test_pinning.py": [
+   "dependency-discipline"
+  ],
+  ".engine/tools/dependency_discipline/test_review.py": [
+   "dependency-discipline"
+  ],
+  ".engine/tools/disposition_issue_resolution_check.py": [
+   "core"
+  ],
+  ".engine/tools/engine_help.py": [
+   "core"
+  ],
+  ".engine/tools/engine_status.py": [
+   "core"
+  ],
+  ".engine/tools/engine_todo.py": [
+   "core"
+  ],
+  ".engine/tools/engine_todo_form_check.py": [
+   "core"
+  ],
+  ".engine/tools/execution_environment.py": [
+   "core"
+  ],
+  ".engine/tools/external_contribution/__init__.py": [
+   "external-contribution"
+  ],
+  ".engine/tools/external_contribution/contribute_issue.py": [
+   "external-contribution"
+  ],
+  ".engine/tools/external_contribution/submit.py": [
+   "external-contribution"
+  ],
+  ".engine/tools/external_contribution/test_contribute_issue.py": [
+   "external-contribution"
+  ],
+  ".engine/tools/external_contribution/test_submit.py": [
+   "external-contribution"
+  ],
+  ".engine/tools/external_contribution/test_upstream_clean.py": [
+   "external-contribution"
+  ],
+  ".engine/tools/external_contribution/upstream_clean_check.py": [
+   "external-contribution"
+  ],
+  ".engine/tools/first_run_health.py": [
+   "core"
+  ],
+  ".engine/tools/first_run_reference_closure_check.py": [
+   "core"
+  ],
+  ".engine/tools/github_client.py": [
+   "core"
+  ],
+  ".engine/tools/greenfield_intake.py": [
+   "core"
+  ],
+  ".engine/tools/hard_check_bite_check.py": [
+   "core"
+  ],
+  ".engine/tools/hook-runner.sh": [
+   "core"
+  ],
+  ".engine/tools/hooks.py": [
+   "core"
+  ],
+  ".engine/tools/in_tool_demo_failure_path_check.py": [
+   "core"
+  ],
+  ".engine/tools/instantiator.py": [
+   "core"
+  ],
+  ".engine/tools/interface_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/issue_author.py": [
+   "core"
+  ],
+  ".engine/tools/issue_conformance_ci.py": [
+   "core"
+  ],
+  ".engine/tools/issue_gate.py": [
+   "core"
+  ],
+  ".engine/tools/knowledge_gen.py": [
+   "core"
+  ],
+  ".engine/tools/knowledge_index.py": [
+   "core"
+  ],
+  ".engine/tools/knowledge_mcp_server.py": [
+   "core"
+  ],
+  ".engine/tools/knowledge_query.py": [
+   "core"
+  ],
+  ".engine/tools/knowledge_vocabulary_check.py": [
+   "core"
+  ],
+  ".engine/tools/lens_consumption_check.py": [
+   "core"
+  ],
+  ".engine/tools/license_health.py": [
+   "core"
+  ],
+  ".engine/tools/license_seeds.py": [
+   "core"
+  ],
+  ".engine/tools/local_references.py": [
+   "core"
+  ],
+  ".engine/tools/mechanic_build.py": [
+   "core"
+  ],
+  ".engine/tools/memory/__init__.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/backup_vault.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/capture.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/compact.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/erase.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/erasure_observer.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/export.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/forget.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/index.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/ledger.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/ledger_health.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/ledger_migrations.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/legacy_shapes.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/mcp_server.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/pins.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/recall.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/records.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/rescrub.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/restore_vault.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/scrub.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/semantic/NOTICE.txt": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/__init__.py": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/checksums.json": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/embed.py": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/potion-retrieval-32m-int8.npz": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/store.py": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/test_semantic.py": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/vocab.txt": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/semantic/wordpiece.py": [
+   "memory-semantic-recall"
+  ],
+  ".engine/tools/memory/test_backup_vault.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_capture.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_compact.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_compact_trigger.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_erase.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_erase_enact.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_erasure_observer.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_export.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_forget.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_index.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_ledger.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_ledger_health.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_ledger_migrations.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_mcp_server.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_pins.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_recall.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_records.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_rescrub.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_restore_vault.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_scrub.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory/test_search.py": [
+   "memory-substrate-sqlite-fts5"
+  ],
+  ".engine/tools/memory_pointer_public_safety_check.py": [
+   "core"
+  ],
+  ".engine/tools/migration_discipline/__init__.py": [
+   "migration-discipline"
+  ],
+  ".engine/tools/migration_discipline/rollback.py": [
+   "migration-discipline"
+  ],
+  ".engine/tools/migration_discipline/test_rollback.py": [
+   "migration-discipline"
+  ],
+  ".engine/tools/milestone_emit.py": [
+   "core"
+  ],
+  ".engine/tools/modes.py": [
+   "core"
+  ],
+  ".engine/tools/module_catalog.py": [
+   "core"
+  ],
+  ".engine/tools/module_coherence.py": [
+   "core"
+  ],
+  ".engine/tools/module_manager.py": [
+   "core"
+  ],
+  ".engine/tools/module_surfaces.py": [
+   "core"
+  ],
+  ".engine/tools/moment.py": [
+   "core"
+  ],
+  ".engine/tools/operator_guarded_paths_check.py": [
+   "core"
+  ],
+  ".engine/tools/operator_local_references_check.py": [
+   "core"
+  ],
+  ".engine/tools/operator_overrides.py": [
+   "core"
+  ],
+  ".engine/tools/overlay_disclosure.py": [
+   "core"
+  ],
+  ".engine/tools/policy_override_check.py": [
+   "core"
+  ],
+  ".engine/tools/pr_reconcile.py": [
+   "core"
+  ],
+  ".engine/tools/product_design/__init__.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/adr_form.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/coverage.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/design_form.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/lock_integrity.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/obligation_matrix.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/spec_form.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_adr_form.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_authoring_scaffolds.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_coverage.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_design_form.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_lock_integrity.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_obligation_matrix.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_scaffold.py": [
+   "product-design"
+  ],
+  ".engine/tools/product_design/test_spec_form.py": [
+   "product-design"
+  ],
+  ".engine/tools/projects_sync/__init__.py": [
+   "github-projects-sync"
+  ],
+  ".engine/tools/projects_sync/projects_sync.py": [
+   "github-projects-sync"
+  ],
+  ".engine/tools/projects_sync/test_projects_sync.py": [
+   "github-projects-sync"
+  ],
+  ".engine/tools/protection_guard.py": [
+   "core"
+  ],
+  ".engine/tools/provider_parity_check.py": [
+   "core"
+  ],
+  ".engine/tools/provider_vocab_check.py": [
+   "core"
+  ],
+  ".engine/tools/providers.py": [
+   "core"
+  ],
+  ".engine/tools/quiet_call.py": [
+   "core"
+  ],
+  ".engine/tools/release_cut.py": [
+   "core"
+  ],
+  ".engine/tools/release_gate.py": [
+   "core"
+  ],
+  ".engine/tools/release_integrity_check.py": [
+   "core"
+  ],
+  ".engine/tools/release_terminal.py": [
+   "core"
+  ],
+  ".engine/tools/repo_behavior.py": [
+   "core"
+  ],
+  ".engine/tools/repo_identity.py": [
+   "core"
+  ],
+  ".engine/tools/scent.py": [
+   "core"
+  ],
+  ".engine/tools/scope_behaviors_check.py": [
+   "core"
+  ],
+  ".engine/tools/scope_profile.py": [
+   "core"
+  ],
+  ".engine/tools/security_floor.py": [
+   "core"
+  ],
+  ".engine/tools/self_map.py": [
+   "core"
+  ],
+  ".engine/tools/self_map_check.py": [
+   "core"
+  ],
+  ".engine/tools/selftest.py": [
+   "core"
+  ],
+  ".engine/tools/skill_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/spec_referent.py": [
+   "core"
+  ],
+  ".engine/tools/standing_situation.py": [
+   "core"
+  ],
+  ".engine/tools/team_switch.py": [
+   "core"
+  ],
+  ".engine/tools/telemetry.py": [
+   "core"
+  ],
+  ".engine/tools/template_shape_spec_check.py": [
+   "core"
+  ],
+  ".engine/tools/test_actionlint.py": [
+   "core"
+  ],
+  ".engine/tools/test_agent.py": [
+   "core"
+  ],
+  ".engine/tools/test_agent_bindings.py": [
+   "core"
+  ],
+  ".engine/tools/test_agent_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/test_attention.py": [
+   "core"
+  ],
+  ".engine/tools/test_audit_digest.py": [
+   "core"
+  ],
+  ".engine/tools/test_audit_prep.py": [
+   "core"
+  ],
+  ".engine/tools/test_audit_soft_findings.py": [
+   "core"
+  ],
+  ".engine/tools/test_audit_soft_promote.py": [
+   "core"
+  ],
+  ".engine/tools/test_block_coherence.py": [
+   "core"
+  ],
+  ".engine/tools/test_boot.py": [
+   "core"
+  ],
+  ".engine/tools/test_boot_alarm_ledger.py": [
+   "core"
+  ],
+  ".engine/tools/test_boot_slice.py": [
+   "core"
+  ],
+  ".engine/tools/test_bootstrap.py": [
+   "core"
+  ],
+  ".engine/tools/test_build_readiness.py": [
+   "core"
+  ],
+  ".engine/tools/test_census_completeness.py": [
+   "core"
+  ],
+  ".engine/tools/test_checkout_health.py": [
+   "core"
+  ],
+  ".engine/tools/test_close.py": [
+   "core"
+  ],
+  ".engine/tools/test_close_linkage_preflight.py": [
+   "core"
+  ],
+  ".engine/tools/test_codex_gen.py": [
+   "core"
+  ],
+  ".engine/tools/test_conduct.py": [
+   "core"
+  ],
+  ".engine/tools/test_conformance_sweep.py": [
+   "core"
+  ],
+  ".engine/tools/test_contract.py": [
+   "core"
+  ],
+  ".engine/tools/test_contract_canon.py": [
+   "core"
+  ],
+  ".engine/tools/test_design_review.py": [
+   "core"
+  ],
+  ".engine/tools/test_disposition_issue_resolution.py": [
+   "core"
+  ],
+  ".engine/tools/test_doc.py": [
+   "core"
+  ],
+  ".engine/tools/test_engine_help.py": [
+   "core"
+  ],
+  ".engine/tools/test_engine_home_travel.py": [
+   "core"
+  ],
+  ".engine/tools/test_engine_status.py": [
+   "core"
+  ],
+  ".engine/tools/test_engine_todo.py": [
+   "core"
+  ],
+  ".engine/tools/test_execution_environment.py": [
+   "core"
+  ],
+  ".engine/tools/test_first_run_health.py": [
+   "core"
+  ],
+  ".engine/tools/test_first_run_reference_closure.py": [
+   "core"
+  ],
+  ".engine/tools/test_github_client.py": [
+   "core"
+  ],
+  ".engine/tools/test_greenfield_intake.py": [
+   "core"
+  ],
+  ".engine/tools/test_hard_check_bite.py": [
+   "core"
+  ],
+  ".engine/tools/test_hooks.py": [
+   "core"
+  ],
+  ".engine/tools/test_in_tool_demo_failure_path.py": [
+   "core"
+  ],
+  ".engine/tools/test_instantiator.py": [
+   "core"
+  ],
+  ".engine/tools/test_interface.py": [
+   "core"
+  ],
+  ".engine/tools/test_interface_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/test_issue_author.py": [
+   "core"
+  ],
+  ".engine/tools/test_issue_conformance_ci.py": [
+   "core"
+  ],
+  ".engine/tools/test_issue_gate.py": [
+   "core"
+  ],
+  ".engine/tools/test_knowledge.py": [
+   "core"
+  ],
+  ".engine/tools/test_knowledge_query.py": [
+   "core"
+  ],
+  ".engine/tools/test_knowledge_vocabulary.py": [
+   "core"
+  ],
+  ".engine/tools/test_lens_consumption.py": [
+   "core"
+  ],
+  ".engine/tools/test_license_health.py": [
+   "core"
+  ],
+  ".engine/tools/test_license_seeds.py": [
+   "core"
+  ],
+  ".engine/tools/test_local_references.py": [
+   "core"
+  ],
+  ".engine/tools/test_mechanic_build.py": [
+   "core"
+  ],
+  ".engine/tools/test_memory_pointer_public_safety.py": [
+   "core"
+  ],
+  ".engine/tools/test_milestone_emit.py": [
+   "core"
+  ],
+  ".engine/tools/test_modes.py": [
+   "core"
+  ],
+  ".engine/tools/test_module_catalog.py": [
+   "core"
+  ],
+  ".engine/tools/test_module_manager.py": [
+   "core"
+  ],
+  ".engine/tools/test_module_surfaces.py": [
+   "core"
+  ],
+  ".engine/tools/test_modules.py": [
+   "core"
+  ],
+  ".engine/tools/test_moment.py": [
+   "core"
+  ],
+  ".engine/tools/test_operation.py": [
+   "core"
+  ],
+  ".engine/tools/test_operator_guarded_paths_check.py": [
+   "core"
+  ],
+  ".engine/tools/test_operator_local_references_check.py": [
+   "core"
+  ],
+  ".engine/tools/test_operator_overrides.py": [
+   "core"
+  ],
+  ".engine/tools/test_optional_module_isolation.py": [
+   "core"
+  ],
+  ".engine/tools/test_overlay_disclosure.py": [
+   "core"
+  ],
+  ".engine/tools/test_policy.py": [
+   "core"
+  ],
+  ".engine/tools/test_policy_override_check.py": [
+   "core"
+  ],
+  ".engine/tools/test_pr_reconcile.py": [
+   "core"
+  ],
+  ".engine/tools/test_protection_guard.py": [
+   "core"
+  ],
+  ".engine/tools/test_providers.py": [
+   "core"
+  ],
+  ".engine/tools/test_qa_review.py": [
+   "core"
+  ],
+  ".engine/tools/test_quiet_call.py": [
+   "core"
+  ],
+  ".engine/tools/test_release_cut.py": [
+   "core"
+  ],
+  ".engine/tools/test_release_gate.py": [
+   "core"
+  ],
+  ".engine/tools/test_release_terminal.py": [
+   "core"
+  ],
+  ".engine/tools/test_repo_behavior.py": [
+   "core"
+  ],
+  ".engine/tools/test_repo_identity.py": [
+   "core"
+  ],
+  ".engine/tools/test_retired_settings.py": [
+   "core"
+  ],
+  ".engine/tools/test_scent.py": [
+   "core"
+  ],
+  ".engine/tools/test_scope_profile.py": [
+   "core"
+  ],
+  ".engine/tools/test_secret_scan.py": [
+   "core"
+  ],
+  ".engine/tools/test_security_floor.py": [
+   "core"
+  ],
+  ".engine/tools/test_security_seed.py": [
+   "core"
+  ],
+  ".engine/tools/test_seed.py": [
+   "core"
+  ],
+  ".engine/tools/test_self_map.py": [
+   "core"
+  ],
+  ".engine/tools/test_self_review_setup.py": [
+   "core"
+  ],
+  ".engine/tools/test_selftest.py": [
+   "core"
+  ],
+  ".engine/tools/test_skill.py": [
+   "core"
+  ],
+  ".engine/tools/test_skill_coherence_check.py": [
+   "core"
+  ],
+  ".engine/tools/test_spec_referent.py": [
+   "core"
+  ],
+  ".engine/tools/test_standing_situation.py": [
+   "core"
+  ],
+  ".engine/tools/test_state.py": [
+   "core"
+  ],
+  ".engine/tools/test_team_switch.py": [
+   "core"
+  ],
+  ".engine/tools/test_telemetry.py": [
+   "core"
+  ],
+  ".engine/tools/test_tune.py": [
+   "core"
+  ],
+  ".engine/tools/test_unresolved_conversation_notice.py": [
+   "core"
+  ],
+  ".engine/tools/test_uv_group_drift.py": [
+   "core"
+  ],
+  ".engine/tools/test_validate.py": [
+   "core"
+  ],
+  ".engine/tools/test_wiring.py": [
+   "core"
+  ],
+  ".engine/tools/test_work_record.py": [
+   "core"
+  ],
+  ".engine/tools/tune.py": [
+   "core"
+  ],
+  ".engine/tools/unresolved_conversation_notice.py": [
+   "core"
+  ],
+  ".engine/tools/untracked_surface_check.py": [
+   "core"
+  ],
+  ".engine/tools/uv_group_drift_check.py": [
+   "core"
+  ],
+  ".engine/tools/validate.py": [
+   "core"
+  ],
+  ".engine/tools/weakening_guard.py": [
+   "core"
+  ],
+  ".engine/tools/wiring.py": [
+   "core"
+  ],
+  ".engine/tools/work_record.py": [
+   "core"
+  ]
+ }
+}

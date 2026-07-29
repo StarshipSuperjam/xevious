@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_PARITY_FIXTURE_ROOT": ".engine/_fixtures/codex-provider-parity/root"
+  }
+}

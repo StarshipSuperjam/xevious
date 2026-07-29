@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/memory-pointer-public-safety",
+  "target": { "path": ".engine/memory-backup/pointer.json" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/memory_pointer_public_safety_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The committed memory-backup pointer (.engine/memory-backup/pointer.json) records WHERE this project's saved memory is backed up. In a real project that location is yours to commit, but this public engine-template repository must always ship the unconfigured placeholder, so a maintainer's private vault location can never travel to everyone who uses the template. This rule fails if a CONFIGURED pointer (one carrying real owner/repo/namespace coordinates) is committed here; it only ever applies in the engine's own home repository and reads the committed file, not your local working copy, so a vault you keep configured locally never trips it. To fix it, restore the placeholder ({\"schema_version\": 1, \"configured\": false}) and keep your real pointer local."
+}

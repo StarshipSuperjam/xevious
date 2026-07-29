@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_DESIGN_ROOT": ".engine/_fixtures/product-design-form"
+  }
+}

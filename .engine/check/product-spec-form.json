@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/product-spec-form",
+  "target": { "context": "product-spec" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/product_design/spec_form.py" },
+  "tier": "hard",
+  "suites": ["CI", "pre-commit", "pre-close"],
+  "message": "Checks that your project's product specification under `docs/spec/` is well-formed in structure: a master index that lists every capability, its stage, and a link to its document, plus one document per capability carrying the sections and acceptance-criteria table a written-up capability needs. It checks structure, not whether the design is right — that is your call and the review lenses'. Scaled by stage: a document still marked not-yet-described needs only a recognized stage marker; one that is in progress or settled also needs its Summary, Behavior, and Acceptance criteria sections with a well-formed criteria table (each row: what must be true, how it is verified, and who can check it — you or the engine); and across the tree every document must appear in the index and the index's stage for each must match the document's own. A real structural problem in an in-progress or settled spec blocks the merge — the finding names the document and what to fix, and is always self-clearable (fix the named document, or move it back to the not-yet-described stage). When your project has no `docs/spec/` yet, the check says so plainly and does nothing — the normal state before a spec is written, never a silent pass — and it starts working once you add `docs/spec/`. It only ever reads your files; it never changes them."
+}

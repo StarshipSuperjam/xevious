@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_POINTER_REL": ".engine/_fixtures/memory-pointer-public-safety/pointer.json"
+  }
+}

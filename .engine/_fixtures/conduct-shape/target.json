@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_CONDUCT_DIR": ".engine/_fixtures/conduct-shape/conduct"
+  }
+}

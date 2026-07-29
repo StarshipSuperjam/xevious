@@ -1,0 +1,8 @@
+{
+  "id": "fixture/kind-custom-script-unreadable",
+  "kind": "custom/script",
+  "tier": "hard",
+  "target": {},
+  "params": { "script": "garbage.py" },
+  "message": "A custom/script check whose output is not a finding array must fail closed."
+}

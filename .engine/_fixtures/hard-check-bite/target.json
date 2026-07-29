@@ -1,0 +1,7 @@
+{
+  "env": {
+    "ENGINE_ROSTER_KINDS": "presence",
+    "ENGINE_FIXTURE_ROOT": ".engine/_fixtures/hard-check-bite/scenario-fixtures",
+    "ENGINE_ROSTER_DIR": ".engine/_fixtures/hard-check-bite/scenario-fixtures/empty-roster"
+  }
+}

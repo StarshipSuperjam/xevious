@@ -1,0 +1,186 @@
+{
+  "id": "memory-substrate-sqlite-fts5",
+  "version": "0.2.0",
+  "status": "required",
+  "provides": {
+    "tool": [
+      ".engine/tools/memory/*.py"
+    ],
+    "erasures": [
+      ".engine/erasures/proposal.json"
+    ],
+    "backup": [
+      ".engine/memory-backup/pointer.json"
+    ]
+  },
+  "depends": {
+    "core": ""
+  },
+  "wires": [
+    {
+      "type": "gitignore",
+      "key": "memory-substrate-ledger",
+      "lines": [
+        ".engine/memory/"
+      ]
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/memory/erasure_observer.py\" session-start"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/memory/erasure_observer.py\" session-start"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "clear",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/memory/erasure_observer.py\" session-start"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/memory/backup_vault.py\" session-start"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/memory/backup_vault.py\" session-start"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "clear",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/memory/backup_vault.py\" session-start"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "PreCompact",
+      "matcher": "",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/memory/compact.py\" pre-compact"
+      }
+    },
+    {
+      "type": "mcp",
+      "name": "engine-memory",
+      "definition": {
+        "command": "uv",
+        "args": [
+          "run",
+          "--directory",
+          "${CLAUDE_PROJECT_DIR:-.}/.engine",
+          "--frozen",
+          "--",
+          "python",
+          "tools/memory/mcp_server.py"
+        ]
+      }
+    },
+    {
+      "type": "codex-mcp",
+      "name": "engine-memory",
+      "definition": {
+        "command": "uv",
+        "args": [
+          "run",
+          "--directory",
+          ".engine",
+          "--frozen",
+          "--",
+          "python",
+          "tools/memory/mcp_server.py"
+        ],
+        "default_tools_approval_mode": "auto"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/memory/erasure_observer.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/memory/erasure_observer.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "clear",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/memory/erasure_observer.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/memory/backup_vault.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/memory/backup_vault.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "clear",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/memory/backup_vault.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "PreCompact",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/memory/compact.py\" pre-compact"
+      }
+    }
+  ]
+}

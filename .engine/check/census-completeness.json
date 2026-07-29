@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/census-completeness",
+  "target": { "context": "demo-census" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/census_completeness_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine's standalone demo files (.engine/tools/demo_*.py) are the maintainer's own build evidence, not features a finished project ships. Each must either be on the list of files removed when a project is first set up (.engine/provisioning/first-run-assets.json and _FIRST_RUN_ASSET_FILES in instantiator.py), or have a real reason to travel — a file that stays in a finished project actually uses it. This check goes red on a demo that has NEITHER: it isn't on the removal list and nothing that stays uses it, so it would ship into every generated project as leftover clutter. It only runs in the engine's own home repository (it does nothing in a generated project, where the demos are already gone), and it reads the removal list as plain data rather than importing the setup code it is about to check. It is a completeness check, not a judgment call: whether a genuinely-needed demo should instead become a standing feature people can run is a decision for this change's own review, not this check. To fix a flagged demo, add it to the removal list so it retires at first setup, or wire a file that stays to it."
+}

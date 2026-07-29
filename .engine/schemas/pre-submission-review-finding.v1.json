@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pre-submission-review-finding.v1 — one finding from a pre-submission-review lens",
+  "description": "The finding shape the four pre-submission-review reviewer personas (spec-conformance, usability, technical-integrity, security-governance) report on. It is the canonical finding shape (finding.v1 — a severity, a message, and a location) with one narrowing for this consumer: severity is one of blocking, serious, or nit. A reviewer reports findings on this shape and nothing more; the build orchestration collects them and decides what happens to each (fix before submitting, track as an Issue, or escalate) — the reviewer never decides. The severity is an internal field, never shown to a person as-is; anything an operator sees is translated into plain language first. This file is reference data: its own correctness as a schema is checked automatically, and a fixture test pins that it accepts a well-formed finding and rejects a bad severity or a missing field. No live check mechanically resolves a persona's output-contract to this file; the build-orchestration step consumes the roster and collects the findings, following this shape as posture rather than a mechanical gate.",
+  "type": "object",
+  "required": ["severity", "message", "location"],
+  "properties": {
+    "severity": {
+      "type": "string",
+      "enum": ["blocking", "serious", "nit"],
+      "description": "How serious the finding is, narrowed for the pre-submission-review roles to one of three: blocking (the built change should not be submitted until this is resolved), serious (a real problem the operator should weigh before submitting), or nit (a minor point, take it or leave it). It is an internal field, never shown to a person as-is; anything an operator sees is translated into plain language first."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A clear, complete, plain-language statement of the finding — what is wrong with the built change, why it matters, and what would resolve it — written so both a person and the engine can act on it, explaining any technical term rather than assuming it. The schema requires a message to be present; whether it truly meets that clarity bar is a judgment, not something this check can measure."
+    },
+    "location": {
+      "type": ["object", "null"],
+      "description": "Where the finding points, or null when it concerns the built change as a whole rather than one place (for example an acceptance criterion left unmet, or a release-readiness concern not tied to a single file). When present, it points to a file and, optionally, a line.",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path of the file the finding concerns, relative to the repository root."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "description": "Line number within the file (counting from 1), or null when the finding is not tied to a specific line."
+        }
+      },
+      "required": ["file"],
+      "additionalProperties": false
+    }
+  }
+}

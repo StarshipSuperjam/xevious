@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "doc.v1 — the frontmatter of one operator-facing doc",
+  "description": "The per-instance state carried in a doc's YAML frontmatter: a short human title, and — only when a doc is being phased out — where it sits in the artifact lifecycle. A doc is a hand-authored, plain-language explanation of the engine written for the operator (the human directing the engine), not for the AI: the AI's understanding of engine internals comes from derived output (the self-map and the knowledge graph), so a doc carries no design-of-the-engine burden and exists solely to help a person understand what the engine is and how to direct it. It is identified by its slug-named file under .engine/docs/, engine-namespaced by that location, so this schema carries no id field, mirroring the operation and policy surfaces. This schema governs only the frontmatter's shape, presence, and types; the prose body (the doc's sections) is the doc template's domain, checked separately by the doc-shape rule, and whether the prose actually tells the truth and still tells the operator how to use what it describes is the audits layer's judgment, not a check's. The status field is OPTIONAL and an omitted status means active: a doc is live the moment it merges and needs no status line, and the deprecated and retired states record a managed phase-out — so in plain terms an author marks a doc deprecated (later retired) only while replacing or removing it. No core consumer reads this field yet; it is the spec-faithful slot the later migration machinery will read. This file is enforced live: the doc-frontmatter check (a schema rule) validates each doc's parsed YAML frontmatter against it at the merge, routed through the surface catalog (the 'doc' surface), reading the frontmatter with the validation foundation's YAML reader; its own well-formedness and a representative instance's conformance are also fixture-tested by the surface's unit tests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title"],
+  "properties": {
+    "title": {
+      "description": "A short, plain-language label for the doc, written for a human scanning the docs directory (for example, 'Getting started with your Engine' or 'How to tune the engine's thresholds'). One line; no trailing punctuation needed.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Where this doc sits in the 'artifact' lifecycle. OPTIONAL — an omitted status means active. active = a live doc (the default the moment it merges); deprecated = in managed phase-out, kept while readers are pointed elsewhere; retired = no longer in use, kept for history. There is deliberately no 'draft' or 'proposed' state, because draftness is a branch state, not a governance value (a doc is born active on merge to the protected branch). Set this field only to mark a doc deprecated or retired.",
+      "enum": ["active", "deprecated", "retired"]
+    }
+  }
+}

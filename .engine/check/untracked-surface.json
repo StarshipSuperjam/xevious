@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/untracked-surface",
+  "target": { "path": ".engine" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/untracked_surface_check.py" },
+  "tier": "soft",
+  "suites": ["CI", "audit-prep"],
+  "message": "A file under the engine's surface is present in your working copy but git is not tracking it — most often a duplicate left behind by a file-sync tool, with a name like `something 2.py`. The shared checks run on a clean copy of the repository and never see it, so it can cause a failure that only happens on your machine, and regenerating the engine's map of itself would pull it in. Each such file is named individually with what to do; in short, if a file-sync tool created it, delete it, and if it is a new engine file you meant to add, commit it. This is a warning only and never blocks a merge."
+}

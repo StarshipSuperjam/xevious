@@ -1,0 +1,13 @@
+{
+  "id": "engine/check/codex-skill-frontmatter",
+  "target": {
+    "path": ".agents/skills/*/SKILL.md"
+  },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "A Codex skill's settings block (the part at the very top of the SKILL.md, between the --- lines) does not match the Codex skill format — the name or description Codex needs to discover and present the command is missing or malformed (the exact problem is named just above). A malformed skill silently vanishes from the operator's command list rather than erroring, so it is caught at the merge. The schema is resolved through the surface catalog (the 'codex-skill' surface). These files are committed renders of the canonical .claude/skills sources: fix the source and regenerate (uv run --directory .engine --frozen -- python tools/codex_gen.py generate), never the render."
+}

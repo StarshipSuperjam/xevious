@@ -1,0 +1,265 @@
+# release — cut a new release. The maintainer triggers this by hand (never on a schedule); it decides the next
+# version, records it, and opens a release PULL REQUEST for the maintainer to read and merge. WHAT it releases
+# depends on where it runs: in the ENGINE's construction repo it cuts the engine's version (from what changed
+# since the last engine release, recorded into the manifests); once the engine is DEPLOYED into a product repo
+# it cuts that repo's OWN PRODUCT version (from product-version.json), publishing the product, not the engine
+# (#516). The tool detects which automatically — the workflow is the same in both. THE MERGE IS THE ONLY
+# GO-AHEAD: this workflow opens the pull request and STOPS — it has no merge step, no auto-merge, and never
+# tags or publishes a release (the tag + GitHub Release on merge is release-publish.yml). The maintainer's
+# merge click stays the sole, human, unbypassable consent act.
+#
+# PRESENT-BUT-INERT UNTIL ARMED. The workflow ships committed in every repo, but a real run needs a one-time
+# maintainer setup: a repository secret `RELEASE_PAT` — a fine-grained personal access token scoped to THIS
+# repository only, with Pull requests: read and write (and nothing else — Metadata: read is added
+# automatically). That one permission is all it needs: this workflow uses the PAT solely to OPEN the release
+# pull request (the branch itself is pushed with the built-in GITHUB_TOKEN, so the PAT needs no Contents
+# access). It is needed because a pull request opened with the built-in GITHUB_TOKEN does NOT run the required
+# `engine-ci` check (GitHub's recursion guard suppresses it), so it would hang un-mergeable; a token that is a
+# distinct identity does run it. That token is the repo's first long-lived credential: if it leaked it would
+# let someone open pull requests under the maintainer's identity — so it is scoped to one repo, least-privilege,
+# and best given an expiry. With no `RELEASE_PAT` set, the first step below fails with a plain-language recovery
+# and NOTHING is changed.
+#
+# NOT EXERCISED END-TO-END DURING TEMPLATE CONSTRUCTION. This construction repo has no `RELEASE_PAT` and no
+# prior release, and opening a real release pull request IS the first actual cut. So this file is validated by
+# its GRAMMAR (the actionlint workflow lints it) and by read-review, NOT by a run; the version-decision, the
+# manifest write, and the pull-request-body rendering it drives ARE unit-tested and demoed (release_cut.py /
+# test_release_cut.py / demo_release_cut.py). The first end-to-end run is the first release itself.
+name: Release a new version
+# The maintainer sees this line, not the comment above, when this runs — so it says plainly what pressing
+# "Run workflow" does: it opens a pull request to review and merge; nothing is released until that merge.
+run-name: Release ${{ inputs.version || 'the next version' }} — opens a pull request for you to review and merge
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The new version, like 0.1.0. Leave blank to use the smallest version the changes require. A release can only ever go up, never down."
+        required: false
+        type: string
+
+# Only the built-in GITHUB_TOKEN's scope is governed here: it pushes the release branch, so it needs
+# contents: write. The pull request is opened with RELEASE_PAT, which carries its OWN scope — so no
+# pull-requests: write is granted to GITHUB_TOKEN (least privilege; the PAT, not this token, opens the PR).
+permissions:
+  contents: write
+
+# Single-flight the cut: a second dispatch QUEUES behind a running one, never cancels it mid-manifest-write.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+      # Secrets cannot be read in a job-level `if:`, so the arming check is the FIRST step and runs before any
+      # write — a missing credential must never strand a half-done cut. It fails with a plain-language recovery
+      # (no stack trace), distinct from the "present-but-broken" failure surfaced at the PR-open step below.
+      - name: Confirm the release credential is set up
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "${RELEASE_PAT}" ]; then
+            echo "::error::This release needs a credential that is not set up yet. Add a fine-grained personal access token as the repository secret RELEASE_PAT — scoped to THIS repository only, with Pull requests: read and write — then run this again. Nothing was changed."
+            exit 1
+          fi
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A full clone (all history + tags) so the version decision can diff against the last released tag; a
+          # shallow clone would silently distort any history-dependent step. Mandatory per the release spec.
+          # (The tag + GitHub Release on merge is published by release-publish.yml via the GitHub API, keyed to
+          # the merge commit SHA — it needs no local history, so this depth is for the diff here, not the tag.)
+          fetch-depth: 0
+      - name: Set up uv (pinned)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.8"
+      - name: Materialize the engine tool-runtime
+        run: uv sync --directory .engine --frozen
+      # Authenticated preflight: whether this is the FIRST cut or a later one is decided by whether the home
+      # repository has a published release — read live over the API. A misconfigured or unreachable token can
+      # make a real repository's releases look absent (a 404), which would be silently misread as "first cut".
+      # This step makes a bad token fail LOUDLY here instead of masquerading as a first release downstream.
+      - name: Confirm we can read this repository over the API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/${GITHUB_REPOSITORY}" -q .full_name >/dev/null; then
+            echo "::error::Could not read this repository over the API to check whether a release already exists. Nothing was changed. Run this again once the repository is reachable."
+            exit 1
+          fi
+      # Decide the versions — writes nothing. `propose` resolves the last release (the engine's home in the
+      # construction repo; the deployed repo's OWN last release once deployed) and, in engine diff mode, fetches
+      # that release's tree itself (a tested Python path, not a shell call into a private helper); first-cut mode
+      # and a product cut diff no tree. GITHUB_TOKEN authenticates the release read.
+      - name: Decide the new versions (writes nothing yet)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          uv run --directory .engine --frozen -- python tools/release_cut.py propose --json \
+            > "${RUNNER_TEMP}/proposal.json"
+      # Record the versions into the manifests (atomic, raise-only — the tool refuses a non-version string and a
+      # non-increase). The dispatch input reaches the shell ONLY as a quoted environment variable, never
+      # interpolated into the script body, so no version string can inject a shell command.
+      - name: Record the versions into the manifests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ENGINE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # Read a field from the proposal. `if ! var=$(...)` catches a read failure in THIS shell (not a
+          # swallowed subshell exit), so a corrupt proposal fails with a plain message, never a raw traceback.
+          proposal_field() {
+            uv run --directory .engine --frozen -- python -c \
+              "import json,sys; print(json.load(open('${RUNNER_TEMP}/proposal.json')).get(sys.argv[1]) or '')" "$1"
+          }
+          if ! mode="$(proposal_field mode)" || ! floor="$(proposal_field engine_floor_version)"; then
+            echo "::error::Could not read the release proposal this run produced (it may be malformed). Nothing was changed. Run this again."
+            exit 1
+          fi
+          # Resolve the engine version: the maintainer's value if given, otherwise the smallest the changes force.
+          if [ -n "${ENGINE_VERSION}" ]; then
+            target="${ENGINE_VERSION}"
+          elif [ "${mode}" = "first-cut" ]; then
+            echo "::error::This is the first release, so there is no earlier version to work from — run this again and enter the version to start at, like 0.1.0. Nothing was changed."
+            exit 1
+          elif [ -n "${floor}" ]; then
+            target="${floor}"
+          else
+            echo "::error::Nothing that changed since the last release forces a particular version, so there is no default to use — run this again and enter the version you want, like 1.0.1. Nothing was changed."
+            exit 1
+          fi
+          # Record the versions. On a refusal the tool prints the machine-readable result to stdout (captured
+          # into applied.json) AND the plain-language reason to stderr (shown in this log); `|| apply_ok=0`
+          # keeps `set -e` from aborting before we can surface a top-line annotation naming the reason.
+          apply_ok=1
+          if [ "${mode}" = "first-cut" ]; then
+            # The first cut establishes every capability's baseline at the engine's own new version.
+            uv run --directory .engine --frozen -- python tools/release_cut.py apply \
+              --engine "${target}" --all "${target}" --json > "${RUNNER_TEMP}/applied.json" || apply_ok=0
+          else
+            # A later cut enforces the mechanical engine floor AND the per-capability floors the proposal
+            # computed: the version may be raised above the floor, and a value below it is refused (not lowered).
+            uv run --directory .engine --frozen -- python tools/release_cut.py apply \
+              --engine "${target}" --proposal "${RUNNER_TEMP}/proposal.json" --json \
+              > "${RUNNER_TEMP}/applied.json" || apply_ok=0
+          fi
+          if [ "${apply_ok}" -eq 0 ]; then
+            # The tool already printed the plain-language reason and a "To fix:" line to this step's log above.
+            # Keep the top-line banner jargon-free (no internal reason code) and point the maintainer at it.
+            echo "::error::Recording the versions was refused — nothing was changed. Open this step's log above to see why and how to fix it, then run this again."
+            exit 1
+          fi
+          # Carry the version actually recorded (the authoritative value in applied.json) forward to the later
+          # steps, so the release branch, commit, and pull request are named for it even when the maintainer
+          # left the version blank and let the engine derive it.
+          RESOLVED_VERSION="$(uv run --directory .engine --frozen -- python -c \
+            "import json; print(json.load(open('${RUNNER_TEMP}/applied.json'))['engine'])")"
+          echo "RESOLVED_VERSION=${RESOLVED_VERSION}" >> "${GITHUB_ENV}"
+      # The version write above changed .engine/engine.json and every module manifest. Two GENERATED maps mirror
+      # those versions — the knowledge graph (.engine/knowledge/graph.json) and the self-map (.engine/self-map.md)
+      # — so they are now stale, and their CI drift checks (knowledge-coverage, self-map-drift) would turn the
+      # release pull request red. Regenerate both from the just-written manifests so the release commit is
+      # self-consistent — exactly the refresh the in-session PreToolUse hook does on any surface edit. This must
+      # run AFTER the manifests are written and BEFORE the branch commit below (git add -A stages the refreshed
+      # maps into the release commit).
+      - name: Refresh the generated maps to match the new versions
+        run: |
+          set -euo pipefail
+          uv run --directory .engine --frozen -- python tools/knowledge_gen.py generate
+          uv run --directory .engine --frozen -- python tools/self_map.py generate
+      # Deployment gate (#664): prove this release OPERATES and UPGRADES when deployed BEFORE the pull request
+      # is written or opened. Placed after the map refresh and before the PR steps, so a red fails the job and
+      # NO pull request is ever opened (the branch/commit/push all live in the final step). Fails CLOSED: any
+      # block or setup error exits nonzero and stops the cut. The gate is home-repo only; a deployed repo
+      # cutting ITS OWN product runs it inert (ran=false), which is correct — but on a genuine ENGINE cut it
+      # MUST run, so if this IS the engine's home repo (github.repository == the recorded home, an independent
+      # signal) yet the gate reported it did not run, that is an origin-signal misdetection and the cut fails
+      # closed rather than shipping the engine ungated.
+      - name: Verify the release operates and upgrades when deployed
+        timeout-minutes: 60
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          out="${RUNNER_TEMP}/deployment-gate.json"
+          # No --json here: the gate prints its PLAIN-LANGUAGE render to the log (the operator's signal), and
+          # --json-out writes the machine-readable result to a file for the home/ran misdetection check below.
+          uv run --directory .engine --frozen -- python tools/release_gate.py --json-out "${out}"
+          gate_rc=$?
+          if [ "${gate_rc}" -ne 0 ]; then
+            echo "::error::This release would not operate or upgrade cleanly when deployed, so no release pull request was opened and nothing was changed. See the plain-language reason in the step log above; fix the problem and cut the release again (a transient infrastructure hiccup clears by re-running the release-gate workflow)."
+            echo "### Deployment gate: BLOCKED — the release was not opened. The step log above says, in plain words, what would not deploy." >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+          # The gate's home-repo signal reads the on-disk git origin; this is the INDEPENDENT context signal.
+          # Compare case-insensitively (owner/repo casing is not significant), matching is_home_repo's fold.
+          # These reads use plain `python3` (present on the runner) so the RELATIVE engine.json path resolves
+          # from the workspace root — NOT `uv run --directory .engine`, which would chdir and break the path.
+          home="$(python3 -c "import json; print(json.load(open('.engine/engine.json')).get('home_repository','').lower())")"
+          ran="$(python3 -c "import json; print(json.load(open('${out}')).get('ran'))")"
+          gh_repo="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${gh_repo}" = "${home}" ] && [ "${ran}" != "True" ]; then
+            echo "::error::The deployment gate did not run on an engine release cut (the engine could not recognize its own repository), so the release was stopped and nothing was changed. This is an engine defect to report."
+            echo "### Deployment gate: BLOCKED — it did not run on an engine cut" >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+          if [ "${ran}" = "True" ]; then
+            echo "### Deployment gate: passed — verified this release operates and upgrades when deployed" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "### Deployment gate: not applicable here — this repository does not run the engine's own deployment gate (its own engine-ci runs the suite directly)" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      # Render the pull-request body from the proposal + the recorded versions — the maintainer's whole evidence
+      # bundle, authored by the tool (never composed in this shell) so the readiness legibility has one home.
+      - name: Write the release pull-request summary
+        run: |
+          set -euo pipefail
+          uv run --directory .engine --frozen -- python tools/release_cut.py pr-body \
+            --proposal "${RUNNER_TEMP}/proposal.json" --applied "${RUNNER_TEMP}/applied.json" \
+            > "${RUNNER_TEMP}/pr-body.md"
+      # Open the release pull request. The branch is pushed with the built-in token; the pull request is opened
+      # with RELEASE_PAT so `engine-ci` actually runs on it. This step OPENS THE PR AND STOPS — no merge, ever.
+      - name: Open the release pull request
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          git config user.name "engine release"
+          git config user.email "engine-release@users.noreply.github.com"
+          # Name the branch/commit/PR for the version actually recorded (RESOLVED_VERSION, carried from the
+          # record step), never the possibly-blank dispatch input — so the derive-the-version path produces a
+          # correctly named release, not "release/" / "Release " (blank).
+          # A collision-proof branch name (the run id + attempt are unique), so a leftover branch from a failed
+          # earlier run never blocks this push with a non-fast-forward and no force-push is ever needed.
+          branch="release/${RESOLVED_VERSION}-${RUN_ID}-${RUN_ATTEMPT}"
+          git checkout -b "${branch}"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::error::The release produced no version changes to record — the versions may already be set to ${RESOLVED_VERSION}. Nothing was changed."
+            exit 1
+          fi
+          git commit -m "Release ${RESOLVED_VERSION}"
+          # Push with the built-in token (the persisted checkout credential); the PR-open below uses the PAT.
+          if ! git push --set-upstream origin "${branch}"; then
+            echo "::error::Could not push the release branch ${branch}. No release was made. Run this again to retry."
+            exit 1
+          fi
+          # If the PR cannot be opened, the branch is already pushed — name it and give a plain recovery. This is
+          # the "present-but-broken" credential case (expired PAT, or missing Pull requests: write), distinct
+          # from the "not set up" failure at the first step.
+          if ! gh pr create --base "${{ github.event.repository.default_branch }}" --head "${branch}" \
+                --title "Release ${RESOLVED_VERSION}" \
+                --body-file "${RUNNER_TEMP}/pr-body.md"; then
+            echo "::error::The release branch ${branch} was pushed, but the release pull request could not be opened. This usually means the RELEASE_PAT secret is expired or is missing the Pull requests: write permission on this repository. No release was made. Fix the token, delete the branch ${branch}, and run this again."
+            exit 1
+          fi

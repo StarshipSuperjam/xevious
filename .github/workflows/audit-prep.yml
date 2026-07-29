@@ -1,0 +1,406 @@
+# audit-prep — the engine's scheduled self-review (audit-library). It runs the read-only `engine-audit` persona
+# on a recurring schedule, then commits the plain-language digest it produces (plus an auto-refreshed
+# where-we-stand cache) back as an ordinary pull request for the operator to read and merge.
+#
+# PRESENT-BUT-INERT UNTIL ARMED. The workflow ships committed in every repo, but the self-review only RUNS
+# once the operator does the one-time setup (a `CLAUDE_CODE_OAUTH_TOKEN` secret). With no token set, the
+# `gate` job skips the run cleanly — it never fails red — so an un-set-up repo never accumulates failing runs.
+# Because the workflow is committed from day one, the digest-staleness signal has a baseline to measure
+# against: a self-review that is missing, stopped, or never set up is surfaced on the operator's return.
+#
+# NOT EXERCISED END-TO-END DURING TEMPLATE CONSTRUCTION. This construction repo holds no subscription token,
+# and committing back needs a deployed repo — so this file is validated by its
+# GRAMMAR (the actionlint workflow lints it) and by read-review, NOT by a run. The plumbing it calls — the
+# digest seal and the offline-cache refresh — IS unit-tested and demoed. That the scheduled run itself
+# produces a digest is confirmed the first time an operator arms it (the same maturity honesty the project
+# applies to its other v1-shipped-but-undogfooded paths).
+#
+# THE PERSONA STAYS READ-ONLY — THE WORKFLOW COMMITS. The `engine-audit` persona only reads and reports; it never
+# writes. The sealing, the cache refresh, and the git + pull-request steps below are the WORKFLOW's, kept
+# separate from the persona, which is why this runs `claude` directly rather than an action that would let
+# the agent do the commit itself.
+#
+# CADENCE is the one cron line below (`17 7 * * 0` = weekly, Sundays 07:17 UTC). GitHub requires the schedule
+# to be written here literally — it cannot be read from a setting — so to change how often the self-review
+# runs, edit that one line (cron's five fields are minute hour day-of-month month day-of-week; e.g.
+# `17 7 1 * *` is monthly). A too-frequent cadence can run into the subscription's usage limits, so lengthen it
+# rather than shorten it if unsure. On a public repo GitHub disables a schedule after 60 idle days; a commit or
+# `gh workflow enable` re-arms it, and the staleness signal says so if it lapses.
+name: audit-prep
+
+on:
+  schedule:
+    - cron: "17 7 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  # Write access to the engine-labelled issues. The workflow READS the backlog (the debt register) to feed
+  # the self-review's concern #2 and the offline-cache refresh, and now also WRITES it: the promote step
+  # (issue #273 half 2) opens/updates an engine-labelled issue to durably track a standing length-budget
+  # finding. The bump from read to write is scoped to the engine-labelled issues this workflow manages and
+  # is the minimum that can open/update an issue; the persona never gets a GitHub token (it stays read-only).
+  issues: write
+  # Read access to the CI check-runs. The live CI-health triage step (`telemetry.py run`) reads the default
+  # branch head's check-runs — the first "signal of record" — to open/auto-resolve engine issues for a
+  # failing main-branch check. Under a `permissions:` block every unlisted scope is `none`, so the check-runs
+  # read needs this one added scope; it is read-only and does not widen the persona (which gets no token).
+  checks: read
+
+# Single-flight the scheduled self-review (the control-plane "periodic work cannot overlap itself" law): a
+# dispatch that lands while a run is in flight QUEUES behind it and never executes alongside it. Without this,
+# two runs can run at once and both reconcile the engine-labelled issues in the CI-health step above — a race
+# that can double-open or cross-resolve the same issue — while both also write committed state concurrently.
+# cancel-in-progress: false so a run mid-commit / mid-issue-write finishes rather than being cancelled part-way.
+# (It serializes overlap; a separately-triggered later run still opens its own digest PR — that is not a race.)
+concurrency:
+  group: audit-prep
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    outputs:
+      armed: ${{ steps.armed.outputs.armed }}
+    steps:
+      # Secrets cannot be read in a job-level `if:`, so a gate step reads the token into an env var and
+      # writes an `armed` output; the real job below is gated on that output. This is the skip-clean-when-
+      # unarmed pattern: no token -> the self-review is simply not set up yet, and the run ends green.
+      - name: Is the self-review armed?
+        id: armed
+        env:
+          AUDIT_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "${AUDIT_TOKEN}" ]; then
+            echo "armed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "armed=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::The scheduled self-review is not set up yet (no CLAUDE_CODE_OAUTH_TOKEN secret). Skipping cleanly — nothing failed."
+          fi
+
+  audit:
+    name: audit
+    needs: gate
+    if: needs.gate.outputs.armed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up uv (pinned)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.8"
+      - name: Materialize the engine tool-runtime
+        run: uv sync --directory .engine --frozen
+      - name: Install the Claude Code CLI (pinned)
+        env:
+          CLAUDE_CODE_VERSION: "2.1.176"
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      - name: Fetch the open engine-labelled issues for the self-review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Concern #2 of the self-review judges the engine-labelled issue backlog (the debt register), which
+          # lives on GitHub, not in the checkout. The read-only persona never reaches GitHub itself, so the
+          # workflow fetches the backlog here (the telemetry boundary owns the issue view) and the next step
+          # feeds it into the persona's prompt. The verb reports a read failure in-band (never a silent
+          # empty); if the fetch step itself fails, leave an honest marker so the persona still discloses the
+          # gap rather than silently skipping concern #2.
+          if ! uv run --directory .engine --frozen -- python tools/telemetry.py engine-issues \
+                 > "${RUNNER_TEMP}/engine-issues.md"; then
+            printf '%s\n' "OPEN ENGINE-LABELLED ISSUES (the debt register): could not be read this run (the fetch step failed). Treat the engine-labelled issue backlog as unreviewed and say so plainly in your digest." \
+              > "${RUNNER_TEMP}/engine-issues.md"
+          fi
+      - name: Fetch the engine's own recent self-reviews (audit-over-audit corroboration)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # audit_digest reads the prior digests from the default branch; without this it would fall back to
+          # "main" and 404 the history read on a `master` repo, reporting "no prior self-reviews" every cron.
+          GITHUB_DEFAULT_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Audit-over-audit: the self-review reads its OWN recent committed digests as over-time
+          # corroboration — a finding that keeps recurring is likely genuine, not a fluke — never as a
+          # decision. The read-only persona never reaches GitHub itself, so the workflow fetches the recent
+          # digests here and the next step feeds them in. This is a same-repo read on the own-repo token:
+          # the last N committed versions of the digest over the GitHub API on the normal shallow checkout,
+          # deliberately NOT an `actions/checkout fetch-depth: 0` deep clone (whose cost would grow with the
+          # repo's whole history just to read one file). The verb degrades in-band to a plain "nothing to
+          # compare against" marker when there is no history yet or the read fails; if the step itself
+          # fails, leave the same honest marker so the persona still degrades to a point-in-time review.
+          if ! uv run --directory .engine --frozen -- python tools/audit_digest.py prior \
+                 > "${RUNNER_TEMP}/prior-digests.md"; then
+            printf '%s\n' "PRIOR SELF-REVIEWS: none are available to compare against this run (the fetch step failed). Review only what you can check now, and say plainly in your digest that you have no earlier reviews to compare against — do not invent a trend." \
+              > "${RUNNER_TEMP}/prior-digests.md"
+          fi
+      - name: Detect this repository's visibility (for the saved-memory privacy gate)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          # The saved-memory privacy gate (#224) withholds belief specifics from a digest committed to a
+          # PUBLIC repo. Visibility is read HERE with the OWN-repo token — the vault read token on the next step is
+          # scoped to the vault and cannot read this repo, and the `schedule` trigger's event payload omits
+          # visibility — and handed to the memory step via the environment. Best-effort and never fails the run:
+          # on any failure the value is left empty, and the renderer treats anything but an explicit `private` as
+          # not-private (default-safe withhold), so a detection miss withholds the specifics rather than leak them.
+          vis="$(gh repo view "${GITHUB_REPOSITORY}" --json visibility -q .visibility 2>/dev/null || true)"
+          printf 'MEMORY_AUDIT_REPO_VISIBILITY=%s\n' "${vis}" >> "${GITHUB_ENV}"
+      - name: Fetch the project's saved memory (from its backup) for the self-review
+        env:
+          # The VAULT read token (#224), NOT the own-repo token: the saved-memory backup lives in a SEPARATE
+          # private repo, which the own-repo GITHUB_TOKEN provably cannot reach. MEMORY_VAULT_TOKEN is a least-
+          # privilege, read-only (contents:read) token scoped to just the vault repo, set as a secret during the
+          # turn-on; boot.gh_token() prefers env GITHUB_TOKEN, so passing it here routes the read through it with
+          # no read-code change. The repo + namespace still come from memory's COMMITTED pointer (a CI checkout
+          # sees only committed files). On the public template the pointer is the unconfigured placeholder AND the
+          # secret is unset (-> empty -> falsy), so the verb short-circuits to the not-configured disclosure with
+          # NO network. (MEMORY_AUDIT_REPO_VISIBILITY, set by the step above, also reaches this verb from the
+          # environment, gating belief specifics to a private repo.)
+          GITHUB_TOKEN: ${{ secrets.MEMORY_VAULT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Concern #1 of the self-review judges stale SAVED MEMORY (the engine's experiential decision/note
+          # records), which is gitignored and so absent from this committed-files-only checkout. The read-only
+          # persona never reaches it itself, so the workflow reads the project's off-repo memory BACKUP here — a
+          # pure read of what memory has committed there (memory owns the read; this verb renders it) — and the
+          # next step feeds it in. When no backup is set up for this run, or it can't be reached or read, the
+          # verb discloses the gap honestly (about what THIS review could reach, never "the project has no
+          # memory"); if the step itself fails, leave an honest marker so the persona still discloses concern
+          # #1's gap rather than silently skipping it or claiming memory is empty.
+          if ! uv run --directory .engine --frozen -- python tools/audit_digest.py memory \
+                 > "${RUNNER_TEMP}/saved-memory.md"; then
+            printf '%s\n' "YOUR SAVED MEMORY: I couldn't read your saved memory this run (the fetch step failed). Treat your saved memory as not reviewed and say so plainly; do not claim the project has no saved memory." \
+              > "${RUNNER_TEMP}/saved-memory.md"
+          fi
+      - name: Fetch the currently-firing soft validator findings for the self-review
+        run: |
+          set -euo pipefail
+          # Issue #273 half 2: a SOFT validator finding (a non-blocking nudge — e.g. a runbook over its line
+          # budget) is otherwise printed to a CI log and discarded, so a recurring one drifts forever,
+          # invisible to this review. The feed tool reads the report-only audit-prep suite (never the CI
+          # gate), keeps soft-severity only, and defangs author-controlled text; the next step feeds it in.
+          # It needs NO token (committed files only), so it carries none. On a tool failure, leave an honest
+          # in-band marker so the persona discloses the gap rather than reading silence as "nothing firing".
+          if ! uv run --directory .engine --frozen -- python tools/audit_soft_findings.py \
+                 > "${RUNNER_TEMP}/soft-findings.md"; then
+            printf '%s\n' "CURRENTLY-FIRING SOFT FINDINGS: could not be read this run (the fetch step failed). Treat this concern as not reviewed and say so plainly in your digest; do not read it as 'nothing is firing'." \
+              > "${RUNNER_TEMP}/soft-findings.md"
+          fi
+      - name: Fetch the engine's own checks that currently match no files
+        run: |
+          set -euo pipefail
+          # The never-firing signal: the engine's own FILE-SCOPED checks that select NO files in this
+          # repo right now. A check matching nothing is a QUESTION, not a verdict — possibly dead template
+          # weight to raise upstream, or simply a kind of file this project does not use yet. It reads only the
+          # committed check corpus + the working tree — NO GitHub, NO token — so it carries none and always
+          # exits 0 (its render degrades in-band on any internal error). On a step failure, leave an honest
+          # in-band marker so the persona discloses the gap rather than reading silence as "every check fires".
+          if ! uv run --directory .engine --frozen -- python tools/telemetry.py never-fired \
+                 > "${RUNNER_TEMP}/never-firing-checks.md"; then
+            printf '%s\n' "ENGINE CHECKS MATCHING NO FILES: could not be read this run (the fetch step failed). Treat this concern as not reviewed and say so plainly in your digest; do not read it as 'every check is firing'." \
+              > "${RUNNER_TEMP}/never-firing-checks.md"
+          fi
+      - name: Prepare the product-spec-conformance feed for the self-review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # The branch the recency baseline is read from — github.ref_name (the scheduled run's default
+          # branch), NOT github.event.repository.default_branch (empty on schedule). Without it the baseline
+          # read would default to "main" and 404 on a repo whose default is e.g. "master", stale-flagging
+          # every conformance row every cron.
+          GITHUB_DEFAULT_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The standing product-spec-conformance sweep (#449): when this project has settled a
+          # `docs/spec/` and its criterion record is present, prepare the persona's hunt-set — what changed since
+          # the last review (read over the commits/contents API on this shallow checkout, deliberately NOT
+          # `git log`, which the depth-1 clone cannot answer) plus a spot-check sample — and the honest coverage
+          # disclosure. It uses the OWN-repo token for that history; with no settled spec it is the silent no-op
+          # (the common case, and the case in this template repo, so it stays inert here). The persona is
+          # read-only and never reaches the spec or its record itself. On a tool failure, leave the silent notice
+          # so the persona simply skips the check rather than guessing at a pass.
+          if ! uv run --directory .engine --frozen -- python tools/conformance_sweep.py feed \
+                 > "${RUNNER_TEMP}/conformance-feed.md"; then
+            printf '%s\n' "PRODUCT SPEC CONFORMANCE: the spec-conformance check could not run this cycle (its preparation step failed). If this project has settled a docs/spec/, say plainly in your digest that the check could not run and was not performed — do NOT imply a clean pass and do NOT conclude there is no spec. If it has no settled spec, there is nothing to report." \
+              > "${RUNNER_TEMP}/conformance-feed.md"
+          fi
+      - name: Run the read-only self-review and capture its plain-language digest
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # AUDIT_MODEL is the model the engine uses to judge its OWN health. The default is `opus` (the
+          # current most-capable model). You may override it with a repository variable named AUDIT_MODEL
+          # (Settings -> Variables) — for example to move to a newer model. Choosing a cheaper or weaker
+          # model gives you a LESS trustworthy self-review, and a mistyped name fails this run the same
+          # quiet way a mistyped secret does, so change it deliberately.
+          AUDIT_MODEL: ${{ vars.AUDIT_MODEL || 'opus' }}
+        run: |
+          set -euo pipefail
+          # Feed the fetched engine-issue backlog (prior step) into the persona's prompt so it can work
+          # concern #2 — the persona stays read-only and never reaches GitHub itself. The backlog is expanded
+          # inside double quotes, so any issue content is passed verbatim and safely (no shell re-parsing).
+          backlog="$(cat "${RUNNER_TEMP}/engine-issues.md")"
+          prior="$(cat "${RUNNER_TEMP}/prior-digests.md")"
+          saved="$(cat "${RUNNER_TEMP}/saved-memory.md")"
+          soft="$(cat "${RUNNER_TEMP}/soft-findings.md")"
+          neverfired="$(cat "${RUNNER_TEMP}/never-firing-checks.md")"
+          conformance="$(cat "${RUNNER_TEMP}/conformance-feed.md")"
+          prompt="Run your self-review of this project's engine now. Output the plain-language digest — what you looked at, what you found, and what you recommend — with no preamble. The ONLY thing that may follow your digest is the single machine-readable conformance block, and ONLY when the product-spec-conformance section below is active and asks for it; nothing else.
+          For your saved memory, you cannot reach it yourself; it was read from the project's off-repo backup and follows between the markers. These are the project's CURRENT saved beliefs — notes memory has already set aside are not shown here, so do not read their absence as 'nothing to retire'. Review what you are shown as the operator's saved decisions and notes: do any now contradict each other, has anything you can see refuted one, or is a heavily-used note actually obsolete? If the markers say the backup isn't set up, couldn't be reached, or couldn't be read, treat your saved memory as not reviewed and say so plainly in your digest — and NEVER claim the project has no saved memory; you simply couldn't see it this run.
+          ----- BEGIN YOUR SAVED MEMORY -----
+          ${saved}
+          ----- END YOUR SAVED MEMORY -----
+
+          For the engine-labelled issue backlog (your debt register), you cannot reach GitHub yourself; the COMPLETE set of currently-open engine-labelled issues was fetched for you (read to exhaustion; a read failure would appear in-band, never a silently short list) and follows between the markers. Treat it as the whole open backlog, not a sample, and judge it as part of your review.
+          ----- BEGIN OPEN ENGINE-LABELLED ISSUES -----
+          ${backlog}
+          ----- END OPEN ENGINE-LABELLED ISSUES -----
+
+          For over-time corroboration, your own most recent self-reviews were fetched for you (you cannot reach GitHub yourself) and follow between the markers. Read them ONLY as corroboration — a finding that keeps recurring is likely genuine, not a one-time blip — never as a decision: every keep-it-or-retire-it call still rests on a fresh check you run THIS cycle, and a quiet stretch is never read as gone. When a finding draws on this history, present the fresh check and the over-time note as two separate things. If the markers say there is nothing to compare against, treat this as a review of only what you can see now and say so plainly — never invent a trend.
+          ----- BEGIN PRIOR SELF-REVIEWS -----
+          ${prior}
+          ----- END PRIOR SELF-REVIEWS -----
+
+          For the currently-firing soft findings (the non-blocking validator nudges firing right now), you cannot run the validator yourself; the soft findings were collected for you (soft-severity only, author-controlled text defanged) and follow between the markers. A soft finding is otherwise printed to a CI log and discarded, so a recurring one drifts forever — that is the gap you are closing by seeing them. Review them as a concern: judge which is a genuine signal worth surfacing as tracked work and which is a benign disclosure, and CLASSIFY each by your two lanes — a finding on template machinery is escalate-upstream, one on local state is local-reconcile. For a machinery finding, do NOT reproduce that shorthand in your digest: explain the consequence plainly — fixing it in this project's own copy will not stick, because the next engine update overwrites the engine's machinery and wipes the local fix, so the durable fix belongs in the engine-template project the machinery came from (and ignoring it stays a fair choice). Lean on your prior self-reviews ONLY as corroboration that a nudge is genuinely recurring rather than a one-time blip — never as a count, threshold, or 'seen N times' tally; the call to surface it rests on the present read, written as a separate thing from the over-time note. If the markers say the findings could not be read, treat this concern as not reviewed and say so plainly; if they say nothing is firing, that is a clean read, not a gap.
+          ----- BEGIN CURRENTLY-FIRING SOFT FINDINGS -----
+          ${soft}
+          ----- END CURRENTLY-FIRING SOFT FINDINGS -----
+
+          For the engine's own checks that currently match no files, you cannot run the validator yourself; the list was computed for you (the engine's file-scoped checks that select zero files in this repo right now) and follows between the markers. A check matching nothing is a QUESTION, not a verdict, and it can be perfectly correct — the check may guard a kind of file this project does not use yet. A check is engine machinery, so it is NEVER a local retirement: for each, judge only whether it looks like dead weight the template ships (escalate-upstream, in the plain machinery-consequence terms above) or is simply a file kind this project does not use (leave it). Do not recommend retiring or editing a check locally, and render this plainly for the operator — never the words 'never-fired', 'matches zero files', or 'target glob'. If the markers say the list could not be read, treat this concern as not reviewed and say so plainly; if they say every check matches at least one file, that is a clean read, not a gap.
+          ----- BEGIN ENGINE CHECKS MATCHING NO FILES -----
+          ${neverfired}
+          ----- END ENGINE CHECKS MATCHING NO FILES -----
+
+          For product-spec conformance: when this project has settled a product spec (a docs/spec/ folder), this is a DISTINCT, conditional check — does the built code still meet each settled criterion? — never a retirement read. The section below tells you which case applies and, when active, the exact criteria to check and the machine block to append. Follow it exactly: if it says NOT APPLICABLE, skip the check and never mention it; if it says COULD NOT RUN or the RECORD IS MISSING, disclose that plainly (with the one fix where given) and never guess a pass or conclude there is no spec; if it hands you a HUNT-SET, for each criterion OPEN its docs/spec/ document yourself and re-derive the obligation from the criterion in its full context (its Summary and Behavior, not the one-line cell), judge it forward-only against the operator's OWN frozen wording, disclose the partial coverage you actually performed, and be honest that this is judgement with no behavioural check run here. The feed computes the priorities you cannot (it reads history you can't reach) and defangs the criterion text it shows you for orientation; you read the spec documents themselves, but you never reach the generated criterion record or its history.
+          ----- BEGIN PRODUCT-SPEC CONFORMANCE -----
+          ${conformance}
+          ----- END PRODUCT-SPEC CONFORMANCE -----"
+          claude -p \
+            --agent engine-audit \
+            --model "${AUDIT_MODEL}" \
+            "${prompt}" \
+            > "${RUNNER_TEMP}/audit-digest-body.md"
+      - name: Track standing product-spec-conformance findings as engine issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.ref_name }}  # same authoritative default as the feed step above
+        run: |
+          set -euo pipefail
+          # The standing product-spec-conformance sweep's promote half (#449): parse the persona's
+          # machine-readable verdicts out of the digest body, STRIP that block (so the committed digest stays
+          # clean prose and the JSON never feeds back into a later review as stale judgement), and open-or-update
+          # one deduped engine issue per DIVERGENCE — plus the distinct spec-settled-but-record-missing gap.
+          # Report-only: the reconcile Build PR is the adjudication; it never closes an issue. It dedups on the
+          # settled criterion's own identity so recurring drift updates one draft rather than re-nagging, and
+          # carries the honest artifact-warrant (judgement, no behavioural check here) into each issue. It uses
+          # the OWN-repo token (never the Claude token) on the issues:write scope declared above. Runs BEFORE the
+          # seal so the strip lands in the sealed digest. Fail-open — it prints a visible status and exits 0 even
+          # when GitHub is unreachable; the trailing `|| true` guards any unexpected non-zero, so this best-effort
+          # side action can never block the digest pull request (a divergence still stands in the digest and
+          # re-fires next run).
+          uv run --directory .engine --frozen -- python tools/conformance_sweep.py promote \
+            "${RUNNER_TEMP}/audit-digest-body.md" || true
+      - name: Track standing length-budget findings as engine issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Issue #273 half 2: give a STANDING soft length-budget finding a durable home — a
+          # deduped, lane-aware engine-labelled issue — so it reaches boot and the tracker, not just this
+          # week's digest. The tool runs a LIVE-DERIVED telemetry pass (#403): it opens/updates an
+          # issue for each over-budget surface AND auto-resolves the issue of a surface seen back under its
+          # budget — telemetry's standard source-scoped resolution, confined to soft-budget sids so it can
+          # never close another source's issue (auto-resolve only clears the flag; it never edits the file). It
+          # uses the OWN-repo GitHub token (never the Claude token) and needs the issues:write scope declared
+          # above. It is fail-open — it prints a visible status and exits 0 even when GitHub is unreachable,
+          # so a transient blip never fails the self-review; the trailing `|| true` additionally guards
+          # against any unexpected non-zero so this best-effort side action can never block the digest pull
+          # request, and the finding simply re-fires (and stays in the digest) next run.
+          uv run --directory .engine --frozen -- python tools/audit_soft_promote.py || true
+      - name: Seal the digest with its run-date
+        run: |
+          set -euo pipefail
+          uv run --directory .engine --frozen -- python tools/audit_digest.py \
+            seal audits/audit-digest.md \
+            --body-file "${RUNNER_TEMP}/audit-digest-body.md"
+      - name: Run the engine's CI-health triage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # github.ref_name, NOT github.event.repository.default_branch: the `schedule` trigger carries no
+          # event payload, so `github.event.repository` is empty there and the read would silently fall back
+          # to "main". A scheduled run always runs on the default branch, so github.ref_name IS that branch —
+          # populated on both schedule and workflow_dispatch, so a non-"main" default branch reads correctly.
+          GITHUB_DEFAULT_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The first live "signal of record": read the default branch head's CI check-runs and reconcile the
+          # engine-labelled issues for the `ci/` source — a check that keeps failing across passes is tracked;
+          # one that is green again auto-resolves. Auto-resolve is scoped to the `ci/` checks OBSERVED this
+          # pass, so it never touches an out-of-band engine issue, and a failed/partial read closes nothing
+          # (an unread check is never mistaken for a passing one). It writes NO committed state — the
+          # where-we-stand refresh below runs AFTER it, so that offline open-count reflects this pass. It is
+          # fail-open (prints a status and exits 0 even when GitHub is unreachable); the trailing `|| true`
+          # additionally guards this best-effort side action so it can never block the digest pull request.
+          uv run --directory .engine --frozen -- python tools/telemetry.py run || true
+      - name: Refresh the committed where-we-stand snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: uv run --directory .engine --frozen -- python tools/telemetry.py refresh
+      - name: Open the digest pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          git config user.name "engine self-review"
+          git config user.email "engine-self-review@users.noreply.github.com"
+          stamp="$(date -u +%Y-%m-%d)"
+          # Collision-proof branch name (round-2 finding 4): the run id + attempt are unique per run, so a
+          # leftover branch from a failed earlier run can never block this run's push with a non-fast-forward
+          # error. No force-push is needed, and the protected-branch deletion guard (scoped to the default
+          # branch only) is never engaged.
+          branch="audit-prep/${stamp}-${RUN_ID}-${RUN_ATTEMPT}"
+          git checkout -b "${branch}"
+          git add .engine/audits/audit-digest.md .engine/state/state.json
+          if git diff --cached --quiet; then
+            echo "::notice::The self-review produced no changes to commit."
+            exit 0
+          fi
+          git commit -m "Engine self-review digest (${stamp})"
+          git push --set-upstream origin "${branch}"
+          # The pull-request body IS the self-review itself — the digest prose with its sealed front-matter
+          # stripped — so the operator reads the actual review here, not boilerplate. A short footer then
+          # keeps the load-bearing framing: a where-we-stand snapshot rides along, and the merge attests to
+          # the review, not to the auto-derived numbers.
+          uv run --directory .engine --frozen -- python tools/audit_digest.py body audits/audit-digest.md \
+            > "${RUNNER_TEMP}/pr-body.md"
+          cat >> "${RUNNER_TEMP}/pr-body.md" <<'EOF'
+
+          ---
+
+          ### About this pull request
+
+          The summary above is the engine's own self-review — what it looked at, what it found, and what it
+          recommends, for you to read and act on. This pull request also carries an automatically-refreshed
+          snapshot of where the project stands (the open-items count and the milestone/phase markers); those
+          numbers are derived mechanically and always carry the date they were taken, so you are NOT being
+          asked to vouch for them — your merge attests to the self-review above, not to the snapshot.
+
+          Merge this to record the self-review, or close it to skip this cycle. Nothing here changes any of
+          your settings.
+          EOF
+          gh pr create \
+            --base "${{ github.ref_name }}" \
+            --head "${branch}" \
+            --title "Maintenance: engine self-review digest (${stamp})" \
+            --body-file "${RUNNER_TEMP}/pr-body.md"

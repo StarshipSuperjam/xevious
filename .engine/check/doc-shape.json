@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/doc-shape",
+  "target": { "path": ".engine/docs/*.md" },
+  "kind": "shape",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI", "audit-prep"],
+  "message": "A doc (an operator guide under .engine/docs/) must contain, as level-2 headings, What this covers and then What you need to know — every doc orients its reader (what this is for) and then explains the thing — and it may also contain, in any order around those, How you direct the engine, Finding the commands, When the engine suggests removing a part of itself, and Where to go next, and no others. A doc that omits a required section is structurally incomplete. This check catches a broken SHAPE only: that the two required sections are present and in order, and that no stray section appears. It cannot judge whether a section's content is substantive, clear, or genuinely plain-language — an empty or hand-wavy section passes here and is caught instead by the operator reading the committed change, and whether the doc actually orients a newcomer is the audits layer's cold-read judgment, not this check's. Length over the 200-line budget is only a soft nudge to trim, never a block. Add or reorder the flagged sections to match the doc template (.engine/templates/doc.md) before merging."
+}

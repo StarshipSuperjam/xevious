@@ -1,0 +1,12 @@
+{
+  "id": "engine/check/guardrail-weakening",
+  "target": { "context": "pull-request-diff" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/weakening_guard.py",
+    "pass_token": true
+  },
+  "tier": "hard",
+  "suites": [],
+  "message": "This pull request changes a file that enforces a safety gate or ships part of the security floor — a CI workflow, a check rule, an engine tool, CODEOWNERS, the tool-runtime lockfiles, the suite declarations, or a traveling security-floor file like `dependabot.yml`. Such a change can turn off, rename, loosen, or drop a guard, so it must be approved deliberately: after reading what could weaken, apply the `guardrail-ack` label to this pull request — a separate, intentional action, distinct from clicking merge. Until then this check blocks the merge. This guard runs from the trusted main branch and reads only the change, never the pull request's own copy of the code, so a pull request cannot turn off the guard that judges it. It joins no suite (it is invoked by id from its own workflow), which keeps that property; do not move it into the merge-gating suite."
+}

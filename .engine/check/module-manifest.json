@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/module-manifest",
+  "target": { "path": ".engine/modules/*/manifest.json" },
+  "kind": "schema",
+  "params": { "schema": ".engine/schemas/module.v1.json" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Every module manifest (.engine/modules/<id>/manifest.json) must match module.v1.json — it needs an id, a version, a status, and a provides list, and may not carry fields outside the manifest grammar. A manifest is how the engine knows which files belong to a module, so a malformed one would make uninstall and the consistency checks unreliable. The manifest is engine infrastructure, not a catalogued surface, so this rule names its schema directly rather than resolving it through the surface catalog. Fix the manifest to match the schema before merging."
+}
