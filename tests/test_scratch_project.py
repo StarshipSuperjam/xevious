@@ -500,6 +500,19 @@ class ScratchProjectTests(unittest.TestCase):
                 b'<?xml-stylesheet href="https://example.com/style.css"?>'
                 b'<svg xmlns="http://www.w3.org/2000/svg"/>'
             ),
+            (
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<rect fill="u\\72l(https://example.com/fill)"/></svg>'
+            ),
+            (
+                b'<svg xmlns="http://www.w3.org/2000/svg"><style>'
+                b'@\\69mport u\\72l(https://example.com/style.css);'
+                b"</style></svg>"
+            ),
+            (
+                '<?xml-stylesheet href="https://example.com/style.css"?>'
+                '<svg xmlns="http://www.w3.org/2000/svg"/>'
+            ).encode("utf-16"),
         ]
         for data in fixtures:
             with self.subTest(data=data):
@@ -509,7 +522,7 @@ class ScratchProjectTests(unittest.TestCase):
                 )
                 with self.assertRaisesRegex(
                     scratch.ScratchProjectError,
-                    "unsafe|external",
+                    "unsafe|external|obfuscated|UTF-8",
                 ):
                     scratch._validate_asset(name, data)
 

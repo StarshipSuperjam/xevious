@@ -379,6 +379,10 @@ def _asset_references(project: dict) -> set[str]:
 
 def _validate_svg_css(name: str, value: str) -> None:
     lowered = value.strip().lower()
+    if "\\" in lowered or "/*" in lowered:
+        raise ScratchProjectError(
+            f"obfuscated SVG style is not allowed in asset: {name}"
+        )
     if any(
         token in lowered
         for token in ("@import", "expression(", "javascript:")
@@ -395,11 +399,17 @@ def _validate_svg_css(name: str, value: str) -> None:
 
 
 def _validate_svg(name: str, data: bytes) -> None:
-    lowered = data.lower()
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ScratchProjectError(
+            f"SVG asset must use UTF-8 encoding: {name}"
+        ) from exc
+    lowered = text.lower()
     if (
-        b"<!doctype" in lowered
-        or b"<!entity" in lowered
-        or b"<?xml-stylesheet" in lowered
+        "<!doctype" in lowered
+        or "<!entity" in lowered
+        or "<?xml-stylesheet" in lowered
     ):
         raise ScratchProjectError(f"unsafe SVG declaration in asset: {name}")
     try:
