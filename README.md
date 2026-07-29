@@ -56,6 +56,9 @@ python3 tools/scratch_project.py import path/to/edited.sb3 --force \
   --asset-license "CC0-1.0"
 ```
 
+The importer accepts PNG, WAV, MP3, and sanitized SVG media. SVG scripts,
+event handlers, embedded content, and external references are rejected.
+
 Importing preserves the relative order of existing block-map entries because
 Scratch uses that order when scheduling top-level scripts. New blocks are
 appended in the editor's order.

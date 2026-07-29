@@ -5,6 +5,7 @@ import copy
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -120,6 +121,20 @@ class ScratchProjectTests(unittest.TestCase):
         provenance["bytes"] += 1
         provenance_path.write_text(json.dumps(provenance), encoding="utf-8")
         with self.assertRaisesRegex(scratch.ScratchProjectError, "records"):
+            scratch.verify_original(archive, provenance_path)
+
+    def test_original_provenance_schema_version_is_enforced(self) -> None:
+        original_dir = self.temp / "original"
+        original_dir.mkdir()
+        archive = original_dir / "Xevious.sb3"
+        provenance_path = original_dir / "provenance.json"
+        shutil.copy2(scratch.ORIGINAL_ARCHIVE, archive)
+        provenance = json.loads(
+            scratch.ORIGINAL_PROVENANCE.read_text(encoding="utf-8")
+        )
+        provenance["version"] = 2
+        provenance_path.write_text(json.dumps(provenance), encoding="utf-8")
+        with self.assertRaisesRegex(scratch.ScratchProjectError, "version 1"):
             scratch.verify_original(archive, provenance_path)
 
     def test_repository_has_no_root_sb3(self) -> None:
@@ -451,8 +466,22 @@ class ScratchProjectTests(unittest.TestCase):
     def test_script_bearing_svg_asset_is_rejected(self) -> None:
         data = b'<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>'
         name = hashlib.md5(data, usedforsecurity=False).hexdigest() + ".svg"
-        with self.assertRaisesRegex(scratch.ScratchProjectError, "unsupported"):
+        with self.assertRaisesRegex(scratch.ScratchProjectError, "unsafe SVG"):
             scratch._validate_asset(name, data)
+
+    def test_harmless_svg_and_mp3_assets_are_accepted(self) -> None:
+        svg = (
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<defs><linearGradient id="g"/></defs>'
+            b'<rect width="10" height="10" style="fill:url(#g)"/>'
+            b"</svg>"
+        )
+        svg_name = hashlib.md5(svg, usedforsecurity=False).hexdigest() + ".svg"
+        scratch._validate_asset(svg_name, svg)
+
+        mp3 = b"ID3\x04\x00\x00\x00\x00\x00\x00"
+        mp3_name = hashlib.md5(mp3, usedforsecurity=False).hexdigest() + ".mp3"
+        scratch._validate_asset(mp3_name, mp3)
 
     def test_asset_signature_must_match_extension(self) -> None:
         data = b"not a PNG"
@@ -466,6 +495,19 @@ class ScratchProjectTests(unittest.TestCase):
         before = project_path.read_bytes()
         with self.assertRaisesRegex(scratch.ScratchProjectError, "protected"):
             scratch.build_project(source, project_path)
+        self.assertEqual(before, project_path.read_bytes())
+
+    def test_build_rejects_case_variant_source_alias_on_case_insensitive_fs(
+        self,
+    ) -> None:
+        source = self.copy_source("CaseSource")
+        alias = source.with_name(source.name.swapcase())
+        if not alias.exists() or not os.path.samefile(source, alias):
+            self.skipTest("requires a case-insensitive filesystem")
+        project_path = source / scratch.PROJECT_JSON
+        before = project_path.read_bytes()
+        with self.assertRaisesRegex(scratch.ScratchProjectError, "protected"):
+            scratch.build_project(source, alias / scratch.PROJECT_JSON)
         self.assertEqual(before, project_path.read_bytes())
 
     def test_nonidentical_baseline_overlay_collision_is_rejected(self) -> None:
@@ -520,6 +562,37 @@ class ScratchProjectTests(unittest.TestCase):
         record.write_text("# Incomplete\n", encoding="utf-8")
         with self.assertRaisesRegex(mechanics.MechanicsRecordError, "missing"):
             mechanics.validate_record(record)
+
+    def test_symlink_mechanics_record_is_rejected(self) -> None:
+        record = self.temp / "record.md"
+        record.symlink_to(
+            ROOT / "docs" / "mechanics" / "000-historical-baseline.md"
+        )
+        with self.assertRaisesRegex(mechanics.MechanicsRecordError, "non-symlink"):
+            mechanics.validate_record(record)
+
+    def test_project_change_requires_changed_mechanics_record(self) -> None:
+        with (
+            mock.patch.object(
+                mechanics,
+                "changed_paths",
+                return_value=[mechanics.PROJECT_SOURCE],
+            ),
+            self.assertRaisesRegex(
+                mechanics.MechanicsRecordError,
+                "without a changed record",
+            ),
+        ):
+            mechanics.check("unused")
+
+    def test_project_change_accepts_complete_changed_mechanics_record(self) -> None:
+        record_name = "docs/mechanics/000-historical-baseline.md"
+        with mock.patch.object(
+            mechanics,
+            "changed_paths",
+            return_value=[mechanics.PROJECT_SOURCE, record_name],
+        ):
+            self.assertEqual([ROOT / record_name], mechanics.check("unused"))
 
     def test_full_repository_verification(self) -> None:
         original_hash, build_hash = scratch.verify_repository()

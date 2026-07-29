@@ -12,14 +12,17 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import stat
 import struct
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
 from urllib.parse import urlparse
 import uuid
+import xml.etree.ElementTree as ET
 import zipfile
 
 
@@ -44,6 +47,10 @@ ALLOWED_ASSET_SIGNATURES = {
         len(data) >= 12
         and data.startswith(b"RIFF")
         and data[8:12] == b"WAVE"
+    ),
+    "mp3": lambda data: (
+        data.startswith(b"ID3")
+        or (len(data) >= 2 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0)
     ),
 }
 
@@ -125,6 +132,10 @@ def verify_original(
             f"missing or unsafe provenance record: {provenance_path}"
         )
     provenance = _load_provenance(provenance_path)
+    if provenance.get("version") != 1:
+        raise ScratchProjectError(
+            f"{provenance_path} must use provenance schema version 1"
+        )
     expected = provenance.get("sha256")
     if not isinstance(expected, str) or len(expected) != 64:
         raise ScratchProjectError(
@@ -178,6 +189,22 @@ def verify_original(
         raise ScratchProjectError(
             f"original archive hash changed: expected {expected}, found {actual}"
         )
+    if (ROOT / ".git").exists():
+        historical = subprocess.run(
+            ["git", "show", f"{source_commit}:Xevious.sb3"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+        )
+        if historical.returncode != 0:
+            raise ScratchProjectError(
+                f"cannot verify preserved archive at source commit {source_commit}"
+            )
+        historical_hash = hashlib.sha256(historical.stdout).hexdigest()
+        if historical_hash != expected:
+            raise ScratchProjectError(
+                f"source commit {source_commit} contains a different Xevious.sb3"
+            )
     return actual
 
 
@@ -350,19 +377,75 @@ def _asset_references(project: dict) -> set[str]:
     return references
 
 
+def _validate_svg(name: str, data: bytes) -> None:
+    lowered = data.lower()
+    if b"<!doctype" in lowered or b"<!entity" in lowered:
+        raise ScratchProjectError(f"unsafe SVG declaration in asset: {name}")
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise ScratchProjectError(f"invalid SVG asset {name}: {exc}") from exc
+    if root.tag.rsplit("}", 1)[-1].lower() != "svg":
+        raise ScratchProjectError(f"SVG asset has no svg root element: {name}")
+    unsafe_elements = {
+        "audio",
+        "embed",
+        "foreignobject",
+        "iframe",
+        "object",
+        "script",
+        "video",
+    }
+    for element in root.iter():
+        local_name = element.tag.rsplit("}", 1)[-1].lower()
+        if local_name in unsafe_elements:
+            raise ScratchProjectError(
+                f"unsafe SVG element {local_name} in asset: {name}"
+            )
+        for raw_attribute, raw_value in element.attrib.items():
+            attribute = raw_attribute.rsplit("}", 1)[-1].lower()
+            value = raw_value.strip().lower()
+            if attribute.startswith("on"):
+                raise ScratchProjectError(
+                    f"unsafe SVG event attribute in asset: {name}"
+                )
+            if attribute == "href" and value and not value.startswith("#"):
+                raise ScratchProjectError(
+                    f"external or embedded SVG reference in asset: {name}"
+                )
+            if attribute == "style":
+                if any(
+                    token in value
+                    for token in ("@import", "expression(", "javascript:")
+                ):
+                    raise ScratchProjectError(
+                        f"unsafe SVG style in asset: {name}"
+                    )
+                references = re.findall(r"url\(([^)]*)\)", value)
+                if any(
+                    not reference.strip(" '\"").startswith("#")
+                    for reference in references
+                ):
+                    raise ScratchProjectError(
+                        f"external SVG style reference in asset: {name}"
+                    )
+
+
 def _validate_asset(name: str, data: bytes) -> None:
     safe_name = _safe_member_name(name)
     if "." not in safe_name:
         raise ScratchProjectError(f"asset filename has no extension: {name}")
     asset_id, extension = safe_name.rsplit(".", 1)
-    signature_check = ALLOWED_ASSET_SIGNATURES.get(extension)
-    if signature_check is None:
+    if extension == "svg":
+        _validate_svg(name, data)
+    elif extension in ALLOWED_ASSET_SIGNATURES:
+        if not ALLOWED_ASSET_SIGNATURES[extension](data):
+            raise ScratchProjectError(
+                f"asset content does not match its {extension} type: {name}"
+            )
+    else:
         raise ScratchProjectError(
             f"unsupported asset type for this project: {name}"
-        )
-    if not signature_check(data):
-        raise ScratchProjectError(
-            f"asset content does not match its {extension} type: {name}"
         )
     actual = _md5_bytes(data)
     if asset_id != actual:
@@ -526,12 +609,23 @@ def _zip_info(name: str) -> zipfile.ZipInfo:
     return info
 
 
+def _same_file(left: Path, right: Path) -> bool:
+    try:
+        return os.path.samefile(left, right)
+    except (FileNotFoundError, OSError):
+        return False
+
+
 def _path_is_within(path: Path, directory: Path) -> bool:
     try:
         path.relative_to(directory)
+        return True
     except ValueError:
-        return False
-    return True
+        pass
+    for candidate in (path, *path.parents):
+        if _same_file(candidate, directory):
+            return True
+    return False
 
 
 def build_project(
@@ -546,7 +640,11 @@ def build_project(
         original.resolve(),
         original_provenance.resolve(),
     }
-    if _path_is_within(resolved_output, resolved_source) or resolved_output in protected_files:
+    if (
+        _path_is_within(resolved_output, resolved_source)
+        or resolved_output in protected_files
+        or any(_same_file(resolved_output, protected) for protected in protected_files)
+    ):
         raise ScratchProjectError(
             f"build output would overwrite protected project input: {output}"
         )

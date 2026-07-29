@@ -29,6 +29,10 @@ class MechanicsRecordError(RuntimeError):
 
 
 def validate_record(path: Path) -> None:
+    if path.is_symlink() or not path.is_file():
+        raise MechanicsRecordError(
+            f"mechanics record must be a regular, non-symlink file: {path}"
+        )
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
