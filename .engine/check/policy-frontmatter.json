@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/policy-frontmatter",
+  "target": { "path": ".engine/policies/*.md" },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A policy's settings block (the part at the very top of the file, between the --- lines) does not match the policy format. The exact mismatch is named just above — most often a tuning value written as text instead of a plain number (for example \"three\" instead of 3), but it can also be a missing or misspelled entry. The engine reads its tuning numbers from this block, so a malformed value would mislead it rather than be quietly ignored. Open the policy file and correct the entry named above so each tuning value is a plain number and each entry has the expected form. The schema is resolved through the surface catalog (the 'policy' surface), so this rule names no schema directly. Fix the file to match policy.v1.json before merging."
+}

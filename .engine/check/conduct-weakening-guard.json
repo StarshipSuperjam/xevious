@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/conduct-weakening-guard",
+  "target": { "context": "conduct-weakening" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/conduct_weakening_check.py" },
+  "tier": "soft",
+  "suites": ["CI"],
+  "message": "A code of conduct reads as if it instructs weakening a guardrail (skipping a review, auto-approving a change, treating built-in memory as authoritative, force-pushing, or merging without review). The exact line is named just above. Codes of conduct are guidance only and cannot weaken a guardrail — the mechanical gates and your merge review hold regardless — so this is a non-blocking warning surfaced for the human merge (defense-in-depth), never a block. If the wording was not meant that way, reword it before merging."
+}

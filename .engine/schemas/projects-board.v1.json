@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "projects-board.v1.json",
+  "title": "projects-board.v1 — the github-projects-sync board-coordinate config",
+  "description": "The shape of one project's GitHub Projects board coordinates, written locally by the github-projects-sync setup and read by its sync tool. It records WHICH board to project onto (the linked Projects v2 id/number) and the opaque, rename-fragile node ids of the engine-owned custom fields the sync resolves at runtime — nothing about the work itself, which the repo stays authoritative for. This is the shipped substrate (the schema); the config DATA is per-instance, gitignored runtime state, never committed (ship-the-substrate-not-the-data). A board is a one-way, replaceable projection over committed truth — deleting this config and the board loses nothing authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project"],
+  "properties": {
+    "schema_version": {
+      "description": "Which version of this config shape this is. Lets a later reader recognise an older config and adapt safely. Today the only valid value is 1.",
+      "const": 1
+    },
+    "project": {
+      "description": "The linked GitHub Projects v2 board the engine projects onto. The node id is what every field write targets; the number and url are for human reference and the setup's own re-discovery.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "description": "The board's opaque Projects v2 node id (for example PVT_kwHO...). Every field write and item add targets this id. Resolved by the setup at link time; stable for the life of the board.",
+          "type": "string",
+          "minLength": 1
+        },
+        "number": {
+          "description": "The board's human-facing number within its owner (for example 7). For the operator's reference and the setup's re-discovery; never used as a write target.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "owner": {
+          "description": "The login of the user or organisation that owns the board. For reference and re-discovery; a board is owned by an account and merely linked to this repo.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The board's web URL, so the operator can open it. For reference only.",
+          "type": "string"
+        }
+      }
+    },
+    "fields": {
+      "description": "The engine-owned custom fields, mapped from the plain-language field name the operator sees on the board face to that field's opaque Projects v2 node id. Resolved at runtime because the ids are opaque and change when a field is renamed; the engine writes ONLY these fields and never Status, column, or card position. An absent field name means the setup did not find it on the board — the sync then skips that field rather than guessing.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "options": {
+      "description": "For any engine-owned single-select field, the map from the plain-language option name to its opaque option id, nested under the field name. Resolved at runtime alongside the field ids. Text and number fields carry no options entry.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "auto_add_enabled": {
+      "description": "The last read-back of the board's built-in auto-add workflow enabled state, recorded by the setup's verify step. NOT authoritative and never enforced — the engine cannot enable auto-add (GitHub exposes no API for it) and projects its own work either way; this is only an honest record of what the verify step last saw.",
+      "type": "boolean"
+    },
+    "label": {
+      "description": "The label that marks an issue or pull request as engine-owned work the sync may add to the board. Defaults to the engine domain label when absent. The sync adds ONLY items already carrying this label and never applies the label itself — the control-plane owns that.",
+      "type": "string"
+    }
+  }
+}

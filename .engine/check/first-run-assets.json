@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/first-run-assets",
+  "target": { "path": ".engine/provisioning/first-run-assets.json" },
+  "kind": "schema",
+  "params": { "schema": ".engine/schemas/first-run-assets.v1.json" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "This file (.engine/provisioning/first-run-assets.json) lists the setup files and folders the engine removes when a project is first created. It must have a list of files and a list of folders, each one a list of path lines. A safety check reads this list to confirm a new project won't break on its first run, so if the file is the wrong shape — a missing or mistyped list — that safety check can't trust it. This check confirms the shape and goes red on a malformed file. To clear it, fix the file so it has both a `files` list and a `directories` list, each one a list of path lines, before merging."
+}

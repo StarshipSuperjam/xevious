@@ -1,0 +1,12 @@
+{
+  "id": "engine/check/hard-check-bite",
+  "target": { "context": "negative-fixtures" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/hard_check_bite_check.py",
+    "pass_token": true
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The checker-of-checkers: it runs each of the engine's hard checks against a deliberately-broken example (a negative fixture committed under .engine/_fixtures/) and confirms the check actually CATCHES it. A required check can be green while its logic does nothing — and a green required check reads as verified at the merge — so this proves each one still bites. A check that fails to catch its own broken example, or that has no example and no recorded reason it cannot have one, makes this go red and names the check. Named bound: a green result here shows each covered check still catches its example input; it does NOT show the check covers every way that thing can go wrong, nor that any other check is correct. This now runs as a required check on every pull request: a change cannot merge while any covered check has stopped catching its own broken example. A red here names the check that stopped catching it — fix the check, or update the example if it is no longer the right one to catch."
+}

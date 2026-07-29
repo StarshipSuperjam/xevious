@@ -1,0 +1,52 @@
+# engine-issue-conformance — the on:issues backstop for the engine-authored-Issue body contract.
+# The after-the-fact catch for a malformed engine-labelled Issue the in-session reroute gate
+# (issue_gate.py) could not inspect: on a non-conforming engine Issue it applies the
+# `needs-reauthoring` label + posts one advisory comment; on a conform-after-edit it removes the
+# label. It NEVER gates Issue creation (GitHub cannot) — an honest backstop, not a second wall.
+# ADVISORY: not a required check, so a finding can never block a merge.
+#
+# DEMO-VERIFIED, NOT END-TO-END HERE. GitHub runs `on: issues` only on a live deployed repo, so in
+# this construction repo the behaviour is proven by `issue_conformance_ci.py demo` (a recorded fake
+# event), not end-to-end. The first live firing on a deployed repo is its end-to-end confirmation.
+#
+# KNOWN RESIDUAL (honest). The trigger is `[opened, edited]` — the control-plane design's shape. An
+# `engine` label added in a SEPARATE step AFTER creation fires a `labeled` event this trigger does not
+# watch, so such an Issue is caught only on its next body edit; cold sessions apply `--label engine` AT
+# create (caught on `opened`) and the in-session gate is the first line.
+name: engine-issue-conformance
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read   # for the checkout (to materialize the engine tool-runtime)
+  issues: write    # to add/remove the needs-reauthoring label and post the advisory comment
+
+# Serialize runs for the SAME Issue so the comment-dedup (list comments → post once) cannot race itself
+# on a rapid opened+edited (the control-plane single-flight concurrency-group law, applied to the
+# event-driven analog). cancel-in-progress: false — let an in-flight reconcile finish, never half-apply.
+concurrency:
+  group: engine-issue-conformance-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  conformance:
+    name: engine-issue-conformance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up uv (pinned)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.8"
+      - name: Materialize the engine tool-runtime
+        run: uv sync --directory .engine --frozen
+      - name: Check the issue body against the engine-Issue format
+        # The tool reads the issue event from $GITHUB_EVENT_PATH (.issue.*), never from an
+        # interpolated shell argument — no attacker-controlled title/body reaches the shell.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: uv run --directory .engine --frozen -- python tools/issue_conformance_ci.py

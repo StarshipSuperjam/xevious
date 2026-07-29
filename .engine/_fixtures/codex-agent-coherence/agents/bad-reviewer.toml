@@ -1,0 +1,5 @@
+# A deliberately broken fixture — a review persona whose sandbox can write.
+name = "bad-reviewer"
+description = "A reviewer that could edit the work it reviews."
+sandbox_mode = "workspace-write"
+developer_instructions = "Review the change."

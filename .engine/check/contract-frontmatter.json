@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/contract-frontmatter",
+  "target": { "path": ".engine/contracts/**/*eADR-*.md" },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A decision record's settings block (the part at the very top of the file, between the --- lines) does not match the contract format — its identifier, status, date, or supersedes link is missing or malformed (the exact problem is named just above). A malformed record would mislead every implementation and caller that reads it rather than be quietly ignored. Open the file and correct the entry named above. The schema is resolved through the surface catalog (the 'contract' surface), so this rule names no schema directly. Fix the file to match contract.v1.json before merging."
+}

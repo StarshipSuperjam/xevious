@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/interface-coherence",
+  "target": { "context": "interface-coherence" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/interface_coherence_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine's swappable capabilities (their declarations live under .engine/interfaces/ — for example memory recall and knowledge-graph retrieval) must each be answered by exactly one tool. This check reads the interface declarations and the servers wired in .mcp.json and goes red if two different tools are installed to answer one capability (only one may be active — the engine must never silently pick between them), or a tool installed to answer one is missing an operation it declares; it surfaces a note when the engine's built-in answer for a capability is not wired. Today only the built-in answers ship, so it is a no-op over that set; it is armed for the day a richer tool is installed. To fix a red: tell the engine which tool to keep and it removes the others, or ask it to set the built-in back up — the engine does the wiring change; the choice of which to keep is yours."
+}

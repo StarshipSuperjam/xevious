@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_OVERRIDE_PATH": ".engine/_fixtures/policy-override-stale/overrides.json"
+  }
+}

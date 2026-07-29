@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_DISPOSITION_PR_BODY": ".engine/_fixtures/disposition-issue-resolution/pr-body.md"
+  }
+}

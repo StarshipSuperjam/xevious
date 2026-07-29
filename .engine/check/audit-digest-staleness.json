@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/audit-digest-staleness",
+  "target": { "path": ".engine/audits/audit-digest.md" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/audit_digest_staleness_check.py"
+  },
+  "tier": "soft",
+  "suites": ["audit-prep"],
+  "message": "The engine's self-review file (.engine/audits/audit-digest.md) carries the date the engine last reviewed its own health. This rule warns when that date is more than 30 days ago — or when no self-review has run yet — so a self-review that has quietly stopped (an expired token, a disabled schedule, a setup never finished) is surfaced rather than missed. It runs on the scheduled self-review pass, not in the merge gate, and it never blocks anything; it only reports. To clear it, let the scheduled self-review run — enable it with `gh workflow enable …` or push a commit to re-arm it."
+}

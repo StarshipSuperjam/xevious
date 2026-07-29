@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/self-map-drift",
+  "target": { "path": ".engine/self-map.md" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/self_map_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The self-map (.engine/self-map.md) is the engine's generated, committed 'what am I made of' readout — the surfaces it governs and the modules it is assembled from. It is derived from the surface catalog and the module manifests, so it must always match them. This check regenerates the map from those sources and compares; if the committed file was hand-edited or left stale after a surface or module change, it goes red. To fix it, regenerate the map with `uv run --directory .engine -- python tools/self_map.py generate` and commit the result."
+}

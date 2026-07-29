@@ -1,0 +1,5 @@
+{
+  "description": "Fixture-only census for engine/check/census-completeness (#424). It deliberately does NOT list demo_orphan_fixture.py, so the check finds that demo neither retired nor reachable and bites. Not the real census — the real one is .engine/provisioning/first-run-assets.json at the repo root.",
+  "files": [],
+  "directories": []
+}

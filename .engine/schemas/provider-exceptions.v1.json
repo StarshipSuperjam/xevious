@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "provider-exceptions.v1 — the committed ledger of sanctioned runtime-parity exceptions",
+  "description": "The whole-file contract for the provider-exception ledger (.engine/policies/provider-exceptions.json) — the single home for every deliberate difference between what the engine exposes on one AI runtime and the other (eADR-0034). The parity check compares the two adapters capability-by-capability in both directions and consults this ledger for the sanctioned differences; an asymmetry with no entry here is a hard finding. An entry declares not just absence but WEAKNESS: `missing_or_weaker: missing` records a capability with no counterpart, `weaker` records a counterpart that exists in a reduced form (an instruction where the other runtime has mechanical enforcement, a protection the platform can switch off). Every entry carries a plain-language reason and the decision record that sanctions it. The record shape is CLOSED (additionalProperties: false) because the engine wholly owns this file — an unrecognized field is a mistake, not platform growth. The ledger file sits inside the guardrail-weakening floor, so widening it is held for the operator's deliberate acknowledgment at merge; this schema is enforced live by the provider-exceptions-schema check (a validators-core schema rule) via an explicit rule-level schema override.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["exceptions"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional pointer from the ledger data file to this governing schema, for editor and tooling validation."
+    },
+    "exceptions": {
+      "type": "array",
+      "description": "The sanctioned differences, one record each. An empty list is legal (full parity, nothing sanctioned).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "id", "missing_or_weaker", "provider", "reason", "contract_ref"],
+        "properties": {
+          "kind": {
+            "description": "Which capability family the exception belongs to — the same families the parity check compares (for example: skill, hook, agent, mcp, floor, enforcement). A well-formed string; the parity check owns the family vocabulary so it can grow with the comparison, never this schema.",
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "description": "The specific capability the exception covers, named the way the parity check names it (a skill verb, a hook event/script pair, a persona slug, a server name, or a described enforcement property).",
+            "type": "string",
+            "minLength": 1
+          },
+          "missing_or_weaker": {
+            "description": "missing = the runtime has no counterpart at all; weaker = a counterpart exists but in a reduced form, and the reason says how.",
+            "enum": ["missing", "weaker"]
+          },
+          "provider": {
+            "description": "The runtime the exception applies to — the side that is missing the capability or carries the weaker form.",
+            "enum": ["codex", "claude"]
+          },
+          "reason": {
+            "description": "The plain-language why: what makes this difference deliberate or platform-inherent, written for the operator reading the ledger at a merge.",
+            "type": "string",
+            "minLength": 1
+          },
+          "contract_ref": {
+            "description": "The decision record that sanctions this exception (an eADR id, for example eADR-0034).",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

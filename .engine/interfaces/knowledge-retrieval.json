@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "id": "knowledge-retrieval",
+  "title": "Knowledge graph retrieval",
+  "description": "Read-only structural queries over the engine's knowledge graph — how this project is wired: what surfaces and modules exist and how they relate. The content-free `health` operation proves only that this exact helper answered; it reads no graph and rebuilds no query cache, making it the safe availability probe before the first operator reply. Every conforming implementation answers the same four retrieval operations over the committed entities, so a session can ask 'what is this entity', 'which entities match a selector', 'what is adjacent to this one', and 'how do these two relate' without knowing whether a built-in floor or a richer engine is answering. It returns structure only and never belief; a caller that wants the project's distilled decisions composes that itself by taking an entity id and querying memory at read time.",
+  "status": "active",
+  "operations": [
+    {
+      "name": "health",
+      "description": "Prove that this exact MCP helper answered without reading the committed graph, rebuilding its SQLite cache, walking project files, or changing any state. This says the server is live; it does not claim the graph itself is fresh.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "server"],
+        "properties": {
+          "status": { "const": "ok" },
+          "server": { "const": "engine-knowledge-graph" }
+        }
+      }
+    },
+    {
+      "name": "get-entity",
+      "description": "Fetch one entity by its id, with its declared attributes and outgoing edges. Returns the entity record (id, type, name, slug, source, owner, predicates, plus any declared attributes the surface carries — status, and where applicable tier, title, and per-surface discriminators) or null if no such entity exists. Consumer guidance (for the reading agent — advisory, not part of the conformance contract a swap-in implementation must answer): the declared attributes are AS-OF THE LAST GRAPH REGENERATION — treat status as last-known, and verify a supersession against the live source file before asserting it; and translate any internal lifecycle or tier token into plain language for the operator, never echoing a raw token (e.g. hard, soft, posture, retired, experimental) verbatim to them.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "description": "The entity id to fetch (e.g. 'check:state-cursor', 'module:core').",
+            "type": "string",
+            "pattern": "^(contract|policy|conduct|schema|check|tool|operation|skill|agent|codex-skill|codex-agent|interface|doc|module):[A-Za-z0-9._-]+$"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entity"],
+        "properties": {
+          "entity": {
+            "description": "The entity record, or null if the id is not in the graph.",
+            "type": ["object", "null"]
+          }
+        }
+      }
+    },
+    {
+      "name": "find",
+      "description": "List the entities matching a selector — by surface type, by source-path glob, and/or by owning module. An empty selector matches every entity; exact-id lookup is get-entity. Selectors stay core-scalar (type/path-glob/owner) — there is no attribute selector — but each returned record carries the entity's declared attributes (status, and where applicable tier/title/discriminators) alongside its core fields.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "description": "Restrict to one surface type (or 'module').",
+            "enum": ["contract", "policy", "conduct", "schema", "check", "tool", "operation", "skill", "agent", "codex-skill", "codex-agent", "interface", "doc", "module"]
+          },
+          "path_glob": {
+            "description": "Restrict to entities whose source path matches this glob (e.g. '.engine/check/*.json').",
+            "type": "string",
+            "minLength": 1
+          },
+          "owner": {
+            "description": "Restrict to entities owned by this module id.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entities"],
+        "properties": {
+          "entities": {
+            "description": "The matching entity records, ordered by id.",
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      }
+    },
+    {
+      "name": "neighbors",
+      "description": "The entities adjacent to one entity, by edge traversal. Direction selects outgoing edges (this entity points at them), incoming edges (they point at this entity — the reverse traversal the derived index exists for), or both. An optional edge filter narrows to specific predicate kinds; an optional depth (default 1) follows edges transitively up to that many hops. The 'supersedes' edge (a deployment-stream contract replacing an earlier one) is reachable here as a deliberate pull; it is excluded from the engine's default cold-start neighbourhood walk so orientation stays cheap.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "description": "The entity to find neighbors of.",
+            "type": "string",
+            "pattern": "^(contract|policy|conduct|schema|check|tool|operation|skill|agent|codex-skill|codex-agent|interface|doc|module):[A-Za-z0-9._-]+$"
+          },
+          "edge_filter": {
+            "description": "Restrict to these predicate kinds. Omit to follow the default cold-start walk set — the containment edges plus the code-dependency and wiring edges (provided_by, governed_by, targets, depends_on, imports, tests, enforced_by, wires_hook, implemented_by); name the off-walk lineage edge supersedes explicitly to pull it.",
+            "type": "array",
+            "items": { "enum": ["provided_by", "governed_by", "targets", "depends_on", "imports", "tests", "enforced_by", "wires_hook", "implemented_by", "supersedes"] }
+          },
+          "direction": {
+            "description": "'out' = edges this entity declares; 'in' = edges that point at this entity (reverse); 'both' = either. Default 'out'.",
+            "enum": ["out", "in", "both"]
+          },
+          "depth": {
+            "description": "How many hops to follow transitively. Default 1.",
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["neighbors"],
+        "properties": {
+          "neighbors": {
+            "description": "Each adjacency reached: the neighbor entity id, the predicate that links it, and the direction it was reached by.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "predicate", "direction"],
+              "properties": {
+                "id": { "type": "string" },
+                "predicate": { "enum": ["provided_by", "governed_by", "targets", "depends_on", "supersedes"] },
+                "direction": { "enum": ["out", "in"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "relate",
+      "description": "How two entities relate: the shortest edge path between them (following edges in either direction), or null if they are not connected. Answers 'is A wired to B, and through what'.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id_a", "id_b"],
+        "properties": {
+          "id_a": {
+            "description": "The first entity id.",
+            "type": "string",
+            "pattern": "^(contract|policy|conduct|schema|check|tool|operation|skill|agent|codex-skill|codex-agent|interface|doc|module):[A-Za-z0-9._-]+$"
+          },
+          "id_b": {
+            "description": "The second entity id.",
+            "type": "string",
+            "pattern": "^(contract|policy|conduct|schema|check|tool|operation|skill|agent|codex-skill|codex-agent|interface|doc|module):[A-Za-z0-9._-]+$"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "description": "The shortest path from id_a to id_b as an ordered list of entity ids (inclusive of both ends), or null if they are not connected.",
+            "type": ["array", "null"],
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  ],
+  "fallback": {
+    "kind": "mcp",
+    "handle": "engine-knowledge-graph"
+  }
+}

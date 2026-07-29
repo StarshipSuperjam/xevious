@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_SPEC_ROOT": ".engine/_fixtures/product-spec-coverage"
+  }
+}

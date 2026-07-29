@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "product-spec-matrix.v1 — the committed record of a product's settled acceptance criteria",
+  "description": "The shape of `.engine/product-spec-matrix.json`, the derived-committed matrix product-design writes (one row per settled acceptance criterion). It is pinned here as an EXPLICIT producer/consumer contract: the product-design generator (obligation_matrix.py) produces it, and the standing conformance sweep (conformance_sweep.py, a core tool) reads it by presence WITHOUT importing the optional product-design module. Without this pinned shape, a rename of a row field on the producer side would break the consumer's read silently. A test on each side validates against this file, so the cross-module by-presence read cannot drift unnoticed. An empty `rows` array is valid and expected — a project with no settled `docs/spec/` capability has an empty matrix (a first-class MVP state).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "rows"],
+  "properties": {
+    "schema_version": {
+      "description": "Which version of this file's shape this is. Lets a future engine upgrade recognise an older matrix and migrate it safely. Today the only valid value is 1.",
+      "const": 1
+    },
+    "source": {
+      "description": "Where the rows are derived from — the product's own in-repo spec tree. Today the only valid value is 'docs/spec'.",
+      "const": "docs/spec"
+    },
+    "rows": {
+      "description": "One row per settled acceptance criterion, sorted by (doc, position) for a deterministic, byte-comparable artifact. Empty when nothing is settled.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/obligation-row" }
+    }
+  },
+  "$defs": {
+    "obligation-row": {
+      "description": "One settled acceptance criterion: the document it came from, its position in that document's criteria table, a content digest of the criterion text (the key drift attaches to), and the criterion / how-it-is-verified / who-checks-it as written.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc", "position", "digest", "criterion", "how_verified", "who"],
+      "properties": {
+        "doc": {
+          "description": "The repo-relative, forward-slashed path of the `docs/spec/` document the criterion came from.",
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "description": "The 0-based index of the criterion's row in its document's acceptance-criteria table (its validated table position). NOT part of the row's dedup identity for the standing sweep — that is (doc, digest) — because position cascades on an insert/delete.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "digest": {
+          "description": "The content digest of the criterion cell: sha256 over the whitespace-canonicalised criterion text. The thing that moves on a genuine re-wording, and the content-key the standing sweep attaches a finding to.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "criterion": {
+          "description": "The acceptance criterion as written in the spec.",
+          "type": "string",
+          "minLength": 1
+        },
+        "how_verified": {
+          "description": "How the criterion is verified, as written in the spec.",
+          "type": "string"
+        },
+        "who": {
+          "description": "Who checks the criterion, as written in the spec (lowercased).",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

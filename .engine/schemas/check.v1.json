@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "check.v1 — the shape of a single validation rule",
+  "description": "A check is one validation rule, authored as data (never as validator code): it names what to inspect, which check-kind evaluates it, how hard it bites, and which suites run it. The validation engine loads every check file and dispatches each to its kind. This schema governs the rule's shape — its seven required fields and three optional fields (status, ci_author_exempt, and ci_label_exempt), and no others. It does not decide whether the named kind exists (an unknown kind is caught when the rule runs) or whether the rule's claim is true (only that the rule is well-formed).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "target", "kind", "params", "tier", "suites", "message"],
+  "properties": {
+    "id": {
+      "description": "The rule's stable, engine-namespaced name (for example engine/check/pr-body-completeness). It stays fixed so the rule's history can be tracked over time. Lower-case words and digits separated by slashes and hyphens.",
+      "type": "string",
+      "pattern": "^engine/check/[a-z0-9][a-z0-9-]*$"
+    },
+    "target": {
+      "description": "What the rule inspects: a repository file path or glob, a surface category from the ontology catalog, and/or a named context such as the pull-request body. At least one of these must be given.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "path": {
+          "description": "A file path or glob, relative to the repository root (for example **/*.md, or .engine/schemas/surface-catalog.json).",
+          "type": "string",
+          "minLength": 1
+        },
+        "surface": {
+          "description": "A surface category named in the ontology catalog (for example schema or check).",
+          "type": "string",
+          "minLength": 1
+        },
+        "context": {
+          "description": "A named non-file context the rule reads instead of a file, for example pull-request-body.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "kind": {
+      "description": "Which check-kind evaluates this rule. The validation engine ships a closed core set (schema, presence, shape, coverage, and coherence), plus a custom/script escape hatch; a module may add more by providing a matching callable. A rule naming a kind the engine does not know is reported as a finding, never silently passed. This field is left as a free string (not a fixed list) so module-provided kinds stay valid.",
+      "type": "string",
+      "minLength": 1
+    },
+    "params": {
+      "description": "The settings this kind needs — for example the list of required sections for a presence check, or a schema reference for a schema check. The exact shape depends on the kind; an empty object is allowed.",
+      "type": "object"
+    },
+    "tier": {
+      "description": "How hard the rule bites: hard (a failure that, in the merge-gating suite, blocks the merge) or soft (a warning that never blocks). Whether a hard rule actually blocks depends on the suite that runs it — only the merge-gating suite stops a merge.",
+      "enum": ["hard", "soft"]
+    },
+    "suites": {
+      "description": "The suites this rule joins, named from the suite declarations. Membership runs this way round — each rule declares its own suites, and no central list enumerates them — so installing or removing a rule changes a suite's roster simply by adding or removing the file. An empty list is allowed and means the rule joins no trigger-driven suite because it is invoked directly instead — run by id from its own workflow, as the guardrail-weakening guard is — not an accidentally-inert rule.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "message": {
+      "description": "The plain-language explanation shown when the rule finds a problem: what is wrong, why it matters, and how to fix it, written so a non-engineer reviewer and a remediating AI can both act on it. The schema checks the message is present; whether it is clearly written is a matter for review, which the validator cannot grade.",
+      "type": "string",
+      "minLength": 1
+    },
+    "ci_author_exempt": {
+      "description": "Optional. PR-author logins (for example dependabot[bot]) for which this rule does not bind in the merge-gating (CI) suite. The validation engine honors it as a disclosed not-applicable pass — a stated pass that names why the rule did not apply — never a silent skip, and never a workflow-level skip that would leave the required check pending and block the merge. The closed check-kinds stay author-agnostic: the engine reads the author from the trusted event context and skips the rule before any kind runs. Reserved for a recognized external automation whose own pull-request body is its account of the change; widening this list is a guardrail change that must be re-confirmed for spoof-safety, and each such re-confirmation is recorded in the pull request that lands the widening.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "ci_label_exempt": {
+      "description": "Optional. Pull-request labels (for example engine-erasure) for which this rule does not bind in the merge-gating (CI) suite. Honored exactly like ci_author_exempt — a disclosed not-applicable pass, never a silent skip — but it keys on a label the pull request carries rather than on its author, so it waives a whole class of pull request rather than one automation's account. Reserved for an engine-defined single-purpose pull-request class whose own deliberate body is its account of the change (for example a single-purpose erasure proposal, which carries a plain-language consent body rather than the eight-section template). The closed check-kinds stay label-agnostic: the engine reads the labels from the trusted event context and skips the rule before any kind runs. Widening this list is a guardrail change that must be re-confirmed for spoof-safety.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "status": {
+      "description": "Where this rule sits in the 'artifact' lifecycle. OPTIONAL — an omitted status means active. active = a live rule (the default the moment it merges); deprecated = in managed phase-out, kept while it is being replaced; retired = no longer in use, kept for history. There is deliberately no 'draft' or 'proposed' state, because draftness is a branch state, not a governance value (a rule is born active on merge to the protected branch). No core consumer reads this field yet; it is the spec-faithful lifecycle slot the later migration machinery will read, matching the doc and operation surfaces. Set this field only to mark a rule deprecated or retired.",
+      "enum": ["active", "deprecated", "retired"]
+    }
+  }
+}

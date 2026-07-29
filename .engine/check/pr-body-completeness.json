@@ -1,0 +1,28 @@
+{
+  "id": "engine/check/pr-body-completeness",
+  "target": { "context": "pull-request-body" },
+  "kind": "presence",
+  "params": {
+    "sections": [
+      "Purpose",
+      "Scope",
+      "Out of scope",
+      "Risk",
+      "Validation",
+      "Review",
+      "Files of interest",
+      "AI involvement"
+    ],
+    "filled_subsection_label": "Impact",
+    "required_phrases": [
+      "A green mechanical check below shows this change conforms",
+      "Your merge is the binding gate",
+      "leaves its area unverified"
+    ]
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "ci_author_exempt": ["dependabot[bot]", "github-actions[bot]"],
+  "ci_label_exempt": ["engine-erasure"],
+  "message": "The pull request body must contain all eight required sections as level-2 headings (## Purpose, ## Scope, ## Out of scope, ## Risk, ## Validation, ## Review, ## Files of interest, ## AI involvement), each filled with real content, AND it must carry the consent preamble — the italic blockquote at the very top of the template that tells the reader a green check shows conformance, not correctness, and that their merge is the binding gate. A section counts as empty if it contains only the template's angle-bracket placeholder prompts (e.g. <why this change exists>) or whitespace. Each section must ALSO carry an Impact line filled with the one-line consequence — the sentence a reviewer reads first — not left as the `<...>` template placeholder and not removed. Those preamble anchors are fixed structural markers of that one consent note (spanning both of its paragraphs) — not a growable list of mandated sentences; they exist because a heading scan cannot see copy that sits above the first heading, and the preamble drops when a body is reconstructed instead of filled from the template verbatim. This is how a reviewer who cannot read code gets a complete, structured account of the change and the standing note on how to read the checks. The check confirms each section is present and filled, its Impact line is really written, and the preamble anchors are present; it cannot judge whether the content is accurate, honest, or earns confidence — that is the reviewer's job. Fill any flagged section and its Impact line, and restore the preamble if flagged, before merging."
+}

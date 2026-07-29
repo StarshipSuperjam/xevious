@@ -1,0 +1,4 @@
+{
+  "severity": "hard",
+  "message_contains": "only one can be active"
+}

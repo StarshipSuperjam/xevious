@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/skill-shape",
+  "target": { "path": ".claude/skills/*/SKILL.md" },
+  "kind": "shape",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI", "audit-prep"],
+  "message": "A skill (a SKILL.md under .claude/skills/) must contain, as a level-2 heading, a Steps section — the in-session instructions to follow — and may optionally add a trailing Notes section, with no others. The Steps section is what makes a skill a usable procedure, so a skill that omits it is structurally incomplete. This check catches a broken SHAPE only: that the required section is present and that no stray section appears. It cannot judge whether the steps are substantive, or whether a deep procedure should have been delegated to an operation — an empty or hand-wavy section passes here and is caught instead by the operator reviewing the committed change and (for anti-sprawl and discoverability) the audits layer. Length over the 60-line budget is only a soft nudge to trim, never a block. Add or reorder the flagged sections to match the skill template (.engine/templates/skill.md) before merging."
+}

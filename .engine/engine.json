@@ -1,0 +1,18 @@
+{
+  "engine_release": "v0.4.1",
+  "packages": {
+    "audit-library": "0.2.0",
+    "core": "0.3.0",
+    "design-review": "0.2.0",
+    "memory-semantic-recall": "0.1.0",
+    "memory-substrate-sqlite-fts5": "0.2.0",
+    "product-design": "0.2.0",
+    "qa-review": "0.2.0",
+    "routine-mode": "0.1.0",
+    "validators-core": "0.2.0"
+  },
+  "identity": "solo",
+  "handle": "StarshipSuperjam",
+  "default_branch": "main",
+  "home_repository": "StarshipSuperjam/engine-template"
+}

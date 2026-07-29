@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "finding.v1 — the finding base every check and review uses",
+  "description": "The shared shape every finding uses, whatever produces it — a check, a review, or the engine's self-monitoring. A finding has three parts: a severity, a message, and a location. Other parts of the engine build on this shape, reusing it and adding their own details (for example, self-monitoring records where a signal came from and when it was first and last seen). This file is reference data only: nothing checks a finding against it yet — that enforcement arrives with the engine's validation step — and the file's own correctness as a schema is checked automatically.",
+  "type": "object",
+  "required": ["severity", "message", "location"],
+  "properties": {
+    "severity": {
+      "type": "string",
+      "description": "How serious the finding is. What the values mean depends on what produced the finding, so this base does not fix a list — each producer defines its own. It is an internal field, never shown to a person as-is; anything an operator sees is translated into plain language first. The base only requires that a severity is present, as text."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A clear, complete, plain-language statement of the finding — what is wrong, why it matters, and how to fix it — written so both a person and the engine can act on it, explaining any technical term rather than assuming it. The schema requires a message to be present; whether it truly meets that clarity bar is a judgment, not something this check can measure."
+    },
+    "not_applicable": {
+      "type": "boolean",
+      "description": "Optional. True when this finding is a disclosed no-op — a check reporting that it does not apply in this context and there is nothing to do (never a silent skip). Absent or false means the finding is actionable. A reader that groups findings uses this to keep dormant 'nothing to do' notes from burying the actionable ones; nothing depends on it being present, so a finding without it is treated as actionable."
+    },
+    "location": {
+      "type": ["object", "null"],
+      "description": "Where the finding is, or null when it has no file location (for example, a finding about a whole document or one not tied to a file). When present, it points to a file and, optionally, a line.",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path of the file the finding concerns, relative to the repository root."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "description": "Line number within the file (counting from 1), or null when the finding is not tied to a specific line."
+        }
+      },
+      "required": ["file"],
+      "additionalProperties": false
+    }
+  }
+}

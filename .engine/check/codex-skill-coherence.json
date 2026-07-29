@@ -1,0 +1,15 @@
+{
+  "id": "engine/check/codex-skill-coherence",
+  "target": {
+    "context": "codex-skill-coherence"
+  },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/codex_skill_coherence_check.py"
+  },
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "An engine command rendered for Codex (.agents/skills/engine-*) must carry the same self-election protection its Claude source declares. A command the OPERATOR types must ship the companion agents/openai.yaml with policy.allow_implicit_invocation: false, so the assistant can never start it on its own. The bar is each command's own source, not a blanket rule: a command deliberately declared model-reachable (so the assistant may start it) is allowed a reachable render, because pinning every command to operator-only would ship such a capability on one runtime and silently disable it on the other. This check goes red when an operator-typed engine command ships without that companion or with the policy loosened. To fix: regenerate the render (uv run --directory .engine --frozen -- python tools/codex_gen.py generate) or restore the policy file. Note the residual protection is a PAIR: this check reads the source's invocation, and the Claude-side skill-coherence rule is what keeps that invocation honest against the platform flags."
+}

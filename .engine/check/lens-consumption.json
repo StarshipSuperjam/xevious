@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/lens-consumption",
+  "target": { "context": "lens-consumption" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/lens_consumption_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Every review the engine has installed (the plan-review and pre-submission personas under .claude/agents/) must be run by a build stage — otherwise it ships looking like an active review while never actually checking your changes. Build orchestration records which stage runs which review in the consumed-review-lenses block of .engine/operations/build-orchestration.md; this check reads that record, compares it against the reviews actually installed, and goes red when an installed review is run by no stage. To fix a red: either wire the flagged review into a stage by adding its lens to the consumed-review-lenses block, or remove the persona from .claude/agents/. This check reads only whether a stage is recorded as consuming each installed lens; it does not verify the stage genuinely spawns that review at build time (your pull-request review and the build itself cover that), and a review whose lens is consumed but that ships zero personas is a disclosed no-op, not a finding. If build-orchestration.md is missing or its consumed-review-lenses block is absent, the check fails closed rather than passing an unjudged roster."
+}

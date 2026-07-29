@@ -1,0 +1,38 @@
+# Engine tool-runtime dependency spec (foundation infrastructure artifact).
+#
+# The engine's tools are Python, run inside an engine-namespaced, uv-managed
+# tool-runtime: this committed spec + the pinned uv.lock resolve it, and a
+# gitignored .engine/.venv/ is materialized by `uv sync` — derived, never committed.
+#
+# Dependency groups are added append-as-built, one per dependency-carrying
+# module (named by the module's id, PEP 735 normalized), as packages land.
+# The `core` group carries the first:
+# the `jsonschema` validator the `core` validation engine's `schema` kind needs
+# to enforce JSON Schema 2020-12 (the locked schemas design requires the standard
+# built-in meta-schema, not bespoke meta-machinery), and `pyyaml`, which that same
+# `schema` kind uses to read a prose surface's YAML frontmatter to a data object
+# before validating it (the validation foundation parses "a file or its YAML
+# frontmatter", and pyyaml is the reader that satisfies that).
+# `default-groups` lists it so
+# every `uv sync`/`uv run` (CI and local) resolves it with no per-command flag.
+# A future dep-carrying module declares its own group under [dependency-groups]; the
+# module manager derives this default-groups selection from the present module set
+# (`add`/`remove` keep it derived, `sync-groups` is the fixer), and the `uv-group-drift`
+# CI check guards the committed value against drift — no hand-append, no workflow edit.
+[project]
+name = "engine-tools"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+core = ["jsonschema>=4.18", "mcp>=1.28.1", "pyyaml>=6.0"]
+# Meaning-based recall: numpy is the whole runtime. The word table it reads is committed
+# under the module's own directory, so nothing is fetched at install or at use, and the
+# tokenizer is implemented in the standard library rather than installed — the reference
+# tokenizer package depends on huggingface-hub, which would put an HTTP client and a
+# remote-artifact fetcher into the environment every hook and check executes in.
+memory-semantic-recall = ["numpy>=1.26"]
+
+[tool.uv]
+default-groups = ["core", "memory-semantic-recall"]

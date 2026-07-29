@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/product-adr-form",
+  "target": { "context": "product-adr" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/product_design/adr_form.py" },
+  "tier": "hard",
+  "suites": ["CI", "pre-commit", "pre-close"],
+  "message": "Checks that each of your project's decision records under `docs/adr/` still records what was ruled out. A decision record is a plain file the engine writes when you make a significant choice — what was decided, and the alternatives that were weighed and turned down — so a later session can see what is already settled and doesn't re-open it. This check confirms each record the engine authored carries its `## What we ruled out` section, present and with something in it. It checks only that the section is there with content — never whether the reasons you gave are the right ones; that stays your call and the review lenses'. It looks only at the records the engine wrote (the ones it marked as its own at the top); a record you keep in some other style is left untouched, even one that also uses a similar file layout. A record that has dropped or emptied that section blocks the merge — the finding names the record and what to add, and is always self-clearable (fill in the section, or, for a record the engine did not author, it is not checked at all). When the engine has written no records yet — no `docs/adr/` folder, or one with none of its own records in it — the check says so plainly and does nothing, the normal state before any decision is recorded, never a silent pass; it starts checking on its own once a record exists. It only ever reads your files; it never changes them."
+}

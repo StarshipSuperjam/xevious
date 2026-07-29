@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_INTERFACE_FIXTURE_DIR": ".engine/_fixtures/interface-coherence"
+  }
+}

@@ -1,0 +1,28 @@
+---
+name: engine-recall
+invocation: model-auto
+description: Look up what this project already decided, tried, or learned — for "what did we decide about…", "why did we do it that way", "have we hit this before", or anything about last time or an earlier session. Searches your saved memory several ways and reads back the real conversation, not just a summary of it.
+---
+
+## Steps
+
+1. If no question came with the command, ask what they want looked up before searching — this command answers
+   a question, so guessing one from recent context would search for the wrong thing.
+2. Enter and follow the procedure in `.engine/operations/memory-recall.md`. It rephrases the question into
+   several short search phrases (what keyword search needs, since it matches words and finds nothing without
+   them), searches each with a limit, asks the same question by meaning where that operation is installed,
+   pools and de-duplicates the hits, reads the actual conversation behind the promising ones, and answers with
+   the source named — offering the exact wording where it matters, and saying plainly when memory does not
+   hold the answer.
+
+## Notes
+
+Reach for this whenever a request leans on an earlier session — "what did we decide about…", "why did we do it
+that way", "have we hit this before", "what did you say about…", or anything referring to last time, earlier,
+or months ago — and before answering from your own recollection of this project, which does not carry between
+sessions. Canonical artifacts still outrank memory: a merged pull request, a decision record, or the code
+itself is stronger evidence than a memory of it, so use recall to find the narrative and *which* artifact to
+read.
+
+Nothing in the project is changed or removed by this, and nothing is written either: searching your memory and
+reading a conversation back are both pure reads.

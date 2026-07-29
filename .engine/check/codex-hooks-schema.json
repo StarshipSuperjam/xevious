@@ -1,0 +1,15 @@
+{
+  "id": "engine/check/codex-hooks-schema",
+  "target": {
+    "path": ".codex/hooks.json"
+  },
+  "kind": "schema",
+  "params": {
+    "schema": ".engine/schemas/codex-hooks.v1.json"
+  },
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "The engine's Codex hook registration (.codex/hooks.json) does not match the registration format — an event name outside the platform's documented set, or a hook entry missing its command (the exact problem is named just above). A malformed registration means Codex silently runs none of the engine's session hooks. The file is maintained by the engine's module wiring: restore the committed file (git checkout -- .codex/hooks.json) or revert the hand-edit, rather than editing entries in place."
+}

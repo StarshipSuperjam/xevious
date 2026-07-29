@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent.v1 — the frontmatter of one persona (a Claude Code agent file)",
+  "description": "The per-instance routing state carried in a persona's YAML frontmatter: the engine-governed-and-read routing fields the roster derivation and the coherence kind read (role, lens, model-tier, permissions, output-contract), alongside the platform passthrough keys Claude Code reads itself (name, description, tools, permissionMode, model, effort). This schema governs only the frontmatter's shape, presence, and types; the prose body (Mandate, How you work, What you produce, Boundaries) is the template's domain, checked separately by the agent-shape rule. CLOSED-SET MEMBERSHIP IS DELIBERATELY NOT ENCODED HERE: that 'role' is one of plan-review/worker/pre-submission-review/audit, that 'model-tier' is one of judgment/mechanical, and that a 'lens' appears only on the review roles, are coherence findings produced by the validation coherence kind, not schema constraints — so role/model-tier/lens are governed here as well-formed strings, and their membership and the lens/role symmetry are confirmed by the agent coherence leg. This keeps the closed sets in one place (the leg) rather than duplicated into an enum that could drift. The output-contract names which versioned finding-contract instance the persona reports on; those concrete .v1 instances are authored later with the review/worker suites, so this field is a reference string, not an inline schema. This file is enforced live: the agent-frontmatter check (a validators-core schema rule) validates each persona's parsed YAML frontmatter against it at the merge, routed through the surface catalog (the 'agent' surface), reading the frontmatter with the validation foundation's YAML reader; its own well-formedness and representative per-role instances are also fixture-tested by the surface's unit tests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "role", "model-tier", "permissions", "output-contract"],
+  "properties": {
+    "name": {
+      "description": "The platform identity field Claude Code reads to discover and present the agent — the field that makes file-drop discovery work. A short, stable, lower-case slug.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "The plain-language line Claude Code uses to present the agent and to decide when to spawn it. One line, written for a human and the platform's own routing, with no internal jargon.",
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "description": "The trigger this persona runs for, which fixes whether it is a build-gate persona or the audit persona. The recognized values are plan-review, worker, pre-submission-review, and audit; a value outside that set is a coherence finding ('unknown role' is impossible by construction), NOT a schema rejection — so this field is a well-formed string here and its membership is confirmed by the coherence kind. The role implies the trigger, so there is no separate trigger field.",
+      "type": "string",
+      "minLength": 1
+    },
+    "lens": {
+      "description": "The specific perspective within a review role (an open, additive vocabulary — a module may ship a new lens). Present ONLY on the review roles (plan-review, pre-submission-review); the worker and audit roles carry no lens and are recognized by role. That a lens appears only on a review role is a coherence finding (the symmetric guard to the closed-role check), not a schema conditional — so this field is simply an optional string here.",
+      "type": "string",
+      "minLength": 1
+    },
+    "model-tier": {
+      "description": "The execution tier the work demands — careful judgment vs. mechanical work product — never a model name. The recognized values are judgment and mechanical (a closed demand vocabulary); a value outside that set is a coherence finding, not a schema rejection, so this field is a well-formed string here. The field keeps the name 'model-tier' though its members are demand levels; which model and effort realize the tier is platform passthrough (see model + effort).",
+      "type": "string",
+      "minLength": 1
+    },
+    "permissions": {
+      "description": "The write posture this persona's trigger grants. A reviewer or the audit persona is read-only (it reports findings, never writes); a worker has scoped write (only its commit's paths). This is a closed binary mapped to the Claude Code tool/permission restrictions the platform enforces (see tools / permissionMode), and is NOT among the coherence kind's findings, so its membership is governed here as an enum.",
+      "type": "string",
+      "enum": ["read-only", "scoped-write"]
+    },
+    "output-contract": {
+      "description": "Which finding contract this persona reports on — a reference to a versioned finding-schema instance that profiles the canonical finding.v1 base {severity, message, location}. The review roles report on a contract that narrows severity to blocking/serious/nit; the audit role declares its own. The concrete .v1 instances are authored later with the review/worker suites and fixture-tested, so this is a reference string here, not an inline schema. The grammar fixes only the report shape; a consumer's disposition vocabulary is the trigger-owner's, never this field's.",
+      "type": "string",
+      "minLength": 1
+    },
+    "tools": {
+      "description": "Platform passthrough: the Claude Code tool set this persona may use — the mechanism the permissions split maps to (a read-only reviewer's tools exclude write; a worker's allow scoped write). Read by the platform and left untouched by the engine; its shape is the platform's, so the engine does not constrain it here beyond accepting the platform's list or string forms.",
+      "type": ["array", "string"]
+    },
+    "disallowedTools": {
+      "description": "Platform passthrough: the Claude Code tool DENYLIST — tools removed from whatever this persona would otherwise inherit — the second mechanism (beside tools) the permissions split maps to. The denylist is how a read-only reviewer keeps its full read/search/web/MCP reach while losing only the authoritative-write tools (Edit, Write, NotebookEdit) — a blanket read-only allowlist would strip the MCP and web tools the adversarial review legitimately needs. That a read-only persona actually blocks the write tools (via this denylist OR a write-excluding tools allowlist, and is not inherit-all) is enforced by the agent coherence leg, not this schema — tools/disallowedTools stay well-formed platform passthrough here, mirroring how role/model-tier membership lives in the leg. Read by the platform; the engine does not constrain its values here beyond the platform's list or string forms.",
+      "type": ["array", "string"]
+    },
+    "permissionMode": {
+      "description": "Platform passthrough: the Claude Code permission mode that realizes the read-only-vs-scoped-write posture. Read by the platform; the engine does not constrain its values here.",
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "description": "Platform passthrough: which model realizes this persona's model-tier demand. Accepts a durable alias (opus/sonnet/haiku — preferred over versioned IDs that rot), a full model ID, or 'inherit'. The engine names no closed model set, so a new model is adopted by changing this value, never the grammar. Read by the platform.",
+      "type": "string",
+      "minLength": 1
+    },
+    "effort": {
+      "description": "Platform passthrough: the effort level that, with model, realizes the model-tier demand (a judgment persona runs higher; a mechanical persona lower). Read by the platform; the engine does not constrain its values here.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Where this persona sits in the 'artifact' lifecycle. OPTIONAL — an omitted status means active. active = a live persona (the default the moment it merges); deprecated = in managed phase-out, kept while callers are pointed elsewhere; retired = no longer in use, kept for history. There is deliberately no 'draft' or 'proposed' state, because draftness is a branch state, not a governance value (a persona is born active on merge to the protected branch). No core consumer reads this field yet; it is the spec-faithful lifecycle slot the later migration machinery will read, matching the doc and operation surfaces. Set this field only to mark a persona deprecated or retired.",
+      "enum": ["active", "deprecated", "retired"]
+    }
+  }
+}

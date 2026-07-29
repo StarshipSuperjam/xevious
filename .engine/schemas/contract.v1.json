@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contract.v1 — the frontmatter of one decision record (eADR)",
+  "description": "The per-instance state carried in a contract's YAML frontmatter: its eADR identifier, a short human title, where the decision sits in its lifecycle, the date it reached that state, and — only when it replaces an earlier decision — the eADR it supersedes. A contract is one architecturally significant decision, recorded once and kept forever; this schema governs only the frontmatter, while the prose body (Decision, Significance, Rationale, Anti-choice, Status, and optionally Supersedes) is the template's domain and is checked separately by the shape rule. The requirement that a superseding decision name what it supersedes, and the judgement of whether an anti-choice is genuine, are the contract surface's own concerns reviewed at the pull request, not encoded here. This file is enforced live: the contract-frontmatter check (a validators-core schema rule) validates each decision record's parsed YAML frontmatter against it at the merge, reading the frontmatter with the validation foundation's YAML reader; its own well-formedness and a representative instance's conformance are also fixture-checked by the surface's unit tests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "status", "date"],
+  "properties": {
+    "id": {
+      "description": "The decision record's identifier. The engine's own founding canon uses the letters 'eADR-' followed by a four-digit zero-padded number (eADR-0001, eADR-0002, …); the 'eADR-' prefix is the engine's, so an engine decision record never collides with a product's own ADR system, and the four digits set the one-project ceiling at eADR-9999 (a deliberate bound matching the locked design's example). A deployment's OWN per-instance engine decisions — authored under contracts/instance/ and preserved across engine updates — additionally carry a per-project prefix, '<project-slug>-eADR-####' (for example, acme-eADR-0007), so a deployment's own record never collides with the engine's canon as that canon grows. The prefix is a human-facing wall only: which population a record belongs to is decided by its folder / provides-membership, never by this id, so a prefix that ever disagreed with its folder defers to the folder. The engine writes the id (the operator never types it); the project-slug is lowercase letters and digits joined by single hyphens. The file is additionally title-slug-named (eADR-0001-a-short-slug.md).",
+      "type": "string",
+      "pattern": "^(?:[a-z0-9]+(?:-[a-z0-9]+)*-)?eADR-[0-9]{4}$"
+    },
+    "title": {
+      "description": "A short, plain-language label for the decision, written for a human scanning the index (for example, 'The validator is a thin core over a kind registry'). One line; no trailing punctuation needed.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Where this decision sits in the 'decision' lifecycle. proposed = drafted but not yet in force; accepted = in force and authoritative (the top authority tier); superseded = replaced by a later decision and kept for history, never deleted. There is deliberately no 'rejected' state — a rejected alternative is recorded as the Anti-choice inside the contract that prevailed.",
+      "enum": ["proposed", "accepted", "superseded"]
+    },
+    "date": {
+      "description": "The date this record reached its current status, written as a plain calendar date YYYY-MM-DD (for example 2026-06-02). The YYYY-MM-DD shape is what is actually enforced; the date format is only a hint.",
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "supersedes": {
+      "description": "The eADR identifier this record replaces — present ONLY when a deployment's own per-instance decision supersedes an earlier one in the same stream (so it carries the same '<project-slug>-eADR-####' form). The engine's founding canon ('eADR-####') is revised in place and carried forward by engine releases, never superseded, so a canon record omits this field. A first-of-its-kind decision supersedes nothing and omits this field entirely. When present, it pairs with a Supersedes section in the body; that pairing, and the rule that a superseding decision must name what it replaces, are reviewed at the pull request rather than enforced by this schema in core.",
+      "type": "string",
+      "pattern": "^(?:[a-z0-9]+(?:-[a-z0-9]+)*-)?eADR-[0-9]{4}$"
+    }
+  }
+}

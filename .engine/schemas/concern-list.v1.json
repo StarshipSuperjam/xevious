@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "concern-list.v1 — the self-audit's seeded checklist of sharp hygiene concerns",
+  "description": "The small, committed, declarative list the engine's self-audit reads each run: sharp deployed-repo hygiene concerns that need precise targeting, expressed as data rows rather than prose prompts. It is audits-system-owned data, not a catalogued surface, and is validated by direct invocation of the schema check-kind. Each row earns its place only if it targets a drift the audit's generic sweep does not already catch, cannot be expressed as a mechanical check (or it would belong in validation), and carries the affirmative case for its existence (the justification field, the presence gate this schema enforces). The list grows additively, one reviewed row at a time; this schema fixes its shape, never its membership.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "concerns"],
+  "properties": {
+    "schema_version": {
+      "description": "Which version of this file's shape this is. It lets a future engine upgrade recognise an older list and update it safely. Today the only valid value is 1.",
+      "const": 1
+    },
+    "concerns": {
+      "description": "The seeded rows, each a single hygiene concern the audit re-probes every run. An empty array is valid — the audit's always-on generic sweep is the floor that survives a degenerate list — but the seed ships with the deployed-repo hygiene targets.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/concern-entry" }
+    }
+  },
+  "$defs": {
+    "concern-entry": {
+      "description": "One concern: what to look at, the adversarial question to ask of it, the kinds of finding it can produce, and why this row earns its place.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "adversarial-question", "finding-types", "justification"],
+      "properties": {
+        "target": {
+          "description": "What this concern examines — the deployed-repo local state it points the audit at, named plainly (for example the project's saved memory, or the engine-labelled open issues).",
+          "type": "string",
+          "minLength": 1
+        },
+        "adversarial-question": {
+          "description": "The retirement-default question the audit asks of the target this run — phrased so the honest answer surfaces drift, not so it confirms the target still exists.",
+          "type": "string",
+          "minLength": 1
+        },
+        "finding-types": {
+          "description": "The kinds of finding this concern can raise, as short stable tags — the vocabulary the audit's findings draw from for this row. At least one.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "justification": {
+          "description": "The affirmative case for why this row earns its place: the drift it catches that the generic sweep does not, and why it cannot be a mechanical check. Required — its presence is the schema gate; its genuineness stays the audit's own posture.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

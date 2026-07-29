@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/conduct-shape",
+  "target": { "context": "conduct-shape" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/conduct_shape_check.py" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A codes-of-conduct file's body does not line up with its settings block: a code listed at the top has no matching '## <title>' section below it, a '## ' section has no matching entry at the top, or a 'disables' list appears on the engine's default codes (disabling is for your own override file only). The exact mismatch is named just above. Conduct's section titles are the codes' own titles, so this correspondence is checked here rather than by the fixed-section shape rule the other prose surfaces use. Open the file and add, rename, or remove the named section or entry so each code has exactly one matching section before merging."
+}

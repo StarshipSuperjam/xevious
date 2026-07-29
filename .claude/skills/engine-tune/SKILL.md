@@ -1,0 +1,25 @@
+---
+name: engine-tune
+description: Adjust one of the engine's settings — I'll show you what you can change, then put your choice up for your approval.
+invocation: operator-typed
+disable-model-invocation: true
+allowed-tools: Bash(uv run *)
+---
+
+## Steps
+
+1. Follow the procedure in `.engine/operations/tune-policy.md`. In short: show the operator the settings they
+   can adjust and the current values (`uv run --directory .engine -- python tools/tune.py show <group>`), take
+   their choice, save it, and prepare it as a pull request they approve. Tell them, in plain words, that
+   nothing changes until they merge it.
+2. If they came here because a check told them a saved setting no longer exists, clear it instead:
+   `uv run --directory .engine -- python tools/tune.py forget <group> <setting>`. Say why it was retired if
+   the engine records a reason (the command prints it), and that clearing it changes nothing about how the
+   engine behaves — the value was already being ignored.
+
+## Notes
+
+This is a command you type to change one of the engine's tuning numbers — for example, how patient its
+background monitoring is before it flags something, or how it weighs what to show you first. It never changes
+anything on its own: your choice is saved as a pull request you approve, and kept in a place an engine update
+won't undo. Settings that keep the engine's safety order are fixed on purpose and can't be changed here.

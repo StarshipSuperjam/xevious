@@ -1,0 +1,13 @@
+{
+  "id": "engine/check/codex-agent-schema",
+  "target": {
+    "path": ".codex/agents/*.toml"
+  },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": [
+    "CI"
+  ],
+  "message": "A Codex review persona file does not match the Codex agent format — the name, description, or instructions Codex needs to spawn it is missing or has the wrong type (the exact problem is named just above). A malformed persona silently vanishes from review rather than erroring, so it is caught at the merge. The schema is resolved through the surface catalog (the 'codex-agent' surface). These files are committed renders of the canonical .claude/agents sources: fix the source and regenerate (uv run --directory .engine --frozen -- python tools/codex_gen.py generate), never the render."
+}

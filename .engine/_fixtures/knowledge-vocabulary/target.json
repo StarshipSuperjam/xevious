@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_CATALOG_PATH": ".engine/_fixtures/knowledge-vocabulary/catalog.json"
+  }
+}

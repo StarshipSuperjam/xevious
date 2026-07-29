@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "module.v1 — the shape of a module manifest",
+  "description": "A module is a unit of engine capability. Its files are scattered across the repository by surface (its checks under .engine/check/, its commands under .claude/, and so on), so the manifest is the one place that records what belongs to the module — which makes a clean uninstall, the consistency checks, and the engine self-map possible. Each module owns exactly one manifest at .engine/modules/<id>/manifest.json. This schema governs the manifest's shape — its fields and no others. It does not decide whether the module's dependencies are present or whether its declared files actually exist; that is the module-consistency check's job.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "status", "provides"],
+  "properties": {
+    "id": {
+      "description": "The module's stable identifier, matching the folder it lives in (.engine/modules/<id>/). Lower-case letters, digits, and hyphens; it stays fixed for the life of the module so its history can be tracked.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "version": {
+      "description": "The module's version, as a dotted number MAJOR.MINOR.PATCH (for example 1.4.0), optionally with a pre-release suffix such as -dev during development. This is internal bookkeeping used to drive upgrades and migrations; an operator sees a single engine version, not per-module numbers. The semver shape is enforced by the pattern below, so a non-numeric version fails the manifest schema at the merge rather than silently parsing to version zero in migration selection.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+    },
+    "status": {
+      "description": "How the module is carried: required (a foundation, always present), default-on (installed unless the operator opts out), optional (installed only if chosen), experimental (opt-in, not yet stable), or retired (kept for migration history, no longer active).",
+      "enum": ["required", "default-on", "optional", "experimental", "retired"]
+    },
+    "provides": {
+      "description": "The files this module owns, listed file-precisely (exact paths or globs) and grouped by category — usually a surface name such as check, schema, or tool, plus a foundation group for engine-config files that are not a surface. The groups together must not overlap with another module's files: every engine file is owned by exactly one module (or is a named foundation artifact). This is what makes uninstall and the self-map exact.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "uniqueItems": true
+      }
+    },
+    "depends": {
+      "description": "Other modules this one needs, each named with an optional version range (for example { \"core\": \">=1.0.0\" }). An empty range means any version. This is a presence-and-range assertion the consistency check verifies — that the named module is installed and in range — not a problem solved by a version resolver.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "wires": {
+      "description": "The shared-state edits this module makes beyond copying its files, each drawn from a fixed, reversible vocabulary so every edit can be cleanly undone on uninstall. Each entry names its kind and carries that kind's required fields, enforced per-seam below now that the wiring library has landed. The seven kinds are the only ones allowed — there is no free-form escape hatch, because an un-reversible edit to shared state is exactly the failure the module system exists to prevent. The codex-hook and codex-mcp kinds are the Codex runtime's siblings of hook and mcp, writing that runtime's own registration files (.codex/hooks.json and .codex/config.toml) so one directive never multiplexes across two targets.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "description": "Which shared seam this edit touches.",
+            "enum": ["hook", "mcp", "ontology-entry", "permission", "gitignore", "codex-hook", "codex-mcp"]
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "const": "hook" } }, "required": ["type"] },
+            "then": {
+              "required": ["type", "event", "matcher", "hook"],
+              "properties": {
+                "type": {},
+                "event": { "type": "string", "minLength": 1, "description": "The lifecycle event this hook fires on (for example PreToolUse), as named by the hooks system." },
+                "matcher": { "type": "string", "description": "Which tools or contexts the hook applies to, as a matcher string." },
+                "hook": { "type": "object", "description": "The hook entry itself — its command (which must point into .engine/) and its type; the wiring library validates the command when it applies the wire." }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "mcp" } }, "required": ["type"] },
+            "then": {
+              "required": ["type", "name", "definition"],
+              "properties": {
+                "type": {},
+                "name": { "type": "string", "minLength": 1, "description": "The engine-prefixed server name (engine-...), the key under which the definition is registered in the root .mcp.json." },
+                "definition": { "type": "object", "description": "The MCP server definition (its command and args) written into .mcp.json under the server name." }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "ontology-entry" } }, "required": ["type"] },
+            "then": {
+              "required": ["type", "name", "record"],
+              "properties": {
+                "type": {},
+                "name": { "type": "string", "minLength": 1, "description": "The surface name this record introduces in the engine ontology catalog." },
+                "record": { "type": "object", "description": "The catalog record for the surface, written into the engine-owned ontology catalog." }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "permission" } }, "required": ["type"] },
+            "then": {
+              "required": ["type", "value"],
+              "properties": {
+                "type": {},
+                "value": { "type": "string", "minLength": 1, "description": "The permission string added to the operator's allow-list (a bare string the engine never auto-removes)." }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "gitignore" } }, "required": ["type"] },
+            "then": {
+              "required": ["type", "key", "lines"],
+              "properties": {
+                "type": {},
+                "key": { "type": "string", "minLength": 1, "description": "The engine-managed block id (the fence key) under which the lines are added to the root .gitignore." },
+                "lines": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "description": "The .gitignore lines the engine manages inside its comment-fenced block." }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "codex-hook" } }, "required": ["type"] },
+            "then": {
+              "required": ["type", "event", "hook"],
+              "properties": {
+                "type": {},
+                "event": { "type": "string", "minLength": 1, "description": "The Codex lifecycle event this hook fires on (for example PreToolUse), as the platform names it." },
+                "matcher": { "type": "string", "description": "Which sources or tools the hook applies to, as the platform's matcher string. OPTIONAL: Codex omits the matcher for an always-fire group, so an absent (or empty) matcher registers unfiltered." },
+                "hook": { "type": "object", "description": "The hook entry itself — its command (which must point into .engine/) and its type; the wiring library validates the command when it applies the wire." }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "codex-mcp" } }, "required": ["type"] },
+            "then": {
+              "required": ["type", "name", "definition"],
+              "properties": {
+                "type": {},
+                "name": { "type": "string", "minLength": 1, "description": "The engine-prefixed server name (engine-...), which also keys the engine-managed block the server is rendered into inside .codex/config.toml." },
+                "definition": { "type": "object", "description": "The server definition (its command, args, and any approval settings), rendered deterministically as TOML inside the engine-managed block." }
+              },
+              "additionalProperties": false
+            }
+          }
+        ]
+      }
+    },
+    "migrations": {
+      "description": "Version-keyed data or schema transforms, run in dependency order when the engine is upgraded. Each key is the module version the transform brings the module TO (for example 1.4.0); its value names the transform to run at that version. Empty or absent for a module that needs none. A 'data' transform reshapes a gitignored store and is backed up before it runs, so the change is reversible; a 'config' transform reshapes a committed file, which a reverted upgrade restores on its own.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["description", "run", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "One plain-language line describing what this transform reshapes and why. It is shown to the operator in the upgrade's pull-request description, so it must read in plain language without engine jargon.",
+            "type": "string",
+            "minLength": 1
+          },
+          "run": {
+            "description": "The transform code to run, as a path relative to the module's own directory (.engine/modules/<id>/) pointing at a Python file that exposes a migrate(context) function. The file must be one of the module's provided files, so it is installed and owned like the rest of the module.",
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "description": "Which kind of state the transform reshapes: 'data' for a gitignored store (snapshotted before it runs so the change is reversible), or 'config' for a committed file (restored on its own when an upgrade is reverted).",
+            "enum": ["data", "config"]
+          }
+        }
+      }
+    },
+    "retired_capabilities": {
+      "description": "Version-keyed announcements that a capability this module used to offer has been REMOVED. This is neither the module-level `status: retired` (which retires a whole module) nor a `migrations` entry (which runs code to reshape state): a retired-capability entry runs nothing and reshapes nothing. It exists solely so an operator who upgrades ACROSS the version is told, in the update's pull request and its preview, that something they could ask for before is gone. Each key is the module version at which the capability went away; its value is the plain-language line the operator reads. Entries are selected by the SAME version RANGE as `migrations` — shown once when an upgrade crosses the version, never to a fresh adopter who never had the capability — and fire only while THIS module is still present, so a capability retired by removing the whole module cannot be announced here (that removal is the release cut's own inventory, and an announcement meant to outlive its module belongs in a module that survives). Once shipped, a key is NEVER removed: an engine upgrading from an older version must still cross it to see the notice, and unlike a migration there is no no-op form to fall back on — to stop announcing is simply not an option. This key raises a module's version floor at the release cut but does not certify severity: a breaking removal must still carry its own major/impact signal. Empty or absent for a module that has retired nothing.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["description"],
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "One plain-language line, in the operator's own voice, naming the capability that was removed and — where an alternative exists — what to do instead. It is the WHOLE notice the operator meets in the upgrade's pull-request description and preview, so it must read as a usable sentence without engine jargon. For example: 'The engine no longer offers to bring a set-aside note back into search; ask me to search your notes directly instead.' A bare 'Removed.' or a lone capability name is NOT enough — the operator cannot act on it, and once shipped the key is permanent (there is no no-op form to retire it to), so a thin line cannot simply be withdrawn later. The schema enforces only that the line is non-empty; that it is genuinely useful rests on your authoring and the release-cut review.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

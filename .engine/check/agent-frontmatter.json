@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/agent-frontmatter",
+  "target": { "path": ".claude/agents/*.md" },
+  "kind": "schema",
+  "params": {},
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A persona's settings block (the part at the very top of the file, between the --- lines) does not match the agent format — its name, description, role, model-tier, permissions, or output-contract is missing or malformed, or it carries a key the format does not allow (the exact problem is named just above). A malformed persona would mislead the roster derivation and the coherence check that read it rather than be quietly ignored, so it is caught at the merge. The schema is resolved through the surface catalog (the 'agent' surface), so this rule names no schema directly. Note that whether a role, model-tier, or lens value is a recognized member is confirmed separately by the agent coherence check, not here. Open the file and correct the entry named above to match agent.v1.json before merging."
+}

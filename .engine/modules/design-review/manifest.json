@@ -1,0 +1,23 @@
+{
+  "id": "design-review",
+  "version": "0.2.0",
+  "status": "optional",
+  "provides": {
+    "agent": [
+      ".claude/agents/engine-design-review-product-intent.md",
+      ".claude/agents/engine-design-review-architecture.md",
+      ".claude/agents/engine-design-review-feasibility.md",
+      ".claude/agents/engine-design-review-risk-governance.md"
+    ],
+    "codex-agent": [
+      ".codex/agents/engine-design-review-architecture.toml",
+      ".codex/agents/engine-design-review-feasibility.toml",
+      ".codex/agents/engine-design-review-product-intent.toml",
+      ".codex/agents/engine-design-review-risk-governance.toml"
+    ]
+  },
+  "wires": [],
+  "depends": {
+    "core": ""
+  }
+}

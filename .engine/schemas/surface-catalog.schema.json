@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Surface catalog — the list of every engine surface and the record shape each entry follows",
+  "description": "The single catalog that lists every engine surface, one record each; the record shape every entry follows is defined below. The catalog carries two rules of the grammar: (1) AMEND-FIRST — a surface is listed in this catalog before any instance of it is written, and reworking a surface updates this catalog first; the grammar comes before the content. (2) COVERAGE — every listed surface has its declared home directory and no stray surface directory exists; coverage problems are reported loudly. Coverage is a hard check on every pull request — the merge is blocked if a listed surface lacks its home directory or a stray surface directory exists. The check works at directory granularity, so it cannot tell an uncatalogued surface from a legitimate non-surface folder — an uncatalogued surface in use is caught by the amend-first discipline at review, not by this gate (the check's own message says the same). The catalog stays sized to the v1 surface set by fixing these rules, not its contents — a new surface is added simply by listing it, without changing this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["surfaces"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional pointer from the catalog data file to this governing schema, for editor and tooling validation."
+    },
+    "surfaces": {
+      "type": "object",
+      "description": "One record per surface, keyed by the surface's name. Using the name as the key means each surface appears exactly once.",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/surfaceName" },
+      "additionalProperties": { "$ref": "#/$defs/surfaceRecord" }
+    }
+  },
+  "$defs": {
+    "surfaceName": {
+      "type": "string",
+      "description": "A surface's name (lowercase letters and hyphens).",
+      "pattern": "^[a-z][a-z-]*$"
+    },
+    "surfaceRecord": {
+      "type": "object",
+      "description": "The record every surface entry follows. The surface's name is the key; its other seven fields are below. No other fields are allowed.",
+      "additionalProperties": false,
+      "required": ["class", "location", "purpose", "authority", "lifecycle", "governing_schema", "template"],
+      "properties": {
+        "class": {
+          "description": "What kind of file the surface is, which decides how it is governed. prose = its body follows a template and its frontmatter follows a schema; structured = the whole file follows a schema; code = governed by tests and lint, with neither schema nor template.",
+          "enum": ["prose", "structured", "code"]
+        },
+        "location": {
+          "description": "Where this surface's files live (one home per surface). Engine surfaces live under .engine/<surface>/; each AI runtime's native surfaces live where that runtime requires them — the Claude-native surfaces (skill, agent) under .claude/, and the Codex-native surfaces (codex-skill, codex-agent) under .agents/ and .codex/.",
+          "type": "string",
+          "pattern": "^\\.(engine|claude|codex|agents)/[A-Za-z0-9._-]+/$"
+        },
+        "purpose": {
+          "description": "One line: what the surface is for.",
+          "type": "string",
+          "minLength": 1
+        },
+        "authority": {
+          "description": "Which statement wins when two disagree, from strongest to weakest: decisions, standing-rules, mechanics-and-guidance, derived-observational. The top two are reserved — `contract` is the only decisions surface and `policy` the only standing-rules surface; every other surface is mechanics-and-guidance. derived-observational covers the engine's own outputs (reports, self-monitoring, the knowledge map), which are not listed in this catalog; it is included here only to complete the set.",
+          "enum": ["decisions", "standing-rules", "mechanics-and-guidance", "derived-observational"]
+        },
+        "lifecycle": {
+          "description": "Which set of states a surface's instances move through. decision = proposed -> accepted -> superseded (a newer decision replaces an older one); artifact = active -> deprecated -> retired.",
+          "enum": ["decision", "artifact"]
+        },
+        "governing_schema": {
+          "description": "Points to the schema that governs this surface's structured content (the whole file for structured surfaces; the frontmatter for prose surfaces). null when none applies: code surfaces have no schema, and a surface whose schema is written later stays null until then.",
+          "type": ["string", "null"]
+        },
+        "template": {
+          "description": "Points to the surface's template (the starting structure and checkable shape for its prose body). Prose surfaces only; null for structured and code surfaces, and null for a prose surface whose template is written later.",
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

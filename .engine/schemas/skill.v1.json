@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skill.v1 — the frontmatter of one Claude Code skill (a SKILL.md)",
+  "description": "The routing frontmatter of an in-session skill (a .claude/skills/<name>/SKILL.md). It governs the engine-governed-and-read `invocation` axis alongside the keys Claude Code reads itself (name, description, disable-model-invocation, user-invocable, and other platform passthrough). The skill's IDENTITY is its engine-prefixed directory slug (the command the operator types), so `name` is an OPTIONAL display label (the platform defaults it to the directory name) and `description` — the operator-facing and platform-routing line — is the one required field. INVOCATION IS THE GOVERNED AXIS, but its membership is DELIBERATELY NOT a schema enum: an instance's `invocation` is one of model-auto / operator-typed / model-only, and an OMITTED invocation means model-auto (the platform default — both the model and the operator may invoke). A value outside that set, OR a value inconsistent with the real platform flags the instance also carries, is a coherence finding produced by the skill coherence leg (validate.skill_coherence_findings), NOT a schema rejection — so `invocation` is governed here as a well-formed string. The closed set lives in one place (the leg, not an enum that could drift), and — the load-bearing reason — the rule is CROSS-FIELD: the engine reads `invocation`, the platform reads the flags the instance carries (disable-model-invocation, user-invocable), and the coherence leg keeps the two consistent (the self-election safety property — an operator-typed skill the model could still self-invoke is caught). disable-model-invocation: true makes a skill operator-typed (the model cannot invoke it); user-invocable: false makes it model-only (hidden from the operator's / menu — a menu-visibility flag, not a Skill-tool block). This schema is OPEN (additionalProperties: true): operators author their own un-prefixed product skills in the same .claude/skills/ directory, and Claude Code's skill frontmatter carries a broad, evolving, partly-experimental passthrough set (allowed-tools, disallowed-tools, when_to_use, arguments, ...) — a closed key set would rot and would reject legitimate skills; the safety guard is the coherence leg, which catches even a typo'd flag. The operator-facing leak-guard (the governance terms invocation / model-auto / operator-typed / model-only must never surface in `description` or any operator-facing text — to the operator an operator-typed skill is simply a command) is an authoring commitment, not a mechanical scan here. The grammar governs the current SKILL.md form; the legacy .claude/commands/<name>.md form is out of scope. This file is enforced live by the skill-frontmatter check (a validators-core schema rule) routed through the surface catalog (the 'skill' surface) reading the parsed YAML frontmatter; its own well-formedness and representative instances are fixture-tested, and the invocation membership and flag-mapping are confirmed by the coherence leg.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["description"],
+  "properties": {
+    "name": {
+      "description": "OPTIONAL platform display label shown in skill listings. The command the operator types is the engine-prefixed DIRECTORY name (the skill's identity, like a policy or operation slug), which the platform also uses as the default when `name` is omitted — so this field is a display label, not the identity.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "The one required field: the plain-language line Claude Code uses to present the skill and to decide when to load it, and that the operator reads. One line, written for a human and the platform's own routing, with NO engine governance jargon — the governance terms invocation / model-auto / operator-typed / model-only must never appear here (the operator-facing leak-guard).",
+      "type": "string",
+      "minLength": 1
+    },
+    "invocation": {
+      "description": "OPTIONAL engine governance axis — who may invoke this skill. Recognized values model-auto / operator-typed / model-only; an OMITTED invocation means model-auto (both the model and the operator may invoke — the platform default), so an ordinary skill needs no invocation line. A value outside the set, or one inconsistent with the platform flags this instance carries (disable-model-invocation / user-invocable), is a coherence finding (validate.skill_coherence_findings), NOT a schema rejection — so it is a well-formed string here. The engine reads this human-meaningful value; the platform reads the flags; the coherence leg keeps them consistent (the self-election safety property).",
+      "type": "string",
+      "minLength": 1
+    },
+    "disable-model-invocation": {
+      "description": "Platform passthrough Claude Code reads: true means only the operator can invoke the skill (the model cannot self-invoke) — the flag that realizes invocation: operator-typed. The coherence leg requires it present-and-true when invocation is operator-typed, and absent (or false) otherwise.",
+      "type": "boolean"
+    },
+    "user-invocable": {
+      "description": "Platform passthrough Claude Code reads: false HIDES the skill from the operator's / menu, leaving only the model able to invoke it — the flag that realizes invocation: model-only. It is a menu-visibility flag, not a Skill-tool block. The coherence leg requires it present-and-false when invocation is model-only, and absent (or true) otherwise.",
+      "type": "boolean"
+    },
+    "status": {
+      "description": "OPTIONAL engine field — where this skill sits in the 'artifact' lifecycle; an omitted status means active. active = a live skill (the default the moment it merges); deprecated = in managed phase-out, kept while the operator is pointed elsewhere; retired = no longer in use, kept for history. There is deliberately no 'draft' or 'proposed' state, because draftness is a branch state, not a governance value (a skill is born active on merge to the protected branch). No core consumer reads this field yet; it is the spec-faithful lifecycle slot the later migration machinery will read, matching the doc and operation surfaces. Though this schema is open, status is defined here so a value outside active/deprecated/retired is rejected. Set this field only to mark a skill deprecated or retired.",
+      "enum": ["active", "deprecated", "retired"]
+    }
+  }
+}

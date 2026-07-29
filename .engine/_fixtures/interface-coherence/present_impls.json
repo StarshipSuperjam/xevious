@@ -1,0 +1,6 @@
+{
+  "search": [
+    { "handle": "extra-search-tool-a", "operations": ["search"] },
+    { "handle": "extra-search-tool-b", "operations": ["search"] }
+  ]
+}

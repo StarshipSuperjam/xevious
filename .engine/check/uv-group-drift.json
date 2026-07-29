@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/uv-group-drift",
+  "target": { "path": ".engine/pyproject.toml" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/uv_group_drift_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The tool-runtime's dependency-group selection ([tool.uv] default-groups in .engine/pyproject.toml) is the engine's derived, committed list of which installed modules' Python dependencies to install. It is derived from the present module set, so it must always match them; the module manager keeps it derived as modules are added or removed, and this check is the standing backstop that catches drift from a hand-edit, a botched merge, or a missed re-derivation. This check regenerates the selection from the installed modules and compares; if the committed value is stale it goes red. To fix it, run `uv run --directory .engine -- python tools/module_manager.py sync-groups` and commit the result."
+}

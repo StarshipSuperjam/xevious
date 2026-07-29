@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "state.v1 — the project's committed cursor (where the work stands)",
+  "description": "The one small, committed file that answers 'where am I?' at the start of every session. It holds pointers and counts only — never a list of work, never a session's stance, never a story of what happened, never deep notes. It stays tiny on purpose, because it is the first thing read every session and the last thing still readable when every online service is down. The open-problem count here is an offline convenience copy; the live, authoritative list lives in the project's tracked issues, not in this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "standing_situation", "integration_debt"],
+  "properties": {
+    "schema_version": {
+      "description": "Which version of this file's shape this is. It lets a future engine upgrade recognise an older cursor and update it safely. Today the only valid value is 1; a cursor stamped with anything else is deliberately refused until the upgrade machinery that understands it exists.",
+      "const": 1
+    },
+    "standing_situation": {
+      "description": "Where the work stands right now — the project's current place in its plan. This is an offline convenience copy: the live, authoritative answer is assembled fresh from the project's tracked issues and milestones each session, and this copy is read only when those can't be reached. Both pointers are empty (null) in a brand-new project, and are set once the project has a plan to point at.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["milestone", "phase"],
+      "properties": {
+        "milestone": {
+          "description": "The open milestones the work is aimed at, read as they are: an empty list when none is open (the honest normal state, not an error), the one name when a single milestone is open, or every open name when several are. GitHub has no notion of a single 'current' milestone, so the engine names what is open and elects none of them (engine-template #496). A bare string is the pre-#496 single-milestone shape and is still accepted, so a cursor written by an older engine stays valid across the upgrade and reads as that one milestone; null also means none is set.",
+          "anyOf": [
+            { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            { "type": "string", "minLength": 1 },
+            { "type": "null" }
+          ]
+        },
+        "phase": {
+          "description": "A pointer to the active phase inside that milestone — a finer 'where in the plan' marker. Null until the project sets one.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "as_of": {
+          "description": "When this offline copy was last refreshed from the live sources, written as a UTC moment ending in Z (for example 2026-06-15T12:00:00Z). It lets a degraded read say plainly when it was cached, so the operator never mistakes a stale 'where we are' for the current one. Absent or null means it has never been refreshed, so it is shown as from an earlier session. The trailing-Z UTC shape is what is actually enforced (the date-time format is only a hint).",
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        }
+      }
+    },
+    "integration_debt": {
+      "description": "The offline, last-known view of open integration problems. This is a convenience copy for reading when online services are unavailable; the real, live source is the project's tracked issues, refreshed by the telemetry system. Never treat the number here as current without checking when it was last refreshed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["open_count", "as_of", "register"],
+      "properties": {
+        "open_count": {
+          "description": "How many open integration problems there were the last time this was refreshed. A cached number, not live truth — zero in a brand-new project.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "as_of": {
+          "description": "When the count above was last refreshed, written as a UTC moment ending in Z (for example 2026-06-02T14:30:00Z). Null means it has never been refreshed, so the count cannot be trusted as current. The trailing-Z UTC shape is what is actually enforced (the date-time format is only a hint).",
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "register": {
+          "description": "Where to look for the real, authoritative list of open problems (the telemetry system's view over the project's tracked issues, for example GitHub Issues). This file only caches the count; this pointer says where the live list lives. Null until that location is set.",
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/operator-local-references",
+  "target": { "context": "operator-local-references" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/operator_local_references_check.py" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Your project's list of local references (.engine/operator-local-references.json) has a problem. That list names the references that mean something only inside your project — a decision id, a spec section, a ticket prefix — so that when you send work to another project the engine can tell you if it carries one, because a reader there would have nowhere to follow it. This check reads that list and goes red if it is malformed, if it names an entry the engine does not recognise (which would check nothing while looking as though it did), or if an entry is a single character (which would flag every change you ever make). A list that is deliberately EMPTY is fine and is the way to record that this project has no shorthand of its own. It reads only the committed list and is silent when there is none. To clear a red, fix the flagged entry so each one is a plain, non-empty word of at least two characters under one of the recognised entries."
+}

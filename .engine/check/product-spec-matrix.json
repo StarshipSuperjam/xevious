@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/product-spec-matrix",
+  "target": { "path": ".engine/product-spec-matrix.json" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/product_design/obligation_matrix.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The record of your settled acceptance criteria (`.engine/product-spec-matrix.json`) lists, one row per criterion, the acceptance criteria in your settled product spec — the checklist your built work is measured against. It is generated from your `docs/spec/` documents, so it must always match them. This check regenerates it and compares; if a criterion was added, re-worded, or removed without regenerating (or the file was hand-edited), it goes red. To fix it, regenerate with `uv run --directory .engine -- python tools/product_design/obligation_matrix.py generate` and commit the result. Before you have settled any capability there is nothing to record: it says so plainly and does nothing, so a project without a settled spec is never blocked. It only reads your files; it never changes them."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "engine/check/codex-skill-shape",
+  "target": {
+    "path": ".agents/skills/*/SKILL.md"
+  },
+  "kind": "shape",
+  "params": {},
+  "tier": "hard",
+  "suites": [
+    "CI",
+    "audit-prep"
+  ],
+  "message": "A Codex skill's body has drifted from the command shape (the Steps section, optionally Notes) — most likely a hand-edit to a generated render. These files are committed renders of the canonical .claude/skills sources: fix the source and regenerate (uv run --directory .engine --frozen -- python tools/codex_gen.py generate)."
+}

@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/agent-coherence",
+  "target": { "context": "agent-coherence" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/agent_coherence_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "The engine's review and audit personas (the files under .claude/agents/) each declare a role, a model-tier, an optional lens, and a write posture (permissions), and those declarations must hold together. The load-bearing case is a read-only persona: a reviewer or the audit persona declared read-only must actually be one the platform blocks from editing the work it reviews — it must block the authoritative-write tools (Edit, Write, NotebookEdit) via disallowedTools or a write-excluding tools allowlist, never inherit every tool. This check parses each persona's frontmatter and runs the agent coherence leg over it, going red when a role/model-tier is outside its closed set, a lens sits on a role that carries none, or a read-only persona does not block the write tools (most importantly when it declares no tool lock at all and silently inherits write access) — so a regression is caught at merge rather than shipping a read-only reviewer that can change the work. It enforces only the floor that the native file-writing tools (Edit, Write, NotebookEdit) are blocked: it does not police writes through the Bash shell (which qa and audit keep to run checks) or any write-capable MCP tools the session exposes — confining those to a throwaway copy is the build's worktree isolation plus the protected-branch merge gate, not this check. To fix: correct the flagged persona's frontmatter in .claude/agents/<name>.md so its declarations agree (a read-only persona carries disallowedTools blocking Edit/Write/NotebookEdit)."
+}

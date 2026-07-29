@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "concerns": [
+    {
+      "target": "the project's saved memory (the experiential decision and preference records the engine keeps)",
+      "adversarial-question": "Do any saved records now contradict each other, has observed behaviour since refuted one, or is a record the project keeps relying on actually obsolete?",
+      "finding-types": ["contradicting-belief", "refuted-belief", "obsolete-record"],
+      "justification": "Memory keeps every record it was given and nothing prunes by age or frequency, so nothing mechanical can judge that a stored belief is now wrong or that two records disagree — that is a content judgment made fresh each run, above the mechanical layer, and never expressible as a check."
+    },
+    {
+      "target": "the engine-labelled open issues (the deployed engine's own debt register)",
+      "adversarial-question": "Does any open engine-labelled issue no longer reproduce against the current code, or has the backlog grown past the point where the operator can honestly triage it?",
+      "finding-types": ["non-reproducing-debt", "triage-pressure"],
+      "justification": "Whether a recorded problem still reproduces is a probe run now against current state, not a field a check can read; the register's own count cannot tell a stale entry from a live one."
+    },
+    {
+      "target": "the installed optional modules and the operator's recurring friction",
+      "adversarial-question": "Does a fresh probe of an installed optional module find no evidence it is exercised AND no affirmative case for it — what does it do that nothing else does — making it a retire-candidate to put back to the operator as a question; or does a friction the operator keeps hitting map to a capability an uninstalled module would provide (a suggest-to-install)?",
+      "finding-types": ["unexercised-module", "unmet-need-maps-to-module"],
+      "justification": "Fit is a fresh-probe judgment about lived use and affirmative case, not a presence count or a usage tally — finding no sign a module is exercised is the trigger to ASK for its affirmative case, never by itself proof it is dead; a module can be installed and genuinely inert, or a real need can sit unserved because its module was never chosen, and neither is visible to a mechanical rule. Recurrence of the same no-evidence finding across reviews may corroborate the call but never decides it."
+    },
+    {
+      "target": "the project-authored local surfaces (proposed contracts and policies, local operations, local skills and agents)",
+      "adversarial-question": "Is a proposed contract or policy abandoned without ever being adopted, is a single-referrer local operation really just one skill's private depth, or is a local skill or agent orphaned with nothing using it?",
+      "finding-types": ["abandoned-proposal", "single-referrer-operation", "orphaned-local-surface"],
+      "justification": "These are local, preserved-across-update artifacts the audit may retire; whether one still earns its place is an affirmative-case judgment about what work it does that nothing else does — exactly the call a check cannot make, and one the generic sweep targets only by chance without this row."
+    },
+    {
+      "target": "the open engine issues that say they are waiting on a fix from an outside project the engine depends on (an upstream fix) and that describe a temporary local measure the operator runs or retires by hand — for example a one-off cleanup script — to hold things over until that outside fix arrives",
+      "adversarial-question": "Reading such an issue afresh this run: does its temporary measure still need running to do its job, has it quietly gone stale, or has its own in-repo close-out (deleting the stop-gap and undoing its setup) become the only thing left to do? In every case it is the operator — never the audit — who follows the outside link the issue already carries to judge whether the outside fix has actually shipped; the audit cannot and must not read that outside project's status.",
+      "finding-types": ["temporary-measure-still-needed", "temporary-measure-retire-candidate"],
+      "justification": "An outside-blocked stop-gap is local debt the generic debt-register row does not catch: that row asks whether the underlying problem still reproduces — for these it always does, so it never nudges running the measure or retiring it — whereas this row asks the distinct, fresh content judgment run-it / leave-it / retire-it, never a label-or-string match (a label check is mechanical and belongs in validation, not here). Two disciplines bind this row. The audit never reads the outside project's status: it surfaces only the in-repo fact and the outside link the issue already carries, and frames retirement as 'check that link yourself, then decide' — a closed outside issue is not proof the fix reached the operator's installed version, so the audit must never conclude the issue is closeable. And the steady 'still needed, nothing changed' state is a calm standing line, not a fresh recommendation each run; an active recommendation — naming the issue's own run-step or retire-step as the concrete action, with the plain cost of ignoring it — is warranted only when something actually changed (the measure looks stale, or its in-repo close-out now looks ready)."
+    },
+    {
+      "target": "the currently-firing soft validator findings (the non-blocking nudges the validator emits and then discards — for example a runbook over its line budget)",
+      "adversarial-question": "Among the soft findings firing this run, is any a genuine standing signal that keeps recurring and earns surfacing as tracked work — and is it a machinery finding (durable only through an upstream fix) or local state (a local reconcile) — as against a benign, context-correct disclosure that needs no action?",
+      "finding-types": ["standing-soft-finding-local", "standing-soft-finding-upstream", "benign-disclosure"],
+      "justification": "The validator can emit a soft nudge but cannot judge whether a recurring one is a genuine standing problem worth tracking or a benign disclosure, nor which lane — a local trim versus an upstream machinery fix — makes it durable; that is a fresh content-and-classification judgment above the mechanical layer, made anew each run. Without this row a soft finding is printed to a CI log and discarded, so a nudge that keeps firing for weeks stays invisible to the review and is dismissed each session as 'pre-existing' (issue #273). Recurrence across prior digests corroborates that a nudge is genuinely there, never a tally."
+    }
+  ]
+}

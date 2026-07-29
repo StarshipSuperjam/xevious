@@ -1,0 +1,4 @@
+{
+  "property": "no statically-decidable failure path in the CI environment",
+  "reason": "This check's aimed verdict — whether the pull request modifies a guarded file without the acknowledgment label — is computed from the live pull-request file listing fetched from the GitHub API (it runs on pull_request_target, reading the trusted base). No committed file can stand in for that live listing, so the aimed failure cannot be forced by a seeded input in CI. The only committed-seedable path is the fail-closed branch (a missing event/token or an API error); the custom/script kind's three fail-closed modes are already proven by the kind-level fixtures, and witnessing this instance via that path would be a false witness. So there is no seedable, validly-witnessable failure path."
+}

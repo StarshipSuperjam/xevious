@@ -1,0 +1,52 @@
+[
+  {
+    "id": "github-projects-sync",
+    "verb": "engine-board-setup",
+    "description": "Show what the engine is building — what's next, what needs your review, and known issues — at a glance on a GitHub Projects board. One-time setup creates a board on your GitHub account and asks for a permission that covers all your GitHub Projects (optional and revocable), plus an optional one-time click in GitHub to turn on auto-add. A board is never required: the engine works the same from your issues and pull requests, and you can delete the board later without losing anything.",
+    "category": "Product Management",
+    "status": "optional"
+  },
+  {
+    "id": "design-review",
+    "description": "Before a change you've asked for gets built, a fresh set of reviewers checks the plan first — whether it solves the right problem, whether the design is sound, whether it can actually be built and run, and whether it could be unsafe or break a rule it must follow. They only advise; you decide, and you merge.",
+    "category": "Verification & Validation",
+    "status": "optional"
+  },
+  {
+    "id": "qa-review",
+    "description": "After a change you've asked for is built — before it's submitted — a fresh set of reviewers checks the finished work: whether it does what was asked, whether it's pleasant to use, whether it's soundly built, and whether it's safe to release. They only advise; you decide, and you merge.",
+    "category": "Verification & Validation",
+    "status": "optional"
+  },
+  {
+    "id": "migration-discipline",
+    "description": "A standing rule for your project's database migrations — the scripts that change your database's shape or move its data. Before a change that could lose data or can't be undone, the engine is set to stop and bring you in — pausing to ask when you're working with it, and holding the work for you to see when it's running unattended — in plain language and with a safer option, instead of pressing ahead on its own. It's a habit the engine follows, backed by the pull request you review and approve, not an automatic scanner — and it never runs a migration for you. Optional, and removable anytime.",
+    "category": "Software Configuration Management",
+    "status": "optional"
+  },
+  {
+    "id": "dependency-discipline",
+    "description": "This add-on adds an automatic check on the outside code your project depends on — the third-party libraries it pulls in — that can block the merge when a change brings in a risky one. When a dependency is added or updated, the check reviews it and stops the change from going in if the library has a known security hole, or comes with a license that could force you to publish your own source code in return. It also gives gentler, non-blocking nudges to use exact versions of your libraries instead of open-ended ranges. Nothing is ever a dead end: a genuinely unavoidable case can be let through with a deliberate, recorded decision, and you can leave this add-on out altogether — either way, nothing merges without your say-so.",
+    "category": "Software Configuration Management",
+    "status": "optional"
+  },
+  {
+    "id": "external-contribution",
+    "description": "Lets the engine offer your changes to a project you don't own — an open-source project you've forked, or any upstream you contribute to — as a pull request from your fork, carrying only your project's files and never the engine's own. It does the mechanical git a non-engineer shouldn't have to, and opening the pull request is always your call. Two things to weigh before you opt in. First, whether a change is accepted is the upstream project's decision — not yours, and not the engine's. Second, the one step that reaches the network — opening the real pull request — runs only when you actually submit; everything else is built and checked. So your first contribution would be the first time that live step runs anywhere — worth treating as the shake-out of that last step. Once it's added, you use it by asking the engine to offer a change upstream; there's no command to remember. You can leave this add-on out, and nothing else changes if you do.",
+    "category": "Software Configuration Management",
+    "status": "optional"
+  },
+  {
+    "id": "product-design",
+    "verb": "engine-design",
+    "description": "Describe what you want to build, in plain words, and the engine helps you write it down clearly — laying out the pieces, walking you through each one, and checking that nothing is missing or malformed — then keeps it as readable files in your own project and settles it as the description to build from, once you've accepted it — and, when you're ready, turns it into a tracked build order and a list of things to build that a build can pick up. It checks that your description is complete and well-formed, never whether the idea itself is a good one — that stays your call. You choose how much detail to capture, nothing is treated as settled without your say-so, and a settled description can be changed or reopened later — the engine just asks you to confirm the change on the pull request first, so it is never a quiet edit. Optional, and removable anytime.",
+    "category": "Product Management",
+    "status": "optional"
+  },
+  {
+    "id": "memory-semantic-recall",
+    "description": "Lets the engine find something in your saved history by what it MEANS, not just by the words you use. Without this, looking things up matches words: ask about \"running something on a timer\" and a conversation that said \"cron job\" is not found at all. With it, the engine can also ask \"have we been here before?\" and get answers worded differently from the question — which is the case where it otherwise repeats a decision you already made. It reads only and never changes or removes anything you have saved. Three costs, all plainly: it adds about 33 MB to your project's files; it builds a working copy alongside your saved history the first time you use it, taking a few seconds and roughly two to four times the size of that history; and while the language table it uses is included rather than downloaded, setting the engine up does fetch one ordinary Python package for it over the network, like the engine's other tools. Leave it out and everything else works the same — you keep word-based lookup and reading back past conversations.",
+    "category": "Software Configuration Management",
+    "status": "default-on"
+  }
+]

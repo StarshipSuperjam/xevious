@@ -1,0 +1,8 @@
+{
+  "engine_release": "1.0.0",
+  "packages": {
+    "core": "1.0.0"
+  },
+  "identity": "solo",
+  "home_repository": "acme/engine-home"
+}
