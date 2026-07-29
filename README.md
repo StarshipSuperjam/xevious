@@ -58,8 +58,10 @@ python3 tools/scratch_project.py import path/to/edited.sb3 --force
 ```
 
 `--force` authorizes replacing the existing canonical source, but the importer
-still refuses when `src/xevious/` has uncommitted work. Commit or stash first,
-so an incorrect or stale export remains recoverable through Git.
+still refuses when `src/xevious/` has visible uncommitted work. Commit or stash
+first. Every successful replacement also retains the complete prior source
+tree under ignored `dist/import-backups/` and prints its path, covering local
+files Git may not report.
 
 If the export adds or changes media, also provide its origin and license:
 

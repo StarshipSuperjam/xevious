@@ -768,6 +768,14 @@ def _git_changes_for_source(source_dir: Path) -> list[str]:
     return [line for line in result.stdout.splitlines() if line]
 
 
+def _import_backup_root(source_dir: Path) -> Path:
+    resolved_source = source_dir.resolve()
+    resolved_root = ROOT.resolve()
+    if _path_is_within(resolved_source, resolved_root):
+        return ROOT / "dist" / "import-backups"
+    return source_dir.parent / ".scratch-import-backups"
+
+
 def import_project(
     archive: Path,
     source_dir: Path = SOURCE_DIR,
@@ -779,7 +787,7 @@ def import_project(
     asset_provenance: dict[str, dict] | None = None,
     original: Path = ORIGINAL_ARCHIVE,
     original_provenance: Path = ORIGINAL_PROVENANCE,
-) -> list[str]:
+) -> tuple[list[str], Path | None]:
     incoming_project, incoming_assets = validate_archive(archive)
     base_assets = _original_asset_base(original, original_provenance)
 
@@ -854,6 +862,7 @@ def import_project(
     source_parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=f".{source_dir.name}.import-", dir=source_parent))
     backup: Path | None = None
+    retained_backup: Path | None = None
     try:
         (stage / OVERLAY_DIRNAME).mkdir()
         (stage / PROJECT_JSON).write_bytes(_ordered_json_bytes(incoming_project))
@@ -866,7 +875,9 @@ def import_project(
         validate_source(stage, original, original_provenance)
 
         if source_dir.exists():
-            backup = source_parent / f".{source_dir.name}.backup-{uuid.uuid4().hex}"
+            backup_root = _import_backup_root(source_dir)
+            backup_root.mkdir(parents=True, exist_ok=True)
+            backup = backup_root / f"{source_dir.name}-{uuid.uuid4().hex}"
             source_dir.rename(backup)
         try:
             stage.rename(source_dir)
@@ -875,21 +886,14 @@ def import_project(
                 backup.rename(source_dir)
             raise
         if backup is not None:
-            try:
-                shutil.rmtree(backup)
-            except OSError as exc:
-                print(
-                    f"warning: imported source is installed, but the backup "
-                    f"could not be removed: {backup}: {exc}",
-                    file=sys.stderr,
-                )
+            retained_backup = backup
             backup = None
     finally:
         if stage.exists():
             shutil.rmtree(stage)
         if backup is not None and backup.exists() and not source_dir.exists():
             backup.rename(source_dir)
-    return reordered_targets
+    return reordered_targets, retained_backup
 
 
 def verify_repository(
@@ -1012,7 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.asset_provenance
                 else None
             )
-            reordered = import_project(
+            reordered, retained_backup = import_project(
                 args.archive,
                 args.source,
                 force=args.force,
@@ -1022,6 +1026,8 @@ def main(argv: list[str] | None = None) -> int:
                 asset_provenance=supplied_provenance,
             )
             print(f"imported {args.archive} into {args.source}")
+            if retained_backup is not None:
+                print(f"retained pre-import backup at {retained_backup}")
             if reordered:
                 print(
                     "preserved existing script order for targets whose editor export "

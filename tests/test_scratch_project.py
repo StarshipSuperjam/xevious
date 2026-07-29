@@ -363,7 +363,7 @@ class ScratchProjectTests(unittest.TestCase):
         members[scratch.PROJECT_JSON] = scratch._ordered_json_bytes(project)
         write_archive(reordered, list(members.items()))
 
-        changed = scratch.import_project(reordered, source, force=True)
+        changed, _backup = scratch.import_project(reordered, source, force=True)
         imported_stage = next(
             target for target in load_source(source)["targets"] if target["isStage"]
         )
@@ -410,7 +410,7 @@ class ScratchProjectTests(unittest.TestCase):
         members[scratch.PROJECT_JSON] = scratch._ordered_json_bytes(project)
         write_archive(edited, list(members.items()))
 
-        changed = scratch.import_project(edited, source, force=True)
+        changed, _backup = scratch.import_project(edited, source, force=True)
         imported = load_source(source)
         self.assertEqual(set(target_names), set(changed))
         for target_name in target_names:
@@ -638,28 +638,24 @@ class ScratchProjectTests(unittest.TestCase):
         with self.assertRaisesRegex(scratch.ScratchProjectError, "missing provenance"):
             scratch.validate_source(source)
 
-    def test_forced_import_cleanup_failure_reports_installed_state(self) -> None:
+    def test_forced_import_retains_complete_recoverable_backup(self) -> None:
         source = self.copy_source()
         built = self.temp / "built.sb3"
         scratch.build_project(source, built)
-        real_rmtree = shutil.rmtree
-
-        def fail_backup_cleanup(path: Path, *args: object, **kwargs: object) -> None:
-            if ".backup-" in Path(path).name:
-                raise OSError("simulated cleanup failure")
-            real_rmtree(path, *args, **kwargs)
-
-        errors = io.StringIO()
-        with (
-            mock.patch.object(
-                scratch.shutil,
-                "rmtree",
-                side_effect=fail_backup_cleanup,
-            ),
-            redirect_stderr(errors),
+        local_note = source / "ignored-local-note.txt"
+        local_note.write_text("recover me", encoding="utf-8")
+        with mock.patch.object(
+            scratch,
+            "_git_changes_for_source",
+            return_value=[],
         ):
-            scratch.import_project(built, source, force=True)
-        self.assertIn("imported source is installed", errors.getvalue())
+            _changed, backup = scratch.import_project(built, source, force=True)
+        self.assertIsNotNone(backup)
+        self.assertEqual(
+            "recover me",
+            (backup / local_note.name).read_text(encoding="utf-8"),
+        )
+        self.assertFalse((source / local_note.name).exists())
         scratch.validate_source(source)
 
     def test_forced_import_refuses_uncommitted_source_work(self) -> None:
