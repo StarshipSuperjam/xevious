@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -23,3 +25,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Verify the Scratch source and deterministic build
         run: python tools/scratch_project.py verify
+      - name: Verify mechanics evidence for behavior changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python tools/check_mechanics_record.py "$BASE_SHA"

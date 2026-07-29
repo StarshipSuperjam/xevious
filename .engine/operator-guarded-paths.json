@@ -1,7 +1,11 @@
 {
   "guarded_paths": [
+    ".github/workflows/xevious-project.yml",
     "assets/original/Xevious.sb3",
-    "assets/original/provenance.json"
+    "assets/original/provenance.json",
+    "docs/REFERENCE_POLICY.md",
+    "tools/check_mechanics_record.py",
+    "tools/scratch_project.py"
   ],
   "guarded_prefixes": []
 }

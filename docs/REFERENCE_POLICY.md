@@ -39,7 +39,9 @@ needed before broader distribution or promotion.
 
 ## Mechanics record
 
-Each gameplay pull request should record:
+Each gameplay pull request must add or update a record under `docs/mechanics/`.
+The required project check rejects a `src/xevious/project.json` change without
+one. Each record includes:
 
 - the mechanic being implemented;
 - the observable arcade behavior;

@@ -60,6 +60,10 @@ Importing preserves the relative order of existing block-map entries because
 Scratch uses that order when scheduling top-level scripts. New blocks are
 appended in the editor's order.
 
+Any change to `src/xevious/project.json` must also add or update a structured
+record under `docs/mechanics/`. The required project check enforces that
+evidence and the no-transfer attestation are present.
+
 ## Runtime comparison
 
 For infrastructure changes, load both the preserved original and rebuilt

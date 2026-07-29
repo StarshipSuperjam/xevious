@@ -14,8 +14,11 @@ import os
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
+import struct
 import sys
 import tempfile
+from datetime import datetime
+from urllib.parse import urlparse
 import uuid
 import zipfile
 
@@ -32,16 +35,21 @@ DIST_ARCHIVE = ROOT / "dist" / "Xevious.sb3"
 MAX_ARCHIVE_ENTRIES = 4096
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
+MAX_CENTRAL_DIRECTORY_BYTES = 2 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 200
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+ALLOWED_ASSET_SIGNATURES = {
+    "png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+    "wav": lambda data: (
+        len(data) >= 12
+        and data.startswith(b"RIFF")
+        and data[8:12] == b"WAVE"
+    ),
+}
 
 
 class ScratchProjectError(RuntimeError):
     """A project or archive failed a safety or integrity check."""
-
-
-def _sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _sha256_file(path: Path) -> str:
@@ -58,8 +66,16 @@ def _md5_bytes(data: bytes) -> str:
 
 
 def _load_json_bytes(data: bytes, label: str) -> dict:
+    def reject_constant(value: str) -> object:
+        raise ScratchProjectError(
+            f"{label} contains non-standard JSON number {value}"
+        )
+
     try:
-        value = json.loads(data.decode("utf-8"))
+        value = json.loads(
+            data.decode("utf-8"),
+            parse_constant=reject_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ScratchProjectError(f"{label} is not valid UTF-8 JSON: {exc}") from exc
     if not isinstance(value, dict):
@@ -72,7 +88,18 @@ def _load_json_bytes(data: bytes, label: str) -> dict:
 def _ordered_json_bytes(value: object) -> bytes:
     # sort_keys is deliberately false. Scratch VM builds its ordered hat-script list
     # from block-map iteration order, so existing object order is behavior-relevant.
-    return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    try:
+        text = json.dumps(
+            value,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ScratchProjectError(
+            f"cannot serialize canonical project JSON: {exc}"
+        ) from exc
+    return (text + "\n").encode("utf-8")
 
 
 def _load_provenance(path: Path) -> dict:
@@ -105,6 +132,47 @@ def verify_original(
         )
     if not archive.is_file() or archive.is_symlink():
         raise ScratchProjectError(f"missing or unsafe original archive: {archive}")
+    expected_file = provenance.get("file")
+    if expected_file != archive.name:
+        raise ScratchProjectError(
+            f"{provenance_path} names {expected_file!r}, expected {archive.name!r}"
+        )
+    expected_bytes = provenance.get("bytes")
+    if expected_bytes != archive.stat().st_size:
+        raise ScratchProjectError(
+            f"{provenance_path} records {expected_bytes!r} bytes, "
+            f"found {archive.stat().st_size}"
+        )
+    source_commit = provenance.get("preserved_from_commit")
+    if not isinstance(source_commit, str) or len(source_commit) != 40 or any(
+        char not in "0123456789abcdef" for char in source_commit
+    ):
+        raise ScratchProjectError(
+            f"{provenance_path} has no valid preserved source commit"
+        )
+    scratch_project = provenance.get("scratch_project")
+    parsed_url = urlparse(scratch_project) if isinstance(scratch_project, str) else None
+    if (
+        parsed_url is None
+        or parsed_url.scheme != "https"
+        or parsed_url.netloc != "scratch.mit.edu"
+        or not parsed_url.path.startswith("/projects/")
+    ):
+        raise ScratchProjectError(
+            f"{provenance_path} has no valid Scratch project URL"
+        )
+    for field in ("created", "last_publicly_modified"):
+        timestamp = provenance.get(field)
+        try:
+            if not isinstance(timestamp, str):
+                raise ValueError
+            datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ScratchProjectError(
+                f"{provenance_path} has no valid {field} timestamp"
+            ) from exc
+    if not isinstance(provenance.get("notes"), str) or not provenance["notes"].strip():
+        raise ScratchProjectError(f"{provenance_path} has no provenance notes")
     actual = _sha256_file(archive)
     if actual != expected:
         raise ScratchProjectError(
@@ -122,9 +190,62 @@ def _safe_member_name(name: str) -> str:
     return path.name
 
 
+def _preflight_zip_directory(path: Path) -> None:
+    size = path.stat().st_size
+    if size > MAX_ARCHIVE_BYTES:
+        raise ScratchProjectError(
+            f"archive is larger than {MAX_ARCHIVE_BYTES} bytes on disk"
+        )
+    tail_size = min(size, 22 + 65535)
+    with path.open("rb") as stream:
+        stream.seek(size - tail_size)
+        tail = stream.read(tail_size)
+    signature = b"PK\x05\x06"
+    position = len(tail)
+    record = None
+    while True:
+        position = tail.rfind(signature, 0, position)
+        if position < 0:
+            break
+        if len(tail) - position >= 22:
+            candidate = struct.unpack_from("<4s4H2LH", tail, position)
+            comment_length = candidate[-1]
+            if position + 22 + comment_length == len(tail):
+                record = candidate
+                break
+        position -= 1
+    if record is None:
+        raise ScratchProjectError("archive has no valid ZIP end-of-directory record")
+    (
+        _signature,
+        disk_number,
+        central_disk,
+        disk_entries,
+        total_entries,
+        central_size,
+        central_offset,
+        _comment_length,
+    ) = record
+    if disk_number != 0 or central_disk != 0 or disk_entries != total_entries:
+        raise ScratchProjectError("multi-disk ZIP archives are not supported")
+    if total_entries == 0xFFFF or central_size == 0xFFFFFFFF:
+        raise ScratchProjectError("ZIP64 archives are not supported")
+    if total_entries > MAX_ARCHIVE_ENTRIES:
+        raise ScratchProjectError(
+            f"archive has {total_entries} entries; maximum is {MAX_ARCHIVE_ENTRIES}"
+        )
+    if central_size > MAX_CENTRAL_DIRECTORY_BYTES:
+        raise ScratchProjectError(
+            "archive central directory exceeds the safety bound"
+        )
+    if central_offset + central_size > size - 22:
+        raise ScratchProjectError("archive central directory is out of bounds")
+
+
 def read_safe_archive(path: Path) -> dict[str, bytes]:
     if not path.is_file() or path.is_symlink():
         raise ScratchProjectError(f"archive is missing or unsafe: {path}")
+    _preflight_zip_directory(path)
     try:
         archive = zipfile.ZipFile(path, "r")
     except (OSError, zipfile.BadZipFile) as exc:
@@ -233,7 +354,16 @@ def _validate_asset(name: str, data: bytes) -> None:
     safe_name = _safe_member_name(name)
     if "." not in safe_name:
         raise ScratchProjectError(f"asset filename has no extension: {name}")
-    asset_id, _extension = safe_name.rsplit(".", 1)
+    asset_id, extension = safe_name.rsplit(".", 1)
+    signature_check = ALLOWED_ASSET_SIGNATURES.get(extension)
+    if signature_check is None:
+        raise ScratchProjectError(
+            f"unsupported asset type for this project: {name}"
+        )
+    if not signature_check(data):
+        raise ScratchProjectError(
+            f"asset content does not match its {extension} type: {name}"
+        )
     actual = _md5_bytes(data)
     if asset_id != actual:
         raise ScratchProjectError(
@@ -396,12 +526,30 @@ def _zip_info(name: str) -> zipfile.ZipInfo:
     return info
 
 
+def _path_is_within(path: Path, directory: Path) -> bool:
+    try:
+        path.relative_to(directory)
+    except ValueError:
+        return False
+    return True
+
+
 def build_project(
     source_dir: Path = SOURCE_DIR,
     output: Path = DIST_ARCHIVE,
     original: Path = ORIGINAL_ARCHIVE,
     original_provenance: Path = ORIGINAL_PROVENANCE,
 ) -> str:
+    resolved_output = output.resolve()
+    resolved_source = source_dir.resolve()
+    protected_files = {
+        original.resolve(),
+        original_provenance.resolve(),
+    }
+    if _path_is_within(resolved_output, resolved_source) or resolved_output in protected_files:
+        raise ScratchProjectError(
+            f"build output would overwrite protected project input: {output}"
+        )
     _project, project_bytes, assets = validate_source(
         source_dir, original, original_provenance
     )
@@ -545,7 +693,14 @@ def import_project(
                 backup.rename(source_dir)
             raise
         if backup is not None:
-            shutil.rmtree(backup)
+            try:
+                shutil.rmtree(backup)
+            except OSError as exc:
+                print(
+                    f"warning: imported source is installed, but the backup "
+                    f"could not be removed: {backup}: {exc}",
+                    file=sys.stderr,
+                )
             backup = None
     finally:
         if stage.exists():
@@ -555,30 +710,59 @@ def import_project(
     return reordered_targets
 
 
-def verify_repository() -> tuple[str, str]:
-    original_hash = verify_original()
+def verify_repository(
+    source_dir: Path = SOURCE_DIR,
+    original: Path = ORIGINAL_ARCHIVE,
+    original_provenance: Path = ORIGINAL_PROVENANCE,
+) -> tuple[str, str]:
+    original_hash = verify_original(original, original_provenance)
     root_archives = sorted(path.name for path in ROOT.glob("*.sb3"))
     if root_archives:
         raise ScratchProjectError(
             "SB3 files are not allowed at the repository root: "
             + ", ".join(root_archives)
         )
-    validate_source()
+    validate_source(source_dir, original, original_provenance)
     with tempfile.TemporaryDirectory(prefix="xevious-verify-") as directory:
         temporary = Path(directory)
         first = temporary / "first.sb3"
         second = temporary / "second.sb3"
-        first_hash = build_project(output=first)
-        second_hash = build_project(output=second)
+        first_hash = build_project(
+            source_dir,
+            first,
+            original,
+            original_provenance,
+        )
+        second_hash = build_project(
+            source_dir,
+            second,
+            original,
+            original_provenance,
+        )
         if first.read_bytes() != second.read_bytes():
             raise ScratchProjectError("two clean builds produced different bytes")
         roundtrip = temporary / "roundtrip"
-        import_project(first, roundtrip)
-        original_source = (SOURCE_DIR / PROJECT_JSON).read_bytes()
+        overlay_provenance = _read_overlay_provenance(
+            source_dir / OVERLAY_DIRNAME
+        )
+        import_project(
+            first,
+            roundtrip,
+            asset_origin="Repository round-trip verification",
+            asset_license="See preserved overlay provenance",
+            original=original,
+            original_provenance=original_provenance,
+        )
+        _write_overlay_provenance(
+            roundtrip / OVERLAY_DIRNAME / OVERLAY_PROVENANCE,
+            overlay_provenance,
+        )
+        validate_source(roundtrip, original, original_provenance)
+        original_source = (source_dir / PROJECT_JSON).read_bytes()
         roundtrip_source = (roundtrip / PROJECT_JSON).read_bytes()
         if original_source != roundtrip_source:
             raise ScratchProjectError("project.json changed during build/import round trip")
-        original_overlay = SOURCE_DIR / OVERLAY_DIRNAME
+        original_overlay = source_dir / OVERLAY_DIRNAME
         roundtrip_overlay = roundtrip / OVERLAY_DIRNAME
         original_files = {
             path.name: path.read_bytes()
