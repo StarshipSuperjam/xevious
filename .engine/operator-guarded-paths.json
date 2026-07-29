@@ -1,0 +1,7 @@
+{
+  "guarded_paths": [
+    "assets/original/Xevious.sb3",
+    "assets/original/provenance.json"
+  ],
+  "guarded_prefixes": []
+}

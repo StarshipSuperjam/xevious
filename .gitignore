@@ -19,3 +19,5 @@
 # BEGIN engine-managed block: memory-substrate-ledger - do not edit inside
 .engine/memory/
 # END engine-managed block: memory-substrate-ledger
+/dist/
+__pycache__/
