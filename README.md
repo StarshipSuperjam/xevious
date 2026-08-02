@@ -97,6 +97,15 @@ first. Every successful replacement also retains the complete prior source
 tree under ignored `dist/import-backups/` and prints its path, covering local
 files Git may not report.
 
+For slice 2, `tools/game_director.py` is the exclusive source of truth for the
+block maps of Stage, Solvalou, blaster, bomb, both terrain sprites, both target
+sprites, the title sprite, and the death sprite. After importing an editor
+export, commit the recoverable import before doing anything else, inspect its
+diff, and port intended block changes for those targets into the generator.
+`generate` refuses to run while `src/xevious/project.json` has staged or
+unstaged edits, so it cannot silently erase a fresh editor import. Costumes,
+sounds, target properties, and blocks on other sprites remain editor-owned.
+
 If the export adds or changes media, also provide its origin and license:
 
 ```sh

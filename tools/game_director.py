@@ -7,6 +7,7 @@ import argparse
 import copy
 import json
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any
 
@@ -31,6 +32,10 @@ MESSAGES = {
     "ready complete": "broadcastMsgId-ready-complete",
     "death complete": "broadcastMsgId-death-complete",
     "game over complete": "broadcastMsgId-game-over-complete",
+    "target_b": "broadcastMsgId-target-bounds-bottom",
+    "target_l": "broadcastMsgId-target-bounds-left",
+    "target_r": "broadcastMsgId-target-bounds-right",
+    "target_t": "broadcastMsgId-target-bounds-top",
 }
 
 PROCCODE = "transition to %s reset %s"
@@ -291,6 +296,31 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
+    def key_pressed(self, parent: str, key: str) -> str:
+        menu = self.add(
+            "sensing_keyoptions",
+            fields={"KEY_OPTION": [key, None]},
+            shadow=True,
+        )
+        block_id = self.add("sensing_keypressed", inputs={"KEY_OPTION": [1, menu]})
+        self.blocks[block_id]["parent"] = parent
+        self.blocks[menu]["parent"] = block_id
+        return block_id
+
+    def touching(self, parent: str, sprite: str) -> str:
+        menu = self.add(
+            "sensing_touchingobjectmenu",
+            fields={"TOUCHINGOBJECTMENU": [sprite, None]},
+            shadow=True,
+        )
+        block_id = self.add(
+            "sensing_touchingobject",
+            inputs={"TOUCHINGOBJECTMENU": [1, menu]},
+        )
+        self.blocks[block_id]["parent"] = parent
+        self.blocks[menu]["parent"] = block_id
+        return block_id
+
     def wait(self, seconds: float) -> str:
         return self.add("control_wait", inputs={"DURATION": number(seconds)})
 
@@ -341,6 +371,11 @@ def install_transition_procedure(blocks: Blocks) -> None:
     )
     blocks.blocks[scope_reporter]["parent"] = set_scope
     blocks.blocks[set_scope]["inputs"]["VALUE"] = [3, scope_reporter, [10, ""]]
+    clear_outcome = reset_if(
+        blocks,
+        ("cold-start", "cold-start"),
+        [blocks.set_var("death outcome", OUTCOME_ID, text(""))],
+    )
     reset = blocks.send("director reset", wait=True)
     set_destination = blocks.set_var("game state", STATE_ID, text(""))
     destination_reporter = blocks.add(
@@ -354,9 +389,47 @@ def install_transition_procedure(blocks: Blocks) -> None:
         [10, ""],
     ]
     enter = blocks.send("director enter")
-    blocks.chain(
-        definition,
-        [increment, resetting, stop, stop_sounds, set_scope, reset, set_destination, enter],
+    allowed = blocks.add("control_if")
+    contains = blocks.add(
+        "data_listcontainsitem",
+        fields={"LIST": ["allowed transitions", ALLOWED_ID]},
+    )
+    blocks.blocks[contains]["parent"] = allowed
+    edge = blocks.add("operator_join")
+    blocks.blocks[edge]["parent"] = contains
+    source_and_arrow = blocks.add(
+        "operator_join",
+        inputs={
+            "STRING1": variable("game state", STATE_ID),
+            "STRING2": text(" -> "),
+        },
+    )
+    blocks.blocks[source_and_arrow]["parent"] = edge
+    destination_for_edge = blocks.add(
+        "argument_reporter_string_number",
+        fields={"VALUE": ["destination", None]},
+    )
+    blocks.blocks[destination_for_edge]["parent"] = edge
+    blocks.blocks[edge]["inputs"] = {
+        "STRING1": [3, source_and_arrow, [10, ""]],
+        "STRING2": [3, destination_for_edge, [10, ""]],
+    }
+    blocks.blocks[contains]["inputs"] = {"ITEM": [3, edge, [10, ""]]}
+    blocks.blocks[allowed]["inputs"]["CONDITION"] = [2, contains]
+    blocks.chain(definition, [allowed])
+    blocks.substack(
+        allowed,
+        [
+            increment,
+            resetting,
+            stop,
+            stop_sounds,
+            set_scope,
+            clear_outcome,
+            reset,
+            set_destination,
+            enter,
+        ],
     )
 
 
@@ -497,21 +570,51 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
         ),
     ]
     ready = blocks.if_either_state("ready", "respawning", ready_body)
-    playing = blocks.if_state("playing", [blocks.show()])
-    dead = blocks.if_either_state("player-dead", "game-over", [blocks.hide()])
-    blocks.chain(enter, [snapshot, title, ready, playing, dead])
-
-    moves = {
+    movement = blocks.add("control_repeat_until")
+    movement_condition = blocks.not_state(movement, "playing")
+    blocks.blocks[movement]["inputs"]["CONDITION"] = [2, movement_condition]
+    movement_body = []
+    for key, (opcode, input_name, amount) in {
         "left arrow": ("motion_changexby", "DX", -7),
         "right arrow": ("motion_changexby", "DX", 7),
         "up arrow": ("motion_changeyby", "DY", 7),
         "down arrow": ("motion_changeyby", "DY", -7),
-    }
-    for key, (opcode, input_name, amount) in moves.items():
-        hat = blocks.key(key)
-        move = blocks.add(opcode, inputs={input_name: number(amount)})
-        edge = blocks.add("motion_ifonedgebounce")
-        blocks.chain(hat, [blocks.if_state("playing", [move, edge])])
+    }.items():
+        pressed = blocks.add("control_if")
+        blocks.blocks[pressed]["inputs"]["CONDITION"] = [
+            2,
+            blocks.key_pressed(pressed, key),
+        ]
+        blocks.substack(
+            pressed,
+            [blocks.add(opcode, inputs={input_name: number(amount)})],
+        )
+        movement_body.append(pressed)
+    for frame, opcode, input_name, amount, message in (
+        ("frame_b", "motion_changeyby", "DY", 7, "target_b"),
+        ("frame_l", "motion_changexby", "DX", 7, "target_l"),
+        ("frame_r", "motion_changexby", "DX", -7, "target_r"),
+    ):
+        correction = blocks.add("control_if")
+        blocks.blocks[correction]["inputs"]["CONDITION"] = [
+            2,
+            blocks.touching(correction, frame),
+        ]
+        blocks.substack(
+            correction,
+            [
+                blocks.add(opcode, inputs={input_name: number(amount)}),
+                blocks.send(message),
+            ],
+        )
+        movement_body.append(correction)
+    blocks.substack(movement, movement_body)
+    playing = blocks.if_state("playing", [blocks.show(), movement])
+    dead = blocks.if_either_state("player-dead", "game-over", [blocks.hide()])
+    blocks.chain(enter, [snapshot, title, ready, playing, dead])
+
+    top = blocks.receive("target_t")
+    blocks.chain(top, [blocks.add("motion_changeyby", inputs={"DY": number(-7)})])
     return blocks.blocks
 
 
@@ -547,8 +650,8 @@ def death_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[switch_first_menu]["parent"] = switch_first
     repeat = blocks.add("control_repeat", inputs={"TIMES": number(7)})
     blocks.substack(repeat, [blocks.add("looks_nextcostume"), blocks.wait(0.1)])
-    death_body = [blocks.go(0, -85), switch_first, blocks.show(), blocks.add(
-        "sound_playuntildone",
+    death_body = [blocks.go_to_sprite("solvalou"), switch_first, blocks.show(), blocks.add(
+        "sound_play",
         inputs={"SOUND_MENU": [1, blocks.add(
             "sound_sounds_menu",
             fields={"SOUND_MENU": ["solvalou_death", None]},
@@ -634,7 +737,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     sound_menu = blocks.add("sound_sounds_menu", fields={"SOUND_MENU": ["blaster", None]}, shadow=True)
     sound = blocks.add("sound_play", inputs={"SOUND_MENU": [1, sound_menu]})
     blocks.blocks[sound_menu]["parent"] = sound
-    blocks.chain(clone, [blocks.go(0, -70), blocks.show(), sound, repeat, blocks.add("control_delete_this_clone")])
+    blocks.chain(clone, [blocks.show(), sound, repeat, blocks.add("control_delete_this_clone")])
     return blocks.blocks
 
 
@@ -659,7 +762,7 @@ def bomb_blocks() -> dict[str, dict[str, Any]]:
     explode_menu = blocks.add("sound_sounds_menu", fields={"SOUND_MENU": ["bomb_explode", None]}, shadow=True)
     explode_sound = blocks.add("sound_play", inputs={"SOUND_MENU": [1, explode_menu]})
     blocks.blocks[explode_menu]["parent"] = explode_sound
-    blocks.chain(clone, [blocks.go(0, -35), blocks.show(), drop, flight, explode_sound, explode, blocks.add("control_delete_this_clone")])
+    blocks.chain(clone, [blocks.show(), drop, flight, explode_sound, explode, blocks.add("control_delete_this_clone")])
     return blocks.blocks
 
 
@@ -669,16 +772,57 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.go(0, y), blocks.hide()])
     enter = blocks.receive("director enter")
-    blocks.chain(enter, [blocks.if_state("playing", [blocks.go(0, y), blocks.show()])])
     if name == "target_a":
+        movement = blocks.add("control_repeat_until")
+        movement_condition = blocks.not_state(movement, "playing")
+        blocks.blocks[movement]["inputs"]["CONDITION"] = [2, movement_condition]
+        movement_body = []
         for key, (opcode, input_name, amount) in {
             "left arrow": ("motion_changexby", "DX", -7),
             "right arrow": ("motion_changexby", "DX", 7),
             "up arrow": ("motion_changeyby", "DY", 7),
             "down arrow": ("motion_changeyby", "DY", -7),
         }.items():
-            hat = blocks.key(key)
-            blocks.chain(hat, [blocks.if_state("playing", [blocks.add(opcode, inputs={input_name: number(amount)})])])
+            pressed = blocks.add("control_if")
+            blocks.blocks[pressed]["inputs"]["CONDITION"] = [
+                2,
+                blocks.key_pressed(pressed, key),
+            ]
+            blocks.substack(
+                pressed,
+                [blocks.add(opcode, inputs={input_name: number(amount)})],
+            )
+            movement_body.append(pressed)
+        top = blocks.add("control_if")
+        blocks.blocks[top]["inputs"]["CONDITION"] = [
+            2,
+            blocks.touching(top, "frame_t"),
+        ]
+        blocks.substack(
+            top,
+            [
+                blocks.add("motion_changeyby", inputs={"DY": number(-7)}),
+                blocks.send("target_t"),
+            ],
+        )
+        movement_body.append(top)
+        blocks.substack(movement, movement_body)
+        blocks.chain(
+            enter,
+            [blocks.if_state("playing", [blocks.go(0, y), blocks.show(), movement])],
+        )
+        for message, opcode, input_name, amount in (
+            ("target_b", "motion_changeyby", "DY", 7),
+            ("target_l", "motion_changexby", "DX", 7),
+            ("target_r", "motion_changexby", "DX", -7),
+        ):
+            correction = blocks.receive(message)
+            blocks.chain(
+                correction,
+                [blocks.add(opcode, inputs={input_name: number(amount)})],
+            )
+    else:
+        blocks.chain(enter, [blocks.if_state("playing", [blocks.hide()])])
     return blocks.blocks
 
 
@@ -717,12 +861,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             ],
         ]
     }
-    retained = {
-        key: value
-        for key, value in stage["broadcasts"].items()
-        if value in {"bomb", "target_b", "target_l", "target_r", "target_t"}
-    }
-    stage["broadcasts"] = retained | {message_id: name for name, message_id in MESSAGES.items()}
+    stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 
     replacements = {
         "Stage": stage_blocks(),
@@ -732,8 +871,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "area_01b": terrain_blocks("area_01b", "area01_11-0", 344),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
-        "target_a": target_blocks("target_a", -37),
-        "target_b": target_blocks("target_b", -37),
+        "target_a": target_blocks("target_a", 15),
+        "target_b": target_blocks("target_b", 2),
         "bomb": bomb_blocks(),
     }
     for target in result["targets"]:
@@ -754,7 +893,26 @@ def project_bytes(project: dict[str, Any]) -> bytes:
     return scratch_project._ordered_json_bytes(project)
 
 
+def source_has_local_changes() -> bool:
+    relative = str(PROJECT_PATH.relative_to(ROOT))
+    for args in (
+        ["git", "diff", "--quiet", "--", relative],
+        ["git", "diff", "--cached", "--quiet", "--", relative],
+    ):
+        result = subprocess.run(args, cwd=ROOT, check=False)
+        if result.returncode == 1:
+            return True
+        if result.returncode != 0:
+            raise SystemExit("could not verify the Scratch source worktree before generating")
+    return False
+
+
 def generate() -> None:
+    if source_has_local_changes():
+        raise SystemExit(
+            "refusing to overwrite locally edited Scratch source; commit the import, "
+            "then port owned block changes into tools/game_director.py"
+        )
     current = json.loads(PROJECT_PATH.read_text(encoding="utf-8"))
     PROJECT_PATH.write_bytes(project_bytes(expected_project(current)))
     print(f"generated {PROJECT_PATH.relative_to(ROOT)}")
@@ -765,7 +923,10 @@ def check() -> None:
     expected = project_bytes(expected_project(current))
     actual = PROJECT_PATH.read_bytes()
     if actual != expected:
-        raise SystemExit("game director source is stale; run tools/game_director.py generate")
+        raise SystemExit(
+            "game director source is stale; inspect imported block changes before "
+            "running tools/game_director.py generate"
+        )
     print("game director source is current")
 
 

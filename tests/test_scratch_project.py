@@ -803,6 +803,13 @@ class ScratchProjectTests(unittest.TestCase):
             director.project_bytes(director.expected_project(project)),
         )
 
+    def test_game_director_generator_refuses_dirty_editor_source(self) -> None:
+        with (
+            mock.patch.object(director, "source_has_local_changes", return_value=True),
+            self.assertRaisesRegex(SystemExit, "refusing to overwrite"),
+        ):
+            director.generate()
+
     def test_game_director_has_one_stage_owned_transition_path(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         stage = next(target for target in project["targets"] if target["isStage"])
@@ -866,8 +873,16 @@ class ScratchProjectTests(unittest.TestCase):
             for block_id, block in stage["blocks"].items()
             if block["opcode"] == "procedures_definition"
         )
+        guard = stage["blocks"][definition["next"]]
+        self.assertEqual("control_if", guard["opcode"])
+        condition = stage["blocks"][guard["inputs"]["CONDITION"][1]]
+        self.assertEqual("data_listcontainsitem", condition["opcode"])
+        self.assertEqual(
+            ["allowed transitions", director.ALLOWED_ID],
+            condition["fields"]["LIST"],
+        )
         opcodes = []
-        cursor = definition["next"]
+        cursor = guard["inputs"]["SUBSTACK"][1]
         while cursor is not None:
             block = stage["blocks"][cursor]
             opcodes.append(block["opcode"])
@@ -879,6 +894,7 @@ class ScratchProjectTests(unittest.TestCase):
                 "event_broadcastandwait",
                 "sound_stopallsounds",
                 "data_setvariableto",
+                "control_if",
                 "event_broadcastandwait",
                 "data_setvariableto",
                 "event_broadcast",
@@ -886,6 +902,141 @@ class ScratchProjectTests(unittest.TestCase):
             opcodes,
             definition_id,
         )
+
+    def test_game_director_behavioral_contract_is_encoded(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        targets = {target["name"]: target for target in project["targets"]}
+
+        def numeric(value: object) -> int | float | None:
+            if (
+                isinstance(value, list)
+                and len(value) >= 2
+                and isinstance(value[1], list)
+                and len(value[1]) >= 2
+            ):
+                return value[1][1]
+            return None
+
+        solvalou = targets["solvalou"]["blocks"]
+        self.assertNotIn("motion_ifonedgebounce", {b["opcode"] for b in solvalou.values()})
+        self.assertEqual(
+            4,
+            sum(block["opcode"] == "sensing_keypressed" for block in solvalou.values()),
+        )
+        touched_frames = {
+            block["fields"]["TOUCHINGOBJECTMENU"][0]
+            for block in solvalou.values()
+            if block["opcode"] == "sensing_touchingobjectmenu"
+        }
+        self.assertEqual({"frame_b", "frame_l", "frame_r"}, touched_frames)
+
+        ready = [
+            block
+            for block in solvalou.values()
+            if block["opcode"] == "looks_sayforsecs"
+            and block["inputs"]["MESSAGE"][1][1] == "READY"
+        ]
+        self.assertEqual([1], [numeric(block["inputs"]["SECS"]) for block in ready])
+
+        death = targets["solv_death"]["blocks"]
+        self.assertIn("sound_play", {block["opcode"] for block in death.values()})
+        self.assertNotIn("sound_playuntildone", {block["opcode"] for block in death.values()})
+        death_repeats = [
+            block
+            for block in death.values()
+            if block["opcode"] == "control_repeat"
+            and numeric(block["inputs"]["TIMES"]) == 7
+        ]
+        self.assertEqual(1, len(death_repeats))
+        repeat_first = death[death_repeats[0]["inputs"]["SUBSTACK"][1]]
+        death_wait = death[repeat_first["next"]]
+        self.assertEqual("looks_nextcostume", repeat_first["opcode"])
+        self.assertEqual("control_wait", death_wait["opcode"])
+        self.assertEqual(0.1, numeric(death_wait["inputs"]["DURATION"]))
+        self.assertTrue(
+            any(
+                block["opcode"] == "motion_goto"
+                and death[block["inputs"]["TO"][1]]["fields"]["TO"][0] == "solvalou"
+                for block in death.values()
+            )
+        )
+        game_over = [
+            block
+            for block in death.values()
+            if block["opcode"] == "looks_sayforsecs"
+            and block["inputs"]["MESSAGE"][1][1] == "GAME OVER"
+        ]
+        self.assertEqual([2], [numeric(block["inputs"]["SECS"]) for block in game_over])
+
+        for name in ("blaster", "bomb"):
+            blocks = targets[name]["blocks"]
+            clone_hats = [
+                block for block in blocks.values()
+                if block["opcode"] == "control_start_as_clone"
+            ]
+            self.assertEqual(1, len(clone_hats), name)
+            cursor = clone_hats[0]["next"]
+            clone_opcodes = []
+            while cursor is not None:
+                clone_opcodes.append(blocks[cursor]["opcode"])
+                cursor = blocks[cursor]["next"]
+            self.assertNotIn("motion_gotoxy", clone_opcodes, name)
+            key_hats = [
+                block for block in blocks.values()
+                if block["opcode"] == "event_whenkeypressed"
+            ]
+            self.assertEqual(1, len(key_hats), name)
+            self.assertEqual("control_if", blocks[key_hats[0]["next"]]["opcode"])
+
+        target_b = targets["target_b"]["blocks"]
+        self.assertNotIn("looks_show", {block["opcode"] for block in target_b.values()})
+
+    def test_reset_scope_matrix_has_canonical_and_preserving_paths(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        targets = {target["name"]: target for target in project["targets"]}
+
+        def scope_literals(blocks: dict[str, dict[str, object]]) -> set[str]:
+            values = set()
+            for block in blocks.values():
+                if block["opcode"] != "operator_equals":
+                    continue
+                left = block["inputs"].get("OPERAND1")
+                right = block["inputs"].get("OPERAND2")
+                if (
+                    isinstance(left, list)
+                    and len(left) > 1
+                    and isinstance(left[1], list)
+                    and len(left[1]) == 3
+                    and left[1][2] == director.SCOPE_ID
+                    and isinstance(right, list)
+                    and len(right) > 1
+                    and isinstance(right[1], list)
+                ):
+                    values.add(right[1][1])
+            return values
+
+        for name in ("area_01a", "area_01b"):
+            blocks = targets[name]["blocks"]
+            self.assertEqual({"cold-start", "new-game"}, scope_literals(blocks))
+            self.assertEqual(2, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
+
+        player = targets["solvalou"]["blocks"]
+        self.assertEqual(
+            {"cold-start", "new-game", "new-life", "game-over"},
+            scope_literals(player),
+        )
+        for name in ("blaster", "bomb", "target_a", "target_b", "solv_death"):
+            blocks = targets[name]["blocks"]
+            reset_hats = [
+                block for block in blocks.values()
+                if block["opcode"] == "event_whenbroadcastreceived"
+                and block["fields"]["BROADCAST_OPTION"][0] == "director reset"
+            ]
+            self.assertEqual(1, len(reset_hats), name)
+            self.assertTrue(
+                any(block["opcode"] == "looks_hide" for block in blocks.values()),
+                name,
+            )
 
     def test_reset_handlers_are_finite_and_legacy_begin_is_removed(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -1156,7 +1307,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "367b9ef1e6f4a6f169edd0540f95c58ef941450c808c334ddb3e130a08e522c5",
+            "592345f70df1111eaed9bc182921e4a272854ba1cbdbf2c840f83b58078f027b",
             build_hash,
         )
 
