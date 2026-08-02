@@ -54,8 +54,11 @@ possible but remain partial until they meet a catalog acceptance criterion.
 
 ## Architecture seams
 
-- **Game director:** one explicit state owns title, attract, ready, playing,
-  player-dead, respawning, game-over, high-score entry, and player change.
+- **Game director:** the Stage is the sole writer of state and owns all allowed
+  transitions. Slice 2 establishes title, ready, playing, player-dead,
+  respawning, and game-over as the required current subset; later cabinet
+  slices extend the same director with attract, high-score entry, and player
+  change.
 - **Area director:** one monotonic area clock owns terrain position, scheduled
   objects, formations, boss windows, transitions, and the area 16-to-7 loop.
 - **Entity pool:** clone-based targets share spawn, update, hit, explosion,
@@ -77,105 +80,75 @@ preserving the lifecycle and collision interfaces.
 
 ## Pull-request build order
 
-Every slice updates its catalog rows and adds or changes a
-`docs/mechanics/` record. It is complete only when behavior, provenance,
-automatic validation, and the operator-runnable Scratch check agree.
+Every slice extracts only the costumes it needs and updates its catalog rows
+plus a `docs/mechanics/` record. A slice closes only when its declared
+behavior, provenance, automated validation, deterministic build, and
+operator-runnable Scratch check agree.
 
-### 1. Sprite extraction proof
+| Slice | Scope and dependency | Acceptance gate | Scratch check and mechanics record |
+| --- | --- | --- | --- |
+| 1. Sprite extraction proof — complete | Deterministic manifest extraction, source hashes, matte removal, canvases, anchors, provenance, and Solvalou/Toroid proof costumes. Depends on the preserved archive boundary. | Two runs are byte-identical; sheets remain byte-identical; crops avoid labels and credits; generated source verifies. | Inspect the contact sheet and animation anchors. Record `002-sprite-extraction-proof.md`. |
+| 2. Game director and state reset — current | Stage-owned title, ready, playing, player-dead, respawning, and game-over states; serialized reset scopes and cancellation. Depends on slice 1 only for the current canonical source. | Only Stage writes director variables; every normal state change uses one transition procedure; cleanup finishes before entry; reset handlers terminate; obsolete `begin`/`death` control is absent. | Exercise the state/input/reset matrix below. Record `003-game-director-and-state-reset.md` and mark SYS-01 present. |
+| 3. Entity pool and collision foundation | Shared clone lifecycle, collision groups, single-hit resolution, off-screen cleanup, and air/ground/bullet/effect fixtures. Depends on SYS-01. | Repeated worst-case spawn/removal leaks no state; groups cannot cross-hit or double-resolve; measured clone load stays responsive. | Run the clone spike and each collision fixture in Scratch 3. Record SYS-02 and SYS-03. |
+| 4. Score, HUD, lives, death, and respawn | Score/high-score cap, object awards, HUD, lives, bonus thresholds, collision death, safe respawn, and game over. Depends on slices 2–3. | Awards occur once; HUD matches state; life loss, bonus awards, respawn, and last-life game over repeat deterministically. | Run score/life fixtures through ordinary and last-life deaths. Record ECO-01–04 and PLY-02. |
+| 5. Area clock and scheduler foundation | Monotonic terrain position, table representation, ordered event dispatch, area boundary seam, and one small schedule fixture. Depends on slices 2–3. | Position never rewinds during a life; fixture events fire once in order; transitions leave no old-area work. | Accelerate and pause the fixture around its boundaries. Record AREA-01 and AREA-02 foundation. |
+| 6. All normal area schedules and 1–16→7 trace | Import normal object schedules for all areas and the normal loop, using the slice-5 interfaces. Depends on slice 5. | Accelerated trace visits 1–16 then 7; no Super-only table, row, or unknown object is present. | Observe transition checkpoints and the 16→7 return. Record AREA-03 and AREA-04. |
+| 7. Shared RNG, difficulty, and formations | One advancing pseudo-random stream, normal settings, adaptive difficulty seam, fire-frequency interfaces, and normal formation data. Depends on slices 4–6. | Seeded runs repeat; consumers share one stream; difficulty fixtures order correctly; formations preserve normal type/count/offset/order. | Replay seeded formation and pressure fixtures. Record SYS-04, DIF-01–03, and FORM-01. |
+| 8. Toroid vertical slice | Toroid formation, movement, animation, optional shot, bullets, blaster collision, score, player collision, explosion, and cleanup. Depends on slices 3–4 and 7. | A normal encounter completes through exit, score, or player death without test-only intervention. | Play both firing and non-firing seeded encounters. Record AIR-01 and relevant AIR-12 behavior. |
+| 9. Barra/Logram vertical slice | Placement, scrolling, reticle targeting, bomb travel/impact, reactions, scores, ground fire, and cleanup. Depends on slices 3–7. | Both normal encounters can be targeted, bombed, scored, survived, or lost end to end. | Play seeded Barra and Logram encounters. Record GND-01, GND-03, and completed WPN-03–05 behavior. |
+| 10. Torkan, Zoshi, Jara, Kapi, and Terazzi | First flying-family roster using the stable entity, formation, RNG, and difficulty interfaces. Depends on slice 8. | Each family fixture completes its distinct movement/fire/hit/exit path without new lifecycle seams. | Play one seeded fixture per family. Record AIR-02–06. |
+| 11. Zakato families, Sheonite, Spario, and Bacura | Remaining normal flying families and special paired/projectile/collision behavior. Depends on slices 8 and 10. | Variants stay distinct; paired entities leave no orphan; Bacura collision/resistance is isolated; full air fixture has no unknown type. | Play each family plus a mixed air-pressure fixture. Record AIR-07–11 and finish AIR-12. |
+| 12. Barra families, Zolbak, Logram, and Derota | First broader ground roster plus Zolbak difficulty effect. Depends on slice 9. | Variants react, fire, score, and clean up distinctly; Zolbak applies its effect once. | Play one seeded fixture per family and difficulty effect. Record GND-01–04. |
+| 13. Boza Logram, Grobda, and Domogram | Composite, land/water, targeting, patrol, fire, score, and cleanup variants. Depends on slice 12. | Composite parts coordinate; Grobda variants remain distinct; patrols and cleanup leave no stale actor. | Play composite and representative land/water/patrol fixtures. Record GND-05–07. |
+| 14. Sol Towers, Bonus Flags, and confirmed hidden events | Normal secret triggers, staged reveals, rewards, and only arcade-confirmed hidden presentation. Depends on slices 4, 6, 9, and 12. | Secrets reveal only under recorded conditions and award once; unconfirmed behavior remains visibly uncertain, not guessed. | Trigger, miss, and repeat each secret fixture. Record SEC-01–03. |
+| 15. Andor lifecycle, parts, arrival, and departure | Composite allocation, alignment, animation, boss window, and non-destruction departure. Depends on slices 3, 6–7, and 11–13. | Parts arrive and remain synchronized, fit the clone envelope, and depart/clean up as one encounter. | Observe arrival, sustained encounter, and timeout departure. Record BOSS-01. |
+| 16. Andor combat, defenses, core, and destruction | Gun ports, Bragza, fire, valid core path, score, destruction, and cleanup. Depends on slices 9, 11, and 15. | Invalid hits do not destroy the boss; valid core sequence destroys/scores once; survival and departure remain valid. | Play destruction, survival, and timeout paths. Record BOSS-02 and BOSS-03. |
+| 17. Attract, credits, and one-player cabinet flow | Attract sequence, credit cap/input, 1P start, and return flow. Depends on slices 2, 4, 6, and representative combat. | Cold start cycles attract without mutating score/lives; credits start exactly one affordable 1P game. | Observe a full attract cycle and credit/start/game-over return. Record CAB-01 and 1P CAB-02. |
+| 18. Two-player alternation and independent state | 2P selection, player switching, and independent score/lives/area/bonus state. Depends on slices 4, 6, and 17. | Alternation occurs at the proper boundary and neither player's state leaks into the other. | Play asymmetric two-player deaths and returns. Record CAB-03 and finish CAB-02. |
+| 19. High-score table and initials | Five-entry ranking, insertion, initials entry, and cabinet return; persistent storage remains excluded. Depends on slices 4 and 17–18. | Qualifying scores insert at the correct rank; non-qualifying scores skip entry; initials and return complete. | Test top, middle, bottom, tie, and non-qualifying scores. Record CAB-04. |
+| 20. Audio, animation, presentation, and fidelity | Encounter cues, score/life feedback, warnings, transitions, animation timing, anchors, and accepted fidelity corrections. Depends on all implemented gameplay slices. | Every cue has a state-safe trigger; animations remain aligned; catalog deviations and uncertainties are explicit. | Run a representative full presentation checklist. Record CAB-05 and updated affected mechanics. |
+| 21. Full soak and release audit | Accelerated 1–16→7 runs, clone/performance soak, complete Scratch 3 acceptance, provenance/license audit, and release documentation. Depends on slices 1–20. | All deterministic checks pass; catalog rows are present, excluded, or accepted deviations; no ROM or unprovenanced media exists; performance envelope holds. | Run title-to-game-over, both players/weapons, representative roster, secrets, Andor, high scores, area loop, and stop/reload checks. Record the release audit and any final mechanics corrections. |
 
-Build a deterministic manifest-driven extractor with source-hash validation,
-edge-connected matte removal, stable canvases and anchors, derivative
-provenance, and a contact sheet. Prove it with Solvalou and Toroid.
+## Slice 2 director and reset contract
 
-Gate: two runs produce identical outputs; source sheets stay byte-identical;
-derivatives contain no labels or credit panels; animations do not jump; and
-`scratch_project.py verify` accepts the overlay.
+All ordinary transitions use the Stage custom block `transition to () reset ()`.
+It increments `state epoch`, publishes the temporary `resetting` state,
+broadcasts `director stop and wait`, stops audio, publishes a stable reset
+scope, broadcasts the finite `director reset and wait`, then sets the
+destination and broadcasts `director enter`. The cold-boot assignment is the
+only state write outside that transition path. Yielding gameplay scripts
+recheck state after waits, sound playback, and repeats; clone stop/reset
+handlers delete the receiving clone.
 
-### 2. Game director and state reset
+Allowed edges are `boot → title`, `title → ready`, `ready → playing`,
+`playing → player-dead`, `player-dead → respawning`,
+`player-dead → game-over`, `respawning → playing`, and `game-over → title`.
+The `D` and `G` fixtures only set a Stage-owned pending death outcome. The
+death animation reports completion; Stage chooses the exit. Slice 4 replaces
+that fixture decision with the life-economy result without changing the
+transition interface.
 
-Add explicit title, ready, playing, player-dead, respawning, and game-over
-states plus one reset path for green flag, new game, new life, and game over.
+| Reset scope | Required postcondition |
+| --- | --- |
+| `cold-start` | Stop sounds and old work; remove/hide clones, weapons, targets, bomb, and death effects; rewind both terrain targets to their canonical area-1 costumes and positions; reset player/reticle positions; hide the player and show one title screen. |
+| `new-game` | Apply the same world, player, weapon, target, and transient reset as cold start, keep the title hidden, then enter READY once. |
+| `new-life` | Stop old work; remove/hide weapons, clones, targets, bomb, and death effects; reset the player/reticle positions; preserve terrain costumes and positions; then enter respawn READY once. |
+| `game-over` | Stop gameplay/audio and clear transient gameplay while preserving the final terrain for the two-second GAME OVER hold; the following cold-start reset rewinds the world before title. |
 
-Gate: transitions happen once, scripts from the old state stop acting, and
-green flag always returns to the same title state.
+Input and timing acceptance is exact for this slice:
 
-### 3. Entity lifecycle and collision foundation
-
-Add pooled clones, collision groups, single-hit resolution, off-screen
-cleanup, and fixtures for an air target, ground target, bullet, and effect.
-
-Gate: repeated spawn/removal does not leak state, collision groups cannot
-cross-hit, and the worst scheduled fixture stays responsive in Scratch 3.
-
-### 4. Score, HUD, lives, death, and respawn
-
-Add score, high score, score cap, object values, HUD, starting lives,
-bonus-life thresholds, Bonus Flag life behavior, collision death, safe
-respawn, and game over.
-
-Gate: fixture objects award exactly once; life loss, awards, respawn, and game
-over repeat correctly; HUD values always match internal state.
-
-### 5. Area clock, normal schedules, and transitions
-
-Parse the normal object and formation tables for all 16 areas, bind them to
-terrain position, and add transitions plus the area 16-to-7 loop.
-
-Gate: an accelerated trace visits 1–16 then 7; a schedule fixture preserves
-event order; no Super-only row or object appears.
-
-### 6. Air-combat vertical slice
-
-Deliver a complete Toroid encounter: formation spawn, movement, optional
-fire, enemy bullets, blaster hits, score, explosion, player collision, and
-cleanup.
-
-Gate: the normal encounter plays from spawn through score or player death
-without test-only intervention.
-
-### 7. Ground-combat vertical slice
-
-Deliver Barra and Logram placement, scrolling, crosshair targeting, bomb
-travel and impact, object reactions, score, ground fire, and cleanup.
-
-Gate: a normal encounter can be targeted, bombed, scored, and survived or
-lost end to end.
-
-### 8. Difficulty, formations, and remaining roster
-
-Implement the cataloged flying and ground families, adaptive AI, normal
-formations, fire masks, pseudo-random behavior, and score values.
-
-Gate: fixtures cover every normal enemy type and difficulty step; an
-accelerated full schedule creates no unknown type.
-
-### 9. Secrets and Andor Genesis
-
-Implement Sol Towers, Bonus Flags, Zolbak effects, the normal hidden copyright
-event if confirmed, and Andor's parts, gun ports, core, Bragza defenses,
-destruction, and departure.
-
-Gate: secrets reveal only under recorded conditions; Andor can be survived,
-destroyed through its valid target path, or allowed to leave.
-
-### 10. Cabinet flow and two-player game
-
-Implement attract mode, credits, 1P/2P start, player switching, game-over
-screens, the five-entry high-score table, and initials. Pause and persistent
-high-score storage remain excluded port additions.
-
-Gate: attract mode cycles from a cold start; credits select the right mode; 2P
-state remains independent; a qualifying score enters the table.
-
-### 11. Audio, polish, and release validation
-
-Complete encounter cues, score/life feedback, warnings, transitions,
-animations, and final fidelity corrections.
-
-Gate: all deterministic checks pass; each catalog row is complete, excluded,
-or an accepted deviation; areas 1–16 and the loop pass an accelerated soak;
-Scratch 3 covers title-to-game-over, both weapons, representative enemies,
-secrets, Andor, and 2P; no ROM file or unprovenanced media is present.
+- `title`: Space alone requests new game; arrows, B, D, and G are inert.
+- `ready`: READY is visible for one second; all gameplay keys are inert.
+- `playing`: arrows move, Space fires, B bombs, D requests the respawn fixture,
+  and G requests the terminal fixture.
+- `player-dead`: the seven-step death animation holds for 0.7 seconds; all
+  gameplay keys are inert.
+- `respawning`: READY is visible for one second; all gameplay keys are inert.
+- `game-over`: GAME OVER is visible for two seconds over the preserved final
+  terrain; all gameplay keys are inert, then cold title is restored.
+- Green flag from any state performs the serialized cold-start reset and
+  produces the same title state. Stop halts the project. Repeated keys cannot
+  duplicate director transitions, music loops, terrain loops, shots, or bombs.
 
 ## Per-slice provenance workflow
 
@@ -203,10 +176,9 @@ secrets, Andor, and 2P; no ROM file or unprovenanced media is present.
 - Exact crop rectangles, anchors, timing, hitboxes, scores, and schedules are
   recorded when parsed, not guessed in this plan.
 
-## Starting the next phase
+## Continuing the roadmap
 
-After this plan PR merges, the next PR is **Sprite extraction proof**. Nothing
-else is needed from the operator before it starts. A later slice stops for a
-new decision only if the reference is ambiguous, normal and Super cannot be
-separated confidently, Scratch cannot meet the performance envelope, or an
-asset lacks acceptable provenance.
+After each slice PR is ready to merge, report the next planned slice briefly.
+Do not replan the project between slices unless implementation exposes a real
+dependency, reference ambiguity, normal/Super separation problem, Scratch
+performance limit, or unacceptable asset provenance.
