@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import scratch_project as scratch  # noqa: E402
 import check_mechanics_record as mechanics  # noqa: E402
+import game_director as director  # noqa: E402
 
 
 ASSET_ONE = (
@@ -172,7 +173,7 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(16, len(project["targets"]))
         self.assertEqual(67, len(assets))
 
-    def test_canonical_source_preserves_original_json_values_and_order(self) -> None:
+    def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
             scratch.read_safe_archive(scratch.ORIGINAL_ARCHIVE)[
                 scratch.PROJECT_JSON
@@ -180,9 +181,7 @@ class ScratchProjectTests(unittest.TestCase):
         )
         source = load_source(scratch.SOURCE_DIR)
         self.assertEqual(list(original), list(source))
-        historical_targets = copy.deepcopy(
-            source["targets"][:len(original["targets"])]
-        )
+        historical_targets = copy.deepcopy(source["targets"][:len(original["targets"])])
         original_solvalou = next(
             target
             for target in original["targets"]
@@ -196,11 +195,43 @@ class ScratchProjectTests(unittest.TestCase):
         source_solvalou["costumes"] = source_solvalou["costumes"][
             :len(original_solvalou["costumes"])
         ]
-        self.assert_ordered_json_equal(
-            original["targets"],
-            historical_targets,
-            "$.targets[historical]",
-        )
+        changed_scripts = {
+            "Stage",
+            "solvalou",
+            "blaster",
+            "area_01a",
+            "area_01b",
+            "start_screen",
+            "solv_death",
+            "target_a",
+            "target_b",
+            "bomb",
+        }
+        original_by_name = {target["name"]: target for target in original["targets"]}
+        for target in historical_targets:
+            expected = copy.deepcopy(original_by_name[target["name"]])
+            if target["name"] not in changed_scripts:
+                self.assert_ordered_json_equal(
+                    expected,
+                    target,
+                    f"$.targets[{target['name']} ]",
+                )
+                continue
+            expected.pop("blocks")
+            actual = copy.deepcopy(target)
+            actual.pop("blocks")
+            if target["name"] == "Stage":
+                for key in ("variables", "lists", "broadcasts"):
+                    expected.pop(key)
+                    actual.pop(key)
+            elif target["name"] in {"solvalou", "solv_death"}:
+                expected.pop("variables")
+                actual.pop("variables")
+            self.assert_ordered_json_equal(
+                expected,
+                actual,
+                f"$.targets[{target['name']}].preserved",
+            )
         self.assertEqual(
             "toroid_sprite_proof",
             source["targets"][-2]["name"],
@@ -760,6 +791,345 @@ class ScratchProjectTests(unittest.TestCase):
             ROOT / "docs" / "mechanics" / "002-sprite-extraction-proof.md"
         )
 
+    def test_game_director_mechanics_record_is_complete(self) -> None:
+        mechanics.validate_record(
+            ROOT / "docs" / "mechanics" / "003-game-director-and-state-reset.md"
+        )
+
+    def test_game_director_generator_is_current(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(
+            scratch._ordered_json_bytes(project),
+            director.project_bytes(director.expected_project(project)),
+        )
+
+    def test_game_director_generator_refuses_dirty_editor_source(self) -> None:
+        with (
+            mock.patch.object(director, "source_has_local_changes", return_value=True),
+            self.assertRaisesRegex(SystemExit, "refusing to overwrite"),
+        ):
+            director.generate()
+
+    def test_game_director_has_one_stage_owned_transition_path(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(target for target in project["targets"] if target["isStage"])
+        self.assertEqual(
+            {
+                "game state",
+                "state epoch",
+                "reset scope",
+                "death outcome",
+            },
+            {name for name, _value in stage["variables"].values()},
+        )
+        self.assertEqual(
+            [
+                "boot -> title",
+                "title -> ready",
+                "ready -> playing",
+                "playing -> player-dead",
+                "player-dead -> respawning",
+                "player-dead -> game-over",
+                "respawning -> playing",
+                "game-over -> title",
+            ],
+            stage["lists"][director.ALLOWED_ID][1],
+        )
+        definitions = [
+            block
+            for block in stage["blocks"].values()
+            if block["opcode"] == "procedures_definition"
+        ]
+        calls = [
+            block
+            for block in stage["blocks"].values()
+            if block["opcode"] == "procedures_call"
+        ]
+        self.assertEqual(1, len(definitions))
+        self.assertTrue(calls)
+        self.assertTrue(all(block["mutation"]["proccode"] == director.PROCCODE for block in calls))
+
+        director_variable_ids = {
+            director.STATE_ID,
+            director.EPOCH_ID,
+            director.SCOPE_ID,
+            director.OUTCOME_ID,
+        }
+        for target in project["targets"]:
+            if target["isStage"]:
+                continue
+            writes = {
+                block["fields"].get("VARIABLE", [None, None])[1]
+                for block in target["blocks"].values()
+                if block["opcode"] in {"data_setvariableto", "data_changevariableby"}
+            }
+            self.assertTrue(director_variable_ids.isdisjoint(writes), target["name"])
+
+    def test_transition_cleanup_is_serialized_before_state_entry(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(target for target in project["targets"] if target["isStage"])
+        definition_id, definition = next(
+            (block_id, block)
+            for block_id, block in stage["blocks"].items()
+            if block["opcode"] == "procedures_definition"
+        )
+        guard = stage["blocks"][definition["next"]]
+        self.assertEqual("control_if", guard["opcode"])
+        condition = stage["blocks"][guard["inputs"]["CONDITION"][1]]
+        self.assertEqual("data_listcontainsitem", condition["opcode"])
+        self.assertEqual(
+            ["allowed transitions", director.ALLOWED_ID],
+            condition["fields"]["LIST"],
+        )
+        opcodes = []
+        cursor = guard["inputs"]["SUBSTACK"][1]
+        while cursor is not None:
+            block = stage["blocks"][cursor]
+            opcodes.append(block["opcode"])
+            cursor = block["next"]
+        self.assertEqual(
+            [
+                "data_changevariableby",
+                "data_setvariableto",
+                "event_broadcastandwait",
+                "sound_stopallsounds",
+                "data_setvariableto",
+                "control_if",
+                "event_broadcastandwait",
+                "data_setvariableto",
+                "event_broadcast",
+            ],
+            opcodes,
+            definition_id,
+        )
+
+    def test_game_director_behavioral_contract_is_encoded(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        targets = {target["name"]: target for target in project["targets"]}
+
+        def numeric(value: object) -> int | float | None:
+            if (
+                isinstance(value, list)
+                and len(value) >= 2
+                and isinstance(value[1], list)
+                and len(value[1]) >= 2
+            ):
+                return value[1][1]
+            return None
+
+        solvalou = targets["solvalou"]["blocks"]
+        self.assertNotIn("motion_ifonedgebounce", {b["opcode"] for b in solvalou.values()})
+        self.assertEqual(
+            4,
+            sum(block["opcode"] == "sensing_keypressed" for block in solvalou.values()),
+        )
+        touched_frames = {
+            block["fields"]["TOUCHINGOBJECTMENU"][0]
+            for block in solvalou.values()
+            if block["opcode"] == "sensing_touchingobjectmenu"
+        }
+        self.assertEqual({"frame_b", "frame_l", "frame_r"}, touched_frames)
+
+        ready = [
+            block
+            for block in solvalou.values()
+            if block["opcode"] == "looks_sayforsecs"
+            and block["inputs"]["MESSAGE"][1][1] == "READY"
+        ]
+        self.assertEqual([1], [numeric(block["inputs"]["SECS"]) for block in ready])
+
+        death = targets["solv_death"]["blocks"]
+        self.assertIn("sound_play", {block["opcode"] for block in death.values()})
+        self.assertNotIn("sound_playuntildone", {block["opcode"] for block in death.values()})
+        death_repeats = [
+            block
+            for block in death.values()
+            if block["opcode"] == "control_repeat"
+            and numeric(block["inputs"]["TIMES"]) == 7
+        ]
+        self.assertEqual(1, len(death_repeats))
+        repeat_first = death[death_repeats[0]["inputs"]["SUBSTACK"][1]]
+        death_wait = death[repeat_first["next"]]
+        self.assertEqual("looks_nextcostume", repeat_first["opcode"])
+        self.assertEqual("control_wait", death_wait["opcode"])
+        self.assertEqual(0.1, numeric(death_wait["inputs"]["DURATION"]))
+        self.assertTrue(
+            any(
+                block["opcode"] == "motion_goto"
+                and death[block["inputs"]["TO"][1]]["fields"]["TO"][0] == "solvalou"
+                for block in death.values()
+            )
+        )
+        game_over = [
+            block
+            for block in death.values()
+            if block["opcode"] == "looks_sayforsecs"
+            and block["inputs"]["MESSAGE"][1][1] == "GAME OVER"
+        ]
+        self.assertEqual([2], [numeric(block["inputs"]["SECS"]) for block in game_over])
+
+        for name in ("blaster", "bomb"):
+            blocks = targets[name]["blocks"]
+            clone_hats = [
+                block for block in blocks.values()
+                if block["opcode"] == "control_start_as_clone"
+            ]
+            self.assertEqual(1, len(clone_hats), name)
+            cursor = clone_hats[0]["next"]
+            clone_opcodes = []
+            while cursor is not None:
+                clone_opcodes.append(blocks[cursor]["opcode"])
+                cursor = blocks[cursor]["next"]
+            self.assertNotIn("motion_gotoxy", clone_opcodes, name)
+            key_hats = [
+                block for block in blocks.values()
+                if block["opcode"] == "event_whenkeypressed"
+            ]
+            self.assertEqual(1, len(key_hats), name)
+            self.assertEqual("control_if", blocks[key_hats[0]["next"]]["opcode"])
+
+        target_b = targets["target_b"]["blocks"]
+        self.assertNotIn("looks_show", {block["opcode"] for block in target_b.values()})
+
+    def test_reset_scope_matrix_has_canonical_and_preserving_paths(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        targets = {target["name"]: target for target in project["targets"]}
+
+        def scope_literals(blocks: dict[str, dict[str, object]]) -> set[str]:
+            values = set()
+            for block in blocks.values():
+                if block["opcode"] != "operator_equals":
+                    continue
+                left = block["inputs"].get("OPERAND1")
+                right = block["inputs"].get("OPERAND2")
+                if (
+                    isinstance(left, list)
+                    and len(left) > 1
+                    and isinstance(left[1], list)
+                    and len(left[1]) == 3
+                    and left[1][2] == director.SCOPE_ID
+                    and isinstance(right, list)
+                    and len(right) > 1
+                    and isinstance(right[1], list)
+                ):
+                    values.add(right[1][1])
+            return values
+
+        for name in ("area_01a", "area_01b"):
+            blocks = targets[name]["blocks"]
+            self.assertEqual({"cold-start", "new-game"}, scope_literals(blocks))
+            self.assertEqual(2, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
+
+        player = targets["solvalou"]["blocks"]
+        self.assertEqual(
+            {"cold-start", "new-game", "new-life", "game-over"},
+            scope_literals(player),
+        )
+        for name in ("blaster", "bomb", "target_a", "target_b", "solv_death"):
+            blocks = targets[name]["blocks"]
+            reset_hats = [
+                block for block in blocks.values()
+                if block["opcode"] == "event_whenbroadcastreceived"
+                and block["fields"]["BROADCAST_OPTION"][0] == "director reset"
+            ]
+            self.assertEqual(1, len(reset_hats), name)
+            self.assertTrue(
+                any(block["opcode"] == "looks_hide" for block in blocks.values()),
+                name,
+            )
+
+    def test_reset_handlers_are_finite_and_legacy_begin_is_removed(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(target for target in project["targets"] if target["isStage"])
+        self.assertNotIn("begin", stage["broadcasts"].values())
+        self.assertNotIn("death", (value[0] for value in stage["variables"].values()))
+        loop_opcodes = {"control_forever", "control_repeat", "control_repeat_until"}
+        for target in project["targets"]:
+            blocks = target["blocks"]
+            for hat_id, hat in blocks.items():
+                if (
+                    hat["opcode"] != "event_whenbroadcastreceived"
+                    or hat["fields"].get("BROADCAST_OPTION", [None])[0]
+                    != "director reset"
+                ):
+                    continue
+                pending = [hat["next"]]
+                seen = set()
+                while pending:
+                    block_id = pending.pop()
+                    if block_id is None or block_id in seen:
+                        continue
+                    seen.add(block_id)
+                    block = blocks[block_id]
+                    self.assertNotIn(block["opcode"], loop_opcodes, target["name"])
+                    pending.append(block["next"])
+                    for name in ("SUBSTACK", "SUBSTACK2"):
+                        if name in block["inputs"]:
+                            pending.append(block["inputs"][name][1])
+
+    def test_timed_state_completions_are_epoch_guarded(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+
+        def variable_id(value: object) -> str | None:
+            if (
+                isinstance(value, list)
+                and len(value) >= 2
+                and value[0] == 3
+                and isinstance(value[1], list)
+                and len(value[1]) == 3
+                and value[1][0] == 12
+            ):
+                return value[1][2]
+            return None
+
+        expected = {
+            "solvalou": (director.SOLVALOU_EPOCH_ID, "ready complete"),
+            "solv_death": (director.DEATH_EPOCH_ID, "death complete"),
+        }
+        for target in project["targets"]:
+            if target["name"] not in expected:
+                continue
+            local_id, completion = expected[target["name"]]
+            self.assertEqual(["entry epoch", 0], target["variables"][local_id])
+            comparisons = [
+                block
+                for block in target["blocks"].values()
+                if block["opcode"] == "operator_equals"
+                and variable_id(block["inputs"].get("OPERAND1")) == local_id
+                and variable_id(block["inputs"].get("OPERAND2")) == director.EPOCH_ID
+            ]
+            self.assertTrue(comparisons, target["name"])
+            self.assertTrue(
+                any(
+                    block["opcode"] == "event_broadcast"
+                    and block["inputs"]["BROADCAST_INPUT"][1][1] == completion
+                    for block in target["blocks"].values()
+                ),
+                target["name"],
+            )
+
+    def test_every_scratch_block_reference_resolves(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        for target in project["targets"]:
+            blocks = target["blocks"]
+            for block_id, block in blocks.items():
+                for field in ("next", "parent"):
+                    reference = block[field]
+                    if reference is not None:
+                        self.assertIn(reference, blocks, f"{target['name']}:{block_id}.{field}")
+                for input_name, value in block["inputs"].items():
+                    if (
+                        isinstance(value, list)
+                        and len(value) >= 2
+                        and value[0] in (1, 2, 3)
+                        and isinstance(value[1], str)
+                    ):
+                        self.assertIn(
+                            value[1],
+                            blocks,
+                            f"{target['name']}:{block_id}.{input_name}",
+                        )
+
     def test_incomplete_mechanics_record_is_rejected(self) -> None:
         record = self.temp / "incomplete.md"
         record.write_text("# Incomplete\n", encoding="utf-8")
@@ -937,7 +1307,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "7b82f7d8194b05cf23a0f906602cc7fa51b3b23de1a42f5d3c5b4d7c340585a1",
+            "592345f70df1111eaed9bc182921e4a272854ba1cbdbf2c840f83b58078f027b",
             build_hash,
         )
 

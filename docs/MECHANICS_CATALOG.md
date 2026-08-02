@@ -13,7 +13,7 @@ Every locator below means
 
 | ID | Mechanic | Status | Depends on | Source labels | Acceptance outcome |
 | --- | --- | --- | --- | --- | --- |
-| SYS-01 | Explicit game-state director | partial | — | main: `main_thread_main_loop`, `main_gameplay_loop`, `game_over` | One title/ready/playing/dead/respawn/game-over state owns input and transitions. |
+| SYS-01 | Explicit game-state director | present | — | main: `main_thread_main_loop`, `main_gameplay_loop`, `game_over` | One title/ready/playing/dead/respawn/game-over state owns input and transitions. |
 | SYS-02 | Shared entity lifecycle | missing | SYS-01 | main: `add_obj_handler`, `handle_scroll_offscreen` | Every entity spawns, updates, takes one hit, explodes if applicable, and is removed without leaked state. |
 | SYS-03 | Collision groups and single-hit resolution | missing | SYS-02 | main: `check_solvalou_hit`, `check_flying_enemies_shot`, `handle_bombed_obj_and_award_points` | Air, ground, player, bullet, and Bacura interactions stay distinct and cannot double-score. |
 | SYS-04 | Pseudo-random behavior | missing | SYS-01 | main: `pseudo_random_gen`, `gen_rnd_dir` | Seeded fixtures repeat and dependent mechanics share one advancing random stream. |
