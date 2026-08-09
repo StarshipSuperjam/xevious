@@ -11,10 +11,12 @@ note: >-
 
 ## Why this spec exists
 
-A build session merged a change (pull request #9) that invented a presentation element with no basis in the
-arcade game and silently removed four working behaviors — held-fire cadence, the single-bomb lockout,
-terrain wrapping, and the title glide — because no written description of the product existed for the build
-or its review to check against. This spec is that description: every gameplay behavior in these documents is
+A build session merged a change (pull request #9) that invented presentation elements with no basis in the
+arcade game and silently removed or degraded ten working behaviors — the operator caught four on sight
+(held-fire cadence, the single-bomb lockout, terrain wrapping, the title glide), and the committed
+fidelity audit found six more (the crosshair release animation, the bomb impact marker, shot expiry at
+the screen edge, layer ordering, the post-death pause, and the baseline's terrain restart on death) —
+because no written description of the product existed for the build or its review to check against. This spec is that description: every gameplay behavior in these documents is
 traceable to the pinned arcade reference, marked as a recorded deviation, or marked as a Scratch port
 necessity, so no future build can improvise gameplay and no review has to rely on memory.
 

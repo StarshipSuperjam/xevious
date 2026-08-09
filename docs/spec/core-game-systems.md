@@ -22,18 +22,22 @@ reproducible — the properties the rest of this spec depends on.
 
 **Game-state director (SYS-01).** One state machine owns the game: `boot → title → ready → playing →
 player-dead → (respawning → playing | game-over) → title`, extended by the cabinet states (attract cycle,
-high-score entry, player change) specified in [Cabinet flow](cabinet-flow.md). In the Scratch build the
-Stage is the sole writer of state; all transitions pass through one transition block that stops old work,
-applies a named reset scope (cold-start, new-game, new-life, game-over — each with the postconditions the
-merged slice-2 contract records), and enters the destination exactly once. One slice-2 postcondition is
+high-score entry, player change) specified in [Cabinet flow](cabinet-flow.md). Every ordinary transition
+additionally passes through a short transient `resetting` state — the director's internal step between
+stopping old work and entering the destination; it is part of the recorded machine and structural
+fixtures must expect it. In the Scratch build the Stage is the sole writer of state; all transitions pass
+through one transition block that stops old work, applies a named reset scope (cold-start, new-game,
+new-life, game-over — each with the postconditions the merged slice-2 contract records), and enters the
+destination exactly once. One slice-2 postcondition is
 already known to diverge from the arcade: the new-life scope preserves terrain position, while the arcade
 restarts the area from its top on every new life
 ([Area progression and terrain](area-progression-and-terrain.md)) — recorded as an interim fixture for
-correction with the life-economy work. The current presentation
-timings around these states (READY held one second, a 0.7-second death animation, GAME OVER held two
-seconds) are **project-defined placeholders with no reference basis**, recorded as such pending the
-presentation-fidelity work; the arcade's own state timings are specified where extracted (for example the
-56-frame explosion plus 32-frame pause in
+correction with the life-economy work. Two of the current presentation
+timings around these states (READY held one second, and the 0.7-second death animation) are
+**project-defined placeholders with no reference basis**, recorded as such pending the
+presentation-fidelity work; the GAME OVER hold has a reference value — 128 frames, normatively owned by
+[Scoring, lives, and game over](scoring-lives-and-game-over.md) — and the arcade's other state timings
+are specified where extracted (for example the 56-frame explosion plus 32-frame pause in
 [Player craft and weapons](player-craft-and-weapons.md)). The READY speech-bubble presentation in the
 current build is an unsupported invention already recorded for correction.
 
@@ -49,7 +53,9 @@ normative home):
 
 Per-state input rules (project-defined for the current slice, pending cabinet work): title accepts only
 the start key; READY, player-dead, respawning, and game-over accept no gameplay input; playing accepts
-movement, fire, and bomb. Repeated keys can never duplicate transitions, loops, shots, or bombs; the
+movement, fire, and bomb — plus, until the life economy lands, the two recorded temporary fixtures `D`
+(request respawn) and `G` (request terminal death), which exist only to exercise the death paths and are
+removed by the life-economy work. Repeated keys can never duplicate transitions, loops, shots, or bombs; the
 green flag from any state performs the cold-start reset; stop halts the project.
 
 **Entity lifecycle and capacities (SYS-02).** The reference runs 64 fixed object slots, each a small

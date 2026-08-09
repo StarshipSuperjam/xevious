@@ -13,3 +13,15 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Correction (2026-08-09 fidelity audit)
+
+This record's retention claims were audited against the preserved baseline and found overstated. The
+slice did not retain canonical historical behavior for the title (the entry glide was replaced by
+immediate placement) or for held fire, the bomb lockout, terrain wrapping, shot expiry, the crosshair
+and impact-marker animations, layer ordering, or the post-death pause — all working baseline behaviors
+this slice replaced or removed without disclosure. The new-life terrain preservation, recorded above as
+a deliberate fixture, additionally displaced the baseline's own arcade-matching terrain restart on
+death, which this record did not disclose. The full inventory and dispositions are in
+[the committed fidelity audit](../audit/2026-08-09-fidelity-audit.md); the recovery obligations belong
+to the regression-recovery build tracked from it.
