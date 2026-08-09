@@ -60,7 +60,7 @@ carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit | `python3 tools/reference_extract.py --verify` against a fresh local clone at the pin — needs the clone, so it is run by a person, not CI | operator |
+| The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit | `python3 tools/reference_extract.py --verify --checkout <clone>` with a fresh clone at the pin (clone recipe in [the index](index.md)); the run passes or names the failing table | operator |
 | The four difficulty-setting increments are 2, 0, 6, 16 and the build's data matches the committed file | Data-table comparison in the deterministic build fixtures | engine |
 | Formation lookup uses AI level + schedule offset with the recorded fold-back at 0x80 | Seeded fixture: fixed AI-level sequences reproduce the recorded wave sizes and type offsets | engine |
 | Score-adaptive re-tune follows score-per-reserve-craft, capped at 16 | Fixture over recorded score/lives pairs reproduces the recorded AI increments | engine |

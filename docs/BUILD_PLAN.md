@@ -65,6 +65,9 @@ preserving the lifecycle and collision interfaces.
 
 ## Pull-request build order
 
+What must be built is normatively grouped in the spec's [build order](spec/build-plan.md); this table
+stages it.
+
 Every slice extracts only the costumes it needs and updates its catalog rows
 plus a `docs/mechanics/` record. A slice closes only when its declared
 behavior, provenance, automated validation, deterministic build, and

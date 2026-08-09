@@ -74,7 +74,7 @@ observation resolves it if it ever matters.
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| All 16 schedule tables decode exactly — every byte consumed, the sentinel recorded as each area's `end_sentinel` field (a sibling of the records, not a record), no Super-table bytes | `python3 tools/reference_extract.py --verify` against a fresh local clone at the pin — needs the clone, so it is run by a person, not CI | operator |
+| All 16 schedule tables decode exactly, with no Super-table content (the sentinel is recorded as each area's `end_sentinel` field, outside the records list) | `python3 tools/reference_extract.py --verify --checkout <clone>` with a fresh clone at the pin (clone recipe in [the index](index.md)); the run passes or names the failing table | operator |
 | The committed schedule data matches a re-derivation from the pinned commit | Same `--verify` run byte-compares the committed JSON | operator |
 | An accelerated full-game trace consumes every record of all 16 areas in order with no unknown record kind | Deterministic schedule-trace fixture over the committed data | engine |
 | Terrain scrolls continuously through a full area with no black gap, at one steady rate | Play the built `.sb3`: fly area 1 end to end watching for gaps | operator |

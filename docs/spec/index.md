@@ -15,7 +15,7 @@ A build session merged a change (pull request #9) that invented presentation ele
 arcade game and silently removed or degraded ten working behaviors — the operator caught four on sight
 (held-fire cadence, the single-bomb lockout, terrain wrapping, the title glide), and the committed
 fidelity audit found six more (the crosshair release animation, the bomb impact marker, shot expiry at
-the screen edge, layer ordering, the post-death pause, and the baseline's terrain restart on death) —
+the screen edge, layer ordering, the post-death pause, and the truncated death cue) —
 because no written description of the product existed for the build or its review to check against. This spec is that description: every gameplay behavior in these documents is
 traceable to the pinned arcade reference, marked as a recorded deviation, or marked as a Scratch port
 necessity, so no future build can improvise gameplay and no review has to rely on memory.
@@ -32,12 +32,15 @@ describes its meaning.
 
 Each document's frontmatter `status` is authoritative: `draft` renders as *in progress* (the content is
 complete or filling, not yet binding), `locked` renders as *settled* — the ground a build adapts to,
-changeable afterwards only with the operator's guardrail acknowledgement on the changing pull request.
+changeable afterwards only with the operator's guardrail acknowledgement — the `guardrail-ack` label you
+yourself apply on the changing pull request, a deliberate confirmation separate from the merge click.
 The table below mirrors the frontmatter. `reference_verified_at` in each document records the reference
 commit its values were last verified against and must equal this file's `reference_pin` (a pin bump
 re-verifies each document and updates its stamp deliberately). **Precedence:** where a settled document
 and an in-progress document disagree, the settled one wins, and a change to an in-progress document that
 would contradict a settled one is a spec amendment to the settled document, not a quiet roster edit.
+Where a settled document delegates a detail to an in-progress one, the settled document's own statements
+bind now; the delegated detail becomes binding when its document settles.
 
 | Capability | Status | Doc |
 | --- | --- | --- |
@@ -53,6 +56,8 @@ would contradict a settled one is a spec amendment to the settled document, not 
 | Cabinet flow | in progress | [Cabinet flow](cabinet-flow.md) |
 | Audio and presentation | in progress | [Audio and presentation](audio-and-presentation.md) |
 
+The order this work gets built in is the [build order](build-plan.md) (a living document with no stage).
+
 Deliberate exclusions (recorded so no build re-invents them): Super Xevious content — Galaxian, jet with its
 score-reset trap, helicopter, tank, bridge, Super formations and schedules; port conveniences — pause and
 persistent high-score storage; a conventional win screen. Sources: the mechanics catalog rows EX-01 through
@@ -67,7 +72,14 @@ commit (provenance, hashes, and attestations below). **None of these files is ev
 python3 tools/reference_extract.py --verify --checkout <path-to-local-clone-at-the-pin>
 ```
 
-The command needs a local clone of the reference at the pin, so it is run by a person, not CI; the
+To make the clone (substitute the pin from this file's frontmatter):
+
+```bash
+git clone https://github.com/jotd666/xevious.git /tmp/xevious-reference
+git -C /tmp/xevious-reference checkout 71473685a8c7856c8401c8519276cd97a38d4183
+```
+
+The command needs that local clone, so it is run by a person, not CI; the
 CI-runnable structural guards live in `tests/test_spec_docs.py`.
 
 One file per concern:
