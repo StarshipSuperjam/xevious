@@ -49,3 +49,11 @@ Unsupported inventions 3 (A1–A3) · legitimate-but-unmarked 4 (A4–A6, B11; a
 amendment or this record) · regressions 10 (B1–B10). The regression-recovery build — the first tracked
 build item once the spec settles — owes B1–B10 plus A1–A2, and supersedes the abandoned
 `codex/slice2-regression-recovery` branch.
+
+## Disposition (2026-08-09, issue #13)
+
+B1–B10 and A1–A2 are discharged by the regression-recovery build (issue #13): each restored per its
+marker and the tick conversion recorded in
+[game director mechanics record 003](../mechanics/003-game-director-and-state-reset.md), each removed
+invention taken out with its asserting test rows. A3 (3-shot cap) and B11 (terrain-restart-on-death)
+remain owed to the entity-pool and life-economy slices respectively, as recorded above.
