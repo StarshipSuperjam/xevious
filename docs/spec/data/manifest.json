@@ -1,0 +1,14 @@
+{
+  "files": {
+    "andor-genesis.json": "42a2edb0d381515664a7f317ffd3d29de1f6a6c3442a5dac69c997ee6d4e4f63",
+    "area-schedules.json": "7db22ea3dfd5e2c721b88a35b88c74d42f2606e73303e473c33680c80c921860",
+    "difficulty.json": "81be3de57fd04d47f9e9d62b41957859c39adf5624e6395a3c04557c4bb5b36c",
+    "domogram.json": "d8eb2519032f880f68e1dbd1e91d2643cf49a738808859c93188695662c847f4",
+    "formations.json": "e50a2eb5be58656d52a7a9623e5768d2c70f6d7887bf97b1147adf3be267b4ce",
+    "object-types.json": "12d7e2ac50b9cb80dfc931fe31592416c450c806979facb53241714bc57463cc",
+    "rng.json": "e18cae9437d7238769465723e432738f1ef9c5442de75b4533d30a0a2a526ee2",
+    "scores.json": "f844d528a20d051a6f33733e95cbb5b8f67272d360f5ce5e57540a1e3ad787e4",
+    "terrain.json": "29318b3007c795e833ce0b50438c9b4d7bf0aaac2ce27536fc453183afbbd371"
+  },
+  "note": "sha256 of each generated data file, emitted by tools/reference_extract.py; regenerating is the only sanctioned way to change any of them"
+}

@@ -9,6 +9,18 @@ Every locator below means
 `main` means `src/xevious_main.68k`; `sub` means
 `src/xevious_sub.68k`. Labels are cited instead of copying source text.
 
+Acceptance criteria are normatively owned by the product spec under `docs/spec/` — the owning document
+for each ID family: SYS → [core game systems](spec/core-game-systems.md); PLY, WPN →
+[player craft and weapons](spec/player-craft-and-weapons.md); ECO →
+[scoring, lives, and game over](spec/scoring-lives-and-game-over.md); AREA →
+[area progression and terrain](spec/area-progression-and-terrain.md); DIF, FORM →
+[difficulty and formations](spec/difficulty-and-formations.md); AIR →
+[aerial enemies](spec/aerial-enemies.md); GND → [ground objects](spec/ground-objects.md); SEC →
+[secrets](spec/secrets.md); BOSS → [Andor Genesis](spec/andor-genesis.md); CAB →
+[cabinet flow](spec/cabinet-flow.md) and [audio and presentation](spec/audio-and-presentation.md).
+The "Acceptance outcome" column below is a one-line summary for queue triage; where it and a spec
+document differ, the spec document wins.
+
 ## Runtime, player, and weapons
 
 | ID | Mechanic | Status | Depends on | Source labels | Acceptance outcome |
@@ -51,7 +63,7 @@ Every locator below means
 | AIR-03 | Zoshi variants | missing | FORM-01, SYS-04 | main: `handle_0E_Zoshi_bottom`, `handle_0D_Zoshi_top`, `handle_0C_Zoshi_rnd` | Top, bottom, and random paths remain distinct. |
 | AIR-04 | Jara pair and firing variant | missing | FORM-01, DIF-03 | main: `handle_56_Jara`, `handle_55_Jara_shoots`, `jara_check_proximity` | Pairs move, turn, separate, fire, and score correctly. |
 | AIR-05 | Kapi | missing | FORM-01, DIF-03 | main: `handle_10_Kapi`, `kapi_10_fire` | Steering and fire timing match recorded conditions. |
-| AIR-06 | Terazzi | missing | FORM-01, DIF-03 | main: `handle_11_Terrazi` | The full attack/exit path and collisions complete. |
+| AIR-06 | Terrazi | missing | FORM-01, DIF-03 | main: `handle_11_Terrazi` | The full attack/exit path and collisions complete. |
 | AIR-07 | Zakato normal variants | missing | FORM-01, SYS-04 | main: `handle_12_Zakato_slow` through `handle_15_Zakato` | Slow, proximity, fast, and standard variants stay distinct. |
 | AIR-08 | Brag and Garu Zakato | missing | AIR-07, DIF-03 | main: `handle_16_Brag_Zakato_rnd`, `handle_17_Brag_Zakato_closeY`, `handle_18_Garu_Zakato` | Teleport, explosion, and fire behaviors complete. |
 | AIR-09 | Sheonite pair | missing | FORM-01, SYS-02 | main: `handle_31_right_sheonite`, `handle_32_left_sheonite`; sub: `sub_2_fn_18__sheonite_start`, `sub_2_fn_19__sheonite_end` | The linked pair coordinates and exits without an orphan. |

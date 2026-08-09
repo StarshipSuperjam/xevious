@@ -54,31 +54,19 @@ possible but remain partial until they meet a catalog acceptance criterion.
 
 ## Architecture seams
 
-- **Game director:** the Stage is the sole writer of state and owns all allowed
-  transitions. Slice 2 establishes title, ready, playing, player-dead,
-  respawning, and game-over as the required current subset; later cabinet
-  slices extend the same director with attract, high-score entry, and player
-  change.
-- **Area director:** one monotonic area clock owns terrain position, scheduled
-  objects, formations, boss windows, transitions, and the area 16-to-7 loop.
-- **Entity pool:** clone-based targets share spawn, update, hit, explosion,
-  and removal rules while staying below Scratch's clone limit.
-- **Collision groups:** blaster-to-air, bomb-to-ground,
-  enemy-bullet-to-player, flying-enemy-to-player, and Bacura-to-player remain
-  distinct. A hit is resolved once and cannot score twice.
-- **Data tables:** schedules, formations, scores, timing, and difficulty live
-  as inspectable Scratch lists or generated Scratch data, separate from
-  scripts.
-- **Presentation:** costumes, animation timing, anchors, sounds, and HUD
-  rendering remain separate from entity rules.
-- **Determinism:** generated assets and generated Scratch edits are
-  reproducible from committed inputs.
+The architecture — the game director, area director, entity pool, collision groups, data tables,
+presentation separation, and determinism seams — is normatively described in the
+[architecture overview](architecture.md); this plan sequences work against those seams without restating
+them.
 
 The first entity change includes a measured clone/performance spike. If one
 shared target is not maintainable, use one target per behavior family while
 preserving the lifecycle and collision interfaces.
 
 ## Pull-request build order
+
+What must be built is normatively grouped in the spec's [build order](spec/build-plan.md); this table
+stages it.
 
 Every slice extracts only the costumes it needs and updates its catalog rows
 plus a `docs/mechanics/` record. A slice closes only when its declared
@@ -88,7 +76,8 @@ operator-runnable Scratch check agree.
 | Slice | Scope and dependency | Acceptance gate | Scratch check and mechanics record |
 | --- | --- | --- | --- |
 | 1. Sprite extraction proof — complete | Deterministic manifest extraction, source hashes, matte removal, canvases, anchors, provenance, and Solvalou/Toroid proof costumes. Depends on the preserved archive boundary. | Two runs are byte-identical; sheets remain byte-identical; crops avoid labels and credits; generated source verifies. | Inspect the contact sheet and animation anchors. Record `002-sprite-extraction-proof.md`. |
-| 2. Game director and state reset — current | Stage-owned title, ready, playing, player-dead, respawning, and game-over states; serialized reset scopes and cancellation. Depends on slice 1 only for the current canonical source. | Only Stage writes director variables; every normal state change uses one transition procedure; cleanup finishes before entry; reset handlers terminate; obsolete `begin`/`death` control is absent. | Exercise the state/input/reset matrix below. Record `003-game-director-and-state-reset.md` and mark SYS-01 present. |
+| 2. Game director and state reset — current | Stage-owned title, ready, playing, player-dead, respawning, and game-over states; serialized reset scopes and cancellation. Depends on slice 1 only for the current canonical source. | Only Stage writes director variables; every normal state change uses one transition procedure; cleanup finishes before entry; reset handlers terminate; obsolete `begin`/`death` control is absent. | Exercise the state/input/reset contract recorded in the spec's core game systems document. Record `003-game-director-and-state-reset.md` and mark SYS-01 present. |
+| 2a. Regression recovery — next | Restore the ten regressed behaviors and remove the two invented presentations recorded in the fidelity audit (tracked as issue #13); supersedes the abandoned recovery branch. Depends on slice 2 and the settled spec. | Every audit item B1-B10 restored per its spec section or preserved-baseline marker; A1/A2 removed; the operator playtest gate passes. | Play the playtest checklist end to end. Update affected mechanics records. |
 | 3. Entity pool and collision foundation | Shared clone lifecycle, collision groups, single-hit resolution, off-screen cleanup, and air/ground/bullet/effect fixtures. Depends on SYS-01. | Repeated worst-case spawn/removal leaks no state; groups cannot cross-hit or double-resolve; measured clone load stays responsive. | Run the clone spike and each collision fixture in Scratch 3. Record SYS-02 and SYS-03. |
 | 4. Score, HUD, lives, death, and respawn | Score/high-score cap, object awards, HUD, lives, bonus thresholds, collision death, safe respawn, and game over. Depends on slices 2–3. | Awards occur once; HUD matches state; life loss, bonus awards, respawn, and last-life game over repeat deterministically. | Run score/life fixtures through ordinary and last-life deaths. Record ECO-01–04 and PLY-02. |
 | 5. Area clock and scheduler foundation | Monotonic terrain position, table representation, ordered event dispatch, area boundary seam, and one small schedule fixture. Depends on slices 2–3. | Position never rewinds during a life; fixture events fire once in order; transitions leave no old-area work. | Accelerate and pause the fixture around its boundaries. Record AREA-01 and AREA-02 foundation. |
@@ -96,7 +85,7 @@ operator-runnable Scratch check agree.
 | 7. Shared RNG, difficulty, and formations | One advancing pseudo-random stream, normal settings, adaptive difficulty seam, fire-frequency interfaces, and normal formation data. Depends on slices 4–6. | Seeded runs repeat; consumers share one stream; difficulty fixtures order correctly; formations preserve normal type/count/offset/order. | Replay seeded formation and pressure fixtures. Record SYS-04, DIF-01–03, and FORM-01. |
 | 8. Toroid vertical slice | Toroid formation, movement, animation, optional shot, bullets, blaster collision, score, player collision, explosion, and cleanup. Depends on slices 3–4 and 7. | A normal encounter completes through exit, score, or player death without test-only intervention. | Play both firing and non-firing seeded encounters. Record AIR-01 and relevant AIR-12 behavior. |
 | 9. Barra/Logram vertical slice | Placement, scrolling, reticle targeting, bomb travel/impact, reactions, scores, ground fire, and cleanup. Depends on slices 3–7. | Both normal encounters can be targeted, bombed, scored, survived, or lost end to end. | Play seeded Barra and Logram encounters. Record GND-01, GND-03, and completed WPN-03–05 behavior. |
-| 10. Torkan, Zoshi, Jara, Kapi, and Terazzi | First flying-family roster using the stable entity, formation, RNG, and difficulty interfaces. Depends on slice 8. | Each family fixture completes its distinct movement/fire/hit/exit path without new lifecycle seams. | Play one seeded fixture per family. Record AIR-02–06. |
+| 10. Torkan, Zoshi, Jara, Kapi, and Terrazi | First flying-family roster using the stable entity, formation, RNG, and difficulty interfaces. Depends on slice 8. | Each family fixture completes its distinct movement/fire/hit/exit path without new lifecycle seams. | Play one seeded fixture per family. Record AIR-02–06. |
 | 11. Zakato families, Sheonite, Spario, and Bacura | Remaining normal flying families and special paired/projectile/collision behavior. Depends on slices 8 and 10. | Variants stay distinct; paired entities leave no orphan; Bacura collision/resistance is isolated; full air fixture has no unknown type. | Play each family plus a mixed air-pressure fixture. Record AIR-07–11 and finish AIR-12. |
 | 12. Barra families, Zolbak, Logram, and Derota | First broader ground roster plus Zolbak difficulty effect. Depends on slice 9. | Variants react, fire, score, and clean up distinctly; Zolbak applies its effect once. | Play one seeded fixture per family and difficulty effect. Record GND-01–04. |
 | 13. Boza Logram, Grobda, and Domogram | Composite, land/water, targeting, patrol, fire, score, and cleanup variants. Depends on slice 12. | Composite parts coordinate; Grobda variants remain distinct; patrols and cleanup leave no stale actor. | Play composite and representative land/water/patrol fixtures. Record GND-05–07. |
@@ -111,46 +100,20 @@ operator-runnable Scratch check agree.
 
 ## Slice 2 director and reset contract
 
-All ordinary transitions use the Stage custom block `transition to () reset ()`.
-It increments `state epoch`, publishes the temporary `resetting` state,
-broadcasts `director stop and wait`, stops audio, publishes a stable reset
-scope, broadcasts the finite `director reset and wait`, then sets the
-destination and broadcasts `director enter`. The cold-boot assignment is the
-only state write outside that transition path. Yielding gameplay scripts
-recheck state after waits, sound playback, and repeats; clone stop/reset
-handlers delete the receiving clone.
-
-Allowed edges are `boot → title`, `title → ready`, `ready → playing`,
-`playing → player-dead`, `player-dead → respawning`,
-`player-dead → game-over`, `respawning → playing`, and `game-over → title`.
-The `D` and `G` fixtures only set a Stage-owned pending death outcome. The
-death animation reports completion; Stage chooses the exit. Slice 4 replaces
-that fixture decision with the life-economy result without changing the
-transition interface.
-
-| Reset scope | Required postcondition |
-| --- | --- |
-| `cold-start` | Stop sounds and old work; remove/hide clones, weapons, targets, bomb, and death effects; rewind both terrain targets to their canonical area-1 costumes and positions; reset player/reticle positions; hide the player and show one title screen. |
-| `new-game` | Apply the same world, player, weapon, target, and transient reset as cold start, keep the title hidden, then enter READY once. |
-| `new-life` | Stop old work; remove/hide weapons, clones, targets, bomb, and death effects; reset the player/reticle positions; preserve terrain costumes and positions; then enter respawn READY once. |
-| `game-over` | Stop gameplay/audio and clear transient gameplay while preserving the final terrain for the two-second GAME OVER hold; the following cold-start reset rewinds the world before title. |
-
-Input and timing acceptance is exact for this slice:
-
-- `title`: Space alone requests new game; arrows, B, D, and G are inert.
-- `ready`: READY is visible for one second; all gameplay keys are inert.
-- `playing`: arrows move, Space fires, B bombs, D requests the respawn fixture,
-  and G requests the terminal fixture.
-- `player-dead`: the seven-step death animation holds for 0.7 seconds; all
-  gameplay keys are inert.
-- `respawning`: READY is visible for one second; all gameplay keys are inert.
-- `game-over`: GAME OVER is visible for two seconds over the preserved final
-  terrain; all gameplay keys are inert, then cold title is restored.
-- Green flag from any state performs the serialized cold-start reset and
-  produces the same title state. Stop halts the project. Repeated keys cannot
-  duplicate director transitions, music loops, terrain loops, shots, or bombs.
+The director's transition contract — allowed state edges, reset scopes and their postconditions, and the
+per-state input rules — is normatively owned by the product spec's
+[core game systems document](spec/core-game-systems.md); the presentation timings around those states are
+project-defined placeholders recorded there. This plan sequences the work; it no longer restates the
+contract.
 
 ## Per-slice provenance workflow
+
+Every slice, before its pull request is marked ready, also runs the two-directional no-regression
+sweep: inventory the behaviors on every touched target against the preserved baseline and the settled
+spec (additions need a marker, removals need a recorded decision), and record the sweep's result in the
+slice's mechanics record. The [playtest checklist](PLAYTEST_CHECKLIST.md) is the operator's half of the
+same gate.
+
 
 1. Select catalog rows and pin the reference commit.
 2. Read the cited labels and tables.

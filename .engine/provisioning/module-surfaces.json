@@ -1,11 +1,5 @@
 {
  "surfaces": {
-  ".agents/skills/engine-board-setup/SKILL.md": [
-   "github-projects-sync"
-  ],
-  ".agents/skills/engine-board-setup/agents/openai.yaml": [
-   "github-projects-sync"
-  ],
   ".agents/skills/engine-conduct/SKILL.md": [
    "core"
   ],
@@ -41,12 +35,6 @@
   ],
   ".agents/skills/engine-routine/agents/openai.yaml": [
    "routine-mode"
-  ],
-  ".agents/skills/engine-setup/SKILL.md": [
-   "core"
-  ],
-  ".agents/skills/engine-setup/agents/openai.yaml": [
-   "core"
   ],
   ".agents/skills/engine-start/SKILL.md": [
    "core"
@@ -102,9 +90,6 @@
   ".claude/agents/engine-qa-review-usability.md": [
    "qa-review"
   ],
-  ".claude/skills/engine-board-setup/SKILL.md": [
-   "github-projects-sync"
-  ],
   ".claude/skills/engine-conduct/SKILL.md": [
    "core"
   ],
@@ -122,9 +107,6 @@
   ],
   ".claude/skills/engine-routine/SKILL.md": [
    "routine-mode"
-  ],
-  ".claude/skills/engine-setup/SKILL.md": [
-   "core"
   ],
   ".claude/skills/engine-start/SKILL.md": [
    "core"
@@ -167,9 +149,6 @@
   ],
   ".codex/agents/engine-qa-review-usability.toml": [
    "qa-review"
-  ],
-  ".engine/audits/audit-digest.md": [
-   "audit-library"
   ],
   ".engine/audits/concern-list.json": [
    "audit-library"
@@ -243,12 +222,6 @@
   ".engine/check/contract-threshold.json": [
    "validators-core"
   ],
-  ".engine/check/dependency-pinning.json": [
-   "dependency-discipline"
-  ],
-  ".engine/check/dependency-review.json": [
-   "dependency-discipline"
-  ],
   ".engine/check/disposition-issue-resolution.json": [
    "validators-core"
   ],
@@ -302,9 +275,6 @@
   ],
   ".engine/check/memory-pointer-public-safety.json": [
    "validators-core"
-  ],
-  ".engine/check/migration-rollback.json": [
-   "migration-discipline"
   ],
   ".engine/check/model-bindings-schema.json": [
    "validators-core"
@@ -395,9 +365,6 @@
   ],
   ".engine/check/untracked-surface.json": [
    "validators-core"
-  ],
-  ".engine/check/upstream-clean.json": [
-   "external-contribution"
   ],
   ".engine/check/uv-group-drift.json": [
    "validators-core"
@@ -594,9 +561,6 @@
   ".engine/operations/engine-arrival.md": [
    "core"
   ],
-  ".engine/operations/engine-development.md": [
-   "core"
-  ],
   ".engine/operations/engine-remove.md": [
    "core"
   ],
@@ -604,15 +568,6 @@
    "core"
   ],
   ".engine/operations/engine-upgrade.md": [
-   "core"
-  ],
-  ".engine/operations/external-contribution-issue.md": [
-   "external-contribution"
-  ],
-  ".engine/operations/external-contribution-submit.md": [
-   "external-contribution"
-  ],
-  ".engine/operations/first-run.md": [
    "core"
   ],
   ".engine/operations/knowledge-impact-check.md": [
@@ -636,9 +591,6 @@
   ".engine/operations/product-intake.md": [
    "product-design"
   ],
-  ".engine/operations/projects-sync-setup.md": [
-   "github-projects-sync"
-  ],
   ".engine/operations/routine-entry.md": [
    "routine-mode"
   ],
@@ -651,20 +603,11 @@
   ".engine/policies/contract-threshold.md": [
    "core"
   ],
-  ".engine/policies/dependency-discipline.md": [
-   "dependency-discipline"
-  ],
   ".engine/policies/escalation.md": [
    "core"
   ],
-  ".engine/policies/external-contribution.md": [
-   "external-contribution"
-  ],
   ".engine/policies/finding-disposition.md": [
    "core"
-  ],
-  ".engine/policies/migration-discipline.md": [
-   "migration-discipline"
   ],
   ".engine/policies/model-bindings.json": [
    "core"
@@ -834,9 +777,6 @@
   ".engine/templates/doc.md": [
    "core"
   ],
-  ".engine/templates/first-run.md": [
-   "core"
-  ],
   ".engine/templates/operation.md": [
    "core"
   ],
@@ -930,9 +870,6 @@
   ".engine/tools/conformance_sweep.py": [
    "core"
   ],
-  ".engine/tools/demo_467_deployment_eadr_namespace.py": [
-   "core"
-  ],
   ".engine/tools/demo_594_rollback_discard.py": [
    "core"
   ],
@@ -942,88 +879,10 @@
   ".engine/tools/demo_599_upgrade_reconcile.py": [
    "core"
   ],
-  ".engine/tools/demo_599c_migration_accumulation.py": [
-   "core"
-  ],
-  ".engine/tools/demo_599d_upgrade_floor.py": [
-   "core"
-  ],
-  ".engine/tools/demo_663_optional_module_upgrade.py": [
-   "core"
-  ],
-  ".engine/tools/demo_664_release_gate.py": [
-   "core"
-  ],
   ".engine/tools/demo_actionlint.py": [
    "core"
   ],
-  ".engine/tools/demo_attention_live_dials.py": [
-   "core"
-  ],
-  ".engine/tools/demo_audit_concern_list.py": [
-   "core"
-  ],
-  ".engine/tools/demo_audit_digest.py": [
-   "core"
-  ],
-  ".engine/tools/demo_audit_soft_findings.py": [
-   "core"
-  ],
-  ".engine/tools/demo_audit_soft_promote.py": [
-   "core"
-  ],
-  ".engine/tools/demo_boot_alarm_collapse.py": [
-   "core"
-  ],
-  ".engine/tools/demo_boot_slice.py": [
-   "core"
-  ],
-  ".engine/tools/demo_build_entry_depth_gate.py": [
-   "core"
-  ],
-  ".engine/tools/demo_ci_author_exempt.py": [
-   "core"
-  ],
-  ".engine/tools/demo_contract_rate.py": [
-   "core"
-  ],
-  ".engine/tools/demo_control_plane_labels.py": [
-   "core"
-  ],
-  ".engine/tools/demo_derived_reconcile.py": [
-   "core"
-  ],
-  ".engine/tools/demo_first_run_guard.py": [
-   "core"
-  ],
   ".engine/tools/demo_first_run_reference_closure.py": [
-   "core"
-  ],
-  ".engine/tools/demo_focus_read.py": [
-   "core"
-  ],
-  ".engine/tools/demo_home_repo_seam.py": [
-   "core"
-  ],
-  ".engine/tools/demo_hook_runner.py": [
-   "core"
-  ],
-  ".engine/tools/demo_inbox_drain.py": [
-   "core"
-  ],
-  ".engine/tools/demo_map_reachability.py": [
-   "core"
-  ],
-  ".engine/tools/demo_mechanic_build.py": [
-   "core"
-  ],
-  ".engine/tools/demo_mechanic_orientation.py": [
-   "core"
-  ],
-  ".engine/tools/demo_memory_degradation_backup.py": [
-   "core"
-  ],
-  ".engine/tools/demo_operator_backlog.py": [
    "core"
   ],
   ".engine/tools/demo_overlay_disclosure.py": [
@@ -1032,25 +891,7 @@
   ".engine/tools/demo_pr_reconcile.py": [
    "core"
   ],
-  ".engine/tools/demo_release_cut.py": [
-   "core"
-  ],
-  ".engine/tools/demo_release_pr_mergeable.py": [
-   "core"
-  ],
-  ".engine/tools/demo_release_product_mode.py": [
-   "core"
-  ],
-  ".engine/tools/demo_release_terminal.py": [
-   "core"
-  ],
   ".engine/tools/demo_repo_behavior.py": [
-   "core"
-  ],
-  ".engine/tools/demo_restore_migration_routing.py": [
-   "core"
-  ],
-  ".engine/tools/demo_reverse_adjacency.py": [
    "core"
   ],
   ".engine/tools/demo_scope_profile.py": [
@@ -1061,30 +902,6 @@
   ],
   ".engine/tools/demo_security_floor.py": [
    "core"
-  ],
-  ".engine/tools/demo_security_seed.py": [
-   "core"
-  ],
-  ".engine/tools/demo_state_cursor_honesty.py": [
-   "core"
-  ],
-  ".engine/tools/demo_weakening_guard_narrowed_set.py": [
-   "core"
-  ],
-  ".engine/tools/dependency_discipline/__init__.py": [
-   "dependency-discipline"
-  ],
-  ".engine/tools/dependency_discipline/pinning.py": [
-   "dependency-discipline"
-  ],
-  ".engine/tools/dependency_discipline/review.py": [
-   "dependency-discipline"
-  ],
-  ".engine/tools/dependency_discipline/test_pinning.py": [
-   "dependency-discipline"
-  ],
-  ".engine/tools/dependency_discipline/test_review.py": [
-   "dependency-discipline"
   ],
   ".engine/tools/disposition_issue_resolution_check.py": [
    "core"
@@ -1103,27 +920,6 @@
   ],
   ".engine/tools/execution_environment.py": [
    "core"
-  ],
-  ".engine/tools/external_contribution/__init__.py": [
-   "external-contribution"
-  ],
-  ".engine/tools/external_contribution/contribute_issue.py": [
-   "external-contribution"
-  ],
-  ".engine/tools/external_contribution/submit.py": [
-   "external-contribution"
-  ],
-  ".engine/tools/external_contribution/test_contribute_issue.py": [
-   "external-contribution"
-  ],
-  ".engine/tools/external_contribution/test_submit.py": [
-   "external-contribution"
-  ],
-  ".engine/tools/external_contribution/test_upstream_clean.py": [
-   "external-contribution"
-  ],
-  ".engine/tools/external_contribution/upstream_clean_check.py": [
-   "external-contribution"
   ],
   ".engine/tools/first_run_health.py": [
    "core"
@@ -1147,9 +943,6 @@
    "core"
   ],
   ".engine/tools/in_tool_demo_failure_path_check.py": [
-   "core"
-  ],
-  ".engine/tools/instantiator.py": [
    "core"
   ],
   ".engine/tools/interface_coherence_check.py": [
@@ -1347,15 +1140,6 @@
   ".engine/tools/memory_pointer_public_safety_check.py": [
    "core"
   ],
-  ".engine/tools/migration_discipline/__init__.py": [
-   "migration-discipline"
-  ],
-  ".engine/tools/migration_discipline/rollback.py": [
-   "migration-discipline"
-  ],
-  ".engine/tools/migration_discipline/test_rollback.py": [
-   "migration-discipline"
-  ],
   ".engine/tools/milestone_emit.py": [
    "core"
   ],
@@ -1439,15 +1223,6 @@
   ],
   ".engine/tools/product_design/test_spec_form.py": [
    "product-design"
-  ],
-  ".engine/tools/projects_sync/__init__.py": [
-   "github-projects-sync"
-  ],
-  ".engine/tools/projects_sync/projects_sync.py": [
-   "github-projects-sync"
-  ],
-  ".engine/tools/projects_sync/test_projects_sync.py": [
-   "github-projects-sync"
   ],
   ".engine/tools/protection_guard.py": [
    "core"
@@ -1638,9 +1413,6 @@
   ".engine/tools/test_in_tool_demo_failure_path.py": [
    "core"
   ],
-  ".engine/tools/test_instantiator.py": [
-   "core"
-  ],
   ".engine/tools/test_interface.py": [
    "core"
   ],
@@ -1771,9 +1543,6 @@
    "core"
   ],
   ".engine/tools/test_security_floor.py": [
-   "core"
-  ],
-  ".engine/tools/test_security_seed.py": [
    "core"
   ],
   ".engine/tools/test_seed.py": [
