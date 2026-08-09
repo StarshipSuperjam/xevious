@@ -1,0 +1,988 @@
+{
+  "formation_table": {
+    "entries": [
+      {
+        "enemy_count": 4,
+        "index": -32,
+        "type_table_offset": 11
+      },
+      {
+        "enemy_count": 5,
+        "index": -31,
+        "type_table_offset": 10
+      },
+      {
+        "enemy_count": 6,
+        "index": -30,
+        "type_table_offset": 9
+      },
+      {
+        "enemy_count": 6,
+        "index": -29,
+        "type_table_offset": 37
+      },
+      {
+        "enemy_count": 6,
+        "index": -28,
+        "type_table_offset": 92
+      },
+      {
+        "enemy_count": 6,
+        "index": -27,
+        "type_table_offset": 41
+      },
+      {
+        "enemy_count": 6,
+        "index": -26,
+        "type_table_offset": 94
+      },
+      {
+        "enemy_count": 6,
+        "index": -25,
+        "type_table_offset": 100
+      },
+      {
+        "enemy_count": 6,
+        "index": -24,
+        "type_table_offset": 102
+      },
+      {
+        "enemy_count": 6,
+        "index": -23,
+        "type_table_offset": 114
+      },
+      {
+        "enemy_count": 4,
+        "index": -22,
+        "type_table_offset": 48
+      },
+      {
+        "enemy_count": 4,
+        "index": -21,
+        "type_table_offset": 49
+      },
+      {
+        "enemy_count": 5,
+        "index": -20,
+        "type_table_offset": 48
+      },
+      {
+        "enemy_count": 6,
+        "index": -19,
+        "type_table_offset": 48
+      },
+      {
+        "enemy_count": 6,
+        "index": -18,
+        "type_table_offset": 63
+      },
+      {
+        "enemy_count": 6,
+        "index": -17,
+        "type_table_offset": 72
+      },
+      {
+        "enemy_count": 6,
+        "index": -16,
+        "type_table_offset": 75
+      },
+      {
+        "enemy_count": 2,
+        "index": -15,
+        "type_table_offset": 84
+      },
+      {
+        "enemy_count": 3,
+        "index": -14,
+        "type_table_offset": 84
+      },
+      {
+        "enemy_count": 4,
+        "index": -13,
+        "type_table_offset": 84
+      },
+      {
+        "enemy_count": 2,
+        "index": -12,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 3,
+        "index": -11,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -10,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -9,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -8,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -7,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -6,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -5,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -4,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -3,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -2,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": -1,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 3,
+        "index": 0,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 3,
+        "index": 1,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 3,
+        "index": 2,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 4,
+        "index": 3,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 4,
+        "index": 4,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 4,
+        "index": 5,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 5,
+        "index": 6,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 5,
+        "index": 7,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 5,
+        "index": 8,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 2,
+        "index": 9,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 2,
+        "index": 10,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 2,
+        "index": 11,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 4,
+        "index": 12,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 4,
+        "index": 13,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 4,
+        "index": 14,
+        "type_table_offset": 4
+      },
+      {
+        "enemy_count": 4,
+        "index": 15,
+        "type_table_offset": 4
+      },
+      {
+        "enemy_count": 4,
+        "index": 16,
+        "type_table_offset": 5
+      },
+      {
+        "enemy_count": 4,
+        "index": 17,
+        "type_table_offset": 5
+      },
+      {
+        "enemy_count": 5,
+        "index": 18,
+        "type_table_offset": 5
+      },
+      {
+        "enemy_count": 5,
+        "index": 19,
+        "type_table_offset": 5
+      },
+      {
+        "enemy_count": 6,
+        "index": 20,
+        "type_table_offset": 5
+      },
+      {
+        "enemy_count": 6,
+        "index": 21,
+        "type_table_offset": 5
+      },
+      {
+        "enemy_count": 3,
+        "index": 22,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 3,
+        "index": 23,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 4,
+        "index": 24,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 4,
+        "index": 25,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 5,
+        "index": 26,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 5,
+        "index": 27,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 3,
+        "index": 28,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 3,
+        "index": 29,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 4,
+        "index": 30,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 4,
+        "index": 31,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 5,
+        "index": 32,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 5,
+        "index": 33,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 3,
+        "index": 34,
+        "type_table_offset": 31
+      },
+      {
+        "enemy_count": 3,
+        "index": 35,
+        "type_table_offset": 31
+      },
+      {
+        "enemy_count": 4,
+        "index": 36,
+        "type_table_offset": 31
+      },
+      {
+        "enemy_count": 4,
+        "index": 37,
+        "type_table_offset": 31
+      },
+      {
+        "enemy_count": 5,
+        "index": 38,
+        "type_table_offset": 31
+      },
+      {
+        "enemy_count": 5,
+        "index": 39,
+        "type_table_offset": 31
+      },
+      {
+        "enemy_count": 3,
+        "index": 40,
+        "type_table_offset": 19
+      },
+      {
+        "enemy_count": 3,
+        "index": 41,
+        "type_table_offset": 19
+      },
+      {
+        "enemy_count": 4,
+        "index": 42,
+        "type_table_offset": 19
+      },
+      {
+        "enemy_count": 4,
+        "index": 43,
+        "type_table_offset": 19
+      },
+      {
+        "enemy_count": 5,
+        "index": 44,
+        "type_table_offset": 19
+      },
+      {
+        "enemy_count": 5,
+        "index": 45,
+        "type_table_offset": 19
+      },
+      {
+        "enemy_count": 3,
+        "index": 46,
+        "type_table_offset": 54
+      },
+      {
+        "enemy_count": 3,
+        "index": 47,
+        "type_table_offset": 54
+      },
+      {
+        "enemy_count": 3,
+        "index": 48,
+        "type_table_offset": 55
+      },
+      {
+        "enemy_count": 3,
+        "index": 49,
+        "type_table_offset": 55
+      },
+      {
+        "enemy_count": 4,
+        "index": 50,
+        "type_table_offset": 55
+      },
+      {
+        "enemy_count": 4,
+        "index": 51,
+        "type_table_offset": 55
+      },
+      {
+        "enemy_count": 3,
+        "index": 52,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 3,
+        "index": 53,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 4,
+        "index": 54,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 4,
+        "index": 55,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 5,
+        "index": 56,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 5,
+        "index": 57,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 4,
+        "index": 58,
+        "type_table_offset": 18
+      },
+      {
+        "enemy_count": 4,
+        "index": 59,
+        "type_table_offset": 18
+      },
+      {
+        "enemy_count": 4,
+        "index": 60,
+        "type_table_offset": 17
+      },
+      {
+        "enemy_count": 4,
+        "index": 61,
+        "type_table_offset": 17
+      },
+      {
+        "enemy_count": 5,
+        "index": 62,
+        "type_table_offset": 17
+      },
+      {
+        "enemy_count": 5,
+        "index": 63,
+        "type_table_offset": 17
+      },
+      {
+        "enemy_count": 5,
+        "index": 64,
+        "type_table_offset": 23
+      },
+      {
+        "enemy_count": 5,
+        "index": 65,
+        "type_table_offset": 23
+      },
+      {
+        "enemy_count": 6,
+        "index": 66,
+        "type_table_offset": 23
+      },
+      {
+        "enemy_count": 6,
+        "index": 67,
+        "type_table_offset": 23
+      },
+      {
+        "enemy_count": 2,
+        "index": 68,
+        "type_table_offset": 60
+      },
+      {
+        "enemy_count": 3,
+        "index": 69,
+        "type_table_offset": 60
+      },
+      {
+        "enemy_count": 3,
+        "index": 70,
+        "type_table_offset": 60
+      },
+      {
+        "enemy_count": 4,
+        "index": 71,
+        "type_table_offset": 60
+      },
+      {
+        "enemy_count": 4,
+        "index": 72,
+        "type_table_offset": 60
+      },
+      {
+        "enemy_count": 5,
+        "index": 73,
+        "type_table_offset": 60
+      },
+      {
+        "enemy_count": 5,
+        "index": 74,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 5,
+        "index": 75,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 6,
+        "index": 76,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 6,
+        "index": 77,
+        "type_table_offset": 25
+      },
+      {
+        "enemy_count": 2,
+        "index": 78,
+        "type_table_offset": 69
+      },
+      {
+        "enemy_count": 3,
+        "index": 79,
+        "type_table_offset": 69
+      },
+      {
+        "enemy_count": 3,
+        "index": 80,
+        "type_table_offset": 69
+      },
+      {
+        "enemy_count": 4,
+        "index": 81,
+        "type_table_offset": 69
+      },
+      {
+        "enemy_count": 4,
+        "index": 82,
+        "type_table_offset": 69
+      },
+      {
+        "enemy_count": 5,
+        "index": 83,
+        "type_table_offset": 69
+      },
+      {
+        "enemy_count": 5,
+        "index": 84,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 5,
+        "index": 85,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 6,
+        "index": 86,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 6,
+        "index": 87,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 4,
+        "index": 88,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 4,
+        "index": 89,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 5,
+        "index": 90,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 5,
+        "index": 91,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 6,
+        "index": 92,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 6,
+        "index": 93,
+        "type_table_offset": 39
+      },
+      {
+        "enemy_count": 5,
+        "index": 94,
+        "type_table_offset": 13
+      },
+      {
+        "enemy_count": 5,
+        "index": 95,
+        "type_table_offset": 13
+      },
+      {
+        "enemy_count": 6,
+        "index": 96,
+        "type_table_offset": 13
+      },
+      {
+        "enemy_count": 6,
+        "index": 97,
+        "type_table_offset": 13
+      },
+      {
+        "enemy_count": 2,
+        "index": 98,
+        "type_table_offset": 109
+      },
+      {
+        "enemy_count": 3,
+        "index": 99,
+        "type_table_offset": 108
+      },
+      {
+        "enemy_count": 3,
+        "index": 100,
+        "type_table_offset": 108
+      },
+      {
+        "enemy_count": 4,
+        "index": 101,
+        "type_table_offset": 108
+      },
+      {
+        "enemy_count": 4,
+        "index": 102,
+        "type_table_offset": 108
+      },
+      {
+        "enemy_count": 5,
+        "index": 103,
+        "type_table_offset": 108
+      },
+      {
+        "enemy_count": 6,
+        "index": 104,
+        "type_table_offset": 13
+      },
+      {
+        "enemy_count": 6,
+        "index": 105,
+        "type_table_offset": 13
+      },
+      {
+        "enemy_count": 6,
+        "index": 106,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 107,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 108,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 109,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 2,
+        "index": 110,
+        "type_table_offset": 78
+      },
+      {
+        "enemy_count": 3,
+        "index": 111,
+        "type_table_offset": 78
+      },
+      {
+        "enemy_count": 3,
+        "index": 112,
+        "type_table_offset": 78
+      },
+      {
+        "enemy_count": 4,
+        "index": 113,
+        "type_table_offset": 78
+      },
+      {
+        "enemy_count": 4,
+        "index": 114,
+        "type_table_offset": 78
+      },
+      {
+        "enemy_count": 5,
+        "index": 115,
+        "type_table_offset": 78
+      },
+      {
+        "enemy_count": 6,
+        "index": 116,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 117,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 118,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 119,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 1,
+        "index": 120,
+        "type_table_offset": 84
+      },
+      {
+        "enemy_count": 2,
+        "index": 121,
+        "type_table_offset": 84
+      },
+      {
+        "enemy_count": 6,
+        "index": 122,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 123,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 124,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 6,
+        "index": 125,
+        "type_table_offset": 7
+      },
+      {
+        "enemy_count": 1,
+        "index": 126,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 2,
+        "index": 127,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": 128,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 3,
+        "index": 129,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 3,
+        "index": 130,
+        "type_table_offset": 73
+      },
+      {
+        "enemy_count": 1,
+        "index": 131,
+        "type_table_offset": 57
+      },
+      {
+        "enemy_count": 6,
+        "index": 132,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 6,
+        "index": 133,
+        "type_table_offset": 35
+      },
+      {
+        "enemy_count": 6,
+        "index": 134,
+        "type_table_offset": 17
+      },
+      {
+        "enemy_count": 4,
+        "index": 135,
+        "type_table_offset": 45
+      },
+      {
+        "enemy_count": 5,
+        "index": 136,
+        "type_table_offset": 35
+      },
+      {
+        "enemy_count": 3,
+        "index": 137,
+        "type_table_offset": 108
+      },
+      {
+        "enemy_count": 3,
+        "index": 138,
+        "type_table_offset": 73
+      },
+      {
+        "enemy_count": 4,
+        "index": 139,
+        "type_table_offset": 74
+      },
+      {
+        "enemy_count": 6,
+        "index": 140,
+        "type_table_offset": 14
+      },
+      {
+        "enemy_count": 6,
+        "index": 141,
+        "type_table_offset": 79
+      },
+      {
+        "enemy_count": 6,
+        "index": 142,
+        "type_table_offset": 38
+      },
+      {
+        "enemy_count": 6,
+        "index": 143,
+        "type_table_offset": 108
+      },
+      {
+        "enemy_count": 6,
+        "index": 144,
+        "type_table_offset": 17
+      },
+      {
+        "enemy_count": 3,
+        "index": 145,
+        "type_table_offset": 57
+      },
+      {
+        "enemy_count": 5,
+        "index": 146,
+        "type_table_offset": 35
+      },
+      {
+        "enemy_count": 6,
+        "index": 147,
+        "type_table_offset": 73
+      },
+      {
+        "enemy_count": 6,
+        "index": 148,
+        "type_table_offset": 47
+      },
+      {
+        "enemy_count": 3,
+        "index": 149,
+        "type_table_offset": 60
+      },
+      {
+        "enemy_count": 6,
+        "index": 150,
+        "type_table_offset": 1
+      },
+      {
+        "enemy_count": 6,
+        "index": 151,
+        "type_table_offset": 14
+      },
+      {
+        "enemy_count": 1,
+        "index": 152,
+        "type_table_offset": 122
+      },
+      {
+        "enemy_count": 2,
+        "index": 153,
+        "type_table_offset": 122
+      },
+      {
+        "enemy_count": 4,
+        "index": 154,
+        "type_table_offset": 122
+      },
+      {
+        "enemy_count": 6,
+        "index": 155,
+        "type_table_offset": 122
+      },
+      {
+        "enemy_count": 4,
+        "index": 156,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": 157,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": 158,
+        "type_table_offset": 88
+      },
+      {
+        "enemy_count": 4,
+        "index": 159,
+        "type_table_offset": 88
+      }
+    ],
+    "source": {
+      "file": "src/xevious_sub.68k",
+      "label": "flying_enemy_type_offset_tbl_normal",
+      "lines": [
+        428,
+        454
+      ],
+      "note": "indices below zero are the bytes physically preceding the label; the reference indexes this table with a sign-extended doubled offset"
+    }
+  },
+  "provenance": {
+    "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
+    "license_status": "no reusable license stated by the source repository",
+    "note": "Derived numeric data and orderings only; no assembly or other source-code text is reproduced. Line numbers refer to the pinned commit.",
+    "reference": "jotd666/xevious",
+    "source_sha256": {
+      "src/map_rom.68k": "f96a17e75caa788589755bb39fb0097a17a51d957663a54885f97b7835a7d7d6",
+      "src/xevious.inc": "56b9b0e22d77c53bed7a8b31c2d8c38e5e68f94434319bfa5f524210df01ab66",
+      "src/xevious_main.68k": "bd23912e5cc25dfe7ebb69c043ab098fead300949b066ece972d5ddda29de77e",
+      "src/xevious_ram.68k": "fc40e0e8b939f665d38812e62f6dbcc994606ff0afaf34e6d9e585ae424a4773",
+      "src/xevious_sub.68k": "e2d8a77e1c9b6190949aa00ae86fc1398022c90e285d7fda38920d1d17c77e4a"
+    }
+  }
+}

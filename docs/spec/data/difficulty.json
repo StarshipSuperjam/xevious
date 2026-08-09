@@ -1,0 +1,91 @@
+{
+  "provenance": {
+    "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
+    "license_status": "no reusable license stated by the source repository",
+    "note": "Derived numeric data and orderings only; no assembly or other source-code text is reproduced. Line numbers refer to the pinned commit.",
+    "reference": "jotd666/xevious",
+    "source_sha256": {
+      "src/map_rom.68k": "f96a17e75caa788589755bb39fb0097a17a51d957663a54885f97b7835a7d7d6",
+      "src/xevious.inc": "56b9b0e22d77c53bed7a8b31c2d8c38e5e68f94434319bfa5f524210df01ab66",
+      "src/xevious_main.68k": "bd23912e5cc25dfe7ebb69c043ab098fead300949b066ece972d5ddda29de77e",
+      "src/xevious_ram.68k": "fc40e0e8b939f665d38812e62f6dbcc994606ff0afaf34e6d9e585ae424a4773",
+      "src/xevious_sub.68k": "e2d8a77e1c9b6190949aa00ae86fc1398022c90e285d7fda38920d1d17c77e4a"
+    }
+  },
+  "tables": {
+    "andor_genesis_data": {
+      "field": "object_type",
+      "source": {
+        "file": "src/xevious_sub.68k",
+        "label": "andor_genesis_data",
+        "lines": [
+          565,
+          566
+        ]
+      },
+      "values": [
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        82,
+        81,
+        80,
+        79,
+        74,
+        75
+      ]
+    },
+    "area_offset_in_map_tbl": {
+      "field": "map_column_offset",
+      "source": {
+        "file": "src/xevious_sub.68k",
+        "label": "area_offset_in_map_tbl",
+        "lines": [
+          731,
+          732
+        ]
+      },
+      "values": [
+        36,
+        0,
+        84,
+        14,
+        64,
+        26,
+        100,
+        4,
+        42,
+        92,
+        14,
+        4,
+        56,
+        84,
+        26,
+        0
+      ]
+    },
+    "difficulty_tbl": {
+      "field": "ai_level_increment",
+      "source": {
+        "file": "src/xevious_sub.68k",
+        "label": "difficulty_tbl",
+        "lines": [
+          338,
+          342
+        ]
+      },
+      "values": [
+        2,
+        0,
+        6,
+        16
+      ]
+    }
+  }
+}
