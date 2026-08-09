@@ -19,14 +19,17 @@ fire and how often. Together these are why the game feels harder the better you 
 ## Behavior
 
 **The AI level and difficulty setting.** A single AI-level value accumulates during play. Schedule records
-of the *raise-AI* kind add the cabinet difficulty increment to it: the four DIP-selectable settings add
+of the `raise_ai_level_and_set_formation` kind — the schedule's most common formation-touching record —
+add the cabinet difficulty increment to the AI level *and then re-select the incoming formation from the
+new level* (the same lookup the set-formation record uses, with the raised level as the index): the four DIP-selectable settings add
 2, 0, 6, or 16 respectively (`xevious_sub.68k` `difficulty_tbl` 338–342, decoded in
 [data/difficulty.json](data/difficulty.json); consumed by `sub_2_fn_3__inc_enemy_AI_and_flying_enemies`
 317–329). If the raise would take the level to 0x80 or above, 0x40 is subtracted first (same routine) — the
 level saturates by folding back, not by clamping.
 
-**Score-adaptive re-tune.** Schedule records of the *adjust-from-score* kind (two appear in every area's
-schedule) recompute pressure from performance: the player's score in thousands is divided by the number of
+**Score-adaptive re-tune.** Schedule records of the `adjust_ai_level_from_score` kind — 21 across the
+sixteen areas, zero to four per area (four areas have none; the per-area counts are the committed
+schedule data's) — recompute pressure from performance: the player's score in thousands is divided by the number of
 craft in reserve, capped at 16, and added to the AI level (`xevious_sub.68k`
 `sub_2_fn_23__adjust_AI_level_based_on_score` 344–353 and `avg_score_per_solvalou` 360–372). A player
 scoring heavily with many lives left meets sharply higher pressure; a struggling player is spared.
@@ -57,10 +60,10 @@ carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit | `python3 tools/reference_extract.py --verify` against a fresh clone at the pin | engine |
+| The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit | `python3 tools/reference_extract.py --verify` against a fresh local clone at the pin — needs the clone, so it is run by a person, not CI | operator |
 | The four difficulty-setting increments are 2, 0, 6, 16 and the build's data matches the committed file | Data-table comparison in the deterministic build fixtures | engine |
 | Formation lookup uses AI level + schedule offset with the recorded fold-back at 0x80 | Seeded fixture: fixed AI-level sequences reproduce the recorded wave sizes and type offsets | engine |
 | Score-adaptive re-tune follows score-per-reserve-craft, capped at 16 | Fixture over recorded score/lives pairs reproduces the recorded AI increments | engine |
 | Wave sizes stay within the table's recorded range and grow as the game progresses at a fixed setting | Play several areas at one setting; waves grow denser and never exceed six enemies | operator |
-| Playing better produces visibly harder waves | Play one area twice — once scoring heavily, once minimally — and compare wave pressure | operator |
-| Enemy families fire only when their area's schedule has permitted them | Play area 1: families begin firing at their scheduled points, not from the start | operator |
+| Playing better produces visibly harder waves | Play one area twice — once scoring heavily, once minimally — and compare wave pressure (paired with the seeded re-tune fixture above, since the two runs also differ in what was destroyed) | operator |
+| Enemy families fire only when their area's schedule has permitted them | Play area 1's Lograms (its scheduled firing family): they begin firing at their scheduled point, not from the start | operator |

@@ -36,11 +36,14 @@ scheduler at that area's schedule table.
 (`xevious_sub.68k` `area_1_obj_tbl_normal` … `area_16_obj_tbl_normal` 863–1129). Records are consumed
 strictly in order: each waits until the scroll row equals its trigger row, then executes and advances to
 the next (`xevious_sub.68k` `sub_fn_2__handle_objects` 574–602). A record either places a ground object
-into a numbered slot (with its map-anchored vertical position), sets or resets the incoming flying
-formation, raises the adaptive difficulty, sets a per-family fire-permission mask, controls Bacura or
-Sheonite or Andor Genesis events, or re-tunes difficulty from the player's score — the record kinds and
-their meanings are enumerated in the data file's `dispatch` note and detailed in
-[Difficulty and formations](difficulty-and-formations.md) and [Core game systems](core-game-systems.md).
+into a numbered slot (with its map-anchored vertical position), places an object by slot alone (the
+`add_object` kind — Bonus Flags and several late-area air spawns arrive this way), sets or resets the
+incoming flying formation, raises the adaptive difficulty and re-selects the formation, sets a
+per-family fire-permission mask, controls Bacura, Sheonite, or Andor Genesis events, or re-tunes
+difficulty from the player's score. The named home of the record-kind vocabulary is the
+`schedule_action` field of [data/object-types.json](data/object-types.json) — prose uses those exact
+names; behaviors are detailed in [Difficulty and formations](difficulty-and-formations.md) and
+[Core game systems](core-game-systems.md).
 Every table ends with a single 0x0D sentinel row that can never trigger, because the area advances at
 row 0x0E first; the extractor proves every table decodes exactly to its sentinel.
 
@@ -71,8 +74,8 @@ work.
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| All 16 schedule tables decode exactly — label to sentinel, no leftover bytes, no Super-table bytes | `python3 tools/reference_extract.py --verify` against a fresh clone at the pin | engine |
-| The committed schedule data matches a re-derivation from the pinned commit | Same `--verify` run byte-compares the committed JSON | engine |
+| All 16 schedule tables decode exactly — every byte consumed, the sentinel recorded as each area's `end_sentinel` field (a sibling of the records, not a record), no Super-table bytes | `python3 tools/reference_extract.py --verify` against a fresh local clone at the pin — needs the clone, so it is run by a person, not CI | operator |
+| The committed schedule data matches a re-derivation from the pinned commit | Same `--verify` run byte-compares the committed JSON | operator |
 | An accelerated full-game trace consumes every record of all 16 areas in order with no unknown record kind | Deterministic schedule-trace fixture over the committed data | engine |
 | Terrain scrolls continuously through a full area with no black gap, at one steady rate | Play the built `.sb3`: fly area 1 end to end watching for gaps | operator |
 | Completing area 16 continues at area 7 | Play (or accelerated trace) confirming the 16→7 transition, with no win screen | operator |

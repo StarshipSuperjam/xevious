@@ -20,7 +20,8 @@ as one.
 
 **Arrival and composition (BOSS-01).** The area schedule's *andor-genesis-start* record bulk-arms
 fifteen objects in one step from the boss's own layout list (`src/xevious_sub.68k`
-`sub_2_fn_20__andor_genesis_start` 544–563, `andor_genesis_data` 565–566; each placement appears in
+`sub_2_fn_20__andor_genesis_start` 544–563; the fifteen-part layout list is committed in
+[data/andor-genesis.json](data/andor-genesis.json), and the start/end trigger rows are in
 [data/area-schedules.json](data/area-schedules.json)): one master motion controller, one central core,
 four corner gun ports (bottom-right, bottom-left, top-right, top-left), and nine armor plates forming
 the 3×3 body (handlers 5386–5983, sprite layout per handler). The composite moves as one — parts follow
@@ -49,9 +50,11 @@ map-scripted exit, not a countdown timer (`src/xevious_sub.68k` `sub_2_fn_21__an
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| The boss arrives at its scheduled rows with the recorded fifteen-part layout | Data fixture: build's boss layout equals the committed layout list; play confirms the arrival | operator |
+| The build's boss layout equals the committed layout list | Data comparison against [data/andor-genesis.json](data/andor-genesis.json) | engine |
+| The boss arrives at its scheduled rows as one composite | Play a boss area and watch the arrival | operator |
 | Armor plates never die; ports are individually bombable; only the core ends the encounter | Play a boss encounter exercising all three | operator |
 | Core destruction cascades the surviving ports and awards through the single scoring path once each | Deterministic fixture over the destruction sequence | engine |
-| An undamaged boss departs at its scripted scroll row, not on a timer | Accelerated schedule trace reaches the end record; play confirms the departure | operator |
+| The schedule data carries the boss's end record at its recorded row | Schedule-trace fixture over the committed data | engine |
+| An undamaged boss visibly departs rather than timing out | Play a boss encounter without bombing the core | operator |
 | Port fire obeys the boss's fire-permission mask from the schedule | Seeded fixture: port fire patterns follow the recorded mask | engine |
 | The composite stays within the entity budget with all fifteen parts plus normal traffic live | Performance soak on the built `.sb3` during a boss encounter | engine |

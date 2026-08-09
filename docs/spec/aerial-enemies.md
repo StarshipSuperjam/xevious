@@ -101,8 +101,9 @@ Blaster shots die against it — deflected per the bounce rule in
 [Player craft and weapons](player-craft-and-weapons.md) — it never scores, bombs do not affect it, and
 touching it kills the craft through its own larger hit window.
 
-**Bullets (AIR-12).** Enemy bullets are owned by [Player craft and weapons](player-craft-and-weapons.md)
-(pool of 19, aim-once at 2 px/frame, radiating at 3, screen-edge expiry).
+**Bullets (AIR-12).** Enemy bullet rules — pool, speeds, aiming, and expiry — are owned by
+[Player craft and weapons](player-craft-and-weapons.md); this document owns only which families emit
+which patterns.
 
 ## Acceptance criteria
 

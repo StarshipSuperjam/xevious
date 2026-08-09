@@ -1,7 +1,7 @@
 {
   "area_offset_in_map_tbl": {
     "field": "map_column_offset",
-    "note": "per-area terrain start column, indexed by area number 1-16",
+    "note": "per-area terrain start column, indexed by area number 1-16; the reference carries an identical second copy in the main file, asserted equal at extraction",
     "source": {
       "file": "src/xevious_sub.68k",
       "label": "area_offset_in_map_tbl",

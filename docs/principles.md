@@ -13,16 +13,19 @@ departure is recorded rather than improvised. Every principle below serves that 
   ports and Super Xevious additions are excluded. When sources disagree, the arcade wins. This rules out
   borrowing convenient behavior from home ports or inventing modern conveniences the cabinet never had.
 - **Every gameplay behavior is traceable or it does not ship.** A behavior in the built game must carry one
-  of exactly three markers: a citation to the pinned reference (commit, file, label, line range), a recorded
-  *deliberate deviation* with its reason, or a recorded *port necessity* where Scratch cannot express the
-  original. A behavior with none of the three is a defect — the failure this project exists to prevent.
+  of exactly four markers: a citation to the pinned reference (commit, file, label, line range), a recorded
+  *deliberate deviation* with its reason, a recorded *port necessity* where Scratch cannot express the
+  original, or *preserved baseline behavior pending a fidelity pass* — proven 2017-baseline behavior kept
+  until the arcade value is extracted, retired the moment it is. A behavior with none of the four is a
+  defect — the failure this project exists to prevent.
 - **Preserved baseline behavior may not be removed silently.** Behavior proven in the preserved 2017 baseline
   or in a previously merged slice is load-bearing. Removing or replacing it requires an explicit recorded
   decision in the change that does it. Silence means preserve. This is the rule the project's worst incident
   violated; it exists so that incident cannot repeat quietly.
 - **No pull request is ready until the owner has played it.** Every change that can affect gameplay produces
   a playable `.sb3` built from the final reviewed commit, with a list of behavior added or changed. The pull
-  request stays draft until the owner has played that build and approved it. Automated checks in this
+  request stays draft until the owner has run [the playtest checklist](PLAYTEST_CHECKLIST.md) on that build
+  and approved it. Automated checks in this
   repository read files; none of them can observe a running game, so the owner's playtest is the only
   gameplay verification that exists.
 - **New and preserved behavior are tested together.** A change's acceptance list covers what it adds *and*

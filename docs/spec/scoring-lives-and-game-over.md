@@ -20,20 +20,22 @@ back to the cabinet's attract flow. The economy is what makes risk meaningful, a
 ## Behavior
 
 **The single scoring path (ECO-01).** Each scoreable object carries an index into the master value table
-(`object_value_tbl` 6264–6287); a scoring hit — bomb via `handle_bombed_obj_and_award_points` 2597–2623,
-blaster via `check_flying_enemies_shot` 2516–2577 — looks the value up and adds it through `add_to_score`
-64–78, which also updates the running high score (80–107) and triggers the bonus-life check after every
-award. The master table's values: 10, 20, 30, 50, 70, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800,
-900, 1000, 1500, 2000, 2500, 4000, 10000.
+(`object_value_tbl` 6264–6285 plus its `pts_10000` extension 6286–6289); a scoring hit — bomb via
+`handle_bombed_obj_and_award_points` 2597–2623, blaster via `check_flying_enemies_shot` 2516–2577 —
+looks the value up and adds it through `add_to_score` 64–78, which also updates the running high score
+(80–107) and triggers the bonus-life check after every award. The complete 22-entry table (10 through
+10,000) is committed, BCD-decoded, in [data/scores.json](data/scores.json) — the machine-readable home
+a build's generated lists are compared against.
 
 **Per-object values.** Air kills: Giddo Spario 10, Toroid 30 (both variants, `init_toroid` 3338), Torkan
 50, Zoshi 100 (top/bottom) or 70 (random variant), Zakato 100/200/150/300 (slow / close / fast /
 continuous), Jara 150 (both variants), Kapi 300, Brag Spario 500, Brag Zakato 600 (random) or 1500
 (proximity), Terrazi 700, Garu Zakato 1000 (each per its handler init, 3080–4015). Ground kills: Barra
-100, Zolbak 200 (and reduces the AI level by 2), Logram 300, Garu Barra 300 (its paired half is
+100, Zolbak 200 (whose AI-reduction effect is owned by [Ground objects](ground-objects.md)), Logram 300,
+Garu Barra 300 (its paired half is
 indestructible), Domogram 800, Derota 1000, Garu Derota 2000 (companion object; the main object is
 indestructible), Boza Logram outer domes 300 each, Boza Logram center 2000 if hit before any outer dome
-falls, downgraded to 600 the moment one does (`update_centre_points_value` 2988), Grobda land variants
+falls, downgraded to 600 the moment one does (`update_centre_points_value` 2986–2989), Grobda land variants
 200–10000 by variant (4292–4450), Grobda water variants 200–2500 (4474–4514), Sol Tower 2000 at reveal
 and 2000 again at destruction, hidden easter-egg object 10. Andor Genesis: core 4000, each of four gun
 ports 1000, the nine armor plates indestructible and worth nothing — and the boss's shell slot carries an
@@ -51,10 +53,11 @@ threshold can never exceed the score again, so every further award grants an ext
 
 **Starting and bonus lives (ECO-03).** Starting craft come from a four-entry DIP-indexed table: 5, 2, 1,
 or 3 (`starting_solvalou_tbl` 1174–1175; the raw-index-to-physical-switch mapping is recorded as
-uncertain — the code exposes only the raw bits). Bonus lives use a first-threshold table and a repeat
-increment table, both selected by the lives setting and a three-bit bonus DIP field
-(`first_bonus_life_tbls` 1179–1199; `bonus_tbl_ptrs` 1854–1877): first bonus at 10,000–30,000 by setting,
-then every 40,000–100,000 by setting; one setting is a sentinel that disables bonus lives, and one
+uncertain — the code exposes only the raw bits). Bonus lives use a first-threshold table pair and a
+repeat-increment table pair, selected by the lives setting and a three-bit bonus DIP field
+(`first_bonus_life_tbls` 1179–1199; `bonus_tbl_ptrs` 1854–1877) — every exact threshold and increment,
+per setting, is committed in [data/scores.json](data/scores.json) (first bonus 10,000–30,000 by
+setting, then every 40,000–100,000); one setting is a sentinel that disables bonus lives, and one
 setting stops after the second bonus life (`check_for_extra_solvalou` 109–183). Which pair of tables
 applies to which lives setting carries a recorded uncertainty, independently confirmed by two decoders:
 the reference's own two selection sites disagree — the game-start seeding applies an extra inversion the
@@ -75,17 +78,20 @@ shifting lower entries down; a qualifying score enters the initials screen
 ([Cabinet flow](cabinet-flow.md)); a non-qualifying score goes straight to GAME OVER. The GAME OVER
 message holds 128 frames (~2.1 s, `game_over` 549–591) before the cabinet returns to attract. In a
 two-player game the alternation rules in [Cabinet flow](cabinet-flow.md) apply first. The default
-best-five table ships with 40,000 / 35,000 / 30,000 / 25,000 / 20,000 (`ROM_high_score_tbl_normal`
-1587–1602; the ten-character name fields decode to the original developers' credits).
+best-five scores (40,000 down to 20,000) are committed in [data/scores.json](data/scores.json)
+(`ROM_high_score_tbl_normal` 1587–1602). The ROM's default name fields are the original developers'
+credit strings and are **not transcribed or shipped**: the build's default table carries this project's
+own placeholder initials — a recorded deviation under the reference policy's in-game-text rule.
 
 ## Acceptance criteria
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| Every value in this document matches the build's generated score data | Data-table comparison fixture between the build's Scratch lists and this document's committed values | engine |
-| All scoring flows through one path; no object can award twice for one hit | Deterministic fixture: repeated-contact cases award once | engine |
-| Bonus-life thresholds fire per the recorded tables, including the disable and stop-after-two settings | Fixture over recorded score sequences per DIP setting | engine |
-| The score caps at 9,999,990 | Fixture: award past the cap; score pins | engine |
+| The build's generated score, lives, bonus, and high-score data equal [data/scores.json](data/scores.json) | Data-table comparison over the build's Scratch lists | engine |
+| All scoring routes through one path in the block graph | Structural fixture over the built project | engine |
+| No object awards twice for one hit in play | Play: overlapping shots and bombs on one target award once | operator |
+| Bonus-life thresholds fire per the committed tables, including the disable and stop-after-two settings | Play at the relevant settings; fixture-automated when a runtime harness exists | operator |
+| The score caps at 9,999,990 | Play (or accelerated run) past the cap; the cap-quirk behaves as recorded | operator |
 | Destroying a known enemy shows the right score on screen | Play the built `.sb3`: bomb a Barra (100) and a Derota (1000); HUD reflects both | operator |
 | An extra craft is granted at the configured first threshold with its sound | Play to the first threshold and observe the award | operator |
 | Losing the last craft shows GAME OVER (~2 s) and returns to the title/attract flow | Play a full game to its end | operator |

@@ -45,9 +45,9 @@ drives its base color independently (`handle_crosshairs` 2239–2295).
 then scrolls with the world; the bomb accelerates toward it (velocity grows 2 raw units per frame rather
 than flying at constant speed), stepping through a two-stage sprite animation with a four-color cycle
 (2452–2496), and detonates when it reaches the scrolled target (`check_bomb_finished` 2502–2514). The
-blast tests all 16 ground slots with the recorded hit window — the same window sizes the crosshair lock
-uses (`check_object_on_target` 2629–2641; expressed in the reference's half-pixel "shadow" units, exact
-pixel conversion recorded as approximate). Bomb impact resolution and scoring are specified in
+blast tests all 16 ground slots with the recorded hit window — vertical bias 10 width 20, horizontal
+bias 5 width 10, in the reference's half-pixel "shadow" units, the same window the crosshair lock uses
+(`check_object_on_target` 2629–2641; exact pixel conversion recorded as approximate). Bomb impact resolution and scoring are specified in
 [Scoring, lives, and game over](scoring-lives-and-game-over.md) and per ground family in
 [Ground objects](ground-objects.md). *Uncertain:* the code site that re-arms the bomb slot after
 detonation was not located; the one-bomb lockout itself is confirmed, the re-arm path is not yet pinned.
@@ -57,12 +57,24 @@ flying enemies with one hit window (Y bias 8 width 16, X bias 4 width 8, shadow 
 Bacura slots with a distinctly larger window (Y bias 28 width 40, X bias 8 width 16) matching Bacura's
 size (`check_solvalou_hit` 2182–2237). Any hit kills: the explosion animates 7 cycles of 8 frames
 (~56 frames), then a 32-frame pause, then the next craft (if any remain — the life economy is owned by
-[Scoring, lives, and game over](scoring-lives-and-game-over.md)) spawns at the fixed spawn point and the
-current area restarts from its top (`explode_solvalou` through `finish_solvalou_exploding` 2034–2090;
-area restart in [Area progression and terrain](area-progression-and-terrain.md)). **There is no
+[Scoring, lives, and game over](scoring-lives-and-game-over.md)) spawns at the fixed spawn point
+(`explode_solvalou` through `finish_solvalou_exploding` 2034–2090). What happens to area position on
+death — the restart-from-top rule and its near-end checkpoint exception — is owned entirely by
+[Area progression and terrain](area-progression-and-terrain.md). **There is no
 respawn invulnerability window** — the only invincibility in the reference is a development build flag,
 off in a normal build (6123–6124, 2018–2024). A build that adds one is inventing a deviation and must
 record it.
+
+**Enemy bullets (AIR-12 — this is their normative home).** All enemy fire, air and ground alike, shares
+one pool of 19 bullet slots (`init_new_bullet` 5012–5019; `find_idle_and_init_radiating_bullet`
+5021–5029). An aimed bullet computes its vector once, at the frame of firing, toward the craft's
+position at that instant — from a 32-direction angle table at magnitude 2 pixels per frame — and then
+flies ballistically, never re-aiming (`handle_06_Bullet` 4278–4283; the four angle tables span
+6290–6427 with speed tiers 1.5, 2, 3, and 4 px/frame). Radiating bullets use the 3 px/frame tier
+(`init_radiating_bullet` path); the patterns that emit them (five-shot fans, the sixteen-bullet ring)
+belong to their firing families in [Aerial enemies](aerial-enemies.md). Bullets expire at the recorded
+screen-edge margins (`check_scroll_offscreen` 4826–4839) and pulse through the shared four-color cycle
+(`xevious_sub.68k` `sub_fn_5__handle_pulsing_colours` 208–232).
 
 **Object slots (shared vocabulary).** The reference runs 64 32-byte object slots: 16 ground objects
 (0x00–0x0F, of which 0x02–0x0F are crosshair-targetable), 16 Bacura (0x10–0x1F), bomb target 0x20, bomb
@@ -80,9 +92,9 @@ is recorded as a strong inference (from the 224-pixel clamp literal), not a labe
 | Craft moves in 8 directions at equal per-axis speed with the recorded bounds, no diagonal normalization | Play the built `.sb3`: move along edges and diagonals; the craft pins at the same margins everywhere | operator |
 | Holding fire produces a shot immediately, then a steady repeat while held, and moving while holding never interrupts it | Play: hold fire 5+ seconds while moving in circles; cadence stays steady | operator |
 | At most 3 player shots are on screen; each flies straight and disappears at the top | Play: rapid fire at the screen edge and count | operator |
-| A shot hitting Bacura visibly bounces back instead of vanishing | Play area 1's Bacura and watch the deflection | operator |
+| A shot hitting Bacura visibly bounces back instead of vanishing | Play area 3 (the earliest scheduled Bacura quota) and watch the deflection | operator |
 | Exactly one bomb can be in flight; the next arms only after detonation | Play: hammer the bomb key; bombs never overlap | operator |
 | The crosshair leads the craft by a fixed distance and signals lock over a targetable ground object | Play: approach a Barra; the crosshair changes when it covers it | operator |
-| Death from bullet, enemy, or Bacura contact triggers the explosion sequence and respawn at the fixed point, restarting the area from its top, with no invulnerability window | Play: die each way; the area restarts at its beginning and the craft is immediately vulnerable | operator |
+| Death from bullet, enemy, or Bacura contact triggers the explosion sequence and respawn at the fixed point, with area position per the area document's restart rule, and no invulnerability window | Play: die each way; the craft respawns immediately vulnerable and area position follows the recorded rule | operator |
 | The build's movement/weapon constants match this document's recorded values | Data-table comparison fixtures over the build's generated Scratch lists | engine |
 | Capacity limits (3 shots, 1 bomb, 19 bullets, 6 flying, 16 ground, 16 Bacura) are encoded in the build's data | Structural fixture reads the built project's capacity constants | engine |

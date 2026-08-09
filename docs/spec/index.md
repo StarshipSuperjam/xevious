@@ -30,6 +30,15 @@ describes its meaning.
 
 ## Capabilities
 
+Each document's frontmatter `status` is authoritative: `draft` renders as *in progress* (the content is
+complete or filling, not yet binding), `locked` renders as *settled* — the ground a build adapts to,
+changeable afterwards only with the operator's guardrail acknowledgement on the changing pull request.
+The table below mirrors the frontmatter. `reference_verified_at` in each document records the reference
+commit its values were last verified against and must equal this file's `reference_pin` (a pin bump
+re-verifies each document and updates its stamp deliberately). **Precedence:** where a settled document
+and an in-progress document disagree, the settled one wins, and a change to an in-progress document that
+would contradict a settled one is a spec amendment to the settled document, not a quiet roster edit.
+
 | Capability | Status | Doc |
 | --- | --- | --- |
 | Core game systems | in progress | [Core game systems](core-game-systems.md) |
@@ -48,6 +57,35 @@ Deliberate exclusions (recorded so no build re-invents them): Super Xevious cont
 score-reset trap, helicopter, tank, bridge, Super formations and schedules; port conveniences — pause and
 persistent high-score storage; a conventional win screen. Sources: the mechanics catalog rows EX-01 through
 EX-06.
+
+## Generated data
+
+Every file under [data/](data/) is emitted by `tools/reference_extract.py` from the pinned reference
+commit (provenance, hashes, and attestations below). **None of these files is ever hand-edited** — to change one, change the extractor and regenerate; to verify them all, run:
+
+```bash
+python3 tools/reference_extract.py --verify --checkout <path-to-local-clone-at-the-pin>
+```
+
+The command needs a local clone of the reference at the pin, so it is run by a person, not CI; the
+CI-runnable structural guards live in `tests/test_spec_docs.py`.
+
+One file per concern:
+
+| File | Owns | Described by |
+| --- | --- | --- |
+| `area-schedules.json` | All 16 normal area schedules, record by record, with the exact-consumption proof | [Area progression and terrain](area-progression-and-terrain.md) |
+| `formations.json` | The flying-formation table, including its negative-index half | [Difficulty and formations](difficulty-and-formations.md) |
+| `difficulty.json` | The four cabinet difficulty increments | [Difficulty and formations](difficulty-and-formations.md) |
+| `terrain.json` | Per-area terrain start columns | [Area progression and terrain](area-progression-and-terrain.md) |
+| `scores.json` | Master value table, starting lives, bonus thresholds and increments, high-score defaults | [Scoring, lives, and game over](scoring-lives-and-game-over.md) |
+| `object-types.json` | The 93-code registry (handlers, names, schedule actions, Super flags) and the flying-enemy type table | [Core game systems](core-game-systems.md) |
+| `andor-genesis.json` | The boss's fifteen-part layout list | [Andor Genesis](andor-genesis.md) |
+| `domogram.json` | Domogram's 32-entry movement vector table | [Ground objects](ground-objects.md) |
+| `rng.json` | The random generator's update rule and golden fixture sequences | [Core game systems](core-game-systems.md) |
+
+New reference tables get their own file (or join the file whose concern they belong to) — never a
+second copy of an existing one.
 
 ## Provenance
 
@@ -70,7 +108,8 @@ SHA-256 of the source files read at extraction (2026-08-09):
 | `src/xevious_ram.68k` | `fc40e0e8b939f665d38812e62f6dbcc994606ff0afaf34e6d9e585ae424a4773` |
 | `src/xevious.inc` | `56b9b0e22d77c53bed7a8b31c2d8c38e5e68f94434319bfa5f524210df01ab66` |
 
-Attestations, carried by this specification as a whole: no assembly or other source-code text from the
-reference is reproduced in this repository; no arcade ROM file was acquired, opened, extracted, or
-distributed in producing it. Attribution is not permission: this project claims no rights in Namco's
+Attestations, carried by this specification as a whole: reference symbol names and line numbers appear
+in this repository solely as citation locators; no assembly instructions, comments, or prose from the
+reference are reproduced; and no arcade ROM file was acquired, opened, extracted, or distributed in
+producing it. The generated data files are documented in the Generated data section above. Attribution is not permission: this project claims no rights in Namco's
 trademarks, artwork, or audio, and a rights review is required before broader distribution or promotion.

@@ -509,19 +509,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 28
               },
               {
-                "dx": 24,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 4,
             "sprite_y": 156
           },
@@ -601,19 +601,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 104
+                "duration": 104,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 18,
             "sprite_y": 148
           },
@@ -643,19 +643,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 88
+                "duration": 88,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 22,
             "sprite_y": 148
           },
@@ -779,23 +779,23 @@
           "params": {
             "path": [
               {
-                "dx": 28,
-                "dy": 72
+                "duration": 72,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 14,
             "sprite_y": 216
           },
@@ -822,23 +822,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 2
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 16,
             "sprite_y": 164
           },
@@ -851,19 +851,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 168
+                "duration": 168,
+                "vector_index": 4
               },
               {
-                "dx": 6,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 6
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 18,
             "sprite_y": 52
           },
@@ -933,15 +933,15 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 144
+                "duration": 144,
+                "vector_index": 4
               },
               {
-                "dx": 8,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 30,
             "sprite_y": 96
           },
@@ -1501,19 +1501,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 22,
             "sprite_y": 156
           },
@@ -1526,15 +1526,15 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 144
+                "duration": 144,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 24,
             "sprite_y": 44
           },
@@ -1567,19 +1567,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 30,
             "sprite_y": 124
           },
@@ -1629,19 +1629,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 72
+                "duration": 72,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 40
+                "duration": 40,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 10,
             "sprite_y": 36
           },
@@ -1701,23 +1701,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 216
+                "duration": 216,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 40
+                "duration": 40,
+                "vector_index": 8
               },
               {
-                "dx": 2,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 2
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 20,
             "sprite_y": 36
           },
@@ -2163,55 +2163,55 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 16
               },
               {
-                "dx": 24,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 16
               },
               {
-                "dx": 24,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 16
               },
               {
-                "dx": 24,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 12,
+            "path_step_count": 12,
             "slot": 12,
             "sprite_y": 96
           },
@@ -2333,19 +2333,19 @@
           "params": {
             "path": [
               {
-                "dx": 24,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 24
+                "duration": 24,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 28,
             "sprite_y": 216
           },
@@ -2375,11 +2375,11 @@
           "params": {
             "path": [
               {
-                "dx": 24,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 4,
             "sprite_y": 192
           },
@@ -2392,11 +2392,11 @@
           "params": {
             "path": [
               {
-                "dx": 8,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 6,
             "sprite_y": 32
           },
@@ -2409,11 +2409,11 @@
           "params": {
             "path": [
               {
-                "dx": 24,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 8,
             "sprite_y": 192
           },
@@ -2500,19 +2500,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 8,
             "sprite_y": 60
           },
@@ -2525,15 +2525,15 @@
           "params": {
             "path": [
               {
-                "dx": 2,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 10,
             "sprite_y": 52
           },
@@ -2575,19 +2575,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 152
+                "duration": 152,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 16,
             "sprite_y": 28
           },
@@ -2600,11 +2600,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 18,
             "sprite_y": 28
           },
@@ -2770,51 +2770,51 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 4
               },
               {
-                "dx": 6,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 6
               },
               {
-                "dx": 4,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 4
               },
               {
-                "dx": 8,
-                "dy": 60
+                "duration": 60,
+                "vector_index": 8
               },
               {
-                "dx": 4,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 4
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 11,
+            "path_step_count": 11,
             "slot": 28,
             "sprite_y": 20
           },
@@ -2857,19 +2857,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 88
+                "duration": 88,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 8,
             "sprite_y": 216
           },
@@ -2882,15 +2882,15 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 10,
             "sprite_y": 72
           },
@@ -3025,31 +3025,31 @@
           "params": {
             "path": [
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 8,
             "sprite_y": 112
           },
@@ -3062,31 +3062,31 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 4
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 10,
             "sprite_y": 88
           },
@@ -3099,31 +3099,31 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 12,
             "sprite_y": 64
           },
@@ -3136,31 +3136,31 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 14,
             "sprite_y": 64
           },
@@ -3173,31 +3173,31 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 16,
             "sprite_y": 64
           },
@@ -3210,35 +3210,35 @@
           "params": {
             "path": [
               {
-                "dx": 28,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 7,
+            "path_step_count": 7,
             "slot": 18,
             "sprite_y": 88
           },
@@ -3507,27 +3507,27 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 8
               },
               {
-                "dx": 12,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 5,
+            "path_step_count": 5,
             "slot": 4,
             "sprite_y": 20
           },
@@ -3681,15 +3681,15 @@
           "params": {
             "path": [
               {
-                "dx": 2,
-                "dy": 176
+                "duration": 176,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 4,
             "sprite_y": 160
           },
@@ -3702,23 +3702,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 6,
             "sprite_y": 116
           },
@@ -3731,23 +3731,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 8,
             "sprite_y": 20
           },
@@ -3767,27 +3767,27 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 240
+                "duration": 240,
+                "vector_index": 16
               },
               {
-                "dx": 15,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 15
               },
               {
-                "dx": 31,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 31
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 5,
+            "path_step_count": 5,
             "slot": 10,
             "sprite_y": 124
           },
@@ -3820,19 +3820,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 172
+                "duration": 172,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 255
+                "duration": 255,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 16,
             "sprite_y": 20
           },
@@ -3852,35 +3852,35 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 16
               },
               {
-                "dx": 16,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 16
               },
               {
-                "dx": 11,
-                "dy": 40
+                "duration": 40,
+                "vector_index": 11
               },
               {
-                "dx": 16,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 16
               },
               {
-                "dx": 12,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 12
               },
               {
-                "dx": 13,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 13
               }
             ],
-            "path_vector_count": 7,
+            "path_step_count": 7,
             "slot": 18,
             "sprite_y": 132
           },
@@ -3930,11 +3930,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 22,
             "sprite_y": 20
           },
@@ -3947,11 +3947,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 24,
             "sprite_y": 20
           },
@@ -3964,11 +3964,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 26,
             "sprite_y": 20
           },
@@ -4001,31 +4001,31 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 88
+                "duration": 88,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 8,
             "sprite_y": 128
           },
@@ -4038,39 +4038,39 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 136
+                "duration": 136,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 0
               },
               {
-                "dx": 18,
-                "dy": 24
+                "duration": 24,
+                "vector_index": 18
               },
               {
-                "dx": 20,
-                "dy": 168
+                "duration": 168,
+                "vector_index": 20
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 10,
             "sprite_y": 104
           },
@@ -4083,19 +4083,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 12,
             "sprite_y": 80
           },
@@ -4128,15 +4128,15 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 104
+                "duration": 104,
+                "vector_index": 4
               },
               {
-                "dx": 8,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 18,
             "sprite_y": 80
           },
@@ -4149,15 +4149,15 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 152
+                "duration": 152,
+                "vector_index": 4
               },
               {
-                "dx": 8,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 20,
             "sprite_y": 56
           },
@@ -4170,15 +4170,15 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 200
+                "duration": 200,
+                "vector_index": 4
               },
               {
-                "dx": 8,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 22,
             "sprite_y": 32
           },
@@ -4191,19 +4191,19 @@
           "params": {
             "path": [
               {
-                "dx": 28,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 208
+                "duration": 208,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 24,
             "sprite_y": 144
           },
@@ -4216,19 +4216,19 @@
           "params": {
             "path": [
               {
-                "dx": 28,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 208
+                "duration": 208,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 26,
             "sprite_y": 168
           },
@@ -4241,19 +4241,19 @@
           "params": {
             "path": [
               {
-                "dx": 28,
-                "dy": 104
+                "duration": 104,
+                "vector_index": 28
               },
               {
-                "dx": 0,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 208
+                "duration": 208,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 28,
             "sprite_y": 192
           },
@@ -4636,39 +4636,39 @@
           "params": {
             "path": [
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 28,
             "sprite_y": 216
           },
@@ -4681,39 +4681,39 @@
           "params": {
             "path": [
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 30,
             "sprite_y": 152
           },
@@ -4726,39 +4726,39 @@
           "params": {
             "path": [
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 4,
             "sprite_y": 88
           },
@@ -4771,39 +4771,39 @@
           "params": {
             "path": [
               {
-                "dx": 8,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 6,
             "sprite_y": 184
           },
@@ -4816,39 +4816,39 @@
           "params": {
             "path": [
               {
-                "dx": 24,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 8,
             "sprite_y": 120
           },
@@ -4861,35 +4861,35 @@
           "params": {
             "path": [
               {
-                "dx": 28,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 7,
+            "path_step_count": 7,
             "slot": 10,
             "sprite_y": 200
           },
@@ -4902,35 +4902,35 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 7,
+            "path_step_count": 7,
             "slot": 12,
             "sprite_y": 152
           },
@@ -4943,35 +4943,35 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 4
               }
             ],
-            "path_vector_count": 7,
+            "path_step_count": 7,
             "slot": 14,
             "sprite_y": 104
           },
@@ -5131,71 +5131,71 @@
           "params": {
             "path": [
               {
-                "dx": 24,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 9,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 9
               },
               {
-                "dx": 12,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 12
               },
               {
-                "dx": 24,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 24
               },
               {
-                "dx": 26,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 26
               },
               {
-                "dx": 24,
-                "dy": 16
+                "duration": 16,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 40
+                "duration": 40,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 16
+                "duration": 16,
+                "vector_index": 8
               },
               {
-                "dx": 6,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 6
               },
               {
-                "dx": 8,
-                "dy": 72
+                "duration": 72,
+                "vector_index": 8
               },
               {
-                "dx": 12,
-                "dy": 24
+                "duration": 24,
+                "vector_index": 12
               },
               {
-                "dx": 24,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 24
               },
               {
-                "dx": 19,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 19
               },
               {
-                "dx": 8,
-                "dy": 152
+                "duration": 152,
+                "vector_index": 8
               },
               {
-                "dx": 4,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 4
               }
             ],
-            "path_vector_count": 16,
+            "path_step_count": 16,
             "slot": 12,
             "sprite_y": 152
           },
@@ -5440,11 +5440,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 14,
             "sprite_y": 156
           },
@@ -5457,15 +5457,15 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 248
+                "duration": 248,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 16,
             "sprite_y": 44
           },
@@ -5498,35 +5498,35 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 232
+                "duration": 232,
+                "vector_index": 16
               },
               {
-                "dx": 18,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 18
               },
               {
-                "dx": 16,
-                "dy": 184
+                "duration": 184,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 184
+                "duration": 184,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 7,
+            "path_step_count": 7,
             "slot": 22,
             "sprite_y": 44
           },
@@ -5658,43 +5658,43 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 16
               },
               {
-                "dx": 13,
-                "dy": 40
+                "duration": 40,
+                "vector_index": 13
               },
               {
-                "dx": 16,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 16
               },
               {
-                "dx": 12,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 12
               },
               {
-                "dx": 13,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 13
               },
               {
-                "dx": 6,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 6
               },
               {
-                "dx": 4,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 4
               },
               {
-                "dx": 8,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 9,
+            "path_step_count": 9,
             "slot": 12,
             "sprite_y": 52
           },
@@ -5838,27 +5838,27 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 28,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 28
               },
               {
-                "dx": 24,
-                "dy": 216
+                "duration": 216,
+                "vector_index": 24
               },
               {
-                "dx": 20,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 20
               }
             ],
-            "path_vector_count": 5,
+            "path_step_count": 5,
             "slot": 30,
             "sprite_y": 224
           },
@@ -6033,43 +6033,43 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 8
               },
               {
-                "dx": 12,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 72
+                "duration": 72,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 104
+                "duration": 104,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 28
               },
               {
-                "dx": 24,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 9,
+            "path_step_count": 9,
             "slot": 4,
             "sprite_y": 20
           },
@@ -6162,23 +6162,23 @@
           "params": {
             "path": [
               {
-                "dx": 16,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 22,
             "sprite_y": 124
           },
@@ -6271,11 +6271,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 12,
             "sprite_y": 204
           },
@@ -6288,23 +6288,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 88
+                "duration": 88,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 14,
             "sprite_y": 116
           },
@@ -6317,11 +6317,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 16,
             "sprite_y": 20
           },
@@ -6341,11 +6341,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 18,
             "sprite_y": 20
           },
@@ -6365,15 +6365,15 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 152
+                "duration": 152,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 2
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 20,
             "sprite_y": 124
           },
@@ -6467,23 +6467,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 16
               },
               {
-                "dx": 16,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 6,
             "sprite_y": 20
           },
@@ -6540,19 +6540,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 200
+                "duration": 200,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 14,
             "sprite_y": 120
           },
@@ -6565,19 +6565,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 248
+                "duration": 248,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 16,
             "sprite_y": 144
           },
@@ -6590,23 +6590,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 24
               },
               {
-                "dx": 24,
-                "dy": 72
+                "duration": 72,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 18,
             "sprite_y": 168
           },
@@ -6719,39 +6719,39 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 12,
             "sprite_y": 136
           },
@@ -6764,39 +6764,39 @@
           "params": {
             "path": [
               {
-                "dx": 16,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 14,
             "sprite_y": 72
           },
@@ -7183,15 +7183,15 @@
           "params": {
             "path": [
               {
-                "dx": 24,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 22,
             "sprite_y": 224
           },
@@ -7204,15 +7204,15 @@
           "params": {
             "path": [
               {
-                "dx": 8,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 24,
             "sprite_y": 16
           },
@@ -7225,15 +7225,15 @@
           "params": {
             "path": [
               {
-                "dx": 24,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 26,
             "sprite_y": 208
           },
@@ -7246,15 +7246,15 @@
           "params": {
             "path": [
               {
-                "dx": 8,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 28,
             "sprite_y": 32
           },
@@ -7589,27 +7589,27 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 5,
+            "path_step_count": 5,
             "slot": 4,
             "sprite_y": 60
           },
@@ -7642,19 +7642,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 10,
             "sprite_y": 60
           },
@@ -7677,19 +7677,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 14,
             "sprite_y": 60
           },
@@ -7712,31 +7712,31 @@
           "params": {
             "path": [
               {
-                "dx": 2,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 2
               },
               {
-                "dx": 18,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 18
               },
               {
-                "dx": 16,
-                "dy": 24
+                "duration": 24,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 24
+                "duration": 24,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 2
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 18,
             "sprite_y": 38
           },
@@ -7769,23 +7769,23 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 216
+                "duration": 216,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 2
               }
             ],
-            "path_vector_count": 4,
+            "path_step_count": 4,
             "slot": 24,
             "sprite_y": 28
           },
@@ -7808,19 +7808,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 0,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 0
               },
               {
-                "dx": 2,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 2
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 26,
             "sprite_y": 28
           },
@@ -7958,39 +7958,39 @@
           "params": {
             "path": [
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 22,
             "sprite_y": 120
           },
@@ -8003,39 +8003,39 @@
           "params": {
             "path": [
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 24,
             "sprite_y": 24
           },
@@ -8048,43 +8048,43 @@
           "params": {
             "path": [
               {
-                "dx": 28,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               },
               {
-                "dx": 12,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 12
               },
               {
-                "dx": 28,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 9,
+            "path_step_count": 9,
             "slot": 26,
             "sprite_y": 112
           },
@@ -8097,43 +8097,43 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               },
               {
-                "dx": 20,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 20
               },
               {
-                "dx": 4,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 4
               }
             ],
-            "path_vector_count": 9,
+            "path_step_count": 9,
             "slot": 28,
             "sprite_y": 32
           },
@@ -8146,35 +8146,35 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 24
+                "duration": 24,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 16
+                "duration": 16,
+                "vector_index": 28
               },
               {
-                "dx": 24,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 24
               },
               {
-                "dx": 20,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 20
               },
               {
-                "dx": 22,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 22
               },
               {
-                "dx": 30,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 30
               },
               {
-                "dx": 28,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 28
               }
             ],
-            "path_vector_count": 7,
+            "path_step_count": 7,
             "slot": 30,
             "sprite_y": 164
           },
@@ -8227,31 +8227,31 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 168
+                "duration": 168,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 16
+                "duration": 16,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 20,
             "sprite_y": 172
           },
@@ -8264,31 +8264,31 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 8
+                "duration": 8,
+                "vector_index": 0
               },
               {
-                "dx": 24,
-                "dy": 144
+                "duration": 144,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 16
+                "duration": 16,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 18,
             "sprite_y": 212
           },
@@ -8301,31 +8301,31 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 24
+                "duration": 24,
+                "vector_index": 0
               },
               {
-                "dx": 8,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 24
               },
               {
-                "dx": 16,
-                "dy": 192
+                "duration": 192,
+                "vector_index": 16
               },
               {
-                "dx": 16,
-                "dy": 240
+                "duration": 240,
+                "vector_index": 16
               },
               {
-                "dx": 24,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 6,
+            "path_step_count": 6,
             "slot": 16,
             "sprite_y": 68
           },
@@ -8500,19 +8500,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 0
               },
               {
-                "dx": 28,
-                "dy": 56
+                "duration": 56,
+                "vector_index": 28
               },
               {
-                "dx": 24,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 24
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 22,
             "sprite_y": 156
           },
@@ -8535,19 +8535,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 26,
             "sprite_y": 36
           },
@@ -8560,19 +8560,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 28,
             "sprite_y": 156
           },
@@ -8605,19 +8605,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 6,
             "sprite_y": 36
           },
@@ -8630,19 +8630,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 8,
             "sprite_y": 156
           },
@@ -8665,19 +8665,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 12,
             "sprite_y": 36
           },
@@ -8710,39 +8710,39 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 120
+                "duration": 120,
+                "vector_index": 16
               },
               {
-                "dx": 18,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 18
               },
               {
-                "dx": 16,
-                "dy": 248
+                "duration": 248,
+                "vector_index": 16
               },
               {
-                "dx": 16,
-                "dy": 88
+                "duration": 88,
+                "vector_index": 16
               },
               {
-                "dx": 24,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 24
               },
               {
-                "dx": 8,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 8
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 18,
             "sprite_y": 156
           },
@@ -8755,39 +8755,39 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 96
+                "duration": 96,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 144
+                "duration": 144,
+                "vector_index": 16
               },
               {
-                "dx": 12,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 224
+                "duration": 224,
+                "vector_index": 16
               },
               {
-                "dx": 16,
-                "dy": 88
+                "duration": 88,
+                "vector_index": 16
               },
               {
-                "dx": 8,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 8
               },
               {
-                "dx": 24,
-                "dy": 80
+                "duration": 80,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 20,
             "sprite_y": 36
           },
@@ -9073,15 +9073,15 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 4
               },
               {
-                "dx": 6,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 6
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 10,
             "sprite_y": 52
           },
@@ -9144,19 +9144,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 22,
             "sprite_y": 164
           },
@@ -9169,19 +9169,19 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               },
               {
-                "dx": 16,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 16
               },
               {
-                "dx": 0,
-                "dy": 112
+                "duration": 112,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 3,
+            "path_step_count": 3,
             "slot": 4,
             "sprite_y": 52
           },
@@ -9210,15 +9210,15 @@
           "params": {
             "path": [
               {
-                "dx": 4,
-                "dy": 184
+                "duration": 184,
+                "vector_index": 4
               },
               {
-                "dx": 8,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 8
               }
             ],
-            "path_vector_count": 2,
+            "path_step_count": 2,
             "slot": 6,
             "sprite_y": 72
           },
@@ -9231,11 +9231,11 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 1,
+            "path_step_count": 1,
             "slot": 8,
             "sprite_y": 52
           },
@@ -9248,39 +9248,39 @@
           "params": {
             "path": [
               {
-                "dx": 0,
-                "dy": 48
+                "duration": 48,
+                "vector_index": 0
               },
               {
-                "dx": 4,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 4
               },
               {
-                "dx": 16,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 16
               },
               {
-                "dx": 12,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 12
               },
               {
-                "dx": 16,
-                "dy": 64
+                "duration": 64,
+                "vector_index": 16
               },
               {
-                "dx": 24,
-                "dy": 128
+                "duration": 128,
+                "vector_index": 24
               },
               {
-                "dx": 24,
-                "dy": 160
+                "duration": 160,
+                "vector_index": 24
               },
               {
-                "dx": 0,
-                "dy": 32
+                "duration": 32,
+                "vector_index": 0
               }
             ],
-            "path_vector_count": 8,
+            "path_step_count": 8,
             "slot": 10,
             "sprite_y": 72
           },
