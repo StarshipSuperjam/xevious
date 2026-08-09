@@ -1312,14 +1312,15 @@
         "seed": 65535
       }
     ],
-    "note": "the update rule is instruction-derived from the cited routine; the fixture seeds are this project's own chosen test inputs and the sequences are computed from the rule by this extractor",
+    "note": "the update rule is instruction-derived from the cited routine, whose text is pinned by routine_sha256; the fixture seeds are this project's own chosen test inputs and the sequences are computed from the rule by this extractor. Seed 0xFFFF exercises the generator's degenerate all-ones cycle (the high byte stays 0xFF), which is faithful behavior, chosen deliberately as an edge fixture",
+    "routine_sha256": "cf25a2ec5bad0b720cc0cb14261d93c7a93125f52748c7d1c7797a3d2716e56c",
     "rule": "low' = 5*low+1 mod 256; extend = carry of that +1, forced to 1 when bits 7 and 2 of the high byte are both set or both clear; high' = (high<<1 | extend) mod 256; output = (low'+high') mod 256. The seed is one shared 16-bit word; every consumer advances it.",
     "source": {
       "file": "src/xevious_main.68k",
       "label": "pseudo_random_gen",
       "lines": [
         1428,
-        1445
+        1446
       ]
     }
   },

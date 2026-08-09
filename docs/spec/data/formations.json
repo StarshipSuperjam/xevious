@@ -807,7 +807,7 @@
       "label": "flying_enemy_type_offset_tbl_normal",
       "lines": [
         428,
-        454
+        448
       ],
       "note": "indices below zero are the bytes physically preceding the label; the reference indexes this table with a sign-extended doubled offset"
     }

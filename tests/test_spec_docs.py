@@ -8,6 +8,8 @@ provenance block, an honest license status present, and no dangling links in
 the spec corpus.
 """
 
+import hashlib
+import importlib.util
 import json
 import re
 import unittest
@@ -17,6 +19,15 @@ ROOT = Path(__file__).resolve().parent.parent
 SPEC = ROOT / "docs" / "spec"
 DATA = SPEC / "data"
 
+
+def load_extractor():
+    spec = importlib.util.spec_from_file_location(
+        "reference_extract", ROOT / "tools" / "reference_extract.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 PIN_RE = re.compile(r"\b[0-9a-f]{40}\b")
 
 
@@ -25,7 +36,8 @@ def spec_documents():
 
 
 def data_files():
-    return sorted(DATA.glob("*.json"))
+    # The manifest carries digests of the others, not provenance of its own.
+    return sorted(p for p in DATA.glob("*.json") if p.name != "manifest.json")
 
 
 def index_frontmatter_pin():
@@ -84,19 +96,106 @@ class SpecDataConsistency(unittest.TestCase):
     def test_every_data_file_has_a_producer(self):
         # A data file with no generator in the committed extractor would be
         # indistinguishable from a hand-written one; hold the two in lockstep.
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location(
-            "reference_extract", ROOT / "tools" / "reference_extract.py"
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        declared = set(module.DATA_FILE_NAMES)
-        on_disk = {p.name for p in data_files()}
+        module = load_extractor()
+        declared = set(module.DATA_FILE_NAMES) | {module.MANIFEST_NAME}
+        on_disk = {p.name for p in DATA.glob("*.json")}
         self.assertEqual(
             declared, on_disk,
             "docs/spec/data contents and the extractor's declared outputs differ",
         )
+
+    def test_data_files_match_their_manifest_digests(self):
+        # Hand-editing any generated file breaks its recorded digest, so a
+        # silent edit is catchable without the reference clone.
+        module = load_extractor()
+        manifest = json.loads((DATA / module.MANIFEST_NAME).read_text())
+        for name in module.DATA_FILE_NAMES:
+            digest = hashlib.sha256((DATA / name).read_bytes()).hexdigest()
+            self.assertEqual(
+                manifest["files"].get(name), digest,
+                f"{name} does not match its manifest digest — regenerate, never hand-edit",
+            )
+
+
+class ExtractorUnits(unittest.TestCase):
+    """The pure decode functions, exercised without the reference checkout."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_extractor()
+
+    def test_signed_byte_boundaries(self):
+        self.assertEqual(self.mod.signed_byte(127), 127)
+        self.assertEqual(self.mod.signed_byte(128), -128)
+        self.assertEqual(self.mod.signed_byte(255), -1)
+        self.assertEqual(self.mod.signed_byte(0), 0)
+
+    def test_bcd_and_score_decode(self):
+        self.assertEqual(self.mod.bcd_decode(0x40), 40)
+        self.assertEqual(self.mod.bcd_decode(0x100), 100)
+        self.assertEqual(self.mod.score_triple(0x01, 0x00, 0x00), 10)
+        self.assertEqual(self.mod.score_triple(0x00, 0x02, 0x00), 2000)
+        self.assertEqual(self.mod.score_triple(0x00, 0x10, 0x00), 10000)
+        self.assertEqual(self.mod.score_triple(0x99, 0x99, 0x99), 9999990)
+
+    def test_parse_value_rejects_out_of_range(self):
+        self.assertEqual(self.mod.parse_value("0xFF"), 255)
+        with self.assertRaises(self.mod.ExtractionError):
+            self.mod.parse_value("300")
+        with self.assertRaises(self.mod.ExtractionError):
+            self.mod.parse_value("-1")
+        with self.assertRaises(self.mod.ExtractionError):
+            self.mod.parse_value("0x1FF")
+        self.assertEqual(self.mod.parse_value("0x1FF", limit=0xFFFF), 511)
+
+    def test_rng_step_matches_committed_golden_sequences(self):
+        # The rule implementation and the committed fixtures must agree; a
+        # mutation to either side fails here.
+        sequences = json.loads((DATA / "rng.json").read_text())["generator"][
+            "fixture_sequences"
+        ]
+        for fixture in sequences:
+            state = fixture["seed"]
+            outputs = []
+            for _ in range(len(fixture["outputs"])):
+                state, out = self.mod.rng_step(state)
+                outputs.append(out)
+            self.assertEqual(outputs, fixture["outputs"], f"seed {fixture['seed']}")
+            self.assertEqual(state, fixture["final_state"])
+
+
+class CrossTableInvariants(unittest.TestCase):
+    """Relations between data files that a hand-edit would likely break."""
+
+    def test_formation_targets_stay_inside_the_type_table(self):
+        formations = json.loads((DATA / "formations.json").read_text())
+        types = json.loads((DATA / "object-types.json").read_text())
+        codes = types["flying_enemy_type_table"]["codes"]
+        registry = {t["code"]: t for t in types["registry"]["types"]}
+        for entry in formations["formation_table"]["entries"]:
+            offset, count = entry["type_table_offset"], entry["enemy_count"]
+            self.assertGreaterEqual(offset, 0)
+            self.assertLessEqual(offset + count, len(codes))
+            if offset + count <= 120:  # the recorded never-reached tail starts at 120
+                for code in codes[offset : offset + count]:
+                    self.assertIn(code, registry)
+                    self.assertFalse(registry[code]["super_only"])
+
+    def test_schedule_formation_offsets_resolve(self):
+        schedules = json.loads((DATA / "area-schedules.json").read_text())
+        formations = json.loads((DATA / "formations.json").read_text())
+        indices = {e["index"] for e in formations["formation_table"]["entries"]}
+        for area in schedules["areas"]:
+            for record in area["records"]:
+                if record["handler"] == "set_flying_formation":
+                    self.assertIn(record["params"]["formation_offset"], indices)
+
+    def test_master_value_table_is_the_recorded_ladder(self):
+        tables = json.loads((DATA / "scores.json").read_text())["tables"]
+        points = [e["points"] for e in tables["master_value_table"]["entries"]]
+        self.assertEqual(points, sorted(points))
+        self.assertEqual(points[0], 10)
+        self.assertEqual(points[-1], 10000)
 
     def test_provenance_blocks_present_and_honest(self):
         for data in data_files():
@@ -107,7 +206,10 @@ class SpecDataConsistency(unittest.TestCase):
             self.assertTrue(provenance.get("source_sha256"), f"{data.name}: no source hashes")
 
     def test_spec_links_resolve(self):
-        for doc in spec_documents():
+        docs = list(spec_documents()) + [
+            p for p in (ROOT / "docs").rglob("*.md") if SPEC not in p.parents
+        ]
+        for doc in docs:
             for target in re.findall(r"\]\(([^)#]+?)(?:#[^)]*)?\)", doc.read_text()):
                 if target.startswith(("http://", "https://")):
                     continue

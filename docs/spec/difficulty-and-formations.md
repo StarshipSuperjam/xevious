@@ -19,7 +19,7 @@ fire and how often. Together these are why the game feels harder the better you 
 ## Behavior
 
 **The AI level and difficulty setting.** A single AI-level value accumulates during play. Schedule records
-of the `raise_ai_level_and_set_formation` kind — the schedule's most common formation-touching record —
+of the `raise_ai_level_and_set_formation` kind — one of the schedule's two most common record kinds —
 add the cabinet difficulty increment to the AI level *and then re-select the incoming formation from the
 new level* (the same lookup the set-formation record uses, with the raised level as the index): the four DIP-selectable settings add
 2, 0, 6, or 16 respectively (`xevious_sub.68k` `difficulty_tbl` 338–342, decoded in
@@ -38,7 +38,7 @@ scoring heavily with many lives left meets sharply higher pressure; a struggling
 index is that offset plus the current AI level, doubled, into the formation table
 (`xevious_sub.68k` `sub_2_fn_2__set_flying_enemies` 300–311). The table — decoded completely, including
 its 32 negative-index entries, in [data/formations.json](data/formations.json)
-(`flying_enemy_type_offset_tbl_normal` 428–453) — yields two values per entry: the number of flying
+(`flying_enemy_type_offset_tbl_normal`; exact lines in the data file) — yields two values per entry: the number of flying
 enemies in the incoming wave (observed range 1–6) and an offset into the flying-enemy type table that
 determines *which* enemy types compose the wave (the type table itself is documented in
 [Aerial enemies](aerial-enemies.md)). A *reset-formation* record zeroes both, ending the pressure between
@@ -62,8 +62,8 @@ carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 | --- | --- | --- |
 | The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit | `python3 tools/reference_extract.py --verify --checkout <clone>` with a fresh clone at the pin (clone recipe in [the index](index.md)); the run passes or names the failing table | operator |
 | The four difficulty-setting increments are 2, 0, 6, 16 and the build's data matches the committed file | Data-table comparison in the deterministic build fixtures | engine |
-| Formation lookup uses AI level + schedule offset with the recorded fold-back at 0x80 | Seeded fixture: fixed AI-level sequences reproduce the recorded wave sizes and type offsets | engine |
-| Score-adaptive re-tune follows score-per-reserve-craft, capped at 16 | Fixture over recorded score/lives pairs reproduces the recorded AI increments | engine |
+| A model fixture over the committed data reproduces formation lookups (AI level + offset, fold-back at 0x80); the build's in-game selection is confirmed in play (fixture-automated when a runtime harness exists) | Python fixture over the committed tables; operator play for the in-game half | engine |
+| A model fixture over recorded score/lives pairs reproduces the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (fixture-automated when a runtime harness exists) | Python fixture over the committed rule; operator play for the in-game half | engine |
 | Wave sizes stay within the table's recorded range and grow as the game progresses at a fixed setting | Play several areas at one setting; waves grow denser and never exceed six enemies | operator |
 | Playing better produces visibly harder waves | Play one area twice — once scoring heavily, once minimally — and compare wave pressure (paired with the seeded re-tune fixture above, since the two runs also differ in what was destroyed) | operator |
 | Enemy families fire only when their area's schedule has permitted them | Play area 1's Lograms (its scheduled firing family): they begin firing at their scheduled point, not from the start | operator |

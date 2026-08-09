@@ -89,8 +89,8 @@ ground slots; and during a boss encounter Andor Genesis's fifteen parts occupy g
 (`xevious_sub.68k` `sub_2_fn_20__andor_genesis_start` 544–563), leaving slot 0 for ordinary ground
 traffic — the schedule data respects this. Explosion and bounce presentations animate within their
 owner's slot. Scrolling
-carries map-anchored entities; an entity leaving the play area is culled at the recorded margins
-(`check_scroll_offscreen` 4826–4839) and its slot freed with no leaked state. The complete object-type
+carries map-anchored entities; an entity leaving the play area is culled at the recorded screen-edge margins
+(values in [Player craft and weapons](player-craft-and-weapons.md); `check_scroll_offscreen` 4826–4839) and its slot freed with no leaked state. The complete object-type
 vocabulary — all 93 codes — is the generated registry in
 [data/object-types.json](data/object-types.json): sprite-bearing object types carry their handler and
 name; the 25 pure schedule-control codes carry no sprite handler and are named by their
@@ -148,7 +148,7 @@ operator's, until a runtime harness is built (a tracked follow-up, not a promise
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| One state machine owns all transitions; the director block graph contains every recorded edge and no state write outside the transition path | Structural fixture walks the built project's director block graph | engine |
+| One state machine owns all transitions; every edge the build implements is on the recorded list (cabinet edges gate their own slices), and no state write exists outside the transition path | Structural fixture walks the built project's director block graph | engine |
 | Each reset scope's transition script contains its recorded cleanup actions, in order | Structural fixture over the generated transition scripts | engine |
 | Reset scopes leave their postconditions on screen (title shown once, player hidden, terrain rewound per scope) | Play the built `.sb3` through each transition | operator |
 | State-timing placeholders and divergences are marked in the build's mechanics records until fidelity work replaces them | The PR author records them; the operator's review confirms | operator |

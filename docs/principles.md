@@ -30,7 +30,8 @@ departure is recorded rather than improvised. Every principle below serves that 
   gameplay verification that exists.
 - **New and preserved behavior are tested together.** A change's acceptance list covers what it adds *and*
   everything it could disturb: held-input and duration interactions (holding fire while moving, multiple
-  terrain cycles, repeated deaths), not just single key taps. Wholesale replacement of a working script is
+  terrain cycles, repeated deaths), not just single key taps — with negative fixtures proving the tests
+  can fail. Wholesale replacement of a working script is
   high-risk and requires behavior-by-behavior comparison against what it replaces. An unverified runtime
   finding stays open — it is never converted into a promise and waved through.
 - **Every value has exactly one normative home.** A number (a score, a speed, a schedule entry) is stated

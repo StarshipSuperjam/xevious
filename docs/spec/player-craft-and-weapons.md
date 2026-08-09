@@ -74,14 +74,17 @@ flies ballistically, never re-aiming (`handle_06_Bullet` 4278–4283; the four a
 6290–6427 with speed tiers 1.5, 2, 3, and 4 px/frame). Radiating bullets use the 3 px/frame tier
 (`init_radiating_bullet` path); the patterns that emit them (five-shot fans, the sixteen-bullet ring)
 belong to their firing families in [Aerial enemies](aerial-enemies.md). Bullets expire at the recorded
-screen-edge margins (`check_scroll_offscreen` 4826–4839) and pulse through the shared four-color cycle
+screen-edge margins — beyond roughly 320 pixels on the scroll axis or 248 laterally, in reference
+pixels (`check_scroll_offscreen` 4826–4839) and pulse through the shared four-color cycle
 (`xevious_sub.68k` `sub_fn_5__handle_pulsing_colours` 208–232).
 
 **Object slots (shared vocabulary).** The reference runs 64 32-byte object slots: 16 ground objects
 (0x00–0x0F, of which 0x02–0x0F are crosshair-targetable), 16 Bacura (0x10–0x1F), bomb target 0x20, bomb
 0x21, crosshair 0x22, Solvalou 0x23, 3 player shots (0x24–0x26), 19 enemy bullets (0x27–0x39), 6 flying
 enemies (0x3A–0x3F) (`xevious.inc` 61–81, `xevious_ram.68k` 110–111, boundaries corroborated at the
-collision and init sites cited above). The schedule data's `slot` parameters index the ground range. The
+collision and init sites cited above). The schedule data's `slot` parameters are decoded object-slot
+indices (the source bytes are RAM offsets, twice the slot): placements target the ground range, and a
+few scheduled air spawns target flying slots. The
 Scratch build may represent these differently, but the *capacities* — 3 shots, 19 bullets, 6 flying
 enemies, 16 ground, 16 Bacura, 1 bomb — are gameplay-visible limits and bind. Axis-to-screen orientation
 is recorded as a strong inference (from the 224-pixel clamp literal), not a labeled fact.

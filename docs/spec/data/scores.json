@@ -17,10 +17,10 @@
       "note": "points; null = bonus lives disabled at that setting. Table selection between the two carries the recorded uncertainty in the scoring document (the reference's two selection sites disagree)",
       "source": {
         "file": "src/xevious_main.68k",
-        "label": "first_bonus_life_tbls",
+        "label": "first_bonus_life_Ks_5 / first_bonus_life_Ks_123",
         "lines": [
-          1174,
-          1175
+          1182,
+          1199
         ]
       },
       "table_123": [
@@ -167,10 +167,10 @@
       "note": "points added to the threshold after each award; null = disabled",
       "source": {
         "file": "src/xevious_main.68k",
-        "label": "bonus_tbl_ptrs",
+        "label": "bonus_tbl_5 / bonus_tbl_123",
         "lines": [
-          1174,
-          1175
+          1859,
+          1877
         ]
       },
       "table_123": [

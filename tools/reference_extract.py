@@ -138,8 +138,8 @@ PARAM_FIELDS = {
 }
 
 LABEL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):")
-BYTE_RE = re.compile(r"^\s+\.byte\s+(.+?)\s*(\|.*)?$")
-LONG_REF_RE = re.compile(r"^\s+\.long\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\|.*)?$")
+BYTE_RE = re.compile(r"^\s*\.byte\s+(.+?)\s*(\|.*)?$")
+LONG_REF_RE = re.compile(r"^\s*\.long\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\|.*)?$")
 
 NORMAL_TYPE_MAX = 0x57  # types above this exist only for Super Xevious
 MAIN = "src/xevious_main.68k"
@@ -149,11 +149,15 @@ class ExtractionError(RuntimeError):
     pass
 
 
-def parse_value(token: str) -> int:
+def parse_value(token: str, limit: int = 0xFF) -> int:
     token = token.strip()
-    if token.lower().startswith("0x"):
-        return int(token, 16)
-    return int(token, 10)
+    try:
+        value = int(token, 16) if token.lower().startswith("0x") else int(token, 10)
+    except ValueError as err:
+        raise ExtractionError(f"unparseable literal {token!r}") from err
+    if not 0 <= value <= limit:
+        raise ExtractionError(f"literal {token!r} outside 0..0x{limit:X}")
+    return value
 
 
 class SourceFile:
@@ -290,6 +294,18 @@ def decode_area_table(
             if handler == 2 and raw:
                 offset = raw[0]
                 params["formation_offset"] = offset - 256 if offset > 127 else offset
+        if "slot" in params:
+            # The schedule byte is a RAM offset — twice the object-slot
+            # index (the consumer shifts it into the 32-byte-per-object
+            # table). Emit the real slot; a stray odd byte means the decode
+            # is wrong, so fail loudly.
+            raw_offset = params["slot"]
+            if raw_offset % 2:
+                raise ExtractionError(
+                    f"{label}: odd object offset 0x{raw_offset:02X} at "
+                    f"offset {pos} cannot be a slot"
+                )
+            params["slot"] = raw_offset // 2
         records.append(
             {
                 "scroll_row": row,
@@ -349,7 +365,7 @@ def decode_formation_table(sub: SourceFile) -> dict:
     for _, vals in prefix:
         negative_values.extend(vals)
 
-    positive_values, _, first_line, last_line = sub.bytes_under_label(label)
+    positive_values, per_byte_lines, first_line, last_line = sub.bytes_under_label(label)
     if len(negative_values) % 2 or len(positive_values) % 2:
         raise ExtractionError(f"{label}: odd byte count in formation table")
     if len(negative_values) != 64:
@@ -368,6 +384,9 @@ def decode_formation_table(sub: SourceFile) -> dict:
             f"negative block), got {len(positive_values)}"
         )
     positive_values = positive_values[:256]
+    # The citation covers only the transcribed 256 bytes, not the excluded
+    # Super block that follows them.
+    last_line = per_byte_lines[255]
 
     def pairs(values: list[int], base_index: int) -> list[dict]:
         out = []
@@ -416,7 +435,7 @@ def words_under_label(source: SourceFile, label: str) -> tuple[list[int], int, i
         match = WORD_RE.match(line)
         if match:
             for token in match.group(1).split(","):
-                values.append(parse_value(token))
+                values.append(parse_value(token, limit=0xFFFF))
             last = idx
     return values, start + 1, last + 1
 
@@ -454,11 +473,17 @@ def decode_score_tables(main: SourceFile) -> dict:
     if len(lives) != 4:
         raise ExtractionError("starting_solvalou_tbl: expected 4 entries")
 
-    def bonus_words(label: str) -> list[int | None]:
-        words, _, _ = words_under_label(main, label)
+    def bonus_words(label: str) -> tuple[list[int | None], int, int]:
+        words, first, last = words_under_label(main, label)
         if len(words) != 8:
             raise ExtractionError(f"{label}: expected 8 entries")
-        return [None if w == 0xFFFF else bcd_decode(w) * 1000 for w in words]
+        values = [None if w == 0xFFFF else bcd_decode(w) * 1000 for w in words]
+        return values, first, last
+
+    first_5, f5_first, _ = bonus_words("first_bonus_life_Ks_5")
+    first_123, _, f123_last = bonus_words("first_bonus_life_Ks_123")
+    repeat_5, r5_first, _ = bonus_words("bonus_tbl_5")
+    repeat_123, _, r123_last = bonus_words("bonus_tbl_123")
 
     hs_bytes, _, h_first, h_last = main.bytes_under_label("ROM_high_score_tbl_normal")
     if len(hs_bytes) != 5 * 16:
@@ -481,21 +506,29 @@ def decode_score_tables(main: SourceFile) -> dict:
             "values": lives,
         },
         "first_bonus_thresholds": {
-            "source": src("first_bonus_life_tbls", [l_first, l_last]),
+            "source": {
+                "file": MAIN,
+                "label": "first_bonus_life_Ks_5 / first_bonus_life_Ks_123",
+                "lines": [f5_first, f123_last],
+            },
             "note": (
                 "points; null = bonus lives disabled at that setting. Table "
                 "selection between the two carries the recorded uncertainty in "
                 "the scoring document (the reference's two selection sites "
                 "disagree)"
             ),
-            "table_5": bonus_words("first_bonus_life_Ks_5"),
-            "table_123": bonus_words("first_bonus_life_Ks_123"),
+            "table_5": first_5,
+            "table_123": first_123,
         },
         "repeat_bonus_increments": {
-            "source": src("bonus_tbl_ptrs", [l_first, l_last]),
+            "source": {
+                "file": MAIN,
+                "label": "bonus_tbl_5 / bonus_tbl_123",
+                "lines": [r5_first, r123_last],
+            },
             "note": "points added to the threshold after each award; null = disabled",
-            "table_5": bonus_words("bonus_tbl_5"),
-            "table_123": bonus_words("bonus_tbl_123"),
+            "table_5": repeat_5,
+            "table_123": repeat_123,
         },
         "high_score_defaults": {
             "source": src("ROM_high_score_tbl_normal", [h_first, h_last]),
@@ -545,10 +578,16 @@ def decode_object_registry(main: SourceFile, sub: SourceFile, obj_fn_tbl: list[i
     types = []
     for index, (symbol, line) in enumerate(entries):
         code = index + 1
+        handler_value = obj_fn_tbl[index]
+        if handler_value not in HANDLER_NAMES and HANDLER_PARAM_BYTES.get(handler_value, -2) is not None and handler_value not in (4, 14):
+            raise ExtractionError(
+                f"obj_fn_tbl entry for type 0x{code:02X} names unknown handler "
+                f"{handler_value}"
+            )
         entry: dict[str, object] = {
             "code": code,
             "super_only": code > NORMAL_TYPE_MAX,
-            "schedule_action": HANDLER_NAMES.get(obj_fn_tbl[index], "none"),
+            "schedule_action": HANDLER_NAMES.get(handler_value, "none"),
         }
         match = handler_name_re.match(symbol)
         if symbol == "null_fn":
@@ -670,7 +709,17 @@ def rng_step(seed: int) -> tuple[int, int]:
 def decode_rng(main: SourceFile) -> dict:
     if "pseudo_random_gen" not in main.labels:
         raise ExtractionError("pseudo_random_gen label not found")
-    line = main.labels["pseudo_random_gen"] + 1
+    start = main.labels["pseudo_random_gen"]
+    end = start + 1
+    while end < len(main.lines) and not LABEL_RE.match(main.lines[end]):
+        end += 1
+    # The rule below was transcribed from the routine by hand, so pin the
+    # routine's own text: a pin bump that changes these lines fails loudly and
+    # points here. A digest of the lines is a fact about the file, not a copy.
+    routine_sha256 = hashlib.sha256(
+        "\n".join(main.lines[start:end]).encode("utf-8")
+    ).hexdigest()
+    line = start + 1
     fixture_seeds = [0x0000, 0x0001, 0x1234, 0xABCD, 0xFFFF]
     sequences = []
     for seed in fixture_seeds:
@@ -682,7 +731,8 @@ def decode_rng(main: SourceFile) -> dict:
             {"seed": seed, "outputs": outputs, "final_state": state}
         )
     return {
-        "source": {"file": MAIN, "label": "pseudo_random_gen", "lines": [line, line + 17]},
+        "source": {"file": MAIN, "label": "pseudo_random_gen", "lines": [line, end]},
+        "routine_sha256": routine_sha256,
         "rule": (
             "low' = 5*low+1 mod 256; extend = carry of that +1, forced to 1 "
             "when bits 7 and 2 of the high byte are both set or both clear; "
@@ -690,9 +740,13 @@ def decode_rng(main: SourceFile) -> dict:
             "The seed is one shared 16-bit word; every consumer advances it."
         ),
         "note": (
-            "the update rule is instruction-derived from the cited routine; "
-            "the fixture seeds are this project's own chosen test inputs and "
-            "the sequences are computed from the rule by this extractor"
+            "the update rule is instruction-derived from the cited routine, "
+            "whose text is pinned by routine_sha256; the fixture seeds are "
+            "this project's own chosen test inputs and the sequences are "
+            "computed from the rule by this extractor. Seed 0xFFFF exercises "
+            "the generator's degenerate all-ones cycle (the high byte stays "
+            "0xFF), which is faithful behavior, chosen deliberately as an "
+            "edge fixture"
         ),
         "fixture_sequences": sequences,
     }
@@ -736,8 +790,11 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
                     "records are [scroll_row, object_type, params...]; the type "
                     "indexes obj_fn_tbl (1-based) to a handler that consumes a "
                     "fixed parameter width, except the Domogram handler whose "
-                    "third parameter byte declares how many 2-byte path vectors "
-                    "follow"
+                    "third parameter byte declares how many 2-byte path steps "
+                    "follow. The emitted slot field is the object-slot index, "
+                    "decoded from the source byte (a RAM offset equal to twice "
+                    "the slot); most placements target the 16 ground slots, and "
+                    "a few add_object records target flying slots"
                 ),
             },
             "areas": areas,
@@ -802,6 +859,28 @@ def render(payload: dict) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
+MANIFEST_NAME = "manifest.json"
+
+
+def render_manifest(payloads: dict[str, dict]) -> str:
+    """Digests of every emitted file, so hand-edits are catchable without the
+    reference clone (tests/test_spec_docs.py recomputes and compares)."""
+    digests = {
+        name: hashlib.sha256(render(payload).encode("utf-8")).hexdigest()
+        for name, payload in sorted(payloads.items())
+    }
+    return render(
+        {
+            "note": (
+                "sha256 of each generated data file, emitted by "
+                "tools/reference_extract.py; regenerating is the only "
+                "sanctioned way to change any of them"
+            ),
+            "files": digests,
+        }
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkout", required=True, type=Path)
@@ -814,6 +893,9 @@ def main() -> int:
     except ExtractionError as err:
         print(f"extraction failed: {err}", file=sys.stderr)
         return 1
+    except (FileNotFoundError, NotADirectoryError) as err:
+        print(f"extraction failed: cannot read the checkout: {err}", file=sys.stderr)
+        return 1
 
     if args.verify:
         failures = []
@@ -821,7 +903,7 @@ def main() -> int:
             failures.append(
                 "extractor payloads disagree with the declared DATA_FILE_NAMES"
             )
-        on_disk = {p.name for p in args.out.glob("*.json")}
+        on_disk = {p.name for p in args.out.glob("*.json")} - {MANIFEST_NAME}
         for orphan in sorted(on_disk - set(payloads)):
             failures.append(
                 f"{args.out / orphan}: exists but has no producer in this extractor"
@@ -830,8 +912,13 @@ def main() -> int:
             path = args.out / name
             if not path.exists():
                 failures.append(f"{path}: missing")
-            elif path.read_text() != render(payload):
+            elif path.read_text(encoding="utf-8") != render(payload):
                 failures.append(f"{path}: committed content differs from re-derivation")
+        manifest_path = args.out / MANIFEST_NAME
+        if not manifest_path.exists():
+            failures.append(f"{manifest_path}: missing")
+        elif manifest_path.read_text(encoding="utf-8") != render_manifest(payloads):
+            failures.append(f"{manifest_path}: differs from re-derivation")
         for failure in failures:
             print(failure, file=sys.stderr)
         if failures:
@@ -841,10 +928,12 @@ def main() -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
     for name, payload in payloads.items():
-        (args.out / name).write_text(render(payload))
+        (args.out / name).write_text(render(payload), encoding="utf-8")
         area_count = len(payload.get("areas", []))
         suffix = f" ({area_count} areas, all consumed exactly)" if area_count else ""
         print(f"wrote {args.out / name}{suffix}")
+    (args.out / MANIFEST_NAME).write_text(render_manifest(payloads), encoding="utf-8")
+    print(f"wrote {args.out / MANIFEST_NAME}")
     return 0
 
 

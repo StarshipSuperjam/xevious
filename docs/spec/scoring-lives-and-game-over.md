@@ -20,7 +20,7 @@ back to the cabinet's attract flow. The economy is what makes risk meaningful, a
 ## Behavior
 
 **The single scoring path (ECO-01).** Each scoreable object carries an index into the master value table
-(`object_value_tbl` 6264–6285 plus its `pts_10000` extension 6286–6289); a scoring hit — bomb via
+(`object_value_tbl` with its `pts_10000` extension, lines 6264–6287 per the data file); a scoring hit — bomb via
 `handle_bombed_obj_and_award_points` 2597–2623, blaster via `check_flying_enemies_shot` 2516–2577 —
 looks the value up and adds it through `add_to_score` 64–78, which also updates the running high score
 (80–107) and triggers the bonus-life check after every award. The complete 22-entry table (10 through

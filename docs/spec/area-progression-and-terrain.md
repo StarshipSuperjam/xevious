@@ -33,10 +33,11 @@ scheduler at that area's schedule table.
 
 **The schedule.** Each area has one schedule table — the complete sixteen are decoded in
 [data/area-schedules.json](data/area-schedules.json) with per-record source lines
-(`xevious_sub.68k` `area_1_obj_tbl_normal` … `area_16_obj_tbl_normal` 863–1129). Records are consumed
+(`xevious_sub.68k` `area_1_obj_tbl_normal` … `area_16_obj_tbl_normal`; each table's exact line range
+is in the data file). Records are consumed
 strictly in order: each waits until the scroll row equals its trigger row, then executes and advances to
 the next (`xevious_sub.68k` `sub_fn_2__handle_objects` 574–602). A record either places a ground object
-into a numbered slot (with its map-anchored vertical position), places an object by slot alone (the
+into a decoded object slot (with its map-anchored vertical position), places an object by slot alone (the
 `add_object` kind — Bonus Flags and several late-area air spawns arrive this way), sets or resets the
 incoming flying formation, raises the adaptive difficulty and re-selects the formation, sets a
 per-family fire-permission mask, controls Bacura, Sheonite, or Andor Genesis events, or re-tunes

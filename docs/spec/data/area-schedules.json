@@ -111,7 +111,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 128
           },
           "scroll_row": 214,
@@ -121,7 +121,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 112
           },
           "scroll_row": 214,
@@ -145,7 +145,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 128
           },
           "scroll_row": 182,
@@ -155,7 +155,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 112
           },
           "scroll_row": 182,
@@ -165,7 +165,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 88
           },
           "scroll_row": 171,
@@ -175,7 +175,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 88
           },
           "scroll_row": 169,
@@ -185,7 +185,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 64
           },
           "scroll_row": 161,
@@ -195,7 +195,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 80
           },
           "scroll_row": 159,
@@ -240,7 +240,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 112
           },
           "scroll_row": 122,
@@ -250,7 +250,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 112
           },
           "scroll_row": 120,
@@ -267,7 +267,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 32
           },
           "scroll_row": 105,
@@ -277,7 +277,7 @@
           "handler": "add_ground_object",
           "object_type": 44,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 90
           },
           "scroll_row": 97,
@@ -310,7 +310,7 @@
           "handler": "add_ground_object",
           "object_type": 44,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 90
           },
           "scroll_row": 94,
@@ -320,7 +320,7 @@
           "handler": "add_ground_object",
           "object_type": 44,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 90
           },
           "scroll_row": 91,
@@ -360,7 +360,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 96
           },
           "scroll_row": 60,
@@ -370,7 +370,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 112
           },
           "scroll_row": 60,
@@ -389,7 +389,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 40
           },
           "scroll_row": 39,
@@ -399,7 +399,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 56
           },
           "scroll_row": 37,
@@ -409,7 +409,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 72
           },
           "scroll_row": 35,
@@ -419,7 +419,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 192
           },
           "scroll_row": 35,
@@ -429,7 +429,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 88
           },
           "scroll_row": 33,
@@ -439,7 +439,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 104
           },
           "scroll_row": 31,
@@ -456,7 +456,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 208
           },
           "scroll_row": 23,
@@ -466,7 +466,7 @@
           "handler": "add_ground_object",
           "object_type": 45,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 104
           },
           "scroll_row": 21,
@@ -522,7 +522,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 156
           },
           "scroll_row": 231,
@@ -532,7 +532,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 112
           },
           "scroll_row": 221,
@@ -542,7 +542,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 96
           },
           "scroll_row": 221,
@@ -552,7 +552,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 208
           },
           "scroll_row": 211,
@@ -562,7 +562,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 192
           },
           "scroll_row": 211,
@@ -572,7 +572,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 112
           },
           "scroll_row": 201,
@@ -582,7 +582,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 96
           },
           "scroll_row": 201,
@@ -614,7 +614,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 148
           },
           "scroll_row": 187,
@@ -624,7 +624,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 104
           },
           "scroll_row": 179,
@@ -656,7 +656,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 148
           },
           "scroll_row": 167,
@@ -666,7 +666,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 112
           },
           "scroll_row": 163,
@@ -676,7 +676,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 96
           },
           "scroll_row": 163,
@@ -693,7 +693,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 104
           },
           "scroll_row": 149,
@@ -717,7 +717,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 208
           },
           "scroll_row": 121,
@@ -727,7 +727,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 112
           },
           "scroll_row": 111,
@@ -737,7 +737,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 96
           },
           "scroll_row": 111,
@@ -747,7 +747,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 112
           },
           "scroll_row": 109,
@@ -757,7 +757,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 96
           },
           "scroll_row": 109,
@@ -767,7 +767,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 32
           },
           "scroll_row": 103,
@@ -796,7 +796,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 216
           },
           "scroll_row": 103,
@@ -839,7 +839,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 164
           },
           "scroll_row": 71,
@@ -864,7 +864,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 52
           },
           "scroll_row": 68,
@@ -874,7 +874,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 112
           },
           "scroll_row": 62,
@@ -884,7 +884,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 208
           },
           "scroll_row": 57,
@@ -894,7 +894,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 192
           },
           "scroll_row": 57,
@@ -911,7 +911,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 144
           },
           "scroll_row": 39,
@@ -921,7 +921,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 128
           },
           "scroll_row": 37,
@@ -942,7 +942,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 96
           },
           "scroll_row": 37,
@@ -952,7 +952,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 112
           },
           "scroll_row": 35,
@@ -969,7 +969,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 96
           },
           "scroll_row": 33,
@@ -979,7 +979,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 80
           },
           "scroll_row": 31,
@@ -1007,7 +1007,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 160
           },
           "scroll_row": 23,
@@ -1017,7 +1017,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 144
           },
           "scroll_row": 23,
@@ -1034,7 +1034,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 176
           },
           "scroll_row": 19,
@@ -1044,7 +1044,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 160
           },
           "scroll_row": 19,
@@ -1054,7 +1054,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 144
           },
           "scroll_row": 19,
@@ -1064,7 +1064,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 128
           },
           "scroll_row": 19,
@@ -1107,7 +1107,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 64
           },
           "scroll_row": 239,
@@ -1126,7 +1126,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 160
           },
           "scroll_row": 189,
@@ -1136,7 +1136,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 160
           },
           "scroll_row": 187,
@@ -1155,7 +1155,7 @@
           "handler": "add_ground_object",
           "object_type": 32,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 192
           },
           "scroll_row": 163,
@@ -1165,7 +1165,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 224
           },
           "scroll_row": 159,
@@ -1175,7 +1175,7 @@
           "handler": "add_object",
           "object_type": 15,
           "params": {
-            "slot": 116
+            "slot": 58
           },
           "scroll_row": 147,
           "source_line": 896
@@ -1184,7 +1184,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 128
           },
           "scroll_row": 145,
@@ -1194,7 +1194,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 128
           },
           "scroll_row": 143,
@@ -1213,7 +1213,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 144
           },
           "scroll_row": 135,
@@ -1223,7 +1223,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 128
           },
           "scroll_row": 135,
@@ -1254,7 +1254,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 208
           },
           "scroll_row": 107,
@@ -1264,7 +1264,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 160
           },
           "scroll_row": 107,
@@ -1281,7 +1281,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 96
           },
           "scroll_row": 99,
@@ -1291,7 +1291,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 96
           },
           "scroll_row": 91,
@@ -1301,7 +1301,7 @@
           "handler": "add_ground_object",
           "object_type": 54,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 120
           },
           "scroll_row": 87,
@@ -1325,7 +1325,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 208
           },
           "scroll_row": 73,
@@ -1335,7 +1335,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 160
           },
           "scroll_row": 73,
@@ -1352,7 +1352,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 192
           },
           "scroll_row": 54,
@@ -1362,7 +1362,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 168
           },
           "scroll_row": 54,
@@ -1372,7 +1372,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 144
           },
           "scroll_row": 54,
@@ -1382,7 +1382,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 120
           },
           "scroll_row": 54,
@@ -1392,7 +1392,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 144
           },
           "scroll_row": 44,
@@ -1409,7 +1409,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 128
           },
           "scroll_row": 31,
@@ -1419,7 +1419,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 96
           },
           "scroll_row": 31,
@@ -1429,7 +1429,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 64
           },
           "scroll_row": 31,
@@ -1448,7 +1448,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 96
           },
           "scroll_row": 23,
@@ -1458,7 +1458,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 32
           },
           "scroll_row": 23,
@@ -1514,7 +1514,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 156
           },
           "scroll_row": 237,
@@ -1535,7 +1535,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 44
           },
           "scroll_row": 227,
@@ -1545,7 +1545,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 96
           },
           "scroll_row": 219,
@@ -1555,7 +1555,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 80
           },
           "scroll_row": 219,
@@ -1580,7 +1580,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 124
           },
           "scroll_row": 209,
@@ -1597,7 +1597,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 176
           },
           "scroll_row": 197,
@@ -1607,7 +1607,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 160
           },
           "scroll_row": 197,
@@ -1617,7 +1617,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 96
           },
           "scroll_row": 197,
@@ -1642,7 +1642,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 36
           },
           "scroll_row": 189,
@@ -1659,7 +1659,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 80
           },
           "scroll_row": 175,
@@ -1669,7 +1669,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 64
           },
           "scroll_row": 173,
@@ -1679,7 +1679,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 80
           },
           "scroll_row": 170,
@@ -1689,7 +1689,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 64
           },
           "scroll_row": 167,
@@ -1718,7 +1718,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 36
           },
           "scroll_row": 167,
@@ -1950,7 +1950,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 160
           },
           "scroll_row": 221,
@@ -1960,7 +1960,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 144
           },
           "scroll_row": 221,
@@ -1970,7 +1970,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 112
           },
           "scroll_row": 219,
@@ -1980,7 +1980,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 160
           },
           "scroll_row": 219,
@@ -1990,7 +1990,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 144
           },
           "scroll_row": 219,
@@ -2000,7 +2000,7 @@
           "handler": "add_ground_object",
           "object_type": 61,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 192
           },
           "scroll_row": 209,
@@ -2017,7 +2017,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 160
           },
           "scroll_row": 191,
@@ -2034,7 +2034,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 96
           },
           "scroll_row": 187,
@@ -2044,7 +2044,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 160
           },
           "scroll_row": 183,
@@ -2061,7 +2061,7 @@
           "handler": "add_ground_object",
           "object_type": 63,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 96
           },
           "scroll_row": 179,
@@ -2071,7 +2071,7 @@
           "handler": "add_ground_object",
           "object_type": 63,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 32
           },
           "scroll_row": 175,
@@ -2088,7 +2088,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 104
           },
           "scroll_row": 165,
@@ -2098,7 +2098,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 64
           },
           "scroll_row": 155,
@@ -2108,7 +2108,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 128
           },
           "scroll_row": 151,
@@ -2118,7 +2118,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 160
           },
           "scroll_row": 149,
@@ -2128,7 +2128,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 192
           },
           "scroll_row": 147,
@@ -2212,7 +2212,7 @@
               }
             ],
             "path_step_count": 12,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 96
           },
           "scroll_row": 113,
@@ -2222,7 +2222,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 32
           },
           "scroll_row": 113,
@@ -2250,7 +2250,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 128
           },
           "scroll_row": 107,
@@ -2260,7 +2260,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 128
           },
           "scroll_row": 105,
@@ -2270,7 +2270,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 128
           },
           "scroll_row": 103,
@@ -2280,7 +2280,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 128
           },
           "scroll_row": 101,
@@ -2304,7 +2304,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 192
           },
           "scroll_row": 75,
@@ -2321,7 +2321,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 128
           },
           "scroll_row": 53,
@@ -2346,7 +2346,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 216
           },
           "scroll_row": 50,
@@ -2356,7 +2356,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 64
           },
           "scroll_row": 49,
@@ -2380,7 +2380,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 192
           },
           "scroll_row": 35,
@@ -2397,7 +2397,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 32
           },
           "scroll_row": 32,
@@ -2414,7 +2414,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 192
           },
           "scroll_row": 29,
@@ -2424,7 +2424,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 192
           },
           "scroll_row": 23,
@@ -2434,7 +2434,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 128
           },
           "scroll_row": 23,
@@ -2444,7 +2444,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 64
           },
           "scroll_row": 23,
@@ -2478,7 +2478,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 192
           },
           "scroll_row": 243,
@@ -2488,7 +2488,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 176
           },
           "scroll_row": 243,
@@ -2513,7 +2513,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 60
           },
           "scroll_row": 235,
@@ -2534,7 +2534,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 52
           },
           "scroll_row": 219,
@@ -2544,7 +2544,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 192
           },
           "scroll_row": 215,
@@ -2554,7 +2554,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 208
           },
           "scroll_row": 213,
@@ -2588,7 +2588,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 28
           },
           "scroll_row": 203,
@@ -2605,7 +2605,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 28
           },
           "scroll_row": 187,
@@ -2615,7 +2615,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 192
           },
           "scroll_row": 182,
@@ -2625,7 +2625,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 208
           },
           "scroll_row": 182,
@@ -2644,7 +2644,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 176
           },
           "scroll_row": 170,
@@ -2654,7 +2654,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 160
           },
           "scroll_row": 170,
@@ -2664,7 +2664,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 160
           },
           "scroll_row": 159,
@@ -2681,7 +2681,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 48
           },
           "scroll_row": 139,
@@ -2698,7 +2698,7 @@
           "handler": "add_ground_object",
           "object_type": 45,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 192
           },
           "scroll_row": 119,
@@ -2708,7 +2708,7 @@
           "handler": "add_ground_object",
           "object_type": 58,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 72
           },
           "scroll_row": 111,
@@ -2718,7 +2718,7 @@
           "handler": "add_ground_object",
           "object_type": 56,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 96
           },
           "scroll_row": 107,
@@ -2728,7 +2728,7 @@
           "handler": "add_ground_object",
           "object_type": 56,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 48
           },
           "scroll_row": 107,
@@ -2738,7 +2738,7 @@
           "handler": "add_ground_object",
           "object_type": 56,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 72
           },
           "scroll_row": 103,
@@ -2748,7 +2748,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 128
           },
           "scroll_row": 95,
@@ -2758,7 +2758,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 112
           },
           "scroll_row": 93,
@@ -2815,7 +2815,7 @@
               }
             ],
             "path_step_count": 11,
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 20
           },
           "scroll_row": 86,
@@ -2825,7 +2825,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 112
           },
           "scroll_row": 85,
@@ -2835,7 +2835,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 128
           },
           "scroll_row": 79,
@@ -2845,7 +2845,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 208
           },
           "scroll_row": 79,
@@ -2870,7 +2870,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 216
           },
           "scroll_row": 72,
@@ -2891,7 +2891,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 72
           },
           "scroll_row": 65,
@@ -2901,7 +2901,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 112
           },
           "scroll_row": 51,
@@ -2911,7 +2911,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 112
           },
           "scroll_row": 39,
@@ -2921,7 +2921,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 144
           },
           "scroll_row": 37,
@@ -2931,7 +2931,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 176
           },
           "scroll_row": 35,
@@ -2941,7 +2941,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 192
           },
           "scroll_row": 23,
@@ -2951,7 +2951,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 160
           },
           "scroll_row": 23,
@@ -2985,7 +2985,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 128
           },
           "scroll_row": 241,
@@ -2995,7 +2995,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 128
           },
           "scroll_row": 239,
@@ -3050,7 +3050,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 112
           },
           "scroll_row": 201,
@@ -3087,7 +3087,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 88
           },
           "scroll_row": 198,
@@ -3124,7 +3124,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 64
           },
           "scroll_row": 195,
@@ -3161,7 +3161,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 64
           },
           "scroll_row": 192,
@@ -3198,7 +3198,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 64
           },
           "scroll_row": 189,
@@ -3239,7 +3239,7 @@
               }
             ],
             "path_step_count": 7,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 88
           },
           "scroll_row": 186,
@@ -3258,7 +3258,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 112
           },
           "scroll_row": 161,
@@ -3268,7 +3268,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 96
           },
           "scroll_row": 159,
@@ -3287,7 +3287,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 80
           },
           "scroll_row": 157,
@@ -3297,7 +3297,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 64
           },
           "scroll_row": 155,
@@ -3307,7 +3307,7 @@
           "handler": "add_object",
           "object_type": 16,
           "params": {
-            "slot": 116
+            "slot": 58
           },
           "scroll_row": 131,
           "source_line": 955
@@ -3316,7 +3316,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 64
           },
           "scroll_row": 129,
@@ -3326,7 +3326,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 216
           },
           "scroll_row": 123,
@@ -3343,7 +3343,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 176
           },
           "scroll_row": 107,
@@ -3353,7 +3353,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 128
           },
           "scroll_row": 107,
@@ -3363,7 +3363,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 80
           },
           "scroll_row": 107,
@@ -3373,7 +3373,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 32
           },
           "scroll_row": 107,
@@ -3401,7 +3401,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 72
           },
           "scroll_row": 54,
@@ -3411,7 +3411,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 32
           },
           "scroll_row": 54,
@@ -3421,7 +3421,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 192
           },
           "scroll_row": 43,
@@ -3431,7 +3431,7 @@
           "handler": "add_ground_object",
           "object_type": 60,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 160
           },
           "scroll_row": 39,
@@ -3441,7 +3441,7 @@
           "handler": "add_object",
           "object_type": 17,
           "params": {
-            "slot": 118
+            "slot": 59
           },
           "scroll_row": 23,
           "source_line": 959
@@ -3450,7 +3450,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 32
           },
           "scroll_row": 17,
@@ -3528,7 +3528,7 @@
               }
             ],
             "path_step_count": 5,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 20
           },
           "scroll_row": 238,
@@ -3545,7 +3545,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 48
           },
           "scroll_row": 229,
@@ -3555,7 +3555,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 200
           },
           "scroll_row": 229,
@@ -3565,7 +3565,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 72
           },
           "scroll_row": 226,
@@ -3575,7 +3575,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 176
           },
           "scroll_row": 226,
@@ -3585,7 +3585,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 96
           },
           "scroll_row": 223,
@@ -3595,7 +3595,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 152
           },
           "scroll_row": 223,
@@ -3605,7 +3605,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 64
           },
           "scroll_row": 204,
@@ -3615,7 +3615,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 96
           },
           "scroll_row": 200,
@@ -3625,7 +3625,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 32
           },
           "scroll_row": 200,
@@ -3635,7 +3635,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 72
           },
           "scroll_row": 199,
@@ -3645,7 +3645,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 64
           },
           "scroll_row": 195,
@@ -3662,7 +3662,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 72
           },
           "scroll_row": 179,
@@ -3690,7 +3690,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 160
           },
           "scroll_row": 165,
@@ -3719,7 +3719,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 116
           },
           "scroll_row": 165,
@@ -3748,7 +3748,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 20
           },
           "scroll_row": 165,
@@ -3788,7 +3788,7 @@
               }
             ],
             "path_step_count": 5,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 124
           },
           "scroll_row": 147,
@@ -3798,7 +3798,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 80
           },
           "scroll_row": 147,
@@ -3808,7 +3808,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 64
           },
           "scroll_row": 147,
@@ -3833,7 +3833,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 20
           },
           "scroll_row": 147,
@@ -3881,7 +3881,7 @@
               }
             ],
             "path_step_count": 7,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 132
           },
           "scroll_row": 127,
@@ -3891,7 +3891,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 208
           },
           "scroll_row": 119,
@@ -3908,7 +3908,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 88
           },
           "scroll_row": 115,
@@ -3918,7 +3918,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 72
           },
           "scroll_row": 115,
@@ -3935,7 +3935,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 20
           },
           "scroll_row": 109,
@@ -3952,7 +3952,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 20
           },
           "scroll_row": 106,
@@ -3969,7 +3969,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 20
           },
           "scroll_row": 103,
@@ -3979,7 +3979,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 20
           },
           "scroll_row": 100,
@@ -3989,7 +3989,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 20
           },
           "scroll_row": 97,
@@ -4026,7 +4026,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 128
           },
           "scroll_row": 71,
@@ -4071,7 +4071,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 104
           },
           "scroll_row": 71,
@@ -4096,7 +4096,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 80
           },
           "scroll_row": 71,
@@ -4106,7 +4106,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 184
           },
           "scroll_row": 55,
@@ -4116,7 +4116,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 72
           },
           "scroll_row": 55,
@@ -4137,7 +4137,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 80
           },
           "scroll_row": 39,
@@ -4158,7 +4158,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 56
           },
           "scroll_row": 36,
@@ -4179,7 +4179,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 32
           },
           "scroll_row": 33,
@@ -4204,7 +4204,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 144
           },
           "scroll_row": 31,
@@ -4229,7 +4229,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 168
           },
           "scroll_row": 28,
@@ -4254,7 +4254,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 192
           },
           "scroll_row": 25,
@@ -4264,7 +4264,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 136
           },
           "scroll_row": 25,
@@ -4274,7 +4274,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 104
           },
           "scroll_row": 25,
@@ -4284,7 +4284,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 72
           },
           "scroll_row": 25,
@@ -4294,7 +4294,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 136
           },
           "scroll_row": 19,
@@ -4304,7 +4304,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 72
           },
           "scroll_row": 19,
@@ -4338,7 +4338,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 160
           },
           "scroll_row": 245,
@@ -4348,7 +4348,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 128
           },
           "scroll_row": 243,
@@ -4358,7 +4358,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 96
           },
           "scroll_row": 241,
@@ -4368,7 +4368,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 64
           },
           "scroll_row": 239,
@@ -4394,7 +4394,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 80
           },
           "scroll_row": 213,
@@ -4462,7 +4462,7 @@
           "handler": "add_object",
           "object_type": 24,
           "params": {
-            "slot": 118
+            "slot": 59
           },
           "scroll_row": 135,
           "source_line": 989
@@ -4669,7 +4669,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 216
           },
           "scroll_row": 198,
@@ -4714,7 +4714,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 152
           },
           "scroll_row": 198,
@@ -4759,7 +4759,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 88
           },
           "scroll_row": 198,
@@ -4804,7 +4804,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 184
           },
           "scroll_row": 190,
@@ -4849,7 +4849,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 120
           },
           "scroll_row": 190,
@@ -4890,7 +4890,7 @@
               }
             ],
             "path_step_count": 7,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 200
           },
           "scroll_row": 184,
@@ -4931,7 +4931,7 @@
               }
             ],
             "path_step_count": 7,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 152
           },
           "scroll_row": 184,
@@ -4972,7 +4972,7 @@
               }
             ],
             "path_step_count": 7,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 104
           },
           "scroll_row": 184,
@@ -4982,7 +4982,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 176
           },
           "scroll_row": 169,
@@ -4992,7 +4992,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 144
           },
           "scroll_row": 169,
@@ -5002,7 +5002,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 160
           },
           "scroll_row": 167,
@@ -5012,7 +5012,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 176
           },
           "scroll_row": 165,
@@ -5022,7 +5022,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 144
           },
           "scroll_row": 165,
@@ -5032,7 +5032,7 @@
           "handler": "add_object",
           "object_type": 24,
           "params": {
-            "slot": 118
+            "slot": 59
           },
           "scroll_row": 155,
           "source_line": 1006
@@ -5041,7 +5041,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 64
           },
           "scroll_row": 145,
@@ -5051,7 +5051,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 64
           },
           "scroll_row": 143,
@@ -5061,7 +5061,7 @@
           "handler": "add_object",
           "object_type": 24,
           "params": {
-            "slot": 118
+            "slot": 59
           },
           "scroll_row": 139,
           "source_line": 1007
@@ -5070,7 +5070,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 80
           },
           "scroll_row": 135,
@@ -5080,7 +5080,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 64
           },
           "scroll_row": 135,
@@ -5090,7 +5090,7 @@
           "handler": "add_object",
           "object_type": 24,
           "params": {
-            "slot": 118
+            "slot": 59
           },
           "scroll_row": 123,
           "source_line": 1007
@@ -5099,7 +5099,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 192
           },
           "scroll_row": 111,
@@ -5109,7 +5109,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 160
           },
           "scroll_row": 111,
@@ -5119,7 +5119,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 128
           },
           "scroll_row": 111,
@@ -5196,7 +5196,7 @@
               }
             ],
             "path_step_count": 16,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 152
           },
           "scroll_row": 100,
@@ -5206,7 +5206,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 192
           },
           "scroll_row": 71,
@@ -5216,7 +5216,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 160
           },
           "scroll_row": 71,
@@ -5226,7 +5226,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 128
           },
           "scroll_row": 71,
@@ -5236,7 +5236,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 96
           },
           "scroll_row": 71,
@@ -5246,7 +5246,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 192
           },
           "scroll_row": 67,
@@ -5256,7 +5256,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 160
           },
           "scroll_row": 67,
@@ -5266,7 +5266,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 128
           },
           "scroll_row": 67,
@@ -5276,7 +5276,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 96
           },
           "scroll_row": 67,
@@ -5286,7 +5286,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 128
           },
           "scroll_row": 54,
@@ -5296,7 +5296,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 96
           },
           "scroll_row": 54,
@@ -5306,7 +5306,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 64
           },
           "scroll_row": 54,
@@ -5316,7 +5316,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 80
           },
           "scroll_row": 43,
@@ -5326,7 +5326,7 @@
           "handler": "add_ground_object",
           "object_type": 32,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 128
           },
           "scroll_row": 33,
@@ -5336,7 +5336,7 @@
           "handler": "add_ground_object",
           "object_type": 32,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 128
           },
           "scroll_row": 27,
@@ -5346,7 +5346,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 208
           },
           "scroll_row": 25,
@@ -5356,7 +5356,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 32
           },
           "scroll_row": 25,
@@ -5366,7 +5366,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 208
           },
           "scroll_row": 19,
@@ -5376,7 +5376,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 32
           },
           "scroll_row": 19,
@@ -5401,7 +5401,7 @@
           "handler": "add_object",
           "object_type": 17,
           "params": {
-            "slot": 116
+            "slot": 58
           },
           "scroll_row": 251,
           "source_line": 1018
@@ -5419,7 +5419,7 @@
           "handler": "add_ground_object",
           "object_type": 45,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 96
           },
           "scroll_row": 233,
@@ -5445,7 +5445,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 156
           },
           "scroll_row": 228,
@@ -5466,7 +5466,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 44
           },
           "scroll_row": 220,
@@ -5476,7 +5476,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 176
           },
           "scroll_row": 203,
@@ -5486,7 +5486,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 160
           },
           "scroll_row": 203,
@@ -5527,7 +5527,7 @@
               }
             ],
             "path_step_count": 7,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 44
           },
           "scroll_row": 203,
@@ -5544,7 +5544,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 124
           },
           "scroll_row": 195,
@@ -5554,7 +5554,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 124
           },
           "scroll_row": 191,
@@ -5564,7 +5564,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 124
           },
           "scroll_row": 187,
@@ -5574,7 +5574,7 @@
           "handler": "add_ground_object",
           "object_type": 57,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 124
           },
           "scroll_row": 183,
@@ -5584,7 +5584,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 36
           },
           "scroll_row": 175,
@@ -5594,7 +5594,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 36
           },
           "scroll_row": 167,
@@ -5627,7 +5627,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 112
           },
           "scroll_row": 139,
@@ -5637,7 +5637,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 112
           },
           "scroll_row": 132,
@@ -5695,7 +5695,7 @@
               }
             ],
             "path_step_count": 9,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 52
           },
           "scroll_row": 119,
@@ -5705,7 +5705,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 96
           },
           "scroll_row": 117,
@@ -5715,7 +5715,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 112
           },
           "scroll_row": 115,
@@ -5732,7 +5732,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 128
           },
           "scroll_row": 113,
@@ -5742,7 +5742,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 144
           },
           "scroll_row": 111,
@@ -5752,7 +5752,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 160
           },
           "scroll_row": 109,
@@ -5762,7 +5762,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 176
           },
           "scroll_row": 107,
@@ -5772,7 +5772,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 192
           },
           "scroll_row": 105,
@@ -5782,7 +5782,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 208
           },
           "scroll_row": 103,
@@ -5859,7 +5859,7 @@
               }
             ],
             "path_step_count": 5,
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 224
           },
           "scroll_row": 43,
@@ -5869,7 +5869,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 104
           },
           "scroll_row": 39,
@@ -5886,7 +5886,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 32
           },
           "scroll_row": 30,
@@ -5896,7 +5896,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 208
           },
           "scroll_row": 29,
@@ -5906,7 +5906,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 160
           },
           "scroll_row": 29,
@@ -5916,7 +5916,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 56
           },
           "scroll_row": 27,
@@ -5926,7 +5926,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 80
           },
           "scroll_row": 24,
@@ -5936,7 +5936,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 208
           },
           "scroll_row": 23,
@@ -5946,7 +5946,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 160
           },
           "scroll_row": 23,
@@ -5956,7 +5956,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 104
           },
           "scroll_row": 21,
@@ -6070,7 +6070,7 @@
               }
             ],
             "path_step_count": 9,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 20
           },
           "scroll_row": 238,
@@ -6080,7 +6080,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 192
           },
           "scroll_row": 229,
@@ -6090,7 +6090,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 176
           },
           "scroll_row": 229,
@@ -6100,7 +6100,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 72
           },
           "scroll_row": 229,
@@ -6110,7 +6110,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 56
           },
           "scroll_row": 229,
@@ -6120,7 +6120,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 192
           },
           "scroll_row": 227,
@@ -6130,7 +6130,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 176
           },
           "scroll_row": 227,
@@ -6140,7 +6140,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 72
           },
           "scroll_row": 227,
@@ -6150,7 +6150,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 56
           },
           "scroll_row": 227,
@@ -6179,7 +6179,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 124
           },
           "scroll_row": 220,
@@ -6189,7 +6189,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 72
           },
           "scroll_row": 201,
@@ -6199,7 +6199,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 56
           },
           "scroll_row": 201,
@@ -6209,7 +6209,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 72
           },
           "scroll_row": 199,
@@ -6219,7 +6219,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 56
           },
           "scroll_row": 199,
@@ -6229,7 +6229,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 176
           },
           "scroll_row": 189,
@@ -6239,7 +6239,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 176
           },
           "scroll_row": 187,
@@ -6249,7 +6249,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 144
           },
           "scroll_row": 187,
@@ -6259,7 +6259,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 144
           },
           "scroll_row": 185,
@@ -6276,7 +6276,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 204
           },
           "scroll_row": 179,
@@ -6305,7 +6305,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 116
           },
           "scroll_row": 167,
@@ -6322,7 +6322,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 20
           },
           "scroll_row": 163,
@@ -6346,7 +6346,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 20
           },
           "scroll_row": 161,
@@ -6374,7 +6374,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 124
           },
           "scroll_row": 147,
@@ -6384,7 +6384,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 224
           },
           "scroll_row": 141,
@@ -6394,7 +6394,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 208
           },
           "scroll_row": 141,
@@ -6404,7 +6404,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 224
           },
           "scroll_row": 139,
@@ -6414,7 +6414,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 208
           },
           "scroll_row": 139,
@@ -6438,7 +6438,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 96
           },
           "scroll_row": 119,
@@ -6448,7 +6448,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 80
           },
           "scroll_row": 119,
@@ -6484,7 +6484,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 20
           },
           "scroll_row": 115,
@@ -6494,7 +6494,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 96
           },
           "scroll_row": 111,
@@ -6504,7 +6504,7 @@
           "handler": "add_ground_object",
           "object_type": 30,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 80
           },
           "scroll_row": 111,
@@ -6528,7 +6528,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 168
           },
           "scroll_row": 85,
@@ -6553,7 +6553,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 120
           },
           "scroll_row": 71,
@@ -6578,7 +6578,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 144
           },
           "scroll_row": 71,
@@ -6607,7 +6607,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 168
           },
           "scroll_row": 71,
@@ -6617,7 +6617,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 192
           },
           "scroll_row": 55,
@@ -6627,7 +6627,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 176
           },
           "scroll_row": 55,
@@ -6637,7 +6637,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 104
           },
           "scroll_row": 48,
@@ -6647,7 +6647,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 88
           },
           "scroll_row": 46,
@@ -6657,7 +6657,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 72
           },
           "scroll_row": 44,
@@ -6667,7 +6667,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 56
           },
           "scroll_row": 42,
@@ -6677,7 +6677,7 @@
           "handler": "add_ground_object",
           "object_type": 54,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 20
           },
           "scroll_row": 39,
@@ -6687,7 +6687,7 @@
           "handler": "add_ground_object",
           "object_type": 54,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 20
           },
           "scroll_row": 35,
@@ -6697,7 +6697,7 @@
           "handler": "add_ground_object",
           "object_type": 54,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 20
           },
           "scroll_row": 31,
@@ -6707,7 +6707,7 @@
           "handler": "add_ground_object",
           "object_type": 57,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 20
           },
           "scroll_row": 27,
@@ -6752,7 +6752,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 136
           },
           "scroll_row": 24,
@@ -6797,7 +6797,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 72
           },
           "scroll_row": 24,
@@ -6807,7 +6807,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 112
           },
           "scroll_row": 23,
@@ -6832,7 +6832,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 32
           },
           "scroll_row": 247,
@@ -6842,7 +6842,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 160
           },
           "scroll_row": 243,
@@ -6852,7 +6852,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 112
           },
           "scroll_row": 243,
@@ -6862,7 +6862,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 160
           },
           "scroll_row": 237,
@@ -6872,7 +6872,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 144
           },
           "scroll_row": 235,
@@ -6882,7 +6882,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 128
           },
           "scroll_row": 233,
@@ -6892,7 +6892,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 112
           },
           "scroll_row": 231,
@@ -6909,7 +6909,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 192
           },
           "scroll_row": 223,
@@ -6919,7 +6919,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 192
           },
           "scroll_row": 217,
@@ -6943,7 +6943,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 176
           },
           "scroll_row": 177,
@@ -6953,7 +6953,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 80
           },
           "scroll_row": 177,
@@ -6970,7 +6970,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 144
           },
           "scroll_row": 161,
@@ -6980,7 +6980,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 112
           },
           "scroll_row": 157,
@@ -6990,7 +6990,7 @@
           "handler": "add_ground_object",
           "object_type": 64,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 80
           },
           "scroll_row": 153,
@@ -7000,7 +7000,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 48
           },
           "scroll_row": 149,
@@ -7017,7 +7017,7 @@
           "handler": "add_ground_object",
           "object_type": 64,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 80
           },
           "scroll_row": 141,
@@ -7027,7 +7027,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 112
           },
           "scroll_row": 137,
@@ -7037,7 +7037,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 144
           },
           "scroll_row": 133,
@@ -7047,7 +7047,7 @@
           "handler": "add_ground_object",
           "object_type": 62,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 176
           },
           "scroll_row": 129,
@@ -7064,7 +7064,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 208
           },
           "scroll_row": 113,
@@ -7074,7 +7074,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 192
           },
           "scroll_row": 111,
@@ -7084,7 +7084,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 176
           },
           "scroll_row": 109,
@@ -7094,7 +7094,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 160
           },
           "scroll_row": 107,
@@ -7104,7 +7104,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 144
           },
           "scroll_row": 105,
@@ -7144,7 +7144,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 48
           },
           "scroll_row": 64,
@@ -7154,7 +7154,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 32
           },
           "scroll_row": 64,
@@ -7171,7 +7171,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 192
           },
           "scroll_row": 54,
@@ -7192,7 +7192,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 224
           },
           "scroll_row": 37,
@@ -7213,7 +7213,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 16
           },
           "scroll_row": 37,
@@ -7234,7 +7234,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 208
           },
           "scroll_row": 35,
@@ -7255,7 +7255,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 32
           },
           "scroll_row": 35,
@@ -7452,7 +7452,7 @@
           "handler": "add_object",
           "object_type": 24,
           "params": {
-            "slot": 118
+            "slot": 59
           },
           "scroll_row": 115,
           "source_line": 1074
@@ -7610,7 +7610,7 @@
               }
             ],
             "path_step_count": 5,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 60
           },
           "scroll_row": 239,
@@ -7620,7 +7620,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 208
           },
           "scroll_row": 238,
@@ -7630,7 +7630,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 128
           },
           "scroll_row": 238,
@@ -7655,7 +7655,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 60
           },
           "scroll_row": 230,
@@ -7665,7 +7665,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 128
           },
           "scroll_row": 229,
@@ -7690,7 +7690,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 60
           },
           "scroll_row": 222,
@@ -7700,7 +7700,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 192
           },
           "scroll_row": 215,
@@ -7737,7 +7737,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 38
           },
           "scroll_row": 215,
@@ -7747,7 +7747,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 208
           },
           "scroll_row": 213,
@@ -7757,7 +7757,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 80
           },
           "scroll_row": 210,
@@ -7786,7 +7786,7 @@
               }
             ],
             "path_step_count": 4,
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 28
           },
           "scroll_row": 205,
@@ -7796,7 +7796,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 80
           },
           "scroll_row": 198,
@@ -7821,7 +7821,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 28
           },
           "scroll_row": 194,
@@ -7831,7 +7831,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 28
           },
           "scroll_row": 190,
@@ -7841,7 +7841,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 28
           },
           "scroll_row": 186,
@@ -7851,7 +7851,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 208
           },
           "scroll_row": 182,
@@ -7861,7 +7861,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 192
           },
           "scroll_row": 182,
@@ -7871,7 +7871,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 80
           },
           "scroll_row": 182,
@@ -7888,7 +7888,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 176
           },
           "scroll_row": 169,
@@ -7905,7 +7905,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 160
           },
           "scroll_row": 160,
@@ -7915,7 +7915,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 144
           },
           "scroll_row": 160,
@@ -7946,7 +7946,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 200
           },
           "scroll_row": 120,
@@ -7991,7 +7991,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 120
           },
           "scroll_row": 118,
@@ -8036,7 +8036,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 24
           },
           "scroll_row": 118,
@@ -8085,7 +8085,7 @@
               }
             ],
             "path_step_count": 9,
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 112
           },
           "scroll_row": 107,
@@ -8134,7 +8134,7 @@
               }
             ],
             "path_step_count": 9,
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 32
           },
           "scroll_row": 107,
@@ -8175,7 +8175,7 @@
               }
             ],
             "path_step_count": 7,
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 164
           },
           "scroll_row": 97,
@@ -8185,7 +8185,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 128
           },
           "scroll_row": 95,
@@ -8195,7 +8195,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 96
           },
           "scroll_row": 91,
@@ -8205,7 +8205,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 32
           },
           "scroll_row": 91,
@@ -8215,7 +8215,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 64
           },
           "scroll_row": 87,
@@ -8252,7 +8252,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 172
           },
           "scroll_row": 78,
@@ -8289,7 +8289,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 212
           },
           "scroll_row": 72,
@@ -8326,7 +8326,7 @@
               }
             ],
             "path_step_count": 6,
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 68
           },
           "scroll_row": 71,
@@ -8336,7 +8336,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 176
           },
           "scroll_row": 59,
@@ -8346,7 +8346,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 144
           },
           "scroll_row": 55,
@@ -8356,7 +8356,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 144
           },
           "scroll_row": 31,
@@ -8366,7 +8366,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 112
           },
           "scroll_row": 31,
@@ -8376,7 +8376,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 80
           },
           "scroll_row": 31,
@@ -8386,7 +8386,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 112
           },
           "scroll_row": 27,
@@ -8396,7 +8396,7 @@
           "handler": "add_ground_object",
           "object_type": 53,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 36
           },
           "scroll_row": 27,
@@ -8415,7 +8415,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 36
           },
           "scroll_row": 23,
@@ -8425,7 +8425,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 192
           },
           "scroll_row": 21,
@@ -8435,7 +8435,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 36
           },
           "scroll_row": 19,
@@ -8481,7 +8481,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 32
           },
           "scroll_row": 243,
@@ -8513,7 +8513,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 156
           },
           "scroll_row": 231,
@@ -8523,7 +8523,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 96
           },
           "scroll_row": 229,
@@ -8548,7 +8548,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 36
           },
           "scroll_row": 225,
@@ -8573,7 +8573,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 156
           },
           "scroll_row": 221,
@@ -8583,7 +8583,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 120
           },
           "scroll_row": 215,
@@ -8593,7 +8593,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 72
           },
           "scroll_row": 215,
@@ -8618,7 +8618,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 36
           },
           "scroll_row": 215,
@@ -8643,7 +8643,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 156
           },
           "scroll_row": 211,
@@ -8653,7 +8653,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 96
           },
           "scroll_row": 211,
@@ -8678,7 +8678,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 36
           },
           "scroll_row": 205,
@@ -8688,7 +8688,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 200
           },
           "scroll_row": 203,
@@ -8698,7 +8698,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 96
           },
           "scroll_row": 203,
@@ -8743,7 +8743,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 156
           },
           "scroll_row": 197,
@@ -8788,7 +8788,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 36
           },
           "scroll_row": 197,
@@ -8812,7 +8812,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 112
           },
           "scroll_row": 187,
@@ -8822,7 +8822,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 80
           },
           "scroll_row": 187,
@@ -8832,7 +8832,7 @@
           "handler": "add_ground_object",
           "object_type": 60,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 112
           },
           "scroll_row": 183,
@@ -8842,7 +8842,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 80
           },
           "scroll_row": 183,
@@ -8866,7 +8866,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 128
           },
           "scroll_row": 149,
@@ -8883,7 +8883,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 112
           },
           "scroll_row": 147,
@@ -8893,7 +8893,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 96
           },
           "scroll_row": 145,
@@ -8903,7 +8903,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 80
           },
           "scroll_row": 143,
@@ -8920,7 +8920,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 224
           },
           "scroll_row": 125,
@@ -8930,7 +8930,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 136
           },
           "scroll_row": 125,
@@ -8940,7 +8940,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 80
           },
           "scroll_row": 125,
@@ -8950,7 +8950,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 192
           },
           "scroll_row": 121,
@@ -8960,7 +8960,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 108
           },
           "scroll_row": 121,
@@ -8970,7 +8970,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 24
           },
           "scroll_row": 121,
@@ -8980,7 +8980,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 128
           },
           "scroll_row": 111,
@@ -8990,7 +8990,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 26,
+            "slot": 13,
             "sprite_y": 52
           },
           "scroll_row": 111,
@@ -9000,7 +9000,7 @@
           "handler": "add_ground_object",
           "object_type": 59,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 52
           },
           "scroll_row": 107,
@@ -9017,7 +9017,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 30,
+            "slot": 15,
             "sprite_y": 176
           },
           "scroll_row": 103,
@@ -9027,7 +9027,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 160
           },
           "scroll_row": 101,
@@ -9051,7 +9051,7 @@
           "handler": "add_ground_object",
           "object_type": 38,
           "params": {
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 128
           },
           "scroll_row": 79,
@@ -9061,7 +9061,7 @@
           "handler": "add_ground_object",
           "object_type": 31,
           "params": {
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 104
           },
           "scroll_row": 76,
@@ -9082,7 +9082,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 52
           },
           "scroll_row": 75,
@@ -9092,7 +9092,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 12,
+            "slot": 6,
             "sprite_y": 112
           },
           "scroll_row": 68,
@@ -9102,7 +9102,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 14,
+            "slot": 7,
             "sprite_y": 192
           },
           "scroll_row": 62,
@@ -9112,7 +9112,7 @@
           "handler": "add_ground_object",
           "object_type": 29,
           "params": {
-            "slot": 16,
+            "slot": 8,
             "sprite_y": 112
           },
           "scroll_row": 62,
@@ -9122,7 +9122,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 18,
+            "slot": 9,
             "sprite_y": 24
           },
           "scroll_row": 62,
@@ -9132,7 +9132,7 @@
           "handler": "add_ground_object",
           "object_type": 27,
           "params": {
-            "slot": 20,
+            "slot": 10,
             "sprite_y": 112
           },
           "scroll_row": 56,
@@ -9157,7 +9157,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 22,
+            "slot": 11,
             "sprite_y": 164
           },
           "scroll_row": 55,
@@ -9182,7 +9182,7 @@
               }
             ],
             "path_step_count": 3,
-            "slot": 4,
+            "slot": 2,
             "sprite_y": 52
           },
           "scroll_row": 55,
@@ -9219,7 +9219,7 @@
               }
             ],
             "path_step_count": 2,
-            "slot": 6,
+            "slot": 3,
             "sprite_y": 72
           },
           "scroll_row": 34,
@@ -9236,7 +9236,7 @@
               }
             ],
             "path_step_count": 1,
-            "slot": 8,
+            "slot": 4,
             "sprite_y": 52
           },
           "scroll_row": 34,
@@ -9281,7 +9281,7 @@
               }
             ],
             "path_step_count": 8,
-            "slot": 10,
+            "slot": 5,
             "sprite_y": 72
           },
           "scroll_row": 27,
@@ -9291,7 +9291,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 24,
+            "slot": 12,
             "sprite_y": 144
           },
           "scroll_row": 23,
@@ -9301,7 +9301,7 @@
           "handler": "add_ground_object",
           "object_type": 33,
           "params": {
-            "slot": 28,
+            "slot": 14,
             "sprite_y": 112
           },
           "scroll_row": 23,
@@ -9351,7 +9351,7 @@
       "obj_fn_tbl",
       "sub_fn_2_handler"
     ],
-    "record_format": "records are [scroll_row, object_type, params...]; the type indexes obj_fn_tbl (1-based) to a handler that consumes a fixed parameter width, except the Domogram handler whose third parameter byte declares how many 2-byte path vectors follow"
+    "record_format": "records are [scroll_row, object_type, params...]; the type indexes obj_fn_tbl (1-based) to a handler that consumes a fixed parameter width, except the Domogram handler whose third parameter byte declares how many 2-byte path steps follow. The emitted slot field is the object-slot index, decoded from the source byte (a RAM offset equal to twice the slot); most placements target the 16 ground slots, and a few add_object records target flying slots"
   },
   "provenance": {
     "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
