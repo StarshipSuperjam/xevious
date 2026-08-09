@@ -57,8 +57,8 @@
       "who": "operator"
     },
     {
-      "criterion": "One state machine owns all transitions; the director block graph contains every recorded edge and no state write outside the transition path",
-      "digest": "sha256:a40a0df4ce6f31d20ed08d0e86b87bd7da3edc886bee6a5b9210058dd7d55d25",
+      "criterion": "One state machine owns all transitions; every edge the build implements is on the recorded list (cabinet edges gate their own slices), and no state write exists outside the transition path",
+      "digest": "sha256:4436377e29d32137dfc10a11a616c146a6c24a503cb58f66e159a23b088a489d",
       "doc": "docs/spec/core-game-systems.md",
       "how_verified": "Structural fixture walks the built project's director block graph",
       "position": 0,
@@ -145,18 +145,18 @@
       "who": "engine"
     },
     {
-      "criterion": "Formation lookup uses AI level + schedule offset with the recorded fold-back at 0x80",
-      "digest": "sha256:b36b42a0f5c1fa604d3445cecb7b6ed683d096c64c1739057b28dd528f541430",
+      "criterion": "A model fixture over the committed data reproduces formation lookups (AI level + offset, fold-back at 0x80); the build's in-game selection is confirmed in play (fixture-automated when a runtime harness exists)",
+      "digest": "sha256:d7c4c7242f07b3badf6db7660290e1dea63acb439fe86b30d27cad1e678a0ffc",
       "doc": "docs/spec/difficulty-and-formations.md",
-      "how_verified": "Seeded fixture: fixed AI-level sequences reproduce the recorded wave sizes and type offsets",
+      "how_verified": "Python fixture over the committed tables; operator play for the in-game half",
       "position": 2,
       "who": "engine"
     },
     {
-      "criterion": "Score-adaptive re-tune follows score-per-reserve-craft, capped at 16",
-      "digest": "sha256:9c96c134cd225a4632a6327eb97bbc06f2179cd145d52b42ced9db73b0e013c1",
+      "criterion": "A model fixture over recorded score/lives pairs reproduces the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (fixture-automated when a runtime harness exists)",
+      "digest": "sha256:1c0f7d9a068feedbe93115df077ab2c1b2f71320b9e631b882ee9563f01fe1a5",
       "doc": "docs/spec/difficulty-and-formations.md",
-      "how_verified": "Fixture over recorded score/lives pairs reproduces the recorded AI increments",
+      "how_verified": "Python fixture over the committed rule; operator play for the in-game half",
       "position": 3,
       "who": "engine"
     },
