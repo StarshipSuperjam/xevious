@@ -1,20 +1,32 @@
 {
-  "difficulty_tbl": {
-    "field": "ai_level_increment",
-    "note": "AI-level increment per raise record, indexed by the cabinet difficulty DIP setting",
+  "area_offset_in_map_tbl": {
+    "field": "map_column_offset",
+    "note": "per-area terrain start column, indexed by area number 1-16",
     "source": {
       "file": "src/xevious_sub.68k",
-      "label": "difficulty_tbl",
+      "label": "area_offset_in_map_tbl",
       "lines": [
-        338,
-        342
+        731,
+        732
       ]
     },
     "values": [
-      2,
+      36,
       0,
-      6,
-      16
+      84,
+      14,
+      64,
+      26,
+      100,
+      4,
+      42,
+      92,
+      14,
+      4,
+      56,
+      84,
+      26,
+      0
     ]
   },
   "provenance": {

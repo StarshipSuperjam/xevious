@@ -381,6 +381,115 @@ def decode_formation_table(sub: SourceFile) -> dict:
     }
 
 
+WORD_RE = re.compile(r"^\s+\.word\s+(.+?)\s*(\|.*)?$")
+
+
+def words_under_label(source: SourceFile, label: str) -> tuple[list[int], int, int]:
+    """All ``.word`` values from ``label`` to the next label."""
+    if label not in source.labels:
+        raise ExtractionError(f"{source.relpath}: label {label} not found")
+    start = source.labels[label]
+    values: list[int] = []
+    last = start
+    for idx in range(start + 1, len(source.lines)):
+        line = source.lines[idx]
+        if LABEL_RE.match(line):
+            break
+        match = WORD_RE.match(line)
+        if match:
+            for token in match.group(1).split(","):
+                values.append(parse_value(token))
+            last = idx
+    return values, start + 1, last + 1
+
+
+def bcd_decode(value: int) -> int:
+    """Read a hex value's nibbles as decimal digits (BCD)."""
+    result = 0
+    for digit in f"{value:x}":
+        if not digit.isdigit():
+            raise ExtractionError(f"non-BCD nibble in 0x{value:X}")
+        result = result * 10 + int(digit)
+    return result
+
+
+def score_triple(b0: int, b1: int, b2: int) -> int:
+    """Decode the reference's 3-byte little-endian BCD score (implicit x10)."""
+    return (bcd_decode(b0) + bcd_decode(b1) * 100 + bcd_decode(b2) * 10000) * 10
+
+
+def decode_score_tables(main: SourceFile) -> dict:
+    """The scoring economy's labeled tables, machine-readable."""
+    value_bytes, _, v_first, _ = main.bytes_under_label("object_value_tbl")
+    pts_bytes, _, _, p_last = main.bytes_under_label("pts_10000")
+    all_bytes = value_bytes + pts_bytes
+    if len(all_bytes) % 3:
+        raise ExtractionError("object_value_tbl: byte count not a multiple of 3")
+    master = [
+        {"offset": i, "points": score_triple(*all_bytes[i : i + 3])}
+        for i in range(0, len(all_bytes), 3)
+    ]
+    if len(master) != 22 or master[0]["points"] != 10 or master[-1]["points"] != 10000:
+        raise ExtractionError("object_value_tbl: decoded shape does not match the reference")
+
+    lives, _, l_first, l_last = main.bytes_under_label("starting_solvalou_tbl")
+    if len(lives) != 4:
+        raise ExtractionError("starting_solvalou_tbl: expected 4 entries")
+
+    def bonus_words(label: str) -> list[int | None]:
+        words, _, _ = words_under_label(main, label)
+        if len(words) != 8:
+            raise ExtractionError(f"{label}: expected 8 entries")
+        return [None if w == 0xFFFF else bcd_decode(w) * 1000 for w in words]
+
+    hs_bytes, _, h_first, h_last = main.bytes_under_label("ROM_high_score_tbl_normal")
+    if len(hs_bytes) != 5 * 16:
+        raise ExtractionError("ROM_high_score_tbl_normal: expected 5 16-byte entries")
+    high_scores = [score_triple(*hs_bytes[i : i + 3]) for i in range(0, 80, 16)]
+
+    src = lambda label, lines: {"file": MAIN, "label": label, "lines": lines}
+    return {
+        "master_value_table": {
+            "source": src("object_value_tbl", [v_first, p_last]),
+            "note": (
+                "an object's points index is a byte offset into this table; "
+                "3-byte little-endian BCD with an implicit x10"
+            ),
+            "entries": master,
+        },
+        "starting_lives": {
+            "source": src("starting_solvalou_tbl", [l_first, l_last]),
+            "note": "indexed by DIP switch A bits 5-6 (raw index; physical switch mapping unrecorded)",
+            "values": lives,
+        },
+        "first_bonus_thresholds": {
+            "source": src("first_bonus_life_tbls", [l_first, l_last]),
+            "note": (
+                "points; null = bonus lives disabled at that setting. Table "
+                "selection between the two carries the recorded uncertainty in "
+                "the scoring document (the reference's two selection sites "
+                "disagree)"
+            ),
+            "table_5": bonus_words("first_bonus_life_Ks_5"),
+            "table_123": bonus_words("first_bonus_life_Ks_123"),
+        },
+        "repeat_bonus_increments": {
+            "source": src("bonus_tbl_ptrs", [l_first, l_last]),
+            "note": "points added to the threshold after each award; null = disabled",
+            "table_5": bonus_words("bonus_tbl_5"),
+            "table_123": bonus_words("bonus_tbl_123"),
+        },
+        "high_score_defaults": {
+            "source": src("ROM_high_score_tbl_normal", [h_first, h_last]),
+            "note": (
+                "scores of the five default best-five entries; the name fields "
+                "are the ROM's own credit strings and are not transcribed"
+            ),
+            "scores": high_scores,
+        },
+    }
+
+
 def longs_under_label(source: SourceFile, label: str) -> tuple[list[tuple[str, int]], int, int]:
     """All ``.long <symbol>`` entries from ``label`` to the next label."""
     if label not in source.labels:
@@ -475,20 +584,14 @@ def decode_flying_enemy_types(main: SourceFile) -> dict:
     }
 
 
-def decode_simple_tables(sub: SourceFile) -> dict:
-    tables = {}
-    for label, field_names in [
-        ("difficulty_tbl", ["ai_level_increment"]),
-        ("area_offset_in_map_tbl", ["map_column_offset"]),
-        ("andor_genesis_data", ["object_type"]),
-    ]:
-        values, _, first_line, last_line = sub.bytes_under_label(label)
-        tables[label] = {
-            "source": {"file": SUB, "label": label, "lines": [first_line, last_line]},
-            "values": values,
-            "field": field_names[0],
-        }
-    return tables
+def decode_sub_table(sub: SourceFile, label: str, field: str, note: str) -> dict:
+    values, _, first_line, last_line = sub.bytes_under_label(label)
+    return {
+        "source": {"file": SUB, "label": label, "lines": [first_line, last_line]},
+        "field": field,
+        "note": note,
+        "values": values,
+    }
 
 
 def build_payloads(checkout: Path) -> dict[str, dict]:
@@ -503,9 +606,10 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
         "source_sha256": EXPECTED_SHA256,
         "license_status": "no reusable license stated by the source repository",
         "note": (
-            "Derived numeric data and orderings only; no assembly or other "
-            "source-code text is reproduced. Line numbers refer to the pinned "
-            "commit."
+            "Derived numeric data and orderings only. Reference symbol names "
+            "and line numbers appear solely as citation locators; no assembly "
+            "instructions, comments, or prose are reproduced. Line numbers "
+            "refer to the pinned commit."
         ),
     }
     return {
@@ -530,7 +634,34 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
         },
         "difficulty.json": {
             "provenance": provenance,
-            "tables": decode_simple_tables(sub),
+            "difficulty_tbl": decode_sub_table(
+                sub,
+                "difficulty_tbl",
+                "ai_level_increment",
+                "AI-level increment per raise record, indexed by the cabinet difficulty DIP setting",
+            ),
+        },
+        "terrain.json": {
+            "provenance": provenance,
+            "area_offset_in_map_tbl": decode_sub_table(
+                sub,
+                "area_offset_in_map_tbl",
+                "map_column_offset",
+                "per-area terrain start column, indexed by area number 1-16",
+            ),
+        },
+        "andor-genesis.json": {
+            "provenance": provenance,
+            "layout": decode_sub_table(
+                sub,
+                "andor_genesis_data",
+                "object_type",
+                "the fifteen object type codes bulk-armed at boss start, in spawn order slot 1..15",
+            ),
+        },
+        "scores.json": {
+            "provenance": provenance,
+            "tables": decode_score_tables(main),
         },
         "object-types.json": {
             "provenance": provenance,

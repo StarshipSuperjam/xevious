@@ -1,0 +1,215 @@
+{
+  "provenance": {
+    "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
+    "license_status": "no reusable license stated by the source repository",
+    "note": "Derived numeric data and orderings only. Reference symbol names and line numbers appear solely as citation locators; no assembly instructions, comments, or prose are reproduced. Line numbers refer to the pinned commit.",
+    "reference": "jotd666/xevious",
+    "source_sha256": {
+      "src/map_rom.68k": "f96a17e75caa788589755bb39fb0097a17a51d957663a54885f97b7835a7d7d6",
+      "src/xevious.inc": "56b9b0e22d77c53bed7a8b31c2d8c38e5e68f94434319bfa5f524210df01ab66",
+      "src/xevious_main.68k": "bd23912e5cc25dfe7ebb69c043ab098fead300949b066ece972d5ddda29de77e",
+      "src/xevious_ram.68k": "fc40e0e8b939f665d38812e62f6dbcc994606ff0afaf34e6d9e585ae424a4773",
+      "src/xevious_sub.68k": "e2d8a77e1c9b6190949aa00ae86fc1398022c90e285d7fda38920d1d17c77e4a"
+    }
+  },
+  "tables": {
+    "first_bonus_thresholds": {
+      "note": "points; null = bonus lives disabled at that setting. Table selection between the two carries the recorded uncertainty in the scoring document (the reference's two selection sites disagree)",
+      "source": {
+        "file": "src/xevious_main.68k",
+        "label": "first_bonus_life_tbls",
+        "lines": [
+          1174,
+          1175
+        ]
+      },
+      "table_123": [
+        20000,
+        10000,
+        10000,
+        20000,
+        20000,
+        20000,
+        20000,
+        null
+      ],
+      "table_5": [
+        20000,
+        10000,
+        20000,
+        20000,
+        20000,
+        30000,
+        20000,
+        null
+      ]
+    },
+    "high_score_defaults": {
+      "note": "scores of the five default best-five entries; the name fields are the ROM's own credit strings and are not transcribed",
+      "scores": [
+        40000,
+        35000,
+        30000,
+        25000,
+        20000
+      ],
+      "source": {
+        "file": "src/xevious_main.68k",
+        "label": "ROM_high_score_tbl_normal",
+        "lines": [
+          1587,
+          1602
+        ]
+      }
+    },
+    "master_value_table": {
+      "entries": [
+        {
+          "offset": 0,
+          "points": 10
+        },
+        {
+          "offset": 3,
+          "points": 20
+        },
+        {
+          "offset": 6,
+          "points": 30
+        },
+        {
+          "offset": 9,
+          "points": 50
+        },
+        {
+          "offset": 12,
+          "points": 70
+        },
+        {
+          "offset": 15,
+          "points": 100
+        },
+        {
+          "offset": 18,
+          "points": 150
+        },
+        {
+          "offset": 21,
+          "points": 200
+        },
+        {
+          "offset": 24,
+          "points": 250
+        },
+        {
+          "offset": 27,
+          "points": 300
+        },
+        {
+          "offset": 30,
+          "points": 400
+        },
+        {
+          "offset": 33,
+          "points": 500
+        },
+        {
+          "offset": 36,
+          "points": 600
+        },
+        {
+          "offset": 39,
+          "points": 700
+        },
+        {
+          "offset": 42,
+          "points": 800
+        },
+        {
+          "offset": 45,
+          "points": 900
+        },
+        {
+          "offset": 48,
+          "points": 1000
+        },
+        {
+          "offset": 51,
+          "points": 1500
+        },
+        {
+          "offset": 54,
+          "points": 2000
+        },
+        {
+          "offset": 57,
+          "points": 2500
+        },
+        {
+          "offset": 60,
+          "points": 4000
+        },
+        {
+          "offset": 63,
+          "points": 10000
+        }
+      ],
+      "note": "an object's points index is a byte offset into this table; 3-byte little-endian BCD with an implicit x10",
+      "source": {
+        "file": "src/xevious_main.68k",
+        "label": "object_value_tbl",
+        "lines": [
+          6264,
+          6287
+        ]
+      }
+    },
+    "repeat_bonus_increments": {
+      "note": "points added to the threshold after each award; null = disabled",
+      "source": {
+        "file": "src/xevious_main.68k",
+        "label": "bonus_tbl_ptrs",
+        "lines": [
+          1174,
+          1175
+        ]
+      },
+      "table_123": [
+        60000,
+        40000,
+        50000,
+        50000,
+        70000,
+        80000,
+        60000,
+        null
+      ],
+      "table_5": [
+        70000,
+        50000,
+        50000,
+        60000,
+        80000,
+        100000,
+        80000,
+        null
+      ]
+    },
+    "starting_lives": {
+      "note": "indexed by DIP switch A bits 5-6 (raw index; physical switch mapping unrecorded)",
+      "source": {
+        "file": "src/xevious_main.68k",
+        "label": "starting_solvalou_tbl",
+        "lines": [
+          1174,
+          1175
+        ]
+      },
+      "values": [
+        5,
+        2,
+        1,
+        3
+      ]
+    }
+  }
+}
