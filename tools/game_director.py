@@ -341,9 +341,6 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
-    def wait(self, seconds: float) -> str:
-        return self.add("control_wait", inputs={"DURATION": number(seconds)})
-
     def hold_ticks(self, ticks: int) -> str:
         # An empty repeat yields one frame (tick) per iteration under Scratch's
         # screen refresh — a wall-clock-free hold, per the units rule.
@@ -1105,6 +1102,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "Stage": stage_blocks(),
         "solvalou": solvalou_blocks(),
         "blaster": blaster_blocks(),
+        # The two strips leapfrog: the scroll counter wraps at 690 steps, and each
+        # strip's seed sets its phase so they tile seamlessly (baseline geometry).
+        # area_01a starts 335 steps into the cycle (baseline pre-roll), so it wraps
+        # first after 335 steps: seed 690 - 335 = 355. area_01b runs a full cycle from
+        # its start: seed 0.
         "area_01a": terrain_blocks("area_01a", "area01_12-0", -15, TERRAIN_STEP_A_ID, 355),
         "area_01b": terrain_blocks("area_01b", "area01_11-0", 344, TERRAIN_STEP_B_ID, 0),
         "start_screen": title_blocks(),

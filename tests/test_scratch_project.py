@@ -1018,7 +1018,8 @@ class ScratchProjectTests(unittest.TestCase):
         if not has(
             "bomb",
             lambda b: b["opcode"] == "operator_equals"
-            and num(b["inputs"].get("OPERAND2")) == 0,
+            and num(b["inputs"].get("OPERAND2")) == 0
+            and b["inputs"].get("OPERAND1", [None, [None, None]])[1][1] == "bomb in flight",
         ):
             fails.add("B2-idle-test")
         if not broadcasts("bomb", "bomb"):
@@ -1070,6 +1071,12 @@ class ScratchProjectTests(unittest.TestCase):
         for strip in ("area_01a", "area_01b"):
             if not has(strip, lambda b: b["opcode"] == "looks_goforwardbackwardlayers"):
                 fails.add(f"B9-terrain-back-{strip}")
+
+        # Units rule: no wall-clock wait survives in any touched gameplay script (the
+        # blaster/terrain/death checks above plus the bomb, crosshair, and marker).
+        for name in ("bomb", "target_a", "target_b"):
+            if count(name, "control_wait") != 0:
+                fails.add(f"wall-clock-{name}")
 
         return fails
 
@@ -1190,22 +1197,76 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "solvalou", lambda b: b["opcode"] == "looks_gotofrontback")
             b["opcode"] = "looks_show"
 
+        def break_gameover_bubble(p):  # A2: re-invent the GAME OVER bubble
+            b = first(p, "solv_death", lambda b: b["opcode"] == "looks_show")
+            b["opcode"] = "looks_sayforsecs"
+
+        def break_crosshair_receive(p):  # B6: drop the crosshair bomb receiver
+            b = first(
+                p,
+                "target_a",
+                lambda b: b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"]["BROADCAST_OPTION"][0] == "bomb",
+            )
+            b["fields"]["BROADCAST_OPTION"][0] = "target_t"
+
+        def break_explosion_holds(p):  # B5: shorten one explosion hold
+            b = first(
+                p,
+                "solv_death",
+                lambda b: b["opcode"] == "control_repeat"
+                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_HOLD_TICKS,
+            )
+            b["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_HOLD_TICKS + 1]]
+
+        def break_bomb_arm(p):  # B2: fail to set the in-flight guard
+            b = first(
+                p,
+                "bomb",
+                lambda b: b["opcode"] == "data_setvariableto"
+                and b["fields"]["VARIABLE"][0] == "bomb in flight"
+                and num(b["inputs"].get("VALUE")) == 1,
+            )
+            b["inputs"]["VALUE"] = [1, [4, 2]]
+
+        def break_terrain_layer(p):  # B9: stop sending terrain to the back
+            for b in blocks_of(p, "area_01a").values():
+                if b["opcode"] == "looks_goforwardbackwardlayers":
+                    b["opcode"] = "looks_show"
+
         cases = [
             ("A1-ready-bubble", break_ready_bubble),
+            ("A2-gameover-bubble", break_gameover_bubble),
             ("B1-reload-gate", break_reload_gate),
-            ("B8-top-expiry", break_shot_expiry),
             ("B2-broadcast", break_bomb_broadcast),
+            ("B2-arm", break_bomb_arm),
             ("B3-position-test-area_01a", break_terrain_count),
             ("B4-glide", break_title_glide),
+            ("B5B10-explosion", break_explosion_holds),
             ("B5B10-pause", break_death_pause),
+            ("B6-crosshair-receive", break_crosshair_receive),
             ("B7-marker-show", break_marker),
+            ("B8-top-expiry", break_shot_expiry),
             ("B9-craft-front", break_craft_layer),
+            ("B9-terrain-back-area_01a", break_terrain_layer),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
             corrupt(project)
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
+
+    def test_tick_constants_match_arcade_conversion(self) -> None:
+        # 1 build tick = 2 arcade frames (core-game-systems units rule). Pin the
+        # generator's tick constants to the arcade-frame values in their locked specs
+        # with an independent expected value here, so a wrong constant fails this test
+        # rather than moving the build and the shape assertions together silently.
+        self.assertEqual(10, director.RELOAD_TICKS)  # WPN-01: 20-frame reload
+        self.assertEqual(7, director.EXPLOSION_STEPS)  # PLY-02: 7 cycles
+        self.assertEqual(4, director.EXPLOSION_HOLD_TICKS)  # PLY-02: 8-frame hold
+        self.assertEqual(28, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS)  # 56 frames
+        self.assertEqual(16, director.POST_DEATH_PAUSE_TICKS)  # PLY-02: 32-frame pause
+        self.assertEqual(30, director.READY_HOLD_TICKS)  # project-defined 30-tick beat
 
     def test_reset_scope_matrix_has_canonical_and_preserving_paths(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
