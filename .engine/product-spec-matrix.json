@@ -1,10 +1,10 @@
 {
   "rows": [
     {
-      "criterion": "All 16 schedule tables decode exactly — every byte consumed, the sentinel recorded as each area's `end_sentinel` field (a sibling of the records, not a record), no Super-table bytes",
-      "digest": "sha256:8005ef5fd43f2d9b6736f5fc8fd0c39ad7975cfaab3e7f527b09c499b2253e4a",
+      "criterion": "All 16 schedule tables decode exactly, with no Super-table content (the sentinel is recorded as each area's `end_sentinel` field, outside the records list)",
+      "digest": "sha256:1c629a9f0c4b701eac8609c1dc3f57656654ed1c071edd5f743336ff420f3ba3",
       "doc": "docs/spec/area-progression-and-terrain.md",
-      "how_verified": "`python3 tools/reference_extract.py --verify` against a fresh local clone at the pin — needs the clone, so it is run by a person, not CI",
+      "how_verified": "`python3 tools/reference_extract.py --verify --checkout <clone>` with a fresh clone at the pin (clone recipe in [the index](index.md)); the run passes or names the failing table",
       "position": 0,
       "who": "operator"
     },
@@ -132,7 +132,7 @@
       "criterion": "The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit",
       "digest": "sha256:b4655b1a07708b18455a7bdcb5310afb85cb7e7d7b4942cfb1b5e3fe8f25b6f8",
       "doc": "docs/spec/difficulty-and-formations.md",
-      "how_verified": "`python3 tools/reference_extract.py --verify` against a fresh local clone at the pin — needs the clone, so it is run by a person, not CI",
+      "how_verified": "`python3 tools/reference_extract.py --verify --checkout <clone>` with a fresh clone at the pin (clone recipe in [the index](index.md)); the run passes or names the failing table",
       "position": 0,
       "who": "operator"
     },
