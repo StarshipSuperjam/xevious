@@ -81,6 +81,23 @@ class SpecDataConsistency(unittest.TestCase):
                     f"{data.name}: hash for {path} disagrees with the index",
                 )
 
+    def test_every_data_file_has_a_producer(self):
+        # A data file with no generator in the committed extractor would be
+        # indistinguishable from a hand-written one; hold the two in lockstep.
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "reference_extract", ROOT / "tools" / "reference_extract.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        declared = set(module.DATA_FILE_NAMES)
+        on_disk = {p.name for p in data_files()}
+        self.assertEqual(
+            declared, on_disk,
+            "docs/spec/data contents and the extractor's declared outputs differ",
+        )
+
     def test_provenance_blocks_present_and_honest(self):
         for data in data_files():
             payload = json.loads(data.read_text())

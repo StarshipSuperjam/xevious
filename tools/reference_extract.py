@@ -45,6 +45,21 @@ EXPECTED_SHA256 = {
 
 SUB = "src/xevious_sub.68k"
 
+# Every file the extractor owns under docs/spec/data/. The verify path and the
+# CI guards both compare this list against the directory, so a data file with
+# no producer — or a producer with no committed data — fails loudly.
+DATA_FILE_NAMES = (
+    "andor-genesis.json",
+    "area-schedules.json",
+    "difficulty.json",
+    "domogram.json",
+    "formations.json",
+    "object-types.json",
+    "rng.json",
+    "scores.json",
+    "terrain.json",
+)
+
 # Parameter bytes each schedule handler consumes AFTER the two-byte record
 # header (scroll row, object type). Derived by reading each consumer routine's
 # advancement of the schedule pointer (``area_obj_ptr``) in the reference;
@@ -251,12 +266,15 @@ def decode_area_table(
                     f"{label}: Domogram path truncated (wanted {2 * count} bytes)"
                 )
             pos += 2 * count
+            # Path steps are (duration, vector_index) pairs: the handler holds
+            # each vector for `duration` frames, and the index selects a
+            # (dy, dx) pair from domogram_vector_tbl (extracted separately).
             params: dict[str, object] = {
                 "slot": slot,
                 "sprite_y": sprite_y,
-                "path_vector_count": count,
+                "path_step_count": count,
                 "path": [
-                    {"dy": path[i], "dx": path[i + 1]}
+                    {"duration": path[i], "vector_index": path[i + 1]}
                     for i in range(0, len(path), 2)
                 ],
             }
@@ -584,13 +602,99 @@ def decode_flying_enemy_types(main: SourceFile) -> dict:
     }
 
 
-def decode_sub_table(sub: SourceFile, label: str, field: str, note: str) -> dict:
+def decode_sub_table(
+    sub: SourceFile, label: str, field: str, note: str, expected_length: int
+) -> dict:
     values, _, first_line, last_line = sub.bytes_under_label(label)
+    if len(values) != expected_length:
+        raise ExtractionError(
+            f"{label}: expected {expected_length} entries, got {len(values)}"
+        )
     return {
         "source": {"file": SUB, "label": label, "lines": [first_line, last_line]},
         "field": field,
         "note": note,
         "values": values,
+    }
+
+
+def signed_byte(value: int) -> int:
+    return value - 256 if value > 127 else value
+
+
+def decode_domogram_vectors(main: SourceFile) -> dict:
+    """The 32-entry (dy, dx) vector table Domogram path steps index."""
+    values, _, first_line, last_line = main.bytes_under_label("domogram_vector_tbl")
+    # 32 two-byte pairs, then a 15-byte unused tail the reference carries.
+    if len(values) != 32 * 2 + 15:
+        raise ExtractionError(
+            f"domogram_vector_tbl: expected 64 vector bytes + 15 tail bytes, "
+            f"got {len(values)}"
+        )
+    vectors = [
+        {"index": i // 2, "dy": signed_byte(values[i]), "dx": signed_byte(values[i + 1])}
+        for i in range(0, 64, 2)
+    ]
+    return {
+        "source": {"file": MAIN, "label": "domogram_vector_tbl", "lines": [first_line, last_line]},
+        "note": (
+            "raw fixed-point deltas (doubled before applying, like all object "
+            "velocities); indexed by schedule path steps' vector_index; the "
+            "reference's 15 trailing filler bytes are not vectors and are not "
+            "transcribed"
+        ),
+        "vectors": vectors,
+    }
+
+
+def rng_step(seed: int) -> tuple[int, int]:
+    """One step of the reference's generator; returns (new_seed, output).
+
+    Instruction-derived from pseudo_random_gen (xevious_main.68k 1428-1445):
+    the low byte becomes 5*low+1 (mod 256); the extend flag is the carry of
+    that +1, then forced to 1 when the high byte's bits 7 and 2 are both set
+    or both clear; the high byte rotates left through the extend flag; the
+    returned byte is the sum (mod 256) of the new low and new high bytes.
+    """
+    low, high = seed & 0xFF, (seed >> 8) & 0xFF
+    product = (5 * low) & 0xFF
+    new_low = (product + 1) & 0xFF
+    x_flag = 1 if product == 0xFF else 0
+    masked = high & 0x84
+    if masked == 0 or masked == 0x84:
+        x_flag = 1
+    new_high = ((high << 1) | x_flag) & 0xFF
+    return (new_high << 8) | new_low, (new_low + new_high) & 0xFF
+
+
+def decode_rng(main: SourceFile) -> dict:
+    if "pseudo_random_gen" not in main.labels:
+        raise ExtractionError("pseudo_random_gen label not found")
+    line = main.labels["pseudo_random_gen"] + 1
+    fixture_seeds = [0x0000, 0x0001, 0x1234, 0xABCD, 0xFFFF]
+    sequences = []
+    for seed in fixture_seeds:
+        state, outputs = seed, []
+        for _ in range(256):
+            state, out = rng_step(state)
+            outputs.append(out)
+        sequences.append(
+            {"seed": seed, "outputs": outputs, "final_state": state}
+        )
+    return {
+        "source": {"file": MAIN, "label": "pseudo_random_gen", "lines": [line, line + 17]},
+        "rule": (
+            "low' = 5*low+1 mod 256; extend = carry of that +1, forced to 1 "
+            "when bits 7 and 2 of the high byte are both set or both clear; "
+            "high' = (high<<1 | extend) mod 256; output = (low'+high') mod 256. "
+            "The seed is one shared 16-bit word; every consumer advances it."
+        ),
+        "note": (
+            "the update rule is instruction-derived from the cited routine; "
+            "the fixture seeds are this project's own chosen test inputs and "
+            "the sequences are computed from the rule by this extractor"
+        ),
+        "fixture_sequences": sequences,
     }
 
 
@@ -600,6 +704,15 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
     obj_fn_tbl = load_obj_fn_tbl(sub)
     areas = [decode_area_table(sub, area, obj_fn_tbl) for area in range(1, 17)]
 
+    # The reference defines area_offset_in_map_tbl twice (once per CPU's
+    # source file); the spec cites the sub copy, so prove they agree.
+    sub_copy, _, _, _ = sub.bytes_under_label("area_offset_in_map_tbl")
+    main_copy, _, _, _ = main.bytes_under_label("area_offset_in_map_tbl")
+    if sub_copy[:16] != main_copy[:16]:
+        raise ExtractionError(
+            "area_offset_in_map_tbl: the sub and main copies disagree"
+        )
+
     provenance = {
         "reference": "jotd666/xevious",
         "commit": PINNED_COMMIT,
@@ -607,7 +720,8 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
         "license_status": "no reusable license stated by the source repository",
         "note": (
             "Derived numeric data and orderings only. Reference symbol names "
-            "and line numbers appear solely as citation locators; no assembly "
+            "and line numbers appear as citation locators and, in the object "
+            "registry, as derived handler identifiers; no assembly "
             "instructions, comments, or prose are reproduced. Line numbers "
             "refer to the pinned commit."
         ),
@@ -639,6 +753,7 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
                 "difficulty_tbl",
                 "ai_level_increment",
                 "AI-level increment per raise record, indexed by the cabinet difficulty DIP setting",
+                4,
             ),
         },
         "terrain.json": {
@@ -647,7 +762,10 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
                 sub,
                 "area_offset_in_map_tbl",
                 "map_column_offset",
-                "per-area terrain start column, indexed by area number 1-16",
+                "per-area terrain start column, indexed by area number 1-16; the "
+                "reference carries an identical second copy in the main file, "
+                "asserted equal at extraction",
+                16,
             ),
         },
         "andor-genesis.json": {
@@ -657,7 +775,16 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
                 "andor_genesis_data",
                 "object_type",
                 "the fifteen object type codes bulk-armed at boss start, in spawn order slot 1..15",
+                15,
             ),
+        },
+        "domogram.json": {
+            "provenance": provenance,
+            "vector_table": decode_domogram_vectors(main),
+        },
+        "rng.json": {
+            "provenance": provenance,
+            "generator": decode_rng(main),
         },
         "scores.json": {
             "provenance": provenance,
@@ -690,6 +817,15 @@ def main() -> int:
 
     if args.verify:
         failures = []
+        if set(payloads) != set(DATA_FILE_NAMES):
+            failures.append(
+                "extractor payloads disagree with the declared DATA_FILE_NAMES"
+            )
+        on_disk = {p.name for p in args.out.glob("*.json")}
+        for orphan in sorted(on_disk - set(payloads)):
+            failures.append(
+                f"{args.out / orphan}: exists but has no producer in this extractor"
+            )
         for name, payload in payloads.items():
             path = args.out / name
             if not path.exists():

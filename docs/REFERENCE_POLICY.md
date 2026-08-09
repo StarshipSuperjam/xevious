@@ -35,7 +35,8 @@ tables recorded in the project's own notation (prose or generated JSON under
 `docs/spec/`), each carrying its citation (commit, file, label, line range),
 the SHA-256 hashes of the source files it was derived from, and an honest
 license status. This covers derived numbers and their arrangement only.
-Reference symbol names and line numbers appear solely as citation locators;
+Reference symbol names and line numbers appear as citation locators and,
+in the object registry, as derived handler identifiers;
 assembly instructions, comments, prose, and media from the reference are
 never reproduced. This paragraph is a deliberate widening of the
 recorded boundary, made through the product-spec intake with the operator's

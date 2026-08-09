@@ -121,7 +121,7 @@ SHA-256 of the source files read at extraction (2026-08-09):
 | `src/xevious.inc` | `56b9b0e22d77c53bed7a8b31c2d8c38e5e68f94434319bfa5f524210df01ab66` |
 
 Attestations, carried by this specification as a whole: reference symbol names and line numbers appear
-in this repository solely as citation locators; no assembly instructions, comments, or prose from the
-reference are reproduced; and no arcade ROM file was acquired, opened, extracted, or distributed in
+in this repository as citation locators and, in the object registry, as derived handler identifiers; no
+assembly instructions, comments, or prose from the reference are reproduced; and no arcade ROM file was acquired, opened, extracted, or distributed in
 producing it. The generated data files are documented in the Generated data section above. Attribution is not permission: this project claims no rights in Namco's
 trademarks, artwork, or audio, and a rights review is required before broader distribution or promotion.

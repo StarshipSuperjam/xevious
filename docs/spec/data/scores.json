@@ -2,7 +2,7 @@
   "provenance": {
     "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
     "license_status": "no reusable license stated by the source repository",
-    "note": "Derived numeric data and orderings only. Reference symbol names and line numbers appear solely as citation locators; no assembly instructions, comments, or prose are reproduced. Line numbers refer to the pinned commit.",
+    "note": "Derived numeric data and orderings only. Reference symbol names and line numbers appear as citation locators and, in the object registry, as derived handler identifiers; no assembly instructions, comments, or prose are reproduced. Line numbers refer to the pinned commit.",
     "reference": "jotd666/xevious",
     "source_sha256": {
       "src/map_rom.68k": "f96a17e75caa788589755bb39fb0097a17a51d957663a54885f97b7835a7d7d6",
