@@ -37,6 +37,21 @@ presentation-fidelity work; the arcade's own state timings are specified where e
 [Player craft and weapons](player-craft-and-weapons.md)). The READY speech-bubble presentation in the
 current build is an unsupported invention already recorded for correction.
 
+The reset scopes' postconditions (absorbed from the merged slice-2 contract; this document is now their
+normative home):
+
+| Reset scope | Postcondition |
+| --- | --- |
+| cold-start | Stop sounds and old work; remove or hide clones, weapons, targets, bomb, and death effects; rewind terrain to its canonical area-1 state; reset player and reticle positions; hide the player; show one title screen. |
+| new-game | The cold-start world reset with the title kept hidden, then one entry into READY. |
+| new-life | Stop old work; clear weapons, clones, targets, bomb, and death effects; reset player and reticle positions; then one entry into respawn READY. Interim divergence: the current build preserves terrain here, while the arcade restarts the area from its top (above). |
+| game-over | Stop gameplay and audio, clear transient gameplay, hold the final terrain under the GAME OVER display; the following cold-start rewinds the world before title. |
+
+Per-state input rules (project-defined for the current slice, pending cabinet work): title accepts only
+the start key; READY, player-dead, respawning, and game-over accept no gameplay input; playing accepts
+movement, fire, and bomb. Repeated keys can never duplicate transitions, loops, shots, or bombs; the
+green flag from any state performs the cold-start reset; stop halts the project.
+
 **Entity lifecycle and capacities (SYS-02).** The reference runs 64 fixed object slots, each a small
 state record; every entity passes idle → active → hit/destroyed → idle, and per frame the main loop walks
 the slots in ascending order dispatching each to its per-type handler

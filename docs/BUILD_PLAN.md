@@ -54,25 +54,10 @@ possible but remain partial until they meet a catalog acceptance criterion.
 
 ## Architecture seams
 
-- **Game director:** the Stage is the sole writer of state and owns all allowed
-  transitions. Slice 2 establishes title, ready, playing, player-dead,
-  respawning, and game-over as the required current subset; later cabinet
-  slices extend the same director with attract, high-score entry, and player
-  change.
-- **Area director:** one monotonic area clock owns terrain position, scheduled
-  objects, formations, boss windows, transitions, and the area 16-to-7 loop.
-- **Entity pool:** clone-based targets share spawn, update, hit, explosion,
-  and removal rules while staying below Scratch's clone limit.
-- **Collision groups:** blaster-to-air, bomb-to-ground,
-  enemy-bullet-to-player, flying-enemy-to-player, and Bacura-to-player remain
-  distinct. A hit is resolved once and cannot score twice.
-- **Data tables:** schedules, formations, scores, timing, and difficulty live
-  as inspectable Scratch lists or generated Scratch data, separate from
-  scripts.
-- **Presentation:** costumes, animation timing, anchors, sounds, and HUD
-  rendering remain separate from entity rules.
-- **Determinism:** generated assets and generated Scratch edits are
-  reproducible from committed inputs.
+The architecture — the game director, area director, entity pool, collision groups, data tables,
+presentation separation, and determinism seams — is normatively described in the
+[architecture overview](architecture.md); this plan sequences work against those seams without restating
+them.
 
 The first entity change includes a measured clone/performance spike. If one
 shared target is not maintainable, use one target per behavior family while
@@ -111,44 +96,11 @@ operator-runnable Scratch check agree.
 
 ## Slice 2 director and reset contract
 
-All ordinary transitions use the Stage custom block `transition to () reset ()`.
-It increments `state epoch`, publishes the temporary `resetting` state,
-broadcasts `director stop and wait`, stops audio, publishes a stable reset
-scope, broadcasts the finite `director reset and wait`, then sets the
-destination and broadcasts `director enter`. The cold-boot assignment is the
-only state write outside that transition path. Yielding gameplay scripts
-recheck state after waits, sound playback, and repeats; clone stop/reset
-handlers delete the receiving clone.
-
-Allowed edges are `boot → title`, `title → ready`, `ready → playing`,
-`playing → player-dead`, `player-dead → respawning`,
-`player-dead → game-over`, `respawning → playing`, and `game-over → title`.
-The `D` and `G` fixtures only set a Stage-owned pending death outcome. The
-death animation reports completion; Stage chooses the exit. Slice 4 replaces
-that fixture decision with the life-economy result without changing the
-transition interface.
-
-| Reset scope | Required postcondition |
-| --- | --- |
-| `cold-start` | Stop sounds and old work; remove/hide clones, weapons, targets, bomb, and death effects; rewind both terrain targets to their canonical area-1 costumes and positions; reset player/reticle positions; hide the player and show one title screen. |
-| `new-game` | Apply the same world, player, weapon, target, and transient reset as cold start, keep the title hidden, then enter READY once. |
-| `new-life` | Stop old work; remove/hide weapons, clones, targets, bomb, and death effects; reset the player/reticle positions; preserve terrain costumes and positions; then enter respawn READY once. |
-| `game-over` | Stop gameplay/audio and clear transient gameplay while preserving the final terrain for the two-second GAME OVER hold; the following cold-start reset rewinds the world before title. |
-
-Input and timing acceptance is exact for this slice:
-
-- `title`: Space alone requests new game; arrows, B, D, and G are inert.
-- `ready`: READY is visible for one second; all gameplay keys are inert.
-- `playing`: arrows move, Space fires, B bombs, D requests the respawn fixture,
-  and G requests the terminal fixture.
-- `player-dead`: the seven-step death animation holds for 0.7 seconds; all
-  gameplay keys are inert.
-- `respawning`: READY is visible for one second; all gameplay keys are inert.
-- `game-over`: GAME OVER is visible for two seconds over the preserved final
-  terrain; all gameplay keys are inert, then cold title is restored.
-- Green flag from any state performs the serialized cold-start reset and
-  produces the same title state. Stop halts the project. Repeated keys cannot
-  duplicate director transitions, music loops, terrain loops, shots, or bombs.
+The director's transition contract — allowed state edges, reset scopes and their postconditions, and the
+per-state input rules — is normatively owned by the product spec's
+[core game systems document](spec/core-game-systems.md); the presentation timings around those states are
+project-defined placeholders recorded there. This plan sequences the work; it no longer restates the
+contract.
 
 ## Per-slice provenance workflow
 
