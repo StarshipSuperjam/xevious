@@ -11,6 +11,8 @@ Covers mechanics catalog rows ECO-01 through ECO-04. Values cite the pinned refe
 decoded to decimal. **This document is the normative home for all point values and life rules** — other
 documents name a score's owner ("scores per the scoring table") and link here.
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 Every point in the game flows through one scoring path with one master value table; lives are granted at

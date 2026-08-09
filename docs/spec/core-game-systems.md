@@ -10,6 +10,8 @@ Covers mechanics catalog rows SYS-01 through SYS-04. Values cite the pinned refe
 the object-type vocabulary, the collision-group matrix, and the random-stream rules; other documents name
 these and link here.
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 Four systems underlie everything the player sees: a single game-state director that owns every allowed

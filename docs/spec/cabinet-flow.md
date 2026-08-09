@@ -9,6 +9,8 @@ Covers mechanics catalog rows CAB-01 through CAB-04. Values cite the pinned refe
 (`reference_pin` in [the index](index.md)) as `file label lines`; citations are `src/xevious_main.68k`
 unless noted. Timings are frames at 60 per second.
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 Everything around the game itself: the attract cycle an idle cabinet plays, coins and starts, how two
@@ -48,8 +50,8 @@ behind a DIP bit recorded as uncertain in practical reach), with entry auto-comp
 character or on an idle timeout of roughly 68 seconds (derived from the compound frame gating,
 medium-confidence) (`check_for_high_score` through name entry 1618–1793). Insertion shifts lower entries
 down; the table always holds exactly five. Table values and defaults are owned by
-[Scoring, lives, and game over](scoring-lives-and-game-over.md). Persistent high-score storage is a port
-option in the reference and is excluded — a power cycle starts fresh, like the cabinet.
+[Scoring, lives, and game over](scoring-lives-and-game-over.md). Pause and persistent high-score storage are port
+conveniences in the reference and are excluded (catalog EX-05) — a power cycle starts fresh, like the cabinet.
 
 ## Acceptance criteria
 

@@ -153,10 +153,10 @@
       "who": "engine"
     },
     {
-      "criterion": "A model fixture over recorded score/lives pairs reproduces the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (fixture-automated when a runtime harness exists)",
-      "digest": "sha256:1c0f7d9a068feedbe93115df077ab2c1b2f71320b9e631b882ee9563f01fe1a5",
+      "criterion": "A model fixture over representative score/lives pairs computes the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (fixture-automated when a runtime harness exists)",
+      "digest": "sha256:ce675a63e682a2cc4130d0e138cfa0394cc2e8fc0d04846f344f9c6a7476a828",
       "doc": "docs/spec/difficulty-and-formations.md",
-      "how_verified": "Python fixture over the committed rule; operator play for the in-game half",
+      "how_verified": "Python fixture implementing the documented rule; operator play for the in-game half",
       "position": 3,
       "who": "engine"
     },

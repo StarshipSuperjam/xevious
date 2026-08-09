@@ -12,6 +12,8 @@ formation composition by [Difficulty and formations](difficulty-and-formations.m
 [data/object-types.json](data/object-types.json). Speeds are pixels per frame at 60 frames per second
 (converted from the reference's raw fixed-point units).
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 Twelve airborne families attack in scheduled waves of one to six, each with its own approach, firing
@@ -20,6 +22,9 @@ rule, and exit. Shared machinery underlies them all: one homing-angle system wit
 masks from the area schedules, a common six-slot air-enemy pool, one shared hit window, and one shared
 explosion. The families are variations on that machine — which is why the spec records the shared rules
 once and each family as its differences.
+
+Excluded here (Super Xevious only, catalog EX-01): the Galaxian bonus enemy is never scheduled or
+built.
 
 ## Behavior
 

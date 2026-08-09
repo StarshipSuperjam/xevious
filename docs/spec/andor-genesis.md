@@ -9,6 +9,8 @@ Covers mechanics catalog rows BOSS-01 through BOSS-03. Values cite the pinned re
 (`reference_pin` in [the index](index.md)) as `file label lines`; citations are `src/xevious_main.68k`
 unless noted. Score values are owned by [Scoring, lives, and game over](scoring-lives-and-game-over.md).
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 The mothership: a fifteen-part composite that arrives at scheduled points in the campaign, fights as one
@@ -57,4 +59,4 @@ map-scripted exit, not a countdown timer (`src/xevious_sub.68k` `sub_2_fn_21__an
 | The schedule data carries the boss's end record at its recorded row | Schedule-trace fixture over the committed data | engine |
 | An undamaged boss visibly departs rather than timing out | Play a boss encounter without bombing the core | operator |
 | Port fire obeys the boss's fire-permission mask from the schedule | Seeded fixture: port fire patterns follow the recorded mask | engine |
-| The composite stays within the entity budget with all fifteen parts plus normal traffic live | Performance soak on the built `.sb3` during a boss encounter | engine |
+| The composite stays within the entity budget with all fifteen parts plus normal traffic live | Play an extended boss encounter on the built `.sb3` watching for missing spawns or slowdown | operator |

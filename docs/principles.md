@@ -25,7 +25,8 @@ departure is recorded rather than improvised. Every principle below serves that 
 - **No pull request is ready until the owner has played it.** Every change that can affect gameplay produces
   a playable `.sb3` built from the final reviewed commit, with a list of behavior added or changed. The pull
   request stays draft until the owner has run [the playtest checklist](PLAYTEST_CHECKLIST.md) on that build
-  and approved it. Automated checks in this
+  and approved it, and the pull request records the tested commit, the archive's hash, and the Scratch
+  version used. Automated checks in this
   repository read files; none of them can observe a running game, so the owner's playtest is the only
   gameplay verification that exists.
 - **New and preserved behavior are tested together.** A change's acceptance list covers what it adds *and*

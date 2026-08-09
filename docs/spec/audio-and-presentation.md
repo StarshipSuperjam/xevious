@@ -8,6 +8,8 @@ reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 Covers mechanics catalog row CAB-05 and the presentation-fidelity boundary. Values cite the pinned
 reference (`reference_pin` in [the index](index.md)) as `file label lines`.
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 How the game looks and sounds: sprites drawn from the credited sheets, animation timed in arcade frames,

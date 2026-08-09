@@ -8,6 +8,8 @@ reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 Covers mechanics catalog rows DIF-01 through DIF-03 and FORM-01. Values cite the pinned reference
 (`reference_pin` in [the index](index.md)) as `file label lines`.
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 Enemy pressure in Xevious is not fixed: it is driven by one adaptive difficulty number — the AI level —
@@ -15,6 +17,9 @@ raised on a schedule, tuned by the cabinet's difficulty setting, and re-tuned by
 actually scoring. The AI level selects which flying-enemy formations attack and how many enemies each wave
 contains. Per-family fire-permission masks, set by the area schedules, control which enemy families may
 fire and how often. Together these are why the game feels harder the better you play.
+
+Excluded here (Super Xevious only, catalog EX-04): the Super formation and schedule tables are never
+read; the extractor proves no Super data reaches the committed files.
 
 ## Behavior
 
@@ -63,7 +68,7 @@ carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 | The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit | `python3 tools/reference_extract.py --verify --checkout <clone>` with a fresh clone at the pin (clone recipe in [the index](index.md)); the run passes or names the failing table | operator |
 | The four difficulty-setting increments are 2, 0, 6, 16 and the build's data matches the committed file | Data-table comparison in the deterministic build fixtures | engine |
 | A model fixture over the committed data reproduces formation lookups (AI level + offset, fold-back at 0x80); the build's in-game selection is confirmed in play (fixture-automated when a runtime harness exists) | Python fixture over the committed tables; operator play for the in-game half | engine |
-| A model fixture over recorded score/lives pairs reproduces the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (fixture-automated when a runtime harness exists) | Python fixture over the committed rule; operator play for the in-game half | engine |
+| A model fixture over representative score/lives pairs computes the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (fixture-automated when a runtime harness exists) | Python fixture implementing the documented rule; operator play for the in-game half | engine |
 | Wave sizes stay within the table's recorded range and grow as the game progresses at a fixed setting | Play several areas at one setting; waves grow denser and never exceed six enemies | operator |
 | Playing better produces visibly harder waves | Play one area twice — once scoring heavily, once minimally — and compare wave pressure (paired with the seeded re-tune fixture above, since the two runs also differ in what was destroyed) | operator |
 | Enemy families fire only when their area's schedule has permitted them | Play area 1's Lograms (its scheduled firing family): they begin firing at their scheduled point, not from the start | operator |

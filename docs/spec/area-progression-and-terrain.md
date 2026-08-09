@@ -8,6 +8,8 @@ reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 Covers mechanics catalog rows AREA-01 through AREA-04. Values cite the pinned reference
 (`reference_pin` in [the index](index.md)) as `file label lines`.
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 The game advances through sixteen areas of continuously scrolling terrain. One monotonic scroll clock per

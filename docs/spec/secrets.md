@@ -10,6 +10,8 @@ Covers mechanics catalog rows SEC-01 through SEC-03. Values cite the pinned refe
 unless noted. Score values are owned by
 [Scoring, lives, and game over](scoring-lives-and-game-over.md).
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 Three hidden things reward the curious bomber: Sol Towers that rise from empty ground, Bonus Flags that

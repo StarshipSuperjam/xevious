@@ -12,6 +12,8 @@ placements, fire masks, and stop-firing rows per area by the committed
 [schedule data](data/area-schedules.json); bullet rules by
 [Player craft and weapons](player-craft-and-weapons.md).
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 Ground objects are the bombing game: turrets and domes glued to the terrain, tank patrols that react to
@@ -19,6 +21,9 @@ the player's aim, and a path-following slider. They are destroyed by bombs only 
 and their firing is governed by the shared per-area permissions. Two rules give the ground war its
 texture: destroyed land objects leave permanent craters that scroll away with the map, and several
 objects watch the player's own reticles and respond.
+
+Excluded here (Super Xevious only, catalog EX-02/EX-03): the jet with its score-reset trap, the
+helicopter, the tank, and the bridge are never scheduled or built.
 
 ## Behavior
 

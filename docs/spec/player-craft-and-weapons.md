@@ -10,6 +10,8 @@ Covers mechanics catalog rows PLY-01, PLY-02, and WPN-01 through WPN-05. Values 
 positions in 1/32-pixel fixed point and applies velocities doubled, so pixel speeds below are stated after
 conversion; timings are arcade frames at 60 per second.
 
+License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
+
 ## Summary
 
 The player flies the Solvalou: an eight-direction craft over scrolling terrain with two simultaneous
