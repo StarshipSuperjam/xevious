@@ -1,5 +1,5 @@
 ---
-status: draft
+status: locked
 reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 ---
 
@@ -15,7 +15,8 @@ conversion; timings are arcade frames at 60 per second.
 The player flies the Solvalou: an eight-direction craft over scrolling terrain with two simultaneous
 weapons — a forward blaster against airborne enemies, and a bomb dropped on a crosshair-marked ground
 target. One life ends the moment anything touches the craft; the craft then explodes, and the next craft
-resumes the area in place.
+takes the area per the recorded restart rule in
+[Area progression and terrain](area-progression-and-terrain.md).
 
 ## Behavior
 

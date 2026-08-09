@@ -41,11 +41,11 @@ would contradict a settled one is a spec amendment to the settled document, not 
 
 | Capability | Status | Doc |
 | --- | --- | --- |
-| Core game systems | in progress | [Core game systems](core-game-systems.md) |
-| Player craft and weapons | in progress | [Player craft and weapons](player-craft-and-weapons.md) |
-| Scoring, lives, and game over | in progress | [Scoring, lives, and game over](scoring-lives-and-game-over.md) |
-| Area progression and terrain | in progress | [Area progression and terrain](area-progression-and-terrain.md) |
-| Difficulty and formations | in progress | [Difficulty and formations](difficulty-and-formations.md) |
+| Core game systems | settled | [Core game systems](core-game-systems.md) |
+| Player craft and weapons | settled | [Player craft and weapons](player-craft-and-weapons.md) |
+| Scoring, lives, and game over | settled | [Scoring, lives, and game over](scoring-lives-and-game-over.md) |
+| Area progression and terrain | settled | [Area progression and terrain](area-progression-and-terrain.md) |
+| Difficulty and formations | settled | [Difficulty and formations](difficulty-and-formations.md) |
 | Aerial enemies | in progress | [Aerial enemies](aerial-enemies.md) |
 | Ground objects | in progress | [Ground objects](ground-objects.md) |
 | Secrets | in progress | [Secrets](secrets.md) |

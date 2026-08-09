@@ -1,5 +1,5 @@
 ---
-status: draft
+status: locked
 reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 ---
 

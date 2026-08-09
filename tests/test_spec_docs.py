@@ -53,7 +53,9 @@ class SpecDataConsistency(unittest.TestCase):
     def test_every_capability_doc_verified_at_the_pin(self):
         pin = index_frontmatter_pin()
         for doc in spec_documents():
-            if doc.name == "index.md":
+            if doc.name in ("index.md", "build-plan.md"):
+                # The index carries reference_pin; the build order is a living
+                # planning document with no reference-derived values.
                 continue
             match = re.search(
                 r"^reference_verified_at:\s*([0-9a-f]{40})\s*$", doc.read_text(), re.M

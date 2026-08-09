@@ -1,5 +1,5 @@
 ---
-status: draft
+status: locked
 reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 ---
 
@@ -28,7 +28,7 @@ frames ≈ 68 seconds at the arcade's 60 frames per second.
 **Area advance and the 16→7 loop.** On completion the area number increments; if the finished area is
 area 16, play continues at area 7, not area 1 and not a victory screen (`sub_fn_3__handle_next_area`,
 lines 707–710). Each area sets its terrain start column from the per-area map-offset table (16 entries,
-[data/difficulty.json](data/difficulty.json) table `area_offset_in_map_tbl`, cited there) and points the
+[data/terrain.json](data/terrain.json), cited there) and points the
 scheduler at that area's schedule table.
 
 **The schedule.** Each area has one schedule table — the complete sixteen are decoded in
@@ -60,15 +60,15 @@ begins (`xevious_main.68k` `main_gameplay_loop` 471–483) — the arcade does n
 checkpoint softens this: a death in roughly the final fifth of an area (scroll high byte between 0x0E and
 0x43) advances to the *next* area instead of restarting the current one (`xevious_main.68k` ~514). Only
 the area number otherwise survives a death (and, in a two-player game, travels with each player's own
-state). Starting a new game resets to area 1.
+state). Starting a new game resets to area 1. The current build's preserve-terrain-on-death behavior is
+an interim project-defined fixture that diverges from this rule and is recorded for correction with the
+life-economy work.
 
 **Recorded reference anomaly.** Area 14's schedule contains one out-of-order record (its final
 formation-reset row sits above the row that precedes it, so it can never fire before the area advances) —
 found independently by two decoders, every byte still consumed exactly. Recorded as the reference's data,
 possibly its acknowledged transcription slip; the build reproduces the table as committed, and arcade
-observation resolves it if it ever matters. The current build's preserve-terrain-on-death behavior is an interim
-project-defined fixture that diverges from this rule and is recorded for correction with the life-economy
-work.
+observation resolves it if it ever matters.
 
 ## Acceptance criteria
 
