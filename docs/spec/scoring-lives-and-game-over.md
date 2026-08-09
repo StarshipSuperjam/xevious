@@ -56,9 +56,12 @@ increment table, both selected by the lives setting and a three-bit bonus DIP fi
 (`first_bonus_life_tbls` 1179–1199; `bonus_tbl_ptrs` 1854–1877): first bonus at 10,000–30,000 by setting,
 then every 40,000–100,000 by setting; one setting is a sentinel that disables bonus lives, and one
 setting stops after the second bonus life (`check_for_extra_solvalou` 109–183). Which pair of tables
-applies to which lives setting is recorded with an uncertainty note: the selector fires on one specific
-raw index whose decoded meaning does not match the tables' own naming; the build must follow the
-*mechanical* rule, not the name. The threshold check runs after every point award, on the score's top
+applies to which lives setting carries a recorded uncertainty, independently confirmed by two decoders:
+the reference's own two selection sites disagree — the game-start seeding applies an extra inversion the
+repeat-award path lacks, so they choose opposite tables for the same DIP setting (1854–1877 vs the init
+path near 419–425). This internal inconsistency may be the reference's acknowledged remaining bug; the
+build follows the repeat-award site's rule (the one that runs during play) and records the deviation,
+with arcade observation as the resolution path. The threshold check runs after every point award, on the score's top
 four digits.
 
 **HUD (ECO-02).** The screen shows the current player's score, the running high score, remaining craft,

@@ -53,9 +53,17 @@ recorded here as a port necessity.
 
 **Reset scope.** Every new life restarts the current area from its top: the gameplay loop re-derives the
 schedule pointer from the area's table start and resets the scroll counter to 0x0D00 each time a life
-begins (`xevious_main.68k` `main_gameplay_loop` 471–483) — the arcade does not resume mid-area. Only the
-area *number* survives a death (and, in a two-player game, travels with each player's own state). Starting
-a new game resets to area 1. The current build's preserve-terrain-on-death behavior is an interim
+begins (`xevious_main.68k` `main_gameplay_loop` 471–483) — the arcade does not resume mid-area. One
+checkpoint softens this: a death in roughly the final fifth of an area (scroll high byte between 0x0E and
+0x43) advances to the *next* area instead of restarting the current one (`xevious_main.68k` ~514). Only
+the area number otherwise survives a death (and, in a two-player game, travels with each player's own
+state). Starting a new game resets to area 1.
+
+**Recorded reference anomaly.** Area 14's schedule contains one out-of-order record (its final
+formation-reset row sits above the row that precedes it, so it can never fire before the area advances) —
+found independently by two decoders, every byte still consumed exactly. Recorded as the reference's data,
+possibly its acknowledged transcription slip; the build reproduces the table as committed, and arcade
+observation resolves it if it ever matters. The current build's preserve-terrain-on-death behavior is an interim
 project-defined fixture that diverges from this rule and is recorded for correction with the life-economy
 work.
 

@@ -338,6 +338,18 @@ def decode_formation_table(sub: SourceFile) -> dict:
         raise ExtractionError(
             f"{label}: expected 64 negative-offset bytes, got {len(negative_values)}"
         )
+    # The schedule byte indexing this table is sign-extended, so index +127 is
+    # the highest reachable entry (256 bytes). The bytes that follow, up to the
+    # *_super label, are the Super table's own negative-offset block —
+    # unreachable from the normal game and excluded from this project. Slice
+    # them off, and insist the leftover is exactly that 64-byte block so a
+    # layout change in the reference fails loudly instead of shifting data.
+    if len(positive_values) not in (256, 256 + 64):
+        raise ExtractionError(
+            f"{label}: expected 256 reachable bytes (+ optional 64-byte Super "
+            f"negative block), got {len(positive_values)}"
+        )
+    positive_values = positive_values[:256]
 
     def pairs(values: list[int], base_index: int) -> list[dict]:
         out = []
