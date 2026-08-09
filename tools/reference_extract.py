@@ -124,8 +124,10 @@ PARAM_FIELDS = {
 
 LABEL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):")
 BYTE_RE = re.compile(r"^\s+\.byte\s+(.+?)\s*(\|.*)?$")
+LONG_REF_RE = re.compile(r"^\s+\.long\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\|.*)?$")
 
 NORMAL_TYPE_MAX = 0x57  # types above this exist only for Super Xevious
+MAIN = "src/xevious_main.68k"
 
 
 class ExtractionError(RuntimeError):
@@ -367,6 +369,100 @@ def decode_formation_table(sub: SourceFile) -> dict:
     }
 
 
+def longs_under_label(source: SourceFile, label: str) -> tuple[list[tuple[str, int]], int, int]:
+    """All ``.long <symbol>`` entries from ``label`` to the next label."""
+    if label not in source.labels:
+        raise ExtractionError(f"{source.relpath}: label {label} not found")
+    start = source.labels[label]
+    entries: list[tuple[str, int]] = []
+    last = start
+    for idx in range(start + 1, len(source.lines)):
+        line = source.lines[idx]
+        if LABEL_RE.match(line):
+            break
+        match = LONG_REF_RE.match(line)
+        if match:
+            entries.append((match.group(1), idx + 1))
+            last = idx
+    return entries, start + 1, last + 1
+
+
+def decode_object_registry(main: SourceFile, sub: SourceFile, obj_fn_tbl: list[int]) -> dict:
+    """The object-type registry: main sprite handler + schedule action per code.
+
+    Mechanically derived: obj_handler_tbl in the main file is a 1-based jump
+    table (entry N-1 handles type N; add_obj_handler subtracts 1 before
+    indexing), and the handler label itself carries the object's name in the
+    form handle_<hex>_<Name>. The sub file's obj_fn_tbl gives each code's
+    schedule action.
+    """
+    entries, first_line, last_line = longs_under_label(main, "obj_handler_tbl")
+    if len(entries) != len(obj_fn_tbl):
+        raise ExtractionError(
+            f"obj_handler_tbl has {len(entries)} entries but obj_fn_tbl has "
+            f"{len(obj_fn_tbl)}; the two dispatch tables must agree"
+        )
+    handler_name_re = re.compile(r"^handle_([0-9A-Fa-f]{2})_(.+)$")
+    types = []
+    for index, (symbol, line) in enumerate(entries):
+        code = index + 1
+        entry: dict[str, object] = {
+            "code": code,
+            "super_only": code > NORMAL_TYPE_MAX,
+            "schedule_action": HANDLER_NAMES.get(obj_fn_tbl[index], "none"),
+        }
+        match = handler_name_re.match(symbol)
+        if symbol == "null_fn":
+            entry["main_handler"] = None
+        else:
+            entry["main_handler"] = {"label": symbol, "line": line}
+            if match:
+                if int(match.group(1), 16) != code:
+                    raise ExtractionError(
+                        f"obj_handler_tbl entry {index} points at {symbol} but "
+                        f"dispatches type 0x{code:02X}; table decode is wrong"
+                    )
+                entry["name"] = match.group(2).replace("_", " ")
+        types.append(entry)
+    return {
+        "source": {
+            "file": MAIN,
+            "label": "obj_handler_tbl",
+            "lines": [first_line, last_line],
+            "note": (
+                "1-based dispatch: entry N-1 handles object type N; names are "
+                "the reference's own handler labels. schedule_action comes "
+                "from obj_fn_tbl in the sub file."
+            ),
+        },
+        "types": types,
+    }
+
+
+def decode_flying_enemy_types(main: SourceFile) -> dict:
+    label = "flying_enemy_type_tbl_normal"
+    values, _, first_line, last_line = main.bytes_under_label(label)
+    if len(values) != 128:
+        raise ExtractionError(
+            f"{label}: expected 128 bytes, got {len(values)}"
+        )
+    return {
+        "source": {
+            "file": MAIN,
+            "label": label,
+            "lines": [first_line, last_line],
+            "note": (
+                "formation entries' type_table_offset indexes this table; a "
+                "wave of N enemies takes N consecutive codes from its offset. "
+                "Offsets 120-127 hold values equal to their own index, outside "
+                "the valid type range; recorded as never-reached tail, meaning "
+                "uncertain."
+            ),
+        },
+        "codes": values,
+    }
+
+
 def decode_simple_tables(sub: SourceFile) -> dict:
     tables = {}
     for label, field_names in [
@@ -385,6 +481,7 @@ def decode_simple_tables(sub: SourceFile) -> dict:
 
 def build_payloads(checkout: Path) -> dict[str, dict]:
     sub = SourceFile(checkout, SUB)
+    main = SourceFile(checkout, MAIN)
     obj_fn_tbl = load_obj_fn_tbl(sub)
     areas = [decode_area_table(sub, area, obj_fn_tbl) for area in range(1, 17)]
 
@@ -422,6 +519,11 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
         "difficulty.json": {
             "provenance": provenance,
             "tables": decode_simple_tables(sub),
+        },
+        "object-types.json": {
+            "provenance": provenance,
+            "registry": decode_object_registry(main, sub, obj_fn_tbl),
+            "flying_enemy_type_table": decode_flying_enemy_types(main),
         },
     }
 

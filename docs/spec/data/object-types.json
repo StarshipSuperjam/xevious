@@ -1,0 +1,999 @@
+{
+  "flying_enemy_type_table": {
+    "codes": [
+      0,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      11,
+      11,
+      11,
+      11,
+      11,
+      11,
+      85,
+      85,
+      85,
+      85,
+      85,
+      85,
+      86,
+      86,
+      86,
+      86,
+      86,
+      86,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      12,
+      12,
+      12,
+      12,
+      12,
+      12,
+      11,
+      11,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      13,
+      13,
+      13,
+      13,
+      13,
+      13,
+      14,
+      14,
+      14,
+      18,
+      18,
+      18,
+      19,
+      19,
+      19,
+      20,
+      20,
+      20,
+      20,
+      20,
+      20,
+      14,
+      14,
+      14,
+      16,
+      16,
+      16,
+      16,
+      16,
+      16,
+      20,
+      20,
+      20,
+      17,
+      17,
+      17,
+      17,
+      17,
+      17,
+      22,
+      22,
+      22,
+      22,
+      23,
+      23,
+      23,
+      23,
+      15,
+      15,
+      8,
+      8,
+      8,
+      8,
+      85,
+      85,
+      16,
+      16,
+      8,
+      8,
+      8,
+      8,
+      17,
+      17,
+      20,
+      20,
+      21,
+      21,
+      21,
+      21,
+      8,
+      8,
+      8,
+      8,
+      14,
+      14,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127
+    ],
+    "source": {
+      "file": "src/xevious_main.68k",
+      "label": "flying_enemy_type_tbl_normal",
+      "lines": [
+        6137,
+        6145
+      ],
+      "note": "formation entries' type_table_offset indexes this table; a wave of N enemies takes N consecutive codes from its offset. Offsets 120-127 hold values equal to their own index, outside the valid type range; recorded as never-reached tail, meaning uncertain."
+    }
+  },
+  "provenance": {
+    "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
+    "license_status": "no reusable license stated by the source repository",
+    "note": "Derived numeric data and orderings only; no assembly or other source-code text is reproduced. Line numbers refer to the pinned commit.",
+    "reference": "jotd666/xevious",
+    "source_sha256": {
+      "src/map_rom.68k": "f96a17e75caa788589755bb39fb0097a17a51d957663a54885f97b7835a7d7d6",
+      "src/xevious.inc": "56b9b0e22d77c53bed7a8b31c2d8c38e5e68f94434319bfa5f524210df01ab66",
+      "src/xevious_main.68k": "bd23912e5cc25dfe7ebb69c043ab098fead300949b066ece972d5ddda29de77e",
+      "src/xevious_ram.68k": "fc40e0e8b939f665d38812e62f6dbcc994606ff0afaf34e6d9e585ae424a4773",
+      "src/xevious_sub.68k": "e2d8a77e1c9b6190949aa00ae86fc1398022c90e285d7fda38920d1d17c77e4a"
+    }
+  },
+  "registry": {
+    "source": {
+      "file": "src/xevious_main.68k",
+      "label": "obj_handler_tbl",
+      "lines": [
+        6166,
+        6260
+      ],
+      "note": "1-based dispatch: entry N-1 handles object type N; names are the reference's own handler labels. schedule_action comes from obj_fn_tbl in the sub file."
+    },
+    "types": [
+      {
+        "code": 1,
+        "main_handler": {
+          "label": "handle_01_Bacura",
+          "line": 6167
+        },
+        "name": "Bacura",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 2,
+        "main_handler": null,
+        "schedule_action": "set_flying_formation",
+        "super_only": false
+      },
+      {
+        "code": 3,
+        "main_handler": null,
+        "schedule_action": "raise_ai_level_and_set_formation",
+        "super_only": false
+      },
+      {
+        "code": 4,
+        "main_handler": null,
+        "schedule_action": "none",
+        "super_only": false
+      },
+      {
+        "code": 5,
+        "main_handler": null,
+        "schedule_action": "reset_flying_formation",
+        "super_only": false
+      },
+      {
+        "code": 6,
+        "main_handler": {
+          "label": "handle_06_Bullet",
+          "line": 6172
+        },
+        "name": "Bullet",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 7,
+        "main_handler": {
+          "label": "handle_07_Garu_Zakato_Bullet",
+          "line": 6173
+        },
+        "name": "Garu Zakato Bullet",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 8,
+        "main_handler": {
+          "label": "handle_08_Giddo_Spario",
+          "line": 6174
+        },
+        "name": "Giddo Spario",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 9,
+        "main_handler": {
+          "label": "handle_09_Brag_Spario",
+          "line": 6175
+        },
+        "name": "Brag Spario",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 10,
+        "main_handler": {
+          "label": "handle_0A_Toroid",
+          "line": 6176
+        },
+        "name": "Toroid",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 11,
+        "main_handler": {
+          "label": "handle_0B_Toroid_shoots",
+          "line": 6177
+        },
+        "name": "Toroid shoots",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 12,
+        "main_handler": {
+          "label": "handle_0C_Zoshi_rnd",
+          "line": 6178
+        },
+        "name": "Zoshi rnd",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 13,
+        "main_handler": {
+          "label": "handle_0D_Zoshi_top",
+          "line": 6179
+        },
+        "name": "Zoshi top",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 14,
+        "main_handler": {
+          "label": "handle_0E_Zoshi_bottom",
+          "line": 6180
+        },
+        "name": "Zoshi bottom",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 15,
+        "main_handler": {
+          "label": "handle_0F_Torkan",
+          "line": 6181
+        },
+        "name": "Torkan",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 16,
+        "main_handler": {
+          "label": "handle_10_Kapi",
+          "line": 6182
+        },
+        "name": "Kapi",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 17,
+        "main_handler": {
+          "label": "handle_11_Terrazi",
+          "line": 6183
+        },
+        "name": "Terrazi",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 18,
+        "main_handler": {
+          "label": "handle_12_Zakato_slow",
+          "line": 6184
+        },
+        "name": "Zakato slow",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 19,
+        "main_handler": {
+          "label": "handle_13_Zakato_closeY",
+          "line": 6185
+        },
+        "name": "Zakato closeY",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 20,
+        "main_handler": {
+          "label": "handle_14_Zakato_fast",
+          "line": 6186
+        },
+        "name": "Zakato fast",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 21,
+        "main_handler": {
+          "label": "handle_15_Zakato",
+          "line": 6187
+        },
+        "name": "Zakato",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 22,
+        "main_handler": {
+          "label": "handle_16_Brag_Zakato_rnd",
+          "line": 6188
+        },
+        "name": "Brag Zakato rnd",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 23,
+        "main_handler": {
+          "label": "handle_17_Brag_Zakato_closeY",
+          "line": 6189
+        },
+        "name": "Brag Zakato closeY",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 24,
+        "main_handler": {
+          "label": "handle_18_Garu_Zakato",
+          "line": 6190
+        },
+        "name": "Garu Zakato",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 25,
+        "main_handler": null,
+        "schedule_action": "none",
+        "super_only": false
+      },
+      {
+        "code": 26,
+        "main_handler": null,
+        "schedule_action": "none",
+        "super_only": false
+      },
+      {
+        "code": 27,
+        "main_handler": {
+          "label": "handle_1B_Derota",
+          "line": 6193
+        },
+        "name": "Derota",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 28,
+        "main_handler": null,
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 29,
+        "main_handler": {
+          "label": "handle_1D_Sol_Tower",
+          "line": 6195
+        },
+        "name": "Sol Tower",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 30,
+        "main_handler": {
+          "label": "handle_1E_Barra",
+          "line": 6196
+        },
+        "name": "Barra",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 31,
+        "main_handler": {
+          "label": "handle_1F_Zolbak",
+          "line": 6197
+        },
+        "name": "Zolbak",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 32,
+        "main_handler": {
+          "label": "handle_20_Garu_Barra",
+          "line": 6198
+        },
+        "name": "Garu Barra",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 33,
+        "main_handler": {
+          "label": "handle_21_Garu_Derota",
+          "line": 6199
+        },
+        "name": "Garu Derota",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 34,
+        "main_handler": null,
+        "schedule_action": "set_bacura_count",
+        "super_only": false
+      },
+      {
+        "code": 35,
+        "main_handler": null,
+        "schedule_action": "reset_bacura_count",
+        "super_only": false
+      },
+      {
+        "code": 36,
+        "main_handler": null,
+        "schedule_action": "fire_mask_derota",
+        "super_only": false
+      },
+      {
+        "code": 37,
+        "main_handler": null,
+        "schedule_action": "fire_mask_logram",
+        "super_only": false
+      },
+      {
+        "code": 38,
+        "main_handler": {
+          "label": "handle_26_Logram",
+          "line": 6204
+        },
+        "name": "Logram",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 39,
+        "main_handler": null,
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 40,
+        "main_handler": null,
+        "schedule_action": "ground_stop_firing_row",
+        "super_only": false
+      },
+      {
+        "code": 41,
+        "main_handler": null,
+        "schedule_action": "fire_mask_zoshi",
+        "super_only": false
+      },
+      {
+        "code": 42,
+        "main_handler": null,
+        "schedule_action": "fire_mask_terrazi",
+        "super_only": false
+      },
+      {
+        "code": 43,
+        "main_handler": null,
+        "schedule_action": "fire_mask_kapi",
+        "super_only": false
+      },
+      {
+        "code": 44,
+        "main_handler": {
+          "label": "handle_2C_Grobda_stationary",
+          "line": 6210
+        },
+        "name": "Grobda stationary",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 45,
+        "main_handler": {
+          "label": "handle_2D_Boza_Logram",
+          "line": 6211
+        },
+        "name": "Boza Logram",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 46,
+        "main_handler": {
+          "label": "handle_2E_Domogram",
+          "line": 6212
+        },
+        "name": "Domogram",
+        "schedule_action": "add_domogram_with_path",
+        "super_only": false
+      },
+      {
+        "code": 47,
+        "main_handler": null,
+        "schedule_action": "fire_mask_boza_logram",
+        "super_only": false
+      },
+      {
+        "code": 48,
+        "main_handler": null,
+        "schedule_action": "fire_mask_domogram",
+        "super_only": false
+      },
+      {
+        "code": 49,
+        "main_handler": {
+          "label": "handle_31_right_sheonite",
+          "line": 6215
+        },
+        "name": "right sheonite",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 50,
+        "main_handler": {
+          "label": "handle_32_left_sheonite",
+          "line": 6216
+        },
+        "name": "left sheonite",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 51,
+        "main_handler": null,
+        "schedule_action": "sheonite_start",
+        "super_only": false
+      },
+      {
+        "code": 52,
+        "main_handler": null,
+        "schedule_action": "sheonite_end",
+        "super_only": false
+      },
+      {
+        "code": 53,
+        "main_handler": {
+          "label": "handle_35_Grobda_fwd",
+          "line": 6219
+        },
+        "name": "Grobda fwd",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 54,
+        "main_handler": {
+          "label": "handle_36_Grobda_crosshairs_fwd",
+          "line": 6220
+        },
+        "name": "Grobda crosshairs fwd",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 55,
+        "main_handler": null,
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 56,
+        "main_handler": {
+          "label": "handle_38_Grobda_fwd_crosshairs_stop_fwd",
+          "line": 6222
+        },
+        "name": "Grobda fwd crosshairs stop fwd",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 57,
+        "main_handler": {
+          "label": "handle_39_Grobda_targeted_back_stop",
+          "line": 6223
+        },
+        "name": "Grobda targeted back stop",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 58,
+        "main_handler": {
+          "label": "handle_3A_Grobda_fwd_crosshairs_darts_fwd",
+          "line": 6224
+        },
+        "name": "Grobda fwd crosshairs darts fwd",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 59,
+        "main_handler": {
+          "label": "handle_3B_Grobda_fwd_targeted_back_fwd",
+          "line": 6225
+        },
+        "name": "Grobda fwd targeted back fwd",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 60,
+        "main_handler": {
+          "label": "handle_3C_Grobda_targeted_fast_fwd",
+          "line": 6226
+        },
+        "name": "Grobda targeted fast fwd",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 61,
+        "main_handler": {
+          "label": "handle_3D_Grobda_stationary_in_water",
+          "line": 6227
+        },
+        "name": "Grobda stationary in water",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 62,
+        "main_handler": {
+          "label": "handle_3E_Grobda_fwd_in_water",
+          "line": 6228
+        },
+        "name": "Grobda fwd in water",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 63,
+        "main_handler": {
+          "label": "handle_3F_Grobda_crosshairs_fwd_in_water",
+          "line": 6229
+        },
+        "name": "Grobda crosshairs fwd in water",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 64,
+        "main_handler": {
+          "label": "handle_40_Grobda_fwd_targeted_back_fwd_in_water",
+          "line": 6230
+        },
+        "name": "Grobda fwd targeted back fwd in water",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 65,
+        "main_handler": {
+          "label": "handle_41_Andor_Genesis_obj_09",
+          "line": 6231
+        },
+        "name": "Andor Genesis obj 09",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 66,
+        "main_handler": {
+          "label": "handle_42_Andor_Genesis_obj_08",
+          "line": 6232
+        },
+        "name": "Andor Genesis obj 08",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 67,
+        "main_handler": {
+          "label": "handle_43_Andor_Genesis_obj_07",
+          "line": 6233
+        },
+        "name": "Andor Genesis obj 07",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 68,
+        "main_handler": {
+          "label": "handle_44_Andor_Genesis_obj_06",
+          "line": 6234
+        },
+        "name": "Andor Genesis obj 06",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 69,
+        "main_handler": {
+          "label": "handle_45_Andor_Genesis_obj_05",
+          "line": 6235
+        },
+        "name": "Andor Genesis obj 05",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 70,
+        "main_handler": {
+          "label": "handle_46_Andor_Genesis_obj_04",
+          "line": 6236
+        },
+        "name": "Andor Genesis obj 04",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 71,
+        "main_handler": {
+          "label": "handle_47_Andor_Genesis_obj_03",
+          "line": 6237
+        },
+        "name": "Andor Genesis obj 03",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 72,
+        "main_handler": {
+          "label": "handle_48_Andor_Genesis_obj_02",
+          "line": 6238
+        },
+        "name": "Andor Genesis obj 02",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 73,
+        "main_handler": {
+          "label": "handle_49_Andor_Genesis_obj_01",
+          "line": 6239
+        },
+        "name": "Andor Genesis obj 01",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 74,
+        "main_handler": {
+          "label": "handle_4A_Andor_Genesis_obj_14",
+          "line": 6240
+        },
+        "name": "Andor Genesis obj 14",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 75,
+        "main_handler": {
+          "label": "handle_4B_Andor_Genesis_obj_15",
+          "line": 6241
+        },
+        "name": "Andor Genesis obj 15",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 76,
+        "main_handler": null,
+        "schedule_action": "andor_genesis_start",
+        "super_only": false
+      },
+      {
+        "code": 77,
+        "main_handler": null,
+        "schedule_action": "andor_genesis_end",
+        "super_only": false
+      },
+      {
+        "code": 78,
+        "main_handler": null,
+        "schedule_action": "fire_mask_andor_genesis",
+        "super_only": false
+      },
+      {
+        "code": 79,
+        "main_handler": {
+          "label": "handle_4F_Andor_Genesis_obj_13",
+          "line": 6245
+        },
+        "name": "Andor Genesis obj 13",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 80,
+        "main_handler": {
+          "label": "handle_50_Andor_Genesis_obj_12",
+          "line": 6246
+        },
+        "name": "Andor Genesis obj 12",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 81,
+        "main_handler": {
+          "label": "handle_51_Andor_Genesis_obj_11",
+          "line": 6247
+        },
+        "name": "Andor Genesis obj 11",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 82,
+        "main_handler": {
+          "label": "handle_52_Andor_Genesis_obj_10",
+          "line": 6248
+        },
+        "name": "Andor Genesis obj 10",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 83,
+        "main_handler": {
+          "label": "handle_53_Easter_Egg",
+          "line": 6249
+        },
+        "name": "Easter Egg",
+        "schedule_action": "add_ground_object",
+        "super_only": false
+      },
+      {
+        "code": 84,
+        "main_handler": {
+          "label": "handle_54_Bonus_Flag",
+          "line": 6250
+        },
+        "name": "Bonus Flag",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 85,
+        "main_handler": {
+          "label": "handle_55_Jara_shoots",
+          "line": 6251
+        },
+        "name": "Jara shoots",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 86,
+        "main_handler": {
+          "label": "handle_56_Jara",
+          "line": 6252
+        },
+        "name": "Jara",
+        "schedule_action": "add_object",
+        "super_only": false
+      },
+      {
+        "code": 87,
+        "main_handler": null,
+        "schedule_action": "adjust_ai_level_from_score",
+        "super_only": false
+      },
+      {
+        "code": 88,
+        "main_handler": {
+          "label": "handle_58_Galaxian",
+          "line": 6255
+        },
+        "name": "Galaxian",
+        "schedule_action": "add_object",
+        "super_only": true
+      },
+      {
+        "code": 89,
+        "main_handler": {
+          "label": "handle_59_Jet_Taking_Off",
+          "line": 6256
+        },
+        "name": "Jet Taking Off",
+        "schedule_action": "add_object",
+        "super_only": true
+      },
+      {
+        "code": 90,
+        "main_handler": {
+          "label": "handle_5A_Jet",
+          "line": 6257
+        },
+        "name": "Jet",
+        "schedule_action": "add_object",
+        "super_only": true
+      },
+      {
+        "code": 91,
+        "main_handler": {
+          "label": "handle_5B_Helicopter",
+          "line": 6258
+        },
+        "name": "Helicopter",
+        "schedule_action": "add_ground_object",
+        "super_only": true
+      },
+      {
+        "code": 92,
+        "main_handler": {
+          "label": "handle_5C_Tank",
+          "line": 6259
+        },
+        "name": "Tank",
+        "schedule_action": "add_ground_object",
+        "super_only": true
+      },
+      {
+        "code": 93,
+        "main_handler": {
+          "label": "handle_5D_Bridge",
+          "line": 6260
+        },
+        "name": "Bridge",
+        "schedule_action": "add_ground_object",
+        "super_only": true
+      }
+    ]
+  }
+}
