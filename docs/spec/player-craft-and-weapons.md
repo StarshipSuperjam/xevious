@@ -57,8 +57,9 @@ flying enemies with one hit window (Y bias 8 width 16, X bias 4 width 8, shadow 
 Bacura slots with a distinctly larger window (Y bias 28 width 40, X bias 8 width 16) matching Bacura's
 size (`check_solvalou_hit` 2182–2237). Any hit kills: the explosion animates 7 cycles of 8 frames
 (~56 frames), then a 32-frame pause, then the next craft (if any remain — the life economy is owned by
-[Scoring, lives, and game over](scoring-lives-and-game-over.md)) spawns at the fixed spawn point with the
-area position preserved (`explode_solvalou` through `finish_solvalou_exploding` 2034–2090). **There is no
+[Scoring, lives, and game over](scoring-lives-and-game-over.md)) spawns at the fixed spawn point and the
+current area restarts from its top (`explode_solvalou` through `finish_solvalou_exploding` 2034–2090;
+area restart in [Area progression and terrain](area-progression-and-terrain.md)). **There is no
 respawn invulnerability window** — the only invincibility in the reference is a development build flag,
 off in a normal build (6123–6124, 2018–2024). A build that adds one is inventing a deviation and must
 record it.
@@ -82,6 +83,6 @@ is recorded as a strong inference (from the 224-pixel clamp literal), not a labe
 | A shot hitting Bacura visibly bounces back instead of vanishing | Play area 1's Bacura and watch the deflection | operator |
 | Exactly one bomb can be in flight; the next arms only after detonation | Play: hammer the bomb key; bombs never overlap | operator |
 | The crosshair leads the craft by a fixed distance and signals lock over a targetable ground object | Play: approach a Barra; the crosshair changes when it covers it | operator |
-| Death from bullet, enemy, or Bacura contact triggers the explosion sequence and respawn at the fixed point with area position preserved, with no invulnerability window | Play: die each way; respawn resumes the area in place | operator |
+| Death from bullet, enemy, or Bacura contact triggers the explosion sequence and respawn at the fixed point, restarting the area from its top, with no invulnerability window | Play: die each way; the area restarts at its beginning and the craft is immediately vulnerable | operator |
 | The build's movement/weapon constants match this document's recorded values | Data-table comparison fixtures over the build's generated Scratch lists | engine |
 | Capacity limits (3 shots, 1 bomb, 19 bullets, 6 flying, 16 ground, 16 Bacura) are encoded in the build's data | Structural fixture reads the built project's capacity constants | engine |

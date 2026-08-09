@@ -51,8 +51,13 @@ area comes from the offset table above. The detailed map tile data (`map_rom.68k
 transcribed; the Scratch terrain is a visual interpretation anchored to the schedule's coordinate system,
 recorded here as a port necessity.
 
-**Reset scope.** Player death does not reset the scroll clock: the craft respawns with terrain position
-preserved (the arcade resumes the area in place). Starting a new game resets to area 1 at scroll 0x0D00.
+**Reset scope.** Every new life restarts the current area from its top: the gameplay loop re-derives the
+schedule pointer from the area's table start and resets the scroll counter to 0x0D00 each time a life
+begins (`xevious_main.68k` `main_gameplay_loop` 471–483) — the arcade does not resume mid-area. Only the
+area *number* survives a death (and, in a two-player game, travels with each player's own state). Starting
+a new game resets to area 1. The current build's preserve-terrain-on-death behavior is an interim
+project-defined fixture that diverges from this rule and is recorded for correction with the life-economy
+work.
 
 ## Acceptance criteria
 
@@ -64,4 +69,4 @@ preserved (the arcade resumes the area in place). Starting a new game resets to 
 | Terrain scrolls continuously through a full area with no black gap, at one steady rate | Play the built `.sb3`: fly area 1 end to end watching for gaps | operator |
 | Completing area 16 continues at area 7 | Play (or accelerated trace) confirming the 16→7 transition, with no win screen | operator |
 | Ground objects appear at the same map landmarks on every run | Play the same area twice; the same objects appear at the same terrain positions | operator |
-| Death preserves area position; a new game starts at area 1 | Play: die mid-area and confirm resume-in-place; restart and confirm area 1 | operator |
+| Death restarts the current area from its top; a new game starts at area 1 | Play: die mid-area and confirm the area restarts at its beginning; restart and confirm area 1 | operator |
