@@ -29,6 +29,17 @@ which input classes were used, and re-expresses the result with original
 Scratch blocks, structure, and naming. Assembly or other source-code text is
 not copied into the Scratch project.
 
+Reference-derived numeric data may also be committed to this repository as
+part of the product specification: derived values, orderings, and structured
+tables recorded in the project's own notation (prose or generated JSON under
+`docs/spec/`), each carrying its citation (commit, file, label, line range),
+the SHA-256 hashes of the source files it was derived from, and an honest
+license status. This covers derived numbers and their arrangement only —
+assembly text, comments, prose, code structure, and media from the reference
+are still never reproduced. This paragraph is a deliberate widening of the
+recorded boundary, made through the product-spec intake with the operator's
+acknowledgement on the pull request that introduced it.
+
 The project does not acquire, distribute, open, or extract arcade ROM files.
 That prohibition is about handling ROM files; it does not turn the already
 published GitHub repository into a ROM file.
