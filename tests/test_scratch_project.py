@@ -842,6 +842,7 @@ class ScratchProjectTests(unittest.TestCase):
             "rng extend",
             "slot index",
             "tick",
+            "hit slot",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         stage_variable_names = {name for name, _value in stage["variables"].values()}
@@ -891,6 +892,8 @@ class ScratchProjectTests(unittest.TestCase):
             director.PROCCODE,
             director.CLEAR_SLOTS_PROCCODE,
             director.ADVANCE_SLOTS_PROCCODE,
+            director.RESOLVE_HIT_PROCCODE,
+            director.SCORE_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -1248,6 +1251,93 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._shot_cap_failures(project), label)
+
+    @staticmethod
+    def _sys03_failures(project: dict) -> set:
+        """SYS-03 single-hit-resolution path — violated labels (foundation-only)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        hit_writes = [
+            b
+            for b in blocks.values()
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][0] == "slot state"
+            and b["inputs"].get("ITEM") == [1, [4, director.SLOT_HIT]]
+        ]
+        if len(hit_writes) != 1:  # a hit resolves exactly once, through one resolver
+            failures.add("single-hit-resolver")
+        score_calls = [
+            b
+            for b in blocks.values()
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+        ]
+        if len(score_calls) != 1:  # all scoring flows through the one path
+            failures.add("single-score-path")
+        defined = {
+            b["mutation"]["proccode"]
+            for b in blocks.values()
+            if b["opcode"] == "procedures_prototype"
+        }
+        if not {director.RESOLVE_HIT_PROCCODE, director.SCORE_PROCCODE} <= defined:
+            failures.add("resolution-path-defined")
+        return failures
+
+    def test_collision_single_hit_path(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys03_failures(project))
+
+    def test_collision_single_hit_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys03_failures(base))
+
+        def double_score(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            call = next(
+                b
+                for b in stage["blocks"].values()
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            )
+            clone = copy.deepcopy(call)
+            stage["blocks"]["injected-second-score"] = clone
+
+        def skip_hit_write(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][0] == "slot state"
+                    and b["inputs"].get("ITEM") == [1, [4, director.SLOT_HIT]]
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, 0]]
+
+        cases = [
+            ("single-score-path", double_score),
+            ("single-hit-resolver", skip_hit_write),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._sys03_failures(project), label)
+
+    def test_collision_groups_match_spec(self) -> None:
+        # Exactly five groups, no others; each an (attacker range, victim range) over the
+        # recorded slot ranges (core-game-systems SYS-03).
+        groups = director.COLLISION_GROUPS
+        self.assertEqual(len(groups), 5)
+        player = (director.SOLVALOU_SLOT, director.SOLVALOU_SLOT)
+        self.assertEqual(
+            groups,
+            (
+                (director.SHOT_SLOTS, director.FLYING_SLOTS),
+                ((director.BOMB_SLOT, director.BOMB_SLOT), director.GROUND_SLOTS),
+                (director.BULLET_SLOTS, player),
+                (director.FLYING_SLOTS, player),
+                (director.BACURA_SLOTS, player),
+            ),
+        )
 
     def test_slot_ranges_match_capacities(self) -> None:
         # The 64-slot map and its binding capacities (player-craft-and-weapons.md),
@@ -1975,7 +2065,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "2ccc575b674a609f9d83163242c408dbe372a8ca3dbb3a56fa942215b809e0ec",
+            "9d6624f7b8879a7d1deb6d3926ec631a4e6c3d69a8b537e95014215680eb605c",
             build_hash,
         )
 

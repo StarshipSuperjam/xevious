@@ -106,6 +106,28 @@ ALLOC_RESULT_ID = "blaster-alloc-result"
 CLONE_SLOT_ID = "blaster-clone-slot"
 ALLOC_SHOT_PROCCODE = "alloc shot slot"
 
+# SYS-03 collision groups and single-hit resolution. Exactly five groups (below), no
+# others. A hit resolves exactly once through one path: `resolve hit` marks the struck
+# slot HIT and routes to the single `score` hook, so nothing can double-score.
+# FOUNDATION-ONLY / provisional skeleton: no enemy-side participant exists yet, so no
+# collision is detected — the per-group overlap detection and the exception verdicts are
+# delegated to the enemy/ground/boss/secrets slices (as the spec's SYS-03 exception
+# table delegates them). This slice lays the single-hit path and the group vocabulary.
+SLOT_HIT = 2
+HIT_SLOT_ID = "hit-slot"
+RESOLVE_HIT_PROCCODE = "resolve hit"
+SCORE_PROCCODE = "score"
+_PLAYER = (SOLVALOU_SLOT, SOLVALOU_SLOT)
+_BOMB = (BOMB_SLOT, BOMB_SLOT)
+# (attacker range, victim range) for each of the five groups (core-game-systems SYS-03).
+COLLISION_GROUPS = (
+    (SHOT_SLOTS, FLYING_SLOTS),   # player shots vs air enemies
+    (_BOMB, GROUND_SLOTS),        # bombs vs ground objects
+    (BULLET_SLOTS, _PLAYER),      # enemy shots vs the player
+    (FLYING_SLOTS, _PLAYER),      # air enemies vs the player
+    (BACURA_SLOTS, _PLAYER),      # Bacura vs the player
+)
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -822,12 +844,62 @@ def install_advance_slots(blocks: Blocks) -> None:
     blocks.chain(definition, [advance_tick, set_index, loop])
 
 
+def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
+    """A no-argument warp custom-block definition; returns the definition id."""
+    definition = blocks.add("procedures_definition", top_level=True)
+    prototype = blocks.add(
+        "procedures_prototype",
+        shadow=True,
+        mutation={
+            "tagName": "mutation",
+            "children": [],
+            "proccode": proccode,
+            "argumentids": "[]",
+            "argumentnames": "[]",
+            "argumentdefaults": "[]",
+            "warp": "true",
+        },
+    )
+    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
+    blocks.blocks[prototype]["parent"] = definition
+    return definition
+
+
+def install_score(blocks: Blocks) -> None:
+    # SYS-03: the single scoring path everything routes through — so a hit can never
+    # double-score. Empty this slice; award / high-score / cap land with ECO-01.
+    _install_warp_proc(blocks, SCORE_PROCCODE)
+    # ENGINE-TODO: scoring (award, high score, 9,999,990 cap) lands with ECO-01; every
+    # future scoring route calls through this one `score` hook.
+
+
+def install_resolve_hit(blocks: Blocks) -> None:
+    # SYS-03: resolve one collision exactly once — mark the struck slot HIT and route to
+    # the single score path. The struck slot is `hit slot`, set by the detector that a
+    # later slice wires (the per-group overlap detection is delegated there).
+    definition = _install_warp_proc(blocks, RESOLVE_HIT_PROCCODE)
+    blocks.chain(
+        definition,
+        [
+            blocks.list_replace(
+                "slot state",
+                SLOT_STATE_ID,
+                variable("hit slot", HIT_SLOT_ID),
+                number(SLOT_HIT),
+            ),
+            blocks.call_proc(SCORE_PROCCODE, warp=True),
+        ],
+    )
+
+
 def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("stage")
     install_transition_procedure(blocks)
     install_rng_step(blocks)
     install_clear_slots(blocks)
     install_advance_slots(blocks)
+    install_score(blocks)
+    install_resolve_hit(blocks)
 
     flag = blocks.flag()
     blocks.chain(
@@ -1505,6 +1577,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         RNG_XFLAG_ID,
         SLOT_INDEX_ID,
         TICK_ID,
+        HIT_SLOT_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -1532,6 +1605,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SLOT_INDEX_ID: ["slot index", 0],
         # SYS-04 authoritative gameplay frame counter (advanced by the ordered pass).
         TICK_ID: ["tick", 0],
+        # SYS-03 struck slot for the single-hit resolution path (set by a later detector).
+        HIT_SLOT_ID: ["hit slot", 0],
     }
     owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID}
     preserved_lists = {
