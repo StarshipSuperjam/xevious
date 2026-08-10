@@ -811,6 +811,36 @@ class ScratchProjectTests(unittest.TestCase):
             director.project_bytes(director.expected_project(project)),
         )
 
+    def test_runtime_identifier_manifest_is_current(self) -> None:
+        # The committed manifest the JS harness reads must equal what the generator
+        # emits from the current project, so a variable rename cannot leave the harness
+        # reading a stale name. Regenerate with tools/game_director.py generate.
+        project = load_source(scratch.SOURCE_DIR)
+        expected = director.expected_project(project)
+        self.assertEqual(
+            director.MANIFEST_PATH.read_bytes(),
+            director.manifest_bytes(expected),
+        )
+
+    def test_runtime_identifier_manifest_covers_scoped_duplicates(self) -> None:
+        # Guards the harness's reason for existing: names that repeat across targets
+        # ("entry epoch" on solvalou and solv_death; "scroll step" on both strips) must
+        # resolve to distinct scoped entries, never collapse to one global name.
+        project = load_source(scratch.SOURCE_DIR)
+        manifest = director.identifier_manifest(director.expected_project(project))
+        variables = manifest["variables"]
+        entry_epochs = {
+            vid: info for vid, info in variables.items() if info["name"] == "entry epoch"
+        }
+        self.assertEqual(
+            {info["scope"] for info in entry_epochs.values()},
+            {"solvalou", "solv_death"},
+        )
+        scroll_steps = {
+            info["scope"] for info in variables.values() if info["name"] == "scroll step"
+        }
+        self.assertEqual(scroll_steps, {"area_01a", "area_01b"})
+
     def test_game_director_generator_refuses_dirty_editor_source(self) -> None:
         with (
             mock.patch.object(director, "source_has_local_changes", return_value=True),
