@@ -2090,8 +2090,11 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         )
         # Every tick while HUD-visible: digit = floor(value / 10^place) mod 10, shown as
         # leading-zero-preserving digit/D (deterministic integer math, arcade-faithful).
+        # Update every tick while the HUD is visible; stop (fall through to hide+delete) only
+        # when the state returns to title/boot. `repeat until` halts when its condition is TRUE,
+        # so the condition is "we have LEFT to title/boot" — not its negation.
         tick_loop = blocks.add("control_repeat_until")
-        tick_condition = blocks.not_either_state(tick_loop, "title", "boot")
+        tick_condition = blocks.either_state(tick_loop, "title", "boot")
         blocks.blocks[tick_loop]["inputs"]["CONDITION"] = [2, tick_condition]
         digit_expr = blocks.op_mod(
             blocks.op_floor(
@@ -2104,10 +2107,12 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         name_expr = blocks.op_join(text("digit/"), digit_expr)
         blocks.substack(tick_loop, [blocks.switch_costume_expr(name_expr)])
         return [
-            blocks.to_front(),
-            blocks.show(),
+            # Compute 10^place while still hidden, then show and update the costume every tick
+            # (the first iteration sets the right digit before the frame renders — no flash).
             set_divisor,
             divisor_loop,
+            blocks.to_front(),
+            blocks.show(),
             tick_loop,
             blocks.hide(),
             blocks.add("control_delete_this_clone"),
@@ -2122,13 +2127,18 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_HIGH_SCORE_DIGIT,
         digit_role_body("high score", HIGH_SCORE_ID),
     )
+    # A life clone must SHOW the ship icon — switch to it explicitly rather than inherit
+    # whatever costume the sprite last held at spawn (which is a label glyph).
     life_role = blocks.if_var_equals(
-        "hud role", HUD_ROLE_ID, HUD_ROLE_LIFE, [blocks.to_front(), blocks.show()]
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LIFE,
+        [blocks.switch_costume("life/ship"), blocks.to_front(), blocks.show()],
     )
     # 1UP: flashes (show/hide, held HUD_1UP_FLASH_HOLD_TICKS each way) for as long as the
     # HUD is visible, epoch/state-safe via the same title/boot guard as the digit loops.
     flash_loop = blocks.add("control_repeat_until")
-    flash_condition = blocks.not_either_state(flash_loop, "title", "boot")
+    flash_condition = blocks.either_state(flash_loop, "title", "boot")
     blocks.blocks[flash_loop]["inputs"]["CONDITION"] = [2, flash_condition]
     blocks.substack(
         flash_loop,

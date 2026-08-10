@@ -1967,6 +1967,32 @@ class ScratchProjectTests(unittest.TestCase):
         if not has_flash_loop():
             failures.add("flashing-1up")
 
+        # Regression guard for the "header flashes then vanishes" bug: a clone's keep-alive
+        # `repeat until` must LOOP while the HUD is visible and stop only on return to
+        # title/boot, so its condition is "state is title or boot" (operator_or) — never the
+        # negation, which is true during play and exits the loop immediately (the clone then
+        # falls straight through to hide + delete).
+        for b in blocks.values():
+            if b["opcode"] != "control_repeat_until":
+                continue
+            cond = b["inputs"].get("CONDITION")
+            if (
+                isinstance(cond, list)
+                and len(cond) > 1
+                and isinstance(cond[1], str)
+                and blocks.get(cond[1], {}).get("opcode") == "operator_not"
+            ):
+                failures.add("hud-loop-inverted")
+
+        # Regression guard: a life clone must switch to the life/ship costume, not inherit
+        # whatever glyph the sprite last held at spawn (which rendered the icons as a letter).
+        if not any(
+            b["opcode"] == "looks_costume"
+            and b["fields"].get("COSTUME", [None])[0] == "life/ship"
+            for b in blocks.values()
+        ):
+            failures.add("life-ship-costume")
+
         # Read-only invariant: every hud-owned variable write targets a hud-local id —
         # never a Stage variable (score/high score/craft included). Reinforces (at the
         # hud target specifically) the extended Stage-variable write-forbid guard above.
@@ -2154,6 +2180,25 @@ class ScratchProjectTests(unittest.TestCase):
                     name = b["fields"]["COSTUME"][0]
                     b["fields"]["COSTUME"][0] = name.replace("hs/", "glyph/")
 
+        def break_loop_inverted(p: dict) -> None:
+            # re-introduce the "flash then vanish" bug: make a keep-alive loop's condition a
+            # negation (true during play), so `repeat until` exits at once.
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] == "control_repeat_until":
+                    cond = b["inputs"].get("CONDITION")
+                    if isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str):
+                        blocks[cond[1]]["opcode"] = "operator_not"
+                        break
+
+        def break_life_ship_costume(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if (
+                    b["opcode"] == "looks_costume"
+                    and b["fields"].get("COSTUME", [None])[0] == "life/ship"
+                ):
+                    b["fields"]["COSTUME"][0] = "digit/0"
+
         cases = [
             ("hud-spawns-clones", break_spawn),
             ("hud-clone-handler", break_clone_handler),
@@ -2166,6 +2211,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("hud-life-spawn-loop-capped", break_life_spawn_loop_cap),
             ("hud-life-count-capped", break_life_count_cap),
             ("hud-high-score-label-yellow", break_high_score_label_yellow),
+            ("hud-loop-inverted", break_loop_inverted),
+            ("life-ship-costume", break_life_ship_costume),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -3609,7 +3656,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "7acae2c4e662996cd507c93d75812c743e9d356a51f1627e375e1c67a97880e5",
+            "d002780bd9ff9e6a40fb78bd5c58fa42f194b7675763cdce748e60737775f06d",
             build_hash,
         )
 
