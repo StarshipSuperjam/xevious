@@ -87,6 +87,15 @@ SHOT_SLOTS = (37, 39)  # ........ 37-39   0x24-0x26 ........ 3
 BULLET_SLOTS = (40, 58)  # ...... 40-58   0x27-0x39 ........ 19
 FLYING_SLOTS = (59, 64)  # ...... 59-64   0x3A-0x3F ........ 6
 
+# SYS-04 centralized ordered update (architecture.md key decision): the Stage walks the
+# slots in index order each tick as one ATOMIC (warp) pass — the shape that preserves
+# the reference's random-stream draw order (free-running per-clone threads are ruled out
+# for stream consumers). `tick` is the authoritative gameplay frame counter the future
+# area director builds on. Dormant this slice: no slot dispatches work and no consumer
+# draws from the stream, so the pass only advances the clock.
+TICK_ID = "tick"
+ADVANCE_SLOTS_PROCCODE = "advance slots"
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -765,11 +774,50 @@ def install_clear_slots(blocks: Blocks) -> None:
     blocks.chain(definition, [set_index, loop])
 
 
+def install_advance_slots(blocks: Blocks) -> None:
+    # SYS-04 centralized ordered update: one atomic (warp) pass over the 64 slots in
+    # ascending index order, advancing the tick clock. Dispatch of each occupied slot's
+    # per-type behavior is deferred — no entity type acts this slice.
+    definition = blocks.add("procedures_definition", top_level=True)
+    prototype = blocks.add(
+        "procedures_prototype",
+        shadow=True,
+        mutation={
+            "tagName": "mutation",
+            "children": [],
+            "proccode": ADVANCE_SLOTS_PROCCODE,
+            "argumentids": "[]",
+            "argumentnames": "[]",
+            "argumentdefaults": "[]",
+            "warp": "true",
+        },
+    )
+    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
+    blocks.blocks[prototype]["parent"] = definition
+
+    cursor = lambda: variable("slot index", SLOT_INDEX_ID)
+    advance_tick = blocks.change_var("tick", TICK_ID, 1)
+    set_index = blocks.set_var("slot index", SLOT_INDEX_ID, number(1))
+    loop = blocks.add("control_repeat", inputs={"TIMES": number(SLOT_COUNT)})
+    is_empty = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, cursor()), number(0)
+    )
+    occupied = blocks.add("operator_not")
+    blocks.blocks[occupied]["inputs"] = {"OPERAND": [2, is_empty]}
+    blocks.blocks[is_empty]["parent"] = occupied
+    # ENGINE-TODO: per-type dispatch of each occupied slot lands with the enemy slice;
+    # today the ordered atomic pass visits occupied slots but has no per-type behavior.
+    dispatch = blocks.if_reporter(occupied, [])
+    blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
+    blocks.chain(definition, [advance_tick, set_index, loop])
+
+
 def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("stage")
     install_transition_procedure(blocks)
     install_rng_step(blocks)
     install_clear_slots(blocks)
+    install_advance_slots(blocks)
 
     flag = blocks.flag()
     blocks.chain(
@@ -851,11 +899,21 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(loop, [bgm])
     blocks.chain(enter, [blocks.if_state("playing", [start_sound, loop])])
 
+    # SYS-04 centralized ordered update: a second `director enter` thread (parallel to
+    # the BGM loop above) drives one `advance slots` atomic pass per tick while playing.
+    walk_enter = blocks.receive("director enter")
+    walk_loop = blocks.add("control_repeat_until")
+    walk_condition = blocks.not_state(walk_loop, "playing")
+    blocks.blocks[walk_loop]["inputs"]["CONDITION"] = [2, walk_condition]
+    blocks.substack(walk_loop, [blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True)])
+    blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
+
     # A NEW Stage `director reset` receiver — kept out of the transition procedure body
     # so its pinned opcode sequence stays byte-identical. `reset scope` is already set
     # before the reset broadcast fires. It (SYS-02) clears the object slots on every
-    # reset — all scopes clear transient gameplay — and (SYS-04) seeds the shared stream
-    # on a world reset (cold-start / new-game) so seeded runs repeat.
+    # reset — all reset scopes clear transient gameplay — and, on a world reset
+    # (cold-start / new-game), seeds the shared stream (SYS-04, so seeded runs repeat)
+    # and starts the frame clock at zero.
     stage_reset = blocks.receive("director reset")
     blocks.chain(
         stage_reset,
@@ -864,7 +922,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             reset_if(
                 blocks,
                 ("cold-start", "new-game"),
-                [blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED))],
+                [
+                    blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED)),
+                    blocks.set_var("tick", TICK_ID, number(0)),
+                ],
             ),
         ],
     )
@@ -1350,6 +1411,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         RNG_NEW_HIGH_ID,
         RNG_XFLAG_ID,
         SLOT_INDEX_ID,
+        TICK_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -1373,8 +1435,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         RNG_NEW_LOW_ID: ["rng new low", 0],
         RNG_NEW_HIGH_ID: ["rng new high", 0],
         RNG_XFLAG_ID: ["rng extend", 0],
-        # SYS-02 clear-slots loop cursor (machinery, not slot data).
+        # SYS-02 slot-sweep loop cursor (machinery, not slot data).
         SLOT_INDEX_ID: ["slot index", 0],
+        # SYS-04 authoritative gameplay frame counter (advanced by the ordered pass).
+        TICK_ID: ["tick", 0],
     }
     owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID}
     preserved_lists = {

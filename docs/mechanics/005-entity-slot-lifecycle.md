@@ -13,3 +13,20 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Central ordered update
+
+The reference walks its 64 object slots in ascending index order once per frame
+(`main_fn_2__handle_objects`). The port realizes this as the recorded **centralized ordered update**
+decision ([architecture](../architecture.md) §Key decisions): the Stage runs one **atomic (warp)**
+`advance slots` pass per tick — a warp block so the 64-slot sweep costs no frames and cannot let another
+script interleave a random-stream draw mid-pass (the property that keeps the reference's draw order and so
+"seeded runs repeat exactly"). A second `director enter` thread (parallel to the BGM loop) drives one pass
+per tick while `playing`; the pass advances the `tick` frame counter and visits each occupied slot.
+
+**Dormant this slice.** No slot type dispatches any per-type behavior and no consumer draws from the shared
+stream, so the pass only advances the clock — the per-slot dispatch is explicitly deferred (an
+`ENGINE-TODO` at the site) to the enemy slice that introduces the first entity behavior and stream
+consumer. `tick` is the authoritative gameplay frame counter ([core game systems](../spec/core-game-systems.md)
+units rule); the future area director's scroll clock builds **on** it, not beside it. It starts at zero on
+a world reset (cold-start / new-game) and advances each `playing` tick.

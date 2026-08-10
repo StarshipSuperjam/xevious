@@ -841,6 +841,7 @@ class ScratchProjectTests(unittest.TestCase):
             "rng new high",
             "rng extend",
             "slot index",
+            "tick",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         stage_variable_names = {name for name, _value in stage["variables"].values()}
@@ -881,12 +882,16 @@ class ScratchProjectTests(unittest.TestCase):
             if block["opcode"] == "procedures_call"
         ]
         # Every state transition routes through the one transition procedure; the only
-        # other Stage-owned call is the SYS-02 `clear slots` machinery (no state write).
+        # other Stage-owned calls are the SYS-02/04 machinery blocks (no state write).
         transition_calls = [
             block for block in calls if block["mutation"]["proccode"] == director.PROCCODE
         ]
         self.assertTrue(transition_calls)
-        allowed_proccodes = {director.PROCCODE, director.CLEAR_SLOTS_PROCCODE}
+        allowed_proccodes = {
+            director.PROCCODE,
+            director.CLEAR_SLOTS_PROCCODE,
+            director.ADVANCE_SLOTS_PROCCODE,
+        }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
         )
@@ -991,6 +996,121 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._sys02_slot_failures(project), label)
+
+    @staticmethod
+    def _central_walk_failures(project: dict) -> set:
+        """SYS-04 centralized ordered update contract — violated labels."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        proto_id = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode")
+                == director.ADVANCE_SLOTS_PROCCODE
+            ),
+            None,
+        )
+        if proto_id is None or blocks[proto_id]["mutation"].get("warp") != "true":
+            failures.add("advance-slots-warp")
+            return failures
+        definition = next(
+            (
+                b
+                for b in blocks.values()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto_id
+            ),
+            None,
+        )
+        increments_tick = False
+        repeat_times = None
+        cursor = definition["next"] if definition else None
+        while cursor:
+            block = blocks[cursor]
+            if (
+                block["opcode"] == "data_changevariableby"
+                and block["fields"]["VARIABLE"][0] == "tick"
+            ):
+                increments_tick = True
+            if block["opcode"] == "control_repeat":
+                times = block["inputs"].get("TIMES")
+                if times and times[0] == 1:
+                    repeat_times = int(float(times[1][1]))
+            cursor = block["next"]
+        if not increments_tick:
+            failures.add("walk-advances-tick")
+        if repeat_times != director.SLOT_COUNT:
+            failures.add("walk-sweeps-all-slots")
+        driven = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ADVANCE_SLOTS_PROCCODE
+            for b in blocks.values()
+        )
+        if not driven:
+            failures.add("walk-driven-while-playing")
+        return failures
+
+    def test_central_walk_is_atomic_ordered_pass(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._central_walk_failures(project))
+
+    def test_central_walk_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._central_walk_failures(base))
+
+        def unwarp_walk(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.ADVANCE_SLOTS_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def shrink_sweep(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            proto_id = next(
+                bid
+                for bid, b in stage["blocks"].items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode")
+                == director.ADVANCE_SLOTS_PROCCODE
+            )
+            definition = next(
+                b
+                for b in stage["blocks"].values()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto_id
+            )
+            cursor = definition["next"]
+            while cursor:
+                block = stage["blocks"][cursor]
+                if block["opcode"] == "control_repeat":
+                    block["inputs"]["TIMES"] = [1, [4, 32]]
+                cursor = block["next"]
+
+        def drop_tick(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"]["VARIABLE"][0] == "tick"
+                ):
+                    b["fields"]["VARIABLE"] = ["slot index", director.SLOT_INDEX_ID]
+
+        cases = [
+            ("advance-slots-warp", unwarp_walk),
+            ("walk-sweeps-all-slots", shrink_sweep),
+            ("walk-advances-tick", drop_tick),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._central_walk_failures(project), label)
 
     def test_slot_ranges_match_capacities(self) -> None:
         # The 64-slot map and its binding capacities (player-craft-and-weapons.md),
@@ -1718,7 +1838,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "067d1191a0c67e007662d4abd8819b4492e882e17f9d00d17c14fbd8bc78f3b0",
+            "5f6a8ac5987b2052e3afb6cae4177ac099ffabf17b14678bf9260f7b1726af02",
             build_hash,
         )
 
