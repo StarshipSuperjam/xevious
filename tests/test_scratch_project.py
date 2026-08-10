@@ -840,6 +840,7 @@ class ScratchProjectTests(unittest.TestCase):
             "rng new low",
             "rng new high",
             "rng extend",
+            "slot index",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         stage_variable_names = {name for name, _value in stage["variables"].values()}
@@ -879,8 +880,16 @@ class ScratchProjectTests(unittest.TestCase):
             for block in stage["blocks"].values()
             if block["opcode"] == "procedures_call"
         ]
-        self.assertTrue(calls)
-        self.assertTrue(all(block["mutation"]["proccode"] == director.PROCCODE for block in calls))
+        # Every state transition routes through the one transition procedure; the only
+        # other Stage-owned call is the SYS-02 `clear slots` machinery (no state write).
+        transition_calls = [
+            block for block in calls if block["mutation"]["proccode"] == director.PROCCODE
+        ]
+        self.assertTrue(transition_calls)
+        allowed_proccodes = {director.PROCCODE, director.CLEAR_SLOTS_PROCCODE}
+        self.assertTrue(
+            all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
+        )
 
         director_variable_ids = {
             director.STATE_ID,
@@ -897,6 +906,107 @@ class ScratchProjectTests(unittest.TestCase):
                 if block["opcode"] in {"data_setvariableto", "data_changevariableby"}
             }
             self.assertTrue(director_variable_ids.isdisjoint(writes), target["name"])
+
+    @staticmethod
+    def _sys02_slot_failures(project: dict) -> set:
+        """SYS-02 entity-slot machinery contract — the set of violated labels."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value for value in stage["lists"].values()}
+        for label, name in (
+            ("slot-type-list-64", "slot type"),
+            ("slot-state-list-64", "slot state"),
+        ):
+            entry = by_name.get(name)
+            if entry is None or len(entry[1]) != director.SLOT_COUNT:
+                failures.add(label)
+            elif any(item != 0 for item in entry[1]):
+                failures.add(label)
+        blocks = stage["blocks"]
+        clear_proto = next(
+            (
+                b
+                for b in blocks.values()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.CLEAR_SLOTS_PROCCODE
+            ),
+            None,
+        )
+        if clear_proto is None or clear_proto["mutation"].get("warp") != "true":
+            failures.add("clear-slots-warp-defined")
+        reset_receiver = any(
+            b["opcode"] == "event_whenbroadcastreceived"
+            and b["fields"]["BROADCAST_OPTION"][0] == "director reset"
+            for b in blocks.values()
+        )
+        calls_clear = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CLEAR_SLOTS_PROCCODE
+            for b in blocks.values()
+        )
+        if not (reset_receiver and calls_clear):
+            failures.add("reset-clears-slots")
+        return failures
+
+    def test_entity_slots_present_and_cleared(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys02_slot_failures(project))
+
+    def test_entity_slot_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys02_slot_failures(base))
+
+        def shrink_type_list(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for value in stage["lists"].values():
+                if value[0] == "slot type":
+                    value[1] = value[1][:-1]  # length 63
+
+        def unwarp_clear(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.CLEAR_SLOTS_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_clear_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.CLEAR_SLOTS_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        cases = [
+            ("slot-type-list-64", shrink_type_list),
+            ("clear-slots-warp-defined", unwarp_clear),
+            ("reset-clears-slots", drop_clear_call),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._sys02_slot_failures(project), label)
+
+    def test_slot_ranges_match_capacities(self) -> None:
+        # The 64-slot map and its binding capacities (player-craft-and-weapons.md),
+        # reproduced as generator constants; also pins the arcade 0xNN <-> index NN+1.
+        self.assertEqual(director.SLOT_COUNT, 64)
+        span = lambda r: r[1] - r[0] + 1
+        self.assertEqual(span(director.GROUND_SLOTS), 16)
+        self.assertEqual(span(director.BACURA_SLOTS), 16)
+        self.assertEqual(span(director.SHOT_SLOTS), 3)
+        self.assertEqual(span(director.BULLET_SLOTS), 19)
+        self.assertEqual(span(director.FLYING_SLOTS), 6)
+        self.assertEqual(director.GROUND_SLOTS[0], 0x00 + 1)
+        self.assertEqual(director.BOMB_SLOT, 0x21 + 1)
+        self.assertEqual(director.SOLVALOU_SLOT, 0x23 + 1)
+        self.assertEqual(director.SHOT_SLOTS[0], 0x24 + 1)
+        self.assertEqual(director.FLYING_SLOTS[1], 0x3F + 1)
 
     def test_transition_cleanup_is_serialized_before_state_entry(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -1608,7 +1718,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f9e0ff72af6a25757c7cb5cbc5c9022aed1957f0b89440934d7ff0f9c58fffc9",
+            "067d1191a0c67e007662d4abd8819b4492e882e17f9d00d17c14fbd8bc78f3b0",
             build_hash,
         )
 

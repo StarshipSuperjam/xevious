@@ -64,6 +64,29 @@ RNG_PROCCODE = "rng step"
 # docs/mechanics/004.
 RNG_COLD_START_SEED = 0x4A39
 
+# SYS-02 entity slot model. 64 fixed object slots; the arcade object slot 0xNN maps to
+# Scratch list index NN+1 (lists are 1-based). The ranges and capacities are recorded in
+# player-craft-and-weapons.md (their normative home) and reproduced here as generator
+# constants, with both columns, for traceability. Only `slot type` (0 = empty, skipped
+# by the walk) and `slot state` (0 idle / 1 active / 2 hit) exist this slice — the
+# position/age fields land with the first entity that authors them (centrally, in the
+# enemy slice; there is no position writer while the mirror is deferred).
+SLOT_TYPE_ID = "slot-type"
+SLOT_STATE_ID = "slot-state"
+SLOT_INDEX_ID = "slot-index"  # clear-slots loop cursor (machinery, not slot data)
+SLOT_COUNT = 64
+CLEAR_SLOTS_PROCCODE = "clear slots"
+#                       index lo..hi   arcade 0xNN..0xMM   capacity
+GROUND_SLOTS = (1, 16)  # ....... 1-16   0x00-0x0F ........ 16
+BACURA_SLOTS = (17, 32)  # ...... 17-32   0x10-0x1F ........ 16
+BOMB_TARGET_SLOT = 33  # ........ 33      0x20
+BOMB_SLOT = 34  # ............... 34      0x21
+CROSSHAIR_SLOT = 35  # .......... 35      0x22
+SOLVALOU_SLOT = 36  # ........... 36      0x23
+SHOT_SLOTS = (37, 39)  # ........ 37-39   0x24-0x26 ........ 3
+BULLET_SLOTS = (40, 58)  # ...... 40-58   0x27-0x39 ........ 19
+FLYING_SLOTS = (59, 64)  # ...... 59-64   0x3A-0x3F ........ 6
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -480,6 +503,43 @@ class Blocks:
         self.substack(block_id, body)
         return block_id
 
+    # Indexed list access (INDEX/ITEM operands take value-input specs or nested
+    # reporter block ids, wired like the arithmetic reporters above).
+    def list_replace(self, list_name: str, list_id: str, index: Any, item: Any) -> str:
+        block_id = self.add(
+            "data_replaceitemoflist", fields={"LIST": [list_name, list_id]}
+        )
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("INDEX", index), ("ITEM", item)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
+
+    def list_item(self, list_name: str, list_id: str, index: Any) -> str:
+        block_id = self.add("data_itemoflist", fields={"LIST": [list_name, list_id]})
+        if isinstance(index, str):
+            self.blocks[block_id]["inputs"] = {"INDEX": [2, index]}
+            self.blocks[index]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"INDEX": index}
+        return block_id
+
+    def call_proc(self, proccode: str, *, warp: bool) -> str:
+        return self.add(
+            "procedures_call",
+            mutation={
+                "tagName": "mutation",
+                "children": [],
+                "proccode": proccode,
+                "argumentids": "[]",
+                "warp": "true" if warp else "false",
+            },
+        )
+
 
 def install_transition_procedure(blocks: Blocks) -> None:
     definition = blocks.add("procedures_definition", top_level=True)
@@ -670,10 +730,46 @@ def install_rng_step(blocks: Blocks) -> None:
     )
 
 
+def install_clear_slots(blocks: Blocks) -> None:
+    # SYS-02: reset every object slot to empty/idle. A warp (atomic) block so the
+    # 64-slot sweep costs no ticks; run on every director reset (all scopes clear
+    # transient gameplay). Only `slot type` and `slot state` exist this slice.
+    definition = blocks.add("procedures_definition", top_level=True)
+    prototype = blocks.add(
+        "procedures_prototype",
+        shadow=True,
+        mutation={
+            "tagName": "mutation",
+            "children": [],
+            "proccode": CLEAR_SLOTS_PROCCODE,
+            "argumentids": "[]",
+            "argumentnames": "[]",
+            "argumentdefaults": "[]",
+            "warp": "true",
+        },
+    )
+    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
+    blocks.blocks[prototype]["parent"] = definition
+
+    cursor = lambda: variable("slot index", SLOT_INDEX_ID)
+    set_index = blocks.set_var("slot index", SLOT_INDEX_ID, number(1))
+    loop = blocks.add("control_repeat", inputs={"TIMES": number(SLOT_COUNT)})
+    blocks.substack(
+        loop,
+        [
+            blocks.list_replace("slot type", SLOT_TYPE_ID, cursor(), number(0)),
+            blocks.list_replace("slot state", SLOT_STATE_ID, cursor(), number(0)),
+            blocks.change_var("slot index", SLOT_INDEX_ID, 1),
+        ],
+    )
+    blocks.chain(definition, [set_index, loop])
+
+
 def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("stage")
     install_transition_procedure(blocks)
     install_rng_step(blocks)
+    install_clear_slots(blocks)
 
     flag = blocks.flag()
     blocks.chain(
@@ -755,19 +851,21 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(loop, [bgm])
     blocks.chain(enter, [blocks.if_state("playing", [start_sound, loop])])
 
-    # SYS-04: seed the shared stream on a world reset (cold-start / new-game) so seeded
-    # runs repeat. A NEW Stage `director reset` receiver — kept out of the transition
-    # procedure body so its pinned opcode sequence stays byte-identical. `reset scope`
-    # is already set before the reset broadcast fires.
-    rng_reset = blocks.receive("director reset")
+    # A NEW Stage `director reset` receiver — kept out of the transition procedure body
+    # so its pinned opcode sequence stays byte-identical. `reset scope` is already set
+    # before the reset broadcast fires. It (SYS-02) clears the object slots on every
+    # reset — all scopes clear transient gameplay — and (SYS-04) seeds the shared stream
+    # on a world reset (cold-start / new-game) so seeded runs repeat.
+    stage_reset = blocks.receive("director reset")
     blocks.chain(
-        rng_reset,
+        stage_reset,
         [
+            blocks.call_proc(CLEAR_SLOTS_PROCCODE, warp=True),
             reset_if(
                 blocks,
                 ("cold-start", "new-game"),
                 [blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED))],
-            )
+            ),
         ],
     )
     return blocks.blocks
@@ -1251,6 +1349,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         RNG_NEW_LOW_ID,
         RNG_NEW_HIGH_ID,
         RNG_XFLAG_ID,
+        SLOT_INDEX_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -1274,11 +1373,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         RNG_NEW_LOW_ID: ["rng new low", 0],
         RNG_NEW_HIGH_ID: ["rng new high", 0],
         RNG_XFLAG_ID: ["rng extend", 0],
+        # SYS-02 clear-slots loop cursor (machinery, not slot data).
+        SLOT_INDEX_ID: ["slot index", 0],
     }
+    owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID}
     preserved_lists = {
         list_id: value
         for list_id, value in stage["lists"].items()
-        if list_id != ALLOWED_ID
+        if list_id not in owned_lists
     }
     stage["lists"] = preserved_lists | {
         ALLOWED_ID: [
@@ -1293,7 +1395,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 "respawning -> playing",
                 "game-over -> title",
             ],
-        ]
+        ],
+        # SYS-02 object slots (index NN+1 = arcade slot 0xNN): type 0 = empty (skipped),
+        # state 0 = idle. Fixed length 64; alloc/free change entries, never length.
+        SLOT_TYPE_ID: ["slot type", [0] * SLOT_COUNT],
+        SLOT_STATE_ID: ["slot state", [0] * SLOT_COUNT],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 
