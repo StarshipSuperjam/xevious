@@ -33,8 +33,9 @@ The regression-recovery build discharges audit items B1-B10 and A1-A2, re-expres
 
 - **B1 held fire / B8 shot** — polled fire with a reload counter; the reload cadence cites
   [player craft and weapons](../spec/player-craft-and-weapons.md) (WPN-01), as does the shot's forward
-  travel and top-edge expiry. The shot's per-tick travel *magnitude* is preserved-baseline (the spatial
-  factor is unratified until the movement slice).
+  travel and top-edge expiry. (The shot's per-tick travel *magnitude* is the recovery build's value,
+  recorded by the movement slice as a port-tuned constant — see
+  [007](007-spatial-factor-and-movement.md).)
 - **B2 bomb lockout / B6 crosshair / B7 impact marker** — one bomb arms at a time (WPN-04); the `bomb`
   broadcast drives the drop, the crosshair release animation, and the `target_b` marker. The re-arm
   timing is preserved-baseline (baseline ~0.75 s cooldown); the reference re-arm path is unpinned (WPN-04).
