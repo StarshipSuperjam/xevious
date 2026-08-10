@@ -44,6 +44,26 @@ EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (
 POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
 READY_HOLD_TICKS = 30  # project-defined READY beat (no reference basis; core-game-systems)
 
+# SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
+# normative record in docs/spec/data/rng.json (mirrored by tools/reference_extract.py
+# rng_step); they are cited, never restated here. `rng step` is a warp (atomic) Stage
+# custom block; `rng state` is the shared 16-bit seed and `rng out` its latest byte.
+# The other four are per-step working values (Scratch custom blocks have no locals, so
+# they are Stage variables) — machinery, not director state. No consumer draws from the
+# stream this slice; every consumer arrives with the enemy slices.
+RNG_STATE_ID = "rng-state"
+RNG_OUT_ID = "rng-out"
+RNG_HIGH_ID = "rng-high"
+RNG_NEW_LOW_ID = "rng-new-low"
+RNG_NEW_HIGH_ID = "rng-new-high"
+RNG_XFLAG_ID = "rng-extend-flag"
+RNG_PROCCODE = "rng step"
+# Project-defined cold-start seed: the spec records no arcade power-on seed yet, so this
+# is a project-defined placeholder (four-marker rule) pending that value. It only fixes
+# repeatability (seeded runs repeat); no consumer reads it this slice. Recorded in
+# docs/mechanics/004.
+RNG_COLD_START_SEED = 0x4A39
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -407,6 +427,59 @@ class Blocks:
             mutation={"tagName": "mutation", "children": [], "hasnext": "true"},
         )
 
+    # Arithmetic reporters. Each operand is either a value-input spec (number()/
+    # variable()) or a nested reporter's block id (str); a nested reporter has its
+    # parent wired here so the tree serializes correctly.
+    def _reporter(self, opcode: str, operand1: Any, operand2: Any) -> str:
+        block_id = self.add(opcode)
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("OPERAND1", operand1), ("OPERAND2", operand2)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
+
+    def op_mod(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_mod", a, b)
+
+    def op_mul(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_mult", a, b)
+
+    def op_add(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_add", a, b)
+
+    def op_div(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_divide", a, b)
+
+    def op_eq(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_equals", a, b)
+
+    def op_floor(self, operand: Any) -> str:
+        block_id = self.add("operator_mathop", fields={"OPERATION": ["floor", None]})
+        if isinstance(operand, str):
+            self.blocks[block_id]["inputs"] = {"NUM": [2, operand]}
+            self.blocks[operand]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"NUM": operand}
+        return block_id
+
+    def set_var_expr(self, name: str, variable_id: str, reporter_id: str) -> str:
+        # Set a variable to a reporter expression (the [3, reporter, shadow] input
+        # shape, as install_transition_procedure uses for its argument reporters).
+        block_id = self.set_var(name, variable_id, [3, reporter_id, [10, ""]])
+        self.blocks[reporter_id]["parent"] = block_id
+        return block_id
+
+    def if_reporter(self, condition_id: str, body: list[str]) -> str:
+        block_id = self.add("control_if")
+        self.blocks[condition_id]["parent"] = block_id
+        self.blocks[block_id]["inputs"]["CONDITION"] = [2, condition_id]
+        self.substack(block_id, body)
+        return block_id
+
 
 def install_transition_procedure(blocks: Blocks) -> None:
     definition = blocks.add("procedures_definition", top_level=True)
@@ -509,9 +582,98 @@ def install_transition_procedure(blocks: Blocks) -> None:
     )
 
 
+def install_rng_step(blocks: Blocks) -> None:
+    # SYS-04: one atomic (warp) advance of the shared 16-bit stream, mirroring
+    # tools/reference_extract.py rng_step exactly. Arithmetic only (Scratch has no
+    # bitwise ops); the golden test in tests/test_spec_docs.py interprets these very
+    # blocks against docs/spec/data/rng.json. No caller this slice.
+    definition = blocks.add("procedures_definition", top_level=True)
+    prototype = blocks.add(
+        "procedures_prototype",
+        shadow=True,
+        mutation={
+            "tagName": "mutation",
+            "children": [],
+            "proccode": RNG_PROCCODE,
+            "argumentids": "[]",
+            "argumentnames": "[]",
+            "argumentdefaults": "[]",
+            "warp": "true",
+        },
+    )
+    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
+    blocks.blocks[prototype]["parent"] = definition
+
+    state = lambda: variable("rng state", RNG_STATE_ID)
+    high = lambda: variable("rng high", RNG_HIGH_ID)
+
+    # high = floor(state / 256); new_low = (5*(state mod 256) + 1) mod 256 — both read
+    # the OLD state (rng state is rewritten last).
+    set_high = blocks.set_var_expr(
+        "rng high", RNG_HIGH_ID, blocks.op_floor(blocks.op_div(state(), number(256)))
+    )
+    new_low_expr = blocks.op_mod(
+        blocks.op_add(blocks.op_mul(number(5), blocks.op_mod(state(), number(256))), number(1)),
+        number(256),
+    )
+    set_new_low = blocks.set_var_expr("rng new low", RNG_NEW_LOW_ID, new_low_expr)
+
+    # extend flag: the low-byte wrap carry — 1 when new_low == 0 (i.e. 5*low mod 256 ==
+    # 255) — then forced to 1 when high bits 7 and 2 are equal (both set or both clear).
+    set_flag_zero = blocks.set_var("rng extend", RNG_XFLAG_ID, number(0))
+    carry_if = blocks.if_reporter(
+        blocks.op_eq(variable("rng new low", RNG_NEW_LOW_ID), number(0)),
+        [blocks.set_var("rng extend", RNG_XFLAG_ID, number(1))],
+    )
+    bit7 = blocks.op_mod(blocks.op_floor(blocks.op_div(high(), number(128))), number(2))
+    bit2 = blocks.op_mod(blocks.op_floor(blocks.op_div(high(), number(4))), number(2))
+    force_if = blocks.if_reporter(
+        blocks.op_eq(bit7, bit2),
+        [blocks.set_var("rng extend", RNG_XFLAG_ID, number(1))],
+    )
+
+    # new_high = (high*2 | extend) mod 256 (high*2 is even, so + is |); output = (new_low
+    # + new_high) mod 256; state = new_high*256 + new_low.
+    new_high_expr = blocks.op_mod(
+        blocks.op_add(
+            blocks.op_mul(high(), number(2)), variable("rng extend", RNG_XFLAG_ID)
+        ),
+        number(256),
+    )
+    set_new_high = blocks.set_var_expr("rng new high", RNG_NEW_HIGH_ID, new_high_expr)
+    out_expr = blocks.op_mod(
+        blocks.op_add(
+            variable("rng new low", RNG_NEW_LOW_ID),
+            variable("rng new high", RNG_NEW_HIGH_ID),
+        ),
+        number(256),
+    )
+    set_out = blocks.set_var_expr("rng out", RNG_OUT_ID, out_expr)
+    state_expr = blocks.op_add(
+        blocks.op_mul(variable("rng new high", RNG_NEW_HIGH_ID), number(256)),
+        variable("rng new low", RNG_NEW_LOW_ID),
+    )
+    set_state = blocks.set_var_expr("rng state", RNG_STATE_ID, state_expr)
+
+    blocks.chain(
+        definition,
+        [
+            set_high,
+            set_new_low,
+            set_flag_zero,
+            carry_if,
+            force_if,
+            set_new_high,
+            set_out,
+            set_state,
+        ],
+    )
+
+
 def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("stage")
     install_transition_procedure(blocks)
+    install_rng_step(blocks)
 
     flag = blocks.flag()
     blocks.chain(
@@ -592,6 +754,22 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[bgm_menu]["parent"] = bgm
     blocks.substack(loop, [bgm])
     blocks.chain(enter, [blocks.if_state("playing", [start_sound, loop])])
+
+    # SYS-04: seed the shared stream on a world reset (cold-start / new-game) so seeded
+    # runs repeat. A NEW Stage `director reset` receiver — kept out of the transition
+    # procedure body so its pinned opcode sequence stays byte-identical. `reset scope`
+    # is already set before the reset broadcast fires.
+    rng_reset = blocks.receive("director reset")
+    blocks.chain(
+        rng_reset,
+        [
+            reset_if(
+                blocks,
+                ("cold-start", "new-game"),
+                [blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED))],
+            )
+        ],
+    )
     return blocks.blocks
 
 
@@ -1061,10 +1239,23 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
 def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(project)
     stage = next(target for target in result["targets"] if target["isStage"])
+    owned_stage_variables = {
+        STATE_ID,
+        EPOCH_ID,
+        SCOPE_ID,
+        OUTCOME_ID,
+        BOMB_INFLIGHT_ID,
+        RNG_STATE_ID,
+        RNG_OUT_ID,
+        RNG_HIGH_ID,
+        RNG_NEW_LOW_ID,
+        RNG_NEW_HIGH_ID,
+        RNG_XFLAG_ID,
+    }
     preserved_variables = {
         variable_id: value
         for variable_id, value in stage["variables"].items()
-        if variable_id not in {STATE_ID, EPOCH_ID, SCOPE_ID, OUTCOME_ID, BOMB_INFLIGHT_ID}
+        if variable_id not in owned_stage_variables
         and value[0] not in {"death", "stage"}
     }
     stage["variables"] = preserved_variables | {
@@ -1075,6 +1266,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # Shared weapon state — the one-bomb lockout the poller and the in-flight bomb
         # both read; cleared by every reset scope (bomb_blocks).
         BOMB_INFLIGHT_ID: ["bomb in flight", 0],
+        # SYS-04 shared stream: the seed, its latest output byte, and the four per-step
+        # working values (custom blocks have no locals). Cited to rng.json / SYS-04.
+        RNG_STATE_ID: ["rng state", 0],
+        RNG_OUT_ID: ["rng out", 0],
+        RNG_HIGH_ID: ["rng high", 0],
+        RNG_NEW_LOW_ID: ["rng new low", 0],
+        RNG_NEW_HIGH_ID: ["rng new high", 0],
+        RNG_XFLAG_ID: ["rng extend", 0],
     }
     preserved_lists = {
         list_id: value

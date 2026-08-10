@@ -821,16 +821,29 @@ class ScratchProjectTests(unittest.TestCase):
     def test_game_director_has_one_stage_owned_transition_path(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         stage = next(target for target in project["targets"] if target["isStage"])
-        self.assertEqual(
-            {
-                "game state",
-                "state epoch",
-                "reset scope",
-                "death outcome",
-                "bomb in flight",
-            },
-            {name for name, _value in stage["variables"].values()},
-        )
+        # The director-state surface stays exactly these five — a tight guard against
+        # the Stage accumulating stray game state. SYS-04 adds a named allow-list of
+        # machinery variables (the shared stream's state, its output, and the four
+        # per-step working values a warp custom block cannot hold as locals); anything
+        # outside both sets is an unreviewed addition and fails here.
+        director_state_names = {
+            "game state",
+            "state epoch",
+            "reset scope",
+            "death outcome",
+            "bomb in flight",
+        }
+        machinery_names = {
+            "rng state",
+            "rng out",
+            "rng high",
+            "rng new low",
+            "rng new high",
+            "rng extend",
+        }
+        self.assertTrue(director_state_names.isdisjoint(machinery_names))
+        stage_variable_names = {name for name, _value in stage["variables"].values()}
+        self.assertEqual(director_state_names | machinery_names, stage_variable_names)
         self.assertEqual(
             [
                 "boot -> title",
@@ -849,12 +862,23 @@ class ScratchProjectTests(unittest.TestCase):
             for block in stage["blocks"].values()
             if block["opcode"] == "procedures_definition"
         ]
+
+        def _proccode(definition: dict) -> str:
+            prototype = stage["blocks"][definition["inputs"]["custom_block"][1]]
+            return prototype["mutation"]["proccode"]
+
+        # Exactly one Stage-owned transition procedure; every transition call routes
+        # through it. (The Stage also defines the SYS-04 `rng step` warp block, which is
+        # a reporter-free custom block with no caller this slice — not a transition.)
+        transition_definitions = [
+            block for block in definitions if _proccode(block) == director.PROCCODE
+        ]
+        self.assertEqual(1, len(transition_definitions))
         calls = [
             block
             for block in stage["blocks"].values()
             if block["opcode"] == "procedures_call"
         ]
-        self.assertEqual(1, len(definitions))
         self.assertTrue(calls)
         self.assertTrue(all(block["mutation"]["proccode"] == director.PROCCODE for block in calls))
 
@@ -1584,7 +1608,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "538ea4efc4a90694a201eccc9f374aa8bddec02ca1a9c9afc2888910db45e632",
+            "f9e0ff72af6a25757c7cb5cbc5c9022aed1957f0b89440934d7ff0f9c58fffc9",
             build_hash,
         )
 
