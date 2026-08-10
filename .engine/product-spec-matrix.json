@@ -116,7 +116,7 @@
       "criterion": "Seeded runs repeat exactly",
       "digest": "sha256:727b42f96e85626390b870727a1cbe3387f1bf35988ba070e01ee50c5ece31aa",
       "doc": "docs/spec/core-game-systems.md",
-      "how_verified": "Two runs from one seed look identical to the operator (fixture-automated when a runtime harness exists)",
+      "how_verified": "Two runs from one seed look identical to the operator (a runtime-harness candidate once a consumer draws from the stream)",
       "position": 7,
       "who": "operator"
     },
@@ -145,16 +145,16 @@
       "who": "engine"
     },
     {
-      "criterion": "A model fixture over the committed data reproduces formation lookups (AI level + offset, fold-back at 0x80); the build's in-game selection is confirmed in play (fixture-automated when a runtime harness exists)",
-      "digest": "sha256:d7c4c7242f07b3badf6db7660290e1dea63acb439fe86b30d27cad1e678a0ffc",
+      "criterion": "A model fixture over the committed data reproduces formation lookups (AI level + offset, fold-back at 0x80); the build's in-game selection is confirmed in play (a runtime-harness candidate once the enemy/formation slice ships)",
+      "digest": "sha256:14db719434b37cf2a448988587ad3c46e62454fed6ec6598e493f08d42ae59a4",
       "doc": "docs/spec/difficulty-and-formations.md",
       "how_verified": "Python fixture over the committed tables; operator play for the in-game half",
       "position": 2,
       "who": "engine"
     },
     {
-      "criterion": "A model fixture over representative score/lives pairs computes the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (fixture-automated when a runtime harness exists)",
-      "digest": "sha256:ce675a63e682a2cc4130d0e138cfa0394cc2e8fc0d04846f344f9c6a7476a828",
+      "criterion": "A model fixture over representative score/lives pairs computes the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (a runtime-harness candidate once the lives slice ships)",
+      "digest": "sha256:b059eed6d92b14ddef794ebc6e7ff90730b4886e4676d00e7c13220abf5000bc",
       "doc": "docs/spec/difficulty-and-formations.md",
       "how_verified": "Python fixture implementing the documented rule; operator play for the in-game half",
       "position": 3,
@@ -284,7 +284,7 @@
       "criterion": "Bonus-life thresholds fire per the committed tables, including the disable and stop-after-two settings",
       "digest": "sha256:443f5a5b7439f4cc361eb0374f02d2d432d22faae6b794dd149b2837b0fa6914",
       "doc": "docs/spec/scoring-lives-and-game-over.md",
-      "how_verified": "Play at the relevant settings; fixture-automated when a runtime harness exists",
+      "how_verified": "Play at the relevant settings; a runtime-harness candidate once the lives/scoring slice ships",
       "position": 3,
       "who": "operator"
     },
