@@ -1258,14 +1258,42 @@ class ScratchProjectTests(unittest.TestCase):
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         blocks = stage["blocks"]
+        # The one slot-state -> HIT write must live inside `resolve hit` (not merely
+        # exist somewhere on the Stage) — a hit resolves exactly once, through the one
+        # resolver.
+        resolve_proto = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode")
+                == director.RESOLVE_HIT_PROCCODE
+            ),
+            None,
+        )
+        resolve_body = set()
+        if resolve_proto is not None:
+            definition = next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_definition"
+                    and b["inputs"].get("custom_block", [None, None])[1] == resolve_proto
+                ),
+                None,
+            )
+            cursor = definition["next"] if definition else None
+            while cursor:
+                resolve_body.add(cursor)
+                cursor = blocks[cursor]["next"]
         hit_writes = [
-            b
-            for b in blocks.values()
+            bid
+            for bid, b in blocks.items()
             if b["opcode"] == "data_replaceitemoflist"
             and b["fields"]["LIST"][0] == "slot state"
             and b["inputs"].get("ITEM") == [1, [4, director.SLOT_HIT]]
         ]
-        if len(hit_writes) != 1:  # a hit resolves exactly once, through one resolver
+        if len(hit_writes) != 1 or hit_writes[0] not in resolve_body:
             failures.add("single-hit-resolver")
         score_calls = [
             b
@@ -1322,20 +1350,82 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             self.assertIn(label, self._sys03_failures(project), label)
 
+    @staticmethod
+    def _rng_reseed_guard_scopes(project: dict) -> set:
+        """The reset scopes that guard the `rng state` reseed (should be exactly the two
+        world-reset scopes) — so seeded runs repeat and a mid-game reset never reseeds."""
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        # The reseed sets `rng state` to a literal (the cold-start seed); the rng-step
+        # block also writes `rng state`, but to a reporter expression — exclude it.
+        seed_ids = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "data_setvariableto"
+            and b["fields"]["VARIABLE"][0] == "rng state"
+            and b["inputs"].get("VALUE", [None])[0] == 1
+        ]
+        if len(seed_ids) != 1:
+            return set()
+        seed_id = seed_ids[0]
+        guard = None
+        for b in blocks.values():
+            if b["opcode"] != "control_if":
+                continue
+            substack = b["inputs"].get("SUBSTACK")
+            cursor = substack[1] if substack else None
+            while cursor:
+                if cursor == seed_id:
+                    guard = b
+                    break
+                cursor = blocks[cursor]["next"]
+            if guard:
+                break
+        if guard is None:
+            return set()
+        condition = blocks[guard["inputs"]["CONDITION"][1]]
+        if condition["opcode"] != "operator_or":
+            return set()
+        scopes = set()
+        for key in ("OPERAND1", "OPERAND2"):
+            equals = blocks[condition["inputs"][key][1]]
+            scopes.add(equals["inputs"]["OPERAND2"][1][1])
+        return scopes
+
+    def test_rng_reseed_scoped_to_world_reset(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(
+            {"cold-start", "new-game"}, self._rng_reseed_guard_scopes(project)
+        )
+        # Negative: widen the guard to new-life and the scope set no longer matches.
+        corrupted = copy.deepcopy(project)
+        stage = next(t for t in corrupted["targets"] if t["isStage"])
+        for b in stage["blocks"].values():
+            if (
+                b["opcode"] == "operator_equals"
+                and b["inputs"].get("OPERAND2", [None, [None, None]])[1][1] == "new-game"
+            ):
+                b["inputs"]["OPERAND2"][1][1] = "new-life"
+        self.assertNotEqual(
+            {"cold-start", "new-game"}, self._rng_reseed_guard_scopes(corrupted)
+        )
+
     def test_collision_groups_match_spec(self) -> None:
         # Exactly five groups, no others; each an (attacker range, victim range) over the
         # recorded slot ranges (core-game-systems SYS-03).
         groups = director.COLLISION_GROUPS
         self.assertEqual(len(groups), 5)
-        player = (director.SOLVALOU_SLOT, director.SOLVALOU_SLOT)
+        # Independent literals (arcade slot 0xNN -> index NN+1), so the check pins the
+        # groups against the spec's five interactions, not against the generator's own
+        # constants that built the tuple.
         self.assertEqual(
             groups,
             (
-                (director.SHOT_SLOTS, director.FLYING_SLOTS),
-                ((director.BOMB_SLOT, director.BOMB_SLOT), director.GROUND_SLOTS),
-                (director.BULLET_SLOTS, player),
-                (director.FLYING_SLOTS, player),
-                (director.BACURA_SLOTS, player),
+                ((37, 39), (59, 64)),  # player shots (0x24-0x26) vs air enemies (0x3A-0x3F)
+                ((34, 34), (1, 16)),   # bomb (0x21) vs ground objects (0x00-0x0F)
+                ((40, 58), (36, 36)),  # enemy shots (0x27-0x39) vs player (0x23)
+                ((59, 64), (36, 36)),  # air enemies (0x3A-0x3F) vs player (0x23)
+                ((17, 32), (36, 36)),  # Bacura (0x10-0x1F) vs player (0x23)
             ),
         )
 

@@ -688,22 +688,7 @@ def install_rng_step(blocks: Blocks) -> None:
     # tools/reference_extract.py rng_step exactly. Arithmetic only (Scratch has no
     # bitwise ops); the golden test in tests/test_spec_docs.py interprets these very
     # blocks against docs/spec/data/rng.json. No caller this slice.
-    definition = blocks.add("procedures_definition", top_level=True)
-    prototype = blocks.add(
-        "procedures_prototype",
-        shadow=True,
-        mutation={
-            "tagName": "mutation",
-            "children": [],
-            "proccode": RNG_PROCCODE,
-            "argumentids": "[]",
-            "argumentnames": "[]",
-            "argumentdefaults": "[]",
-            "warp": "true",
-        },
-    )
-    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
-    blocks.blocks[prototype]["parent"] = definition
+    definition = _install_warp_proc(blocks, RNG_PROCCODE)
 
     state = lambda: variable("rng state", RNG_STATE_ID)
     high = lambda: variable("rng high", RNG_HIGH_ID)
@@ -775,22 +760,7 @@ def install_clear_slots(blocks: Blocks) -> None:
     # SYS-02: reset every object slot to empty/idle. A warp (atomic) block so the
     # 64-slot sweep costs no ticks; run on every director reset (all scopes clear
     # transient gameplay). Only `slot type` and `slot state` exist this slice.
-    definition = blocks.add("procedures_definition", top_level=True)
-    prototype = blocks.add(
-        "procedures_prototype",
-        shadow=True,
-        mutation={
-            "tagName": "mutation",
-            "children": [],
-            "proccode": CLEAR_SLOTS_PROCCODE,
-            "argumentids": "[]",
-            "argumentnames": "[]",
-            "argumentdefaults": "[]",
-            "warp": "true",
-        },
-    )
-    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
-    blocks.blocks[prototype]["parent"] = definition
+    definition = _install_warp_proc(blocks, CLEAR_SLOTS_PROCCODE)
 
     cursor = lambda: variable("slot index", SLOT_INDEX_ID)
     set_index = blocks.set_var("slot index", SLOT_INDEX_ID, number(1))
@@ -810,22 +780,7 @@ def install_advance_slots(blocks: Blocks) -> None:
     # SYS-04 centralized ordered update: one atomic (warp) pass over the 64 slots in
     # ascending index order, advancing the tick clock. Dispatch of each occupied slot's
     # per-type behavior is deferred — no entity type acts this slice.
-    definition = blocks.add("procedures_definition", top_level=True)
-    prototype = blocks.add(
-        "procedures_prototype",
-        shadow=True,
-        mutation={
-            "tagName": "mutation",
-            "children": [],
-            "proccode": ADVANCE_SLOTS_PROCCODE,
-            "argumentids": "[]",
-            "argumentnames": "[]",
-            "argumentdefaults": "[]",
-            "warp": "true",
-        },
-    )
-    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
-    blocks.blocks[prototype]["parent"] = definition
+    definition = _install_warp_proc(blocks, ADVANCE_SLOTS_PROCCODE)
 
     cursor = lambda: variable("slot index", SLOT_INDEX_ID)
     advance_tick = blocks.change_var("tick", TICK_ID, 1)
@@ -1237,22 +1192,7 @@ def install_alloc_shot_slot(blocks: Blocks) -> None:
     # Allocate the first idle player-shot slot (37-39): `alloc result` becomes that index,
     # or stays 0 when all three are live — the structural 3-shot cap (audit A3). Warp
     # (atomic), unrolled over the three dedicated slots (no cursor). Global slot lists.
-    definition = blocks.add("procedures_definition", top_level=True)
-    prototype = blocks.add(
-        "procedures_prototype",
-        shadow=True,
-        mutation={
-            "tagName": "mutation",
-            "children": [],
-            "proccode": ALLOC_SHOT_PROCCODE,
-            "argumentids": "[]",
-            "argumentnames": "[]",
-            "argumentdefaults": "[]",
-            "warp": "true",
-        },
-    )
-    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
-    blocks.blocks[prototype]["parent"] = definition
+    definition = _install_warp_proc(blocks, ALLOC_SHOT_PROCCODE)
 
     body = [blocks.set_var("alloc result", ALLOC_RESULT_ID, number(0))]
     for index in range(SHOT_SLOTS[0], SHOT_SLOTS[1] + 1):
