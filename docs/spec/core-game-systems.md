@@ -136,10 +136,18 @@ tick represents **two arcade frames** (the arcade runs 60 per second). Frame cou
 accordingly, rounding to the nearest tick with ties rounding up, and every rounded value is recorded in
 the build's data next to its arcade original. Gameplay never uses wall-clock waits, the timer, or
 Scratch's own random blocks — all gameplay timing counts ticks and all randomness draws from the shared
-stream, or seeded runs cannot repeat. The spatial factor (stage units per arcade pixel, and the
-playfield rectangle on the 480×360 stage) is a single pair of values that will be recorded **in this
-section** by the movement slice; the current build's de facto 7 stage units per tick is unratified until
-then. Current control mapping, recorded as the port's own: arrow keys move, Space fires, B bombs, plus
+stream, or seeded runs cannot repeat. The port's spatial scale is **not a single ratified factor.** The
+arcade's portrait playfield does not map onto the 480×360 landscape stage at any one stage-units-per-pixel
+factor without either shrinking the play area or pushing the crosshair off screen, so the port tunes its
+spatial quantities **independently**: the craft's per-axis movement speed, the blaster's shot speed, and
+the crosshair's forward lead are each a **port-tuned constant** (recorded with its arcade original in the
+build's movement mechanics record and its generator), not derived from one common factor. The crosshair's
+on-screen bound is a **craft↔crosshair coupling**, not a scale chosen to keep a rigid lead on screen: the
+reticle reads the same movement input as the craft, and when it reaches the top play-border it clamps there
+and backs the craft down with it — so the reticle can never leave the top of the screen and the craft stops
+with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
+inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
+port's own: arrow keys move, Space fires, B bombs, plus
 the temporary D/G fixtures above; a rebinding is a spec amendment.
 
 ## Acceptance criteria
