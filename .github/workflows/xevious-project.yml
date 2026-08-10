@@ -29,3 +29,30 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: python tools/check_mechanics_record.py "$BASE_SHA"
+
+  runtime-harness:
+    # A pre-playtest regression tripwire, NOT a gameplay gate: it runs the shipped build
+    # headless and asserts on state variables and clone counts. Kept a SEPARATE job so its
+    # result is a distinct, informative check — it must not be added to the required-checks
+    # ruleset, and a green run never substitutes for the operator's playtest.
+    name: runtime-harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the deterministic .sb3 the harness runs
+        run: python tools/scratch_project.py build
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: harness/.nvmrc
+      - name: Install harness dependencies (no install scripts)
+        working-directory: harness
+        run: npm ci --ignore-scripts
+      - name: Run the headless runtime scenarios and their negative fixtures
+        working-directory: harness
+        run: node --test
