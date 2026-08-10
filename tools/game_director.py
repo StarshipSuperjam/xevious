@@ -194,6 +194,36 @@ VALUE_TABLE_POINTS = [
 # real collision trigger lands (slice 8).
 SCORE_FIXTURE_KEY = "s"
 
+# ECO-03 lives and bonus economy (docs/spec/data/scores.json; docs/spec/scoring-lives-and-game-over.md).
+# Starting craft come from a DIP-indexed table; bonus craft are granted as the score passes a
+# threshold that then advances by a per-setting increment. A `null` threshold disables bonuses
+# (BONUS_DISABLED sentinel — real thresholds are >= 10,000). Once the score is pinned at the cap,
+# every further award grants a craft (the recorded arcade quirk). The runtime reads the live
+# ingested tables at the fixed DIP index, so the committed data is the single source of truth.
+LIVES_ID = "eco-craft"
+NEXT_BONUS_ID = "eco-next-bonus"
+STARTING_LIVES_ID = "eco-starting-lives"
+FIRST_BONUS_123_ID = "eco-first-bonus-123"
+FIRST_BONUS_5_ID = "eco-first-bonus-5"
+REPEAT_BONUS_123_ID = "eco-repeat-bonus-123"
+REPEAT_BONUS_5_ID = "eco-repeat-bonus-5"
+BONUS_DISABLED = 0  # the `null`-threshold (bonuses off) sentinel; real thresholds are >= 10,000
+# DIP defaults — a project choice, recorded with its uncertainty (docs/mechanics/011): the
+# raw-index->physical-switch mapping is unrecorded upstream, and the 123-vs-5 table selection
+# carries the reference's own recorded inconsistency (the build follows the repeat-award site).
+# Starting item 4 of [5,2,1,3] -> 3 craft; bonus item 1 of the 1/2/3-lives tables -> first bonus
+# 20,000 then every 60,000.
+DIP_STARTING_ITEM = 4
+DIP_BONUS_ITEM = 1
+STARTING_LIVES = [5, 2, 1, 3]
+# `null` (bonuses disabled at that setting) -> BONUS_DISABLED; the data-equality test maps it the
+# same way. Both table pairs are ingested for the data-equality criterion and a future DIP config;
+# the runtime uses the 1/2/3-lives pair at the default DIP.
+FIRST_BONUS_123 = [20000, 10000, 10000, 20000, 20000, 20000, 20000, BONUS_DISABLED]
+FIRST_BONUS_5 = [20000, 10000, 20000, 20000, 20000, 30000, 20000, BONUS_DISABLED]
+REPEAT_BONUS_123 = [60000, 40000, 50000, 50000, 70000, 80000, 60000, BONUS_DISABLED]
+REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABLED]
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -201,6 +231,7 @@ MESSAGES = {
     "ready complete": "broadcastMsgId-ready-complete",
     "death complete": "broadcastMsgId-death-complete",
     "game over complete": "broadcastMsgId-game-over-complete",
+    "craft changed": "broadcastMsgId-craft-changed",
     "bomb": "broadcastMsgId-bomb-release",
     "target_b": "broadcastMsgId-target-bounds-bottom",
     "target_l": "broadcastMsgId-target-bounds-left",
@@ -923,11 +954,52 @@ def install_score(blocks: Blocks) -> None:
 
 
 def install_check_bonus_life(blocks: Blocks) -> None:
-    # ECO-03 (filled in the lives/bonus commit): grant a craft at each committed bonus
-    # threshold, honour the disable and stop-after-two settings, and the at-cap grant quirk.
-    # Called by `score` after every award so the check runs on the top digits each time.
-    _install_warp_proc(blocks, CHECK_BONUS_PROCCODE)
-    # ENGINE-TODO: bonus-life thresholds + cap quirk land with ECO-03 (lives/bonus tables).
+    # ECO-03: grant a bonus craft as the score passes the current threshold, then advance the
+    # threshold by the per-setting increment. A disabled setting (BONUS_DISABLED sentinel) never
+    # grants. Once the score is pinned at the cap, every award grants a craft (the recorded arcade
+    # quirk: the threshold can no longer exceed the score). Called by `score` after every award.
+    definition = _install_warp_proc(blocks, CHECK_BONUS_PROCCODE)
+
+    def grant() -> list[str]:
+        return [
+            blocks.change_var("craft", LIVES_ID, 1),
+            blocks.play_sound("extend"),
+            blocks.send("craft changed"),
+        ]
+
+    # score >= next bonus, as `not (score < next bonus)` (thresholds are exact 10,000 multiples).
+    below = blocks.add(
+        "operator_lt",
+        inputs={
+            "OPERAND1": variable("score", SCORE_ID),
+            "OPERAND2": variable("next bonus", NEXT_BONUS_ID),
+        },
+    )
+    at_or_past = blocks.add("operator_not", inputs={"OPERAND": [2, below]})
+    blocks.blocks[below]["parent"] = at_or_past
+    advance = blocks.set_var_expr(
+        "next bonus",
+        NEXT_BONUS_ID,
+        blocks.op_add(
+            variable("next bonus", NEXT_BONUS_ID),
+            blocks.list_item("repeat bonus 123", REPEAT_BONUS_123_ID, number(DIP_BONUS_ITEM)),
+        ),
+    )
+    normal_if = blocks.if_reporter(at_or_past, grant() + [advance])
+
+    # cap quirk vs the ordinary threshold: at the pinned cap, grant every award.
+    quirk = blocks.add("control_if_else")
+    at_cap = blocks.var_equals(quirk, "score", SCORE_ID, SCORE_CAP)
+    blocks.blocks[quirk]["inputs"]["CONDITION"] = [2, at_cap]
+    blocks.substack(quirk, grant())
+    blocks.substack(quirk, [normal_if], name="SUBSTACK2")
+
+    # the whole check only runs when bonuses are enabled (threshold sentinel is non-zero).
+    enabled_if = blocks.add("control_if")
+    enabled = blocks.greater(enabled_if, "next bonus", NEXT_BONUS_ID, BONUS_DISABLED)
+    blocks.blocks[enabled_if]["inputs"]["CONDITION"] = [2, enabled]
+    blocks.substack(enabled_if, [quirk])
+    blocks.chain(definition, [enabled_if])
 
 
 def install_resolve_hit(blocks: Blocks) -> None:
@@ -1090,6 +1162,22 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                     blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED)),
                     blocks.set_var("tick", TICK_ID, number(0)),
                     blocks.set_var("score", SCORE_ID, number(0)),
+                    # ECO-03: starting craft and the first bonus threshold, read live from the
+                    # ingested DIP tables (the committed data is the one source of truth).
+                    blocks.set_var_expr(
+                        "craft",
+                        LIVES_ID,
+                        blocks.list_item(
+                            "starting lives", STARTING_LIVES_ID, number(DIP_STARTING_ITEM)
+                        ),
+                    ),
+                    blocks.set_var_expr(
+                        "next bonus",
+                        NEXT_BONUS_ID,
+                        blocks.list_item(
+                            "first bonus 123", FIRST_BONUS_123_ID, number(DIP_BONUS_ITEM)
+                        ),
+                    ),
                 ],
             ),
             high_reset,
@@ -1755,6 +1843,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SCORE_ID,
         HIGH_SCORE_ID,
         AWARD_VALUE_ID,
+        LIVES_ID,
+        NEXT_BONUS_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -1793,8 +1883,22 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SCORE_ID: ["score", 0],
         HIGH_SCORE_ID: ["high score", HIGH_SCORE_START],
         AWARD_VALUE_ID: ["award value", 0],
+        # ECO-03 lives economy: remaining craft and the next bonus-life threshold (seeded from
+        # the DIP tables on a world reset).
+        LIVES_ID: ["craft", 0],
+        NEXT_BONUS_ID: ["next bonus", 0],
     }
-    owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID, VALUE_TABLE_ID}
+    owned_lists = {
+        ALLOWED_ID,
+        SLOT_TYPE_ID,
+        SLOT_STATE_ID,
+        VALUE_TABLE_ID,
+        STARTING_LIVES_ID,
+        FIRST_BONUS_123_ID,
+        FIRST_BONUS_5_ID,
+        REPEAT_BONUS_123_ID,
+        REPEAT_BONUS_5_ID,
+    }
     preserved_lists = {
         list_id: value
         for list_id, value in stage["lists"].items()
@@ -1821,6 +1925,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # ECO-01 object point values (docs/spec/data/scores.json master_value_table), in table
         # order; position i (1-based) = entries[i-1].points. Slice 8 resolves award value here.
         VALUE_TABLE_ID: ["value table", list(VALUE_TABLE_POINTS)],
+        # ECO-03 lives/bonus tables (docs/spec/data/scores.json), `null` mapped to the
+        # BONUS_DISABLED sentinel. Both bonus pairs are ingested; the runtime reads the 1/2/3-lives
+        # pair at the default DIP.
+        STARTING_LIVES_ID: ["starting lives", list(STARTING_LIVES)],
+        FIRST_BONUS_123_ID: ["first bonus 123", list(FIRST_BONUS_123)],
+        FIRST_BONUS_5_ID: ["first bonus 5", list(FIRST_BONUS_5)],
+        REPEAT_BONUS_123_ID: ["repeat bonus 123", list(REPEAT_BONUS_123)],
+        REPEAT_BONUS_5_ID: ["repeat bonus 5", list(REPEAT_BONUS_5)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 

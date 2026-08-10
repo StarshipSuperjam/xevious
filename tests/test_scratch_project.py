@@ -893,6 +893,8 @@ class ScratchProjectTests(unittest.TestCase):
         economy_names = {
             "score",
             "high score",
+            "craft",
+            "next bonus",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
@@ -964,6 +966,8 @@ class ScratchProjectTests(unittest.TestCase):
             director.OUTCOME_ID,
             director.SCORE_ID,
             director.HIGH_SCORE_ID,
+            director.LIVES_ID,
+            director.NEXT_BONUS_ID,
         }
         for target in project["targets"]:
             if target["isStage"]:
@@ -1653,6 +1657,219 @@ class ScratchProjectTests(unittest.TestCase):
             for b in blocks.values()
         )
         self.assertTrue(sets_award)
+
+    @staticmethod
+    def _eco03_failures(project: dict) -> set:
+        """ECO-03 lives/bonus economy — enabled guard, cap quirk, threshold grant + advance,
+        the grant's craft/sound/signal, and the DIP-seeded starting craft and first threshold."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        vals = list(blocks.values())
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        def sets_from_list(var_id: str, list_name: str) -> bool:
+            for b in vals:
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == var_id
+                ):
+                    val = b["inputs"].get("VALUE")
+                    if isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str):
+                        child = blocks.get(val[1], {})
+                        if (
+                            child.get("opcode") == "data_itemoflist"
+                            and child["fields"].get("LIST", [None])[0] == list_name
+                        ):
+                            return True
+            return False
+
+        # the bonus check only runs when enabled (threshold sentinel non-zero).
+        if not any(
+            b["opcode"] == "operator_gt"
+            and refs(b["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
+            and b["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
+            for b in vals
+        ):
+            failures.add("bonus-enabled-guard")
+        # cap quirk: an at-cap test (score == 9,999,990) drives an every-award grant branch.
+        if not any(
+            b["opcode"] == "operator_equals"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            for b in vals
+        ):
+            failures.add("cap-quirk")
+        # grant: +1 craft, the extend sound, and the craft-changed HUD signal.
+        if not any(
+            b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+            and b["inputs"].get("VALUE") == [1, [4, 1]]
+            for b in vals
+        ):
+            failures.add("bonus-craft-grant")
+        if not any(
+            b["opcode"] == "sound_sounds_menu"
+            and b["fields"].get("SOUND_MENU", [None])[0] == "extend"
+            for b in vals
+        ):
+            failures.add("bonus-extend-sound")
+        if not any(
+            b["opcode"] == "event_broadcast"
+            and b["inputs"].get("BROADCAST_INPUT", [None, [None, None]])[1][1] == "craft changed"
+            for b in vals
+        ):
+            failures.add("bonus-craft-changed")
+        # advance: next bonus += the per-setting increment read from the repeat table.
+        advance = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.NEXT_BONUS_ID
+            and isinstance(b["inputs"].get("VALUE"), list)
+            and isinstance(b["inputs"]["VALUE"][1], str)
+            and blocks.get(b["inputs"]["VALUE"][1], {}).get("opcode") == "operator_add"
+            for b in vals
+        )
+        repeat_read = any(
+            b["opcode"] == "data_itemoflist"
+            and b["fields"].get("LIST", [None])[0] == "repeat bonus 123"
+            for b in vals
+        )
+        if not (advance and repeat_read):
+            failures.add("bonus-advance")
+        # DIP seeds: starting craft and the first threshold, read from the ingested tables.
+        if not sets_from_list(director.LIVES_ID, "starting lives"):
+            failures.add("lives-seeded")
+        if not sets_from_list(director.NEXT_BONUS_ID, "first bonus 123"):
+            failures.add("bonus-seeded")
+        return failures
+
+    def test_bonus_economy_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco03_failures(project))
+
+    def test_bonus_economy_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco03_failures(base))
+
+        def first(pred):
+            def f(p):
+                stage = next(t for t in p["targets"] if t["isStage"])
+                return next(b for b in stage["blocks"].values() if pred(b))
+            return f
+
+        def each(p, pred):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return [b for b in stage["blocks"].values() if pred(b)]
+
+        def break_guard(p):
+            b = first(
+                lambda b: b["opcode"] == "operator_gt"
+                and b["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
+                and isinstance(b["inputs"].get("OPERAND1"), list)
+                and b["inputs"]["OPERAND1"][1][2] == director.NEXT_BONUS_ID
+            )(p)
+            b["inputs"]["OPERAND1"] = [1, [4, 1]]
+
+        def break_cap(p):
+            b = first(
+                lambda b: b["opcode"] == "operator_equals"
+                and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            )(p)
+            b["inputs"]["OPERAND2"] = [1, [4, 0]]
+
+        def break_grant(p):
+            # the grant is emitted at both branches (cap quirk + normal) — break every one.
+            for b in each(
+                p,
+                lambda b: b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID,
+            ):
+                b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_sound(p):
+            for b in each(
+                p,
+                lambda b: b["opcode"] == "sound_sounds_menu"
+                and b["fields"].get("SOUND_MENU", [None])[0] == "extend",
+            ):
+                b["fields"]["SOUND_MENU"] = ["pop", None]
+
+        def break_signal(p):
+            for b in each(
+                p,
+                lambda b: b["opcode"] == "event_broadcast"
+                and b["inputs"].get("BROADCAST_INPUT", [None, [None, None]])[1][1]
+                == "craft changed",
+            ):
+                b["inputs"]["BROADCAST_INPUT"][1][1] = "director stop"
+
+        def break_advance(p):
+            b = first(
+                lambda b: b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == "repeat bonus 123"
+            )(p)
+            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def break_lives_seed(p):
+            b = first(
+                lambda b: b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == "starting lives"
+            )(p)
+            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def break_bonus_seed(p):
+            b = first(
+                lambda b: b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == "first bonus 123"
+            )(p)
+            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        cases = [
+            ("bonus-enabled-guard", break_guard),
+            ("cap-quirk", break_cap),
+            ("bonus-craft-grant", break_grant),
+            ("bonus-extend-sound", break_sound),
+            ("bonus-craft-changed", break_signal),
+            ("bonus-advance", break_advance),
+            ("lives-seeded", break_lives_seed),
+            ("bonus-seeded", break_bonus_seed),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._eco03_failures(project), label)
+
+    def test_bonus_and_lives_data_match_scores_json(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())["tables"]
+
+        def sentinel(values: list) -> list:
+            return [director.BONUS_DISABLED if v is None else v for v in values]
+
+        self.assertEqual(data["starting_lives"]["values"], by_name["starting lives"])
+        self.assertEqual(
+            sentinel(data["first_bonus_thresholds"]["table_123"]), by_name["first bonus 123"]
+        )
+        self.assertEqual(
+            sentinel(data["first_bonus_thresholds"]["table_5"]), by_name["first bonus 5"]
+        )
+        self.assertEqual(
+            sentinel(data["repeat_bonus_increments"]["table_123"]), by_name["repeat bonus 123"]
+        )
+        self.assertEqual(
+            sentinel(data["repeat_bonus_increments"]["table_5"]), by_name["repeat bonus 5"]
+        )
 
     @staticmethod
     def _rng_reseed_guard_scopes(project: dict) -> set:
@@ -2555,7 +2772,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "09a22817b668eea12dd11cd9d04921d285e5b0d72b4c015d5f5d9c35f9c53165",
+            "50d6203f5ce76dc39c4384628d55857a9c358cc36392ee5c56fe5674b2955311",
             build_hash,
         )
 
