@@ -20,7 +20,7 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count = hg.check_repository()
-        self.assertEqual(24, count)
+        self.assertEqual(32, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -51,17 +51,33 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_glyph_outputs_are_uniform_square_rgba_with_transparency(self) -> None:
         outputs = hg.render_glyphs(self.manifest)
-        self.assertEqual(24 - 1, len(outputs))
+        self.assertEqual(32 - 1, len(outputs))
         expected_size = self.manifest["cell_canvas"][0] // self.manifest["downscale"]
         for output in outputs:
             decoded = se.decode_png(output.png)
             self.assertEqual((expected_size, expected_size), (decoded.width, decoded.height))
             self.assertTrue(any(pixel[3] == 0 for pixel in decoded.pixels))
-            # Every opaque glyph pixel is pure white; the recolor step never
+            # Every opaque glyph pixel is exactly its recolor-target ink color (white for
+            # glyph/digit, yellow for the hs/* "HIGH SCORE" set) — the recolor step never
             # leaves an intermediate shade.
+            ink = hg.YELLOW_INK if output.name.startswith("hs/") else hg.WHITE_INK
             for pixel in decoded.pixels:
-                self.assertIn(pixel, ((0, 0, 0, 0), (255, 255, 255, 255)))
-            self.assertTrue(any(pixel == (255, 255, 255, 255) for pixel in decoded.pixels))
+                self.assertIn(pixel, ((0, 0, 0, 0), ink))
+            self.assertTrue(any(pixel == ink for pixel in decoded.pixels))
+
+    def test_high_score_letters_are_yellow_and_share_white_letter_rects(self) -> None:
+        # The 8 hs/* costumes are a pure recolor of their glyph/<letter> counterpart: same
+        # source rect, only the ink color differs.
+        outputs = {output.name: output for output in hg.render_glyphs(self.manifest)}
+        self.assertEqual(set(f"hs/{letter}" for letter in hg.HS_LETTERS), {
+            name for name in outputs if name.startswith("hs/")
+        })
+        for letter in hg.HS_LETTERS:
+            white_glyph, white_recolor = hg._glyph_source(self.manifest, f"glyph/{letter}")
+            yellow_glyph, yellow_recolor = hg._glyph_source(self.manifest, f"hs/{letter}")
+            self.assertEqual("white", white_recolor)
+            self.assertEqual("yellow", yellow_recolor)
+            self.assertEqual(white_glyph["rect"], yellow_glyph["rect"])
 
     def test_life_icon_keeps_its_own_colors_on_a_16x16_canvas(self) -> None:
         output = hg.render_life_icon(self.manifest)
@@ -96,7 +112,7 @@ class HudGlyphsTests(unittest.TestCase):
             hg.COSTUME_ORDER,
             [costume["name"] for costume in hud["costumes"]],
         )
-        for name in ("digit/0", "digit/9", "glyph/A", "glyph/V"):
+        for name in ("digit/0", "digit/9", "glyph/A", "glyph/V", "hs/H", "hs/S"):
             costume = next(c for c in hud["costumes"] if c["name"] == name)
             self.assertEqual("png", costume["dataFormat"])
             self.assertEqual(self.manifest["bitmap_resolution"], costume["bitmapResolution"])

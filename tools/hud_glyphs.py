@@ -2,11 +2,18 @@
 """Generate deterministic Scratch costumes for the HUD glyph set and life icon,
 and attach the extend/1UP sound to the Stage.
 
-Media only (docs/mechanics/010-hud-glyph-assets.md): this generator produces
-costumes and a sound that no script yet reads. It mirrors tools/sprite_extractor.py's
-structure and reuses its low-level PNG/Image helpers, but owns a different manifest
-(assets/hud-font/manifest.json) built for a monospace glyph cell rather than
-per-animation sprite frames.
+Media (docs/mechanics/010-hud-glyph-assets.md, docs/mechanics/012-hud.md): this
+generator owns the `hud` target's costumes — the white digit/glyph set every
+digit and label but "HIGH SCORE" switches between, the yellow hs/* set the
+"HIGH SCORE" label switches to (arcade fidelity: that one HUD label renders
+yellow, everything else white), and the life/ship icon — plus the Stage's
+`extend` sound, played on every bonus-life grant. tools/game_director.py's
+hud_blocks() is the reader: it switches these glyph costumes every frame (the
+score/high-score digit roles) or once at spawn (the life icon and the two
+label rows), and its check-bonus-life path plays the extend sound. It mirrors
+tools/sprite_extractor.py's structure and reuses its low-level PNG/Image
+helpers, but owns a different manifest (assets/hud-font/manifest.json) built
+for a monospace glyph cell rather than per-animation sprite frames.
 
 Ownership (see tools/game_director.py HUD_TARGET comment): tools/game_director.py
 owns the `hud` target's EXISTENCE and BLOCKS. This module owns that target's
@@ -58,8 +65,18 @@ COSTUME_ORDER = [
     "digit/5", "digit/6", "digit/7", "digit/8", "digit/9",
     "glyph/A", "glyph/C", "glyph/E", "glyph/G", "glyph/H", "glyph/I",
     "glyph/M", "glyph/O", "glyph/P", "glyph/R", "glyph/S", "glyph/U", "glyph/V",
+    "hs/C", "hs/E", "hs/G", "hs/H", "hs/I", "hs/O", "hs/R", "hs/S",
     "life/ship",
 ]
+
+# The 8 letters in "HIGH SCORE" (H, I, G, S, C, O, R, E — H used twice in the label, one
+# costume), recolored YELLOW instead of white: the arcade HUD renders that one label yellow,
+# everything else white. Each hs/<letter> reuses the SAME source rect as its white
+# glyph/<letter> counterpart (see _glyph_source below) — a pure recolor, never a new crop.
+HS_LETTERS = ("C", "E", "G", "H", "I", "O", "R", "S")
+WHITE_INK = (255, 255, 255, 255)
+YELLOW_INK = (255, 255, 0, 255)
+_INK_BY_RECOLOR = {"white": WHITE_INK, "yellow": YELLOW_INK}
 
 
 class HudGlyphsError(RuntimeError):
@@ -198,7 +215,14 @@ def validate_manifest(manifest: object) -> dict:
             raise HudGlyphsError(f"{label} rect must be an ordered inclusive box")
         if (x1 - x0 + 1) > canvas[0] or (y1 - y0 + 1) > canvas[1]:
             raise HudGlyphsError(f"{label} crop does not fit the cell canvas")
-    expected_names = {entry for entry in COSTUME_ORDER if entry != "life/ship"}
+    # The manifest defines only the white digit/glyph set; the yellow hs/* "HIGH SCORE"
+    # costumes are derived from those same entries at render time (see _glyph_source), so
+    # they are never named in the manifest itself.
+    expected_names = {
+        entry
+        for entry in COSTUME_ORDER
+        if entry != "life/ship" and not entry.startswith("hs/")
+    }
     if names != expected_names:
         raise HudGlyphsError(
             "manifest glyphs must name exactly the required digit/letter set: "
@@ -229,7 +253,12 @@ def load_manifest(path: Path = MANIFEST_PATH) -> tuple[dict, bytes]:
     return validate_manifest(value), data
 
 
-def _binarize_glyph(source: se.Image, rect: tuple[int, int, int, int], threshold: int) -> se.Image:
+def _binarize_glyph(
+    source: se.Image,
+    rect: tuple[int, int, int, int],
+    threshold: int,
+    ink: tuple[int, int, int, int] = WHITE_INK,
+) -> se.Image:
     x0, y0, x1, y1 = rect
     if x1 >= source.width or y1 >= source.height:
         raise HudGlyphsError(f"glyph rect {rect} falls outside the font sheet")
@@ -242,7 +271,7 @@ def _binarize_glyph(source: se.Image, rect: tuple[int, int, int, int], threshold
             if red >= threshold or green >= threshold or blue >= threshold:
                 pixels.append((0, 0, 0, 0))
             else:
-                pixels.append((255, 255, 255, 255))
+                pixels.append(ink)
     if not any(pixel[3] for pixel in pixels):
         raise HudGlyphsError(f"glyph rect {rect} produced no ink pixels")
     return se.Image(width, height, tuple(pixels))
@@ -259,6 +288,21 @@ def _downscale_nearest(image: se.Image, factor: int) -> se.Image:
         for x in range(new_width)
     ]
     return se.Image(new_width, new_height, tuple(pixels))
+
+
+def _glyph_source(manifest: dict, name: str) -> tuple[dict, str]:
+    """Return (manifest glyph entry providing the source rect, recolor label) for a
+    rendered costume name. The 8 yellow hs/<letter> costumes reuse the SAME rect as
+    their white glyph/<letter> counterpart — a pure recolor, never a new crop."""
+    if name.startswith("hs/"):
+        letter = name.split("/", 1)[1]
+        source_name = f"glyph/{letter}"
+        recolor = "yellow"
+    else:
+        source_name = name
+        recolor = "white"
+    glyph = next(g for g in manifest["glyphs"] if g["name"] == source_name)
+    return glyph, recolor
 
 
 def render_glyphs(manifest: dict) -> list[GlyphOutput]:
@@ -279,16 +323,20 @@ def render_glyphs(manifest: dict) -> list[GlyphOutput]:
     anchor = tuple(manifest["cell_anchor"])
     factor = manifest["downscale"]
     threshold = manifest["glyph_threshold"]
-    outputs = []
-    for glyph in manifest["glyphs"]:
+
+    def render_one(name: str) -> GlyphOutput:
+        glyph, recolor = _glyph_source(manifest, name)
         rect = tuple(glyph["rect"])
-        crop = _binarize_glyph(sheet, rect, threshold)
+        crop = _binarize_glyph(sheet, rect, threshold, _INK_BY_RECOLOR[recolor])
         placed = se._place_on_canvas(crop, canvas, anchor)
         final = _downscale_nearest(placed, factor)
         png = se.encode_png(final)
-        outputs.append(
-            GlyphOutput(glyph["name"], f"{se._md5(png)}.png", png, final.width)
-        )
+        return GlyphOutput(name, f"{se._md5(png)}.png", png, final.width)
+
+    # The manifest's own white digit/glyph set, in manifest order, then the 8 yellow
+    # hs/* "HIGH SCORE" letters, in HS_LETTERS order.
+    outputs = [render_one(glyph["name"]) for glyph in manifest["glyphs"]]
+    outputs += [render_one(f"hs/{letter}") for letter in HS_LETTERS]
     return outputs
 
 
@@ -414,8 +462,9 @@ def expected_project(
     return result
 
 
-def _overlay_glyph_record(manifest: dict, glyph: dict, output: GlyphOutput) -> dict:
+def _overlay_glyph_record(manifest: dict, output: GlyphOutput) -> dict:
     sheet = manifest["font_sheet"]
+    source_glyph, recolor = _glyph_source(manifest, output.name)
     return {
         "origin": (
             f"Recolored, monospace-cell derivative of {sheet['source']}; "
@@ -425,9 +474,10 @@ def _overlay_glyph_record(manifest: dict, glyph: dict, output: GlyphOutput) -> d
         "notes": (
             f"Credit: {sheet['credit']}. The repository operator did not create this "
             f"asset. Source {sheet['asset']} at SHA-256 {sheet['sha256']}; crop "
-            f"{glyph['rect']}, cell canvas {manifest['cell_canvas']}, cell anchor "
+            f"{source_glyph['rect']}, cell canvas {manifest['cell_canvas']}, cell anchor "
             f"{manifest['cell_anchor']}, {manifest['downscale']}x nearest-neighbor "
-            f"downscale, bitmapResolution {manifest['bitmap_resolution']}."
+            f"downscale, bitmapResolution {manifest['bitmap_resolution']}, "
+            f"recolor={recolor}."
         ),
     }
 
@@ -492,11 +542,13 @@ def _derivative_provenance(
     sound_filename: str,
 ) -> dict:
     outputs = {}
-    for glyph, output in zip(manifest["glyphs"], glyph_outputs):
+    for output in glyph_outputs:
+        source_glyph, recolor = _glyph_source(manifest, output.name)
         outputs[output.filename] = {
             "kind": "glyph",
             "name": output.name,
-            "rect": glyph["rect"],
+            "rect": source_glyph["rect"],
+            "recolor": recolor,
             "generator_version": GENERATOR_VERSION,
         }
     outputs[life_output.filename] = {
@@ -545,8 +597,8 @@ def _expected_state() -> tuple[
         for name, record in overlay["assets"].items()
         if name not in prior_outputs
     }
-    for glyph, output in zip(manifest["glyphs"], glyph_outputs):
-        assets[output.filename] = _overlay_glyph_record(manifest, glyph, output)
+    for output in glyph_outputs:
+        assets[output.filename] = _overlay_glyph_record(manifest, output)
     assets[life_output.filename] = _overlay_life_record(manifest, life_output)
     assets[sound_filename] = _overlay_sound_record(manifest, sound_filename)
     assets = dict(sorted(assets.items()))

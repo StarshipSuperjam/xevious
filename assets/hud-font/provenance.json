@@ -12,6 +12,7 @@
         110,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "f8a769f4c185d8dda245fc471d42a9e9.png": {
@@ -23,6 +24,7 @@
         334,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "8aef1f4258ba433ae5ed71582849c96d.png": {
@@ -34,6 +36,7 @@
         558,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "4159ab3154963f5162c9ee46ab4aec7d.png": {
@@ -45,6 +48,7 @@
         782,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "2cede9b96ad1758205c545423b9061ca.png": {
@@ -56,6 +60,7 @@
         894,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "b6bc128dc9501e4597349944c3c6734f.png": {
@@ -67,6 +72,7 @@
         978,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "edd29f7a9732b318085735bb4dbfed28.png": {
@@ -78,6 +84,7 @@
         1454,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "cbf90468afb2dabb97cbf1df898cd95f.png": {
@@ -89,6 +96,7 @@
         1006,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "622fe458e1d0246fcba8890df39db185.png": {
@@ -100,6 +108,7 @@
         1790,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "d3abb1c767fba7ee545419dd7815af58.png": {
@@ -111,6 +120,7 @@
         2014,
         109
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "3abc1a03d3ec0b690acc4f7414056c21.png": {
@@ -122,6 +132,7 @@
         110,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "6e431c2e37240a93cf6367bf5b7166b4.png": {
@@ -133,6 +144,7 @@
         334,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "4806c019c2f7b59d3514bd0381fecf6c.png": {
@@ -144,6 +156,7 @@
         446,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "b0608508202b4397dc189274fcca80e1.png": {
@@ -155,6 +168,7 @@
         1090,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "a233dc7ba98dac275bf399e4561b5da9.png": {
@@ -166,6 +180,7 @@
         1230,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "09dca855bb94485eee48db4ba2e094f5.png": {
@@ -177,6 +192,7 @@
         1342,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "fe1aa016a3a1d92ccb63844421849e0d.png": {
@@ -188,6 +204,7 @@
         1454,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "af3408847196a388f672ebccc936329c.png": {
@@ -199,6 +216,7 @@
         1566,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "3c47eae3a7644d9ac07a0fdbf24b77ba.png": {
@@ -210,6 +228,7 @@
         1678,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "e99219178b188a992e565a8612a4718c.png": {
@@ -221,6 +240,7 @@
         1790,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "f58953535c4ad299bfd50ecdec6e333b.png": {
@@ -232,6 +252,7 @@
         1902,
         235
       ],
+      "recolor": "white",
       "generator_version": 1
     },
     "280e8021ad8e300ce17d6b75447f1fa7.png": {
@@ -243,6 +264,103 @@
         2014,
         235
       ],
+      "recolor": "white",
+      "generator_version": 1
+    },
+    "0ac742ba828ebc2ff6ef993bcfff4c40.png": {
+      "kind": "glyph",
+      "name": "hs/C",
+      "rect": [
+        237,
+        12,
+        334,
+        109
+      ],
+      "recolor": "yellow",
+      "generator_version": 1
+    },
+    "b1ee129cf78bf03746c49db05f9fca31.png": {
+      "kind": "glyph",
+      "name": "hs/E",
+      "rect": [
+        461,
+        12,
+        558,
+        109
+      ],
+      "recolor": "yellow",
+      "generator_version": 1
+    },
+    "740eb0b7490c509ee99a920669ba6f19.png": {
+      "kind": "glyph",
+      "name": "hs/G",
+      "rect": [
+        685,
+        12,
+        782,
+        109
+      ],
+      "recolor": "yellow",
+      "generator_version": 1
+    },
+    "64a7d8162a6bcf00815f4f94c1cce292.png": {
+      "kind": "glyph",
+      "name": "hs/H",
+      "rect": [
+        797,
+        12,
+        894,
+        109
+      ],
+      "recolor": "yellow",
+      "generator_version": 1
+    },
+    "0ef75d93f65ff0e3509948ad46c1d349.png": {
+      "kind": "glyph",
+      "name": "hs/I",
+      "rect": [
+        937,
+        12,
+        978,
+        109
+      ],
+      "recolor": "yellow",
+      "generator_version": 1
+    },
+    "70511dfcdbcaeab0feb5f93d79071c7d.png": {
+      "kind": "glyph",
+      "name": "hs/O",
+      "rect": [
+        1581,
+        12,
+        1678,
+        109
+      ],
+      "recolor": "yellow",
+      "generator_version": 1
+    },
+    "29b91425efd081ee5dfbd97543c64d1d.png": {
+      "kind": "glyph",
+      "name": "hs/R",
+      "rect": [
+        1917,
+        12,
+        2014,
+        109
+      ],
+      "recolor": "yellow",
+      "generator_version": 1
+    },
+    "5601d78fac9eb01d7ced6ce7242e40e1.png": {
+      "kind": "glyph",
+      "name": "hs/S",
+      "rect": [
+        13,
+        138,
+        110,
+        235
+      ],
+      "recolor": "yellow",
       "generator_version": 1
     },
     "3ff5b57a5857756abaf9d15288661f56.png": {

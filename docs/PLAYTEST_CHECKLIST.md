@@ -17,9 +17,11 @@ python3 tools/scratch_project.py build
 
 then open `dist/Xevious.sb3` in Scratch 3. Controls today: **arrow keys** move, **Space** fires (and
 also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
-(there is no separate crosshair control); **D** and **G** are the temporary death fixtures — until
-enemies exist, pressing **D** is how you trigger a death, and **G** a terminal death (both recorded in
-the spec's core game systems document).
+(there is no separate crosshair control); **D**, **G**, and **S** are the temporary debug fixtures —
+until enemies exist, **D** triggers one death, **G** a terminal death (drains to the last craft), and
+**S** awards points (each press adds the top value-table entry, 10,000) so scoring, the cap, and bonus
+lives can be exercised. All three are recorded in the mechanics records and are removed when the real
+collision trigger and enemy scoring land (slice 8).
 
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a
@@ -44,9 +46,16 @@ rule still waits on the area clock.)
    respawns immediately vulnerable, the current area restarts from its top on the respawn, and nothing
    from the previous life lingers. Draining the craft (repeated D, or G) reaches GAME OVER, holds, and
    returns to the title; life icons in the HUD track the count.
-6. **Layering.** During busy play: shots and the craft render above the terrain (and enemies, once
+6. **Life economy — score, cap, bonus, HUD.** Press **S** repeatedly (or hold it) while playing: the
+   score climbs, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it
+   whenever the score passes it. Reach 20,000 → an extra craft is granted with its **extend** sound and
+   a life icon appears (the icon row is capped at 9 on screen — the true count keeps rising). Hold **S**
+   to the **9,999,990** cap: the score pins there and, at the cap, every further press grants a craft
+   (the recorded arcade quirk). Each digit shows leading zeros, arcade-style. If the score, cap,
+   high-score tracking, or bonus award misbehaves, report it.
+7. **Layering.** During busy play: shots and the craft render above the terrain (and enemies, once
    they exist); the frame borders never hide the ship.
-7. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,
+8. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,
    and crosshair behavior of the recovery build (#13/#14) you approved — a single spatial factor was tried
    and rejected, and this build tunes those quantities as port constants instead. Confirm the feel is back
    to what you validated: the craft moves at its familiar speed and reaches every edge; the shot speed
@@ -54,6 +63,6 @@ rule still waits on the area clock.)
    top of the screen**: when it reaches the top border it stops there and the ship stops with it (the
    crosshair also marks the bomb-drop point). If any of movement, bounds, shot, or the crosshair top-stop
    feels wrong, that is a bug to report, not a decision to revisit.
-8. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
-9. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
-   at a time, against the spec sections it cites.
+9. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
+10. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
+    at a time, against the spec sections it cites.

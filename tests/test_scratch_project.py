@@ -171,7 +171,7 @@ class ScratchProjectTests(unittest.TestCase):
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
         self.assertEqual(17, len(project["targets"]))
-        self.assertEqual(91, len(assets))
+        self.assertEqual(99, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1975,6 +1975,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.HUD_PLACE_ID,
             director.HUD_DIVISOR_ID,
             director.HUD_LIFE_INDEX_ID,
+            director.HUD_LIFE_COUNT_ID,
             director.HUD_IS_CLONE_ID,
         }
         writes = {
@@ -1984,6 +1985,47 @@ class ScratchProjectTests(unittest.TestCase):
         }
         if not writes <= allowed:
             failures.add("hud-writes-only-local")
+
+        # Life-icon row cap (usability fix): the render loop's TIMES reads the capped
+        # `hud life count` local (never the uncapped `craft` directly), and that local is
+        # clamped to HUD_LIFE_MAX before the loop runs.
+        loop_capped = any(
+            b["opcode"] == "control_repeat"
+            and refs(b["inputs"].get("TIMES"), director.HUD_LIFE_COUNT_ID)
+            for b in blocks.values()
+        )
+        if not loop_capped:
+            failures.add("hud-life-spawn-loop-capped")
+        cap_present = any(
+            b["opcode"] == "control_if"
+            and isinstance(b["inputs"].get("CONDITION"), list)
+            and len(b["inputs"]["CONDITION"]) > 1
+            and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_gt"
+            and refs(
+                blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1"),
+                director.HUD_LIFE_COUNT_ID,
+            )
+            and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+            == [1, [4, director.HUD_LIFE_MAX]]
+            for b in blocks.values()
+        )
+        if not cap_present:
+            failures.add("hud-life-count-capped")
+
+        # "HIGH SCORE" switches to the yellow hs/* costume set (director.HUD_HIGH_SCORE_LABEL),
+        # distinct from the white glyph/* set every digit and the other labels use.
+        hs_names = {glyph for glyph, _slot in director.HUD_HIGH_SCORE_LABEL}
+        costume_menu_names = {
+            b["fields"].get("COSTUME", [None, None])[0]
+            for b in blocks.values()
+            if b["opcode"] == "looks_costume"
+        }
+        if not (
+            hs_names
+            and all(name.startswith("hs/") for name in hs_names)
+            and hs_names <= costume_menu_names
+        ):
+            failures.add("hud-high-score-label-yellow")
         return failures
 
     def test_hud_render_present(self) -> None:
@@ -2080,6 +2122,38 @@ class ScratchProjectTests(unittest.TestCase):
                 "topLevel": False,
             }
 
+        def break_life_spawn_loop_cap(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "control_repeat" and refs(
+                    b["inputs"].get("TIMES"), director.HUD_LIFE_COUNT_ID
+                ):
+                    b["inputs"]["TIMES"] = [3, [12, "craft", director.LIVES_ID], [10, ""]]
+
+        def break_life_count_cap(p: dict) -> None:
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] != "control_if":
+                    continue
+                condition = b["inputs"].get("CONDITION")
+                if not (isinstance(condition, list) and len(condition) > 1):
+                    continue
+                cond = blocks.get(condition[1])
+                if (
+                    cond is not None
+                    and cond["opcode"] == "operator_gt"
+                    and refs(cond["inputs"].get("OPERAND1"), director.HUD_LIFE_COUNT_ID)
+                ):
+                    cond["inputs"]["OPERAND2"] = [1, [4, 999]]
+
+        def break_high_score_label_yellow(p: dict) -> None:
+            hs_names = {glyph for glyph, _slot in director.HUD_HIGH_SCORE_LABEL}
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "looks_costume" and b["fields"].get(
+                    "COSTUME", [None, None]
+                )[0] in hs_names:
+                    name = b["fields"]["COSTUME"][0]
+                    b["fields"]["COSTUME"][0] = name.replace("hs/", "glyph/")
+
         cases = [
             ("hud-spawns-clones", break_spawn),
             ("hud-clone-handler", break_clone_handler),
@@ -2089,6 +2163,9 @@ class ScratchProjectTests(unittest.TestCase):
             ("craft-changed-listener", break_craft_changed),
             ("flashing-1up", break_flash),
             ("hud-writes-only-local", break_write_only_local),
+            ("hud-life-spawn-loop-capped", break_life_spawn_loop_cap),
+            ("hud-life-count-capped", break_life_count_cap),
+            ("hud-high-score-label-yellow", break_high_score_label_yellow),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -3532,7 +3609,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3f0e6786f1e1678f1f0b59fecd41ab40725ef6f0e90bd8abd6c93102635f6321",
+            "7acae2c4e662996cd507c93d75812c743e9d356a51f1627e375e1c67a97880e5",
             build_hash,
         )
 

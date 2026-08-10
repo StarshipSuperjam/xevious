@@ -52,11 +52,22 @@ are sourced from a font released under a stated reusable license:
 The raw sheet is committed byte-for-byte at `assets/hud-font/xevious_hud_font.png`.
 The versioned manifest at `assets/hud-font/manifest.json` measures the digit
 and uppercase-letter crop rectangles used by `tools/hud_glyphs.py`, which
-globally recolors ink to white, removes the background, centers each glyph on
-a fixed monospace cell, and downscales it with nearest-neighbor sampling.
-Generated glyph costumes are recorded in `src/xevious/assets/provenance.json`
-with this same CC BY 3.0 attribution. Attribution is given per the license;
-this project does not otherwise claim rights to the font.
+removes the white background and recolors the ink — to **white** for the score,
+high-score, 1UP, and GAME OVER glyphs, and to **yellow** (RGB 255,255,0) for the
+`hs/*` glyphs of the arcade's yellow **HIGH SCORE** label — then centers each
+glyph on a fixed monospace cell and downscales it with nearest-neighbor sampling.
+Both colour variants are recorded in `src/xevious/assets/provenance.json` with
+this same CC BY 3.0 attribution.
+
+The license deed is [Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/).
+Attribution is given per its terms. Two provenance caveats, both for the
+standing rights review before any broader distribution (`docs/REFERENCE_POLICY.md`):
+the CC BY 3.0 grant is read from the DeviantArt re-share and the FontStruct
+project home, not the specific FontStruct fontstruction page that states it — the
+exact page and license should be confirmed at that review; and the CC grant covers
+the FontStruct author's recreation as an expression, while the depicted HUD glyph
+*design* derives from Namco's arcade game and remains Namco's. This project does
+not otherwise claim rights to the font.
 
 ## Extend / 1UP sound (Sounds Spriters Resource)
 

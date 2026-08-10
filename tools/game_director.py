@@ -158,10 +158,11 @@ ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
 
-# ECO-02 HUD target scaffold (media only this slice — see docs/mechanics/010). game_director
-# owns this target's EXISTENCE and BLOCKS (an empty scaffold until the HUD-render commit fills
-# it in); its costumes are owned entirely by tools/hud_glyphs.py, mirroring the solvalou split
-# (one generator owns blocks, the other owns costumes, neither touches the other's field).
+# ECO-02 HUD target (docs/mechanics/010, docs/mechanics/012). game_director owns this target's
+# EXISTENCE and BLOCKS — the HUD render itself (hud_blocks(), installed below); its costumes
+# (the white glyph/digit set, the yellow hs/* "HIGH SCORE" set, and the life icon) are owned
+# entirely by tools/hud_glyphs.py, mirroring the solvalou split (one generator owns blocks, the
+# other owns costumes, neither touches the other's field).
 HUD_TARGET = "hud"
 
 # ECO-02 HUD render (docs/mechanics/012). The hud sprite stays hidden and only ever spawns
@@ -173,6 +174,7 @@ HUD_ROLE_ID = "hud-role"
 HUD_PLACE_ID = "hud-place"
 HUD_DIVISOR_ID = "hud-divisor"
 HUD_LIFE_INDEX_ID = "hud-life-index"
+HUD_LIFE_COUNT_ID = "hud-life-count"
 HUD_IS_CLONE_ID = "hud-is-clone"
 # Role tags snapshotted into each clone at creation (the blaster clone-slot idiom): which of the
 # five clone kinds this clone is. 0 (unset) never matches any role, so it also doubles as the
@@ -197,12 +199,21 @@ HUD_HIGH_SCORE_LABEL_LEFT_X = -40
 HUD_LIFE_LEFT_X = -220
 HUD_LIFE_Y = 128
 HUD_LIFE_SPACING = 18
+# Rendered life-icon cap (usability fix): uncapped, the row is one clone per `craft`, and at
+# ~169 craft (reachable by holding the debug S key to the score cap) the icons run off the
+# right edge of the 480-wide stage. Capping the RENDERED row at 9 ends it at x = HUD_LIFE_LEFT_X
+# + (HUD_LIFE_MAX - 1) * HUD_LIFE_SPACING = -220 + 8*18 = -76, clear of the high-score group at
+# x=-20. The true `craft` count (and the score digits the cap-test actually exercises) is
+# unaffected — only the icon DISPLAY is bounded.
+HUD_LIFE_MAX = 9
 HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
 # (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
 HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
+# "HIGH SCORE" renders in the yellow hs/* costume set (arcade fidelity: that one HUD label is
+# yellow, everything else — score/high-score digits, 1UP, GAME OVER — is white).
 HUD_HIGH_SCORE_LABEL = (
-    ("glyph/H", 0), ("glyph/I", 1), ("glyph/G", 2), ("glyph/H", 3),
-    ("glyph/S", 5), ("glyph/C", 6), ("glyph/O", 7), ("glyph/R", 8), ("glyph/E", 9),
+    ("hs/H", 0), ("hs/I", 1), ("hs/G", 2), ("hs/H", 3),
+    ("hs/S", 5), ("hs/C", 6), ("hs/O", 7), ("hs/R", 8), ("hs/E", 9),
 )
 # ECO-04: "GAME OVER", centered on the stage (slot 4 — the untyped space between the two
 # words — sits at x=0). Fully unrolled like the two label rows above, so no runtime index
@@ -1954,14 +1965,29 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
 
 
 def install_hud_spawn_craft(blocks: Blocks) -> None:
-    # ECO-02: (re)spawn one life/ship clone per remaining craft, left to right. A warp
-    # (atomic) block so the whole row appears in a single frame; called both by the
-    # initial director-enter spawn and again whenever `craft changed` fires (a bonus
-    # grant now, a death later), so the row always reflects the live `craft` count.
+    # ECO-02: (re)spawn one life/ship clone per remaining craft, left to right, capped at
+    # HUD_LIFE_MAX rendered icons so the row can never run off-stage (usability fix; the
+    # true `craft` count is UNAFFECTED — only the icon DISPLAY is bounded, via a hud-local
+    # counter capped before the spawn loop reads it). A warp (atomic) block so the whole
+    # row appears in a single frame; called both by the initial director-enter spawn and
+    # again whenever `craft changed` fires (a bonus grant now, a death later), so the row
+    # always reflects the live `craft` count (up to the cap).
     definition = _install_warp_proc(blocks, HUD_SPAWN_CRAFT_PROCCODE)
     set_role = blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LIFE))
     set_index = blocks.set_var("hud life index", HUD_LIFE_INDEX_ID, number(0))
-    loop = blocks.add("control_repeat", inputs={"TIMES": variable("craft", LIVES_ID)})
+    set_count = blocks.set_var(
+        "hud life count", HUD_LIFE_COUNT_ID, variable("craft", LIVES_ID)
+    )
+    cap_if = blocks.add("control_if")
+    cap_cond = blocks.greater(cap_if, "hud life count", HUD_LIFE_COUNT_ID, HUD_LIFE_MAX)
+    blocks.blocks[cap_if]["inputs"]["CONDITION"] = [2, cap_cond]
+    blocks.substack(
+        cap_if,
+        [blocks.set_var("hud life count", HUD_LIFE_COUNT_ID, number(HUD_LIFE_MAX))],
+    )
+    loop = blocks.add(
+        "control_repeat", inputs={"TIMES": variable("hud life count", HUD_LIFE_COUNT_ID)}
+    )
     x_expr = blocks.op_add(
         number(HUD_LIFE_LEFT_X),
         blocks.op_mul(
@@ -1972,7 +1998,7 @@ def install_hud_spawn_craft(blocks: Blocks) -> None:
     create = blocks.create_clone()
     advance = blocks.change_var("hud life index", HUD_LIFE_INDEX_ID, 1)
     blocks.substack(loop, [go, create, advance])
-    blocks.chain(definition, [set_role, set_index, loop])
+    blocks.chain(definition, [set_role, set_index, set_count, cap_if, loop])
 
 
 def hud_blocks() -> dict[str, dict[str, Any]]:
@@ -2185,7 +2211,9 @@ def _ensure_hud_target(project: dict[str, Any]) -> None:
         None,
     )
     if existing is not None:
-        existing["blocks"] = {}
+        # hud blocks are (re)installed unconditionally by expected_project's replacements
+        # map below — nothing to do here but leave the existing target's costumes, sounds,
+        # and every other field untouched.
         return
     insertion = next(
         (
@@ -2403,6 +2431,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 HUD_PLACE_ID: ["hud place", 0],
                 HUD_DIVISOR_ID: ["hud divisor", 1],
                 HUD_LIFE_INDEX_ID: ["hud life index", 0],
+                HUD_LIFE_COUNT_ID: ["hud life count", 0],
                 HUD_IS_CLONE_ID: ["hud is clone", 0],
             }
     return result
