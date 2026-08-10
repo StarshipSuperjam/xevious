@@ -1489,11 +1489,13 @@ class ScratchProjectTests(unittest.TestCase):
             body.append(cur)
             cur = blocks[cur]["next"]
 
-        # award -> score: an operator_add of `score` and `award value` feeds a set-score.
+        # award -> score: `change score by (award value)`. (NOT `set score = score + award
+        # value`: a `set var = operator(...)` value-input does not evaluate in the Scratch VM,
+        # so the score path adds via `change ... by` the award-value variable directly.)
         if not any(
-            b["opcode"] == "operator_add"
-            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
-            and refs(b["inputs"].get("OPERAND2"), director.AWARD_VALUE_ID)
+            b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+            and refs(b["inputs"].get("VALUE"), director.AWARD_VALUE_ID)
             for b in blocks.values()
         ):
             failures.add("score-add-award")
@@ -1539,14 +1541,16 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("bonus-check-tail")
 
-        # no bypass: nothing anywhere increments `score` directly — every award goes through
-        # the set-expr in the one proc (a stray `change score by N` is the classic bypass).
-        if any(
-            b["opcode"] == "data_changevariableby"
-            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+        # no bypass: the ONLY `change score by` in the whole project is the single award inside
+        # the score proc — a second one anywhere is the classic scoring bypass.
+        score_changes = [
+            bid
             for target in project["targets"]
-            for b in target["blocks"].values()
-        ):
+            for bid, b in target["blocks"].items()
+            if b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+        ]
+        if len(score_changes) != 1 or score_changes[0] not in body:
             failures.add("score-no-bypass")
         return failures
 
@@ -1562,14 +1566,13 @@ class ScratchProjectTests(unittest.TestCase):
 
         def break_award(p: dict) -> None:
             s = next(t for t in p["targets"] if t["isStage"])
-            add = next(
+            chg = next(
                 b
                 for b in s["blocks"].values()
-                if b["opcode"] == "operator_add"
-                and b["inputs"].get("OPERAND2", [None, [None, None, None]])[1][2:3]
-                == [director.AWARD_VALUE_ID]
+                if b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
             )
-            add["inputs"]["OPERAND2"] = [1, [4, 0]]  # award nothing, not `award value`
+            chg["inputs"]["VALUE"] = [1, [4, 0]]  # award nothing, not `award value`
 
         def break_cap(p: dict) -> None:
             for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
@@ -3656,7 +3659,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d002780bd9ff9e6a40fb78bd5c58fa42f194b7675763cdce748e60737775f06d",
+            "a3c6a586d9d7ede0ab384562f556af46e3513aba203f8e0ac05cdc7d7ec770c3",
             build_hash,
         )
 

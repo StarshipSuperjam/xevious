@@ -659,10 +659,18 @@ class Blocks:
         return block_id
 
     def switch_costume_expr(self, reporter_id: str) -> str:
-        # Like switch_costume(), but the costume NAME is computed at runtime (a
-        # reporter, e.g. a joined "digit/<n>" string) instead of a fixed dropdown pick.
-        block_id = self.add("looks_switchcostumeto", inputs={"COSTUME": [2, reporter_id]})
+        # Like switch_costume(), but the costume NAME is computed at runtime (a reporter,
+        # e.g. a joined "digit/<n>" string). The costume input is a MENU input, so the
+        # reporter must OBSCURE a costume-menu shadow ([3, reporter, shadow]) — a bare
+        # [2, reporter] leaves the menu input unread and the switch never happens.
+        menu = self.add(
+            "looks_costume", fields={"COSTUME": ["digit/0", None]}, shadow=True
+        )
+        block_id = self.add(
+            "looks_switchcostumeto", inputs={"COSTUME": [3, reporter_id, menu]}
+        )
         self.blocks[reporter_id]["parent"] = block_id
+        self.blocks[menu]["parent"] = block_id
         return block_id
 
     def play_sound(self, sound: str) -> str:
@@ -1057,10 +1065,12 @@ def install_score(blocks: Blocks) -> None:
     # resolved point value, set by the collision detector a later slice wires (machinery seam,
     # parallel to `hit slot`); the debug S fixture sets it this slice.
     definition = _install_warp_proc(blocks, SCORE_PROCCODE)
-    add_award = blocks.set_var_expr(
-        "score",
-        SCORE_ID,
-        blocks.op_add(variable("score", SCORE_ID), variable("award value", AWARD_VALUE_ID)),
+    # NOTE: `set score = op_add(score, award value)` does NOT evaluate in the Scratch VM
+    # (a `set var = operator(...)` value-input the runtime leaves unread); `change ... by` does.
+    add_award = blocks.add(
+        "data_changevariableby",
+        inputs={"VALUE": variable("award value", AWARD_VALUE_ID)},
+        fields={"VARIABLE": ["score", SCORE_ID]},
     )
     cap_if = blocks.add("control_if")
     cap_cond = blocks.greater(cap_if, "score", SCORE_ID, SCORE_CAP)
