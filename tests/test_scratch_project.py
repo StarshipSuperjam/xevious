@@ -875,10 +875,22 @@ class ScratchProjectTests(unittest.TestCase):
             "hit slot",
             "bullet alloc result",
             "bullet cursor",
+            # ECO-01 award-value seam: set by the collision detector a later slice wires
+            # (parallel to `hit slot`), so it is machinery, not Stage-write-protected state.
+            "award value",
+        }
+        # ECO economy state — Stage-written, HUD reads only. Held in its own category and
+        # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
+        economy_names = {
+            "score",
+            "high score",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
+        self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
         stage_variable_names = {name for name, _value in stage["variables"].values()}
-        self.assertEqual(director_state_names | machinery_names, stage_variable_names)
+        self.assertEqual(
+            director_state_names | machinery_names | economy_names, stage_variable_names
+        )
         self.assertEqual(
             [
                 "boot -> title",
@@ -926,16 +938,23 @@ class ScratchProjectTests(unittest.TestCase):
             director.ADVANCE_SLOTS_PROCCODE,
             director.RESOLVE_HIT_PROCCODE,
             director.SCORE_PROCCODE,
+            director.CHECK_BONUS_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
         )
 
+        # Only the Stage writes the director-control vars AND the economy vars: no sprite may
+        # write them (a HUD sprite touching `score` is exactly the bug this guards). The
+        # award-value seam is deliberately absent — the enemy slice's detector (which may be a
+        # sprite) sets it, like `hit slot`.
         director_variable_ids = {
             director.STATE_ID,
             director.EPOCH_ID,
             director.SCOPE_ID,
             director.OUTCOME_ID,
+            director.SCORE_ID,
+            director.HIGH_SCORE_ID,
         }
         for target in project["targets"]:
             if target["isStage"]:
@@ -1327,13 +1346,17 @@ class ScratchProjectTests(unittest.TestCase):
         ]
         if len(hit_writes) != 1 or hit_writes[0] not in resolve_body:
             failures.add("single-hit-resolver")
-        score_calls = [
-            b
-            for b in blocks.values()
-            if b["opcode"] == "procedures_call"
-            and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+        # SYS-03's guarantee: a resolved hit scores exactly once — the `score` call lives in
+        # the resolver body, once. (The one `score` PROC is the single scoring path; ECO-01's
+        # contract enforces that nothing writes `score` outside it. Other legitimate callers of
+        # that proc — e.g. the debug scoring fixture — are ECO-01's concern, not SYS-03's.)
+        score_calls_in_resolver = [
+            bid
+            for bid in resolve_body
+            if blocks[bid]["opcode"] == "procedures_call"
+            and blocks[bid].get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
         ]
-        if len(score_calls) != 1:  # all scoring flows through the one path
+        if len(score_calls_in_resolver) != 1:  # one hit resolves to one award
             failures.add("single-score-path")
         defined = {
             b["mutation"]["proccode"]
@@ -1353,15 +1376,35 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(set(), self._sys03_failures(base))
 
         def double_score(p: dict) -> None:
+            # Make the resolver score TWICE for one hit — the SYS-03 violation.
             stage = next(t for t in p["targets"] if t["isStage"])
-            call = next(
-                b
-                for b in stage["blocks"].values()
-                if b["opcode"] == "procedures_call"
-                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            blocks = stage["blocks"]
+            proto = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
             )
-            clone = copy.deepcopy(call)
-            stage["blocks"]["injected-second-score"] = clone
+            definition = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto
+            )
+            cursor = blocks[definition]["next"]
+            score_call_id = None
+            while cursor:
+                b = blocks[cursor]
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get(
+                    "proccode"
+                ) == director.SCORE_PROCCODE:
+                    score_call_id = cursor
+                    break
+                cursor = b["next"]
+            clone = copy.deepcopy(blocks[score_call_id])
+            clone["next"] = blocks[score_call_id]["next"]
+            blocks[score_call_id]["next"] = "injected-second-resolver-score"
+            blocks["injected-second-resolver-score"] = clone
 
         def skip_hit_write(p: dict) -> None:
             stage = next(t for t in p["targets"] if t["isStage"])
@@ -1381,6 +1424,226 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._sys03_failures(project), label)
+
+    @staticmethod
+    def _eco01_failures(project: dict) -> set:
+        """ECO-01 single scoring path — award, 9,999,990 cap, high-score track, bonus tail,
+        and no score bypass. Structure only; the arithmetic is the operator's playtest."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        proto = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            ),
+            None,
+        )
+        definition = (
+            None
+            if proto is None
+            else next(
+                (
+                    bid
+                    for bid, b in blocks.items()
+                    if b["opcode"] == "procedures_definition"
+                    and b["inputs"].get("custom_block", [None, None])[1] == proto
+                ),
+                None,
+            )
+        )
+        if definition is None:
+            return {"score-proc-defined"}
+        body, cur = [], blocks[definition]["next"]
+        while cur:
+            body.append(cur)
+            cur = blocks[cur]["next"]
+
+        # award -> score: an operator_add of `score` and `award value` feeds a set-score.
+        if not any(
+            b["opcode"] == "operator_add"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and refs(b["inputs"].get("OPERAND2"), director.AWARD_VALUE_ID)
+            for b in blocks.values()
+        ):
+            failures.add("score-add-award")
+
+        # cap: a `score > 9,999,990` test and a set-score to the ceiling literal.
+        gt_cap = any(
+            b["opcode"] == "operator_gt"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            for b in blocks.values()
+        )
+        set_cap = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+            and b["inputs"].get("VALUE") == [1, [4, director.SCORE_CAP]]
+            for b in blocks.values()
+        )
+        if not (gt_cap and set_cap):
+            failures.add("score-cap")
+
+        # high score: a `score > high score` test and a set-high-score to `score`.
+        gt_high = any(
+            b["opcode"] == "operator_gt"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and refs(b["inputs"].get("OPERAND2"), director.HIGH_SCORE_ID)
+            for b in blocks.values()
+        )
+        set_high = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.HIGH_SCORE_ID
+            and refs(b["inputs"].get("VALUE"), director.SCORE_ID)
+            for b in blocks.values()
+        )
+        if not (gt_high and set_high):
+            failures.add("high-score-track")
+
+        # the bonus-life check runs after every award — the tail of the score path.
+        if not (
+            body
+            and blocks[body[-1]]["opcode"] == "procedures_call"
+            and blocks[body[-1]].get("mutation", {}).get("proccode")
+            == director.CHECK_BONUS_PROCCODE
+        ):
+            failures.add("bonus-check-tail")
+
+        # no bypass: nothing anywhere increments `score` directly — every award goes through
+        # the set-expr in the one proc (a stray `change score by N` is the classic bypass).
+        if any(
+            b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+            for target in project["targets"]
+            for b in target["blocks"].values()
+        ):
+            failures.add("score-no-bypass")
+        return failures
+
+    def test_scoring_path_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco01_failures(project))
+
+    def test_scoring_path_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco01_failures(base))
+        stage = next(t for t in base["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def break_award(p: dict) -> None:
+            s = next(t for t in p["targets"] if t["isStage"])
+            add = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_add"
+                and b["inputs"].get("OPERAND2", [None, [None, None, None]])[1][2:3]
+                == [director.AWARD_VALUE_ID]
+            )
+            add["inputs"]["OPERAND2"] = [1, [4, 0]]  # award nothing, not `award value`
+
+        def break_cap(p: dict) -> None:
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+                    and b["inputs"].get("VALUE") == [1, [4, director.SCORE_CAP]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, director.SCORE_CAP + 10]]
+
+        def break_high(p: dict) -> None:
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1]
+                    == director.HIGH_SCORE_ID
+                ):
+                    b["fields"]["VARIABLE"] = ["score", director.SCORE_ID]
+
+        def break_bonus_tail(p: dict) -> None:
+            s = next(t for t in p["targets"] if t["isStage"])
+            proto = next(
+                bid
+                for bid, b in s["blocks"].items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            )
+            definition = next(
+                bid
+                for bid, b in s["blocks"].items()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto
+            )
+            cur = s["blocks"][definition]["next"]
+            prev = definition
+            while s["blocks"][cur]["next"]:
+                prev = cur
+                cur = s["blocks"][cur]["next"]
+            s["blocks"][prev]["next"] = None  # drop the trailing check-bonus call
+
+        def inject_bypass(p: dict) -> None:
+            s = next(t for t in p["targets"] if t["isStage"])
+            s["blocks"]["injected-score-bypass"] = {
+                "opcode": "data_changevariableby",
+                "next": None,
+                "parent": None,
+                "inputs": {"VALUE": [1, [4, 100]]},
+                "fields": {"VARIABLE": ["score", director.SCORE_ID]},
+                "shadow": False,
+                "topLevel": False,
+            }
+
+        cases = [
+            ("score-add-award", break_award),
+            ("score-cap", break_cap),
+            ("high-score-track", break_high),
+            ("bonus-check-tail", break_bonus_tail),
+            ("score-no-bypass", inject_bypass),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._eco01_failures(project), label)
+
+    def test_value_table_matches_scores_json(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
+        expected = [e["points"] for e in data["tables"]["master_value_table"]["entries"]]
+        self.assertEqual(expected, by_name["value table"])
+
+    def test_scoring_fixture_drives_the_single_path(self) -> None:
+        # The debug S fixture sets the award-value seam from the value table and runs the one
+        # `score` path (the stand-in producer of `award value` until slice 8's detector lands).
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        hats = [
+            b
+            for b in blocks.values()
+            if b["opcode"] == "event_whenkeypressed"
+            and b["fields"].get("KEY_OPTION", [None])[0] == director.SCORE_FIXTURE_KEY
+        ]
+        self.assertEqual(1, len(hats))
+        sets_award = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AWARD_VALUE_ID
+            for b in blocks.values()
+        )
+        self.assertTrue(sets_award)
 
     @staticmethod
     def _rng_reseed_guard_scopes(project: dict) -> set:
@@ -2283,7 +2546,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3726340fb369039b9e1b729614715550b33a450aba50407548656c659e9956fa",
+            "6f2985defb293705e4db8488e1db85eab48dcc1171ad3faaaaffad27fc72f7e4",
             build_hash,
         )
 

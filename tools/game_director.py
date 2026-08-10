@@ -157,6 +157,37 @@ ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
 
+# ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
+# one Stage `score` proc: add the pending award, pin at the 3-byte BCD ceiling, lift the
+# running high score, then run the bonus-life check. The `score` variable is written ONLY
+# inside this proc — that is the "single scoring path" guarantee (SYS-03 / ECO-01), enforced
+# by _eco01_failures. The HUD reads score/high score; only the Stage writes them.
+SCORE_ID = "eco-score"
+HIGH_SCORE_ID = "eco-high-score"
+# The resolved point value to add — a MACHINERY seam (parallel to `hit slot`): set by the
+# collision detector the enemy slice (slice 8) wires, so it is not write-forbidden to sprites.
+# The debug scoring fixture below sets it this slice so the economy is operator-verifiable.
+AWARD_VALUE_ID = "eco-award-value"
+SCORE_CAP = 9_999_990  # set_score_to_9999990: three BCD bytes, x10 implicit
+HIGH_SCORE_START = 40_000  # top default best-five entry (high_score_defaults[0])
+CHECK_BONUS_PROCCODE = "check bonus life"
+# The 22 object point values in table order (docs/spec/data/scores.json master_value_table,
+# BCD-decoded). INDEX CONVENTION (cross-slice seam, pinned in docs/mechanics/009): `value
+# table` position i (1-based) holds entries[i-1].points; the enemy slice resolves an object's
+# points via this list and sets `award value` to that points value. Ingested here, not authored.
+VALUE_TABLE_ID = "eco-value-table"
+VALUE_TABLE_POINTS = [
+    10, 20, 30, 50, 70, 100, 150, 200, 250, 300, 400,
+    500, 600, 700, 800, 900, 1000, 1500, 2000, 2500, 4000, 10000,
+]
+# Debug scoring fixture: while playing, pressing S sets the award-value seam to the top
+# value-table entry (10,000) and runs the one `score` path — exactly as slice 8's collision
+# detector will — so score, cap, high score, the bonus award, and the HUD digits are
+# operator-verifiable before an enemy exists to award points. Holding S accelerates toward
+# the cap. A stand-in producer of `award value`, removed with the D/G death fixtures when the
+# real collision trigger lands (slice 8).
+SCORE_FIXTURE_KEY = "s"
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -850,11 +881,47 @@ def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
 
 
 def install_score(blocks: Blocks) -> None:
-    # SYS-03: the single scoring path everything routes through — so a hit can never
-    # double-score. Empty this slice; award / high-score / cap land with ECO-01.
-    _install_warp_proc(blocks, SCORE_PROCCODE)
-    # ENGINE-TODO: scoring (award, high score, 9,999,990 cap) lands with ECO-01; every
-    # future scoring route calls through this one `score` hook.
+    # ECO-01: the single scoring path everything routes through, so scoring can never
+    # double-count or bypass the cap. Add the pending award to the score, pin it at the
+    # 9,999,990 BCD ceiling (set_score_to_9999990), lift the running high score, then run the
+    # bonus-life check after every award (check_for_extra_solvalou). `award value` is the
+    # resolved point value, set by the collision detector a later slice wires (machinery seam,
+    # parallel to `hit slot`); the debug S fixture sets it this slice.
+    definition = _install_warp_proc(blocks, SCORE_PROCCODE)
+    add_award = blocks.set_var_expr(
+        "score",
+        SCORE_ID,
+        blocks.op_add(variable("score", SCORE_ID), variable("award value", AWARD_VALUE_ID)),
+    )
+    cap_if = blocks.add("control_if")
+    cap_cond = blocks.greater(cap_if, "score", SCORE_ID, SCORE_CAP)
+    blocks.blocks[cap_if]["inputs"]["CONDITION"] = [2, cap_cond]
+    blocks.substack(cap_if, [blocks.set_var("score", SCORE_ID, number(SCORE_CAP))])
+    high_if = blocks.add("control_if")
+    high_cond = blocks.add(
+        "operator_gt",
+        inputs={
+            "OPERAND1": variable("score", SCORE_ID),
+            "OPERAND2": variable("high score", HIGH_SCORE_ID),
+        },
+    )
+    blocks.blocks[high_cond]["parent"] = high_if
+    blocks.blocks[high_if]["inputs"]["CONDITION"] = [2, high_cond]
+    blocks.substack(
+        high_if, [blocks.set_var("high score", HIGH_SCORE_ID, variable("score", SCORE_ID))]
+    )
+    blocks.chain(
+        definition,
+        [add_award, cap_if, high_if, blocks.call_proc(CHECK_BONUS_PROCCODE, warp=True)],
+    )
+
+
+def install_check_bonus_life(blocks: Blocks) -> None:
+    # ECO-03 (filled in the lives/bonus commit): grant a craft at each committed bonus
+    # threshold, honour the disable and stop-after-two settings, and the at-cap grant quirk.
+    # Called by `score` after every award so the check runs on the top digits each time.
+    _install_warp_proc(blocks, CHECK_BONUS_PROCCODE)
+    # ENGINE-TODO: bonus-life thresholds + cap quirk land with ECO-03 (lives/bonus tables).
 
 
 def install_resolve_hit(blocks: Blocks) -> None:
@@ -883,6 +950,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_clear_slots(blocks)
     install_advance_slots(blocks)
     install_score(blocks)
+    install_check_bonus_life(blocks)
     install_resolve_hit(blocks)
     install_alloc_bullet_slot(blocks)
 
@@ -905,6 +973,20 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         set_outcome = blocks.set_var("death outcome", OUTCOME_ID, text(outcome))
         transition = blocks.call_transition("player-dead", "none")
         blocks.chain(hat, [blocks.if_state("playing", [set_outcome, transition])])
+
+    # Debug scoring fixture (S): set the award-value seam to the top value-table entry and run
+    # the one `score` path, so the economy is operator-verifiable before an enemy awards points.
+    # Removed with the D/G fixtures when the real collision trigger lands (slice 8).
+    score_key = blocks.key(SCORE_FIXTURE_KEY)
+    set_award = blocks.set_var_expr(
+        "award value",
+        AWARD_VALUE_ID,
+        blocks.list_item("value table", VALUE_TABLE_ID, number(len(VALUE_TABLE_POINTS))),
+    )
+    blocks.chain(
+        score_key,
+        [blocks.if_state("playing", [set_award, blocks.call_proc(SCORE_PROCCODE, warp=True)])],
+    )
 
     ready = blocks.receive("ready complete")
     blocks.chain(
@@ -982,6 +1064,15 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # (cold-start / new-game), seeds the shared stream (SYS-04, so seeded runs repeat)
     # and starts the frame clock at zero.
     stage_reset = blocks.receive("director reset")
+    # High score is the RUNNING best: it persists across a new game and is restored to the
+    # default top entry only at cold start (power-on). Score restarts every new game.
+    high_reset = blocks.add("control_if")
+    high_scope = blocks.scope_is(high_reset, "cold-start")
+    blocks.blocks[high_reset]["inputs"]["CONDITION"] = [2, high_scope]
+    blocks.substack(
+        high_reset,
+        [blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START))],
+    )
     blocks.chain(
         stage_reset,
         [
@@ -992,8 +1083,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                 [
                     blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED)),
                     blocks.set_var("tick", TICK_ID, number(0)),
+                    blocks.set_var("score", SCORE_ID, number(0)),
                 ],
             ),
+            high_reset,
         ],
     )
     return blocks.blocks
@@ -1599,6 +1692,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         HIT_SLOT_ID,
         BULLET_ALLOC_RESULT_ID,
         BULLET_CURSOR_ID,
+        SCORE_ID,
+        HIGH_SCORE_ID,
+        AWARD_VALUE_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -1632,8 +1728,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # the allocator's own, never shared with the blaster or the slot-sweep cursor).
         BULLET_ALLOC_RESULT_ID: ["bullet alloc result", 0],
         BULLET_CURSOR_ID: ["bullet cursor", 0],
+        # ECO-01 economy: the running score and high score (Stage-written, HUD reads only) and
+        # the award-value seam (machinery, set by the collision detector a later slice wires).
+        SCORE_ID: ["score", 0],
+        HIGH_SCORE_ID: ["high score", HIGH_SCORE_START],
+        AWARD_VALUE_ID: ["award value", 0],
     }
-    owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID}
+    owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID, VALUE_TABLE_ID}
     preserved_lists = {
         list_id: value
         for list_id, value in stage["lists"].items()
@@ -1657,6 +1758,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # state 0 = idle. Fixed length 64; alloc/free change entries, never length.
         SLOT_TYPE_ID: ["slot type", [0] * SLOT_COUNT],
         SLOT_STATE_ID: ["slot state", [0] * SLOT_COUNT],
+        # ECO-01 object point values (docs/spec/data/scores.json master_value_table), in table
+        # order; position i (1-based) = entries[i-1].points. Slice 8 resolves award value here.
+        VALUE_TABLE_ID: ["value table", list(VALUE_TABLE_POINTS)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 
