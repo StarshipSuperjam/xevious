@@ -16,6 +16,10 @@ key-press hats firing only on browser keydown (B1, B2), and sprite fencing clamp
 (B3, B8). The operator's playtest remains the only real gameplay confirmation. Baseline scripts were read
 completely; layer-art opacity (B9) and audio content (B5) were not rendered or listened to.
 
+*Addendum 2026-08-10: a headless runtime tripwire (`harness/`) now runs the game's logic layer in CI. It
+does not revise this audit — the game still was not *played* here, and rendered behavior remains the
+operator's playtest.*
+
 ## Findings
 
 | ID | Dir | Class | Finding | Evidence | Disposition |

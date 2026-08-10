@@ -27,8 +27,11 @@ departure is recorded rather than improvised. Every principle below serves that 
   request stays draft until the owner has run [the playtest checklist](PLAYTEST_CHECKLIST.md) on that build
   and approved it, and the pull request records the tested commit, the archive's hash, and the Scratch
   version used. Automated checks in this
-  repository read files; none of them can observe a running game, so the owner's playtest is the only
-  gameplay verification that exists.
+  repository read files, and a headless runtime tripwire (`harness/`) now runs the built game in CI to
+  check internal state variables; but neither observes the game *as played on screen*, so the owner's
+  playtest stays the only gameplay verification that exists — for every gameplay behavior, not a
+  narrowed remainder. A state counter reading three is a proxy for "three shots on screen", never the
+  seeing of it.
 - **New and preserved behavior are tested together.** A change's acceptance list covers what it adds *and*
   everything it could disturb: held-input and duration interactions (holding fire while moving, multiple
   terrain cycles, repeated deaths), not just single key taps — with negative fixtures proving the tests
@@ -48,8 +51,11 @@ departure is recorded rather than improvised. Every principle below serves that 
   path, applied selectively where fidelity doubts matter most.
 - **Honest verification accounting.** Acceptance criteria name who can actually check them. "Engine-checked"
   is reserved for what a repository script genuinely decides — structure, provenance, data contents,
-  determinism. Observable gameplay is always the owner's to confirm on screen, and the split is reported
-  plainly before anything is settled.
+  determinism. A third category sits between: *deterministic runtime-state checks* — the headless tripwire
+  (`harness/`) runs the game and reads internal state variables, a proxy for the logic layer. Its results
+  may never be reported as engine-checked gameplay, nor satisfy an on-screen acceptance row, nor advance a
+  pull request out of draft. Observable gameplay is always the owner's to confirm on screen, and the split
+  is reported plainly before anything is settled.
 - **Provenance discipline, no rights claimed.** The reference states no reusable license; this project
   records that honestly, claims no rights in Namco's trademarks, artwork, or audio, copies no assembly or
   other source text, and never acquires or opens arcade ROM files. A rights review is required before any

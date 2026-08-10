@@ -152,9 +152,9 @@ the temporary D/G fixtures above; a rebinding is a spec amendment.
 
 ## Acceptance criteria
 
-No runtime harness exists in this repository — no check can execute the game. Engine rows below are
-static reads of the built project's files and data; every observation of running behavior is the
-operator's, until a runtime harness is built (a tracked follow-up, not a promise).
+A headless runtime harness (`harness/`) now executes the game's logic layer as a pre-playtest tripwire,
+but it observes internal state only, not the rendered game. Engine rows below remain static reads of the
+built project's files and data; every observation of running on-screen behavior is the operator's.
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
