@@ -49,6 +49,7 @@ EXPLOSION_STEPS = 7  # 7 costume cycles ...
 EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (PLY-02)
 POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
 READY_HOLD_TICKS = 30  # project-defined READY beat (no reference basis; core-game-systems)
+GAME_OVER_HOLD_TICKS = 64  # arcade 128-frame GAME OVER hold (`game_over` 549-591; ECO-04)
 
 # SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
 # normative record in docs/spec/data/rng.json (mirrored by tools/reference_extract.py
@@ -181,6 +182,7 @@ HUD_ROLE_HIGH_SCORE_DIGIT = 2
 HUD_ROLE_LIFE = 3
 HUD_ROLE_LABEL_1UP = 4
 HUD_ROLE_LABEL_HIGH_SCORE = 5
+HUD_ROLE_GAME_OVER_GLYPH = 6  # ECO-04: the "GAME OVER" text, distinct from every other role
 HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
 HUD_DIGIT_SPACING = 14
 # Project-defined top-band layout (stage -240..240 x, -180..180 y, +y up); the operator
@@ -201,6 +203,16 @@ HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
 HUD_HIGH_SCORE_LABEL = (
     ("glyph/H", 0), ("glyph/I", 1), ("glyph/G", 2), ("glyph/H", 3),
     ("glyph/S", 5), ("glyph/C", 6), ("glyph/O", 7), ("glyph/R", 8), ("glyph/E", 9),
+)
+# ECO-04: "GAME OVER", centered on the stage (slot 4 — the untyped space between the two
+# words — sits at x=0). Fully unrolled like the two label rows above, so no runtime index
+# var is needed; the HUD_ROLE_GAME_OVER_GLYPH clones are static once spawned.
+HUD_GAME_OVER_LEFT_X = -64
+HUD_GAME_OVER_Y = 8
+HUD_GAME_OVER_SPACING = 16
+HUD_GAME_OVER_LABEL = (
+    ("glyph/G", 0), ("glyph/A", 1), ("glyph/M", 2), ("glyph/E", 3),
+    ("glyph/O", 5), ("glyph/V", 6), ("glyph/E", 7), ("glyph/R", 8),
 )
 HUD_SPAWN_CRAFT_PROCCODE = "hud spawn craft"
 
@@ -264,6 +276,15 @@ FIRST_BONUS_123 = [20000, 10000, 10000, 20000, 20000, 20000, 20000, BONUS_DISABL
 FIRST_BONUS_5 = [20000, 10000, 20000, 20000, 20000, 30000, 20000, BONUS_DISABLED]
 REPEAT_BONUS_123 = [60000, 40000, 50000, 50000, 70000, 80000, 60000, BONUS_DISABLED]
 REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABLED]
+
+# ECO-04 game over (docs/spec/scoring-lives-and-game-over.md `check_for_high_score` 1618-1672;
+# docs/spec/data/scores.json high_score_defaults). Losing the last craft first runs the best-five
+# check: `qualified` records whether the final score beats fifth place — a VERDICT ONLY. The
+# initials-entry screen a qualifying score would show (cabinet-flow.md) is DEFERRED to slice 19;
+# both a qualifying and a non-qualifying score still show GAME OVER and return to title here.
+QUALIFIED_ID = "eco-qualified"
+HIGH_SCORE_TABLE_ID = "eco-high-score-table"
+HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
 
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
@@ -702,6 +723,9 @@ class Blocks:
 
     def op_eq(self, a: Any, b: Any) -> str:
         return self._reporter("operator_equals", a, b)
+
+    def op_gt(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_gt", a, b)
 
     def op_join(self, a: Any, b: Any) -> str:
         block_id = self.add("operator_join")
@@ -1227,9 +1251,26 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.chain(death, [blocks.if_state("player-dead", [decide])])
 
     game_over = blocks.receive("game over complete")
+    # ECO-04 best-five check: qualified = the final score beats fifth place in the ingested
+    # high-score table. A verdict only (the initials-entry screen a qualifying score would show
+    # is deferred to the cabinet-flow slice, 19) — computed here, before the transition back to
+    # title resets `reset scope` and (via the cold-start scope) the score itself.
+    set_qualified = blocks.set_var_expr(
+        "qualified",
+        QUALIFIED_ID,
+        blocks.op_gt(
+            variable("score", SCORE_ID),
+            blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5)),
+        ),
+    )
     blocks.chain(
         game_over,
-        [blocks.if_state("game-over", [blocks.call_transition("title", "cold-start")])],
+        [
+            blocks.if_state(
+                "game-over",
+                [set_qualified, blocks.call_transition("title", "cold-start")],
+            )
+        ],
     )
 
     enter = blocks.receive("director enter")
@@ -1292,6 +1333,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                     blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED)),
                     blocks.set_var("tick", TICK_ID, number(0)),
                     blocks.set_var("score", SCORE_ID, number(0)),
+                    # ECO-04: the best-five verdict is only meaningful for the game just ended.
+                    blocks.set_var("qualified", QUALIFIED_ID, number(0)),
                     # ECO-03: starting craft and the first bonus threshold, read live from the
                     # ingested DIP tables (the committed data is the one source of truth).
                     blocks.set_var_expr(
@@ -1466,13 +1509,17 @@ def death_blocks() -> dict[str, dict[str, Any]]:
         ),
     ]
     dead = blocks.if_state("player-dead", death_body)
-    # A2: the invented GAME OVER speech bubble is removed. The game-over presentation —
-    # its 128-frame hold included — is owned by ECO-04 and deferred there; recorded,
-    # not silently dropped.
+    # A2: the invented GAME OVER speech bubble is removed; the text is the HUD's glyph-costume
+    # "GAME OVER" (ECO-04, hud_blocks), gated on `game state` == game-over.
+    # ECO-04: the 128-frame (64-tick) GAME OVER hold, epoch-guarded exactly like the death
+    # explosion above — the hold itself runs unconditionally, but the epoch check right before
+    # the broadcast means a superseding transition (which bumps the epoch) cancels a stale hold,
+    # so `game over complete` is never sent outside the guard.
     over = blocks.if_state(
         "game-over",
         [
             blocks.show(),
+            blocks.hold_ticks(GAME_OVER_HOLD_TICKS),
             blocks.if_epoch_state(
                 DEATH_EPOCH_ID,
                 "game-over",
@@ -1974,6 +2021,18 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.go(x, HUD_LABEL_Y),
             blocks.create_clone(),
         ]
+    # ECO-04: "GAME OVER", spawned only while `game state` is game-over (nested inside the
+    # broader not-title/not-boot gate above, which already covers this state).
+    game_over_body: list[str] = []
+    for glyph, slot in HUD_GAME_OVER_LABEL:
+        x = HUD_GAME_OVER_LEFT_X + slot * HUD_GAME_OVER_SPACING
+        game_over_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_GAME_OVER_GLYPH)),
+            blocks.switch_costume(glyph),
+            blocks.go(x, HUD_GAME_OVER_Y),
+            blocks.create_clone(),
+        ]
+    spawn_body.append(blocks.if_state("game-over", game_over_body))
     # The life-icon row is spawned by the shared proc below (also used on `craft changed`).
     spawn_body.append(blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True))
     gate = blocks.if_not_either_state("title", "boot", spawn_body)
@@ -2072,9 +2131,26 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_LABEL_HIGH_SCORE,
         [blocks.to_front(), blocks.show()],
     )
+    # ECO-04: each "GAME OVER" glyph clone is static once spawned (like the "HIGH SCORE"
+    # label above) — director-stop's clone-clear (common_stop) retires it on the next
+    # transition, so it never needs to delete itself here.
+    game_over_glyph_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_GAME_OVER_GLYPH,
+        [blocks.to_front(), blocks.show()],
+    )
     blocks.chain(
         clone,
-        [mark_clone, score_role, high_role, life_role, label_1up_role, label_hs_role],
+        [
+            mark_clone,
+            score_role,
+            high_role,
+            life_role,
+            label_1up_role,
+            label_hs_role,
+            game_over_glyph_role,
+        ],
     )
 
     # ECO-03's bonus grant broadcasts `craft changed`; every life-icon clone deletes
@@ -2174,6 +2250,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AWARD_VALUE_ID,
         LIVES_ID,
         NEXT_BONUS_ID,
+        QUALIFIED_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -2216,6 +2293,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # the DIP tables on a world reset).
         LIVES_ID: ["craft", 0],
         NEXT_BONUS_ID: ["next bonus", 0],
+        # ECO-04: the best-five verdict, recorded (never a sprite write) when the game over
+        # complete receiver runs, and reset only on a world reset (cold-start/new-game).
+        QUALIFIED_ID: ["qualified", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -2227,6 +2307,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FIRST_BONUS_5_ID,
         REPEAT_BONUS_123_ID,
         REPEAT_BONUS_5_ID,
+        HIGH_SCORE_TABLE_ID,
     }
     preserved_lists = {
         list_id: value
@@ -2262,6 +2343,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FIRST_BONUS_5_ID: ["first bonus 5", list(FIRST_BONUS_5)],
         REPEAT_BONUS_123_ID: ["repeat bonus 123", list(REPEAT_BONUS_123)],
         REPEAT_BONUS_5_ID: ["repeat bonus 5", list(REPEAT_BONUS_5)],
+        # ECO-04 best-five table (docs/spec/data/scores.json high_score_defaults.scores),
+        # in rank order; position 5 (1-based) is the fifth-place cutoff the game-over-complete
+        # receiver compares the final score against.
+        HIGH_SCORE_TABLE_ID: ["high score table", list(HIGH_SCORE_DEFAULTS)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 
