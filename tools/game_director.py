@@ -24,6 +24,25 @@ OUTCOME_ID = "game-director-death-outcome"
 ALLOWED_ID = "game-director-allowed-transitions"
 SOLVALOU_EPOCH_ID = "solvalou-director-entry-epoch"
 DEATH_EPOCH_ID = "solv-death-director-entry-epoch"
+# Weapon state cleared by the reset scopes (never director `game state`). The bomb
+# guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
+# run on different threads — share it; the reload counter is blaster-local.
+BOMB_INFLIGHT_ID = "weapon-bomb-in-flight"
+RELOAD_ID = "weapon-blaster-reload"
+# Per-strip terrain scroll counter (preserved across a new life; only cold-start /
+# new-game rewinds it), driving the counted-cycle wrap that replaces the position
+# test Scratch fencing made unreachable (audit B3).
+TERRAIN_STEP_A_ID = "terrain-scroll-step-a"
+TERRAIN_STEP_B_ID = "terrain-scroll-step-b"
+
+# Gameplay timing is counted in build ticks — 1 build tick = 2 arcade frames
+# (core-game-systems.md units rule); arcade-frame originals live in their locked
+# spec sections and are cited, never restated, in docs/mechanics/003.
+RELOAD_TICKS = 10  # arcade 20-frame blaster reload (player-craft WPN-01)
+EXPLOSION_STEPS = 7  # 7 costume cycles ...
+EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (PLY-02)
+POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
+READY_HOLD_TICKS = 30  # project-defined READY beat (no reference basis; core-game-systems)
 
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
@@ -32,6 +51,7 @@ MESSAGES = {
     "ready complete": "broadcastMsgId-ready-complete",
     "death complete": "broadcastMsgId-death-complete",
     "game over complete": "broadcastMsgId-game-over-complete",
+    "bomb": "broadcastMsgId-bomb-release",
     "target_b": "broadcastMsgId-target-bounds-bottom",
     "target_l": "broadcastMsgId-target-bounds-left",
     "target_r": "broadcastMsgId-target-bounds-right",
@@ -321,8 +341,64 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
-    def wait(self, seconds: float) -> str:
-        return self.add("control_wait", inputs={"DURATION": number(seconds)})
+    def hold_ticks(self, ticks: int) -> str:
+        # An empty repeat yields one frame (tick) per iteration under Scratch's
+        # screen refresh — a wall-clock-free hold, per the units rule.
+        block_id = self.add("control_repeat", inputs={"TIMES": number(ticks)})
+        return block_id
+
+    def glide(self, seconds: float, x: int, y: int) -> str:
+        return self.add(
+            "motion_glidesecstoxy",
+            inputs={"SECS": number(seconds), "X": number(x), "Y": number(y)},
+        )
+
+    def to_front(self) -> str:
+        return self.add(
+            "looks_gotofrontback",
+            fields={"FRONT_BACK": ["front", None]},
+        )
+
+    def send_backward(self, layers: int = 1) -> str:
+        return self.add(
+            "looks_goforwardbackwardlayers",
+            inputs={"NUM": number(layers)},
+            fields={"FORWARD_BACKWARD": ["backward", None]},
+        )
+
+    def switch_costume(self, costume: str) -> str:
+        menu = self.add(
+            "looks_costume", fields={"COSTUME": [costume, None]}, shadow=True
+        )
+        block_id = self.add(
+            "looks_switchcostumeto", inputs={"COSTUME": [1, menu]}
+        )
+        self.blocks[menu]["parent"] = block_id
+        return block_id
+
+    def play_sound(self, sound: str) -> str:
+        menu = self.add(
+            "sound_sounds_menu", fields={"SOUND_MENU": [sound, None]}, shadow=True
+        )
+        block_id = self.add("sound_play", inputs={"SOUND_MENU": [1, menu]})
+        self.blocks[menu]["parent"] = block_id
+        return block_id
+
+    def greater(self, parent: str, name: str, variable_id: str, value: int) -> str:
+        block_id = self.add(
+            "operator_gt",
+            inputs={"OPERAND1": variable(name, variable_id), "OPERAND2": number(value)},
+        )
+        self.blocks[block_id]["parent"] = parent
+        return block_id
+
+    def var_equals(self, parent: str, name: str, variable_id: str, value: int) -> str:
+        block_id = self.add(
+            "operator_equals",
+            inputs={"OPERAND1": variable(name, variable_id), "OPERAND2": number(value)},
+        )
+        self.blocks[block_id]["parent"] = parent
+        return block_id
 
     def stop_others(self) -> str:
         return self.add(
@@ -554,14 +630,15 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
         variable("state epoch", EPOCH_ID),
     )
     title = blocks.if_state("title", [blocks.hide()])
-    ready_message = blocks.add(
-        "looks_sayforsecs",
-        inputs={"MESSAGE": text("READY"), "SECS": number(1)},
-    )
+    # A1: the invented READY speech bubble is removed, but its 30-tick READY beat is
+    # kept — re-expressed as a tick-counted hold (project-defined placeholder, no
+    # reference basis; core-game-systems). Removing it bare would silently collapse the
+    # recorded READY hold to zero.
+    ready_hold = blocks.hold_ticks(READY_HOLD_TICKS)
     ready_body = [
         blocks.go(0, -85),
         blocks.show(),
-        ready_message,
+        ready_hold,
         blocks.if_epoch_either_state(
             SOLVALOU_EPOCH_ID,
             "ready",
@@ -573,7 +650,9 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
     movement = blocks.add("control_repeat_until")
     movement_condition = blocks.not_state(movement, "playing")
     blocks.blocks[movement]["inputs"]["CONDITION"] = [2, movement_condition]
-    movement_body = []
+    # B9: the craft fronts itself every tick, so it renders above the terrain, the
+    # shots, and the frame borders (which the audit found were covering the ship).
+    movement_body = [blocks.to_front()]
     for key, (opcode, input_name, amount) in {
         "left arrow": ("motion_changexby", "DX", -7),
         "right arrow": ("motion_changexby", "DX", 7),
@@ -624,7 +703,13 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.hide()])
     enter = blocks.receive("director enter")
-    blocks.chain(enter, [blocks.if_state("title", [blocks.go(0, 0), blocks.show()])])
+    # B4: the logo enters at the top and glides to center (baseline: 1 s from y=250).
+    # Preserved-baseline presentation; the glide is wall-clock (a presentation beat,
+    # not gameplay timing).
+    blocks.chain(
+        enter,
+        [blocks.if_state("title", [blocks.go(0, 250), blocks.show(), blocks.glide(1, 0, 0)])],
+    )
     return blocks.blocks
 
 
@@ -639,41 +724,34 @@ def death_blocks() -> dict[str, dict[str, Any]]:
         DEATH_EPOCH_ID,
         variable("state epoch", EPOCH_ID),
     )
-    switch_first_menu = blocks.add(
-        "looks_costume",
-        fields={"COSTUME": ["explode_01", None]},
-        shadow=True,
-    )
-    switch_first = blocks.add(
-        "looks_switchcostumeto", inputs={"COSTUME": [1, switch_first_menu]}
-    )
-    blocks.blocks[switch_first_menu]["parent"] = switch_first
-    repeat = blocks.add("control_repeat", inputs={"TIMES": number(7)})
-    blocks.substack(repeat, [blocks.add("looks_nextcostume"), blocks.wait(0.1)])
-    death_body = [blocks.go_to_sprite("solvalou"), switch_first, blocks.show(), blocks.add(
-        "sound_play",
-        inputs={"SOUND_MENU": [1, blocks.add(
-            "sound_sounds_menu",
-            fields={"SOUND_MENU": ["solvalou_death", None]},
-            shadow=True,
-        )]},
-    ), repeat, blocks.if_epoch_state(
-        DEATH_EPOCH_ID,
-        "player-dead",
-        [blocks.send("death complete")],
-    )]
-    death_sound_menu = blocks.blocks[death_body[3]]["inputs"]["SOUND_MENU"][1]
-    blocks.blocks[death_sound_menu]["parent"] = death_body[3]
+    # B5/B10: the ~56-frame (28-tick) explosion, then a 32-frame (16-tick) pause before
+    # the respawn transition, so the transition's stop-all-sounds no longer truncates
+    # the death cue (measured 1.361 s < 28+16 ticks = 1.467 s). Holds are flat, empty
+    # repeats — one tick each, so the total is exactly the counted ticks. Arcade frame
+    # counts cite PLY-02; only the tick roundings live here.
+    explosion: list[str] = [blocks.switch_costume("explode_01")]
+    for _ in range(EXPLOSION_STEPS):
+        explosion.append(blocks.hold_ticks(EXPLOSION_HOLD_TICKS))
+        explosion.append(blocks.add("looks_nextcostume"))
+    death_body = [
+        blocks.go_to_sprite("solvalou"),
+        blocks.to_front(),  # B9: the explosion renders above the terrain
+        blocks.show(),
+        blocks.play_sound("solvalou_death"),
+        *explosion,
+        blocks.hold_ticks(POST_DEATH_PAUSE_TICKS),
+        blocks.if_epoch_state(
+            DEATH_EPOCH_ID, "player-dead", [blocks.send("death complete")]
+        ),
+    ]
     dead = blocks.if_state("player-dead", death_body)
-    over_message = blocks.add(
-        "looks_sayforsecs",
-        inputs={"MESSAGE": text("GAME OVER"), "SECS": number(2)},
-    )
+    # A2: the invented GAME OVER speech bubble is removed. The game-over presentation —
+    # its 128-frame hold included — is owned by ECO-04 and deferred there; recorded,
+    # not silently dropped.
     over = blocks.if_state(
         "game-over",
         [
             blocks.show(),
-            over_message,
             blocks.if_epoch_state(
                 DEATH_EPOCH_ID,
                 "game-over",
@@ -685,19 +763,26 @@ def death_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
-def terrain_blocks(name: str, costume: str, start_y: int) -> dict[str, dict[str, Any]]:
+def terrain_blocks(
+    name: str, costume: str, start_y: int, step_id: str, initial_step: int
+) -> dict[str, dict[str, Any]]:
     blocks = Blocks(name)
     common_stop(blocks, hide=False)
     reset = blocks.receive("director reset")
-    costume_menu = blocks.add(
-        "looks_costume", fields={"COSTUME": [costume, None]}, shadow=True
-    )
-    switch = blocks.add("looks_switchcostumeto", inputs={"COSTUME": [1, costume_menu]})
-    blocks.blocks[costume_menu]["parent"] = switch
+    switch = blocks.switch_costume(costume)
+    # Cold-start / new-game rewind to the strip's top and re-seed its scroll counter;
+    # a new life preserves both (the recorded B11 terrain-on-death fixture), so the
+    # strip resumes seamlessly rather than restarting.
     reset_control = reset_if(
         blocks,
         ("cold-start", "new-game"),
-        [switch, blocks.go(0, start_y), blocks.show()],
+        [
+            switch,
+            blocks.go(0, start_y),
+            blocks.set_var("scroll step", step_id, number(initial_step)),
+            blocks.send_backward(),  # B9: terrain sits behind the sprites
+            blocks.show(),
+        ],
     )
     blocks.chain(reset, [reset_control])
 
@@ -706,63 +791,184 @@ def terrain_blocks(name: str, costume: str, start_y: int) -> dict[str, dict[str,
     condition = blocks.not_state(loop, "playing")
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, condition]
     move = blocks.add("motion_changeyby", inputs={"DY": number(-1)})
+    advance = blocks.change_var("scroll step", step_id, 1)
+    # B3: counted-cycle wrap (baseline: 690 steps per strip). The former position test
+    # (y < -345) was unreachable — Scratch fencing pins a full-height strip at -345, so
+    # both strips parked and the screen went black. Counting the steps always fires.
     wrap_if = blocks.add("control_if")
-    y_reporter = blocks.add("motion_yposition")
-    less = blocks.add(
-        "operator_lt",
-        inputs={"OPERAND1": [3, y_reporter, [4, 0]], "OPERAND2": number(-345)},
+    reached = blocks.greater(wrap_if, "scroll step", step_id, 689)
+    blocks.blocks[wrap_if]["inputs"]["CONDITION"] = [2, reached]
+    blocks.substack(
+        wrap_if,
+        [
+            blocks.set_var("scroll step", step_id, number(0)),
+            blocks.go(0, 345),
+            blocks.add("looks_nextcostume"),
+        ],
     )
-    blocks.blocks[y_reporter]["parent"] = less
-    blocks.blocks[less]["parent"] = wrap_if
-    blocks.blocks[wrap_if]["inputs"]["CONDITION"] = [2, less]
-    blocks.substack(wrap_if, [blocks.go(0, 345), blocks.add("looks_nextcostume")])
-    blocks.substack(loop, [move, wrap_if, blocks.wait(0.02)])
-    blocks.chain(enter, [blocks.if_state("playing", [blocks.show(), loop])])
+    blocks.substack(loop, [move, advance, wrap_if])
+    blocks.chain(
+        enter,
+        [blocks.if_state("playing", [blocks.send_backward(), blocks.show(), loop])],
+    )
     return blocks.blocks
 
 
 def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("blaster")
     common_stop(blocks, hide=True, clones=True)
+    # Reset clears the reload counter (WPN-01: a fresh press fires at once) so holding
+    # fire through death never delays the first post-respawn shot.
     reset = blocks.receive("director reset")
-    blocks.chain(reset, [blocks.add("control_delete_this_clone"), blocks.hide()])
-    key = blocks.key("space")
     blocks.chain(
-        key,
-        [blocks.if_state("playing", [blocks.go_to_sprite("solvalou"), blocks.create_clone()])],
+        reset,
+        [
+            blocks.add("control_delete_this_clone"),
+            blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS)),
+            blocks.hide(),
+        ],
     )
+
+    # B1: polled fire under the director-enter loop (the established pattern), not an
+    # OS-repeat key hat. Fire immediately when ready, then reload every RELOAD_TICKS
+    # ticks while held; releasing re-primes so the next press fires at once.
+    enter = blocks.receive("director enter")
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+
+    advance = blocks.change_var("blaster reload", RELOAD_ID, 1)
+    fire_gate = blocks.add("control_if")
+    space_and_ready = blocks.add("operator_and")
+    blocks.blocks[space_and_ready]["parent"] = fire_gate
+    pressed = blocks.key_pressed(space_and_ready, "space")
+    ready = blocks.greater(space_and_ready, "blaster reload", RELOAD_ID, RELOAD_TICKS - 1)
+    blocks.blocks[space_and_ready]["inputs"] = {
+        "OPERAND1": [2, pressed],
+        "OPERAND2": [2, ready],
+    }
+    blocks.blocks[fire_gate]["inputs"]["CONDITION"] = [2, space_and_ready]
+    blocks.substack(
+        fire_gate,
+        [
+            blocks.go_to_sprite("solvalou"),
+            blocks.create_clone(),
+            blocks.set_var("blaster reload", RELOAD_ID, number(0)),
+        ],
+    )
+    release_gate = blocks.add("control_if")
+    not_pressed = blocks.add("operator_not")
+    blocks.blocks[not_pressed]["parent"] = release_gate
+    released = blocks.key_pressed(not_pressed, "space")
+    blocks.blocks[not_pressed]["inputs"] = {"OPERAND": [2, released]}
+    blocks.blocks[release_gate]["inputs"]["CONDITION"] = [2, not_pressed]
+    blocks.substack(
+        release_gate,
+        [blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS))],
+    )
+    blocks.substack(loop, [advance, fire_gate, release_gate])
+    blocks.chain(
+        enter,
+        [
+            blocks.if_state(
+                "playing",
+                [blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS)), loop],
+            )
+        ],
+    )
+
+    # B8: the shot flies forward at the baseline speed and expires the instant it
+    # reaches the top border — no edge-parking, no fixed step count. Direction and
+    # top-expiry cite WPN-01; the DY magnitude is preserved-baseline (spatial factor
+    # unratified until the movement slice).
     clone = blocks.add("control_start_as_clone", top_level=True)
-    repeat = blocks.add("control_repeat", inputs={"TIMES": number(40)})
-    blocks.substack(repeat, [blocks.add("motion_changeyby", inputs={"DY": number(10)}), blocks.add("looks_nextcostume"), blocks.wait(0.02)])
-    sound_menu = blocks.add("sound_sounds_menu", fields={"SOUND_MENU": ["blaster", None]}, shadow=True)
-    sound = blocks.add("sound_play", inputs={"SOUND_MENU": [1, sound_menu]})
-    blocks.blocks[sound_menu]["parent"] = sound
-    blocks.chain(clone, [blocks.show(), sound, repeat, blocks.add("control_delete_this_clone")])
+    travel = blocks.add("control_repeat_until")
+    at_top = blocks.touching(travel, "frame_t")
+    blocks.blocks[travel]["inputs"]["CONDITION"] = [2, at_top]
+    blocks.substack(
+        travel,
+        [
+            blocks.add("motion_changeyby", inputs={"DY": number(20)}),
+            blocks.add("looks_nextcostume"),
+        ],
+    )
+    blocks.chain(
+        clone,
+        [
+            blocks.to_front(),  # B9: shots render above the terrain
+            blocks.show(),
+            blocks.play_sound("blaster"),
+            travel,
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
     return blocks.blocks
 
 
 def bomb_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("bomb")
-    common_stop(blocks, hide=True, clones=True)
+    common_stop(blocks, hide=True)
+    # Reset unconditionally re-arms the bomb — every transition passes through reset,
+    # and the reset-scope postconditions require "clear bomb". Without this an in-flight
+    # bomb interrupted by a death (a routine sequence) would strand the guard set and
+    # lock out bombing for the rest of the game.
     reset = blocks.receive("director reset")
-    blocks.chain(reset, [blocks.add("control_delete_this_clone"), blocks.hide()])
-    key = blocks.key("b")
     blocks.chain(
-        key,
-        [blocks.if_state("playing", [blocks.go_to_sprite("solvalou"), blocks.create_clone()])],
+        reset,
+        [blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)), blocks.hide()],
     )
-    clone = blocks.add("control_start_as_clone", top_level=True)
+
+    # B2: one bomb at a time. The poller arms a bomb only when the slot is idle
+    # (WPN-04: arming requires the bomb-target slot idle) and broadcasts `bomb`, which
+    # drives the drop below plus the crosshair release (B6) and the impact marker (B7).
+    enter = blocks.receive("director enter")
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    arm_gate = blocks.add("control_if")
+    idle_and_pressed = blocks.add("operator_and")
+    blocks.blocks[idle_and_pressed]["parent"] = arm_gate
+    b_pressed = blocks.key_pressed(idle_and_pressed, "b")
+    slot_idle = blocks.var_equals(idle_and_pressed, "bomb in flight", BOMB_INFLIGHT_ID, 0)
+    blocks.blocks[idle_and_pressed]["inputs"] = {
+        "OPERAND1": [2, b_pressed],
+        "OPERAND2": [2, slot_idle],
+    }
+    blocks.blocks[arm_gate]["inputs"]["CONDITION"] = [2, idle_and_pressed]
+    blocks.substack(
+        arm_gate,
+        [
+            blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(1)),
+            blocks.send("bomb"),
+        ],
+    )
+    blocks.substack(loop, [arm_gate])
+    blocks.chain(enter, [blocks.if_state("playing", [loop])])
+
+    # The drop: to the ship, then a two-stage fall, then re-arm the slot (the natural
+    # resolve-time clear; the reset above is the death-interrupt backstop). The re-arm
+    # timing is preserved-baseline (baseline ~0.75 s cooldown); the arcade re-arm path
+    # is unpinned in the reference (WPN-04).
+    release = blocks.receive("bomb")
     flight = blocks.add("control_repeat", inputs={"TIMES": number(12)})
-    blocks.substack(flight, [blocks.add("motion_changeyby", inputs={"DY": number(5)}), blocks.wait(0.03)])
+    blocks.substack(flight, [blocks.add("motion_changeyby", inputs={"DY": number(5)})])
     explode = blocks.add("control_repeat", inputs={"TIMES": number(4)})
-    blocks.substack(explode, [blocks.add("looks_nextcostume"), blocks.wait(0.05)])
-    drop_menu = blocks.add("sound_sounds_menu", fields={"SOUND_MENU": ["bomb_drop", None]}, shadow=True)
-    drop = blocks.add("sound_play", inputs={"SOUND_MENU": [1, drop_menu]})
-    blocks.blocks[drop_menu]["parent"] = drop
-    explode_menu = blocks.add("sound_sounds_menu", fields={"SOUND_MENU": ["bomb_explode", None]}, shadow=True)
-    explode_sound = blocks.add("sound_play", inputs={"SOUND_MENU": [1, explode_menu]})
-    blocks.blocks[explode_menu]["parent"] = explode_sound
-    blocks.chain(clone, [blocks.show(), drop, flight, explode_sound, explode, blocks.add("control_delete_this_clone")])
+    blocks.substack(explode, [blocks.add("looks_nextcostume"), blocks.hold_ticks(2)])
+    blocks.chain(
+        release,
+        [
+            blocks.to_front(),  # B9: the bomb renders above the terrain
+            blocks.go_to_sprite("solvalou"),
+            blocks.switch_costume("bomb_01"),
+            blocks.show(),
+            blocks.play_sound("bomb_drop"),
+            flight,
+            blocks.play_sound("bomb_explode"),
+            explode,
+            blocks.hide(),
+            blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
+        ],
+    )
     return blocks.blocks
 
 
@@ -809,7 +1015,11 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
         blocks.substack(movement, movement_body)
         blocks.chain(
             enter,
-            [blocks.if_state("playing", [blocks.go(0, y), blocks.show(), movement])],
+            [
+                blocks.if_state(
+                    "playing", [blocks.go(0, y), blocks.to_front(), blocks.show(), movement]
+                )
+            ],
         )
         for message, opcode, input_name, amount in (
             ("target_b", "motion_changeyby", "DY", 7),
@@ -821,8 +1031,30 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
                 correction,
                 [blocks.add(opcode, inputs={input_name: number(amount)})],
             )
+        # B6: the crosshair plays its release animation on each bomb, then returns to
+        # its base costume — restored from the frozen single-costume reticle.
+        release = blocks.receive("bomb")
+        anim = blocks.add("control_repeat", inputs={"TIMES": number(3)})
+        blocks.substack(anim, [blocks.add("looks_nextcostume"), blocks.hold_ticks(2)])
+        blocks.chain(release, [anim, blocks.switch_costume("target_01")])
     else:
         blocks.chain(enter, [blocks.if_state("playing", [blocks.hide()])])
+        # B7: target_b is the ground-impact marker — restored from the inert hide-only
+        # sprite. On each bomb it appears at the crosshair and drifts, per the baseline.
+        release = blocks.receive("bomb")
+        drift = blocks.add("control_repeat", inputs={"TIMES": number(20)})
+        blocks.substack(drift, [blocks.add("motion_changeyby", inputs={"DY": number(-1)})])
+        blocks.chain(
+            release,
+            [
+                blocks.go_to_sprite("target_a"),
+                blocks.switch_costume("target_03"),
+                blocks.to_front(),
+                blocks.show(),
+                drift,
+                blocks.hide(),
+            ],
+        )
     return blocks.blocks
 
 
@@ -832,7 +1064,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     preserved_variables = {
         variable_id: value
         for variable_id, value in stage["variables"].items()
-        if variable_id not in {STATE_ID, EPOCH_ID, SCOPE_ID, OUTCOME_ID}
+        if variable_id not in {STATE_ID, EPOCH_ID, SCOPE_ID, OUTCOME_ID, BOMB_INFLIGHT_ID}
         and value[0] not in {"death", "stage"}
     }
     stage["variables"] = preserved_variables | {
@@ -840,6 +1072,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         EPOCH_ID: ["state epoch", 0],
         SCOPE_ID: ["reset scope", "cold-start"],
         OUTCOME_ID: ["death outcome", ""],
+        # Shared weapon state — the one-bomb lockout the poller and the in-flight bomb
+        # both read; cleared by every reset scope (bomb_blocks).
+        BOMB_INFLIGHT_ID: ["bomb in flight", 0],
     }
     preserved_lists = {
         list_id: value
@@ -867,8 +1102,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "Stage": stage_blocks(),
         "solvalou": solvalou_blocks(),
         "blaster": blaster_blocks(),
-        "area_01a": terrain_blocks("area_01a", "area01_12-0", -15),
-        "area_01b": terrain_blocks("area_01b", "area01_11-0", 344),
+        # The two strips leapfrog: the scroll counter wraps at 690 steps, and each
+        # strip's seed sets its phase so they tile seamlessly (baseline geometry).
+        # area_01a starts 335 steps into the cycle (baseline pre-roll), so it wraps
+        # first after 335 steps: seed 690 - 335 = 355. area_01b runs a full cycle from
+        # its start: seed 0.
+        "area_01a": terrain_blocks("area_01a", "area01_12-0", -15, TERRAIN_STEP_A_ID, 355),
+        "area_01b": terrain_blocks("area_01b", "area01_11-0", 344, TERRAIN_STEP_B_ID, 0),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
         "target_a": target_blocks("target_a", 15),
@@ -885,6 +1125,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         elif target["name"] == "solv_death":
             target["variables"] = target["variables"] | {
                 DEATH_EPOCH_ID: ["entry epoch", 0]
+            }
+        elif target["name"] == "blaster":
+            target["variables"] = target["variables"] | {
+                RELOAD_ID: ["blaster reload", RELOAD_TICKS]
+            }
+        elif target["name"] == "area_01a":
+            target["variables"] = target["variables"] | {
+                TERRAIN_STEP_A_ID: ["scroll step", 355]
+            }
+        elif target["name"] == "area_01b":
+            target["variables"] = target["variables"] | {
+                TERRAIN_STEP_B_ID: ["scroll step", 0]
             }
     return result
 

@@ -224,7 +224,15 @@ class ScratchProjectTests(unittest.TestCase):
                 for key in ("variables", "lists", "broadcasts"):
                     expected.pop(key)
                     actual.pop(key)
-            elif target["name"] in {"solvalou", "solv_death"}:
+            elif target["name"] in {
+                "solvalou",
+                "solv_death",
+                "blaster",
+                "area_01a",
+                "area_01b",
+            }:
+                # These targets carry director-managed variables (reload counter,
+                # terrain scroll counters) added on top of their historical content.
                 expected.pop("variables")
                 actual.pop("variables")
             self.assert_ordered_json_equal(
@@ -819,6 +827,7 @@ class ScratchProjectTests(unittest.TestCase):
                 "state epoch",
                 "reset scope",
                 "death outcome",
+                "bomb in flight",
             },
             {name for name, _value in stage["variables"].values()},
         )
@@ -903,20 +912,179 @@ class ScratchProjectTests(unittest.TestCase):
             definition_id,
         )
 
+    @staticmethod
+    def _numeric(value: object) -> int | float | None:
+        if (
+            isinstance(value, list)
+            and len(value) >= 2
+            and isinstance(value[1], list)
+            and len(value[1]) >= 2
+        ):
+            return value[1][1]
+        return None
+
+    def _regression_contract_failures(self, project: dict) -> set[str]:
+        """Every restored behavior (audit B1-B10) and removed invention (A1-A2), as a
+        static block-shape contract. Returns the set of violated labels — empty means
+        the recovery is intact. Bounded structural coverage: it catches removal and
+        shape drift of the asserted blocks, not shape-preserving behavioral drift; the
+        operator playtest remains the real gameplay backstop.
+        """
+        blocks = {t["name"]: t["blocks"] for t in project["targets"]}
+        num = self._numeric
+        fails: set[str] = set()
+
+        def has(name, pred):
+            return any(pred(b) for b in blocks[name].values())
+
+        def count(name, opcode, times=None):
+            return sum(
+                1
+                for b in blocks[name].values()
+                if b["opcode"] == opcode
+                and (times is None or num(b["inputs"].get("TIMES")) == times)
+            )
+
+        def broadcasts(name, message):
+            return has(
+                name,
+                lambda b: b["opcode"] == "event_broadcast"
+                and b["inputs"].get("BROADCAST_INPUT", [None, [None, None, None]])[1][1]
+                == message,
+            )
+
+        def receives(name, message):
+            return has(
+                name,
+                lambda b: b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == message,
+            )
+
+        def sets_var(name, var, value):
+            return has(
+                name,
+                lambda b: b["opcode"] == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None])[0] == var
+                and num(b["inputs"].get("VALUE")) == value,
+            )
+
+        # A1 — READY bubble gone, its 30-tick beat kept as a tick-counted hold.
+        if has("solvalou", lambda b: b["opcode"] == "looks_sayforsecs"):
+            fails.add("A1-ready-bubble")
+        if count("solvalou", "control_repeat", director.READY_HOLD_TICKS) != 1:
+            fails.add("A1-ready-hold")
+        # A2 — GAME OVER bubble gone.
+        if has("solv_death", lambda b: b["opcode"] == "looks_sayforsecs"):
+            fails.add("A2-gameover-bubble")
+
+        # B1 — polled fire: no OS-repeat key hat, a space poll, the reload counter.
+        if count("blaster", "event_whenkeypressed") != 0:
+            fails.add("B1-key-hat")
+        if not has("blaster", lambda b: b["opcode"] == "sensing_keypressed"):
+            fails.add("B1-poll")
+        if not sets_var("blaster", "blaster reload", director.RELOAD_TICKS):
+            fails.add("B1-reload-prime")
+        if not has(
+            "blaster",
+            lambda b: b["opcode"] == "operator_gt"
+            and num(b["inputs"].get("OPERAND2")) == director.RELOAD_TICKS - 1,
+        ):
+            fails.add("B1-reload-gate")
+
+        # B8 — one shot clone; expires at the top border at baseline speed; no waits.
+        if count("blaster", "control_start_as_clone") != 1:
+            fails.add("B8-clone")
+        if not has(
+            "blaster",
+            lambda b: b["opcode"] == "sensing_touchingobjectmenu"
+            and b["fields"].get("TOUCHINGOBJECTMENU", [None])[0] == "frame_t",
+        ):
+            fails.add("B8-top-expiry")
+        if not has(
+            "blaster",
+            lambda b: b["opcode"] == "motion_changeyby" and num(b["inputs"].get("DY")) == 20,
+        ):
+            fails.add("B8-speed")
+        if count("blaster", "control_wait") != 0:
+            fails.add("B8-wall-clock")
+
+        # B2 — single bomb: no clone, a guard armed and re-armed, the bomb broadcast.
+        if count("bomb", "control_start_as_clone") != 0:
+            fails.add("B2-clone")
+        if not sets_var("bomb", "bomb in flight", 1):
+            fails.add("B2-arm")
+        if not sets_var("bomb", "bomb in flight", 0):
+            fails.add("B2-rearm")
+        if not has(
+            "bomb",
+            lambda b: b["opcode"] == "operator_equals"
+            and num(b["inputs"].get("OPERAND2")) == 0
+            and b["inputs"].get("OPERAND1", [None, [None, None]])[1][1] == "bomb in flight",
+        ):
+            fails.add("B2-idle-test")
+        if not broadcasts("bomb", "bomb"):
+            fails.add("B2-broadcast")
+
+        # B6 — the crosshair receives the bomb and returns to its base costume.
+        if not receives("target_a", "bomb"):
+            fails.add("B6-crosshair-receive")
+        if not has("target_a", lambda b: b["opcode"] == "looks_switchcostumeto"):
+            fails.add("B6-crosshair-costume")
+
+        # B7 — the impact marker receives the bomb and shows (was inert hide-only).
+        if not receives("target_b", "bomb"):
+            fails.add("B7-marker-receive")
+        if not has("target_b", lambda b: b["opcode"] == "looks_show"):
+            fails.add("B7-marker-show")
+
+        # B3 — counted-cycle terrain; the fenced position test is gone; no waits.
+        for strip in ("area_01a", "area_01b"):
+            if not has(
+                strip,
+                lambda b: b["opcode"] == "operator_gt"
+                and num(b["inputs"].get("OPERAND2")) == 689,
+            ):
+                fails.add(f"B3-count-{strip}")
+            if has(strip, lambda b: b["opcode"] == "operator_lt"):
+                fails.add(f"B3-position-test-{strip}")
+            if count(strip, "control_wait") != 0:
+                fails.add(f"B3-wall-clock-{strip}")
+
+        # B4 — the title glides in.
+        if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
+            fails.add("B4-glide")
+
+        # B5/B10 — tick-counted explosion holds then the post-death pause; no waits.
+        if (
+            count("solv_death", "control_repeat", director.EXPLOSION_HOLD_TICKS)
+            != director.EXPLOSION_STEPS
+        ):
+            fails.add("B5B10-explosion")
+        if count("solv_death", "control_repeat", director.POST_DEATH_PAUSE_TICKS) != 1:
+            fails.add("B5B10-pause")
+        if count("solv_death", "control_wait") != 0:
+            fails.add("B5B10-wall-clock")
+
+        # B9 — the craft fronts itself; terrain is sent back.
+        if not has("solvalou", lambda b: b["opcode"] == "looks_gotofrontback"):
+            fails.add("B9-craft-front")
+        for strip in ("area_01a", "area_01b"):
+            if not has(strip, lambda b: b["opcode"] == "looks_goforwardbackwardlayers"):
+                fails.add(f"B9-terrain-back-{strip}")
+
+        # Units rule: no wall-clock wait survives in any touched gameplay script (the
+        # blaster/terrain/death checks above plus the bomb, crosshair, and marker).
+        for name in ("bomb", "target_a", "target_b"):
+            if count(name, "control_wait") != 0:
+                fails.add(f"wall-clock-{name}")
+
+        return fails
+
     def test_game_director_behavioral_contract_is_encoded(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         targets = {target["name"]: target for target in project["targets"]}
 
-        def numeric(value: object) -> int | float | None:
-            if (
-                isinstance(value, list)
-                and len(value) >= 2
-                and isinstance(value[1], list)
-                and len(value[1]) >= 2
-            ):
-                return value[1][1]
-            return None
-
+        # Retained structural guards.
         solvalou = targets["solvalou"]["blocks"]
         self.assertNotIn("motion_ifonedgebounce", {b["opcode"] for b in solvalou.values()})
         self.assertEqual(
@@ -929,30 +1097,11 @@ class ScratchProjectTests(unittest.TestCase):
             if block["opcode"] == "sensing_touchingobjectmenu"
         }
         self.assertEqual({"frame_b", "frame_l", "frame_r"}, touched_frames)
-
-        ready = [
-            block
-            for block in solvalou.values()
-            if block["opcode"] == "looks_sayforsecs"
-            and block["inputs"]["MESSAGE"][1][1] == "READY"
-        ]
-        self.assertEqual([1], [numeric(block["inputs"]["SECS"]) for block in ready])
-
         death = targets["solv_death"]["blocks"]
         self.assertIn("sound_play", {block["opcode"] for block in death.values()})
-        self.assertNotIn("sound_playuntildone", {block["opcode"] for block in death.values()})
-        death_repeats = [
-            block
-            for block in death.values()
-            if block["opcode"] == "control_repeat"
-            and numeric(block["inputs"]["TIMES"]) == 7
-        ]
-        self.assertEqual(1, len(death_repeats))
-        repeat_first = death[death_repeats[0]["inputs"]["SUBSTACK"][1]]
-        death_wait = death[repeat_first["next"]]
-        self.assertEqual("looks_nextcostume", repeat_first["opcode"])
-        self.assertEqual("control_wait", death_wait["opcode"])
-        self.assertEqual(0.1, numeric(death_wait["inputs"]["DURATION"]))
+        self.assertNotIn(
+            "sound_playuntildone", {block["opcode"] for block in death.values()}
+        )
         self.assertTrue(
             any(
                 block["opcode"] == "motion_goto"
@@ -960,36 +1109,164 @@ class ScratchProjectTests(unittest.TestCase):
                 for block in death.values()
             )
         )
-        game_over = [
-            block
-            for block in death.values()
-            if block["opcode"] == "looks_sayforsecs"
-            and block["inputs"]["MESSAGE"][1][1] == "GAME OVER"
+
+        # The full regression-recovery contract (audit B1-B10, A1-A2).
+        self.assertEqual(set(), self._regression_contract_failures(project))
+
+    def test_regression_contract_negative_fixtures(self) -> None:
+        """Prove the recovery contract can go red: break one restored behavior at a
+        time and confirm the matching finding fires (principles: negative fixtures
+        proving the tests can fail)."""
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._regression_contract_failures(base))
+
+        def blocks_of(project, name):
+            return next(t for t in project["targets"] if t["name"] == name)["blocks"]
+
+        def first(project, name, predicate):
+            return next(
+                b for b in blocks_of(project, name).values() if predicate(b)
+            )
+
+        num = self._numeric
+
+        def break_ready_bubble(p):  # A1: re-invent the READY speech bubble
+            b = first(
+                p,
+                "solvalou",
+                lambda b: b["opcode"] == "control_repeat"
+                and num(b["inputs"].get("TIMES")) == director.READY_HOLD_TICKS,
+            )
+            b["opcode"] = "looks_sayforsecs"
+
+        def break_reload_gate(p):  # B1: weaken the reload comparison
+            b = first(
+                p,
+                "blaster",
+                lambda b: b["opcode"] == "operator_gt"
+                and num(b["inputs"].get("OPERAND2")) == director.RELOAD_TICKS - 1,
+            )
+            b["inputs"]["OPERAND2"] = [1, [4, 3]]
+
+        def break_shot_expiry(p):  # B8: park the shot at the wrong edge
+            b = first(
+                p,
+                "blaster",
+                lambda b: b["opcode"] == "sensing_touchingobjectmenu"
+                and b["fields"]["TOUCHINGOBJECTMENU"][0] == "frame_t",
+            )
+            b["fields"]["TOUCHINGOBJECTMENU"][0] = "frame_b"
+
+        def break_bomb_broadcast(p):  # B2: drop the bomb broadcast
+            b = first(
+                p,
+                "bomb",
+                lambda b: b["opcode"] == "event_broadcast",
+            )
+            b["opcode"] = "control_wait"
+
+        def break_terrain_count(p):  # B3: reinstate the fenced position test
+            b = first(
+                p,
+                "area_01a",
+                lambda b: b["opcode"] == "operator_gt"
+                and num(b["inputs"].get("OPERAND2")) == 689,
+            )
+            b["opcode"] = "operator_lt"
+
+        def break_title_glide(p):  # B4: snap the title into place
+            b = first(
+                p, "start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"
+            )
+            b["opcode"] = "motion_gotoxy"
+
+        def break_death_pause(p):  # B10: remove the post-death pause
+            b = first(
+                p,
+                "solv_death",
+                lambda b: b["opcode"] == "control_repeat"
+                and num(b["inputs"].get("TIMES")) == director.POST_DEATH_PAUSE_TICKS,
+            )
+            b["inputs"]["TIMES"] = [1, [4, 1]]
+
+        def break_marker(p):  # B7: re-hide the impact marker
+            b = first(p, "target_b", lambda b: b["opcode"] == "looks_show")
+            b["opcode"] = "looks_hide"
+
+        def break_craft_layer(p):  # B9: stop the craft fronting itself
+            b = first(p, "solvalou", lambda b: b["opcode"] == "looks_gotofrontback")
+            b["opcode"] = "looks_show"
+
+        def break_gameover_bubble(p):  # A2: re-invent the GAME OVER bubble
+            b = first(p, "solv_death", lambda b: b["opcode"] == "looks_show")
+            b["opcode"] = "looks_sayforsecs"
+
+        def break_crosshair_receive(p):  # B6: drop the crosshair bomb receiver
+            b = first(
+                p,
+                "target_a",
+                lambda b: b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"]["BROADCAST_OPTION"][0] == "bomb",
+            )
+            b["fields"]["BROADCAST_OPTION"][0] = "target_t"
+
+        def break_explosion_holds(p):  # B5: shorten one explosion hold
+            b = first(
+                p,
+                "solv_death",
+                lambda b: b["opcode"] == "control_repeat"
+                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_HOLD_TICKS,
+            )
+            b["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_HOLD_TICKS + 1]]
+
+        def break_bomb_arm(p):  # B2: fail to set the in-flight guard
+            b = first(
+                p,
+                "bomb",
+                lambda b: b["opcode"] == "data_setvariableto"
+                and b["fields"]["VARIABLE"][0] == "bomb in flight"
+                and num(b["inputs"].get("VALUE")) == 1,
+            )
+            b["inputs"]["VALUE"] = [1, [4, 2]]
+
+        def break_terrain_layer(p):  # B9: stop sending terrain to the back
+            for b in blocks_of(p, "area_01a").values():
+                if b["opcode"] == "looks_goforwardbackwardlayers":
+                    b["opcode"] = "looks_show"
+
+        cases = [
+            ("A1-ready-bubble", break_ready_bubble),
+            ("A2-gameover-bubble", break_gameover_bubble),
+            ("B1-reload-gate", break_reload_gate),
+            ("B2-broadcast", break_bomb_broadcast),
+            ("B2-arm", break_bomb_arm),
+            ("B3-position-test-area_01a", break_terrain_count),
+            ("B4-glide", break_title_glide),
+            ("B5B10-explosion", break_explosion_holds),
+            ("B5B10-pause", break_death_pause),
+            ("B6-crosshair-receive", break_crosshair_receive),
+            ("B7-marker-show", break_marker),
+            ("B8-top-expiry", break_shot_expiry),
+            ("B9-craft-front", break_craft_layer),
+            ("B9-terrain-back-area_01a", break_terrain_layer),
         ]
-        self.assertEqual([2], [numeric(block["inputs"]["SECS"]) for block in game_over])
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            failures = self._regression_contract_failures(project)
+            self.assertIn(label, failures, f"corruption '{label}' was not caught")
 
-        for name in ("blaster", "bomb"):
-            blocks = targets[name]["blocks"]
-            clone_hats = [
-                block for block in blocks.values()
-                if block["opcode"] == "control_start_as_clone"
-            ]
-            self.assertEqual(1, len(clone_hats), name)
-            cursor = clone_hats[0]["next"]
-            clone_opcodes = []
-            while cursor is not None:
-                clone_opcodes.append(blocks[cursor]["opcode"])
-                cursor = blocks[cursor]["next"]
-            self.assertNotIn("motion_gotoxy", clone_opcodes, name)
-            key_hats = [
-                block for block in blocks.values()
-                if block["opcode"] == "event_whenkeypressed"
-            ]
-            self.assertEqual(1, len(key_hats), name)
-            self.assertEqual("control_if", blocks[key_hats[0]["next"]]["opcode"])
-
-        target_b = targets["target_b"]["blocks"]
-        self.assertNotIn("looks_show", {block["opcode"] for block in target_b.values()})
+    def test_tick_constants_match_arcade_conversion(self) -> None:
+        # 1 build tick = 2 arcade frames (core-game-systems units rule). Pin the
+        # generator's tick constants to the arcade-frame values in their locked specs
+        # with an independent expected value here, so a wrong constant fails this test
+        # rather than moving the build and the shape assertions together silently.
+        self.assertEqual(10, director.RELOAD_TICKS)  # WPN-01: 20-frame reload
+        self.assertEqual(7, director.EXPLOSION_STEPS)  # PLY-02: 7 cycles
+        self.assertEqual(4, director.EXPLOSION_HOLD_TICKS)  # PLY-02: 8-frame hold
+        self.assertEqual(28, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS)  # 56 frames
+        self.assertEqual(16, director.POST_DEATH_PAUSE_TICKS)  # PLY-02: 32-frame pause
+        self.assertEqual(30, director.READY_HOLD_TICKS)  # project-defined 30-tick beat
 
     def test_reset_scope_matrix_has_canonical_and_preserving_paths(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -1307,7 +1584,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "592345f70df1111eaed9bc182921e4a272854ba1cbdbf2c840f83b58078f027b",
+            "538ea4efc4a90694a201eccc9f374aa8bddec02ca1a9c9afc2888910db45e632",
             build_hash,
         )
 
