@@ -24,8 +24,10 @@ the spec's core game systems document).
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a
 step passes; or it fails (the PR stays draft, the failure goes back with the item number); or it shows
-a **known recorded divergence** — behavior the spec explicitly records as an interim fixture (today:
-terrain preserved across death, pending the life-economy work) — which is noted, not failed.
+a **known recorded divergence** — behavior the spec explicitly records as an interim fixture — which is
+noted, not failed. (The former terrain-preserved-on-death fixture is retired: a new life now restarts
+the current area from its top, per the life-economy slice; the near-end checkpoint exception to that
+rule still waits on the area clock.)
 
 1. **Cold start.** Green flag: one title presentation (the logo entering as the spec's presentation
    document records), music once, no stray sprites. Press Space: one READY presentation, then play.
@@ -39,8 +41,9 @@ terrain preserved across death, pending the life-economy work) — which is note
    gap, no frozen strip, no drift.
 5. **Repeated deaths.** Die several times in a row (today: press D; once killers exist, die to a
    bullet, an enemy, and a Bacura): the full death presentation and sound complete uncut, the craft
-   respawns immediately vulnerable, area position follows the spec's recorded rule (or its recorded
-   interim divergence, noted above), and nothing from the previous life lingers.
+   respawns immediately vulnerable, the current area restarts from its top on the respawn, and nothing
+   from the previous life lingers. Draining the craft (repeated D, or G) reaches GAME OVER, holds, and
+   returns to the title; life icons in the HUD track the count.
 6. **Layering.** During busy play: shots and the craft render above the terrain (and enemies, once
    they exist); the frame borders never hide the ship.
 7. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,

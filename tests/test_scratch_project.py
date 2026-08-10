@@ -2092,6 +2092,157 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._eco02_failures(project), label)
 
     @staticmethod
+    def _ply02_failures(project: dict) -> set:
+        """PLY-02: the death outcome is decided from the craft counter, the D/G triggers drive
+        the counter without hardcoding an outcome, and a new life restarts the terrain."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def key_hat(key: str):
+            return next(
+                (
+                    bid
+                    for bid, b in blocks.items()
+                    if b["opcode"] == "event_whenkeypressed"
+                    and b["fields"].get("KEY_OPTION", [None])[0] == key
+                ),
+                None,
+            )
+
+        def reachable(start: str) -> set:
+            seen, stack = set(), [start]
+            while stack:
+                bid = stack.pop()
+                if bid in seen or bid not in blocks:
+                    continue
+                seen.add(bid)
+                b = blocks[bid]
+                if b.get("next"):
+                    stack.append(b["next"])
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    val = b["inputs"].get(slot)
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            return seen
+
+        d_body = reachable(key_hat("d")) if key_hat("d") else set()
+        g_body = reachable(key_hat("g")) if key_hat("g") else set()
+        # D takes one hit: change craft by -1.
+        if not any(
+            blocks[bid]["opcode"] == "data_changevariableby"
+            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+            and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
+            for bid in d_body
+        ):
+            failures.add("d-decrements-craft")
+        # G drains to terminal: set craft to 0.
+        if not any(
+            blocks[bid]["opcode"] == "data_setvariableto"
+            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+            and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
+            for bid in g_body
+        ):
+            failures.add("g-drains-craft")
+        # neither trigger hardcodes a death outcome any more (the counter decides).
+        if any(
+            blocks[bid]["opcode"] == "data_setvariableto"
+            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.OUTCOME_ID
+            for bid in (d_body | g_body)
+        ):
+            failures.add("trigger-hardcodes-outcome")
+        # the death-complete handler decides from craft > 0: respawn vs game over.
+        decision = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "control_if_else"
+                and isinstance(b["inputs"].get("CONDITION"), list)
+                and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_gt"
+                and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1", [None, [None]])[1][2:3]
+                == [director.LIVES_ID]
+            ),
+            None,
+        )
+        if decision is None:
+            failures.add("lives-driven-decision")
+        else:
+            # each branch (respawn / game over) must reach its own transition call.
+            def branch_transitions(slot: str) -> int:
+                spec = blocks[decision]["inputs"].get(slot)
+                if not (isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str)):
+                    return 0
+                return sum(
+                    blocks[bid]["opcode"] == "procedures_call"
+                    and blocks[bid].get("mutation", {}).get("proccode") == director.PROCCODE
+                    for bid in reachable(spec[1])
+                )
+
+            if branch_transitions("SUBSTACK") < 1 or branch_transitions("SUBSTACK2") < 1:
+                failures.add("lives-driven-decision")
+        return failures
+
+    def test_death_decision_is_lives_driven(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ply02_failures(project))
+
+    def test_death_decision_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ply02_failures(base))
+        stage = next(t for t in base["targets"] if t["isStage"])
+
+        def find(pred):
+            def f(p):
+                s = next(t for t in p["targets"] if t["isStage"])
+                return next(b for b in s["blocks"].values() if pred(b))
+            return f
+
+        def break_d(p):
+            b = find(
+                lambda b: b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                and b["inputs"].get("VALUE") == [1, [4, -1]]
+            )(p)
+            b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_g(p):
+            # retarget G's `set craft to 0` to a different variable
+            s = next(t for t in p["targets"] if t["isStage"])
+            gid = next(
+                bid
+                for bid, b in s["blocks"].items()
+                if b["opcode"] == "event_whenkeypressed"
+                and b["fields"].get("KEY_OPTION", [None])[0] == "g"
+            )
+            # walk to the set-craft-0 in g's body
+            for b in s["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 0]]
+                ):
+                    b["fields"]["VARIABLE"] = ["award value", director.AWARD_VALUE_ID]
+                    break
+
+        def break_decision(p):
+            b = find(
+                lambda b: b["opcode"] == "operator_gt"
+                and isinstance(b["inputs"].get("OPERAND1"), list)
+                and b["inputs"]["OPERAND1"][1][2:3] == [director.LIVES_ID]
+            )(p)
+            b["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
+
+        cases = [
+            ("d-decrements-craft", break_d),
+            ("g-drains-craft", break_g),
+            ("lives-driven-decision", break_decision),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._ply02_failures(project), label)
+
+    @staticmethod
     def _rng_reseed_guard_scopes(project: dict) -> set:
         """The reset scopes that guard the `rng state` reseed (should be exactly the two
         world-reset scopes) — so seeded runs repeat and a mid-game reset never reseeds."""
@@ -2702,7 +2853,9 @@ class ScratchProjectTests(unittest.TestCase):
 
         for name in ("area_01a", "area_01b"):
             blocks = targets[name]["blocks"]
-            self.assertEqual({"cold-start", "new-game"}, scope_literals(blocks))
+            # PLY-02 / audit B11: a new life now restarts the current area from its top, so the
+            # terrain rewinds on new-life too (retiring the interim preserve-terrain fixture).
+            self.assertEqual({"cold-start", "new-game", "new-life"}, scope_literals(blocks))
             self.assertEqual(2, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
 
         player = targets["solvalou"]["blocks"]
@@ -2992,7 +3145,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "5910cc0dffb7a22a4582b48c09926ec008171631ffff136a41d354400d000002",
+            "40d66864991db80c7559dd2f28ea5d47fdc8b5d31d0cf4c89fc05435467ad7b9",
             build_hash,
         )
 

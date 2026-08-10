@@ -1143,11 +1143,38 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     space = blocks.key("space")
     blocks.chain(space, [blocks.if_state("title", [blocks.call_transition("ready", "new-game")])])
 
-    for key, outcome in (("d", "respawn"), ("g", "game-over")):
-        hat = blocks.key(key)
-        set_outcome = blocks.set_var("death outcome", OUTCOME_ID, text(outcome))
-        transition = blocks.call_transition("player-dead", "none")
-        blocks.chain(hat, [blocks.if_state("playing", [set_outcome, transition])])
+    # Death triggers — stand-ins until a real attacker exists (slice 8), now driving the real
+    # life economy instead of a hardcoded outcome. D takes one hit (lose a craft); G drains to
+    # the terminal life so the game-over path is reachable in one press. The death-complete
+    # handler decides respawn-vs-game-over from the craft counter, not from which key was pressed.
+    d_hat = blocks.key("d")
+    blocks.chain(
+        d_hat,
+        [
+            blocks.if_state(
+                "playing",
+                [
+                    blocks.change_var("craft", LIVES_ID, -1),
+                    blocks.send("craft changed"),
+                    blocks.call_transition("player-dead", "none"),
+                ],
+            )
+        ],
+    )
+    g_hat = blocks.key("g")
+    blocks.chain(
+        g_hat,
+        [
+            blocks.if_state(
+                "playing",
+                [
+                    blocks.set_var("craft", LIVES_ID, number(0)),
+                    blocks.send("craft changed"),
+                    blocks.call_transition("player-dead", "none"),
+                ],
+            )
+        ],
+    )
 
     # Debug scoring fixture (S): set the award-value seam to the top value-table entry and run
     # the one `score` path, so the economy is operator-verifiable before an enemy awards points.
@@ -1176,22 +1203,28 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
 
     death = blocks.receive("death complete")
-    respawn_if = blocks.add("control_if")
-    respawn_condition = blocks.equals_var(
-        respawn_if, "death outcome", OUTCOME_ID, "respawn"
+    # Decide from the craft counter (PLY-02): a craft left means respawn; none left means game
+    # over. `death outcome` now RECORDS the decision (kept, not removed, so the transition-cleanup
+    # opcode sequence and the reset-scope matrix stay byte-identical) — it is no longer the input.
+    decide = blocks.add("control_if_else")
+    has_craft = blocks.greater(decide, "craft", LIVES_ID, 0)
+    blocks.blocks[decide]["inputs"]["CONDITION"] = [2, has_craft]
+    blocks.substack(
+        decide,
+        [
+            blocks.set_var("death outcome", OUTCOME_ID, text("respawn")),
+            blocks.call_transition("respawning", "new-life"),
+        ],
     )
-    blocks.blocks[respawn_if]["inputs"]["CONDITION"] = [2, respawn_condition]
-    blocks.substack(respawn_if, [blocks.call_transition("respawning", "new-life")])
-    game_over_if = blocks.add("control_if")
-    game_over_condition = blocks.equals_var(
-        game_over_if, "death outcome", OUTCOME_ID, "game-over"
+    blocks.substack(
+        decide,
+        [
+            blocks.set_var("death outcome", OUTCOME_ID, text("game-over")),
+            blocks.call_transition("game-over", "game-over"),
+        ],
+        name="SUBSTACK2",
     )
-    blocks.blocks[game_over_if]["inputs"]["CONDITION"] = [2, game_over_condition]
-    blocks.substack(game_over_if, [blocks.call_transition("game-over", "game-over")])
-    blocks.chain(
-        death,
-        [blocks.if_state("player-dead", [respawn_if, game_over_if])],
-    )
+    blocks.chain(death, [blocks.if_state("player-dead", [decide])])
 
     game_over = blocks.receive("game over complete")
     blocks.chain(
@@ -1458,20 +1491,30 @@ def terrain_blocks(
     common_stop(blocks, hide=False)
     reset = blocks.receive("director reset")
     switch = blocks.switch_costume(costume)
-    # Cold-start / new-game rewind to the strip's top and re-seed its scroll counter;
-    # a new life preserves both (the recorded B11 terrain-on-death fixture), so the
-    # strip resumes seamlessly rather than restarting.
-    reset_control = reset_if(
-        blocks,
-        ("cold-start", "new-game"),
-        [
-            switch,
-            blocks.go(0, start_y),
-            blocks.set_var("scroll step", step_id, number(initial_step)),
-            blocks.send_backward(),  # B9: terrain sits behind the sprites
-            blocks.show(),
-        ],
-    )
+    rewind = [
+        switch,
+        blocks.go(0, start_y),
+        blocks.set_var("scroll step", step_id, number(initial_step)),
+        blocks.send_backward(),  # B9: terrain sits behind the sprites
+        blocks.show(),
+    ]
+    # Rewind to the strip's top on cold-start, new-game, AND new-life: a new life now restarts
+    # the current area from its top, the arcade rule the locked area-progression spec makes
+    # normative — retiring the interim B11 preserve-terrain-on-death fixture (audit 2026-08-09).
+    # game-over is followed by a cold-start, which rewinds; the near-end checkpoint exception
+    # waits on the area clock (slice 5).
+    reset_control = blocks.add("control_if")
+    tail = blocks.add("operator_or")
+    ng = blocks.scope_is(tail, "new-game")
+    nl = blocks.scope_is(tail, "new-life")
+    blocks.blocks[tail]["inputs"] = {"OPERAND1": [2, ng], "OPERAND2": [2, nl]}
+    condition = blocks.add("operator_or")
+    blocks.blocks[tail]["parent"] = condition
+    cs = blocks.scope_is(condition, "cold-start")
+    blocks.blocks[condition]["inputs"] = {"OPERAND1": [2, cs], "OPERAND2": [2, tail]}
+    blocks.blocks[condition]["parent"] = reset_control
+    blocks.blocks[reset_control]["inputs"]["CONDITION"] = [2, condition]
+    blocks.substack(reset_control, rewind)
     blocks.chain(reset, [reset_control])
 
     enter = blocks.receive("director enter")
