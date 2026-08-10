@@ -157,6 +157,12 @@ ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
 
+# ECO-02 HUD target scaffold (media only this slice — see docs/mechanics/010). game_director
+# owns this target's EXISTENCE and BLOCKS (an empty scaffold until the HUD-render commit fills
+# it in); its costumes are owned entirely by tools/hud_glyphs.py, mirroring the solvalou split
+# (one generator owns blocks, the other owns costumes, neither touches the other's field).
+HUD_TARGET = "hud"
+
 # ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
 # one Stage `score` proc: add the pending award, pin at the 3-byte BCD ceiling, lift the
 # running high score, then run the bonus-life check. The `score` variable is written ONLY
@@ -1672,8 +1678,62 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def _ensure_hud_target(project: dict[str, Any]) -> None:
+    """Create or update the `hud` target's EXISTENCE and BLOCKS only.
+
+    Costumes are never touched here: when the target already exists (because
+    tools/hud_glyphs.py already attached its glyph/life costumes), whatever
+    costume list is present is preserved untouched, exactly like the
+    solvalou split lets sprite_extractor own that target's costumes while
+    this module owns its blocks.
+    """
+    existing = next(
+        (target for target in project["targets"] if target.get("name") == HUD_TARGET),
+        None,
+    )
+    if existing is not None:
+        existing["blocks"] = {}
+        return
+    insertion = next(
+        (
+            index
+            for index, target in enumerate(project["targets"])
+            if target.get("name") in ("toroid_sprite_proof", "sprite_sheets")
+        ),
+        len(project["targets"]),
+    )
+    existing_orders = [
+        target.get("layerOrder")
+        for target in project["targets"]
+        if isinstance(target.get("layerOrder"), int)
+    ]
+    hud_target = {
+        "isStage": False,
+        "name": HUD_TARGET,
+        "variables": {},
+        "lists": {},
+        "broadcasts": {},
+        "blocks": {},
+        "comments": {},
+        "currentCostume": 0,
+        "costumes": [],
+        "sounds": [],
+        "volume": 100,
+        "layerOrder": max(existing_orders, default=-1) + 1,
+        "visible": False,
+        "x": 0,
+        "y": 0,
+        "size": 100,
+        "direction": 90,
+        "draggable": False,
+        "rotationStyle": "don't rotate",
+    }
+    project["targets"].insert(insertion, hud_target)
+
+
 def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(project)
+    _ensure_hud_target(result)
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,

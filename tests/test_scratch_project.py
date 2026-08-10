@@ -170,8 +170,8 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        self.assertEqual(16, len(project["targets"]))
-        self.assertEqual(67, len(assets))
+        self.assertEqual(17, len(project["targets"]))
+        self.assertEqual(91, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -224,6 +224,15 @@ class ScratchProjectTests(unittest.TestCase):
                 for key in ("variables", "lists", "broadcasts"):
                     expected.pop(key)
                     actual.pop(key)
+                # hud_glyphs.py appends one new "extend" sound on top of the
+                # historical two (docs/mechanics/010); verify it precisely, then
+                # drop sounds from the general preserved-content comparison.
+                self.assertEqual(
+                    [sound["name"] for sound in expected["sounds"]] + ["extend"],
+                    [sound["name"] for sound in actual["sounds"]],
+                )
+                expected.pop("sounds")
+                actual.pop("sounds")
             elif target["name"] in {
                 "solvalou",
                 "solv_death",
@@ -2546,7 +2555,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "6f2985defb293705e4db8488e1db85eab48dcc1171ad3faaaaffad27fc72f7e4",
+            "09a22817b668eea12dd11cd9d04921d285e5b0d72b4c015d5f5d9c35f9c53165",
             build_hash,
         )
 

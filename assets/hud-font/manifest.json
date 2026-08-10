@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "generator_version": 1,
+  "font_sheet": {
+    "asset": "xevious_hud_font.png",
+    "sha256": "87095dc731a54115850ce3509de70380f7707dbc977d0efa0df08b89a057da56",
+    "source": "FontStruct: \"Xevious HUD font recreation\" by Patrick H. Lauke, reshared by AnthonyCassimiro on DeviantArt — https://www.deviantart.com/anthonycassimiro/art/Xevious-HUD-font-recreation-1345048685",
+    "credit": "Patrick H. Lauke (FontStruct), reshared by AnthonyCassimiro",
+    "license": "Creative Commons Attribution 3.0 (CC BY 3.0)"
+  },
+  "life_icon_sheet": {
+    "asset": "src/xevious/assets/3d7fd3207d47fcad82619a0865789da7.png",
+    "sha256": "0c88cd5cb440bebcc59aeeb20d8e141f62a5be4f4ff607be06a72ae1b8afdeaf",
+    "source": "The Spriters Resource: Xevious (Arcade), Solvalou — https://www.spriters-resource.com/arcade/xevious/asset/42384/",
+    "credit": "CrazyCarl",
+    "license": "No reusable license specified by source; third-party copyrighted material"
+  },
+  "extend_sound": {
+    "asset": "extend.wav",
+    "sha256": "ab3ff92caa592770628efa30d415d4c68e0153a6617d0a209b6179502c9930a4",
+    "source": "Sounds Spriters Resource: Xevious (Arcade), asset 449687 — https://sounds.spriters-resource.com/arcade/xevious/asset/449687/",
+    "credit": "Sounds Spriters Resource (Xevious arcade sound library; no individual contributor credited on the asset page)",
+    "license": "No reusable license specified by source; third-party copyrighted material"
+  },
+  "matte": [0, 128, 0],
+  "cell_canvas": [100, 100],
+  "cell_anchor": [50, 50],
+  "downscale": 4,
+  "bitmap_resolution": 2,
+  "glyph_threshold": 128,
+  "glyphs": [
+    {"name": "glyph/A", "rect": [13, 12, 110, 109]},
+    {"name": "glyph/C", "rect": [237, 12, 334, 109]},
+    {"name": "glyph/E", "rect": [461, 12, 558, 109]},
+    {"name": "glyph/G", "rect": [685, 12, 782, 109]},
+    {"name": "glyph/H", "rect": [797, 12, 894, 109]},
+    {"name": "glyph/I", "rect": [937, 12, 978, 109]},
+    {"name": "glyph/M", "rect": [1357, 12, 1454, 109]},
+    {"name": "glyph/O", "rect": [1581, 12, 1678, 109]},
+    {"name": "glyph/P", "rect": [1693, 12, 1790, 109]},
+    {"name": "glyph/R", "rect": [1917, 12, 2014, 109]},
+    {"name": "glyph/S", "rect": [13, 138, 110, 235]},
+    {"name": "glyph/U", "rect": [237, 138, 334, 235]},
+    {"name": "glyph/V", "rect": [349, 138, 446, 235]},
+    {"name": "digit/0", "rect": [909, 138, 1006, 235]},
+    {"name": "digit/1", "rect": [1035, 138, 1090, 235]},
+    {"name": "digit/2", "rect": [1133, 138, 1230, 235]},
+    {"name": "digit/3", "rect": [1245, 138, 1342, 235]},
+    {"name": "digit/4", "rect": [1357, 138, 1454, 235]},
+    {"name": "digit/5", "rect": [1469, 138, 1566, 235]},
+    {"name": "digit/6", "rect": [1581, 138, 1678, 235]},
+    {"name": "digit/7", "rect": [1693, 138, 1790, 235]},
+    {"name": "digit/8", "rect": [1805, 138, 1902, 235]},
+    {"name": "digit/9", "rect": [1917, 138, 2014, 235]}
+  ],
+  "life_icon": {
+    "name": "life/ship",
+    "rect": [138, 28, 16, 16],
+    "canvas": [16, 16],
+    "anchor": [8, 8]
+  }
+}

@@ -1,0 +1,265 @@
+{
+  "version": 1,
+  "generator_version": 1,
+  "manifest_sha256": "f523f240990e67daaeedfca6434ac0c5f0c68c8e9a68d13885db90543e15d08b",
+  "outputs": {
+    "a24961bd4fd2644e06471237dfd6325b.png": {
+      "kind": "glyph",
+      "name": "glyph/A",
+      "rect": [
+        13,
+        12,
+        110,
+        109
+      ],
+      "generator_version": 1
+    },
+    "f8a769f4c185d8dda245fc471d42a9e9.png": {
+      "kind": "glyph",
+      "name": "glyph/C",
+      "rect": [
+        237,
+        12,
+        334,
+        109
+      ],
+      "generator_version": 1
+    },
+    "8aef1f4258ba433ae5ed71582849c96d.png": {
+      "kind": "glyph",
+      "name": "glyph/E",
+      "rect": [
+        461,
+        12,
+        558,
+        109
+      ],
+      "generator_version": 1
+    },
+    "4159ab3154963f5162c9ee46ab4aec7d.png": {
+      "kind": "glyph",
+      "name": "glyph/G",
+      "rect": [
+        685,
+        12,
+        782,
+        109
+      ],
+      "generator_version": 1
+    },
+    "2cede9b96ad1758205c545423b9061ca.png": {
+      "kind": "glyph",
+      "name": "glyph/H",
+      "rect": [
+        797,
+        12,
+        894,
+        109
+      ],
+      "generator_version": 1
+    },
+    "b6bc128dc9501e4597349944c3c6734f.png": {
+      "kind": "glyph",
+      "name": "glyph/I",
+      "rect": [
+        937,
+        12,
+        978,
+        109
+      ],
+      "generator_version": 1
+    },
+    "edd29f7a9732b318085735bb4dbfed28.png": {
+      "kind": "glyph",
+      "name": "glyph/M",
+      "rect": [
+        1357,
+        12,
+        1454,
+        109
+      ],
+      "generator_version": 1
+    },
+    "cbf90468afb2dabb97cbf1df898cd95f.png": {
+      "kind": "glyph",
+      "name": "digit/0",
+      "rect": [
+        909,
+        138,
+        1006,
+        235
+      ],
+      "generator_version": 1
+    },
+    "622fe458e1d0246fcba8890df39db185.png": {
+      "kind": "glyph",
+      "name": "glyph/P",
+      "rect": [
+        1693,
+        12,
+        1790,
+        109
+      ],
+      "generator_version": 1
+    },
+    "d3abb1c767fba7ee545419dd7815af58.png": {
+      "kind": "glyph",
+      "name": "glyph/R",
+      "rect": [
+        1917,
+        12,
+        2014,
+        109
+      ],
+      "generator_version": 1
+    },
+    "3abc1a03d3ec0b690acc4f7414056c21.png": {
+      "kind": "glyph",
+      "name": "glyph/S",
+      "rect": [
+        13,
+        138,
+        110,
+        235
+      ],
+      "generator_version": 1
+    },
+    "6e431c2e37240a93cf6367bf5b7166b4.png": {
+      "kind": "glyph",
+      "name": "glyph/U",
+      "rect": [
+        237,
+        138,
+        334,
+        235
+      ],
+      "generator_version": 1
+    },
+    "4806c019c2f7b59d3514bd0381fecf6c.png": {
+      "kind": "glyph",
+      "name": "glyph/V",
+      "rect": [
+        349,
+        138,
+        446,
+        235
+      ],
+      "generator_version": 1
+    },
+    "b0608508202b4397dc189274fcca80e1.png": {
+      "kind": "glyph",
+      "name": "digit/1",
+      "rect": [
+        1035,
+        138,
+        1090,
+        235
+      ],
+      "generator_version": 1
+    },
+    "a233dc7ba98dac275bf399e4561b5da9.png": {
+      "kind": "glyph",
+      "name": "digit/2",
+      "rect": [
+        1133,
+        138,
+        1230,
+        235
+      ],
+      "generator_version": 1
+    },
+    "09dca855bb94485eee48db4ba2e094f5.png": {
+      "kind": "glyph",
+      "name": "digit/3",
+      "rect": [
+        1245,
+        138,
+        1342,
+        235
+      ],
+      "generator_version": 1
+    },
+    "fe1aa016a3a1d92ccb63844421849e0d.png": {
+      "kind": "glyph",
+      "name": "digit/4",
+      "rect": [
+        1357,
+        138,
+        1454,
+        235
+      ],
+      "generator_version": 1
+    },
+    "af3408847196a388f672ebccc936329c.png": {
+      "kind": "glyph",
+      "name": "digit/5",
+      "rect": [
+        1469,
+        138,
+        1566,
+        235
+      ],
+      "generator_version": 1
+    },
+    "3c47eae3a7644d9ac07a0fdbf24b77ba.png": {
+      "kind": "glyph",
+      "name": "digit/6",
+      "rect": [
+        1581,
+        138,
+        1678,
+        235
+      ],
+      "generator_version": 1
+    },
+    "e99219178b188a992e565a8612a4718c.png": {
+      "kind": "glyph",
+      "name": "digit/7",
+      "rect": [
+        1693,
+        138,
+        1790,
+        235
+      ],
+      "generator_version": 1
+    },
+    "f58953535c4ad299bfd50ecdec6e333b.png": {
+      "kind": "glyph",
+      "name": "digit/8",
+      "rect": [
+        1805,
+        138,
+        1902,
+        235
+      ],
+      "generator_version": 1
+    },
+    "280e8021ad8e300ce17d6b75447f1fa7.png": {
+      "kind": "glyph",
+      "name": "digit/9",
+      "rect": [
+        1917,
+        138,
+        2014,
+        235
+      ],
+      "generator_version": 1
+    },
+    "3ff5b57a5857756abaf9d15288661f56.png": {
+      "kind": "life_icon",
+      "name": "life/ship",
+      "rect": [
+        138,
+        28,
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "ac020ffe5f8a07ed75c746fde6984c6b.wav": {
+      "kind": "sound",
+      "name": "extend",
+      "generator_version": 1
+    }
+  }
+}

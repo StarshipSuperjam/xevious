@@ -39,3 +39,35 @@ The generated review contact sheet at
 `docs/images/sprite-extraction-proof.png` is also a derivative of the credited
 artwork. It exists for crop, transparency, and anchor review and carries the
 same no-reusable-license-specified status as its sources.
+
+## HUD font (Creative Commons Attribution 3.0)
+
+Unlike the five Spriters Resource sheets above, the HUD digit/letter glyphs
+are sourced from a font released under a stated reusable license:
+
+| Supplied file | Description | Credit | Source | License | SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `xevious_hud_font.png` | Xevious HUD font recreation, digit/letter sheet | Patrick H. Lauke (FontStruct), reshared by AnthonyCassimiro | [FontStruct project](https://fontstruct.com/), reshared on [DeviantArt](https://www.deviantart.com/anthonycassimiro/art/Xevious-HUD-font-recreation-1345048685) | Creative Commons Attribution 3.0 (CC BY 3.0) | `87095dc731a54115850ce3509de70380f7707dbc977d0efa0df08b89a057da56` |
+
+The raw sheet is committed byte-for-byte at `assets/hud-font/xevious_hud_font.png`.
+The versioned manifest at `assets/hud-font/manifest.json` measures the digit
+and uppercase-letter crop rectangles used by `tools/hud_glyphs.py`, which
+globally recolors ink to white, removes the background, centers each glyph on
+a fixed monospace cell, and downscales it with nearest-neighbor sampling.
+Generated glyph costumes are recorded in `src/xevious/assets/provenance.json`
+with this same CC BY 3.0 attribution. Attribution is given per the license;
+this project does not otherwise claim rights to the font.
+
+## Extend / 1UP sound (Sounds Spriters Resource)
+
+| Supplied file | Description | Source | License | SHA-256 |
+| --- | --- | --- | --- | --- |
+| `extend.wav` | Extend (1UP / bonus life) cue | [Sounds Spriters Resource, Xevious (Arcade), asset 449687](https://sounds.spriters-resource.com/arcade/xevious/asset/449687/) | No reusable license specified by source; third-party copyrighted material | `ab3ff92caa592770628efa30d415d4c68e0153a6617d0a209b6179502c9930a4` |
+
+The raw wav is committed byte-for-byte to `src/xevious/assets/` under its
+content-hash filename and attached as a new Stage sound named `extend`
+(`tools/hud_glyphs.py`). No individual contributor credit was listed on the
+asset's source page. This carries the same rights-status caveat as the
+Spriters Resource sprite sheets above: recording provenance is not a claim
+that credit grants permission, and no ownership of the Xevious audio is
+claimed.
