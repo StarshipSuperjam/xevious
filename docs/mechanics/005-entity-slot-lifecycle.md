@@ -30,3 +30,18 @@ stream, so the pass only advances the clock — the per-slot dispatch is explici
 consumer. `tick` is the authoritative gameplay frame counter ([core game systems](../spec/core-game-systems.md)
 units rule); the future area director's scroll clock builds **on** it, not beside it. It starts at zero on
 a world reset (cold-start / new-game) and advances each `playing` tick.
+
+## Player-shot capacity (the first live slot occupant)
+
+The player shots are the only entities that occupy a slot this slice, and they land the 3-shot cap the
+recovery build (issue #13) deferred here (audit A3). Firing first calls the blaster's warp `alloc shot slot`
+block, which allocates the first idle slot among the three dedicated shot slots (37-39, arcade 0x24-0x26)
+into `alloc result`, or leaves it `0` when all three are live. The fire gate spawns the shot clone **and**
+consumes the reload counter **only** when `alloc result > 0`, so a capped fire does not reset the reload and
+the next shot fires the instant a slot frees — the recovery build's held-fire cadence (B1) is preserved,
+and every `create clone` is dominated by a successful allocation (no clone/slot mismatch). Each clone
+snapshots its allocated index into its own `clone slot` and frees that slot (type → 0) on expiry; the
+Stage's clear-slots covers the stop/reset delete paths. The shot's travel and top-edge expiry (B8) are
+unchanged. Cap enforcement is structural (allocation over three fixed slots), independent of the shot-speed
+vs reload-rate coincidence. `SHOT_TYPE` is a placeholder occupancy marker — the reference's exact
+player-shot type code is not extracted, and only occupied-vs-empty matters until per-type dispatch is built.

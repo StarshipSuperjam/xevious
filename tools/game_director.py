@@ -96,6 +96,16 @@ FLYING_SLOTS = (59, 64)  # ...... 59-64   0x3A-0x3F ........ 6
 TICK_ID = "tick"
 ADVANCE_SLOTS_PROCCODE = "advance slots"
 
+# SYS-02 player-shot capacity: at most 3 live shots, one per dedicated slot (37-39).
+# Allocation over those fixed slots is what binds the cap (audit A3, deferred here from
+# #13). SLOT_ACTIVE marks an allocated slot; SHOT_TYPE is the player-shot occupancy
+# marker (per-entity type codes arrive with the dispatch the enemy slice builds).
+SLOT_ACTIVE = 1
+SHOT_TYPE = 1
+ALLOC_RESULT_ID = "blaster-alloc-result"
+CLONE_SLOT_ID = "blaster-clone-slot"
+ALLOC_SHOT_PROCCODE = "alloc shot slot"
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -1151,9 +1161,63 @@ def terrain_blocks(
     return blocks.blocks
 
 
+def install_alloc_shot_slot(blocks: Blocks) -> None:
+    # Allocate the first idle player-shot slot (37-39): `alloc result` becomes that index,
+    # or stays 0 when all three are live — the structural 3-shot cap (audit A3). Warp
+    # (atomic), unrolled over the three dedicated slots (no cursor). Global slot lists.
+    definition = blocks.add("procedures_definition", top_level=True)
+    prototype = blocks.add(
+        "procedures_prototype",
+        shadow=True,
+        mutation={
+            "tagName": "mutation",
+            "children": [],
+            "proccode": ALLOC_SHOT_PROCCODE,
+            "argumentids": "[]",
+            "argumentnames": "[]",
+            "argumentdefaults": "[]",
+            "warp": "true",
+        },
+    )
+    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
+    blocks.blocks[prototype]["parent"] = definition
+
+    body = [blocks.set_var("alloc result", ALLOC_RESULT_ID, number(0))]
+    for index in range(SHOT_SLOTS[0], SHOT_SLOTS[1] + 1):
+        unallocated = blocks.op_eq(
+            variable("alloc result", ALLOC_RESULT_ID), number(0)
+        )
+        slot_free = blocks.op_eq(
+            blocks.list_item("slot type", SLOT_TYPE_ID, number(index)), number(0)
+        )
+        condition = blocks.add("operator_and")
+        blocks.blocks[condition]["inputs"] = {
+            "OPERAND1": [2, unallocated],
+            "OPERAND2": [2, slot_free],
+        }
+        blocks.blocks[unallocated]["parent"] = condition
+        blocks.blocks[slot_free]["parent"] = condition
+        body.append(
+            blocks.if_reporter(
+                condition,
+                [
+                    blocks.list_replace(
+                        "slot type", SLOT_TYPE_ID, number(index), number(SHOT_TYPE)
+                    ),
+                    blocks.list_replace(
+                        "slot state", SLOT_STATE_ID, number(index), number(SLOT_ACTIVE)
+                    ),
+                    blocks.set_var("alloc result", ALLOC_RESULT_ID, number(index)),
+                ],
+            )
+        )
+    blocks.chain(definition, body)
+
+
 def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("blaster")
     common_stop(blocks, hide=True, clones=True)
+    install_alloc_shot_slot(blocks)
     # Reset clears the reload counter (WPN-01: a fresh press fires at once) so holding
     # fire through death never delays the first post-respawn shot.
     reset = blocks.receive("director reset")
@@ -1185,14 +1249,27 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         "OPERAND2": [2, ready],
     }
     blocks.blocks[fire_gate]["inputs"]["CONDITION"] = [2, space_and_ready]
-    blocks.substack(
-        fire_gate,
+    # A3 3-shot cap: allocate a shot slot first; only on success (a free slot) do we
+    # spawn AND consume the reload. If all three slots are live the reload is NOT reset,
+    # so fire happens the instant a slot frees — B1 cadence preserved, no clone/slot
+    # mismatch (every create_clone is dominated by a successful alloc).
+    alloc_call = blocks.call_proc(ALLOC_SHOT_PROCCODE, warp=True)
+    alloc_ok = blocks.add(
+        "operator_gt",
+        inputs={
+            "OPERAND1": variable("alloc result", ALLOC_RESULT_ID),
+            "OPERAND2": number(0),
+        },
+    )
+    spawn = blocks.if_reporter(
+        alloc_ok,
         [
             blocks.go_to_sprite("solvalou"),
             blocks.create_clone(),
             blocks.set_var("blaster reload", RELOAD_ID, number(0)),
         ],
     )
+    blocks.substack(fire_gate, [alloc_call, spawn])
     release_gate = blocks.add("control_if")
     not_pressed = blocks.add("operator_not")
     blocks.blocks[not_pressed]["parent"] = release_gate
@@ -1229,13 +1306,29 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.add("looks_nextcostume"),
         ],
     )
+    # The clone snapshots `alloc result` (its allocated index) into its own `clone slot`
+    # at birth, and frees that slot on expiry — so every delete path returns the slot to
+    # the pool and the cap can never desync. (director stop / reset paths are covered by
+    # the Stage's clear-slots on every reset.)
     blocks.chain(
         clone,
         [
+            blocks.set_var(
+                "clone slot", CLONE_SLOT_ID, variable("alloc result", ALLOC_RESULT_ID)
+            ),
             blocks.to_front(),  # B9: shots render above the terrain
             blocks.show(),
             blocks.play_sound("blaster"),
             travel,
+            blocks.list_replace(
+                "slot type", SLOT_TYPE_ID, variable("clone slot", CLONE_SLOT_ID), number(0)
+            ),
+            blocks.list_replace(
+                "slot state",
+                SLOT_STATE_ID,
+                variable("clone slot", CLONE_SLOT_ID),
+                number(0),
+            ),
             blocks.add("control_delete_this_clone"),
         ],
     )
@@ -1497,7 +1590,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             }
         elif target["name"] == "blaster":
             target["variables"] = target["variables"] | {
-                RELOAD_ID: ["blaster reload", RELOAD_TICKS]
+                RELOAD_ID: ["blaster reload", RELOAD_TICKS],
+                # Player-shot allocation result (cap gate) and each clone's own slot index.
+                ALLOC_RESULT_ID: ["alloc result", 0],
+                CLONE_SLOT_ID: ["clone slot", 0],
             }
         elif target["name"] == "area_01a":
             target["variables"] = target["variables"] | {

@@ -1112,6 +1112,143 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             self.assertIn(label, self._central_walk_failures(project), label)
 
+    @staticmethod
+    def _shot_cap_failures(project: dict) -> set:
+        """A3 player-shot 3-cap contract (behavioral, beyond the B1/B8 shape checks)."""
+        failures = set()
+        blaster = next(t for t in project["targets"] if t["name"] == "blaster")
+        blocks = blaster["blocks"]
+
+        def chain_ops(first_id):
+            ops, cursor = [], first_id
+            while cursor:
+                ops.append(blocks[cursor])
+                cursor = blocks[cursor]["next"]
+            return ops
+
+        # Allocation writes the shot marker to exactly the three dedicated slots.
+        alloc_indices = set()
+        for b in blocks.values():
+            if (
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][0] == "slot type"
+            ):
+                index, item = b["inputs"].get("INDEX"), b["inputs"].get("ITEM")
+                if (
+                    index
+                    and index[0] == 1
+                    and item
+                    and item[0] == 1
+                    and int(float(item[1][1])) == director.SHOT_TYPE
+                ):
+                    alloc_indices.add(int(float(index[1][1])))
+        if alloc_indices != {37, 38, 39}:
+            failures.add("shot-alloc-three-slots")
+
+        # The spawn (create clone) AND the reload reset live only inside a branch guarded
+        # by `alloc result > 0` — reload is consumed only on a successful allocation.
+        guard_ok = False
+        for b in blocks.values():
+            if b["opcode"] != "control_if":
+                continue
+            condition = b["inputs"].get("CONDITION")
+            if not condition or condition[0] != 2:
+                continue
+            guard = blocks[condition[1]]
+            operand1 = guard["inputs"].get("OPERAND1") if guard["inputs"] else None
+            if (
+                guard["opcode"] == "operator_gt"
+                and operand1
+                and operand1[0] == 3
+                and isinstance(operand1[1], list)
+                and operand1[1][1] == "alloc result"
+            ):
+                substack = b["inputs"].get("SUBSTACK")
+                branch = chain_ops(substack[1]) if substack else []
+                spawns = any(o["opcode"] == "control_create_clone_of" for o in branch)
+                resets_reload = any(
+                    o["opcode"] == "data_setvariableto"
+                    and o["fields"]["VARIABLE"][0] == "blaster reload"
+                    and o["inputs"]["VALUE"] == [1, [4, 0]]
+                    for o in branch
+                )
+                if spawns and resets_reload:
+                    guard_ok = True
+        if not guard_ok:
+            failures.add("fire-consumes-reload-only-on-alloc")
+
+        # The clone frees its slot (type -> 0 at its own `clone slot`) and deletes.
+        frees_slot = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][0] == "slot type"
+            and b["inputs"].get("ITEM") == [1, [4, 0]]
+            and (b["inputs"].get("INDEX") or [None, None])[0] == 3
+            and isinstance((b["inputs"]["INDEX"])[1], list)
+            and b["inputs"]["INDEX"][1][1] == "clone slot"
+            for b in blocks.values()
+        )
+        deletes = any(
+            b["opcode"] == "control_delete_this_clone" for b in blocks.values()
+        )
+        if not (frees_slot and deletes):
+            failures.add("clone-frees-slot")
+        return failures
+
+    def test_player_shot_cap_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._shot_cap_failures(project))
+
+    def test_player_shot_cap_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._shot_cap_failures(base))
+
+        def misplace_alloc(p: dict) -> None:
+            blaster = next(t for t in p["targets"] if t["name"] == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][0] == "slot type"
+                    and b["inputs"].get("ITEM") == [1, [4, director.SHOT_TYPE]]
+                    and b["inputs"]["INDEX"] == [1, [4, 37]]
+                ):
+                    b["inputs"]["INDEX"] = [1, [4, 50]]
+
+        def unguard_fire(p: dict) -> None:
+            # Point the fire guard at the reload counter instead of the alloc result —
+            # the spawn/reset-reload would no longer be gated on a successful allocation.
+            blaster = next(t for t in p["targets"] if t["name"] == "blaster")
+            for b in blaster["blocks"].values():
+                if b["opcode"] == "operator_gt":
+                    operand1 = b["inputs"].get("OPERAND1")
+                    if (
+                        operand1
+                        and operand1[0] == 3
+                        and isinstance(operand1[1], list)
+                        and operand1[1][1] == "alloc result"
+                    ):
+                        operand1[1][1] = "blaster reload"
+
+        def keep_slot(p: dict) -> None:
+            blaster = next(t for t in p["targets"] if t["name"] == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][0] == "slot type"
+                    and b["inputs"].get("ITEM") == [1, [4, 0]]
+                    and (b["inputs"].get("INDEX") or [None])[0] == 3
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, director.SHOT_TYPE]]
+
+        cases = [
+            ("shot-alloc-three-slots", misplace_alloc),
+            ("fire-consumes-reload-only-on-alloc", unguard_fire),
+            ("clone-frees-slot", keep_slot),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._shot_cap_failures(project), label)
+
     def test_slot_ranges_match_capacities(self) -> None:
         # The 64-slot map and its binding capacities (player-craft-and-weapons.md),
         # reproduced as generator constants; also pins the arcade 0xNN <-> index NN+1.
@@ -1838,7 +1975,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "5f6a8ac5987b2052e3afb6cae4177ac099ffabf17b14678bf9260f7b1726af02",
+            "2ccc575b674a609f9d83163242c408dbe372a8ca3dbb3a56fa942215b809e0ec",
             build_hash,
         )
 
