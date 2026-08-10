@@ -1872,6 +1872,226 @@ class ScratchProjectTests(unittest.TestCase):
         )
 
     @staticmethod
+    def _eco02_failures(project: dict) -> set:
+        """ECO-02 HUD render — clone spawning/dispatch, the score and high-score digit
+        costume-switch expressions, the craft/craft-changed life-icon wiring, the
+        flashing 1UP label, and the HUD's read-only invariant (structure only; the
+        arithmetic and on-screen layout are the operator's playtest)."""
+        failures = set()
+        hud = next(t for t in project["targets"] if t.get("name") == "hud")
+        blocks = hud["blocks"]
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        if not any(b["opcode"] == "control_create_clone_of" for b in blocks.values()):
+            failures.add("hud-spawns-clones")
+        if not any(b["opcode"] == "control_start_as_clone" for b in blocks.values()):
+            failures.add("hud-clone-handler")
+
+        # A digit clone's costume comes from a switch fed (walking up the reporter tree
+        # from a `score`/`high score` division) through floor -> mod -> ... -> the
+        # switch-costume block: floor(value / divisor) mod 10, joined into "digit/<n>".
+        def digit_costume_chain(var_id: str) -> bool:
+            for div in blocks.values():
+                if div["opcode"] != "operator_divide" or not refs(
+                    div["inputs"].get("OPERAND1"), var_id
+                ):
+                    continue
+                floor = blocks.get(div.get("parent"))
+                if (
+                    floor is None
+                    or floor["opcode"] != "operator_mathop"
+                    or floor["fields"].get("OPERATION", [None])[0] != "floor"
+                ):
+                    continue
+                mod = blocks.get(floor.get("parent"))
+                if mod is None or mod["opcode"] != "operator_mod":
+                    continue
+                cursor = mod.get("parent")
+                for _ in range(4):
+                    node = blocks.get(cursor)
+                    if node is None:
+                        break
+                    if node["opcode"] == "looks_switchcostumeto":
+                        return True
+                    cursor = node.get("parent")
+            return False
+
+        if not digit_costume_chain(director.SCORE_ID):
+            failures.add("score-digit-costume")
+        if not digit_costume_chain(director.HIGH_SCORE_ID):
+            failures.add("high-score-digit-costume")
+
+        if not any(
+            refs(value, director.LIVES_ID)
+            for b in blocks.values()
+            for value in b.get("inputs", {}).values()
+        ):
+            failures.add("craft-referenced")
+        if not any(
+            b["opcode"] == "event_whenbroadcastreceived"
+            and b["fields"].get("BROADCAST_OPTION", [None])[0] == "craft changed"
+            for b in blocks.values()
+        ):
+            failures.add("craft-changed-listener")
+
+        # A flashing "1UP" is a loop whose body both shows and hides.
+        def has_flash_loop() -> bool:
+            for b in blocks.values():
+                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                    continue
+                substack = b["inputs"].get("SUBSTACK")
+                if not substack:
+                    continue
+                cursor, opcodes = substack[1], set()
+                while cursor:
+                    node = blocks[cursor]
+                    opcodes.add(node["opcode"])
+                    cursor = node["next"]
+                if {"looks_show", "looks_hide"} <= opcodes:
+                    return True
+            return False
+
+        if not has_flash_loop():
+            failures.add("flashing-1up")
+
+        # Read-only invariant: every hud-owned variable write targets a hud-local id —
+        # never a Stage variable (score/high score/craft included). Reinforces (at the
+        # hud target specifically) the extended Stage-variable write-forbid guard above.
+        allowed = {
+            director.HUD_ROLE_ID,
+            director.HUD_PLACE_ID,
+            director.HUD_DIVISOR_ID,
+            director.HUD_LIFE_INDEX_ID,
+            director.HUD_IS_CLONE_ID,
+        }
+        writes = {
+            b["fields"].get("VARIABLE", [None, None])[1]
+            for b in blocks.values()
+            if b["opcode"] in {"data_setvariableto", "data_changevariableby"}
+        }
+        if not writes <= allowed:
+            failures.add("hud-writes-only-local")
+        return failures
+
+    def test_hud_render_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco02_failures(project))
+
+    def test_hud_render_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco02_failures(base))
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        def hud_blocks(p: dict) -> dict:
+            return next(t for t in p["targets"] if t.get("name") == "hud")["blocks"]
+
+        def break_spawn(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "control_create_clone_of":
+                    b["opcode"] = "control_create_clone_of_disabled"
+
+        def break_clone_handler(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "control_start_as_clone":
+                    b["opcode"] = "control_start_as_clone_disabled"
+
+        def break_score_digit(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("OPERAND1"), director.SCORE_ID
+                ):
+                    b["inputs"]["OPERAND1"] = [1, [4, 0]]
+
+        def break_high_score_digit(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("OPERAND1"), director.HIGH_SCORE_ID
+                ):
+                    b["inputs"]["OPERAND1"] = [1, [4, 0]]
+
+        def break_craft_reference(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                for key, value in list(b.get("inputs", {}).items()):
+                    if refs(value, director.LIVES_ID):
+                        b["inputs"][key] = [1, [4, 0]]
+
+        def break_craft_changed(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if (
+                    b["opcode"] == "event_whenbroadcastreceived"
+                    and b["fields"].get("BROADCAST_OPTION", [None])[0] == "craft changed"
+                ):
+                    b["fields"]["BROADCAST_OPTION"] = [
+                        "director stop",
+                        director.MESSAGES["director stop"],
+                    ]
+
+        def break_flash(p: dict) -> None:
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                    continue
+                substack = b["inputs"].get("SUBSTACK")
+                if not substack:
+                    continue
+                cursor, nodes = substack[1], []
+                opcodes = set()
+                while cursor:
+                    node = blocks[cursor]
+                    opcodes.add(node["opcode"])
+                    nodes.append(node)
+                    cursor = node["next"]
+                if {"looks_show", "looks_hide"} <= opcodes:
+                    for node in nodes:
+                        if node["opcode"] == "looks_hide":
+                            node["opcode"] = "looks_show"
+
+        def break_write_only_local(p: dict) -> None:
+            blocks = hud_blocks(p)
+            blocks["injected-hud-score-write"] = {
+                "opcode": "data_setvariableto",
+                "next": None,
+                "parent": None,
+                "inputs": {"VALUE": [1, [4, 0]]},
+                "fields": {"VARIABLE": ["score", director.SCORE_ID]},
+                "shadow": False,
+                "topLevel": False,
+            }
+
+        cases = [
+            ("hud-spawns-clones", break_spawn),
+            ("hud-clone-handler", break_clone_handler),
+            ("score-digit-costume", break_score_digit),
+            ("high-score-digit-costume", break_high_score_digit),
+            ("craft-referenced", break_craft_reference),
+            ("craft-changed-listener", break_craft_changed),
+            ("flashing-1up", break_flash),
+            ("hud-writes-only-local", break_write_only_local),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._eco02_failures(project), label)
+
+    @staticmethod
     def _rng_reseed_guard_scopes(project: dict) -> set:
         """The reset scopes that guard the `rng state` reseed (should be exactly the two
         world-reset scopes) — so seeded runs repeat and a mid-game reset never reseeds."""
@@ -2772,7 +2992,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "50d6203f5ce76dc39c4384628d55857a9c358cc36392ee5c56fe5674b2955311",
+            "5910cc0dffb7a22a4582b48c09926ec008171631ffff136a41d354400d000002",
             build_hash,
         )
 

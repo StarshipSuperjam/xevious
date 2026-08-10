@@ -12703,10 +12703,4393 @@
     {
       "isStage": false,
       "name": "hud",
-      "variables": {},
+      "variables": {
+        "hud-role": [
+          "hud role",
+          0
+        ],
+        "hud-place": [
+          "hud place",
+          0
+        ],
+        "hud-divisor": [
+          "hud divisor",
+          1
+        ],
+        "hud-life-index": [
+          "hud life index",
+          0
+        ],
+        "hud-is-clone": [
+          "hud is clone",
+          0
+        ]
+      },
       "lists": {},
       "broadcasts": {},
-      "blocks": {},
+      "blocks": {
+        "gd-hud-001": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-hud-002",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director stop",
+              "broadcastMsgId-director-stop"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 20
+        },
+        "gd-hud-002": {
+          "opcode": "control_stop",
+          "next": "gd-hud-003",
+          "parent": "gd-hud-001",
+          "inputs": {},
+          "fields": {
+            "STOP_OPTION": [
+              "other scripts in sprite",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "hasnext": "true"
+          }
+        },
+        "gd-hud-003": {
+          "opcode": "sound_stopallsounds",
+          "next": "gd-hud-004",
+          "parent": "gd-hud-002",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-004": {
+          "opcode": "control_delete_this_clone",
+          "next": "gd-hud-005",
+          "parent": "gd-hud-003",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-005": {
+          "opcode": "looks_hide",
+          "next": null,
+          "parent": "gd-hud-004",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-006": {
+          "opcode": "procedures_definition",
+          "next": "gd-hud-008",
+          "parent": null,
+          "inputs": {
+            "custom_block": [
+              1,
+              "gd-hud-007"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 170
+        },
+        "gd-hud-007": {
+          "opcode": "procedures_prototype",
+          "next": null,
+          "parent": "gd-hud-006",
+          "inputs": {},
+          "fields": {},
+          "shadow": true,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "hud spawn craft",
+            "argumentids": "[]",
+            "argumentnames": "[]",
+            "argumentdefaults": "[]",
+            "warp": "true"
+          }
+        },
+        "gd-hud-008": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-009",
+          "parent": "gd-hud-006",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                3
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-009": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-010",
+          "parent": "gd-hud-008",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud life index",
+              "hud-life-index"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-010": {
+          "opcode": "control_repeat",
+          "next": null,
+          "parent": "gd-hud-009",
+          "inputs": {
+            "TIMES": [
+              3,
+              [
+                12,
+                "craft",
+                "eco-craft"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-013"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-011": {
+          "opcode": "operator_mult",
+          "next": null,
+          "parent": "gd-hud-012",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud life index",
+                "hud-life-index"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                18
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-012": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-hud-013",
+          "inputs": {
+            "OPERAND1": [
+              1,
+              [
+                4,
+                -220
+              ]
+            ],
+            "OPERAND2": [
+              2,
+              "gd-hud-011"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-013": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-015",
+          "parent": "gd-hud-010",
+          "inputs": {
+            "X": [
+              2,
+              "gd-hud-012"
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                128
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-014": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-015",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-015": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-016",
+          "parent": "gd-hud-013",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-014"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-016": {
+          "opcode": "data_changevariableby",
+          "next": null,
+          "parent": "gd-hud-015",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud life index",
+              "hud-life-index"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-017": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-hud-161",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director enter",
+              "broadcastMsgId-director-enter"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 320
+        },
+        "gd-hud-018": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-019",
+          "parent": "gd-hud-161",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-019": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-020",
+          "parent": "gd-hud-018",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-020": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-022",
+          "parent": "gd-hud-019",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -136
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-021": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-022",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-022": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-023",
+          "parent": "gd-hud-020",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-021"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-023": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-024",
+          "parent": "gd-hud-022",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-024": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-025",
+          "parent": "gd-hud-023",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-025": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-027",
+          "parent": "gd-hud-024",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -150
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-026": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-027",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-027": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-028",
+          "parent": "gd-hud-025",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-026"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-028": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-029",
+          "parent": "gd-hud-027",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-029": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-030",
+          "parent": "gd-hud-028",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-030": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-032",
+          "parent": "gd-hud-029",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -164
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-031": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-032",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-032": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-033",
+          "parent": "gd-hud-030",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-031"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-033": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-034",
+          "parent": "gd-hud-032",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-034": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-035",
+          "parent": "gd-hud-033",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                3
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-035": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-037",
+          "parent": "gd-hud-034",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -178
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-036": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-037",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-037": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-038",
+          "parent": "gd-hud-035",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-036"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-038": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-039",
+          "parent": "gd-hud-037",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-039": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-040",
+          "parent": "gd-hud-038",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-040": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-042",
+          "parent": "gd-hud-039",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -192
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-041": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-042",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-042": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-043",
+          "parent": "gd-hud-040",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-041"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-043": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-044",
+          "parent": "gd-hud-042",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-044": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-045",
+          "parent": "gd-hud-043",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-045": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-047",
+          "parent": "gd-hud-044",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -206
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-046": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-047",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-047": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-048",
+          "parent": "gd-hud-045",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-046"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-048": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-049",
+          "parent": "gd-hud-047",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-049": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-050",
+          "parent": "gd-hud-048",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                6
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-050": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-052",
+          "parent": "gd-hud-049",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -220
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-051": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-052",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-052": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-053",
+          "parent": "gd-hud-050",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-051"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-053": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-054",
+          "parent": "gd-hud-052",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-054": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-055",
+          "parent": "gd-hud-053",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-055": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-057",
+          "parent": "gd-hud-054",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                64
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-056": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-057",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-057": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-058",
+          "parent": "gd-hud-055",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-056"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-058": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-059",
+          "parent": "gd-hud-057",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-059": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-060",
+          "parent": "gd-hud-058",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-060": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-062",
+          "parent": "gd-hud-059",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                50
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-061": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-062",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-062": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-063",
+          "parent": "gd-hud-060",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-061"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-063": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-064",
+          "parent": "gd-hud-062",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-064": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-065",
+          "parent": "gd-hud-063",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-065": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-067",
+          "parent": "gd-hud-064",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                36
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-066": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-067",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-067": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-068",
+          "parent": "gd-hud-065",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-066"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-068": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-069",
+          "parent": "gd-hud-067",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-069": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-070",
+          "parent": "gd-hud-068",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                3
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-070": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-072",
+          "parent": "gd-hud-069",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                22
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-071": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-072",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-072": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-073",
+          "parent": "gd-hud-070",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-071"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-073": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-074",
+          "parent": "gd-hud-072",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-074": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-075",
+          "parent": "gd-hud-073",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-075": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-077",
+          "parent": "gd-hud-074",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                8
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-076": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-077",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-077": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-078",
+          "parent": "gd-hud-075",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-076"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-078": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-079",
+          "parent": "gd-hud-077",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-079": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-080",
+          "parent": "gd-hud-078",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-080": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-082",
+          "parent": "gd-hud-079",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -6
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-081": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-082",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-082": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-083",
+          "parent": "gd-hud-080",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-081"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-083": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-084",
+          "parent": "gd-hud-082",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-084": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-085",
+          "parent": "gd-hud-083",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                6
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud place",
+              "hud-place"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-085": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-087",
+          "parent": "gd-hud-084",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -20
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                155
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-086": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-087",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-087": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-088",
+          "parent": "gd-hud-085",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-086"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-088": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-090",
+          "parent": "gd-hud-087",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-089": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-090",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/1",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-090": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-091",
+          "parent": "gd-hud-088",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-089"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-091": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-093",
+          "parent": "gd-hud-090",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -192
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-092": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-093",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-093": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-094",
+          "parent": "gd-hud-091",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-092"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-094": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-096",
+          "parent": "gd-hud-093",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-095": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-096",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/U",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-096": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-097",
+          "parent": "gd-hud-094",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-095"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-097": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-099",
+          "parent": "gd-hud-096",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -178
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-098": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-099",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-099": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-100",
+          "parent": "gd-hud-097",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-098"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-100": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-102",
+          "parent": "gd-hud-099",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-101": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-102",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/P",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-102": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-103",
+          "parent": "gd-hud-100",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-101"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-103": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-105",
+          "parent": "gd-hud-102",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -164
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-104": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-105",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-105": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-106",
+          "parent": "gd-hud-103",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-104"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-106": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-108",
+          "parent": "gd-hud-105",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-107": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-108",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/H",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-108": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-109",
+          "parent": "gd-hud-106",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-107"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-109": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-111",
+          "parent": "gd-hud-108",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -40
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-110": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-111",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-111": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-112",
+          "parent": "gd-hud-109",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-110"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-112": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-114",
+          "parent": "gd-hud-111",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-113": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-114",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/I",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-114": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-115",
+          "parent": "gd-hud-112",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-113"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-115": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-117",
+          "parent": "gd-hud-114",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -26
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-116": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-117",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-117": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-118",
+          "parent": "gd-hud-115",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-116"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-118": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-120",
+          "parent": "gd-hud-117",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-119": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-120",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/G",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-120": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-121",
+          "parent": "gd-hud-118",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-119"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-121": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-123",
+          "parent": "gd-hud-120",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                -12
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-122": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-123",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-123": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-124",
+          "parent": "gd-hud-121",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-122"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-124": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-126",
+          "parent": "gd-hud-123",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-125": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-126",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/H",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-126": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-127",
+          "parent": "gd-hud-124",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-125"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-127": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-129",
+          "parent": "gd-hud-126",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                2
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-128": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-129",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-129": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-130",
+          "parent": "gd-hud-127",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-128"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-130": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-132",
+          "parent": "gd-hud-129",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-131": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-132",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/S",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-132": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-133",
+          "parent": "gd-hud-130",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-131"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-133": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-135",
+          "parent": "gd-hud-132",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                30
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-134": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-135",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-135": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-136",
+          "parent": "gd-hud-133",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-134"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-136": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-138",
+          "parent": "gd-hud-135",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-137": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-138",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/C",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-138": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-139",
+          "parent": "gd-hud-136",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-137"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-139": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-141",
+          "parent": "gd-hud-138",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                44
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-140": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-141",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-141": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-142",
+          "parent": "gd-hud-139",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-140"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-142": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-144",
+          "parent": "gd-hud-141",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-143": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-144",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/O",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-144": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-145",
+          "parent": "gd-hud-142",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-143"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-145": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-147",
+          "parent": "gd-hud-144",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                58
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-146": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-147",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-147": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-148",
+          "parent": "gd-hud-145",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-146"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-148": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-150",
+          "parent": "gd-hud-147",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-149": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-150",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/R",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-150": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-151",
+          "parent": "gd-hud-148",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-149"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-151": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-153",
+          "parent": "gd-hud-150",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                72
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-152": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-153",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-153": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-154",
+          "parent": "gd-hud-151",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-152"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-154": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-156",
+          "parent": "gd-hud-153",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud role",
+              "hud-role"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-155": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-hud-156",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "glyph/E",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-156": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-hud-157",
+          "parent": "gd-hud-154",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-hud-155"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-157": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-hud-159",
+          "parent": "gd-hud-156",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                86
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                172
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-158": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-hud-159",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-hud-159": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-hud-160",
+          "parent": "gd-hud-157",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-hud-158"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-160": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-hud-159",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "hud spawn craft",
+            "argumentids": "[]",
+            "warp": "true"
+          }
+        },
+        "gd-hud-161": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-hud-017",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-162"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-018"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-162": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-hud-161",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-hud-163"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-163": {
+          "opcode": "operator_or",
+          "next": null,
+          "parent": "gd-hud-162",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-hud-164"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-hud-165"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-164": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-163",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-165": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-163",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "boot"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-166": {
+          "opcode": "control_start_as_clone",
+          "next": "gd-hud-167",
+          "parent": null,
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 470
+        },
+        "gd-hud-167": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-186",
+          "parent": "gd-hud-166",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud is clone",
+              "hud-is-clone"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-168": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-169",
+          "parent": "gd-hud-183",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud divisor",
+              "hud-divisor"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-169": {
+          "opcode": "control_repeat",
+          "next": "gd-hud-172",
+          "parent": "gd-hud-168",
+          "inputs": {
+            "TIMES": [
+              3,
+              [
+                12,
+                "hud place",
+                "hud-place"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-171"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-170": {
+          "opcode": "operator_mult",
+          "next": null,
+          "parent": "gd-hud-171",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud divisor",
+                "hud-divisor"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                10
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-171": {
+          "opcode": "data_setvariableto",
+          "next": null,
+          "parent": "gd-hud-169",
+          "inputs": {
+            "VALUE": [
+              3,
+              "gd-hud-170",
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud divisor",
+              "hud-divisor"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-172": {
+          "opcode": "control_repeat_until",
+          "next": "gd-hud-184",
+          "parent": "gd-hud-169",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-173"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-181"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-173": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-hud-172",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-hud-174"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-174": {
+          "opcode": "operator_or",
+          "next": null,
+          "parent": "gd-hud-173",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-hud-175"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-hud-176"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-175": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-174",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-176": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-174",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "boot"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-177": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-hud-178",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "score",
+                "eco-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              3,
+              [
+                12,
+                "hud divisor",
+                "hud-divisor"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-178": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-hud-179",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-hud-177"
+            ]
+          },
+          "fields": {
+            "OPERATION": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-179": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-hud-180",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-hud-178"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                10
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-180": {
+          "opcode": "operator_join",
+          "next": null,
+          "parent": "gd-hud-181",
+          "inputs": {
+            "STRING1": [
+              1,
+              [
+                10,
+                "digit/"
+              ]
+            ],
+            "STRING2": [
+              2,
+              "gd-hud-179"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-181": {
+          "opcode": "looks_switchcostumeto",
+          "next": null,
+          "parent": "gd-hud-172",
+          "inputs": {
+            "COSTUME": [
+              2,
+              "gd-hud-180"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-182": {
+          "opcode": "looks_gotofrontback",
+          "next": "gd-hud-183",
+          "parent": "gd-hud-186",
+          "inputs": {},
+          "fields": {
+            "FRONT_BACK": [
+              "front",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-183": {
+          "opcode": "looks_show",
+          "next": "gd-hud-168",
+          "parent": "gd-hud-182",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-184": {
+          "opcode": "looks_hide",
+          "next": "gd-hud-185",
+          "parent": "gd-hud-172",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-185": {
+          "opcode": "control_delete_this_clone",
+          "next": null,
+          "parent": "gd-hud-184",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-186": {
+          "opcode": "control_if",
+          "next": "gd-hud-206",
+          "parent": "gd-hud-167",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-187"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-182"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-187": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-186",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud role",
+                "hud-role"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-188": {
+          "opcode": "data_setvariableto",
+          "next": "gd-hud-189",
+          "parent": "gd-hud-203",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud divisor",
+              "hud-divisor"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-189": {
+          "opcode": "control_repeat",
+          "next": "gd-hud-192",
+          "parent": "gd-hud-188",
+          "inputs": {
+            "TIMES": [
+              3,
+              [
+                12,
+                "hud place",
+                "hud-place"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-191"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-190": {
+          "opcode": "operator_mult",
+          "next": null,
+          "parent": "gd-hud-191",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud divisor",
+                "hud-divisor"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                10
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-191": {
+          "opcode": "data_setvariableto",
+          "next": null,
+          "parent": "gd-hud-189",
+          "inputs": {
+            "VALUE": [
+              3,
+              "gd-hud-190",
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "hud divisor",
+              "hud-divisor"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-192": {
+          "opcode": "control_repeat_until",
+          "next": "gd-hud-204",
+          "parent": "gd-hud-189",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-193"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-201"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-193": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-hud-192",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-hud-194"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-194": {
+          "opcode": "operator_or",
+          "next": null,
+          "parent": "gd-hud-193",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-hud-195"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-hud-196"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-195": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-194",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-196": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-194",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "boot"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-197": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-hud-198",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "high score",
+                "eco-high-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              3,
+              [
+                12,
+                "hud divisor",
+                "hud-divisor"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-198": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-hud-199",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-hud-197"
+            ]
+          },
+          "fields": {
+            "OPERATION": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-199": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-hud-200",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-hud-198"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                10
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-200": {
+          "opcode": "operator_join",
+          "next": null,
+          "parent": "gd-hud-201",
+          "inputs": {
+            "STRING1": [
+              1,
+              [
+                10,
+                "digit/"
+              ]
+            ],
+            "STRING2": [
+              2,
+              "gd-hud-199"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-201": {
+          "opcode": "looks_switchcostumeto",
+          "next": null,
+          "parent": "gd-hud-192",
+          "inputs": {
+            "COSTUME": [
+              2,
+              "gd-hud-200"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-202": {
+          "opcode": "looks_gotofrontback",
+          "next": "gd-hud-203",
+          "parent": "gd-hud-206",
+          "inputs": {},
+          "fields": {
+            "FRONT_BACK": [
+              "front",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-203": {
+          "opcode": "looks_show",
+          "next": "gd-hud-188",
+          "parent": "gd-hud-202",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-204": {
+          "opcode": "looks_hide",
+          "next": "gd-hud-205",
+          "parent": "gd-hud-192",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-205": {
+          "opcode": "control_delete_this_clone",
+          "next": null,
+          "parent": "gd-hud-204",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-206": {
+          "opcode": "control_if",
+          "next": "gd-hud-210",
+          "parent": "gd-hud-186",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-207"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-202"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-207": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-206",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud role",
+                "hud-role"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-208": {
+          "opcode": "looks_gotofrontback",
+          "next": "gd-hud-209",
+          "parent": "gd-hud-210",
+          "inputs": {},
+          "fields": {
+            "FRONT_BACK": [
+              "front",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-209": {
+          "opcode": "looks_show",
+          "next": null,
+          "parent": "gd-hud-208",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-210": {
+          "opcode": "control_if",
+          "next": "gd-hud-225",
+          "parent": "gd-hud-206",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-211"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-208"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-211": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-210",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud role",
+                "hud-role"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                3
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-212": {
+          "opcode": "control_repeat_until",
+          "next": "gd-hud-223",
+          "parent": "gd-hud-222",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-213"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-217"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-213": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-hud-212",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-hud-214"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-214": {
+          "opcode": "operator_or",
+          "next": null,
+          "parent": "gd-hud-213",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-hud-215"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-hud-216"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-215": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-214",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-216": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-214",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "boot"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-217": {
+          "opcode": "control_repeat",
+          "next": "gd-hud-218",
+          "parent": "gd-hud-212",
+          "inputs": {
+            "TIMES": [
+              1,
+              [
+                4,
+                15
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-218": {
+          "opcode": "looks_hide",
+          "next": "gd-hud-219",
+          "parent": "gd-hud-217",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-219": {
+          "opcode": "control_repeat",
+          "next": "gd-hud-220",
+          "parent": "gd-hud-218",
+          "inputs": {
+            "TIMES": [
+              1,
+              [
+                4,
+                15
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-220": {
+          "opcode": "looks_show",
+          "next": null,
+          "parent": "gd-hud-219",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-221": {
+          "opcode": "looks_gotofrontback",
+          "next": "gd-hud-222",
+          "parent": "gd-hud-225",
+          "inputs": {},
+          "fields": {
+            "FRONT_BACK": [
+              "front",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-222": {
+          "opcode": "looks_show",
+          "next": "gd-hud-212",
+          "parent": "gd-hud-221",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-223": {
+          "opcode": "looks_hide",
+          "next": "gd-hud-224",
+          "parent": "gd-hud-212",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-224": {
+          "opcode": "control_delete_this_clone",
+          "next": null,
+          "parent": "gd-hud-223",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-225": {
+          "opcode": "control_if",
+          "next": "gd-hud-229",
+          "parent": "gd-hud-210",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-226"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-221"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-226": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-225",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud role",
+                "hud-role"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-227": {
+          "opcode": "looks_gotofrontback",
+          "next": "gd-hud-228",
+          "parent": "gd-hud-229",
+          "inputs": {},
+          "fields": {
+            "FRONT_BACK": [
+              "front",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-228": {
+          "opcode": "looks_show",
+          "next": null,
+          "parent": "gd-hud-227",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-229": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-hud-225",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-230"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-227"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-230": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-229",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud role",
+                "hud-role"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-231": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-hud-233",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "craft changed",
+              "broadcastMsgId-craft-changed"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 620
+        },
+        "gd-hud-232": {
+          "opcode": "control_delete_this_clone",
+          "next": null,
+          "parent": "gd-hud-233",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-233": {
+          "opcode": "control_if",
+          "next": "gd-hud-236",
+          "parent": "gd-hud-231",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-234"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-232"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-234": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-233",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud role",
+                "hud-role"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                3
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-235": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-hud-236",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "hud spawn craft",
+            "argumentids": "[]",
+            "warp": "true"
+          }
+        },
+        "gd-hud-236": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-hud-233",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-237"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-235"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-237": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-236",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "hud is clone",
+                "hud-is-clone"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        }
+      },
       "comments": {},
       "currentCostume": 0,
       "costumes": [

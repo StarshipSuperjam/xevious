@@ -88,7 +88,9 @@ class HudGlyphsTests(unittest.TestCase):
         project = json.loads(hg.PROJECT_PATH.read_text(encoding="utf-8"))
         hud = next(target for target in project["targets"] if target["name"] == hg.HUD_TARGET)
         self.assertFalse(hud["visible"])
-        self.assertEqual({}, hud["blocks"])
+        # hud_glyphs.py owns costumes only; the hud target's blocks (empty through the
+        # media-only commit, populated from the ECO-02 HUD-render commit on) are
+        # game_director.py's territory — see tests/test_scratch_project.py instead.
         self.assertEqual("don't rotate", hud["rotationStyle"])
         self.assertEqual(
             hg.COSTUME_ORDER,

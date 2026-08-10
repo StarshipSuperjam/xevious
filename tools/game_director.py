@@ -163,6 +163,47 @@ HIT_WINDOW_BACURA = (28, 40, 8, 16)
 # (one generator owns blocks, the other owns costumes, neither touches the other's field).
 HUD_TARGET = "hud"
 
+# ECO-02 HUD render (docs/mechanics/012). The hud sprite stays hidden and only ever spawns
+# clones; every clone's costume/position is display logic reading score/high score/craft — the
+# HUD never writes them (the existing director-variable write-forbid guard already spans every
+# non-Stage target, so it enforces this read-only invariant for free). All HUD state below is
+# sprite-local to the hud target, never a Stage variable.
+HUD_ROLE_ID = "hud-role"
+HUD_PLACE_ID = "hud-place"
+HUD_DIVISOR_ID = "hud-divisor"
+HUD_LIFE_INDEX_ID = "hud-life-index"
+HUD_IS_CLONE_ID = "hud-is-clone"
+# Role tags snapshotted into each clone at creation (the blaster clone-slot idiom): which of the
+# five clone kinds this clone is. 0 (unset) never matches any role, so it also doubles as the
+# original sprite's permanent "I am not a clone" marker for `hud is clone` gating.
+HUD_ROLE_SCORE_DIGIT = 1
+HUD_ROLE_HIGH_SCORE_DIGIT = 2
+HUD_ROLE_LIFE = 3
+HUD_ROLE_LABEL_1UP = 4
+HUD_ROLE_LABEL_HIGH_SCORE = 5
+HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
+HUD_DIGIT_SPACING = 14
+# Project-defined top-band layout (stage -240..240 x, -180..180 y, +y up); the operator
+# fine-tunes exact placement at playtest (no reference basis this commit — see ECO-02 record).
+HUD_SCORE_LEFT_X = -220  # place 6 (leftmost, most significant digit)
+HUD_SCORE_Y = 155
+HUD_HIGH_SCORE_LEFT_X = -20
+HUD_HIGH_SCORE_Y = 155
+HUD_LABEL_Y = 172
+HUD_1UP_LEFT_X = -192
+HUD_HIGH_SCORE_LABEL_LEFT_X = -40
+HUD_LIFE_LEFT_X = -220
+HUD_LIFE_Y = 128
+HUD_LIFE_SPACING = 18
+HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
+# (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
+HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
+HUD_HIGH_SCORE_LABEL = (
+    ("glyph/H", 0), ("glyph/I", 1), ("glyph/G", 2), ("glyph/H", 3),
+    ("glyph/S", 5), ("glyph/C", 6), ("glyph/O", 7), ("glyph/R", 8), ("glyph/E", 9),
+)
+HUD_SPAWN_CRAFT_PROCCODE = "hud spawn craft"
+
 # ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
 # one Stage `score` proc: add the pending award, pin at the 3-byte BCD ceiling, lift the
 # running high score, then run the bonus-life check. The `score` variable is written ONLY
@@ -375,6 +416,13 @@ class Blocks:
         }
         return block_id
 
+    def not_either_state(self, parent: str, left: str, right: str) -> str:
+        block_id = self.add("operator_not")
+        self.blocks[block_id]["parent"] = parent
+        either = self.either_state(block_id, left, right)
+        self.blocks[block_id]["inputs"] = {"OPERAND": [2, either]}
+        return block_id
+
     def either_scope(self, parent: str, left: str, right: str) -> str:
         block_id = self.add("operator_or")
         self.blocks[block_id]["parent"] = parent
@@ -445,6 +493,13 @@ class Blocks:
         self.substack(block_id, body)
         return block_id
 
+    def if_not_either_state(self, left: str, right: str, body: list[str]) -> str:
+        block_id = self.add("control_if")
+        condition = self.not_either_state(block_id, left, right)
+        self.blocks[block_id]["inputs"]["CONDITION"] = [2, condition]
+        self.substack(block_id, body)
+        return block_id
+
     def send(self, name: str, *, wait: bool = False) -> str:
         return self.add(
             "event_broadcastandwait" if wait else "event_broadcast",
@@ -476,6 +531,20 @@ class Blocks:
 
     def go(self, x: int, y: int) -> str:
         return self.add("motion_gotoxy", inputs={"X": number(x), "Y": number(y)})
+
+    def go_expr(self, x: Any, y: Any) -> str:
+        # Like go(), but X/Y accept a reporter (nested block id) or a value-input spec,
+        # for a position computed at runtime (e.g. a clone-spawn index).
+        block_id = self.add("motion_gotoxy")
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("X", x), ("Y", y)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
 
     def go_to_sprite(self, sprite: str) -> str:
         menu = self.add(
@@ -557,6 +626,13 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
+    def switch_costume_expr(self, reporter_id: str) -> str:
+        # Like switch_costume(), but the costume NAME is computed at runtime (a
+        # reporter, e.g. a joined "digit/<n>" string) instead of a fixed dropdown pick.
+        block_id = self.add("looks_switchcostumeto", inputs={"COSTUME": [2, reporter_id]})
+        self.blocks[reporter_id]["parent"] = block_id
+        return block_id
+
     def play_sound(self, sound: str) -> str:
         menu = self.add(
             "sound_sounds_menu", fields={"SOUND_MENU": [sound, None]}, shadow=True
@@ -579,6 +655,15 @@ class Blocks:
             inputs={"OPERAND1": variable(name, variable_id), "OPERAND2": number(value)},
         )
         self.blocks[block_id]["parent"] = parent
+        return block_id
+
+    def if_var_equals(
+        self, name: str, variable_id: str, value: int, body: list[str]
+    ) -> str:
+        block_id = self.add("control_if")
+        condition = self.var_equals(block_id, name, variable_id, value)
+        self.blocks[block_id]["inputs"]["CONDITION"] = [2, condition]
+        self.substack(block_id, body)
         return block_id
 
     def stop_others(self) -> str:
@@ -617,6 +702,18 @@ class Blocks:
 
     def op_eq(self, a: Any, b: Any) -> str:
         return self._reporter("operator_equals", a, b)
+
+    def op_join(self, a: Any, b: Any) -> str:
+        block_id = self.add("operator_join")
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("STRING1", a), ("STRING2", b)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
 
     def op_floor(self, operand: Any) -> str:
         block_id = self.add("operator_mathop", fields={"OPERATION": ["floor", None]})
@@ -1766,6 +1863,195 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def install_hud_spawn_craft(blocks: Blocks) -> None:
+    # ECO-02: (re)spawn one life/ship clone per remaining craft, left to right. A warp
+    # (atomic) block so the whole row appears in a single frame; called both by the
+    # initial director-enter spawn and again whenever `craft changed` fires (a bonus
+    # grant now, a death later), so the row always reflects the live `craft` count.
+    definition = _install_warp_proc(blocks, HUD_SPAWN_CRAFT_PROCCODE)
+    set_role = blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LIFE))
+    set_index = blocks.set_var("hud life index", HUD_LIFE_INDEX_ID, number(0))
+    loop = blocks.add("control_repeat", inputs={"TIMES": variable("craft", LIVES_ID)})
+    x_expr = blocks.op_add(
+        number(HUD_LIFE_LEFT_X),
+        blocks.op_mul(
+            variable("hud life index", HUD_LIFE_INDEX_ID), number(HUD_LIFE_SPACING)
+        ),
+    )
+    go = blocks.go_expr(x_expr, number(HUD_LIFE_Y))
+    create = blocks.create_clone()
+    advance = blocks.change_var("hud life index", HUD_LIFE_INDEX_ID, 1)
+    blocks.substack(loop, [go, create, advance])
+    blocks.chain(definition, [set_role, set_index, loop])
+
+
+def hud_blocks() -> dict[str, dict[str, Any]]:
+    # ECO-02 HUD render (docs/mechanics/012). The original hud sprite stays hidden and
+    # only ever spawns clones (three kinds, tagged by a snapshotted `hud role`): 7 score
+    # digits, 7 high-score digits, and a craft-sized row of life icons, plus two glyph
+    # labels ("1UP" flashing, "HIGH SCORE" static). Clones are cleared on every
+    # `director stop` (common_stop's clones=True) and rebuilt on `director enter`
+    # whenever the state is HUD-visible (anything but title/boot) — director stop always
+    # precedes director enter on every transition, so nothing ever double-stacks.
+    blocks = Blocks("hud")
+    common_stop(blocks, hide=True, clones=True)
+    install_hud_spawn_craft(blocks)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for place in range(HUD_DIGIT_PLACES):
+        x = HUD_SCORE_LEFT_X + (HUD_DIGIT_PLACES - 1 - place) * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_SCORE_DIGIT)),
+            blocks.set_var("hud place", HUD_PLACE_ID, number(place)),
+            blocks.go(x, HUD_SCORE_Y),
+            blocks.create_clone(),
+        ]
+    for place in range(HUD_DIGIT_PLACES):
+        x = HUD_HIGH_SCORE_LEFT_X + (HUD_DIGIT_PLACES - 1 - place) * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_HIGH_SCORE_DIGIT)),
+            blocks.set_var("hud place", HUD_PLACE_ID, number(place)),
+            blocks.go(x, HUD_HIGH_SCORE_Y),
+            blocks.create_clone(),
+        ]
+    for glyph, slot in HUD_1UP_LABEL:
+        x = HUD_1UP_LEFT_X + slot * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LABEL_1UP)),
+            blocks.switch_costume(glyph),
+            blocks.go(x, HUD_LABEL_Y),
+            blocks.create_clone(),
+        ]
+    for glyph, slot in HUD_HIGH_SCORE_LABEL:
+        x = HUD_HIGH_SCORE_LABEL_LEFT_X + slot * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LABEL_HIGH_SCORE)),
+            blocks.switch_costume(glyph),
+            blocks.go(x, HUD_LABEL_Y),
+            blocks.create_clone(),
+        ]
+    # The life-icon row is spawned by the shared proc below (also used on `craft changed`).
+    spawn_body.append(blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True))
+    gate = blocks.if_not_either_state("title", "boot", spawn_body)
+    blocks.chain(enter, [gate])
+
+    # Each clone snapshots its role (and, for digit clones, its place) at creation — the
+    # blaster clone-slot idiom — then dispatches on that role. `hud is clone` is marked
+    # here unconditionally, on every clone, so the original (which never runs this hat)
+    # stays the only instance where it reads 0 — the craft-changed handler below's "am I
+    # the original" gate.
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    mark_clone = blocks.set_var("hud is clone", HUD_IS_CLONE_ID, number(1))
+
+    def digit_role_body(var_name: str, var_id: str) -> list[str]:
+        # 10^place, computed once at clone start (place never changes for this clone).
+        set_divisor = blocks.set_var("hud divisor", HUD_DIVISOR_ID, number(1))
+        divisor_loop = blocks.add(
+            "control_repeat", inputs={"TIMES": variable("hud place", HUD_PLACE_ID)}
+        )
+        blocks.substack(
+            divisor_loop,
+            [
+                blocks.set_var_expr(
+                    "hud divisor",
+                    HUD_DIVISOR_ID,
+                    blocks.op_mul(variable("hud divisor", HUD_DIVISOR_ID), number(10)),
+                )
+            ],
+        )
+        # Every tick while HUD-visible: digit = floor(value / 10^place) mod 10, shown as
+        # leading-zero-preserving digit/D (deterministic integer math, arcade-faithful).
+        tick_loop = blocks.add("control_repeat_until")
+        tick_condition = blocks.not_either_state(tick_loop, "title", "boot")
+        blocks.blocks[tick_loop]["inputs"]["CONDITION"] = [2, tick_condition]
+        digit_expr = blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    variable(var_name, var_id), variable("hud divisor", HUD_DIVISOR_ID)
+                )
+            ),
+            number(10),
+        )
+        name_expr = blocks.op_join(text("digit/"), digit_expr)
+        blocks.substack(tick_loop, [blocks.switch_costume_expr(name_expr)])
+        return [
+            blocks.to_front(),
+            blocks.show(),
+            set_divisor,
+            divisor_loop,
+            tick_loop,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ]
+
+    score_role = blocks.if_var_equals(
+        "hud role", HUD_ROLE_ID, HUD_ROLE_SCORE_DIGIT, digit_role_body("score", SCORE_ID)
+    )
+    high_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_HIGH_SCORE_DIGIT,
+        digit_role_body("high score", HIGH_SCORE_ID),
+    )
+    life_role = blocks.if_var_equals(
+        "hud role", HUD_ROLE_ID, HUD_ROLE_LIFE, [blocks.to_front(), blocks.show()]
+    )
+    # 1UP: flashes (show/hide, held HUD_1UP_FLASH_HOLD_TICKS each way) for as long as the
+    # HUD is visible, epoch/state-safe via the same title/boot guard as the digit loops.
+    flash_loop = blocks.add("control_repeat_until")
+    flash_condition = blocks.not_either_state(flash_loop, "title", "boot")
+    blocks.blocks[flash_loop]["inputs"]["CONDITION"] = [2, flash_condition]
+    blocks.substack(
+        flash_loop,
+        [
+            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
+            blocks.hide(),
+            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
+            blocks.show(),
+        ],
+    )
+    label_1up_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LABEL_1UP,
+        [
+            blocks.to_front(),
+            blocks.show(),
+            flash_loop,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+    label_hs_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LABEL_HIGH_SCORE,
+        [blocks.to_front(), blocks.show()],
+    )
+    blocks.chain(
+        clone,
+        [mark_clone, score_role, high_role, life_role, label_1up_role, label_hs_role],
+    )
+
+    # ECO-03's bonus grant broadcasts `craft changed`; every life-icon clone deletes
+    # itself, and only the original (the sole instance where `hud is clone` stays 0)
+    # rebuilds the row from the live `craft` count via the shared spawn proc.
+    craft_changed = blocks.receive("craft changed")
+    delete_life = blocks.if_var_equals(
+        "hud role", HUD_ROLE_ID, HUD_ROLE_LIFE, [blocks.add("control_delete_this_clone")]
+    )
+    respawn = blocks.if_var_equals(
+        "hud is clone",
+        HUD_IS_CLONE_ID,
+        0,
+        [blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True)],
+    )
+    blocks.chain(craft_changed, [delete_life, respawn])
+
+    return blocks.blocks
+
+
 def _ensure_hud_target(project: dict[str, Any]) -> None:
     """Create or update the `hud` target's EXISTENCE and BLOCKS only.
 
@@ -1952,6 +2238,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "target_a": target_blocks("target_a", 15),
         "target_b": target_blocks("target_b", 2),
         "bomb": bomb_blocks(),
+        "hud": hud_blocks(),
     }
     for target in result["targets"]:
         if target["name"] in replacements:
@@ -1978,6 +2265,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         elif target["name"] == "area_01b":
             target["variables"] = target["variables"] | {
                 TERRAIN_STEP_B_ID: ["scroll step", 0]
+            }
+        elif target["name"] == "hud":
+            # ECO-02: all HUD state is sprite-local (never a Stage variable) — the role
+            # and place snapshotted into each clone at creation, the cached 10^place
+            # divisor, the life-icon spawn cursor, and the original-vs-clone marker.
+            target["variables"] = target["variables"] | {
+                HUD_ROLE_ID: ["hud role", 0],
+                HUD_PLACE_ID: ["hud place", 0],
+                HUD_DIVISOR_ID: ["hud divisor", 1],
+                HUD_LIFE_INDEX_ID: ["hud life index", 0],
+                HUD_IS_CLONE_ID: ["hud is clone", 0],
             }
     return result
 
