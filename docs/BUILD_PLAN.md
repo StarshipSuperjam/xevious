@@ -52,6 +52,18 @@ area scheduling or progression, difficulty, secrets, Andor Genesis, cabinet
 flow, or a completed game loop. Existing mechanics are retained where
 possible but remain partial until they meet a catalog acceptance criterion.
 
+**Movement slice (Part of #15).** The player-craft build issue (#15) is delivered as a
+commit series; its first installment is the *movement slice*. A single **spatial factor**
+(one stage-units-per-arcade-pixel scale) was tried for PLY-01/WPN-01/WPN-03 and **rejected** —
+the arcade playfield does not fit the 480×360 stage at any one scale without shrinking the play
+area or pushing the crosshair off screen. The slice instead **corrected the locked
+core-game-systems Units section** (a guardrail-ack write) to record movement speed, shot speed,
+and the crosshair lead as **independent port-tuned constants**, with the crosshair bounded by the
+craft↔crosshair coupling — the validated recovery-build (#13/#14) behavior, which this slice keeps
+unchanged. Its net new build content is a **dormant enemy-bullet allocator** and the collision
+hit-window data. Issue #15 stays **open**; its enemy/ground/life-gated criteria are delivered by
+the slices below.
+
 ## Architecture seams
 
 The architecture — the game director, area director, entity pool, collision groups, data tables,
@@ -84,10 +96,10 @@ operator-runnable Scratch check agree.
 | 5. Area clock and scheduler foundation | Monotonic terrain position, table representation, ordered event dispatch, area boundary seam, and one small schedule fixture. Depends on slices 2–3. | Position never rewinds during a life; fixture events fire once in order; transitions leave no old-area work. | Accelerate and pause the fixture around its boundaries. Record AREA-01 and AREA-02 foundation. |
 | 6. All normal area schedules and 1–16→7 trace | Import normal object schedules for all areas and the normal loop, using the slice-5 interfaces. Depends on slice 5. | Accelerated trace visits 1–16 then 7; no Super-only table, row, or unknown object is present. | Observe transition checkpoints and the 16→7 return. Record AREA-03 and AREA-04. |
 | 7. Shared RNG, difficulty, and formations | One advancing pseudo-random stream, normal settings, adaptive difficulty seam, fire-frequency interfaces, and normal formation data. Depends on slices 4–6. **SYS-04's stream itself was pulled forward into slice 3 (issue #14); slice 7 keeps difficulty, formations, and the first stream consumers.** | Seeded runs repeat; consumers share one stream; difficulty fixtures order correctly; formations preserve normal type/count/offset/order. | Replay seeded formation and pressure fixtures. Record DIF-01–03 and FORM-01. |
-| 8. Toroid vertical slice | Toroid formation, movement, animation, optional shot, bullets, blaster collision, score, player collision, explosion, and cleanup. Depends on slices 3–4 and 7. | A normal encounter completes through exit, score, or player death without test-only intervention. | Play both firing and non-firing seeded encounters. Record AIR-01 and relevant AIR-12 behavior. |
+| 8. Toroid vertical slice | Toroid formation, movement, animation, optional shot, bullets, blaster collision, score, player collision, explosion, and cleanup. Depends on slices 3–4 and 7. | A normal encounter completes through exit, score, or player death without test-only intervention. | Play both firing and non-firing seeded encounters. Record AIR-01, WPN-02 (blaster-to-air hit — deferred from the #15 movement slice), and relevant AIR-12 behavior. |
 | 9. Barra/Logram vertical slice | Placement, scrolling, reticle targeting, bomb travel/impact, reactions, scores, ground fire, and cleanup. Depends on slices 3–7. | Both normal encounters can be targeted, bombed, scored, survived, or lost end to end. | Play seeded Barra and Logram encounters. Record GND-01, GND-03, and completed WPN-03–05 behavior. |
 | 10. Torkan, Zoshi, Jara, Kapi, and Terrazi | First flying-family roster using the stable entity, formation, RNG, and difficulty interfaces. Depends on slice 8. | Each family fixture completes its distinct movement/fire/hit/exit path without new lifecycle seams. | Play one seeded fixture per family. Record AIR-02–06. |
-| 11. Zakato families, Sheonite, Spario, and Bacura | Remaining normal flying families and special paired/projectile/collision behavior. Depends on slices 8 and 10. | Variants stay distinct; paired entities leave no orphan; Bacura collision/resistance is isolated; full air fixture has no unknown type. | Play each family plus a mixed air-pressure fixture. Record AIR-07–11 and finish AIR-12. |
+| 11. Zakato families, Sheonite, Spario, and Bacura | Remaining normal flying families and special paired/projectile/collision behavior. Depends on slices 8 and 10. | Variants stay distinct; paired entities leave no orphan; Bacura collision/resistance is isolated; full air fixture has no unknown type. | Play each family plus a mixed air-pressure fixture. Record AIR-07–11, the WPN-01 Bacura shot-bounce (deferred from the #15 movement slice), and finish AIR-12. |
 | 12. Barra families, Zolbak, Logram, and Derota | First broader ground roster plus Zolbak difficulty effect. Depends on slice 9. | Variants react, fire, score, and clean up distinctly; Zolbak applies its effect once. | Play one seeded fixture per family and difficulty effect. Record GND-01–04. |
 | 13. Boza Logram, Grobda, and Domogram | Composite, land/water, targeting, patrol, fire, score, and cleanup variants. Depends on slice 12. | Composite parts coordinate; Grobda variants remain distinct; patrols and cleanup leave no stale actor. | Play composite and representative land/water/patrol fixtures. Record GND-05–07. |
 | 14. Sol Towers, Bonus Flags, and confirmed hidden events | Normal secret triggers, staged reveals, rewards, and only arcade-confirmed hidden presentation. Depends on slices 4, 6, 9, and 12. | Secrets reveal only under recorded conditions and award once; unconfirmed behavior remains visibly uncertain, not guessed. | Trigger, miss, and repeat each secret fixture. Record SEC-01–03. |

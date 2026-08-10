@@ -128,6 +128,29 @@ COLLISION_GROUPS = (
     (BACURA_SLOTS, _PLAYER),      # Bacura vs the player
 )
 
+# AIR-12 enemy-bullet pool foundation — DORMANT this slice (no firer). The 19 bullet slots
+# (40-58) already exist as a range and a collision-group member (#14); this slice adds the
+# allocator a firer will call, mirroring `alloc shot slot` but with its OWN result var (never
+# the blaster's). The aimed vector, ballistic movement, expiry margins, colour pulse, and the
+# slot x/y authoring are AIR-12's firing behaviour, owned by the air slice (slice 8); this
+# allocator may be REVISED there if aimed bullets seed a position/vector at allocation.
+BULLET_TYPE = 2  # enemy-bullet occupancy marker (SHOT_TYPE=1; per-entity codes grow by slice)
+BULLET_ALLOC_RESULT_ID = "bullet-alloc-result"
+# The allocator's own sweep cursor — deliberately NOT the shared `slot index`. A firer will
+# most naturally call `alloc bullet slot` from inside the `advance slots` per-slot dispatch,
+# which is itself sweeping on `slot index`; nesting two loops on one cursor would corrupt the
+# outer sweep (warp atomicity prevents inter-thread preemption, not same-variable reentrancy).
+BULLET_CURSOR_ID = "bullet-cursor"
+ALLOC_BULLET_PROCCODE = "alloc bullet slot"
+
+# PLY-02 collision hit windows, in the reference's half-pixel "shadow" units as
+# (y_bias, y_width, x_bias, x_width) — recorded now as DORMANT data (no detector this
+# slice). The collision slice converts shadow->pixel and applies the port scale; the
+# unit label lives here and in docs/mechanics/008 so that conversion is not lost. Two
+# windows: the shared enemy-bullet/flying-enemy window, and the distinct, larger Bacura one.
+HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
+HIT_WINDOW_BACURA = (28, 40, 8, 16)
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -855,6 +878,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_advance_slots(blocks)
     install_score(blocks)
     install_resolve_hit(blocks)
+    install_alloc_bullet_slot(blocks)
 
     flag = blocks.flag()
     blocks.chain(
@@ -1226,6 +1250,55 @@ def install_alloc_shot_slot(blocks: Blocks) -> None:
     blocks.chain(definition, body)
 
 
+def install_alloc_bullet_slot(blocks: Blocks) -> None:
+    # Allocate the first idle enemy-bullet slot (40-58): `bullet alloc result` becomes that
+    # index, or stays 0 when all 19 are live — the 19-bullet cap. Warp (atomic); a cursor
+    # sweep over the dedicated slots (19 of them, vs the shot allocator's 3). DORMANT this
+    # slice: no firer calls it (aimed-vector firing is AIR-12, slice 8). Its result var is
+    # its own, and so is its cursor (`bullet-cursor`, not the shared `slot index`) — so a
+    # firer can call this from inside the `advance slots` sweep without corrupting it.
+    definition = _install_warp_proc(blocks, ALLOC_BULLET_PROCCODE)
+    cursor = lambda: variable("bullet cursor", BULLET_CURSOR_ID)
+    reset_result = blocks.set_var(
+        "bullet alloc result", BULLET_ALLOC_RESULT_ID, number(0)
+    )
+    reset_cursor = blocks.set_var("bullet cursor", BULLET_CURSOR_ID, number(BULLET_SLOTS[0]))
+    loop = blocks.add(
+        "control_repeat",
+        inputs={"TIMES": number(BULLET_SLOTS[1] - BULLET_SLOTS[0] + 1)},
+    )
+    unallocated = blocks.op_eq(
+        variable("bullet alloc result", BULLET_ALLOC_RESULT_ID), number(0)
+    )
+    slot_free = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, cursor()), number(0)
+    )
+    condition = blocks.add("operator_and")
+    blocks.blocks[condition]["inputs"] = {
+        "OPERAND1": [2, unallocated],
+        "OPERAND2": [2, slot_free],
+    }
+    blocks.blocks[unallocated]["parent"] = condition
+    blocks.blocks[slot_free]["parent"] = condition
+    allocate = blocks.if_reporter(
+        condition,
+        [
+            blocks.list_replace(
+                "slot type", SLOT_TYPE_ID, cursor(), number(BULLET_TYPE)
+            ),
+            blocks.list_replace(
+                "slot state", SLOT_STATE_ID, cursor(), number(SLOT_ACTIVE)
+            ),
+            blocks.set_var(
+                "bullet alloc result", BULLET_ALLOC_RESULT_ID, cursor()
+            ),
+        ],
+    )
+    advance = blocks.change_var("bullet cursor", BULLET_CURSOR_ID, 1)
+    blocks.substack(loop, [allocate, advance])
+    blocks.chain(definition, [reset_result, reset_cursor, loop])
+
+
 def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("blaster")
     common_stop(blocks, hide=True, clones=True)
@@ -1518,6 +1591,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SLOT_INDEX_ID,
         TICK_ID,
         HIT_SLOT_ID,
+        BULLET_ALLOC_RESULT_ID,
+        BULLET_CURSOR_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -1547,6 +1622,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TICK_ID: ["tick", 0],
         # SYS-03 struck slot for the single-hit resolution path (set by a later detector).
         HIT_SLOT_ID: ["hit slot", 0],
+        # AIR-12 enemy-bullet allocator result and its own sweep cursor (dormant; both are
+        # the allocator's own, never shared with the blaster or the slot-sweep cursor).
+        BULLET_ALLOC_RESULT_ID: ["bullet alloc result", 0],
+        BULLET_CURSOR_ID: ["bullet cursor", 0],
     }
     owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID}
     preserved_lists = {

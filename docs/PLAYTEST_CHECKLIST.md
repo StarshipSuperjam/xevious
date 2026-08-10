@@ -14,7 +14,8 @@ python3 tools/scratch_project.py build
 ```
 
 then open `dist/Xevious.sb3` in Scratch 3. Controls today: **arrow keys** move, **Space** fires (and
-also starts from the title), **B** bombs; **D** and **G** are the temporary death fixtures — until
+also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
+(there is no separate crosshair control); **D** and **G** are the temporary death fixtures — until
 enemies exist, pressing **D** is how you trigger a death, and **G** a terminal death (both recorded in
 the spec's core game systems document).
 
@@ -40,6 +41,14 @@ terrain preserved across death, pending the life-economy work) — which is note
    interim divergence, noted above), and nothing from the previous life lingers.
 6. **Layering.** During busy play: shots and the craft render above the terrain (and enemies, once
    they exist); the frame borders never hide the ship.
-7. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
-8. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
+7. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,
+   and crosshair behavior of the recovery build (#13/#14) you approved — a single spatial factor was tried
+   and rejected, and this build tunes those quantities as port constants instead. Confirm the feel is back
+   to what you validated: the craft moves at its familiar speed and reaches every edge; the shot speed
+   reads well; and the crosshair **leads the ship, tracks it, and — this is the key fix — cannot leave the
+   top of the screen**: when it reaches the top border it stops there and the ship stops with it (the
+   crosshair also marks the bomb-drop point). If any of movement, bounds, shot, or the crosshair top-stop
+   feels wrong, that is a bug to report, not a decision to revisit.
+8. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
+9. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
    at a time, against the spec sections it cites.

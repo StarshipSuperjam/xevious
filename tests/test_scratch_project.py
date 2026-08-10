@@ -843,6 +843,8 @@ class ScratchProjectTests(unittest.TestCase):
             "slot index",
             "tick",
             "hit slot",
+            "bullet alloc result",
+            "bullet cursor",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         stage_variable_names = {name for name, _value in stage["variables"].values()}
@@ -1444,6 +1446,102 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(director.SOLVALOU_SLOT, 0x23 + 1)
         self.assertEqual(director.SHOT_SLOTS[0], 0x24 + 1)
         self.assertEqual(director.FLYING_SLOTS[1], 0x3F + 1)
+
+    def test_hit_windows_match_spec(self) -> None:
+        # PLY-02 collision hit windows (player-craft-and-weapons.md), in the reference's
+        # half-pixel "shadow" units as (y_bias, y_width, x_bias, x_width). Dormant data
+        # this slice; pinned to independent literals so a wrong window reddens here.
+        self.assertEqual(director.HIT_WINDOW_BULLET_FLYING, (8, 16, 4, 8))
+        self.assertEqual(director.HIT_WINDOW_BACURA, (28, 40, 8, 16))
+        # The bullet allocator's result var is its own, never the blaster's (no coupling).
+        self.assertNotEqual(director.BULLET_ALLOC_RESULT_ID, director.ALLOC_RESULT_ID)
+        self.assertEqual(director.BULLET_TYPE, 2)
+
+    def _enemy_bullet_pool_failures(self, project: dict) -> set:
+        # AIR-12 dormant allocator: defined on the Stage, sweeps the 19 bullet slots with
+        # its own result var, marks the bullet type — and is NOT called this slice (no
+        # firer). Structural only; the aimed vector/movement/pulse are the air slice.
+        fails = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        sblocks = stage["blocks"]
+        if not any(
+            b.get("opcode") == "procedures_prototype"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+            for b in sblocks.values()
+        ):
+            fails.add("bullet-alloc-defined")
+        called = any(
+            b.get("opcode") == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+            for t in project["targets"]
+            for b in t["blocks"].values()
+        )
+        if called:
+            fails.add("bullet-alloc-dormant")
+        if not any(
+            b.get("opcode") == "data_replaceitemoflist"
+            and b["fields"].get("LIST", [None])[0] == "slot type"
+            and b["inputs"].get("ITEM") == [1, [4, director.BULLET_TYPE]]
+            for b in sblocks.values()
+        ):
+            fails.add("bullet-type")
+        span = director.BULLET_SLOTS[1] - director.BULLET_SLOTS[0] + 1
+        if not any(
+            b.get("opcode") == "control_repeat"
+            and self._numeric(b["inputs"].get("TIMES")) == span
+            for b in sblocks.values()
+        ):
+            fails.add("bullet-cap")
+        if not any(
+            b.get("opcode") == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None])[0] == "bullet alloc result"
+            for b in sblocks.values()
+        ):
+            fails.add("bullet-result-var")
+        return fails
+
+    def test_enemy_bullet_pool_foundation(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._enemy_bullet_pool_failures(base))
+
+    def test_enemy_bullet_pool_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._enemy_bullet_pool_failures(base))
+
+        def stage_blocks_of(project):
+            return next(t for t in project["targets"] if t["isStage"])["blocks"]
+
+        def break_bullet_type(p):  # allocator writes the wrong occupancy type
+            b = next(
+                b
+                for b in stage_blocks_of(p).values()
+                if b.get("opcode") == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == "slot type"
+                and b["inputs"].get("ITEM") == [1, [4, director.BULLET_TYPE]]
+            )
+            b["inputs"]["ITEM"] = [1, [4, director.SHOT_TYPE]]
+
+        def break_bullet_cap(p):  # allocator sweeps the wrong number of slots
+            span = director.BULLET_SLOTS[1] - director.BULLET_SLOTS[0] + 1
+            b = next(
+                b
+                for b in stage_blocks_of(p).values()
+                if b.get("opcode") == "control_repeat"
+                and self._numeric(b["inputs"].get("TIMES")) == span
+            )
+            b["inputs"]["TIMES"] = [1, [4, span - 1]]
+
+        for label, corrupt in (
+            ("bullet-type", break_bullet_type),
+            ("bullet-cap", break_bullet_cap),
+        ):
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(
+                label,
+                self._enemy_bullet_pool_failures(project),
+                f"corruption '{label}' was not caught",
+            )
 
     def test_transition_cleanup_is_serialized_before_state_entry(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -2155,7 +2253,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "9d6624f7b8879a7d1deb6d3926ec631a4e6c3d69a8b537e95014215680eb605c",
+            "3726340fb369039b9e1b729614715550b33a450aba50407548656c659e9956fa",
             build_hash,
         )
 
