@@ -7,9 +7,14 @@
 // sprite collision, visibility, layering, audio, or feel. Those stay the operator's
 // playtest — see harness/README.md and docs/principles.md.
 //
-// Determinism comes from (1) the project's own fixed-seed arithmetic RNG and (2) driving
-// discrete `runtime._step()` calls (one step == one game tick) rather than letting the VM
-// free-run on a wall-clock loop. We never call vm.start().
+// Determinism here is of OUTCOMES, not of pacing. Scenarios assert on pacing-invariant
+// state — ceilings, sticky flags, reachability — plus the project's own fixed-seed RNG.
+// They do NOT assume a fixed number of ticks per call: with no renderer attached,
+// scratch-vm never sets `redrawRequested`, so the sequencer runs threads to their settling
+// point within a wall-clock budget — an unfixed, machine-speed-dependent number of internal
+// ticks per `_step()`, not one tick. Frame-accurate (one-tick) stepping needs a renderer or
+// a patched VM (what Whisker uses); this net deliberately does not depend on it, because
+// timing and feel are the operator playtest's job. We never call vm.start().
 import VM from 'scratch-vm';
 import { readFileSync, statSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -42,16 +47,21 @@ export async function loadBuild() {
   vm.setTurboMode(false);
   await vm.loadProject(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
   // We drive the sequencer by hand (never vm.start()), so the runtime's per-frame time
-  // budget is never initialised. Set it to the 30-TPS (compatibility) interval so the
-  // sequencer's WORK_TIME is a real number and each _step() runs a whole frame of thread
-  // work — matching stock Scratch 3's tick, and one _step() == one game tick.
+  // budget is never initialised. Set it so the sequencer's WORK_TIME (0.75 * currentStepTime)
+  // is a real number — otherwise it is NaN and threads never step at all. This bounds work by
+  // WALL CLOCK, not by tick count (see the header note on pacing).
   vm.runtime.currentStepTime = 1000 / 30;
   return vm;
 }
 
-/** Advance the runtime by whole ticks (one _step() == one game tick). */
-export function step(vm, ticks = 1) {
-  for (let i = 0; i < ticks; i += 1) vm.runtime._step();
+/**
+ * Pump the runtime `times` (each call is one `runtime._step()`). With no renderer, a single
+ * pump advances the game to a settling point — an unfixed number of internal ticks — so this
+ * is NOT a tick count. Scenarios pump until a pacing-invariant outcome holds, never to assert
+ * exact timing.
+ */
+export function step(vm, times = 1) {
+  for (let i = 0; i < times; i += 1) vm.runtime._step();
 }
 
 export function greenFlag(vm) {
@@ -66,14 +76,7 @@ export function keyUp(vm, key) {
   vm.postIOData('keyboard', { key, isDown: false });
 }
 
-/** Press a key, hold it for `ticks`, release. */
-export function holdKey(vm, key, ticks) {
-  keyDown(vm, key);
-  step(vm, ticks);
-  keyUp(vm, key);
-}
-
-/** Tap a key: down one tick, up one tick. */
+/** Tap a key: down one pump, up one pump. */
 export function tapKey(vm, key, { down = 1, up = 1 } = {}) {
   keyDown(vm, key);
   step(vm, down);

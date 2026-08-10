@@ -30,5 +30,3 @@ export function variable(id) {
   }
   return info;
 }
-
-export { manifest };

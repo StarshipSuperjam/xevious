@@ -25,11 +25,6 @@ export async function loadMutatedSource(mutate) {
   return vm;
 }
 
-/** Load the unmutated source project headless (baseline for the negative-fixture pair). */
-export function loadSource() {
-  return loadMutatedSource(() => {});
-}
-
 const stateOf = (vm) => readVar(vm, 'game-director-state');
 
 /** Green-flag to title, then press start and step until the game is playing. */

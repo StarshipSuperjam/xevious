@@ -1730,15 +1730,9 @@ def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
     constants = {
         # Player-shot cap: SHOT_SLOTS is an inclusive index range, so its width is the
         # ceiling the headless harness can observe (the touching-frame replenish it
-        # cannot — that stays the playtest's).
+        # cannot — that stays the playtest's). Only constants the harness actually consumes
+        # are emitted; a future scenario adds its own here rather than carrying dead keys.
         "shot_slot_count": SHOT_SLOTS[1] - SHOT_SLOTS[0] + 1,
-        "slot_count": SLOT_COUNT,
-        "reload_ticks": RELOAD_TICKS,
-        "ready_hold_ticks": READY_HOLD_TICKS,
-        "explosion_steps": EXPLOSION_STEPS,
-        "explosion_hold_ticks": EXPLOSION_HOLD_TICKS,
-        "post_death_pause_ticks": POST_DEATH_PAUSE_TICKS,
-        "rng_cold_start_seed": RNG_COLD_START_SEED,
     }
     return {
         "schema": MANIFEST_SCHEMA,

@@ -12,21 +12,22 @@ import {
   step,
   keyDown,
   keyUp,
-  holdKey,
   tapKey,
   readVar,
-  readVariable,
   cloneCount,
   constants,
 } from './harness.js';
 import { reachPlaying, stateOf } from './build.js';
 import * as mutate from './mutate.js';
 
+// Every read resolves through a manifest id (hard-errors on a rename), including the
+// scope-duplicated ones: `terrain-scroll-step-a` is area_01a's, distinct from area_01b's.
 const state = stateOf;
 const epoch = (vm) => readVar(vm, 'game-director-epoch');
 const outcome = (vm) => readVar(vm, 'game-director-death-outcome');
 const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
-const scrollA = (vm) => readVariable(vm, 'area_01a', 'scroll step');
+const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
+const shotSlotTypes = (vm) => readVar(vm, 'slot-type').slice(36, 39);
 
 export const SCENARIOS = [
   {
@@ -37,13 +38,12 @@ export const SCENARIOS = [
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       keyDown(vm, ' ');
       let maxClones = 0;
-      for (let i = 0; i < 50; i += 1) {
+      for (let i = 0; i < 15; i += 1) {
         step(vm, 1);
         maxClones = Math.max(maxClones, cloneCount(vm, 'blaster'));
       }
       keyUp(vm, ' ');
-      const shotSlots = readVariable(vm, 'Stage', 'slot type').slice(36, 39);
-      return { maxClones, shotSlots };
+      return { maxClones, shotSlots: shotSlotTypes(vm) };
     },
     assert(obs) {
       assert.equal(obs.maxClones, constants.shot_slot_count, 'shots on field hit the ceiling');
@@ -79,10 +79,11 @@ export const SCENARIOS = [
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Each pump advances the counter by hundreds, so a handful covers several full cycles.
       let prev = scrollA(vm);
       let increased = false;
       let wrapped = false;
-      for (let i = 0; i < 720; i += 1) {
+      for (let i = 0; i < 40; i += 1) {
         step(vm, 1);
         const v = scrollA(vm);
         if (v > prev) increased = true;

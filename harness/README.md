@@ -44,8 +44,13 @@ advances a pull request out of draft and never lets a playtest step be skipped.
   `tools/game_director.py`. The harness resolves ids through
   [`lib/identifiers.js`](lib/identifiers.js) and hard-errors on a missing id, so a
   generator rename becomes a red test, not a silent pass.
-- Determinism comes from the project's own fixed-seed RNG plus discrete stepping (one
-  `runtime._step()` == one tick). The harness never calls `vm.start()`.
+- Determinism is of *outcomes*, not pacing. With no renderer, one `runtime._step()`
+  advances the game to a settling point — an unfixed, machine-speed-dependent number of
+  internal ticks, not one tick — so scenarios assert pacing-invariant state (ceilings,
+  sticky flags, reachability), never exact timing. The project's own fixed-seed RNG
+  covers the random stream. Frame-accurate stepping would need a renderer or a patched VM
+  (what Whisker uses); this net deliberately does not depend on it. It never calls
+  `vm.start()`.
 
 ## Fidelity caveat
 
@@ -73,6 +78,6 @@ renderer the VM cannot build costume/sound skins, which does not affect logic.
 ## Adding coverage
 
 Authoring a scenario for a new VM-observable behavior is part of building that behavior,
-not a one-time seeding. New scenarios are declarative data in
-[`scenarios/`](scenarios); add the behavior's expected end-state there and a negative
-fixture proving that scenario's assertion actually bites.
+not a one-time seeding. Scenarios live in the catalog at
+[`lib/catalog.js`](lib/catalog.js); add the behavior's `drive`/`assert` and a
+`negativeMutation` proving that scenario's assertion actually bites.

@@ -92,7 +92,7 @@ own placeholder initials — a recorded deviation under the reference policy's i
 | The build's generated score, lives, bonus, and high-score data equal [data/scores.json](data/scores.json) | Data-table comparison over the build's Scratch lists | engine |
 | All scoring routes through one path in the block graph | Structural fixture over the built project | engine |
 | No object awards twice for one hit in play | Play: overlapping shots and bombs on one target award once | operator |
-| Bonus-life thresholds fire per the committed tables, including the disable and stop-after-two settings | Play at the relevant settings; fixture-automated when a runtime harness exists | operator |
+| Bonus-life thresholds fire per the committed tables, including the disable and stop-after-two settings | Play at the relevant settings; a runtime-harness candidate once the lives/scoring slice ships | operator |
 | The score caps at 9,999,990 | Play (or accelerated run) past the cap; the cap-quirk behaves as recorded | operator |
 | Destroying a known enemy shows the right score on screen | Play the built `.sb3`: bomb a Barra (100) and a Derota (1000); HUD reflects both | operator |
 | An extra craft is granted at the configured first threshold with its sound | Play to the first threshold and observe the award | operator |

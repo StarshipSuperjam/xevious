@@ -7,4 +7,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 python tools/scratch_project.py build
 cd harness
+# Install deps through the guarded path (never a bare `npm install`) if they are absent.
+[ -d node_modules ] || npm ci --ignore-scripts
 node --test

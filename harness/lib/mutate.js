@@ -49,23 +49,6 @@ export function freezeVariableChange(project, spriteName, varName) {
   if (!patched) throw new Error(`mutate: no 'change ${varName}' block on ${spriteName}`);
 }
 
-/** Scale a `repeat N` loop (matched by its literal count) on a sprite to a new count. */
-export function scaleRepeat(project, spriteName, fromTimes, toTimes) {
-  const t = target(project, spriteName);
-  let patched = 0;
-  for (const id of Object.keys(t.blocks)) {
-    const b = t.blocks[id];
-    if (b.opcode === 'control_repeat' && b.inputs.TIMES) {
-      const shadow = b.inputs.TIMES[1];
-      if (Array.isArray(shadow) && String(shadow[1]) === String(fromTimes)) {
-        b.inputs.TIMES = [1, [6, String(toTimes)]];
-        patched += 1;
-      }
-    }
-  }
-  if (!patched) throw new Error(`mutate: no 'repeat ${fromTimes}' on ${spriteName}`);
-}
-
 /** Change an `operator_equals` literal right-hand value on a sprite (breaks an == guard). */
 export function changeEqualsOperand(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);

@@ -1,13 +1,6 @@
 {
   "constants": {
-    "explosion_hold_ticks": 4,
-    "explosion_steps": 7,
-    "post_death_pause_ticks": 16,
-    "ready_hold_ticks": 30,
-    "reload_ticks": 10,
-    "rng_cold_start_seed": 19001,
-    "shot_slot_count": 3,
-    "slot_count": 64
+    "shot_slot_count": 3
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {
