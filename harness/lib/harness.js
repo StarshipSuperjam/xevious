@@ -41,6 +41,11 @@ export async function loadBuild() {
   const vm = new VM();
   vm.setTurboMode(false);
   await vm.loadProject(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  // We drive the sequencer by hand (never vm.start()), so the runtime's per-frame time
+  // budget is never initialised. Set it to the 30-TPS (compatibility) interval so the
+  // sequencer's WORK_TIME is a real number and each _step() runs a whole frame of thread
+  // work — matching stock Scratch 3's tick, and one _step() == one game tick.
+  vm.runtime.currentStepTime = 1000 / 30;
   return vm;
 }
 
