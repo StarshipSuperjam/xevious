@@ -44,6 +44,90 @@ EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (
 POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
 READY_HOLD_TICKS = 30  # project-defined READY beat (no reference basis; core-game-systems)
 
+# SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
+# normative record in docs/spec/data/rng.json (mirrored by tools/reference_extract.py
+# rng_step); they are cited, never restated here. `rng step` is a warp (atomic) Stage
+# custom block; `rng state` is the shared 16-bit seed and `rng out` its latest byte.
+# The other four are per-step working values (Scratch custom blocks have no locals, so
+# they are Stage variables) — machinery, not director state. No consumer draws from the
+# stream this slice; every consumer arrives with the enemy slices.
+RNG_STATE_ID = "rng-state"
+RNG_OUT_ID = "rng-out"
+RNG_HIGH_ID = "rng-high"
+RNG_NEW_LOW_ID = "rng-new-low"
+RNG_NEW_HIGH_ID = "rng-new-high"
+RNG_XFLAG_ID = "rng-extend-flag"
+RNG_PROCCODE = "rng step"
+# Project-defined cold-start seed: the spec records no arcade power-on seed yet, so this
+# is a project-defined placeholder (four-marker rule) pending that value. It only fixes
+# repeatability (seeded runs repeat); no consumer reads it this slice. Recorded in
+# docs/mechanics/004.
+RNG_COLD_START_SEED = 0x4A39
+
+# SYS-02 entity slot model. 64 fixed object slots; the arcade object slot 0xNN maps to
+# Scratch list index NN+1 (lists are 1-based). The ranges and capacities are recorded in
+# player-craft-and-weapons.md (their normative home) and reproduced here as generator
+# constants, with both columns, for traceability. Only `slot type` (0 = empty, skipped
+# by the walk) and `slot state` (0 idle / 1 active / 2 hit) exist this slice — the
+# position/age fields land with the first entity that authors them (centrally, in the
+# enemy slice; there is no position writer while the mirror is deferred).
+SLOT_TYPE_ID = "slot-type"
+SLOT_STATE_ID = "slot-state"
+SLOT_INDEX_ID = "slot-index"  # clear-slots loop cursor (machinery, not slot data)
+SLOT_COUNT = 64
+CLEAR_SLOTS_PROCCODE = "clear slots"
+#                       index lo..hi   arcade 0xNN..0xMM   capacity
+GROUND_SLOTS = (1, 16)  # ....... 1-16   0x00-0x0F ........ 16
+BACURA_SLOTS = (17, 32)  # ...... 17-32   0x10-0x1F ........ 16
+BOMB_TARGET_SLOT = 33  # ........ 33      0x20
+BOMB_SLOT = 34  # ............... 34      0x21
+CROSSHAIR_SLOT = 35  # .......... 35      0x22
+SOLVALOU_SLOT = 36  # ........... 36      0x23
+SHOT_SLOTS = (37, 39)  # ........ 37-39   0x24-0x26 ........ 3
+BULLET_SLOTS = (40, 58)  # ...... 40-58   0x27-0x39 ........ 19
+FLYING_SLOTS = (59, 64)  # ...... 59-64   0x3A-0x3F ........ 6
+
+# SYS-04 centralized ordered update (architecture.md key decision): the Stage walks the
+# slots in index order each tick as one ATOMIC (warp) pass — the shape that preserves
+# the reference's random-stream draw order (free-running per-clone threads are ruled out
+# for stream consumers). `tick` is the authoritative gameplay frame counter the future
+# area director builds on. Dormant this slice: no slot dispatches work and no consumer
+# draws from the stream, so the pass only advances the clock.
+TICK_ID = "tick"
+ADVANCE_SLOTS_PROCCODE = "advance slots"
+
+# SYS-02 player-shot capacity: at most 3 live shots, one per dedicated slot (37-39).
+# Allocation over those fixed slots is what binds the cap (audit A3, deferred here from
+# #13). SLOT_ACTIVE marks an allocated slot; SHOT_TYPE is the player-shot occupancy
+# marker (per-entity type codes arrive with the dispatch the enemy slice builds).
+SLOT_ACTIVE = 1
+SHOT_TYPE = 1
+ALLOC_RESULT_ID = "blaster-alloc-result"
+CLONE_SLOT_ID = "blaster-clone-slot"
+ALLOC_SHOT_PROCCODE = "alloc shot slot"
+
+# SYS-03 collision groups and single-hit resolution. Exactly five groups (below), no
+# others. A hit resolves exactly once through one path: `resolve hit` marks the struck
+# slot HIT and routes to the single `score` hook, so nothing can double-score.
+# FOUNDATION-ONLY / provisional skeleton: no enemy-side participant exists yet, so no
+# collision is detected — the per-group overlap detection and the exception verdicts are
+# delegated to the enemy/ground/boss/secrets slices (as the spec's SYS-03 exception
+# table delegates them). This slice lays the single-hit path and the group vocabulary.
+SLOT_HIT = 2
+HIT_SLOT_ID = "hit-slot"
+RESOLVE_HIT_PROCCODE = "resolve hit"
+SCORE_PROCCODE = "score"
+_PLAYER = (SOLVALOU_SLOT, SOLVALOU_SLOT)
+_BOMB = (BOMB_SLOT, BOMB_SLOT)
+# (attacker range, victim range) for each of the five groups (core-game-systems SYS-03).
+COLLISION_GROUPS = (
+    (SHOT_SLOTS, FLYING_SLOTS),   # player shots vs air enemies
+    (_BOMB, GROUND_SLOTS),        # bombs vs ground objects
+    (BULLET_SLOTS, _PLAYER),      # enemy shots vs the player
+    (FLYING_SLOTS, _PLAYER),      # air enemies vs the player
+    (BACURA_SLOTS, _PLAYER),      # Bacura vs the player
+)
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -407,6 +491,96 @@ class Blocks:
             mutation={"tagName": "mutation", "children": [], "hasnext": "true"},
         )
 
+    # Arithmetic reporters. Each operand is either a value-input spec (number()/
+    # variable()) or a nested reporter's block id (str); a nested reporter has its
+    # parent wired here so the tree serializes correctly.
+    def _reporter(self, opcode: str, operand1: Any, operand2: Any) -> str:
+        block_id = self.add(opcode)
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("OPERAND1", operand1), ("OPERAND2", operand2)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
+
+    def op_mod(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_mod", a, b)
+
+    def op_mul(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_mult", a, b)
+
+    def op_add(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_add", a, b)
+
+    def op_div(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_divide", a, b)
+
+    def op_eq(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_equals", a, b)
+
+    def op_floor(self, operand: Any) -> str:
+        block_id = self.add("operator_mathop", fields={"OPERATION": ["floor", None]})
+        if isinstance(operand, str):
+            self.blocks[block_id]["inputs"] = {"NUM": [2, operand]}
+            self.blocks[operand]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"NUM": operand}
+        return block_id
+
+    def set_var_expr(self, name: str, variable_id: str, reporter_id: str) -> str:
+        # Set a variable to a reporter expression (the [3, reporter, shadow] input
+        # shape, as install_transition_procedure uses for its argument reporters).
+        block_id = self.set_var(name, variable_id, [3, reporter_id, [10, ""]])
+        self.blocks[reporter_id]["parent"] = block_id
+        return block_id
+
+    def if_reporter(self, condition_id: str, body: list[str]) -> str:
+        block_id = self.add("control_if")
+        self.blocks[condition_id]["parent"] = block_id
+        self.blocks[block_id]["inputs"]["CONDITION"] = [2, condition_id]
+        self.substack(block_id, body)
+        return block_id
+
+    # Indexed list access (INDEX/ITEM operands take value-input specs or nested
+    # reporter block ids, wired like the arithmetic reporters above).
+    def list_replace(self, list_name: str, list_id: str, index: Any, item: Any) -> str:
+        block_id = self.add(
+            "data_replaceitemoflist", fields={"LIST": [list_name, list_id]}
+        )
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("INDEX", index), ("ITEM", item)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
+
+    def list_item(self, list_name: str, list_id: str, index: Any) -> str:
+        block_id = self.add("data_itemoflist", fields={"LIST": [list_name, list_id]})
+        if isinstance(index, str):
+            self.blocks[block_id]["inputs"] = {"INDEX": [2, index]}
+            self.blocks[index]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"INDEX": index}
+        return block_id
+
+    def call_proc(self, proccode: str, *, warp: bool) -> str:
+        return self.add(
+            "procedures_call",
+            mutation={
+                "tagName": "mutation",
+                "children": [],
+                "proccode": proccode,
+                "argumentids": "[]",
+                "warp": "true" if warp else "false",
+            },
+        )
+
 
 def install_transition_procedure(blocks: Blocks) -> None:
     definition = blocks.add("procedures_definition", top_level=True)
@@ -509,9 +683,178 @@ def install_transition_procedure(blocks: Blocks) -> None:
     )
 
 
+def install_rng_step(blocks: Blocks) -> None:
+    # SYS-04: one atomic (warp) advance of the shared 16-bit stream, mirroring
+    # tools/reference_extract.py rng_step exactly. Arithmetic only (Scratch has no
+    # bitwise ops); the golden test in tests/test_spec_docs.py interprets these very
+    # blocks against docs/spec/data/rng.json. No caller this slice.
+    definition = _install_warp_proc(blocks, RNG_PROCCODE)
+
+    state = lambda: variable("rng state", RNG_STATE_ID)
+    high = lambda: variable("rng high", RNG_HIGH_ID)
+
+    # high = floor(state / 256); new_low = (5*(state mod 256) + 1) mod 256 — both read
+    # the OLD state (rng state is rewritten last).
+    set_high = blocks.set_var_expr(
+        "rng high", RNG_HIGH_ID, blocks.op_floor(blocks.op_div(state(), number(256)))
+    )
+    new_low_expr = blocks.op_mod(
+        blocks.op_add(blocks.op_mul(number(5), blocks.op_mod(state(), number(256))), number(1)),
+        number(256),
+    )
+    set_new_low = blocks.set_var_expr("rng new low", RNG_NEW_LOW_ID, new_low_expr)
+
+    # extend flag: the low-byte wrap carry — 1 when new_low == 0 (i.e. 5*low mod 256 ==
+    # 255) — then forced to 1 when high bits 7 and 2 are equal (both set or both clear).
+    set_flag_zero = blocks.set_var("rng extend", RNG_XFLAG_ID, number(0))
+    carry_if = blocks.if_reporter(
+        blocks.op_eq(variable("rng new low", RNG_NEW_LOW_ID), number(0)),
+        [blocks.set_var("rng extend", RNG_XFLAG_ID, number(1))],
+    )
+    bit7 = blocks.op_mod(blocks.op_floor(blocks.op_div(high(), number(128))), number(2))
+    bit2 = blocks.op_mod(blocks.op_floor(blocks.op_div(high(), number(4))), number(2))
+    force_if = blocks.if_reporter(
+        blocks.op_eq(bit7, bit2),
+        [blocks.set_var("rng extend", RNG_XFLAG_ID, number(1))],
+    )
+
+    # new_high = (high*2 | extend) mod 256 (high*2 is even, so + is |); output = (new_low
+    # + new_high) mod 256; state = new_high*256 + new_low.
+    new_high_expr = blocks.op_mod(
+        blocks.op_add(
+            blocks.op_mul(high(), number(2)), variable("rng extend", RNG_XFLAG_ID)
+        ),
+        number(256),
+    )
+    set_new_high = blocks.set_var_expr("rng new high", RNG_NEW_HIGH_ID, new_high_expr)
+    out_expr = blocks.op_mod(
+        blocks.op_add(
+            variable("rng new low", RNG_NEW_LOW_ID),
+            variable("rng new high", RNG_NEW_HIGH_ID),
+        ),
+        number(256),
+    )
+    set_out = blocks.set_var_expr("rng out", RNG_OUT_ID, out_expr)
+    state_expr = blocks.op_add(
+        blocks.op_mul(variable("rng new high", RNG_NEW_HIGH_ID), number(256)),
+        variable("rng new low", RNG_NEW_LOW_ID),
+    )
+    set_state = blocks.set_var_expr("rng state", RNG_STATE_ID, state_expr)
+
+    blocks.chain(
+        definition,
+        [
+            set_high,
+            set_new_low,
+            set_flag_zero,
+            carry_if,
+            force_if,
+            set_new_high,
+            set_out,
+            set_state,
+        ],
+    )
+
+
+def install_clear_slots(blocks: Blocks) -> None:
+    # SYS-02: reset every object slot to empty/idle. A warp (atomic) block so the
+    # 64-slot sweep costs no ticks; run on every director reset (all scopes clear
+    # transient gameplay). Only `slot type` and `slot state` exist this slice.
+    definition = _install_warp_proc(blocks, CLEAR_SLOTS_PROCCODE)
+
+    cursor = lambda: variable("slot index", SLOT_INDEX_ID)
+    set_index = blocks.set_var("slot index", SLOT_INDEX_ID, number(1))
+    loop = blocks.add("control_repeat", inputs={"TIMES": number(SLOT_COUNT)})
+    blocks.substack(
+        loop,
+        [
+            blocks.list_replace("slot type", SLOT_TYPE_ID, cursor(), number(0)),
+            blocks.list_replace("slot state", SLOT_STATE_ID, cursor(), number(0)),
+            blocks.change_var("slot index", SLOT_INDEX_ID, 1),
+        ],
+    )
+    blocks.chain(definition, [set_index, loop])
+
+
+def install_advance_slots(blocks: Blocks) -> None:
+    # SYS-04 centralized ordered update: one atomic (warp) pass over the 64 slots in
+    # ascending index order, advancing the tick clock. Dispatch of each occupied slot's
+    # per-type behavior is deferred — no entity type acts this slice.
+    definition = _install_warp_proc(blocks, ADVANCE_SLOTS_PROCCODE)
+
+    cursor = lambda: variable("slot index", SLOT_INDEX_ID)
+    advance_tick = blocks.change_var("tick", TICK_ID, 1)
+    set_index = blocks.set_var("slot index", SLOT_INDEX_ID, number(1))
+    loop = blocks.add("control_repeat", inputs={"TIMES": number(SLOT_COUNT)})
+    is_empty = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, cursor()), number(0)
+    )
+    occupied = blocks.add("operator_not")
+    blocks.blocks[occupied]["inputs"] = {"OPERAND": [2, is_empty]}
+    blocks.blocks[is_empty]["parent"] = occupied
+    # ENGINE-TODO: per-type dispatch of each occupied slot lands with the enemy slice;
+    # today the ordered atomic pass visits occupied slots but has no per-type behavior.
+    dispatch = blocks.if_reporter(occupied, [])
+    blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
+    blocks.chain(definition, [advance_tick, set_index, loop])
+
+
+def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
+    """A no-argument warp custom-block definition; returns the definition id."""
+    definition = blocks.add("procedures_definition", top_level=True)
+    prototype = blocks.add(
+        "procedures_prototype",
+        shadow=True,
+        mutation={
+            "tagName": "mutation",
+            "children": [],
+            "proccode": proccode,
+            "argumentids": "[]",
+            "argumentnames": "[]",
+            "argumentdefaults": "[]",
+            "warp": "true",
+        },
+    )
+    blocks.blocks[definition]["inputs"] = {"custom_block": [1, prototype]}
+    blocks.blocks[prototype]["parent"] = definition
+    return definition
+
+
+def install_score(blocks: Blocks) -> None:
+    # SYS-03: the single scoring path everything routes through — so a hit can never
+    # double-score. Empty this slice; award / high-score / cap land with ECO-01.
+    _install_warp_proc(blocks, SCORE_PROCCODE)
+    # ENGINE-TODO: scoring (award, high score, 9,999,990 cap) lands with ECO-01; every
+    # future scoring route calls through this one `score` hook.
+
+
+def install_resolve_hit(blocks: Blocks) -> None:
+    # SYS-03: resolve one collision exactly once — mark the struck slot HIT and route to
+    # the single score path. The struck slot is `hit slot`, set by the detector that a
+    # later slice wires (the per-group overlap detection is delegated there).
+    definition = _install_warp_proc(blocks, RESOLVE_HIT_PROCCODE)
+    blocks.chain(
+        definition,
+        [
+            blocks.list_replace(
+                "slot state",
+                SLOT_STATE_ID,
+                variable("hit slot", HIT_SLOT_ID),
+                number(SLOT_HIT),
+            ),
+            blocks.call_proc(SCORE_PROCCODE, warp=True),
+        ],
+    )
+
+
 def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("stage")
     install_transition_procedure(blocks)
+    install_rng_step(blocks)
+    install_clear_slots(blocks)
+    install_advance_slots(blocks)
+    install_score(blocks)
+    install_resolve_hit(blocks)
 
     flag = blocks.flag()
     blocks.chain(
@@ -592,6 +935,37 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[bgm_menu]["parent"] = bgm
     blocks.substack(loop, [bgm])
     blocks.chain(enter, [blocks.if_state("playing", [start_sound, loop])])
+
+    # SYS-04 centralized ordered update: a second `director enter` thread (parallel to
+    # the BGM loop above) drives one `advance slots` atomic pass per tick while playing.
+    walk_enter = blocks.receive("director enter")
+    walk_loop = blocks.add("control_repeat_until")
+    walk_condition = blocks.not_state(walk_loop, "playing")
+    blocks.blocks[walk_loop]["inputs"]["CONDITION"] = [2, walk_condition]
+    blocks.substack(walk_loop, [blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True)])
+    blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
+
+    # A NEW Stage `director reset` receiver — kept out of the transition procedure body
+    # so its pinned opcode sequence stays byte-identical. `reset scope` is already set
+    # before the reset broadcast fires. It (SYS-02) clears the object slots on every
+    # reset — all reset scopes clear transient gameplay — and, on a world reset
+    # (cold-start / new-game), seeds the shared stream (SYS-04, so seeded runs repeat)
+    # and starts the frame clock at zero.
+    stage_reset = blocks.receive("director reset")
+    blocks.chain(
+        stage_reset,
+        [
+            blocks.call_proc(CLEAR_SLOTS_PROCCODE, warp=True),
+            reset_if(
+                blocks,
+                ("cold-start", "new-game"),
+                [
+                    blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED)),
+                    blocks.set_var("tick", TICK_ID, number(0)),
+                ],
+            ),
+        ],
+    )
     return blocks.blocks
 
 
@@ -814,9 +1188,48 @@ def terrain_blocks(
     return blocks.blocks
 
 
+def install_alloc_shot_slot(blocks: Blocks) -> None:
+    # Allocate the first idle player-shot slot (37-39): `alloc result` becomes that index,
+    # or stays 0 when all three are live — the structural 3-shot cap (audit A3). Warp
+    # (atomic), unrolled over the three dedicated slots (no cursor). Global slot lists.
+    definition = _install_warp_proc(blocks, ALLOC_SHOT_PROCCODE)
+
+    body = [blocks.set_var("alloc result", ALLOC_RESULT_ID, number(0))]
+    for index in range(SHOT_SLOTS[0], SHOT_SLOTS[1] + 1):
+        unallocated = blocks.op_eq(
+            variable("alloc result", ALLOC_RESULT_ID), number(0)
+        )
+        slot_free = blocks.op_eq(
+            blocks.list_item("slot type", SLOT_TYPE_ID, number(index)), number(0)
+        )
+        condition = blocks.add("operator_and")
+        blocks.blocks[condition]["inputs"] = {
+            "OPERAND1": [2, unallocated],
+            "OPERAND2": [2, slot_free],
+        }
+        blocks.blocks[unallocated]["parent"] = condition
+        blocks.blocks[slot_free]["parent"] = condition
+        body.append(
+            blocks.if_reporter(
+                condition,
+                [
+                    blocks.list_replace(
+                        "slot type", SLOT_TYPE_ID, number(index), number(SHOT_TYPE)
+                    ),
+                    blocks.list_replace(
+                        "slot state", SLOT_STATE_ID, number(index), number(SLOT_ACTIVE)
+                    ),
+                    blocks.set_var("alloc result", ALLOC_RESULT_ID, number(index)),
+                ],
+            )
+        )
+    blocks.chain(definition, body)
+
+
 def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("blaster")
     common_stop(blocks, hide=True, clones=True)
+    install_alloc_shot_slot(blocks)
     # Reset clears the reload counter (WPN-01: a fresh press fires at once) so holding
     # fire through death never delays the first post-respawn shot.
     reset = blocks.receive("director reset")
@@ -848,14 +1261,27 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         "OPERAND2": [2, ready],
     }
     blocks.blocks[fire_gate]["inputs"]["CONDITION"] = [2, space_and_ready]
-    blocks.substack(
-        fire_gate,
+    # A3 3-shot cap: allocate a shot slot first; only on success (a free slot) do we
+    # spawn AND consume the reload. If all three slots are live the reload is NOT reset,
+    # so fire happens the instant a slot frees — B1 cadence preserved, no clone/slot
+    # mismatch (every create_clone is dominated by a successful alloc).
+    alloc_call = blocks.call_proc(ALLOC_SHOT_PROCCODE, warp=True)
+    alloc_ok = blocks.add(
+        "operator_gt",
+        inputs={
+            "OPERAND1": variable("alloc result", ALLOC_RESULT_ID),
+            "OPERAND2": number(0),
+        },
+    )
+    spawn = blocks.if_reporter(
+        alloc_ok,
         [
             blocks.go_to_sprite("solvalou"),
             blocks.create_clone(),
             blocks.set_var("blaster reload", RELOAD_ID, number(0)),
         ],
     )
+    blocks.substack(fire_gate, [alloc_call, spawn])
     release_gate = blocks.add("control_if")
     not_pressed = blocks.add("operator_not")
     blocks.blocks[not_pressed]["parent"] = release_gate
@@ -892,13 +1318,29 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.add("looks_nextcostume"),
         ],
     )
+    # The clone snapshots `alloc result` (its allocated index) into its own `clone slot`
+    # at birth, and frees that slot on expiry — so every delete path returns the slot to
+    # the pool and the cap can never desync. (director stop / reset paths are covered by
+    # the Stage's clear-slots on every reset.)
     blocks.chain(
         clone,
         [
+            blocks.set_var(
+                "clone slot", CLONE_SLOT_ID, variable("alloc result", ALLOC_RESULT_ID)
+            ),
             blocks.to_front(),  # B9: shots render above the terrain
             blocks.show(),
             blocks.play_sound("blaster"),
             travel,
+            blocks.list_replace(
+                "slot type", SLOT_TYPE_ID, variable("clone slot", CLONE_SLOT_ID), number(0)
+            ),
+            blocks.list_replace(
+                "slot state",
+                SLOT_STATE_ID,
+                variable("clone slot", CLONE_SLOT_ID),
+                number(0),
+            ),
             blocks.add("control_delete_this_clone"),
         ],
     )
@@ -1061,10 +1503,26 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
 def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(project)
     stage = next(target for target in result["targets"] if target["isStage"])
+    owned_stage_variables = {
+        STATE_ID,
+        EPOCH_ID,
+        SCOPE_ID,
+        OUTCOME_ID,
+        BOMB_INFLIGHT_ID,
+        RNG_STATE_ID,
+        RNG_OUT_ID,
+        RNG_HIGH_ID,
+        RNG_NEW_LOW_ID,
+        RNG_NEW_HIGH_ID,
+        RNG_XFLAG_ID,
+        SLOT_INDEX_ID,
+        TICK_ID,
+        HIT_SLOT_ID,
+    }
     preserved_variables = {
         variable_id: value
         for variable_id, value in stage["variables"].items()
-        if variable_id not in {STATE_ID, EPOCH_ID, SCOPE_ID, OUTCOME_ID, BOMB_INFLIGHT_ID}
+        if variable_id not in owned_stage_variables
         and value[0] not in {"death", "stage"}
     }
     stage["variables"] = preserved_variables | {
@@ -1075,11 +1533,26 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # Shared weapon state — the one-bomb lockout the poller and the in-flight bomb
         # both read; cleared by every reset scope (bomb_blocks).
         BOMB_INFLIGHT_ID: ["bomb in flight", 0],
+        # SYS-04 shared stream: the seed, its latest output byte, and the four per-step
+        # working values (custom blocks have no locals). Cited to rng.json / SYS-04.
+        RNG_STATE_ID: ["rng state", 0],
+        RNG_OUT_ID: ["rng out", 0],
+        RNG_HIGH_ID: ["rng high", 0],
+        RNG_NEW_LOW_ID: ["rng new low", 0],
+        RNG_NEW_HIGH_ID: ["rng new high", 0],
+        RNG_XFLAG_ID: ["rng extend", 0],
+        # SYS-02 slot-sweep loop cursor (machinery, not slot data).
+        SLOT_INDEX_ID: ["slot index", 0],
+        # SYS-04 authoritative gameplay frame counter (advanced by the ordered pass).
+        TICK_ID: ["tick", 0],
+        # SYS-03 struck slot for the single-hit resolution path (set by a later detector).
+        HIT_SLOT_ID: ["hit slot", 0],
     }
+    owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID}
     preserved_lists = {
         list_id: value
         for list_id, value in stage["lists"].items()
-        if list_id != ALLOWED_ID
+        if list_id not in owned_lists
     }
     stage["lists"] = preserved_lists | {
         ALLOWED_ID: [
@@ -1094,7 +1567,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 "respawning -> playing",
                 "game-over -> title",
             ],
-        ]
+        ],
+        # SYS-02 object slots (index NN+1 = arcade slot 0xNN): type 0 = empty (skipped),
+        # state 0 = idle. Fixed length 64; alloc/free change entries, never length.
+        SLOT_TYPE_ID: ["slot type", [0] * SLOT_COUNT],
+        SLOT_STATE_ID: ["slot state", [0] * SLOT_COUNT],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 
@@ -1128,7 +1605,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             }
         elif target["name"] == "blaster":
             target["variables"] = target["variables"] | {
-                RELOAD_ID: ["blaster reload", RELOAD_TICKS]
+                RELOAD_ID: ["blaster reload", RELOAD_TICKS],
+                # Player-shot allocation result (cap gate) and each clone's own slot index.
+                ALLOC_RESULT_ID: ["alloc result", 0],
+                CLONE_SLOT_ID: ["clone slot", 0],
             }
         elif target["name"] == "area_01a":
             target["variables"] = target["variables"] | {

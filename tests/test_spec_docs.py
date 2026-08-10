@@ -8,9 +8,11 @@ provenance block, an honest license status present, and no dangling links in
 the spec corpus.
 """
 
+import copy
 import hashlib
 import importlib.util
 import json
+import math
 import re
 import unittest
 from pathlib import Path
@@ -247,6 +249,140 @@ class CrossTableInvariants(unittest.TestCase):
                 values = tables[key][table]
                 self.assertEqual(len(values), 8)
                 self.assertIsNone(values[7], f"{key}.{table} lost its disabled sentinel")
+
+
+PROJECT_JSON = ROOT / "src" / "xevious" / "project.json"
+
+
+def _stage_blocks(project):
+    stage = next(t for t in project["targets"] if t["isStage"])
+    return stage["blocks"]
+
+
+def _rng_step_first_statement(blocks):
+    """The first body statement of the emitted `rng step` custom block."""
+    proto_id = next(
+        (
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_prototype"
+            and b.get("mutation", {}).get("proccode") == "rng step"
+        ),
+        None,
+    )
+    assert proto_id is not None, "no `rng step` prototype in the built Stage"
+    assert blocks[proto_id]["mutation"].get("warp") == "true", "rng step must be a warp block"
+    for b in blocks.values():
+        if b["opcode"] == "procedures_definition":
+            custom = b["inputs"].get("custom_block")
+            if custom and custom[1] == proto_id:
+                return b["next"]
+    raise AssertionError("no `rng step` definition in the built Stage")
+
+
+def _eval_input(blocks, spec, env):
+    kind = spec[0]
+    if kind == 1:  # literal shadow: [1, [4|10, value]]
+        return int(float(spec[1][1]))
+    if kind == 2:  # a reporter block reference
+        return _eval_block(blocks, spec[1], env)
+    if kind == 3:  # [3, [12, name, id], shadow] variable, or [3, block_id, shadow]
+        inner = spec[1]
+        if isinstance(inner, list):
+            return env.get(inner[1], 0)
+        return _eval_block(blocks, inner, env)
+    raise AssertionError(f"unexpected input spec {spec!r}")
+
+
+def _eval_block(blocks, block_id, env):
+    block = blocks[block_id]
+    op = block["opcode"]
+    if op == "data_variable":
+        return env.get(block["fields"]["VARIABLE"][0], 0)
+    if op == "operator_mathop":
+        assert block["fields"]["OPERATION"][0] == "floor", "only floor is interpreted"
+        return math.floor(_eval_input(blocks, block["inputs"]["NUM"], env))
+    binary = {
+        "operator_add": lambda a, b: a + b,
+        "operator_subtract": lambda a, b: a - b,
+        "operator_mult": lambda a, b: a * b,
+        "operator_divide": lambda a, b: a / b,
+        "operator_mod": lambda a, b: a % b,
+        "operator_equals": lambda a, b: 1 if a == b else 0,
+    }
+    if op in binary:
+        left = _eval_input(blocks, block["inputs"]["OPERAND1"], env)
+        right = _eval_input(blocks, block["inputs"]["OPERAND2"], env)
+        return binary[op](left, right)
+    raise AssertionError(f"unexpected reporter opcode {op}")
+
+
+def _run_statements(blocks, first_id, env):
+    block_id = first_id
+    while block_id:
+        block = blocks[block_id]
+        op = block["opcode"]
+        if op == "data_setvariableto":
+            env[block["fields"]["VARIABLE"][0]] = _eval_input(
+                blocks, block["inputs"]["VALUE"], env
+            )
+        elif op == "control_if":
+            if _eval_input(blocks, block["inputs"]["CONDITION"], env):
+                substack = block["inputs"].get("SUBSTACK")
+                if substack:
+                    _run_statements(blocks, substack[1], env)
+        else:
+            raise AssertionError(f"unexpected statement opcode {op}")
+        block_id = block["next"]
+
+
+class GeneratedRngStep(unittest.TestCase):
+    """SYS-04: interpret the *emitted* `rng step` block graph against the committed
+    golden sequences — a check on the blocks that actually ship, not a parallel
+    Python function (which tests/test_spec_docs.py already covers via rng_step)."""
+
+    def _sequence(self, blocks, first, seed, length):
+        env = {"rng state": seed}
+        outputs = []
+        for _ in range(length):
+            _run_statements(blocks, first, env)
+            outputs.append(env["rng out"])
+        return outputs, env["rng state"]
+
+    def test_generated_rng_step_matches_committed_golden_sequences(self):
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        first = _rng_step_first_statement(blocks)
+        fixtures = json.loads((DATA / "rng.json").read_text())["generator"][
+            "fixture_sequences"
+        ]
+        for fixture in fixtures:
+            outputs, final = self._sequence(
+                blocks, first, fixture["seed"], len(fixture["outputs"])
+            )
+            self.assertEqual(outputs, fixture["outputs"], f"seed {fixture['seed']} outputs")
+            self.assertEqual(
+                final, fixture["final_state"], f"seed {fixture['seed']} final state"
+            )
+
+    def test_generated_rng_step_negative_fixture(self):
+        # Corrupt the emitted 5*low multiply to 4*low and prove the golden comparison
+        # reddens — the interpreter genuinely reads the shipped blocks.
+        blocks = copy.deepcopy(_stage_blocks(json.loads(PROJECT_JSON.read_text())))
+        first = _rng_step_first_statement(blocks)
+        mutated = False
+        for block in blocks.values():
+            if block["opcode"] == "operator_mult":
+                for slot in ("OPERAND1", "OPERAND2"):
+                    spec = block["inputs"].get(slot)
+                    if spec and spec[0] == 1 and int(float(spec[1][1])) == 5:
+                        block["inputs"][slot] = [1, [4, 4]]
+                        mutated = True
+        self.assertTrue(mutated, "expected a 5*low multiply in the rng step body")
+        fixture = json.loads((DATA / "rng.json").read_text())["generator"][
+            "fixture_sequences"
+        ][1]
+        outputs, _ = self._sequence(blocks, first, fixture["seed"], len(fixture["outputs"]))
+        self.assertNotEqual(outputs, fixture["outputs"])
 
 
 if __name__ == "__main__":

@@ -821,16 +821,32 @@ class ScratchProjectTests(unittest.TestCase):
     def test_game_director_has_one_stage_owned_transition_path(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         stage = next(target for target in project["targets"] if target["isStage"])
-        self.assertEqual(
-            {
-                "game state",
-                "state epoch",
-                "reset scope",
-                "death outcome",
-                "bomb in flight",
-            },
-            {name for name, _value in stage["variables"].values()},
-        )
+        # The director-state surface stays exactly these five — a tight guard against
+        # the Stage accumulating stray game state. SYS-04 adds a named allow-list of
+        # machinery variables (the shared stream's state, its output, and the four
+        # per-step working values a warp custom block cannot hold as locals); anything
+        # outside both sets is an unreviewed addition and fails here.
+        director_state_names = {
+            "game state",
+            "state epoch",
+            "reset scope",
+            "death outcome",
+            "bomb in flight",
+        }
+        machinery_names = {
+            "rng state",
+            "rng out",
+            "rng high",
+            "rng new low",
+            "rng new high",
+            "rng extend",
+            "slot index",
+            "tick",
+            "hit slot",
+        }
+        self.assertTrue(director_state_names.isdisjoint(machinery_names))
+        stage_variable_names = {name for name, _value in stage["variables"].values()}
+        self.assertEqual(director_state_names | machinery_names, stage_variable_names)
         self.assertEqual(
             [
                 "boot -> title",
@@ -849,14 +865,39 @@ class ScratchProjectTests(unittest.TestCase):
             for block in stage["blocks"].values()
             if block["opcode"] == "procedures_definition"
         ]
+
+        def _proccode(definition: dict) -> str:
+            prototype = stage["blocks"][definition["inputs"]["custom_block"][1]]
+            return prototype["mutation"]["proccode"]
+
+        # Exactly one Stage-owned transition procedure; every transition call routes
+        # through it. (The Stage also defines the SYS-04 `rng step` warp block, which is
+        # a reporter-free custom block with no caller this slice — not a transition.)
+        transition_definitions = [
+            block for block in definitions if _proccode(block) == director.PROCCODE
+        ]
+        self.assertEqual(1, len(transition_definitions))
         calls = [
             block
             for block in stage["blocks"].values()
             if block["opcode"] == "procedures_call"
         ]
-        self.assertEqual(1, len(definitions))
-        self.assertTrue(calls)
-        self.assertTrue(all(block["mutation"]["proccode"] == director.PROCCODE for block in calls))
+        # Every state transition routes through the one transition procedure; the only
+        # other Stage-owned calls are the SYS-02/04 machinery blocks (no state write).
+        transition_calls = [
+            block for block in calls if block["mutation"]["proccode"] == director.PROCCODE
+        ]
+        self.assertTrue(transition_calls)
+        allowed_proccodes = {
+            director.PROCCODE,
+            director.CLEAR_SLOTS_PROCCODE,
+            director.ADVANCE_SLOTS_PROCCODE,
+            director.RESOLVE_HIT_PROCCODE,
+            director.SCORE_PROCCODE,
+        }
+        self.assertTrue(
+            all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
+        )
 
         director_variable_ids = {
             director.STATE_ID,
@@ -873,6 +914,536 @@ class ScratchProjectTests(unittest.TestCase):
                 if block["opcode"] in {"data_setvariableto", "data_changevariableby"}
             }
             self.assertTrue(director_variable_ids.isdisjoint(writes), target["name"])
+
+    @staticmethod
+    def _sys02_slot_failures(project: dict) -> set:
+        """SYS-02 entity-slot machinery contract — the set of violated labels."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value for value in stage["lists"].values()}
+        for label, name in (
+            ("slot-type-list-64", "slot type"),
+            ("slot-state-list-64", "slot state"),
+        ):
+            entry = by_name.get(name)
+            if entry is None or len(entry[1]) != director.SLOT_COUNT:
+                failures.add(label)
+            elif any(item != 0 for item in entry[1]):
+                failures.add(label)
+        blocks = stage["blocks"]
+        clear_proto = next(
+            (
+                b
+                for b in blocks.values()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.CLEAR_SLOTS_PROCCODE
+            ),
+            None,
+        )
+        if clear_proto is None or clear_proto["mutation"].get("warp") != "true":
+            failures.add("clear-slots-warp-defined")
+        reset_receiver = any(
+            b["opcode"] == "event_whenbroadcastreceived"
+            and b["fields"]["BROADCAST_OPTION"][0] == "director reset"
+            for b in blocks.values()
+        )
+        calls_clear = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CLEAR_SLOTS_PROCCODE
+            for b in blocks.values()
+        )
+        if not (reset_receiver and calls_clear):
+            failures.add("reset-clears-slots")
+        return failures
+
+    def test_entity_slots_present_and_cleared(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys02_slot_failures(project))
+
+    def test_entity_slot_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys02_slot_failures(base))
+
+        def shrink_type_list(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for value in stage["lists"].values():
+                if value[0] == "slot type":
+                    value[1] = value[1][:-1]  # length 63
+
+        def unwarp_clear(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.CLEAR_SLOTS_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_clear_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.CLEAR_SLOTS_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        cases = [
+            ("slot-type-list-64", shrink_type_list),
+            ("clear-slots-warp-defined", unwarp_clear),
+            ("reset-clears-slots", drop_clear_call),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._sys02_slot_failures(project), label)
+
+    @staticmethod
+    def _central_walk_failures(project: dict) -> set:
+        """SYS-04 centralized ordered update contract — violated labels."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        proto_id = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode")
+                == director.ADVANCE_SLOTS_PROCCODE
+            ),
+            None,
+        )
+        if proto_id is None or blocks[proto_id]["mutation"].get("warp") != "true":
+            failures.add("advance-slots-warp")
+            return failures
+        definition = next(
+            (
+                b
+                for b in blocks.values()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto_id
+            ),
+            None,
+        )
+        increments_tick = False
+        repeat_times = None
+        cursor = definition["next"] if definition else None
+        while cursor:
+            block = blocks[cursor]
+            if (
+                block["opcode"] == "data_changevariableby"
+                and block["fields"]["VARIABLE"][0] == "tick"
+            ):
+                increments_tick = True
+            if block["opcode"] == "control_repeat":
+                times = block["inputs"].get("TIMES")
+                if times and times[0] == 1:
+                    repeat_times = int(float(times[1][1]))
+            cursor = block["next"]
+        if not increments_tick:
+            failures.add("walk-advances-tick")
+        if repeat_times != director.SLOT_COUNT:
+            failures.add("walk-sweeps-all-slots")
+        driven = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ADVANCE_SLOTS_PROCCODE
+            for b in blocks.values()
+        )
+        if not driven:
+            failures.add("walk-driven-while-playing")
+        return failures
+
+    def test_central_walk_is_atomic_ordered_pass(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._central_walk_failures(project))
+
+    def test_central_walk_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._central_walk_failures(base))
+
+        def unwarp_walk(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.ADVANCE_SLOTS_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def shrink_sweep(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            proto_id = next(
+                bid
+                for bid, b in stage["blocks"].items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode")
+                == director.ADVANCE_SLOTS_PROCCODE
+            )
+            definition = next(
+                b
+                for b in stage["blocks"].values()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto_id
+            )
+            cursor = definition["next"]
+            while cursor:
+                block = stage["blocks"][cursor]
+                if block["opcode"] == "control_repeat":
+                    block["inputs"]["TIMES"] = [1, [4, 32]]
+                cursor = block["next"]
+
+        def drop_tick(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"]["VARIABLE"][0] == "tick"
+                ):
+                    b["fields"]["VARIABLE"] = ["slot index", director.SLOT_INDEX_ID]
+
+        cases = [
+            ("advance-slots-warp", unwarp_walk),
+            ("walk-sweeps-all-slots", shrink_sweep),
+            ("walk-advances-tick", drop_tick),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._central_walk_failures(project), label)
+
+    @staticmethod
+    def _shot_cap_failures(project: dict) -> set:
+        """A3 player-shot 3-cap contract (behavioral, beyond the B1/B8 shape checks)."""
+        failures = set()
+        blaster = next(t for t in project["targets"] if t["name"] == "blaster")
+        blocks = blaster["blocks"]
+
+        def chain_ops(first_id):
+            ops, cursor = [], first_id
+            while cursor:
+                ops.append(blocks[cursor])
+                cursor = blocks[cursor]["next"]
+            return ops
+
+        # Allocation writes the shot marker to exactly the three dedicated slots.
+        alloc_indices = set()
+        for b in blocks.values():
+            if (
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][0] == "slot type"
+            ):
+                index, item = b["inputs"].get("INDEX"), b["inputs"].get("ITEM")
+                if (
+                    index
+                    and index[0] == 1
+                    and item
+                    and item[0] == 1
+                    and int(float(item[1][1])) == director.SHOT_TYPE
+                ):
+                    alloc_indices.add(int(float(index[1][1])))
+        if alloc_indices != {37, 38, 39}:
+            failures.add("shot-alloc-three-slots")
+
+        # The spawn (create clone) AND the reload reset live only inside a branch guarded
+        # by `alloc result > 0` — reload is consumed only on a successful allocation.
+        guard_ok = False
+        for b in blocks.values():
+            if b["opcode"] != "control_if":
+                continue
+            condition = b["inputs"].get("CONDITION")
+            if not condition or condition[0] != 2:
+                continue
+            guard = blocks[condition[1]]
+            operand1 = guard["inputs"].get("OPERAND1") if guard["inputs"] else None
+            if (
+                guard["opcode"] == "operator_gt"
+                and operand1
+                and operand1[0] == 3
+                and isinstance(operand1[1], list)
+                and operand1[1][1] == "alloc result"
+            ):
+                substack = b["inputs"].get("SUBSTACK")
+                branch = chain_ops(substack[1]) if substack else []
+                spawns = any(o["opcode"] == "control_create_clone_of" for o in branch)
+                resets_reload = any(
+                    o["opcode"] == "data_setvariableto"
+                    and o["fields"]["VARIABLE"][0] == "blaster reload"
+                    and o["inputs"]["VALUE"] == [1, [4, 0]]
+                    for o in branch
+                )
+                if spawns and resets_reload:
+                    guard_ok = True
+        if not guard_ok:
+            failures.add("fire-consumes-reload-only-on-alloc")
+
+        # The clone frees its slot (type -> 0 at its own `clone slot`) and deletes.
+        frees_slot = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][0] == "slot type"
+            and b["inputs"].get("ITEM") == [1, [4, 0]]
+            and (b["inputs"].get("INDEX") or [None, None])[0] == 3
+            and isinstance((b["inputs"]["INDEX"])[1], list)
+            and b["inputs"]["INDEX"][1][1] == "clone slot"
+            for b in blocks.values()
+        )
+        deletes = any(
+            b["opcode"] == "control_delete_this_clone" for b in blocks.values()
+        )
+        if not (frees_slot and deletes):
+            failures.add("clone-frees-slot")
+        return failures
+
+    def test_player_shot_cap_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._shot_cap_failures(project))
+
+    def test_player_shot_cap_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._shot_cap_failures(base))
+
+        def misplace_alloc(p: dict) -> None:
+            blaster = next(t for t in p["targets"] if t["name"] == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][0] == "slot type"
+                    and b["inputs"].get("ITEM") == [1, [4, director.SHOT_TYPE]]
+                    and b["inputs"]["INDEX"] == [1, [4, 37]]
+                ):
+                    b["inputs"]["INDEX"] = [1, [4, 50]]
+
+        def unguard_fire(p: dict) -> None:
+            # Point the fire guard at the reload counter instead of the alloc result —
+            # the spawn/reset-reload would no longer be gated on a successful allocation.
+            blaster = next(t for t in p["targets"] if t["name"] == "blaster")
+            for b in blaster["blocks"].values():
+                if b["opcode"] == "operator_gt":
+                    operand1 = b["inputs"].get("OPERAND1")
+                    if (
+                        operand1
+                        and operand1[0] == 3
+                        and isinstance(operand1[1], list)
+                        and operand1[1][1] == "alloc result"
+                    ):
+                        operand1[1][1] = "blaster reload"
+
+        def keep_slot(p: dict) -> None:
+            blaster = next(t for t in p["targets"] if t["name"] == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][0] == "slot type"
+                    and b["inputs"].get("ITEM") == [1, [4, 0]]
+                    and (b["inputs"].get("INDEX") or [None])[0] == 3
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, director.SHOT_TYPE]]
+
+        cases = [
+            ("shot-alloc-three-slots", misplace_alloc),
+            ("fire-consumes-reload-only-on-alloc", unguard_fire),
+            ("clone-frees-slot", keep_slot),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._shot_cap_failures(project), label)
+
+    @staticmethod
+    def _sys03_failures(project: dict) -> set:
+        """SYS-03 single-hit-resolution path — violated labels (foundation-only)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        # The one slot-state -> HIT write must live inside `resolve hit` (not merely
+        # exist somewhere on the Stage) — a hit resolves exactly once, through the one
+        # resolver.
+        resolve_proto = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode")
+                == director.RESOLVE_HIT_PROCCODE
+            ),
+            None,
+        )
+        resolve_body = set()
+        if resolve_proto is not None:
+            definition = next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_definition"
+                    and b["inputs"].get("custom_block", [None, None])[1] == resolve_proto
+                ),
+                None,
+            )
+            cursor = definition["next"] if definition else None
+            while cursor:
+                resolve_body.add(cursor)
+                cursor = blocks[cursor]["next"]
+        hit_writes = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][0] == "slot state"
+            and b["inputs"].get("ITEM") == [1, [4, director.SLOT_HIT]]
+        ]
+        if len(hit_writes) != 1 or hit_writes[0] not in resolve_body:
+            failures.add("single-hit-resolver")
+        score_calls = [
+            b
+            for b in blocks.values()
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+        ]
+        if len(score_calls) != 1:  # all scoring flows through the one path
+            failures.add("single-score-path")
+        defined = {
+            b["mutation"]["proccode"]
+            for b in blocks.values()
+            if b["opcode"] == "procedures_prototype"
+        }
+        if not {director.RESOLVE_HIT_PROCCODE, director.SCORE_PROCCODE} <= defined:
+            failures.add("resolution-path-defined")
+        return failures
+
+    def test_collision_single_hit_path(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys03_failures(project))
+
+    def test_collision_single_hit_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sys03_failures(base))
+
+        def double_score(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            call = next(
+                b
+                for b in stage["blocks"].values()
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            )
+            clone = copy.deepcopy(call)
+            stage["blocks"]["injected-second-score"] = clone
+
+        def skip_hit_write(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][0] == "slot state"
+                    and b["inputs"].get("ITEM") == [1, [4, director.SLOT_HIT]]
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, 0]]
+
+        cases = [
+            ("single-score-path", double_score),
+            ("single-hit-resolver", skip_hit_write),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._sys03_failures(project), label)
+
+    @staticmethod
+    def _rng_reseed_guard_scopes(project: dict) -> set:
+        """The reset scopes that guard the `rng state` reseed (should be exactly the two
+        world-reset scopes) — so seeded runs repeat and a mid-game reset never reseeds."""
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        # The reseed sets `rng state` to a literal (the cold-start seed); the rng-step
+        # block also writes `rng state`, but to a reporter expression — exclude it.
+        seed_ids = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "data_setvariableto"
+            and b["fields"]["VARIABLE"][0] == "rng state"
+            and b["inputs"].get("VALUE", [None])[0] == 1
+        ]
+        if len(seed_ids) != 1:
+            return set()
+        seed_id = seed_ids[0]
+        guard = None
+        for b in blocks.values():
+            if b["opcode"] != "control_if":
+                continue
+            substack = b["inputs"].get("SUBSTACK")
+            cursor = substack[1] if substack else None
+            while cursor:
+                if cursor == seed_id:
+                    guard = b
+                    break
+                cursor = blocks[cursor]["next"]
+            if guard:
+                break
+        if guard is None:
+            return set()
+        condition = blocks[guard["inputs"]["CONDITION"][1]]
+        if condition["opcode"] != "operator_or":
+            return set()
+        scopes = set()
+        for key in ("OPERAND1", "OPERAND2"):
+            equals = blocks[condition["inputs"][key][1]]
+            scopes.add(equals["inputs"]["OPERAND2"][1][1])
+        return scopes
+
+    def test_rng_reseed_scoped_to_world_reset(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(
+            {"cold-start", "new-game"}, self._rng_reseed_guard_scopes(project)
+        )
+        # Negative: widen the guard to new-life and the scope set no longer matches.
+        corrupted = copy.deepcopy(project)
+        stage = next(t for t in corrupted["targets"] if t["isStage"])
+        for b in stage["blocks"].values():
+            if (
+                b["opcode"] == "operator_equals"
+                and b["inputs"].get("OPERAND2", [None, [None, None]])[1][1] == "new-game"
+            ):
+                b["inputs"]["OPERAND2"][1][1] = "new-life"
+        self.assertNotEqual(
+            {"cold-start", "new-game"}, self._rng_reseed_guard_scopes(corrupted)
+        )
+
+    def test_collision_groups_match_spec(self) -> None:
+        # Exactly five groups, no others; each an (attacker range, victim range) over the
+        # recorded slot ranges (core-game-systems SYS-03).
+        groups = director.COLLISION_GROUPS
+        self.assertEqual(len(groups), 5)
+        # Independent literals (arcade slot 0xNN -> index NN+1), so the check pins the
+        # groups against the spec's five interactions, not against the generator's own
+        # constants that built the tuple.
+        self.assertEqual(
+            groups,
+            (
+                ((37, 39), (59, 64)),  # player shots (0x24-0x26) vs air enemies (0x3A-0x3F)
+                ((34, 34), (1, 16)),   # bomb (0x21) vs ground objects (0x00-0x0F)
+                ((40, 58), (36, 36)),  # enemy shots (0x27-0x39) vs player (0x23)
+                ((59, 64), (36, 36)),  # air enemies (0x3A-0x3F) vs player (0x23)
+                ((17, 32), (36, 36)),  # Bacura (0x10-0x1F) vs player (0x23)
+            ),
+        )
+
+    def test_slot_ranges_match_capacities(self) -> None:
+        # The 64-slot map and its binding capacities (player-craft-and-weapons.md),
+        # reproduced as generator constants; also pins the arcade 0xNN <-> index NN+1.
+        self.assertEqual(director.SLOT_COUNT, 64)
+        span = lambda r: r[1] - r[0] + 1
+        self.assertEqual(span(director.GROUND_SLOTS), 16)
+        self.assertEqual(span(director.BACURA_SLOTS), 16)
+        self.assertEqual(span(director.SHOT_SLOTS), 3)
+        self.assertEqual(span(director.BULLET_SLOTS), 19)
+        self.assertEqual(span(director.FLYING_SLOTS), 6)
+        self.assertEqual(director.GROUND_SLOTS[0], 0x00 + 1)
+        self.assertEqual(director.BOMB_SLOT, 0x21 + 1)
+        self.assertEqual(director.SOLVALOU_SLOT, 0x23 + 1)
+        self.assertEqual(director.SHOT_SLOTS[0], 0x24 + 1)
+        self.assertEqual(director.FLYING_SLOTS[1], 0x3F + 1)
 
     def test_transition_cleanup_is_serialized_before_state_entry(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -1584,7 +2155,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "538ea4efc4a90694a201eccc9f374aa8bddec02ca1a9c9afc2888910db45e632",
+            "9d6624f7b8879a7d1deb6d3926ec631a4e6c3d69a8b537e95014215680eb605c",
             build_hash,
         )
 
