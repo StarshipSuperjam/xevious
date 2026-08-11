@@ -24,6 +24,71 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "eco-award-value": {
+      "kind": "variable",
+      "name": "award value",
+      "scope": "Stage"
+    },
+    "eco-craft": {
+      "kind": "variable",
+      "name": "craft",
+      "scope": "Stage"
+    },
+    "eco-first-bonus-123": {
+      "kind": "list",
+      "name": "first bonus 123",
+      "scope": "Stage"
+    },
+    "eco-first-bonus-5": {
+      "kind": "list",
+      "name": "first bonus 5",
+      "scope": "Stage"
+    },
+    "eco-high-score": {
+      "kind": "variable",
+      "name": "high score",
+      "scope": "Stage"
+    },
+    "eco-high-score-table": {
+      "kind": "list",
+      "name": "high score table",
+      "scope": "Stage"
+    },
+    "eco-next-bonus": {
+      "kind": "variable",
+      "name": "next bonus",
+      "scope": "Stage"
+    },
+    "eco-qualified": {
+      "kind": "variable",
+      "name": "qualified",
+      "scope": "Stage"
+    },
+    "eco-repeat-bonus-123": {
+      "kind": "list",
+      "name": "repeat bonus 123",
+      "scope": "Stage"
+    },
+    "eco-repeat-bonus-5": {
+      "kind": "list",
+      "name": "repeat bonus 5",
+      "scope": "Stage"
+    },
+    "eco-score": {
+      "kind": "variable",
+      "name": "score",
+      "scope": "Stage"
+    },
+    "eco-starting-lives": {
+      "kind": "list",
+      "name": "starting lives",
+      "scope": "Stage"
+    },
+    "eco-value-table": {
+      "kind": "list",
+      "name": "value table",
+      "scope": "Stage"
+    },
     "game-director-allowed-transitions": {
       "kind": "list",
       "name": "allowed transitions",
@@ -53,6 +118,36 @@
       "kind": "variable",
       "name": "hit slot",
       "scope": "Stage"
+    },
+    "hud-divisor": {
+      "kind": "variable",
+      "name": "hud divisor",
+      "scope": "hud"
+    },
+    "hud-is-clone": {
+      "kind": "variable",
+      "name": "hud is clone",
+      "scope": "hud"
+    },
+    "hud-life-count": {
+      "kind": "variable",
+      "name": "hud life count",
+      "scope": "hud"
+    },
+    "hud-life-index": {
+      "kind": "variable",
+      "name": "hud life index",
+      "scope": "hud"
+    },
+    "hud-place": {
+      "kind": "variable",
+      "name": "hud place",
+      "scope": "hud"
+    },
+    "hud-role": {
+      "kind": "variable",
+      "name": "hud role",
+      "scope": "hud"
     },
     "rng-extend-flag": {
       "kind": "variable",
