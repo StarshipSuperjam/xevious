@@ -21,3 +21,14 @@
 # END engine-managed block: memory-substrate-ledger
 /dist/
 __pycache__/
+
+# macOS folder metadata
+.DS_Store
+
+# Local asset staging / reference — NOT committed. The build-ingested copies live
+# under assets/hud-font, assets/hud-sounds, assets/sprite-extraction, and assets/terrain
+# (each with a provenance record). These directories are the operator's local source
+# and reference material and stay out of the repo (see docs/REFERENCE_POLICY.md).
+/assets/background/
+/assets/sounds/
+/assets/hud-art/
