@@ -28,8 +28,10 @@ skipped, not failed — the mechanics catalog says what exists. **Dispositions a
 step passes; or it fails (the PR stays draft, the failure goes back with the item number); or it shows
 a **known recorded divergence** — behavior the spec explicitly records as an interim fixture — which is
 noted, not failed. (The former terrain-preserved-on-death fixture is retired: a new life now restarts
-the current area from its top, per the life-economy slice; the near-end checkpoint exception to that
-rule still waits on the area clock.)
+the current area from its top, per the life-economy slice, and the near-end checkpoint exception to that
+rule is now built in the area clock — a death in the final fifth of an area advances the area number
+instead of restarting. The visual terrain stays decoupled from the area clock at this foundation stage,
+so area position is read from the `area progress`/`area number` variable watchers, not the screen.)
 
 1. **Cold start.** Green flag: one title presentation (the logo entering as the spec's presentation
    document records), music once, no stray sprites. Press Space: one READY presentation, then play.
@@ -40,12 +42,19 @@ rule still waits on the area clock.)
    The release and impact presentations play. (Crosshair lock-over-target applies once ground objects
    exist.)
 4. **Terrain endurance.** Fly through at least two full terrain cycles (a minute or more): no black
-   gap, no frozen strip, no drift.
-5. **Repeated deaths.** Die several times in a row (today: press D; once killers exist, die to a
-   bullet, an enemy, and a Bacura): the full death presentation and sound complete uncut, the craft
-   respawns immediately vulnerable, the current area restarts from its top on the respawn, and nothing
-   from the previous life lingers. Draining the craft (repeated D, or G) reaches GAME OVER, holds, and
-   returns to the title; life icons in the HUD track the count.
+   gap, no frozen strip, no drift. Open the variable watcher for **`area progress`** and **`area
+   number`**: while you fly, `area progress` climbs steadily and **never rewinds**, and `area number`
+   ticks up when an area completes (the visual terrain is not yet driven by the clock, so this is a
+   variable-watcher check, not an on-screen one).
+5. **Repeated deaths and the near-end checkpoint.** Die several times in a row (today: press D; once
+   killers exist, die to a bullet, an enemy, and a Bacura): the full death presentation and sound
+   complete uncut, the craft respawns immediately vulnerable, and nothing from the previous life
+   lingers. Watch **`area number`** across each death: an **ordinary** death (early in an area)
+   restarts the current area from its top and **keeps** `area number`; a **near-end** death — dying in
+   roughly the final fifth of an area — **advances** `area number` by one instead (the checkpoint;
+   completing area 16 rolls to 7). With area-1-only art the screen can't show the difference, so
+   `area number` is the pass/fail signal. Draining the craft (repeated D, or G) reaches GAME OVER,
+   holds, and returns to the title; life icons in the HUD track the count.
 6. **Life economy — score, cap, bonus, HUD.** Press **S** repeatedly (or hold it) while playing: the
    score climbs, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it
    whenever the score passes it. Reach 20,000 → an extra craft is granted with its **extend** sound and

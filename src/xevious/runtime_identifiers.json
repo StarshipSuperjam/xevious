@@ -4,6 +4,31 @@
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {
+    "area-map-column": {
+      "kind": "list",
+      "name": "area map column",
+      "scope": "Stage"
+    },
+    "area-number": {
+      "kind": "variable",
+      "name": "area number",
+      "scope": "Stage"
+    },
+    "area-progress": {
+      "kind": "variable",
+      "name": "area progress",
+      "scope": "Stage"
+    },
+    "area-scroll-row": {
+      "kind": "variable",
+      "name": "scroll row",
+      "scope": "Stage"
+    },
+    "area-terrain-column": {
+      "kind": "variable",
+      "name": "terrain column",
+      "scope": "Stage"
+    },
     "blaster-alloc-result": {
       "kind": "variable",
       "name": "alloc result",
