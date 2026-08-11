@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Operator-checkout health — detect a stranded operator checkout AND offer a lossless un-stranding fix (#80).
+"""Operator-checkout health — detect a stranded operator checkout AND offer a lossless un-stranding fix (StarshipSuperjam/engine-template#80).
 
 The operator checkout — the top-level project folder the operator opens — is meant to sit on
 its branch with the engine files present; build runs in per-session worktrees, never in it (the
@@ -15,12 +15,12 @@ Design — the operator-checkout strand:
     `--git-common-dir` as a fallback) and read its state LOCALLY (one shared `_resolve_state`).
   - **Two binary BROKEN states, checked every boot, OFFLINE:** a detached `HEAD`; missing engine files
     (`.claude/settings.json`, `.engine/`) — `detect_strand`. These two stay TWO.
-  - **Off-main is the OFFLINE Stage-1 signal** — `detect_off_main` (#342). A healthy checkout PARKED on a
+  - **Off-main is the OFFLINE Stage-1 signal** — `detect_off_main` (StarshipSuperjam/engine-template#342). A healthy checkout PARKED on a
     non-default branch (the wrong-branch park) is caught on day one, before anything is even missing — the
     cheap-to-fix window. It fires only when the default branch is KNOWN with confidence (the persisted name or
     `origin/HEAD`), never on a heuristic guess, so a pre-persistence checkout raises no false standing nag.
-  - **Behind-the-main-line is one ONLINE snapshot** — `detect_behind_origin` (#335, widened branch-agnostic for
-    #342). Any upstream commit the checkout lacks is real drift, including squash/rebase/direct commits, and is
+  - **Behind-the-main-line is one ONLINE snapshot** — `detect_behind_origin` (StarshipSuperjam/engine-template#335, widened branch-agnostic for
+    StarshipSuperjam/engine-template#342). Any upstream commit the checkout lacks is real drift, including squash/rebase/direct commits, and is
     surfaced whether the checkout is on the default branch OR parked on a side branch. Merge velocity controls
     only presentation: ordinary drift is a calm notice; more than roughly one active day's missing merges is a
     firm warning. A tightly bounded refresh is mandatory before claiming current or offering a write. If the
@@ -48,6 +48,14 @@ Design — the operator-checkout strand:
     `checkout <default>` is defensive (never `-f`). Every destructive token stays forbidden (the tests
     source-scan for them, and behavioral tests
     pin that `catch_up` refuses divergence and `return_to_default` blocks on a paused operation).
+  - **Both corrections share a third, rescue-first arm for the first-run-strand case (`_rescue_then_reconcile`,
+    StarshipSuperjam/engine-template#810).** When the ONLY obstruction is uncommitted work whose every change is ALREADY present at the verified
+    target — a first-run transformation the reviewed upstream absorbed, which the plain lossless gate would
+    otherwise refuse forever — the arm commits the dirty tree to a RETAINED rescue branch FIRST, re-checks
+    subsumption on that commit, then advances the default and lands the target. Unlike the two gates above it
+    DOES switch branches (rescue then back), so here losslessness rests on the retained rescue branch, not on
+    'no branch switch'; a wrong subsumption call adopts the target while the full dirty tree stays recoverable.
+    A read-only pre-check (`_dirty_subsumed`) gates entry so genuine unrelated work still blocks as a true no-op.
   - **Fail-soft, never falsely current:** local strand detection remains quiet on unreadable state because a
     stranded checkout cannot reach the protected branch. Online checkout freshness is different: refresh or
     identity failure returns `unavailable`, which boot renders calmly and explicitly.
@@ -249,7 +257,7 @@ def detect_strand(cwd: str | None = None) -> dict | None:
     return {"states": states, "main": main}
 
 
-# ---- the un-stranding fix: lossless-or-it-does-not-run (issue #80) ------------------
+# ---- the un-stranding fix: lossless-or-it-does-not-run (issue StarshipSuperjam/engine-template#80) ------------------
 
 # Git operation-in-progress sentinels: a PAUSED merge / cherry-pick / revert / (interactive) rebase. Probed
 # via `git rev-parse --git-path` so a worktree's own git dir is honored. A paused `rebase -i` leaves
@@ -295,11 +303,11 @@ def _is_lossless(main: str) -> tuple[bool, list[str]]:
 
 def _persisted_default_branch(main: str) -> str | None:
     """The default-branch name the instantiator derived at first run and persisted as operator config in the
-    engine manifest (`<main>/.engine/engine.json`, key `default_branch` — #342). Read OFFLINE via the single
+    engine manifest (`<main>/.engine/engine.json`, key `default_branch` — StarshipSuperjam/engine-template#342). Read OFFLINE via the single
     recorded reader `repo_identity.default_branch`. None when absent/unreadable/malformed — the construction
     repo and any pre-persistence checkout have no such key, so the caller falls back to live resolution. The
     try/except keeps this read fail-SOFT (never raises) so the off-main classifier that anchors on it
-    degrades rather than crashes on an unreadable manifest (#567)."""
+    degrades rather than crashes on an unreadable manifest (StarshipSuperjam/engine-template#567)."""
     try:
         return repo_identity.default_branch(main)
     except Exception:  # noqa: BLE001 — preserve the swallow-all contract the off-main classifier relies on
@@ -311,7 +319,7 @@ def _confident_default_branch(main: str) -> str | None:
     (validated as an existing local branch, so a stale name can never mislead), else `origin/HEAD`'s target.
     None for the heuristic last resorts (a local main/master, or the sole branch) that `_default_branch` adds —
     off-main detection uses THIS so a pre-persistence checkout with no `origin/HEAD` raises no false standing
-    nag on a GUESSED default (#342 risk-S2)."""
+    nag on a GUESSED default (StarshipSuperjam/engine-template#342 risk-S2)."""
     persisted = _persisted_default_branch(main)
     if persisted and _run(["git", "-C", main, "rev-parse", "--verify", "--quiet", f"refs/heads/{persisted}"]):
         return persisted   # validated: an existing local branch — safe to anchor on (gate S3)
@@ -436,11 +444,11 @@ def unstrand(cwd: str | None = None, apply: bool = False) -> dict:
     return {"status": "fixed", "main": main, "rescue": rescue, "did": did, "applied": True}
 
 
-# ---- the off-main signal: offline Stage-1 wrong-branch park (#342) -------------------
+# ---- the off-main signal: offline Stage-1 wrong-branch park (StarshipSuperjam/engine-template#342) -------------------
 
 def detect_off_main(cwd: str | None = None) -> dict | None:
     """OFFLINE, READ-ONLY: is the operator's main checkout PARKED on a non-default branch (the wrong-branch
-    park — #342, the Stage-1 signal)? Returns {"state":"off-main","main","branch","main_branch"} when the
+    park — StarshipSuperjam/engine-template#342, the Stage-1 signal)? Returns {"state":"off-main","main","branch","main_branch"} when the
     checkout is on a branch that is NOT the default, is not detached, and is not a broken strand, AND the
     default branch is KNOWN with confidence (persisted / origin-HEAD) — else None. The confidence gate keeps a
     pre-persistence checkout with no `origin/HEAD` from raising a standing nag on a GUESSED default (risk-S2).
@@ -458,13 +466,13 @@ def detect_off_main(cwd: str | None = None) -> dict | None:
     return {"state": "off-main", "main": main, "branch": current, "main_branch": default}
 
 
-# ---- the absent update-home signal: the engine can't fetch its own updates (#367) ----
+# ---- the absent update-home signal: the engine can't fetch its own updates (StarshipSuperjam/engine-template#367) ----
 
 def detect_absent_home(cwd: str | None = None) -> dict | None:
     """OFFLINE, READ-ONLY: does this engine's manifest record NO update home (`home_repository`)? A repo
     generated before that coordinate shipped carries an installed engine that cannot fetch its own updates —
     the update path refuses rather than guess a home, and never falls back to this repo's own origin
-    (#367). Returns {"state":"absent-home","main"} when the manifest is present and readable but
+    (StarshipSuperjam/engine-template#367). Returns {"state":"absent-home","main"} when the manifest is present and readable but
     records no home, else None (no manifest / a broken strand / a home already recorded is the normal state).
     Offline by nature — telling that an update cannot be reached needs no network. boot OFFERS recording the
     home; the assistant records it on the operator's consent (the strand model)."""
@@ -600,6 +608,79 @@ def resolve_product_checkout(cwd: str | None = None) -> tuple[str | None, str | 
     return (None, "path-unset")                 # loud: target recorded, local path missing
 
 
+def engine_common_checkout(cwd: str | None = None) -> str | None:
+    """OFFLINE, READ-ONLY: the absolute path to THIS engine's DURABLE main checkout (the shared clone root),
+    resolved even when the session runs from a linked (harness) worktree. It is the single answer to "where is
+    the engine root" — reusing `_resolve_state`'s resolver, never a second `--git-common-dir` parse that could
+    drift from it. Returns None (fail-soft QUIET) when it cannot be resolved (git absent, a bare repo, either
+    query fails). The mechanic homes its per-build product worktrees under this root's
+    `.engine/mechanic/worktrees/`, so a build workspace lives in the durable clone and survives the teardown of
+    the harness session worktree that created it."""
+    st = _resolve_state(cwd)
+    return st[0] if st else None
+
+
+def confident_default_branch(checkout_path: str) -> str | None:
+    """OFFLINE, READ-ONLY: the default branch of the checkout at `checkout_path`, ONLY when known with
+    confidence (persisted-and-validated, else `origin/HEAD`) — never a heuristic guess. None when it cannot be
+    confidently determined, so a caller that cuts from `origin/<default>` fails closed rather than build off a
+    guessed base. A thin public seam over `_confident_default_branch` for the mechanic build entry."""
+    return _confident_default_branch(checkout_path)
+
+
+def detect_product_build_sprawl(cwd: str | None = None) -> dict | None:
+    """OFFLINE, READ-ONLY: the negative control for the worktree-isolated build model (StarshipSuperjam/engine-template#902).
+    Reports build workspaces of the product that are NOT the sanctioned kind — the sprawl the model exists to
+    end, so a regression is CAUGHT (boot surfaces it), not just prevented. Two shapes:
+      - `stray_worktrees` — worktrees of the product REGISTERED at a path OUTSIDE the mechanic's own
+        `.engine/mechanic/worktrees/` (a session that cut a worktree the old way, e.g. in the product's own
+        `.claude/worktrees/` or a `~/Developer` sibling);
+      - `sibling_clones` — separate CLONES of the product (same `origin`) sitting beside it as `<name>-*`
+        folders (the `engine-template-656-labels` sprawl the operator flagged).
+    Returns `{"state":"build-sprawl","product",<stray_worktrees>,<sibling_clones>}` with at least one list
+    non-empty, or None when this is not a mechanic, the product path is unset/absent, or nothing stray is found
+    (fail-soft QUIET). It never judges the shared checkout's BRANCH — under this model that no longer matters,
+    so flagging it would be noise. Read-only: it lists, it never removes; cleanup is a consented act."""
+    path, state = resolve_product_checkout(cwd)
+    if state is not None or not path or not os.path.isdir(path):
+        return None                              # not a mechanic / path unset / nothing there -> nothing to say
+    product = os.path.realpath(path)
+    root = engine_common_checkout(cwd)
+    sanctioned = os.path.realpath(os.path.join(root, ".engine", "mechanic", "worktrees")) if root else None
+    registered: set = set()
+    stray_worktrees: list = []
+    listing = _run(["git", "-C", product, "worktree", "list", "--porcelain"]) or ""
+    for line in listing.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        wt = os.path.realpath(line[len("worktree "):].strip())
+        registered.add(wt)
+        if wt == product:
+            continue                             # the main worktree is the product itself — expected
+        if sanctioned and (wt == sanctioned or wt.startswith(sanctioned + os.sep)):
+            continue                             # a sanctioned build worktree — the whole point of the model
+        stray_worktrees.append(wt)
+    sibling_clones: list = []
+    origin = _run(["git", "-C", product, "remote", "get-url", "origin"])
+    origin = origin.strip() if origin and origin.strip() else None
+    parent = os.path.dirname(product)
+    base = os.path.basename(product)
+    if origin and base and os.path.isdir(parent):
+        for entry in sorted(os.listdir(parent)):
+            cand = os.path.join(parent, entry)
+            if entry == base or not entry.startswith(base + "-") or not os.path.isdir(cand):
+                continue
+            if os.path.realpath(cand) in registered:
+                continue                         # a linked worktree, already counted above — not a clone
+            cand_origin = _run(["git", "-C", cand, "remote", "get-url", "origin"])
+            if cand_origin and cand_origin.strip() == origin:
+                sibling_clones.append(os.path.realpath(cand))
+    if not stray_worktrees and not sibling_clones:
+        return None
+    return {"state": "build-sprawl", "product": product,
+            "stray_worktrees": stray_worktrees, "sibling_clones": sibling_clones}
+
+
 def mechanic_orientation(cwd: str | None = None) -> dict | None:
     """OFFLINE, READ-ONLY: the one value boot relays to orient a mechanic session — or None when this is NOT a
     mechanic (no `product_build_target` recorded), the normal self-building deployment. When it IS a mechanic:
@@ -649,7 +730,7 @@ def checkout_lossless(checkout_path: str) -> tuple[bool, list[str]] | None:
     return (not reasons, reasons)
 
 
-# ---- the behind-the-main-line snapshot + fast-forward corrections (#335; #342) ----
+# ---- the behind-the-main-line snapshot + fast-forward corrections (StarshipSuperjam/engine-template#335; StarshipSuperjam/engine-template#342) ----
 
 def _days_between(a: str, b: str) -> int:
     """Whole days between two `YYYY-MM-DD` dates (git `%cs`), or 1 if either is unparseable. Data-relative —
@@ -809,15 +890,154 @@ def _materialize_target(main: str, before: str, target: str) -> bool:
     return _ok(["git", "-C", main, "read-tree", "-u", "-m", before, target])
 
 
+# The reconcile arm's rescue message (StarshipSuperjam/engine-template#810): a first-run transformation the reviewed upstream already absorbed.
+_RECONCILE_MSG = "engine: saved your uncommitted setup changes before bringing the folder current"
+
+
+def _rescue_branches(main: str) -> list[str]:
+    """The `engine-rescue/*` branch names currently in `main` — used to spot a stray one a partial rescue left."""
+    out = _run(["git", "-C", main, "branch", "--list", f"{_RESCUE_PREFIX}/*", "--format=%(refname:short)"])
+    return [n for n in (out or "").split() if n]
+
+
+def _on_branch(main: str, branch: str) -> bool:
+    """True when the checkout's HEAD is the named branch (not detached, not a sibling) — the restore postcondition."""
+    return (_run(["git", "-C", main, "symbolic-ref", "--quiet", "--short", "HEAD"]) or "").strip() == branch
+
+
+def _dirty_subsumed(main: str, target_oid: str) -> bool:
+    """OFFLINE, READ-ONLY pre-check (StarshipSuperjam/engine-template#810): are ALL of the checkout's uncommitted changes ALREADY present at the
+    verified target? True only when every dirty path — tracked edits/deletes AND untracked non-ignored files —
+    already matches the target's content, so bringing the folder to the target would drop nothing that is not
+    already upstream. This is what tells a first-run transformation the reviewed upstream has absorbed (reconcile
+    it) from genuine unrelated work (leave it untouched). It reads only the working tree and the target commit —
+    never mutates, never rescues — so a False answer keeps the ordinary local-work block a TRUE no-op for the
+    common case. CONSERVATIVE: any unreadable comparison returns False (block), so unrelated work is never
+    disturbed on an inconclusive read."""
+    if not target_oid:
+        return False
+    tracked_raw = _run(["git", "-C", main, "diff", "--name-only", "HEAD"])
+    untracked_raw = _run(["git", "-C", main, "ls-files", "--others", "--exclude-standard"])
+    if tracked_raw is None or untracked_raw is None:
+        return False                                   # unreadable diff/list -> conservative: block, never guess
+    tracked = [p for p in tracked_raw.splitlines() if p]
+    untracked = [p for p in untracked_raw.splitlines() if p]
+    if not tracked and not untracked:
+        return False                                   # nothing uncommitted to reconcile
+    if tracked and not _succeeds(["git", "-C", main, "diff", "--quiet", target_oid, "--", *tracked]):
+        return False                                   # a tracked edit/delete diverges from the target
+    for path in untracked:
+        wt = (_run(["git", "-C", main, "hash-object", "--", path]) or "").strip()
+        at_target = (_run(["git", "-C", main, "rev-parse", "--verify", "--quiet",
+                           f"{target_oid}:{path}"]) or "").strip()
+        if not wt or not at_target or wt != at_target:
+            return False                               # an untracked file is absent at, or differs from, target
+    return True
+
+
+def _commit_subsumed(main: str, base_oid: str, rescue_ref: str, target_oid: str) -> bool:
+    """OFFLINE, READ-ONLY AUTHORITATIVE gate (StarshipSuperjam/engine-template#810), evaluated on the rescue COMMIT (post `add -A`, so
+    formerly-untracked files are captured with no blind spot). The transformation is the set of paths the rescue
+    commit changed over the pre-rescue HEAD (`base_oid`); it is subsumed when the target already agrees on every
+    one of those paths (an empty change set counts as subsumed). CONSERVATIVE on any git error (returns False):
+    an unreadable name-diff is NOT the same as an empty one, so it must not be read as 'nothing changed → subsumed'."""
+    named = _run(["git", "-C", main, "diff", "--name-only", base_oid, rescue_ref])
+    if named is None:
+        return False                                   # unreadable diff -> conservative: NOT subsumed (block)
+    paths = [p for p in named.splitlines() if p]
+    if not paths:
+        return True
+    return _succeeds(["git", "-C", main, "diff", "--quiet", target_oid, rescue_ref, "--", *paths])
+
+
+def _rescue_then_reconcile(snapshot: dict, *, original_branch: str) -> dict:
+    """LOSSLESS, CONSENT-BOUND reconcile of a behind checkout whose uncommitted changes are already SUBSUMED by
+    the verified target (StarshipSuperjam/engine-template#810 — a first-run transformation the reviewed upstream absorbed, which the plain
+    lossless gate would otherwise refuse). RESCUE-FIRST: the dirty tree is committed onto a RETAINED
+    `engine-rescue/<sha>` branch BEFORE anything else, so losslessness rests on that branch, NEVER on the
+    subsumption judgment — a wrong 'subsumed' call can only adopt the target while the working tree (all tracked
+    edits/deletes and untracked non-ignored files, via `add -A`) stays recoverable on the rescue branch. Then,
+    only if the AUTHORITATIVE post-rescue check still holds, the NAMED
+    default is CAS-advanced from its exact assessed OID and the checkout returns to it at the exact target. Any
+    block/failure returns HEAD to `original_branch` (the default for the on-default arm, the operator's side
+    branch for the off-main arm) and rolls back any ref advance — nothing is lost (the rescue branch, and any
+    named side branch, retain the work). The caller supplies its ALREADY-VALIDATED snapshot; this NEVER fetches.
+    Every mutation targets `git -C <main>`; no destructive git verb is used (`checkout <branch>` is never `-f`)."""
+    main, default = snapshot["main"], snapshot["branch"]
+    head_oid, default_oid, target = snapshot["head_oid"], snapshot["default_oid"], snapshot["target_oid"]
+    # Last-moment race re-checks (OFFLINE, no fetch): the exact assessed snapshot must still hold and the default
+    # must be a strict ancestor of the target — else REFUSE with NO mutation, so the pre-rescue path stays a true
+    # no-op (the caller's `_dirty_subsumed` gate already ran read-only).
+    if not _snapshot_unchanged(snapshot):
+        return {"status": "blocked", "reason": "checkout-changed", "main": main, "branch": default,
+                "applied": False}
+    if not _succeeds(["git", "-C", main, "merge-base", "--is-ancestor", default_oid, target]):
+        return {"status": "blocked", "reason": "diverged", "main": main, "branch": default, "applied": False}
+    before_rescues = set(_rescue_branches(main))
+    rescue = save_recovery_point(main, message=_RECONCILE_MSG)
+    if rescue is None:
+        # save_recovery_point returns None two ways, and they must be reported differently. (A) the rescue commit
+        # never landed (a rejecting commit hook, `commit.gpgsign` with no key, an index.lock): it left HEAD on a
+        # stray branch at the ORIGINAL commit with the dirty tree — return HEAD to the original branch (the gate
+        # excludes off-branch commits, so the tree carries back cleanly) and safe-delete the empty stray, so
+        # "nothing moved" is literally true. (B) the commit DID land but the tree was dirty again afterward (a
+        # post-commit hook wrote a file), so save_recovery_point refused: the work is now committed on the stray
+        # branch. `git branch -d` REFUSES that branch (it carries a unique commit), which is exactly how we detect
+        # case B — we keep and NAME it rather than claim "couldn't save".
+        _ok(["git", "-C", main, "checkout", original_branch])
+        saved = None
+        for stray in set(_rescue_branches(main)) - before_rescues:
+            if not _ok(["git", "-C", main, "branch", "-d", stray]):   # -d refused -> a real rescue commit landed
+                saved = stray
+        restored = _on_branch(main, original_branch)
+        if saved is not None:
+            return {"status": "blocked", "reason": "rescue-incomplete", "rescue": saved, "restored": restored,
+                    "main": main, "branch": default, "applied": True}
+        return {"status": "blocked", "reason": "rescue-failed", "restored": restored,
+                "main": main, "branch": default, "applied": not restored}
+    # From here HEAD is on the rescue branch, the working tree is CLEAN, and the default ref is still default_oid.
+    # Every block below has already MUTATED (the dirty tree is committed on the retained rescue branch), so each
+    # returns HEAD to `original_branch` and reports `restored` — never the peers' "left everything untouched".
+    if not _commit_subsumed(main, head_oid, rescue, target):
+        restored = _ok(["git", "-C", main, "checkout", original_branch]) and _on_branch(main, original_branch)
+        return {"status": "blocked", "reason": "local-work", "rescue": rescue, "reconciled": False,
+                "restored": restored, "main": main, "branch": default, "applied": True}
+    if not _advance_named_default(main, default, default_oid, target):
+        restored = _ok(["git", "-C", main, "checkout", original_branch]) and _on_branch(main, original_branch)
+        return {"status": "blocked", "reason": "target-changed", "rescue": rescue,
+                "restored": restored, "main": main, "branch": default, "applied": True}
+    if not _ok(["git", "-C", main, "checkout", default]):
+        _ok(["git", "-C", main, "update-ref", f"refs/heads/{default}", default_oid, target])   # roll back advance
+        restored = _ok(["git", "-C", main, "checkout", original_branch]) and _on_branch(main, original_branch)
+        return {"status": "blocked", "reason": "checkout-failed", "rescue": rescue,
+                "restored": restored, "main": main, "branch": default, "applied": True}
+    after = (_run(["git", "-C", main, "rev-parse", "HEAD"]) or "").strip()
+    after_branch = (_run(["git", "-C", main, "symbolic-ref", "--quiet", "--short", "HEAD"]) or "").strip()
+    clean = not (_run(["git", "-C", main, "status", "--porcelain"]) or "").strip()
+    if after == target and after_branch == default and clean:
+        return {"status": "fixed", "reconciled": True, "rescue": rescue, "main": main, "branch": default,
+                "before": head_oid, "after": after, "target_oid": target, "applied": True}
+    # A process raced the tiny advance->checkout window: never claim success. Stop, retain the rescue branch, and
+    # report for inspection (mirrors catch_up's postcondition posture; further mutation risks a messier tree).
+    return {"status": "blocked", "reason": "postcondition-failed", "rescue": rescue,
+            "main": main, "branch": default, "after": after, "applied": True}
+
+
 def catch_up(cwd: str | None = None, apply: bool = False, *, do_fetch: bool = True,
              expected_target: str | None = None) -> dict:
-    """Bring a behind main checkout current, on the operator's consent — the ON-DEFAULT arm. LOSSLESS by
-    construction: it requires the clean lossless gate, proves strict ancestry, and atomically advances the NAMED
-    default from its exact assessed OID before materializing the exact target. A concurrent checkout cannot
-    advance the wrong branch; divergence refuses. When the checkout is PARKED ON A SIDE BRANCH, returning it is
-    `return_to_default`'s job — catch_up never fast-forwards a side branch, so it declines ('off-main'). Dry-run
-    (apply=False) reports without mutating. Every mutation targets `git -C <main>` — never the session's own
-    worktree. status ∈ healthy | behind | off-main | unavailable | fixed | blocked."""
+    """Bring a behind main checkout current, on the operator's consent — the ON-DEFAULT arm. Two cases, each
+    lossless. CLEAN case (lossless gate clean): lossless BY CONSTRUCTION — proves strict ancestry, atomically
+    advances the NAMED default from its exact assessed OID, then materializes the exact target WITHOUT ever
+    leaving the default branch. DIRTY-SUBSUMED case (StarshipSuperjam/engine-template#810): when the ONLY obstruction is uncommitted work whose
+    every change is already present at the verified target (a first-run transformation the reviewed upstream
+    absorbed), it DELEGATES to the rescue-first `_rescue_then_reconcile` arm — which does switch branches while
+    it saves the dirty tree to a retained rescue branch, so here losslessness rests on that rescue branch, not on
+    'no branch switch'. Any OTHER local obstruction (a stash, off-branch commit, paused op, or dirty work NOT
+    subsumed) still BLOCKS 'local-work' with no mutation, exactly as before. A concurrent checkout cannot advance
+    the wrong branch; divergence refuses. When PARKED ON A SIDE BRANCH, returning it is `return_to_default`'s job
+    — catch_up never fast-forwards a side branch, so it declines ('off-main'). Dry-run (apply=False) reports
+    without mutating. Every mutation targets `git -C <main>` — never the session's own worktree.
+    status ∈ healthy | behind | off-main | unavailable | fixed | blocked."""
     behind = _checkout_snapshot(cwd, do_fetch=do_fetch)
     if behind["state"] == "unavailable":
         return {**behind, "status": "unavailable", "applied": False}
@@ -842,6 +1062,11 @@ def catch_up(cwd: str | None = None, apply: bool = False, *, do_fetch: bool = Tr
         return {**behind, "status": "blocked", "reason": "diverged", "applied": False}
     lossless, reasons = _is_lossless(main)
     if not lossless:
+        # StarshipSuperjam/engine-template#810: the only obstruction being uncommitted work already SUBSUMED by the verified target is the
+        # first-run-strand case — reconcile it losslessly (rescue-first). Any other obstruction (stash,
+        # off-branch commit, paused op, or dirty work that is NOT subsumed) still blocks with no mutation.
+        if reasons == ["uncommitted"] and _dirty_subsumed(main, behind["target_oid"]):
+            return _rescue_then_reconcile(behind, original_branch=default)
         return {**behind, "status": "blocked", "reason": "local-work", "reasons": reasons, "applied": False}
     advanced = _advance_named_default(main, default, behind["head_oid"], behind["target_oid"])
     still_default = ((_run(["git", "-C", main, "symbolic-ref", "--quiet", "--short", "HEAD"]) or "").strip()
@@ -868,7 +1093,7 @@ def catch_up(cwd: str | None = None, apply: bool = False, *, do_fetch: bool = Tr
 def return_to_default(cwd: str | None = None, apply: bool = False, *, do_fetch: bool = True,
                       expected_target: str | None = None) -> dict:
     """Point an operator checkout PARKED ON A NON-DEFAULT BRANCH back at its default branch (and bring it
-    current), on the operator's consent — the correction for the off-main state (#342). LOSSLESS: returning to a
+    current), on the operator's consent — the correction for the off-main state (StarshipSuperjam/engine-template#342). LOSSLESS: returning to a
     NAMED branch never orphans commits (the side branch ref keeps them — no rescue needed, unlike unstrand's
     detached arm), and the switch runs ONLY when the lossless gate is clean (no uncommitted edits, no stash, no
     paused git operation); otherwise it BLOCKS with no mutation, nothing lost. The `git checkout <default>` is
@@ -894,7 +1119,12 @@ def return_to_default(cwd: str | None = None, apply: bool = False, *, do_fetch: 
         return {**snapshot, "status": "blocked", "reason": "target-changed", "applied": False}
     lossless, reasons = _is_lossless(main)
     if not lossless:
-        # dirty tree / stash / paused op: returning would risk work -> block, no mutation
+        # StarshipSuperjam/engine-template#810 off-main sibling of catch_up's arm: when the ONLY obstruction is uncommitted work already
+        # SUBSUMED by the verified target, reconcile it losslessly (rescue-first), then land on the default at
+        # the target. `_rescue_then_reconcile` returns HEAD to the side branch (`current`) on any block.
+        if reasons == ["uncommitted"] and _dirty_subsumed(main, snapshot["target_oid"]):
+            return _rescue_then_reconcile(snapshot, original_branch=current)
+        # dirty tree / stash / paused op not subsumed: returning would risk work -> block, no mutation
         return {"status": "blocked", "main": main, "branch": default, "from": current,
                 "reasons": reasons, "applied": False}
     if not _snapshot_unchanged(snapshot):
@@ -999,7 +1229,7 @@ def _behind_fixture(tmp: str) -> str:
 
 def _off_main_fixture(tmp: str) -> str:
     """A `work` clone (so `origin/HEAD` -> main: the default is KNOWN with confidence) left checked out on a
-    side branch carrying its own unmerged commit — the wrong-branch park (#342). Returns the `work` path."""
+    side branch carrying its own unmerged commit — the wrong-branch park (StarshipSuperjam/engine-template#342). Returns the `work` path."""
     work = _behind_fixture(tmp)                  # a clone on main, behind origin by several merged PRs
     _run(["git", "-C", work, "checkout", "-q", "-b", "my-feature"])
     with open(os.path.join(work, "my-feature-note.txt"), "w") as fh:
@@ -1141,8 +1371,35 @@ def _plain_catch_up(apply: bool, expected_target: str | None = None) -> int:
         print("Your project folder is up to date — nothing to bring in.")
     elif r["status"] == "unavailable":
         _print_unavailable(r)
+    elif r["status"] == "fixed" and r.get("reconciled"):
+        print("Brought your project folder up to date. Your uncommitted setup changes were already part of the "
+              f"shared project, so I saved a copy to a safe point first (the branch '{r['rescue']}'), then "
+              "brought the folder current — nothing was lost.")
     elif r["status"] == "fixed":
         print("Brought your project folder up to date — it now has the recent shared work it was missing.")
+    elif r["status"] == "blocked" and r.get("reason") == "rescue-failed":
+        if r.get("restored"):
+            print("I couldn't safely save your uncommitted changes to a safe point, so I stopped and put your "
+                  "folder back exactly as it was — your changes are still here, nothing is lost.")
+        else:
+            print("I couldn't save your uncommitted changes to a safe point and couldn't fully put your folder "
+                  "back, so I stopped. Your changes are still here — please check the folder before trying again.")
+    elif r["status"] == "blocked" and r.get("reason") == "rescue-incomplete":
+        print(f"I did save your uncommitted changes to a safe point (the branch '{r['rescue']}'), but something on "
+              "your machine — most likely a commit hook — stopped me from finishing. Your changes are safe on that "
+              "branch; your folder is back on its main branch without them, so recover them from that branch.")
+    elif r["status"] == "blocked" and r.get("reason") == "local-work" and r.get("rescue"):
+        print("Your uncommitted changes turned out not to be part of the shared project after all, so I did not "
+              f"change your main line. I saved them safely to a safe point (the branch '{r['rescue']}') and your "
+              "folder is now clean — bring it up to date whenever you're ready.")
+    elif r["status"] == "blocked" and r.get("reason") == "postcondition-failed":
+        extra = f" Your uncommitted changes are safe on the branch '{r['rescue']}'." if r.get("rescue") else ""
+        print("Another project operation raced the final update check, so I stopped without claiming success." +
+              extra + " Inspect the folder's current line and history before doing anything else.")
+    elif r["status"] == "blocked" and r.get("rescue"):
+        print(f"I saved your uncommitted changes to a safe point (the branch '{r['rescue']}') but the project "
+              "changed before I could finish bringing your folder current, so I stopped. Nothing was lost — "
+              "check the folder before trying again.")
     elif r["status"] == "blocked" and r.get("reason") == "consent-target-required":
         print("The exact confirmation target is missing, so I left your folder untouched. Run the dry check "
               "first, then use the complete apply command it prints.")
@@ -1152,9 +1409,6 @@ def _plain_catch_up(apply: bool, expected_target: str | None = None) -> int:
     elif r["status"] == "blocked" and r.get("reason") == "diverged":
         print("Your main line and the shared project have both moved, so I left everything untouched. This "
               "needs a deliberate reconciliation rather than an automatic catch-up.")
-    elif r["status"] == "blocked" and r.get("reason") == "postcondition-failed":
-        print("Another project operation raced the final update check, so I stopped without claiming success. "
-              "Inspect the folder's current line and history before doing anything else.")
     elif r["status"] == "blocked":
         print("Your project folder is behind, but you have unsaved changes that clash with the incoming work, "
               "so I left everything untouched — nothing is lost. Save or set those changes aside and ask again.")
@@ -1178,6 +1432,10 @@ def _plain_return_to_default(apply: bool, expected_target: str | None = None) ->
         print("Your project folder is on your main branch already — nothing to move.")
     elif r["status"] == "unavailable":
         _print_unavailable(r)
+    elif r["status"] == "fixed" and r.get("reconciled"):
+        print("Pointed your project folder back at your main branch and brought it up to date. Your uncommitted "
+              f"setup changes were already part of the shared project, so I saved a copy to a safe point first "
+              f"(the branch '{r['rescue']}'); your other work stays on its own branch — nothing was lost.")
     elif r["status"] == "fixed" and r.get("brought_current"):
         print("Pointed your project folder back at your main branch and brought it up to date. Your other work "
               "is untouched — it's still saved on its own branch, exactly where it was.")
@@ -1185,6 +1443,34 @@ def _plain_return_to_default(apply: bool, expected_target: str | None = None) ->
         print("Pointed your project folder back at your main branch — your other work is untouched, still saved "
               "on its own branch. I left your main branch exactly as it was (it has some local changes of its "
               "own that aren't on the shared copy yet), so it may not be fully up to date.")
+    elif r["status"] == "blocked" and r.get("reason") == "rescue-failed":
+        if r.get("restored"):
+            print("I couldn't safely save your uncommitted changes to a safe point, so I stopped and put your "
+                  "folder back exactly where it was — your changes are still here, nothing is lost.")
+        else:
+            print("I couldn't save your uncommitted changes to a safe point and couldn't fully put your folder "
+                  "back, so I stopped. Your changes are still here — please check the folder before trying again.")
+    elif r["status"] == "blocked" and r.get("reason") == "rescue-incomplete":
+        print(f"I did save your uncommitted changes to a safe point (the branch '{r['rescue']}'), but something on "
+              "your machine — most likely a commit hook — stopped me from finishing. Your changes are safe on that "
+              "branch; recover them from there when you're ready.")
+    elif r["status"] == "blocked" and r.get("reason") == "local-work" and r.get("rescue"):
+        print("Your uncommitted changes turned out not to be part of the shared project after all, so I did not "
+              f"move your main branch. I saved them safely to a safe point (the branch '{r['rescue']}') and put "
+              "your folder back on its side branch — bring it up to date whenever you're ready.")
+    elif r["status"] == "blocked" and r.get("reason") == "postcondition-failed":
+        if r.get("restored"):
+            extra = f" Your uncommitted changes are safe on the branch '{r['rescue']}'." if r.get("rescue") else ""
+            print("The final update check failed, so I put your folder back on its original side line." + extra +
+                  " Nothing was lost; inspect the repository state before trying again.")
+        else:
+            extra = f" Your uncommitted changes are safe on the branch '{r['rescue']}'." if r.get("rescue") else ""
+            print("The final update check failed and I couldn't restore the original side line automatically." +
+                  extra + " I stopped immediately; inspect the folder state before doing anything else.")
+    elif r["status"] == "blocked" and r.get("rescue"):
+        print(f"I saved your uncommitted changes to a safe point (the branch '{r['rescue']}') but the project "
+              "changed before I could finish, so I stopped and put your folder back on its side branch. Nothing "
+              "was lost — check the folder before trying again.")
     elif r["status"] == "blocked" and r.get("reason") == "consent-target-required":
         print("The exact confirmation target is missing, so I left your folder exactly where it is. Run the "
               "dry check first, then use the complete apply command it prints.")
@@ -1194,13 +1480,6 @@ def _plain_return_to_default(apply: bool, expected_target: str | None = None) ->
     elif r["status"] == "blocked" and r.get("reason") == "diverged":
         print("Your main line and the shared project have both moved, so I left your folder on its current side "
               "line. This needs a deliberate reconciliation; nothing moved and nothing was lost.")
-    elif r["status"] == "blocked" and r.get("reason") == "postcondition-failed":
-        if r.get("restored"):
-            print("The final update check failed, so I put your folder back on its original side line. Nothing "
-                  "was lost; inspect the repository state before trying again.")
-        else:
-            print("The final update check failed and I couldn't restore the original side line automatically. "
-                  "I stopped immediately; inspect the folder state before doing anything else.")
     elif r["status"] == "blocked":
         print("Your project folder is parked on another branch, but it has unsaved changes (or a git operation "
               "paused mid-way), so I left everything exactly where it is — nothing moved, nothing lost. Save or "

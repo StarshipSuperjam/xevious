@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Derive the project's standing-situation ("where we are") LIVE from native GitHub sources (engine-template
-#100).
+StarshipSuperjam/engine-template#100).
 
 The corrected design: "where we are" is a **read-only projection of native sources**, assembled live at
 orientation — never a stored marker any session *advances* (that was the rejected category error). This module
@@ -15,7 +15,7 @@ is that projection:
   - **milestone** <- the titles of the project's OPEN GitHub Milestones, read as they are — every open one, in
     GitHub's earliest-due-first order — or an empty list when the project keeps none ("none set" — the honest
     normal state, not an error). GitHub has no notion of a single "current" milestone, so the engine names what
-    is open and elects none of them (engine-template #496).
+    is open and elects none of them (StarshipSuperjam/engine-template#496).
 
 This is the strong/best-effort split the design names: `phase` is engine-derivable (strong, like the debt
 count); `milestone` is operator-plan-derivable (best-effort — None when no Milestone exists).
@@ -45,7 +45,7 @@ class DeriveUnavailable(Exception):
     """Raised when GitHub cannot be read while deriving the standing-situation (an outage, or a 4xx/5xx
     auth/scope error, or an unexpected response shape). It is NEVER swallowed as "no milestone / no phase":
     a read failure that read as genuine-absence would silently present a confident, wrong live card — the
-    exact #100-class trust failure this correction exists to remove. Boot catches it and falls back to the
+    exact StarshipSuperjam/engine-template#100-class trust failure this correction exists to remove. Boot catches it and falls back to the
     committed offline cache, rendered stale-labelled."""
 
 
@@ -62,12 +62,12 @@ def derive_milestone(gh) -> list[str]:
     """The titles of the project's OPEN Milestones, read as they are — every open one, in GitHub's
     earliest-due-first order — or an empty list when there are none ("none set", the honest normal state, not
     an error). GitHub has no notion of a single "current" milestone, so the engine names what is open and
-    elects none of them (engine-template #496); a read failure raises DeriveUnavailable (never read as an
+    elects none of them (StarshipSuperjam/engine-template#496); a read failure raises DeriveUnavailable (never read as an
     empty "none set")."""
     data = _read(gh, f"/repos/{gh.repo}/milestones?state=open&sort=due_on&direction=asc&per_page=100")
     if not isinstance(data, list):
         raise DeriveUnavailable("milestones response was not a list")
-    # Every open milestone named (blank titles dropped), electing none — not just data[0], the pre-#496 pick.
+    # Every open milestone named (blank titles dropped), electing none — not just data[0], the pre-StarshipSuperjam/engine-template#496 pick.
     return [title for m in data if isinstance(m, dict) and (title := (m.get("title") or "").strip())]
 
 
@@ -164,7 +164,7 @@ def _demo() -> int:
     print("What boot shows for 'what merged last' — derived live from your GitHub each session:\n")
 
     # (1) SEVERAL open milestones — GitHub elects none, so the engine names them all — plus two merged PRs, the
-    #     newest of which is what shows. #42 (newer merged_at) must win over #41.
+    #     newest of which is what shows. the newer merge must win over the older.
     gh1 = _FakeGH(_canned(
         milestones=[{"title": "Ship the beta", "due_on": "2026-09-01T00:00:00Z"},
                     {"title": "Public launch", "due_on": "2026-11-01T00:00:00Z"}],
@@ -216,7 +216,7 @@ def _demo() -> int:
         print("            " + ln)
     print()
 
-    # (5) MANY open milestones (#558): past a glanceable few the line names the first five and moves the true
+    # (5) MANY open milestones (StarshipSuperjam/engine-template#558): past a glanceable few the line names the first five and moves the true
     #     total into the engine's own label — a disclosed sample, electing none. Seven open here, cap five.
     gh5 = _FakeGH(_canned(
         milestones=[{"title": f"Phase {i}", "due_on": f"2026-0{i}-01T00:00:00Z"} for i in range(1, 8)],
@@ -231,10 +231,10 @@ def _demo() -> int:
     print("project, PR titles read cleanly for you. No real GitHub call was made, and your saved status was not")
     print("modified.")
     # Self-check (must be able to FAIL on a broken derivation — [[demo-must-exercise-real-logic]]): scenario 1
-    # names BOTH open milestones under the plural label AND shows the NEWEST merged PR (#42, not the older #41);
-    # scenario 2 names no milestone; scenario 4 shows the newest PR (#111, not the older #90) — the defect-A
+    # names BOTH open milestones under the plural label AND shows the NEWEST merged PR (the later one, not the earlier);
+    # scenario 2 names no milestone; scenario 4 shows the newest PR (the later one, not the earlier) — the defect-A
     # guarantee; scenario 5 caps at five names and discloses the true total of seven, naming none beyond the cap
-    # (#558); an unreadable GitHub raises (falls back to the cached copy), never a confident live 'none set'.
+    # (StarshipSuperjam/engine-template#558); an unreadable GitHub raises (falls back to the cached copy), never a confident live 'none set'.
     ok = (all(any(name in ln for ln in l1) for name in ("Ship the beta", "Public launch"))
           and any("Milestones:" in ln for ln in l1)
           and any("Add the checkout page (PR #42)" in ln for ln in l1)

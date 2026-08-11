@@ -54,6 +54,18 @@ The authorization screen completed but the permission didn't save (some sign-in 
 Protection is still off, so work can merge unreviewed. Let's try once more, or sign in again first. I'll
 keep reminding you until it's on.
 
+## If it couldn't turn on — this plan can't host branch protection
+
+I couldn't turn on branch protection — this repository's GitHub plan doesn't offer the branch-protection
+rules the safety gate needs (private repositories need GitHub Pro, Team, or Enterprise; public repositories
+have them for free). This isn't a permission problem — your account administers the repository fine.
+Protection is not active, so work can merge unreviewed. Two ways forward: upgrade this repository's plan (or
+make it public), then say **turn my safety gate back on** — or, if you're deliberately running without the
+gate, say **accept that my plan can't protect this branch** and I'll record that, so the engine stops failing
+every pull request over a limitation it can't fix and instead reports the gate as off by your informed choice.
+Either way I do it for you — you never type a command yourself. Until then, I'll keep reminding you the gate
+is off.
+
 ## Removing the engine — keep or remove your safety rule
 
 I set up a safety rule on your main branch that requires checks to pass and a pull request before anything

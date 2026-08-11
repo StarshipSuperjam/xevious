@@ -84,4 +84,7 @@ gap is recorded above rather than papered over.
 
 ## Status
 
-accepted
+accepted — one contrast updated by eADR-0040 (2026-08-08): the guardrail acknowledgment this record
+distinguishes itself from is no longer a blocking act on every guarded touch; it blocks only at the
+killswitch floor, and ordinary guarded modifications carry a non-blocking disclosure of their own. The
+distinction this record drew (overwrite disclosure is not a weakening signal) stands unchanged.

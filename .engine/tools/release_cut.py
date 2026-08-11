@@ -12,7 +12,7 @@ that GitHub-facing plumbing lives in the terminal cut (`release_terminal.py`, dr
 
 Two subcommands, split so consent attaches to a proposal the writer cannot silently drift from:
 
-  propose  — read-only. Resolve the last release baseline from the engine's HOME repo (the #369
+  propose  — read-only. Resolve the last release baseline from the engine's HOME repo (the StarshipSuperjam/engine-template#369
              `home_repository` coordinate — the same source the updater fetches from, so producer
              and consumer agree on what "a release" is), diff since it, and author:
                * the mechanical bump FLOOR: a module ADDED => engine >= minor;
@@ -78,6 +78,7 @@ import jsonschema
 import validate
 import module_coherence
 import module_manager
+import engine_write  # the engine-owned write boundary — the cut's stage/swap pre-flight (StarshipSuperjam/engine-template#923)
 
 SENTINEL = "0.0.0-dev"
 ENGINE_SCHEMA = os.path.join(validate.SCHEMAS_DIR, "engine.v1.json")
@@ -93,7 +94,7 @@ _NO_STRUCTURAL_SIGNAL_NOTE = ("No module added or removed and no new migration s
 
 # --------------------------------------------------------------------------- version ordering
 # Strict MAJOR.MINOR.PATCH with an optional pre-release suffix — the SAME grammar the module.v1 schema
-# now enforces on the manifest `version` field (#402 U07a), so the writer here and the schema gate at CI
+# now enforces on the manifest `version` field (StarshipSuperjam/engine-template#402 U07a), so the writer here and the schema gate at CI
 # cannot bless different shapes. Kept in sync deliberately: the schema is the harder gate, and this writer
 # check catches a nonsense version before it ever reaches a release manifest.
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
@@ -131,7 +132,7 @@ def _strictly_greater(new: str, cur: str) -> bool:
     return _is_prerelease(cur) and not _is_prerelease(new)
 
 
-# --------------------------------------------------------------------------- product-release mode (#516)
+# --------------------------------------------------------------------------- product-release mode (StarshipSuperjam/engine-template#516)
 # Once the engine is DEPLOYED, this same machinery cuts the deployed repo's OWN product release instead of the
 # engine's version: the version is read from (and written to) a product-owned `product-version.json` at the
 # repository ROOT (product territory, eADR-0007 — so it survives an engine uninstall), the baseline is the
@@ -216,8 +217,8 @@ def _product_baseline(slug: str | None) -> Baseline:
 
 def resolve_baseline(slug: str | None = None) -> Baseline:
     """The last released tag to diff against, or a first-cut baseline when there is no release yet. `slug`
-    defaults to the engine's HOME repo (#369 `home_repository` — the engine's own release stream); in
-    PRODUCT-mode (#516) the caller passes the DEPLOYED repo's own slug, so a product cut resolves the product's
+    defaults to the engine's HOME repo (StarshipSuperjam/engine-template#369 `home_repository` — the engine's own release stream); in
+    PRODUCT-mode (StarshipSuperjam/engine-template#516) the caller passes the DEPLOYED repo's own slug, so a product cut resolves the product's
     own last release, never the engine's home. A TRANSPORT failure (offline/DNS) is not a first cut — it is
     unknowable, and we say so rather than guess an empty baseline."""
     home = slug if slug is not None else module_manager._home_repository()
@@ -273,8 +274,8 @@ _RELEASE_PR_RE = re.compile(r"^Release \d+\.\d+\.\d+")
 # `owner/repo#N`). A merged PR's author often writes "(Closes #N)" into the PR title; rendered VERBATIM into the
 # RELEASE pull-request body it makes GitHub attribute that close to the release — so on merge the release would
 # (re-)close it. We strip the KEYWORD and keep the reference (readable, inert). A keyword NOT directly adjacent
-# to the reference is not a GitHub close (e.g. "fail closed (#390)" — the `(` breaks the bond; "Fixed several
-# bugs, see #5") and is left untouched (confirmed empirically against GitHub). The bare-URL and `GH-N` forms are
+# to the reference is not a GitHub close (e.g. "fail closed (#N)" — the `(` breaks the bond; "Fixed several
+# bugs, see #N") and is left untouched (confirmed empirically against GitHub). The bare-URL and `GH-N` forms are
 # out of scope: GitHub's documented auto-close grammar does not include them.
 _CLOSING_KEYWORD_RE = re.compile(
     r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[:\s]+((?:[\w.-]+/[\w.-]+)?#\d+)")
@@ -468,7 +469,7 @@ def _accumulation_violations(was: dict, present: dict, block: str, message) -> l
     """Every version-key a RETAINED module shipped in the previous release but the candidate no longer declares,
     for the named version-keyed `block` (`migrations` or `retired_capabilities`). Both are replayed by version
     RANGE at upgrade (from < ver <= target), so a key silently removed from a manifest is SKIPPED on a
-    multi-version jump — the #599 silent-skip class. Keys are compared on NORMALIZED tuples (`_norm_ver`). A
+    multi-version jump — the StarshipSuperjam/engine-template#599 silent-skip class. Keys are compared on NORMALIZED tuples (`_norm_ver`). A
     whole REMOVED module is NOT checked here — its still-unseen entries for a lagging upgrader are a KNOWN BOUND
     handled with the min-upgradeable-from floor. `message(mid, ver)` builds the block-specific refusal line.
 
@@ -508,6 +509,122 @@ def _retired_capabilities_accumulation_violations(was: dict, present: dict) -> l
                           f"— restore the key (a retirement notice has no no-op form, so it must never be dropped)"))
 
 
+def _engine_in_tree(tree_root: str | None) -> dict:
+    """The engine manifest (.engine/engine.json) under a fetched/injected BASELINE tree, or {} when absent or
+    unreadable. FAIL-OPEN by design: a baseline cut before `removed_capabilities` shipped carries none, and the
+    test baseline helper writes only module manifests (no engine.json) — a strict read would spuriously fail the
+    retention leg on every such baseline. The missing-baseline-TREE case is still fail-CLOSED upstream (classify
+    raises when a prior release exists but no tree was provided); this only tolerates a tree that carries no
+    engine.json."""
+    if not tree_root:
+        return {}
+    path = os.path.join(tree_root, ".engine", "engine.json")
+    if not os.path.isfile(path):
+        return {}
+    try:
+        return validate.load_json(path) or {}
+    except Exception:   # noqa: BLE001 — a malformed baseline engine.json degrades to "no prior notices", never a crash
+        return {}
+
+
+def _removed_capability_violations(baseline_tree: str | None, removed_modules: list, live_engine: dict,
+                                   present: dict) -> list:
+    """The whole-module removal-notice guard — the third sibling of the migration / retired-capability
+    accumulation guards, but keyed FLAT by module-id (engine.json `removed_capabilities`), NOT version-keyed, so
+    it is NOT built on `_accumulation_violations` (which iterates a per-module version-keyed sub-block). Two legs:
+
+      - MISSING-NOTICE: a module this cut removes (`removed_modules` = baseline − present) with no
+        `removed_capabilities[mid]` line in the live engine.json. A validly-cut release must carry the plain-
+        language line so the deployer's update can both announce the loss AND treat the module's absence as
+        intentional (the upgrade reconciles it away rather than refusing) — so its absence is a refusal.
+      - RETENTION: a `removed_capabilities` key the BASELINE release recorded that the candidate dropped — the
+        notice would silently vanish for a lagging upgrader who still holds the module. Refuse UNLESS (a) the
+        module is present again (a re-add legitimately clears the entry) or (b) its `removed_in` is at or below
+        the release's clean-upgrade floor (`min_upgradeable_from`), because then no supported upgrader can still
+        hold the module and the notice can never fire — so pruning it is safe (this is the schema's documented
+        obsolescence escape; the live floor is used as a conservative stand-in, since the release floor only ever
+        advances from it)."""
+    live_rc = live_engine.get("removed_capabilities") or {}
+    out = []
+    for mid in sorted(set(removed_modules)):
+        if mid not in live_rc:
+            out.append(f"the '{mid}' capability was removed but no plain-language removal notice was recorded "
+                       f"for it — add it to engine.json removed_capabilities: {{ \"{mid}\": {{ \"description\": "
+                       f"\"…what an operator could ask for before and no longer can…\" }} }} so the update can "
+                       f"tell the operator what they lost instead of refusing")
+    floor = live_engine.get("min_upgradeable_from")
+    base_rc = _engine_in_tree(baseline_tree).get("removed_capabilities") or {}
+    for mid in sorted(base_rc):
+        if mid in live_rc or mid in present:
+            continue
+        removed_in = (base_rc.get(mid) or {}).get("removed_in")
+        if floor and removed_in and _norm_ver(removed_in) <= _norm_ver(floor):
+            continue   # obsolete: no supported upgrader can still hold the module → safe to prune
+        out.append(f"the '{mid}' removal notice recorded by the last release was dropped; an engine still "
+                   f"holding '{mid}' would update across the removal and never learn what it lost — restore the "
+                   f"key (it may only be pruned once the version it was removed in, removed_in, is at or below "
+                   f"this release's oldest-still-upgradeable version, min_upgradeable_from — after which no "
+                   f"engine can still hold '{mid}')")
+    return out
+
+
+def _dependency_integrity_violations(present: dict, removed_modules: list) -> list:
+    """A surviving module that still `depends` on a module THIS cut removes. Removing a depended-on capability
+    leaves the survivor's dependency dangling on every deployer's upgrade (and, once the update reconciles the
+    removed module away, dead-ends that upgrade at the coherence gate with no operator recourse). Belt-and-
+    suspenders with the branch coherence gate and plan_remove's reverse-dependency refusal — consistent with how
+    the cut also refuses a dropped migration CI would already have caught. Flags ONLY a dep this cut removes; a
+    dep absent for any other reason is a pre-existing coherence concern the branch gate owns."""
+    removed_set = set(removed_modules)
+    out = []
+    for mid, man in sorted(present.items()):
+        for dep in sorted((man or {}).get("depends") or {}):
+            if dep in removed_set:
+                out.append(f"the '{mid}' capability still needs the '{dep}' capability this release removes; "
+                           f"keep '{dep}', or remove '{mid}' too")
+    return out
+
+
+# A default-on module is installed on every deployment unless the operator opts out (StarshipSuperjam/engine-template#759). It may therefore
+# depend only on capabilities that are ALSO guaranteed present — required (always) or other default-on (unless
+# opted out, and StarshipSuperjam/engine-template#759 keeps a default-on's own deps satisfied). Everything else is not guaranteed there.
+_DEFAULT_ON_ALLOWED_DEP_TIERS = frozenset({"required", "default-on"})
+
+
+def _default_on_dependency_violations(present: dict) -> list:
+    """A `default-on` module that `depends` on a capability NOT guaranteed to be present — anything outside
+    {required, default-on}: an `optional`/`experimental` module a deployment may never have chosen, or a `retired`
+    one kept only for migration history. Such a module cannot be coherently installed where the dependency is
+    absent. StarshipSuperjam/engine-template#759 already handles this at runtime by DEMOTING the default-on module to an offer rather than pulling
+    the unchosen dependency in; this guard catches the same contradiction once, at the author's release cut, so a
+    release is never cut needing that per-deployment safety net (and so the FIRST cut, which has no runtime
+    predecessor to lean on, is covered too — this field is set in both classify() modes).
+
+    An ALLOWLIST: only {required, default-on} deps are sound; every other tier — and a missing/unknown status
+    (already a schema defect, flagged fail-closed) — is refused. Judges only the STATUS of a dep PRESENT in this
+    set; a dep absent for any reason is a dependency-presence concern the branch coherence gate owns, not this
+    guard, so the two never double-report. Direct dependencies only: applied to every default-on module the rule
+    covers default-on chains inductively (a default-on link's own bad dep is flagged when that link is checked). A
+    `default-on -> required -> optional` reach is a distinct required-depends-on-optional smell, out of scope."""
+    out = []
+    for mid, man in sorted(present.items()):
+        if (man or {}).get("status") != "default-on":
+            continue
+        for dep in sorted((man or {}).get("depends") or {}):
+            dep_man = present.get(dep)
+            if dep_man is None:
+                continue   # a missing dependency is the branch coherence gate's concern, not this status guard
+            tier = dep_man.get("status")
+            if tier in _DEFAULT_ON_ALLOWED_DEP_TIERS:
+                continue
+            shown = f"'{tier}'" if tier else "of an unset/unknown tier"
+            out.append(f"the default-on '{mid}' capability depends on '{dep}', which is {shown} — not "
+                       f"guaranteed present on every deployment; a default-on module may depend only on "
+                       f"required or default-on capabilities, so make '{dep}' required or default-on, or make "
+                       f"'{mid}' optional")
+    return out
+
+
 def classify(baseline: Baseline, baseline_tree: str | None) -> dict:
     """The proposal: the floor per package + engine, the change inventory, and the impact statements.
     In first-cut mode there is no baseline to diff, so no delta/floor is derived — the initial version
@@ -534,6 +651,9 @@ def classify(baseline: Baseline, baseline_tree: str | None) -> dict:
             "package_floor": {},
             "change_inventory": inventory,
             "impacts": impacts,
+            # A default-on module depending on a not-guaranteed-present capability — baseline-independent, so it is
+            # refused on the FIRST cut too (the diff siblings above need a baseline and so are absent here).
+            "default_on_dependency_violations": _default_on_dependency_violations(present),
         }
 
     # diff mode — compare the present set against the baseline release tree
@@ -612,10 +732,24 @@ def classify(baseline: Baseline, baseline_tree: str | None) -> dict:
         # transform, is what silently vanishes for a lagging upgrader. Its own field + its own refusal message,
         # because the recovery differs: a retirement has no no-op form, so the only recourse is to never drop it.
         "retired_capability_violations": _retired_capabilities_accumulation_violations(was, present),
+        # The modules this cut removes (baseline − present), STRUCTURED so `apply` can stamp `removed_in` onto
+        # exactly their engine.json removed_capabilities entries — the change inventory carries the same fact as
+        # prose, which is not machine-consumable.
+        "removed_modules": removed,
+        # A whole-module removal with no plain-language notice, or a prior release's notice dropped (the FLAT
+        # module-keyed sibling of the two accumulation guards). Refused at the cut: a validly-cut release must
+        # carry the notice so the deployer's update can announce the loss AND treat the drop as intentional.
+        "removed_capability_violations": _removed_capability_violations(baseline_tree, removed, engine, present),
+        # A surviving module that still depends on a module this cut removes — a dangling dependency that would
+        # dead-end every holder's upgrade at the coherence gate; refused at the cut (belt-and-suspenders).
+        "dependency_violations": _dependency_integrity_violations(present, removed),
+        # A default-on module depending on a capability outside {required, default-on} — one a deployment may lack,
+        # so it cannot be coherently installed everywhere; refused at the cut so the author fixes it once (StarshipSuperjam/engine-template#891).
+        "default_on_dependency_violations": _default_on_dependency_violations(present),
     }
 
 
-# --------------------------------------------------------------------------- product proposal (#516)
+# --------------------------------------------------------------------------- product proposal (StarshipSuperjam/engine-template#516)
 def _product_proposal(baseline: Baseline, current_version: str, merged_prs: list) -> dict:
     """The release proposal for a PRODUCT cut — the SAME mode-neutral shape the workflow shell and the
     renderers consume, with product semantics. A product has no engine packages to diff, so there is no
@@ -831,6 +965,20 @@ def apply(engine_ver: str, all_ver: str | None, packages: dict, proposal: dict |
         new_engine["packages"] = pkgs
         if min_upgradeable_from is not None:               # record/refresh the clean-upgrade floor when given;
             new_engine["min_upgradeable_from"] = min_upgradeable_from   # else the dict copy carries any prior one
+        # Stamp `removed_in` onto the modules THIS cut removes (from the proposal) — the maintainer authored only
+        # `description` at removal time; the cut is where the release version is known. Rebuild each entry FRESH
+        # (new_engine is a SHALLOW copy of `engine`, so the nested removed_capabilities dict and its entries are
+        # shared with the loaded manifest — mutating in place would write through). Only stamp entries that this
+        # cut removed and that are not already stamped, so a prior release's removed_in is never overwritten.
+        removed_now = set((proposal or {}).get("removed_modules") or [])
+        rc = new_engine.get("removed_capabilities")
+        if rc and removed_now:
+            new_rc = dict(rc)
+            for mid in removed_now:
+                entry = new_rc.get(mid)
+                if isinstance(entry, dict) and not entry.get("removed_in"):
+                    new_rc[mid] = {**entry, "removed_in": engine_ver}
+            new_engine["removed_capabilities"] = new_rc
         errors += [f"engine.json: {m}" for m in _schema_ok(new_engine, ENGINE_SCHEMA)]
 
         # each CHANGED module manifest — mutate version only; unchanged capabilities are left untouched
@@ -857,6 +1005,20 @@ def apply(engine_ver: str, all_ver: str | None, packages: dict, proposal: dict |
         if dry_run:
             return {"applied": False, "reason": "dry-run", "targets": changed, "engine": engine_ver,
                     "from_engine": engine_cur}
+
+        # StarshipSuperjam/engine-template#923: never stage/swap an engine-owned manifest through a shortcut (symlink) or out of the
+        # tree. The swap's os.replace defeats only a symlinked LEAF — it still lands out-of-tree
+        # through a symlinked ANCESTOR directory — so check every destination BEFORE any temp file is
+        # created. Path and base both derive from validate.ROOT (the same source, per the engine_write
+        # doctrine), so fixture trees that repoint ROOT stay legitimate.
+        unsafe = [reason for path in
+                  [module_manager._engine_manifest_path()]
+                  + [os.path.join(validate.ROOT, _rel) for _rel in module_new]
+                  if (reason := engine_write.write_through_symlink_reason(path, validate.ROOT))]
+        if unsafe:
+            return {"applied": False, "reason": "unsafe-destination", "violations": unsafe,
+                    "recovery": "delete or replace the shortcut(s) named above, then run the cut "
+                                "again; nothing was written."}
 
         # write temps
         def _stage(path, data):
@@ -901,7 +1063,7 @@ def apply(engine_ver: str, all_ver: str | None, packages: dict, proposal: dict |
             "proposed_floor": (proposal or {}).get("package_floor", {})}
 
 
-# --------------------------------------------------------------------------- apply (product writer, #516)
+# --------------------------------------------------------------------------- apply (product writer, StarshipSuperjam/engine-template#516)
 def apply_product(version: str, dry_run: bool, root: str | None = None) -> dict:
     """Record the product version into `product-version.json` — the product analogue of `apply`. A product has
     no engine packages, so there is no per-package/floor/split-brain machinery: one root file, one version.
@@ -1140,7 +1302,81 @@ def template_preamble() -> str:
     return "\n".join(block)
 
 
-def render_pr_body(proposal: dict, applied: dict, gate_state: str = "sub-bar") -> str:
+def _working_tree_sha() -> "str | None":
+    """The git tree sha of the current working tree (through a THROWAWAY index, never the real one) — used to
+    confirm a supplied deployment-gate result describes THIS release candidate. At the `release.yml` pr-body
+    step the tree is unchanged since the gate ran two steps earlier, so this matches the gate's stamped
+    `candidate_tree`; a mismatch means a stale or foreign gate JSON. Best-effort: None on any git failure."""
+    import subprocess   # local: only this correspondence check needs it (mirrors the file's other local uses)
+    try:
+        with tempfile.TemporaryDirectory() as idx:
+            env = {**os.environ, "GIT_INDEX_FILE": os.path.join(idx, "index")}
+            if subprocess.run(["git", "-C", validate.ROOT, "add", "-A"], env=env,
+                              capture_output=True, timeout=120).returncode != 0:
+                return None
+            r = subprocess.run(["git", "-C", validate.ROOT, "write-tree"], env=env,
+                               capture_output=True, text=True, timeout=60)
+        return (r.stdout.strip() or None) if r.returncode == 0 else None
+    except Exception:   # noqa: BLE001 — correspondence is advisory, never a block
+        return None
+
+
+def _deployment_check_lines(gate: "dict | None") -> list:
+    """The Validation-section bullets recording the deployed upgrade+rollback check (the `release_gate` result).
+    ENGINE cuts only — the caller suppresses this in product mode, where the gate is inert. STRUCTURED FIELDS
+    ONLY reach the body: the baseline tag and per-leg outcome, never a raw `detail` string (those are
+    unsanitized nested stderr — local paths, tracebacks, `::`-prefixed text a public body must not carry). It
+    ALWAYS emits something on an engine cut: a missing / unreadable / mismatched / incomplete gate result
+    renders an honest line rather than silently restoring a body that looks like no check exists. The wording is
+    strictly mechanical — a deploy-and-undo CHECK, never a 'qualification' (the engine never qualifies itself;
+    that word names the operator's own frozen judgment)."""
+    lead = "- **Deployed upgrade and rollback check** —"
+    if gate is None:
+        return [f"{lead} no deployed upgrade/rollback evidence was supplied with this summary."]
+    if gate.get("_unreadable"):
+        return [f"{lead} deployed upgrade/rollback evidence was supplied but could not be read "
+                f"({gate.get('_error') or 'unreadable'})."]
+    if not gate.get("ran"):
+        return [f"{lead} the deployment gate was inert here (not the engine's home repo), so it recorded no "
+                "transitions."]
+    up = gate.get("upgrades") or {}
+    transitions = up.get("transitions")
+    if not transitions:
+        return [f"{lead} the deployment gate did not complete, so it recorded no per-transition evidence."]
+    stamped, current = gate.get("candidate_tree"), _working_tree_sha()
+    if stamped and current and stamped != current:
+        return [f"{lead} the gate evidence supplied does not correspond to this release candidate, so it is "
+                "not shown (re-run the deployment gate against this tree)."]
+    unverified = "" if (stamped and current) else " (candidate correspondence could not be verified)"
+    lines = [f"{lead} on a projected deployed copy, from each supported source version, a practice upgrade to "
+             f"this release then an undo of it{unverified}:"]
+    for t in transitions:
+        base, up_ok = t.get("baseline"), (t.get("upgrade") or {}).get("passed")
+        rb_ok = (t.get("rollback") or {}).get("passed")
+        if up_ok and rb_ok:
+            lines.append(f"  - from {base}: practice upgrade completed, then the undo restored the copy.")
+        elif up_ok and rb_ok is False:
+            lines.append(f"  - from {base}: practice upgrade completed, but the undo did not cleanly restore "
+                         "the copy.")
+        elif up_ok is False:
+            lines.append(f"  - from {base}: the practice upgrade did not complete.")
+        else:
+            lines.append(f"  - from {base}: recorded an unexpected state.")
+    floor, n = up.get("floor"), len(transitions)
+    excl = up.get("excluded") or []
+    excl_note = f"; below the floor and not tested: {', '.join(excl)}" if excl else ""
+    if floor:
+        lines.append(f"  - Supported source versions: every released version at or above the clean-upgrade "
+                     f"floor {floor} ({n} transition{'' if n == 1 else 's'} this cut{excl_note}).")
+    lines.append("  - This is a mechanical deploy-and-undo check on a projected deployed copy, not the "
+                 "readiness judgment referred to under Risk. It proves a stalled/staged update from each "
+                 "version above can be undone; it does not exercise reverting an already-merged upgrade "
+                 "pull request.")
+    return lines
+
+
+def render_pr_body(proposal: dict, applied: dict, gate_state: str = "sub-bar",
+                   deployment_gate: "dict | None" = None) -> str:
     """The release pull request's body — the maintainer's whole evidence bundle, authored HERE (never
     composed in workflow bash) so the gate-path legibility has one home. It takes both the `propose` JSON
     (the change inventory + interface impacts) and the `apply` result JSON (the versions actually recorded),
@@ -1159,12 +1395,12 @@ def render_pr_body(proposal: dict, applied: dict, gate_state: str = "sub-bar") -
                            "(the release was refused or the result is malformed).")
     # the construction sentinel `0.0.0-dev` is internal — never surface it to the maintainer (see _version_lines)
     from_shown = "no earlier version" if from_engine == SENTINEL else from_engine
-    # PRODUCT cut (#516): a deployed repo cutting its OWN product release — speak of the product, not the engine.
+    # PRODUCT cut (StarshipSuperjam/engine-template#516): a deployed repo cutting its OWN product release — speak of the product, not the engine.
     product = bool(applied.get("product") or proposal.get("product"))
     thing = "product" if product else "engine"
 
     # The consent preamble every pull request carries at the top — lifted from the template so the release
-    # body reads the same and satisfies the pull-request-completeness gate's preamble anchors (#589). Emitted in
+    # body reads the same and satisfies the pull-request-completeness gate's preamble anchors (StarshipSuperjam/engine-template#589). Emitted in
     # BOTH modes, so a product release PR clears the same gate an engine one does.
     out = [f"# A new {'release of your product' if product else 'engine version'}: "
            f"{from_shown} → {engine}", "", template_preamble(), ""]
@@ -1262,13 +1498,17 @@ def render_pr_body(proposal: dict, applied: dict, gate_state: str = "sub-bar") -
             "*Impact: a wrong version, or a change the summary could not detect mechanically, is caught by "
             "closing and re-running with the right version — nothing publishes until you merge.*", ""]
 
+    validation_bullets = [
+        ("- A green check shows the recorded version is well-formed and this summary is complete." if product else
+         "- A green check shows the versions agree across all the files that record them, the generated maps "
+         "are in sync, and this summary is complete."),
+        f"- It does **not** judge whether {engine} is the right version to release — that judgment is yours."]
+    if not product:      # the deployment gate is an ENGINE-cut instrument; it is inert on a product cut
+        validation_bullets += _deployment_check_lines(deployment_gate)
     out += pr_section(
         "Validation",
         "The engine's own tooling produced this and `engine-ci` checks it — the mechanical floor.",
-        [("- A green check shows the recorded version is well-formed and this summary is complete." if product else
-          "- A green check shows the versions agree across all the files that record them, the generated maps "
-          "are in sync, and this summary is complete."),
-         f"- It does **not** judge whether {engine} is the right version to release — that judgment is yours."],
+        validation_bullets,
         f"green means the release conforms to the engine's rules, not that {engine} is the right call.")
 
     out += pr_section(
@@ -1284,6 +1524,15 @@ def render_pr_body(proposal: dict, applied: dict, gate_state: str = "sub-bar") -
          "version you know it should be; the summary shows only what it can detect mechanically, so your own "
          "knowledge of what you shipped is the backstop."],
         f"your merge is the binding consent to publish {engine} — the engine never merges this for you.")
+
+    out += pr_section(
+        "Demonstration",
+        "Nothing to run — this is release plumbing, not a behaviour change.",
+        ["- This pull request only records the new version and refreshes the generated maps; there is no "
+         "product behaviour to watch work here. What you review is the version summary above.",
+         "- There is no operator-runnable demonstration, and saying so is honest: a release cut has no "
+         "behavioural correlate of its own — not a missing one to apologise for."],
+        "there is no behaviour to demonstrate; the version summary above is what you review.")
 
     out += pr_section(
         "Files of interest",
@@ -1332,7 +1581,7 @@ def _cmd_propose(args) -> int:
               f"release again. Nothing was changed.", file=sys.stderr)
         return 2
     if mode == "product":
-        # PRODUCT cut (#516): baseline is the DEPLOYED repo's own last release; no capability tree to diff.
+        # PRODUCT cut (StarshipSuperjam/engine-template#516): baseline is the DEPLOYED repo's own last release; no capability tree to diff.
         # A None slug (unresolved origin) forces a first cut — never the engine-home fallback (see _product_baseline).
         baseline = _product_baseline(ctx["slug"])
         merged = ([] if args.baseline_tree
@@ -1352,15 +1601,20 @@ def _cmd_propose(args) -> int:
     proposal["merged_prs"] = ([] if args.baseline_tree
                               else merged_pr_titles(baseline.ref, _current_sha()))
     print(json.dumps(proposal, indent=2) if args.json else _render_proposal(proposal))
-    # A dropped migration key OR a dropped retired-capability notice would be silently skipped on a multi-version
-    # upgrade (the #599 class) — REFUSE the cut here, before `apply` writes anything. Both are reported together in
-    # ONE refusal so a maintainer fixing one isn't ambushed by the other on a re-run (design-review). `propose`
-    # runs under `set -euo pipefail` in release.yml, so this non-zero exit fails the release job at this step;
-    # apply and pr-body never run, so there is no PR body to carry the fact — the refusal message is the whole
-    # surface. The recovery differs by kind: a migration has a no-op escape hatch, a retirement notice does not.
+    # A dropped migration key, a dropped retired-capability notice, a whole-module removal with no plain-language
+    # notice, a survivor that still depends on a removed module, or a default-on module depending on a capability
+    # not guaranteed present everywhere — each would break a deployer's upgrade (the first three silently, the last
+    # two as a dead-end / an uninstallable default). REFUSE the cut here, before `apply` writes anything. All are
+    # reported together in ONE refusal so a maintainer fixing one isn't ambushed by another on a re-run (design-
+    # review). `propose` runs under `set -euo pipefail` in release.yml, so this non-zero exit fails the release
+    # job at this step; apply and pr-body never run, so there is no PR body to carry the fact — the refusal
+    # message is the whole surface. The recovery differs by kind.
     mig_viol = proposal.get("migration_violations") or []
     ret_viol = proposal.get("retired_capability_violations") or []
-    if mig_viol or ret_viol:
+    rem_viol = proposal.get("removed_capability_violations") or []
+    dep_viol = proposal.get("dependency_violations") or []
+    don_viol = proposal.get("default_on_dependency_violations") or []
+    if mig_viol or ret_viol or rem_viol or dep_viol or don_viol:
         recovery = ["nothing was written and no release was opened."]
         if mig_viol:
             recovery.append("Restore each dropped upgrade step to the capability's settings file; to retire a "
@@ -1368,8 +1622,21 @@ def _cmd_propose(args) -> int:
         if ret_viol:
             recovery.append("Restore each dropped retired-capability notice by keeping its version key — a "
                             "retirement notice has no no-op form, so it must never be dropped.")
-        _print_refusal({"reason": "a version-keyed upgrade record was dropped",
-                        "violations": mig_viol + ret_viol, "recovery": " ".join(recovery)})
+        if rem_viol:
+            recovery.append("For each removed module, add its plain-language removal notice to engine.json "
+                            "removed_capabilities by hand (the module is already gone, so this is an edit, not "
+                            "another `remove`) — a whole-module removal has no no-op form, so the notice is "
+                            "required.")
+        if dep_viol:
+            recovery.append("Keep each still-depended-on capability, or remove its dependents too.")
+        if don_viol:
+            recovery.append("Make each such dependency required or default-on, or lower the dependent to optional "
+                            "so it is not installed by default — a default-on module may depend only on "
+                            "capabilities guaranteed present on every deployment.")
+        _print_refusal({"reason": "a required release record or module dependency is missing, dropped, or "
+                                  "inconsistent",
+                        "violations": mig_viol + ret_viol + rem_viol + dep_viol + don_viol,
+                        "recovery": " ".join(recovery)})
         return 2
     return 0
 
@@ -1377,7 +1644,13 @@ def _cmd_propose(args) -> int:
 def _cmd_pr_body(args) -> int:
     proposal = validate.load_json(args.proposal)
     applied = validate.load_json(args.applied)
-    print(render_pr_body(proposal, applied, args.gate_state))
+    deployment_gate = None
+    if getattr(args, "deployment_gate_json", None):
+        try:
+            deployment_gate = validate.load_json(args.deployment_gate_json)
+        except Exception as exc:   # noqa: BLE001 — a supplied-but-unreadable gate result renders honestly
+            deployment_gate = {"_unreadable": args.deployment_gate_json, "_error": str(exc)}
+    print(render_pr_body(proposal, applied, args.gate_state, deployment_gate))
     return 0
 
 
@@ -1399,7 +1672,7 @@ def _cmd_apply(args) -> int:
               f"again. Nothing was changed.", file=sys.stderr)
         return 2
     if mode == "product":
-        # PRODUCT cut (#516): write the one root product-version.json; --all/--package/--proposal (engine
+        # PRODUCT cut (StarshipSuperjam/engine-template#516): write the one root product-version.json; --all/--package/--proposal (engine
         # package machinery) do not apply to a product and are ignored.
         result = apply_product(args.engine, args.dry_run)
     else:
@@ -1462,6 +1735,9 @@ def main(argv: list) -> int:
     pb.add_argument("--gate-state", default="sub-bar", choices=["passed", "sub-bar", "errored"],
                     help="the acceptance-benchmark outcome to render (only 'sub-bar' is reachable while no "
                          "benchmark measures a release)")
+    pb.add_argument("--deployment-gate-json", dest="deployment_gate_json", metavar="PATH",
+                    help="the release_gate.py --json-out result; its per-transition upgrade/rollback outcomes "
+                         "are recorded in the Validation section (engine cuts only)")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "propose":

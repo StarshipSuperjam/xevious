@@ -25,8 +25,9 @@ reserves the Claude ones. Three invariants bind every adapter, now and for any r
   committed exception ledger, and an entry declares not just absence but reduced strength — a present-but-weaker
   counterpart (an instruction where the other runtime has mechanical enforcement, a protection the platform can
   switch off) is a ledger entry with a reason, never a footnote in prose. The ledger sits inside the
-  guardrail-weakening floor, so widening an exception is held for the operator's deliberate acknowledgment like
-  any other loosening. "Parity" therefore means presence *and* declared strength, never a silent claim of
+  guardrail-weakening floor, so widening an exception is surfaced by the weakening guard — since eADR-0040 as
+  a plain-language disclosure at the merge (no longer a blocking acknowledgment), the tier every ordinary
+  floor modification now carries. "Parity" therefore means presence *and* declared strength, never a silent claim of
   equivalence.
 - **Honest degradation.** Where a runtime withholds a guarantee the engine cannot verify from inside a
   repository, the engine degrades loudly instead of pretending: it detects its own silent-off state and

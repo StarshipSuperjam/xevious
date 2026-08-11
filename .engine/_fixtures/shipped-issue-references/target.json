@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_REF_SCAN_ROOT": ".engine/_fixtures/shipped-issue-references"
+  }
+}

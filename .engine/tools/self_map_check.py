@@ -36,7 +36,7 @@ def emit(findings: list) -> int:
 def main() -> int:
     # ENGINE_SELF_MAP_PATH (unset in every production run) lets the negative-fixture meta-check
     # point the committed-side read at a seeded stale map while the canonical side still derives
-    # from the real repo — so the drift gate is witnessed biting a real bad input (#286).
+    # from the real repo — so the drift gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     f = self_map.check(validate.env_override_path("ENGINE_SELF_MAP_PATH"))
     return emit([f] if f["severity"] == "hard" else [])
 

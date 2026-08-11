@@ -134,7 +134,7 @@ def main(argv: list) -> int:
     tier = os.environ.get("ENGINE_RULE_TIER", "hard")
     # ENGINE_AGENT_FIXTURE_DIR (unset in production) lets the negative-fixture meta-check point the
     # persona scan at a seeded non-.claude fixture dir carrying an unconsumed lens, so the guard is
-    # witnessed biting a real bad input (#286). The consumed set is always the real committed one.
+    # witnessed biting a real bad input (StarshipSuperjam/engine-template#286). The consumed set is always the real committed one.
     agents = agent_coherence_check.engine_agents(
         agents_dir=validate.env_override_path("ENGINE_AGENT_FIXTURE_DIR"))
     consumed = consumed_lenses()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reconcile a pull request stranded on the engine's derived-committed index files (#136).
+"""Reconcile a pull request stranded on the engine's derived-committed index files (StarshipSuperjam/engine-template#136).
 
 When two pieces of work are in flight at once they can both rewrite the engine's two internal index files —
 the knowledge graph (`.engine/knowledge/graph.json`) and the self-map (`.engine/self-map.md`) — and a sibling
@@ -36,6 +36,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import validate          # noqa: E402
@@ -47,6 +48,20 @@ MEMBERS = (".engine/knowledge/graph.json", ".engine/self-map.md")
 
 # An inline identity so a merge/commit never fails for lack of a configured git user on the operator's machine.
 _IDENT = ["-c", "user.email=engine@local", "-c", "user.name=engine"]
+
+# Bounded retry through a transient missing-origin / shared-config blip (StarshipSuperjam/engine-template#704): under heavy parallel-worktree
+# use, a concurrent write to the one shared .git/config makes an arbitrary git command fail for a moment, then
+# self-heal. A few fast retries ride out that window. This inline retry is copied — not shared — across the
+# five tools that carry it (scope_profile, close_linkage_preflight, pr_reconcile, module_manager, tune),
+# matching the codebase's per-module retry convention (e.g. memory/capture.py's lock retry); keep the copies
+# identical. Applied ONLY to the read-side fetch in `assess` (via `_fetch_with_retry`), NEVER inside `_ok` —
+# the reconcile executor relies on `_ok`'s single-shot result to read a non-fast-forward push rejection as a
+# terminal "someone advanced the branch" signal, which a retry would mask.
+_ORIGIN_RETRY_ATTEMPTS = 3
+_ORIGIN_RETRY_DELAY = 0.3      # seconds between attempts
+_FETCH_FAST_FAIL = 5.0        # a fetch that FAILS in under this many seconds is a transient blip worth
+                              # retrying; a slower failure is a genuine remote hang, so it is NOT retried and
+                              # assess degrades at ~one timeout, never attempts×timeout (StarshipSuperjam/engine-template#704).
 
 
 # ---- the git boundary (best-effort; a mutation reports success, never raises) ----------------
@@ -69,6 +84,24 @@ def _ok(args: list, root: str, timeout: int = 120) -> bool:
                               timeout=timeout, check=False).returncode == 0
     except Exception:  # noqa: BLE001
         return False
+
+
+def _fetch_with_retry(default: str, root: str) -> bool:
+    """`git fetch origin <default>` with a bounded retry through a transient missing-origin / shared-config
+    blip (StarshipSuperjam/engine-template#704). Retries ONLY a FAST failure (the blip); a slower failure is a genuine remote hang, so it is
+    not retried and `assess` degrades at ~one timeout rather than attempts×timeout. Calls `_ok` — leaving that
+    helper (the executor's own mutation primitive) byte-unchanged — so the retry is confined to the read-side
+    fetch and never touches the executor's push-rejection signal. The common (first-try) path makes exactly
+    one call and never sleeps."""
+    for attempt in range(_ORIGIN_RETRY_ATTEMPTS):
+        started = time.monotonic()
+        if _ok(["fetch", "origin", default], root):
+            return True
+        if time.monotonic() - started >= _FETCH_FAST_FAIL:
+            break                          # a slow failure is a genuine hang/outage, not a transient blip
+        if attempt < _ORIGIN_RETRY_ATTEMPTS - 1:
+            time.sleep(_ORIGIN_RETRY_DELAY)
+    return False
 
 
 def _current_branch(root: str) -> str | None:
@@ -174,7 +207,7 @@ def assess(*, root: str | None = None, default: str | None = None, fetch: bool =
     default = default or _default_branch(root)
     if not _members_present(root):
         return {"status": "needs-manual", "reason": "no-engine-members", "base": None, "conflicted": []}
-    if fetch and not _ok(["fetch", "origin", default], root):
+    if fetch and not _fetch_with_retry(default, root):
         return {"status": "needs-manual", "reason": "fetch-failed", "base": None, "conflicted": []}
     base = _run(["rev-parse", f"origin/{default}"], root) or _run(["rev-parse", default], root)
     if not base:

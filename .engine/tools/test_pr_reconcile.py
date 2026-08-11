@@ -279,5 +279,69 @@ class TestReconcile(unittest.TestCase):
             self.assertFalse(_git(work, "status", "--porcelain").stdout.strip())
 
 
+class TestFetchRetry(unittest.TestCase):
+    """#704: a transient missing-origin blip on the assess fetch is ridden out by a bounded, FAST-fail-only
+    retry; a genuine slow hang is not retried (so assess degrades promptly, never attempts×timeout); and the
+    executor's own _ok is never touched by any of this."""
+
+    def test_a_transient_fetch_failure_is_retried_and_recovers(self):
+        seq = [False, True]   # fail fast once, then self-heal
+        calls = {"n": 0}
+
+        def flaky(args, root, timeout=120):
+            r = seq[min(calls["n"], len(seq) - 1)]
+            calls["n"] += 1
+            return r
+        with mock.patch.object(pr_reconcile, "_ok", flaky), mock.patch("time.sleep") as slept:
+            self.assertTrue(pr_reconcile._fetch_with_retry("main", "/x"))
+        self.assertEqual(calls["n"], 2)      # exactly one retry
+        slept.assert_called_once()
+
+    def test_the_common_path_makes_exactly_one_call_and_never_sleeps(self):
+        calls = {"n": 0}
+
+        def once(args, root, timeout=120):
+            calls["n"] += 1
+            return True
+        with mock.patch.object(pr_reconcile, "_ok", once), mock.patch("time.sleep") as slept:
+            self.assertTrue(pr_reconcile._fetch_with_retry("main", "/x"))
+        self.assertEqual(calls["n"], 1)
+        slept.assert_not_called()
+
+    def test_a_fast_persistent_failure_exhausts_the_bound_then_degrades(self):
+        calls = {"n": 0}
+
+        def always_fail_fast(args, root, timeout=120):
+            calls["n"] += 1
+            return False
+        with mock.patch.object(pr_reconcile, "_ok", always_fail_fast), mock.patch("time.sleep"):
+            self.assertFalse(pr_reconcile._fetch_with_retry("main", "/x"))
+        self.assertEqual(calls["n"], pr_reconcile._ORIGIN_RETRY_ATTEMPTS)   # tried the full bound, then gave up
+
+    def test_a_slow_failure_is_NOT_retried(self):
+        # A failure that consumed real time is a genuine remote hang, not a transient blip -> degrade at ~one
+        # timeout, never attempts×timeout (#704 F3). monotonic is faked to report elapsed past the threshold.
+        clock = iter([100.0, 100.0 + pr_reconcile._FETCH_FAST_FAIL + 1.0])
+        calls = {"n": 0}
+
+        def slow_fail(args, root, timeout=120):
+            calls["n"] += 1
+            return False
+        with mock.patch.object(pr_reconcile, "_ok", slow_fail), \
+                mock.patch.object(pr_reconcile.time, "monotonic", lambda: next(clock)), \
+                mock.patch("time.sleep") as slept:
+            self.assertFalse(pr_reconcile._fetch_with_retry("main", "/x"))
+        self.assertEqual(calls["n"], 1)      # the slow failure was not retried
+        slept.assert_not_called()
+
+    def test_assess_wires_the_fetch_through_the_bounded_retry(self):
+        # assess() calls _fetch_with_retry (not _ok directly); when it exhausts, assess degrades honestly.
+        with mock.patch.object(pr_reconcile, "_members_present", lambda root: True), \
+                mock.patch.object(pr_reconcile, "_fetch_with_retry", return_value=False) as fwr:
+            a = pr_reconcile.assess(root="/x", default="main")
+        fwr.assert_called_once_with("main", "/x")
+        self.assertEqual(a["reason"], "fetch-failed")
+
+
 if __name__ == "__main__":
     unittest.main()

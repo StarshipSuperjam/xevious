@@ -133,6 +133,9 @@ class TestFailTowardFull(unittest.TestCase):
 
 
 class TestPathResolution(unittest.TestCase):
+    # The `.engine`-cwd doubling guard on the git-unavailable fallback lives in
+    # test_selftest_hermeticity.py (engine-template #753).
+
     def test_env_override_wins(self):
         d = tempfile.mkdtemp()
         with mock.patch.dict(os.environ, {bal.ENV_DIR: d}):

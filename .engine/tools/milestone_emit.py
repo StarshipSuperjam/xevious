@@ -11,7 +11,7 @@ SELF-CONTAINED ON PURPOSE. This is a CORE tool, but the build order is authored 
 module. So it imports NO product-design code — a required tool must not depend on an optional module, or it would
 crash the "absent a build order, plan the phase yourself" path on every repo that never installed product-design.
 It therefore carries its own minimal pipe-table parser (a knowing duplicate of a trivial parse); its GitHub
-boundary builds requests through the shared `github_client` (the gh-client consolidation engine-template #295
+boundary builds requests through the shared `github_client` (the gh-client consolidation StarshipSuperjam/engine-template#295
 began) while keeping its own injectable-transport seam (`telemetry.GitHubIssues` / `standing_situation`).
 
 Idempotency (the `gh api` Milestones surface has no upsert): list every existing milestone (`state=all`, so a

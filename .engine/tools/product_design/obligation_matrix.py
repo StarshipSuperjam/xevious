@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Spec-obligation matrix (product-design) — the engine's generated, committed criterion-by-criterion record
 of a product's SETTLED acceptance criteria, and the drift gate that keeps it honest. A standing audit sweep
-reads it (issue #449).
+reads it (issue StarshipSuperjam/engine-template#449).
 
 WHAT IT IS. When a project settles a capability in its product spec (a `locked` document under `docs/spec/`
 carrying an acceptance-criteria table), this tool derives ONE committed JSON file,
@@ -246,7 +246,7 @@ def _spec_root_override():
 def _matrix_path_override():
     """The committed matrix path — MATRIX_PATH in production, redirectable by the fixture seam
     ENGINE_OBLIGATION_MATRIX_PATH so the negative fixture can point the committed side at a seeded stale
-    matrix and witness the gate biting (#286-style input substitution)."""
+    matrix and witness the gate biting (StarshipSuperjam/engine-template#286-style input substitution)."""
     return validate.env_override_path("ENGINE_OBLIGATION_MATRIX_PATH") or MATRIX_PATH
 
 

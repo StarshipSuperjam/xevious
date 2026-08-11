@@ -32,7 +32,11 @@ verbatim, so bulleted detail renders as bullets; `_demo` below models the readab
 PASSIVE FORMATTER, NOT A REGISTRY. This is shared code each producer *calls*; it
 makes no network calls, applies no label, and holds no roster of producers. The engine-domain label is
 applied by each producer's own GitHub boundary (an explicit `labels` value at creation, or a label
-call right after — never a web-only issue-template default, which the programmatic path bypasses). The
+call right after — never a web-only issue-template default, which the programmatic path bypasses). Its
+literal string is `engine` (`telemetry.ENGINE_DOMAIN_LABEL`), never `engine-domain` or a look-alike a
+descriptive phrase might suggest — a look-alike label is read by no machinery, so the Issue silently drops out
+of the debt register and the boot counts. The producer-side rule: whoever files an Issue about the engine's
+OWN health applies `--label engine` AT creation, regardless of who asked for it. The
 product-design spec Issue is the named exception: its body is a plain-prose specification, a
 different realization of the same channel, not authored through this helper.
 
@@ -78,23 +82,43 @@ def _render_references(references) -> str:
     return "\n\n**More detail.**\n" + "\n".join(lines)
 
 
-def render_engine_issue_body(*, what_this_is: str, whats_next: str, references=None) -> str:
+def render_engine_issue_body(*, what_this_is: str, whats_next: str, references=None,
+                             urgency: str | None = None) -> str:
     """Assemble an engine-authored Issue body to the control-plane body contract.
 
     Keyword-only and required: omitting `what_this_is` or `whats_next` raises TypeError at the call
     boundary (the by-construction enforcement — a producer cannot omit a part); a present-but-blank
     value raises ValueError. `references` is an optional list of (label, url) pairs rendered as plain
-    markdown links. Returns the body string; the calling producer applies the engine-domain label and
-    appends any producer-specific trailer (e.g. a tracking marker) itself — this helper never calls
+    markdown links.
+
+    `urgency` (optional) lets a session that files an engine Issue grade it at creation: one of telemetry's
+    two severity classes (`trust-critical`, `persistent-but-benign`), or None (unrated — the default, which
+    leaves every existing producer's body byte-for-byte unchanged). When set, the same invisible
+    `<!-- engine-severity: … -->` marker telemetry writes is appended LAST (so `telemetry.parse_severity`
+    recovers it) via `telemetry.severity_trailer` — the single source for that marker; any other value raises
+    ValueError there. Returns the body string; the calling producer still applies the engine-domain label and
+    appends any OTHER producer-specific trailer (e.g. a tracking marker) itself — this helper never calls
     GitHub and never applies a label."""
     what_this_is = _require("what_this_is", what_this_is)
     whats_next = _require("whats_next", whats_next)
-    return (
+    body = (
         f"{_FRAMING}\n\n"
         f"**What this is.** {what_this_is}\n\n"
         f"**What happens next.** {whats_next}"
         f"{_render_references(references)}\n"
     )
+    if urgency is not None:
+        # telemetry owns the severity marker; import it lazily HERE (not at module scope) because telemetry
+        # imports issue_author at load time — a top-level `import telemetry` would close that cycle and crash
+        # the boot path. At call time telemetry is fully initialised, so the local import is safe.
+        import telemetry  # noqa: E402  (function-local: breaks the telemetry<->issue_author import cycle)
+        try:
+            body += f"\n{telemetry.severity_trailer(urgency)}\n"
+        except ValueError as exc:
+            # telemetry's message speaks its own vocabulary ("severity"); re-raise naming the argument the
+            # CALLER actually passed, so the error points at a parameter that exists at this call site.
+            raise ValueError(str(exc).replace("severity", "urgency", 1)) from None
+    return body
 
 
 def _demo() -> int:
@@ -133,11 +157,22 @@ def _demo() -> int:
     except ValueError as exc:
         refused += 1
         print(f"Refused — a reference needs a label and a link: {exc}")
-    # Self-check: a complete call renders a body, and each of the three contract violations is refused.
-    ok = bool(body) and refused == 3
+    print("\n--- an optional urgency grades the Issue at creation (invisible severity marker, appended last) ---")
+    graded = render_engine_issue_body(what_this_is="x", whats_next="y", urgency="trust-critical")
+    graded_ok = "<!-- engine-severity: trust-critical -->" in graded
+    print(f"Marker present: {graded_ok}")
+    print("\n--- an urgency outside telemetry's two classes is refused (never free text) ---")
+    try:
+        render_engine_issue_body(what_this_is="x", whats_next="y", urgency="high")
+    except ValueError as exc:
+        refused += 1
+        print(f"Refused — urgency must be one of telemetry's two classes: {exc}")
+    # Self-check: a complete call renders a body, each of the four contract violations is refused, and a
+    # graded body carries the severity marker.
+    ok = bool(body) and refused == 4 and graded_ok
     if not ok:
-        print(f"\nDEMO UNEXPECTED: the body did not render or a refusal did not fire ({refused}/3 refused).",
-              file=sys.stderr)
+        print(f"\nDEMO UNEXPECTED: body/marker did not render or a refusal did not fire "
+              f"({refused}/4 refused, marker={graded_ok}).", file=sys.stderr)
         return 1
     return 0
 

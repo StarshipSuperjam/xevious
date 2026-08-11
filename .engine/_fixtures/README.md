@@ -20,7 +20,7 @@ the check schema is unchanged). Each in-scope hard check-logic unit gets one sub
   left behind after its kind is gone is **inert** (pruned + coverage-exempt, below) — never a stranded gate. So a
   module `provides` its kind callable, **not** its fixture.
 - a **`custom/script` check instance** → `<check-id-stem>/`, the rule id minus `engine/check/`
-  (e.g. `disposition-issue-resolution/`)
+  (e.g. `census-completeness/`)
 
 Each unit directory holds a `rule.json` (the transient rule the meta-check runs), the seeded bad input (a single
 bad file; or, for the repo-global `coverage`/`coherence` kinds, a malformed mini-tree or a `manifests.json` data

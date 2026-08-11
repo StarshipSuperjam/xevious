@@ -64,7 +64,7 @@ _HOUR = 3600
 # throwaway cabinet under tests/demo and the real store in production. Already fenced by the `.engine/memory/` gitignore.
 _STATE_FILENAME = "backup-vault-state.json"
 
-# The migration stamp (#303): a second gitignored sidecar (same dir/convention as the state sidecar above)
+# The migration stamp (StarshipSuperjam/engine-template#303): a second gitignored sidecar (same dir/convention as the state sidecar above)
 # recording the reversibility floor of the most-recent upgrade — what version reshaped the local store and which
 # retained snapshot tag is the copy from BEFORE that whole update. It is the local, offline record the code-older-
 # than-data detector reads (the migrated version is recorded nowhere else locally: engine.json reverts WITH the code),
@@ -121,7 +121,7 @@ _SNAPSHOT_COMMIT_MESSAGE = "Pre-migration memory snapshot (engine)"
 # and named collision-free by the migration id (the primary discriminator: one upgrade runs several migrations at one
 # engine-version). DETERMINISTIC per migration, so a replay collides and is refused rather than silently duplicating.
 _SNAPSHOT_TAG_PREFIX = "engine-snapshot"
-# Retention (#303 — reversibility unit = the upgrade): `_prune_snapshots` keeps exactly the most-recent
+# Retention (StarshipSuperjam/engine-template#303 — reversibility unit = the upgrade): `_prune_snapshots` keeps exactly the most-recent
 # snapshot AND the stamp-cited batch floor (the copy "undo the update" restores), pruning every intermediate. So a
 # namespace settles to <=2 snapshot tags; no numeric cap is needed — the cited floor + the locked most-recent define
 # the keep-set directly. (The earlier `_SNAPSHOT_RETENTION_CAP` recency window was retired here.)
@@ -348,7 +348,7 @@ def _record_state(*, now: int, success: bool, privacy_ok: bool) -> None:
 
 
 # ============================================================================================================
-# The migration stamp (#303): the local, offline record of the upgrade's reversibility floor.
+# The migration stamp (StarshipSuperjam/engine-template#303): the local, offline record of the upgrade's reversibility floor.
 # ============================================================================================================
 
 def _migration_stamp_path() -> str:
@@ -533,7 +533,7 @@ def _tag_protection_present(gh, owner: str, repo: str) -> bool:
 
 
 def _prune_snapshots(gh, owner: str, repo: str, namespace: str, keep_name: str) -> list:
-    """Citation-bound retention (#303 — the reversibility unit is the upgrade). Keep exactly TWO tags:
+    """Citation-bound retention (StarshipSuperjam/engine-template#303 — the reversibility unit is the upgrade). Keep exactly TWO tags:
     the MOST-RECENT snapshot (`keep_name`, the just-created one — 'never prune the most-recent') AND the
     stamp-cited batch FLOOR (the copy 'undo the update' restores — the stamp IS the citation retention binds to).
     Delete every other (intermediate) snapshot, so steady state is <=2 tags/namespace (they coincide -> 1 for a
@@ -615,7 +615,7 @@ def snapshot_for_migration(store, engine_version, *, migration_id=None, reversib
     branch head left untouched. A name COLLISION (a replay of the same migration) is REFUSED, never an overwrite. The
     tag survives the routine backup because it is a different ref — distinctness is the tier-independent guarantee;
     platform tag-immutability is optional paid-tier hardening, probed and reported (`hardened`), never promised. When
-    `reversibility_floor` is True (the FIRST data migration of an upgrade — #303), this snapshot is recorded as the
+    `reversibility_floor` is True (the FIRST data migration of an upgrade — StarshipSuperjam/engine-template#303), this snapshot is recorded as the
     local reversibility floor (`write_migration_stamp`): the copy "undo the update" restores. After a successful
     snapshot the prune keeps exactly the most-recent snapshot AND the stamp-cited floor, deleting intermediates
     (steady state <=2 tags/namespace).
@@ -659,7 +659,7 @@ def snapshot_for_migration(store, engine_version, *, migration_id=None, reversib
         return None                                          # collision (409/422) or failure -> refuse the migration
     hardened = _tag_protection_present(gh, owner, repo)
     if reversibility_floor and _is_version_shaped(engine_version):
-        # #303: this is the FIRST data migration of the upgrade, so its snapshot is the batch floor — the copy "undo
+        # StarshipSuperjam/engine-template#303: this is the FIRST data migration of the upgrade, so its snapshot is the batch floor — the copy "undo
         # the update" restores. Record it BEFORE the prune so the prune's citation read shields it. Best-effort: a
         # stamp-write fault must never refuse a successful snapshot (the prune's citation-doubt fail-safe then keeps
         # this just-created floor tag regardless). Later migrations of the SAME upgrade pass reversibility_floor=False
@@ -760,7 +760,7 @@ def _consent_prompt(vault_name: str, scope: str) -> str:
 
 def _disclosure_text(scope: "str | None" = None, *, question: bool = True) -> str:
     """Floor-1 disclosure as PLAIN TEXT — no prompt, no stdin, no side effect — for the agent-mediated first-run
-    to relay verbatim (#397). With no scope it returns the shared-vs-per-repo CHOICE (`_choice_prompt`); with a
+    to relay verbatim (StarshipSuperjam/engine-template#397). With no scope it returns the shared-vs-per-repo CHOICE (`_choice_prompt`); with a
     scope it returns the consent NAMING that destination + its must-stay-private requirement (`_consent_prompt`).
     Single-homed on the same copy the interactive prompts use, so the runbook never re-types consent-critical text
     and the operator always sees the destination name before anything is created. `question=False` drops the
@@ -1148,7 +1148,7 @@ def status(*, now: "int | None" = None) -> int:
 
 def _parse_setup_flags(argv: list) -> dict:
     """Parse `--scope shared|per-project` and `--consent y|n` for the non-interactive (agent-mediated) first-run
-    path (#397). An absent flag stays None so `setup` falls back to its interactive prompts on a real TTY."""
+    path (StarshipSuperjam/engine-template#397). An absent flag stays None so `setup` falls back to its interactive prompts on a real TTY."""
     opts: dict = {}
     i = 0
     while i < len(argv):
@@ -1172,7 +1172,7 @@ def main(argv: list) -> int:
         return hooks.run_hook("SessionStart", _session_start_handler)
     if cmd == "disclosure":
         # Read-only: PRINT the floor-1 choice (no --scope) or the consent naming the destination (--scope X), for
-        # the agent-mediated first-run to relay verbatim before it ever passes `setup --consent y` (#397).
+        # the agent-mediated first-run to relay verbatim before it ever passes `setup --consent y` (StarshipSuperjam/engine-template#397).
         print(_disclosure_text(_parse_setup_flags(argv[1:]).get("scope")))
         return 0
     if cmd == "setup":
@@ -1593,9 +1593,9 @@ def _demo_live() -> int:
 def snapshot_demo() -> bool:
     """Construction evidence (fail-then-pass) for the retained pre-migration snapshot, returning True iff
     every check holds. It drives the REAL `snapshot_for_migration` against the offline `_FakeVault` and proves the
-    one claim the #287 fix exists to make: the pre-migration snapshot lands as a DISTINCT tag that a later ROUTINE
+    one claim the StarshipSuperjam/engine-template#287 fix exists to make: the pre-migration snapshot lands as a DISTINCT tag that a later ROUTINE
     rolling backup CANNOT overwrite — and a replay of the same migration is refused, never silently duplicated. The
-    real GitHub tag push never runs here (no vault) — the named inductive gap, the same bound #233 carried. This is
+    real GitHub tag push never runs here (no vault) — the named inductive gap, the same bound StarshipSuperjam/engine-template#233 carried. This is
     internal evidence, NOT operator narration; the operator-facing surfacing is the boot render."""
     import tempfile
     with tempfile.TemporaryDirectory() as cabinet, tempfile.TemporaryDirectory() as root:

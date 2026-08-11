@@ -162,7 +162,7 @@ def _proposal_for_publish(baseline=None, baseline_tree=None, target=None, produc
     `target` is the merged commit being published (the generate-notes head for the pull-request list).
     `baseline`/`baseline_tree` are injectable so tests run offline: the recompute reaches GitHub through
     `module_manager` (NOT this tool's `transport` seam), so an injected local tree is the only offline path,
-    and the pull-request list is skipped unless a `target` is passed. In PRODUCT-mode (#516) the baseline is
+    and the pull-request list is skipped unless a `target` is passed. In PRODUCT-mode (StarshipSuperjam/engine-template#516) the baseline is
     the DEPLOYED repo's own last release (`slug`) and there is no capability tree to diff — the proposal is the
     product proposal (merged PRs beside the version), so the published notes describe the PRODUCT release."""
     try:
@@ -221,7 +221,7 @@ def _comment_body(result: dict, run_url: "str | None" = None) -> str:
     actually sees after merging (the Actions run log is not). One home for the release/failure prose. Every
     non-success outcome — including a transient read/transport failure (`errored`) — lands here with a
     recovery, so the legibility promise holds on the PR for every path, not only the decided refusals. In a
-    deployed repo (`product`) it speaks of the PRODUCT release, not the engine (#516)."""
+    deployed repo (`product`) it speaks of the PRODUCT release, not the engine (StarshipSuperjam/engine-template#516)."""
     tag = result.get("tag") or "the new version"
     product = bool(result.get("product"))
     if result.get("published"):
@@ -338,7 +338,7 @@ def run(client: TerminalCutClient, engine_release: str, commit_sha: str, pr_numb
     surface). A comment failure is NOTED, never allowed to flip the publish verdict: the published Release
     is the durable success artifact, and a missing comment is a legibility gap, not a publish failure.
     `proposal` is the pre-computed Release-notes proposal, threaded to `publish` (None => minimal notes).
-    `product` marks a deployed repo's product release (#516) so the PR comment speaks of the product."""
+    `product` marks a deployed repo's product release (StarshipSuperjam/engine-template#516) so the PR comment speaks of the product."""
     try:
         result = publish(client, engine_release, commit_sha, proposal=proposal)
     except PublishError as exc:
@@ -351,7 +351,7 @@ def run(client: TerminalCutClient, engine_release: str, commit_sha: str, pr_numb
                              "unexpected error while checking the release.",
                   "recovery": "re-running is safe and nothing you did is lost.",
                   "error_detail": str(exc)}
-    result["product"] = product   # the comment renderer speaks of the product vs the engine (#516)
+    result["product"] = product   # the comment renderer speaks of the product vs the engine (StarshipSuperjam/engine-template#516)
     if pr_number:
         try:
             status = client.post_pr_comment(pr_number, _comment_body(result, run_url))
@@ -390,7 +390,7 @@ def _cmd_publish(args) -> int:
               file=sys.stderr)
         return 2
     # Which release is being published — the engine's version (construction repo) or the deployed repo's own
-    # PRODUCT version (#516). PRODUCT dominates: a present product-version.json (or a downstream deployment)
+    # PRODUCT version (StarshipSuperjam/engine-template#516). PRODUCT dominates: a present product-version.json (or a downstream deployment)
     # publishes the product. A present-but-malformed product file refuses loudly, never an engine publish.
     mode, ctx = release_cut.release_mode()
     if mode == "refuse":
