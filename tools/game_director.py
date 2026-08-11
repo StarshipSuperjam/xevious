@@ -718,8 +718,22 @@ class Blocks:
     # parent wired here so the tree serializes correctly.
     def _reporter(self, opcode: str, operand1: Any, operand2: Any) -> str:
         block_id = self.add(opcode)
+        # scratch-vm reads arithmetic operands from NUM1/NUM2 but comparison/boolean
+        # operands from OPERAND1/OPERAND2 (see scratch3_operators.js). Attaching to the
+        # wrong pair leaves the reporter's inputs unread, so it silently evaluates to
+        # NaN at runtime — invisible to structural tests but fatal to the digit HUD/RNG.
+        if opcode in (
+            "operator_add",
+            "operator_subtract",
+            "operator_multiply",
+            "operator_divide",
+            "operator_mod",
+        ):
+            slot1, slot2 = "NUM1", "NUM2"
+        else:
+            slot1, slot2 = "OPERAND1", "OPERAND2"
         inputs: dict[str, Any] = {}
-        for slot, spec in (("OPERAND1", operand1), ("OPERAND2", operand2)):
+        for slot, spec in ((slot1, operand1), (slot2, operand2)):
             if isinstance(spec, str):
                 inputs[slot] = [2, spec]
                 self.blocks[spec]["parent"] = block_id
@@ -732,7 +746,9 @@ class Blocks:
         return self._reporter("operator_mod", a, b)
 
     def op_mul(self, a: Any, b: Any) -> str:
-        return self._reporter("operator_mult", a, b)
+        # scratch-vm registers multiply as `operator_multiply`; `operator_mult` is an
+        # unknown opcode the runtime resolves to nothing (returns undefined).
+        return self._reporter("operator_multiply", a, b)
 
     def op_add(self, a: Any, b: Any) -> str:
         return self._reporter("operator_add", a, b)
@@ -759,7 +775,9 @@ class Blocks:
         return block_id
 
     def op_floor(self, operand: Any) -> str:
-        block_id = self.add("operator_mathop", fields={"OPERATION": ["floor", None]})
+        # scratch-vm's mathop reads its function from the OPERATOR field (not OPERATION);
+        # a wrong key leaves the operator unset and mathop returns 0 for every input.
+        block_id = self.add("operator_mathop", fields={"OPERATOR": ["floor", None]})
         if isinstance(operand, str):
             self.blocks[block_id]["inputs"] = {"NUM": [2, operand]}
             self.blocks[operand]["parent"] = block_id

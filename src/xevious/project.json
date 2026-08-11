@@ -876,7 +876,7 @@
           "next": null,
           "parent": "gd-stage-028",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -888,7 +888,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -911,7 +911,7 @@
             ]
           },
           "fields": {
-            "OPERATION": [
+            "OPERATOR": [
               "floor",
               null
             ]
@@ -947,7 +947,7 @@
           "next": null,
           "parent": "gd-stage-031",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -959,7 +959,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -972,18 +972,18 @@
           "topLevel": false
         },
         "gd-stage-031": {
-          "opcode": "operator_mult",
+          "opcode": "operator_multiply",
           "next": null,
           "parent": "gd-stage-032",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               1,
               [
                 4,
                 5
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               2,
               "gd-stage-030"
             ]
@@ -997,11 +997,11 @@
           "next": null,
           "parent": "gd-stage-033",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-031"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1018,11 +1018,11 @@
           "next": null,
           "parent": "gd-stage-034",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-032"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1153,7 +1153,7 @@
           "next": null,
           "parent": "gd-stage-040",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -1165,7 +1165,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1188,7 +1188,7 @@
             ]
           },
           "fields": {
-            "OPERATION": [
+            "OPERATOR": [
               "floor",
               null
             ]
@@ -1201,11 +1201,11 @@
           "next": null,
           "parent": "gd-stage-045",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-040"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1222,7 +1222,7 @@
           "next": null,
           "parent": "gd-stage-043",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -1234,7 +1234,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1257,7 +1257,7 @@
             ]
           },
           "fields": {
-            "OPERATION": [
+            "OPERATOR": [
               "floor",
               null
             ]
@@ -1270,11 +1270,11 @@
           "next": null,
           "parent": "gd-stage-045",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-043"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1345,11 +1345,11 @@
           "topLevel": false
         },
         "gd-stage-048": {
-          "opcode": "operator_mult",
+          "opcode": "operator_multiply",
           "next": null,
           "parent": "gd-stage-049",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -1361,7 +1361,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1378,11 +1378,11 @@
           "next": null,
           "parent": "gd-stage-050",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-048"
             ],
-            "OPERAND2": [
+            "NUM2": [
               3,
               [
                 12,
@@ -1404,11 +1404,11 @@
           "next": null,
           "parent": "gd-stage-051",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-049"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1448,7 +1448,7 @@
           "next": null,
           "parent": "gd-stage-053",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -1460,7 +1460,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               3,
               [
                 12,
@@ -1482,11 +1482,11 @@
           "next": null,
           "parent": "gd-stage-054",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-052"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1522,11 +1522,11 @@
           "topLevel": false
         },
         "gd-stage-055": {
-          "opcode": "operator_mult",
+          "opcode": "operator_multiply",
           "next": null,
           "parent": "gd-stage-056",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -1538,7 +1538,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -1555,11 +1555,11 @@
           "next": null,
           "parent": "gd-stage-057",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-stage-055"
             ],
-            "OPERAND2": [
+            "NUM2": [
               3,
               [
                 12,
@@ -2297,7 +2297,7 @@
           "next": null,
           "parent": "gd-stage-091",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -2309,7 +2309,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               2,
               "gd-stage-089"
             ]
@@ -13220,11 +13220,11 @@
           "topLevel": false
         },
         "gd-hud-015": {
-          "opcode": "operator_mult",
+          "opcode": "operator_multiply",
           "next": null,
           "parent": "gd-hud-016",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -13236,7 +13236,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -13253,14 +13253,14 @@
           "next": null,
           "parent": "gd-hud-017",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               1,
               [
                 4,
                 -220
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               2,
               "gd-hud-015"
             ]
@@ -16993,11 +16993,11 @@
           "topLevel": false
         },
         "gd-hud-224": {
-          "opcode": "operator_mult",
+          "opcode": "operator_multiply",
           "next": null,
           "parent": "gd-hud-225",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -17009,7 +17009,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -17143,7 +17143,7 @@
           "next": null,
           "parent": "gd-hud-231",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -17155,7 +17155,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               3,
               [
                 12,
@@ -17183,7 +17183,7 @@
             ]
           },
           "fields": {
-            "OPERATION": [
+            "OPERATOR": [
               "floor",
               null
             ]
@@ -17196,11 +17196,11 @@
           "next": null,
           "parent": "gd-hud-233",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-hud-231"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -17399,11 +17399,11 @@
           "topLevel": false
         },
         "gd-hud-244": {
-          "opcode": "operator_mult",
+          "opcode": "operator_multiply",
           "next": null,
           "parent": "gd-hud-245",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -17415,7 +17415,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,
@@ -17549,7 +17549,7 @@
           "next": null,
           "parent": "gd-hud-251",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               3,
               [
                 12,
@@ -17561,7 +17561,7 @@
                 ""
               ]
             ],
-            "OPERAND2": [
+            "NUM2": [
               3,
               [
                 12,
@@ -17589,7 +17589,7 @@
             ]
           },
           "fields": {
-            "OPERATION": [
+            "OPERATOR": [
               "floor",
               null
             ]
@@ -17602,11 +17602,11 @@
           "next": null,
           "parent": "gd-hud-253",
           "inputs": {
-            "OPERAND1": [
+            "NUM1": [
               2,
               "gd-hud-251"
             ],
-            "OPERAND2": [
+            "NUM2": [
               1,
               [
                 4,

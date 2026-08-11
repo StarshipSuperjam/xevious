@@ -1909,14 +1909,14 @@ class ScratchProjectTests(unittest.TestCase):
         def digit_costume_chain(var_id: str) -> bool:
             for div in blocks.values():
                 if div["opcode"] != "operator_divide" or not refs(
-                    div["inputs"].get("OPERAND1"), var_id
+                    div["inputs"].get("NUM1"), var_id
                 ):
                     continue
                 floor = blocks.get(div.get("parent"))
                 if (
                     floor is None
                     or floor["opcode"] != "operator_mathop"
-                    or floor["fields"].get("OPERATION", [None])[0] != "floor"
+                    or floor["fields"].get("OPERATOR", [None])[0] != "floor"
                 ):
                     continue
                 mod = blocks.get(floor.get("parent"))
@@ -2091,16 +2091,16 @@ class ScratchProjectTests(unittest.TestCase):
         def break_score_digit(p: dict) -> None:
             for b in hud_blocks(p).values():
                 if b["opcode"] == "operator_divide" and refs(
-                    b["inputs"].get("OPERAND1"), director.SCORE_ID
+                    b["inputs"].get("NUM1"), director.SCORE_ID
                 ):
-                    b["inputs"]["OPERAND1"] = [1, [4, 0]]
+                    b["inputs"]["NUM1"] = [1, [4, 0]]
 
         def break_high_score_digit(p: dict) -> None:
             for b in hud_blocks(p).values():
                 if b["opcode"] == "operator_divide" and refs(
-                    b["inputs"].get("OPERAND1"), director.HIGH_SCORE_ID
+                    b["inputs"].get("NUM1"), director.HIGH_SCORE_ID
                 ):
-                    b["inputs"]["OPERAND1"] = [1, [4, 0]]
+                    b["inputs"]["NUM1"] = [1, [4, 0]]
 
         def break_craft_reference(p: dict) -> None:
             for b in hud_blocks(p).values():
@@ -3659,7 +3659,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "a3c6a586d9d7ede0ab384562f556af46e3513aba203f8e0ac05cdc7d7ec770c3",
+            "3af7f518c4336d27cb9302f4bd9d68c3437d0aa7c31000a9ed5b88f280e1f71c",
             build_hash,
         )
 
