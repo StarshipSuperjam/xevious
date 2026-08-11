@@ -216,6 +216,52 @@ export const SCENARIOS = [
     // Break floor() so every digit becomes floor(...)=0 → all digit/0, decoding to 0 (≠ score).
     negativeMutation: (p) => mutate.misnameMathopOperator(p, 'hud'),
   },
+  {
+    key: 'area-clock-scheduler',
+    behavior:
+      'The area clock advances a monotonic position, completes areas (advancing the area number), and the schedule consumes records once each in order',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // `area progress` is a sawtooth (it climbs within an area, then resets at completion), so
+      // assert on pacing-invariant facts: it is SEEN to advance, the area number advances as
+      // areas complete, `schedule fired` climbs, and WITHIN an area it never decreases (records
+      // fire once, in order) — it only resets at a boundary, where the area number also changes.
+      let progressAdvanced = false;
+      let firedSeen = 0;
+      let areaAdvances = 0;
+      let firedMonotonicWithinArea = true;
+      let prevProgress = readVar(vm, 'area-progress');
+      let prevArea = readVar(vm, 'area-number');
+      let prevFired = readVar(vm, 'area-schedule-fired');
+      for (let i = 0; i < 80; i += 1) {
+        step(vm, 1);
+        const progress = readVar(vm, 'area-progress');
+        const area = readVar(vm, 'area-number');
+        const fired = readVar(vm, 'area-schedule-fired');
+        if (progress > prevProgress) progressAdvanced = true;
+        if (area !== prevArea) areaAdvances += 1;
+        else if (fired < prevFired) firedMonotonicWithinArea = false;
+        firedSeen = Math.max(firedSeen, fired);
+        prevProgress = progress;
+        prevArea = area;
+        prevFired = fired;
+      }
+      return { progressAdvanced, firedSeen, areaAdvances, firedMonotonicWithinArea };
+    },
+    assert(obs) {
+      assert.equal(obs.progressAdvanced, true, 'area progress advances while playing');
+      assert.ok(obs.areaAdvances >= 1, 'the area number advances as areas complete');
+      assert.ok(obs.firedSeen >= 1, 'the schedule consumes records (schedule fired climbs)');
+      assert.equal(
+        obs.firedMonotonicWithinArea,
+        true,
+        'within an area, records fire once (schedule fired never decreases except at a boundary)',
+      );
+    },
+    // Freeze the area clock so the monotonic position never advances → progress1 === progress0.
+    negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'area progress'),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"

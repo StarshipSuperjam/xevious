@@ -441,6 +441,45 @@ class GeneratedAreaClock(unittest.TestCase):
         ]["values"]
         self.assertEqual(expected, by_name["area map column"])
 
+    def test_area1_schedule_round_trips_from_json(self):
+        # AREA-02: the ingested schedule columns are a FAITHFUL, lossless copy of area 1's records
+        # (53) plus the materialized end sentinel (= 54), with the opaque payload decodable back to
+        # object_type + params — so no handler's parameters are silently dropped.
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        handlers = by_name["schedule handler"]
+        rows = by_name["schedule trigger row"]
+        payloads = by_name["schedule payload"]
+
+        area = next(
+            a
+            for a in json.loads((DATA / "area-schedules.json").read_text())["areas"]
+            if a["area"] == 1
+        )
+        records = area["records"]
+        self.assertEqual(len(records) + 1, len(handlers))  # + materialized sentinel
+        self.assertEqual({len(handlers), len(rows)}, {len(payloads)})
+
+        for i, record in enumerate(records):
+            self.assertEqual(record["handler"], handlers[i], f"handler {i}")
+            self.assertEqual(record["scroll_row"], rows[i], f"trigger row {i}")
+            decoded = json.loads(payloads[i])
+            self.assertEqual(
+                {"object_type": record["object_type"], "params": record["params"]},
+                decoded,
+                f"payload {i}",
+            )
+
+        # the terminal row is the sentinel: the JSON's scalar end_sentinel, not a record.
+        self.assertEqual("sentinel", handlers[-1])
+        self.assertEqual(area["end_sentinel"], rows[-1])
+        self.assertEqual("", payloads[-1])
+
+        # every area maps to area 1's table this slice (the honest slice-6 seam).
+        self.assertEqual([1] * 16, by_name["area schedule start"])
+        self.assertEqual([len(handlers)] * 16, by_name["area schedule end"])
+
 
 if __name__ == "__main__":
     unittest.main()

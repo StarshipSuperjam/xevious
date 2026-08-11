@@ -908,6 +908,8 @@ class ScratchProjectTests(unittest.TestCase):
             "area number",
             "scroll row",
             "terrain column",
+            "schedule cursor",
+            "schedule fired",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
@@ -949,6 +951,11 @@ class ScratchProjectTests(unittest.TestCase):
                 "repeat bonus 5",
                 "high score table",
                 "area map column",
+                "schedule handler",
+                "schedule trigger row",
+                "schedule payload",
+                "area schedule start",
+                "area schedule end",
             },
             stage_list_names,
         )
@@ -1007,11 +1014,13 @@ class ScratchProjectTests(unittest.TestCase):
             director.LIVES_ID,
             director.NEXT_BONUS_ID,
             director.QUALIFIED_ID,
-            # AREA-01 area state: durable position/schedule authority, Stage-only-written.
+            # AREA-01/AREA-02 area state: durable position/schedule authority, Stage-only-written.
             director.AREA_PROGRESS_ID,
             director.AREA_NUMBER_ID,
             director.SCROLL_ROW_ID,
             director.TERRAIN_COLUMN_ID,
+            director.SCHEDULE_CURSOR_ID,
+            director.SCHEDULE_FIRED_ID,
         }
         # Read-only reference tables: ingested, hash-pinned authority data no sprite may
         # mutate (the mutable slot lists are deliberately excluded — allocators write those).
@@ -1024,6 +1033,11 @@ class ScratchProjectTests(unittest.TestCase):
             director.REPEAT_BONUS_5_ID,
             director.HIGH_SCORE_TABLE_ID,
             director.AREA_MAP_COLUMN_ID,
+            director.SCHEDULE_HANDLER_ID,
+            director.SCHEDULE_TRIGGER_ROW_ID,
+            director.SCHEDULE_PAYLOAD_ID,
+            director.AREA_SCHEDULE_START_ID,
+            director.AREA_SCHEDULE_END_ID,
         }
         list_write_opcodes = {
             "data_addtolist",
@@ -2586,12 +2600,13 @@ class ScratchProjectTests(unittest.TestCase):
         if not derived_ok:
             failures.add("scroll-row-derived")
 
-        # 5. completion at row == 14 advances the area (a wrap in its body).
+        # 5. completion at row == 14 advances the area (a wrap in its THEN body). The block is a
+        # plain `if` when AREA-02's consume is absent and an `if/else` once it is present.
         completion = next(
             (
                 bid
                 for bid in body
-                if blocks[bid]["opcode"] == "control_if"
+                if blocks[bid]["opcode"] in ("control_if", "control_if_else")
                 and eq_var_num(
                     blocks[bid]["inputs"].get("CONDITION"),
                     director.SCROLL_ROW_ID,
@@ -2600,7 +2615,13 @@ class ScratchProjectTests(unittest.TestCase):
             ),
             None,
         )
-        if completion is None or not any(is_area_wrap(x) for x in reachable(completion)):
+        then_spec = blocks[completion]["inputs"].get("SUBSTACK") if completion else None
+        if not (
+            completion
+            and isinstance(then_spec, list)
+            and len(then_spec) > 1
+            and any(is_area_wrap(x) for x in reachable(then_spec[1]))
+        ):
             failures.add("completion-at-14")
 
         # 6. every 16 -> 7 wrap is well-formed, and at least one exists.
@@ -2759,6 +2780,227 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._area01_failures(project), label)
+
+    @staticmethod
+    def _area02_failures(project: dict) -> set:
+        """AREA-02 area object scheduler: exactly one fixture area (54 flattened entries = 53
+        records + the materialized sentinel), an ordered consume loop guarded by `cursor > end` OR
+        `trigger != scroll row`, an EMPTY per-record dispatch seam, and the observable that
+        advances the cursor and counts fires. Structure only; the dynamic fire-once/in-order
+        behaviour is exercised by the scratch-vm harness and the operator playtest."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+
+        def refs_var(spec, var_id):
+            return (
+                isinstance(spec, list)
+                and len(spec) > 1
+                and isinstance(spec[1], list)
+                and spec[1][2:3] == [var_id]
+            )
+
+        # exactly area-1's 54 entries across the three parallel columns (guards slice-6 leakage).
+        lengths = {
+            len(by_name.get(name, []))
+            for name in ("schedule handler", "schedule trigger row", "schedule payload")
+        }
+        if lengths != {director.SCHEDULE_LENGTH}:
+            failures.add("schedule-lists-length")
+
+        # the terminal row is the materialized sentinel (handler 'sentinel', trigger 0x0D).
+        handlers = by_name.get("schedule handler", [])
+        rows = by_name.get("schedule trigger row", [])
+        if not (
+            handlers
+            and handlers[-1] == director.SCHEDULE_SENTINEL_HANDLER
+            and rows
+            and rows[-1] == director.AREA_TOP_ROW
+        ):
+            failures.add("schedule-sentinel")
+
+        def body_ids(loop_id):
+            sub = blocks[loop_id]["inputs"].get("SUBSTACK")
+            out, bid = [], (sub[1] if isinstance(sub, list) and len(sub) > 1 else None)
+            while bid:
+                out.append(bid)
+                bid = blocks[bid].get("next")
+            return out
+
+        # the consume loop: a repeat_until whose body advances the schedule cursor.
+        loop = None
+        for bid, b in blocks.items():
+            if b["opcode"] != "control_repeat_until":
+                continue
+            if any(
+                blocks[x]["opcode"] == "data_changevariableby"
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+                for x in body_ids(bid)
+            ):
+                loop = bid
+                break
+        if loop is None:
+            failures.add("consume-loop")
+            return failures
+        ids = body_ids(loop)
+
+        if not any(
+            blocks[x]["opcode"] == "data_changevariableby"
+            and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+            and blocks[x]["inputs"].get("VALUE") == [1, [4, 1]]
+            for x in ids
+        ):
+            failures.add("consume-advances-cursor")
+
+        if not any(
+            blocks[x]["opcode"] == "data_changevariableby"
+            and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_FIRED_ID
+            and blocks[x]["inputs"].get("VALUE") == [1, [4, 1]]
+            for x in ids
+        ):
+            failures.add("consume-counts-fired")
+
+        # the per-record dispatch is an EMPTY seam: the body is only the two counters, no handler.
+        if any(blocks[x]["opcode"] != "data_changevariableby" for x in ids):
+            failures.add("empty-dispatch")
+
+        # stop condition: operator_or( gt(cursor, end), not( eq(trigger, scroll row) ) ).
+        def subtree(bid, acc):
+            if bid in acc or bid not in blocks:
+                return
+            acc.add(bid)
+            for v in blocks[bid]["inputs"].values():
+                if isinstance(v, list) and len(v) > 1 and isinstance(v[1], str):
+                    subtree(v[1], acc)
+
+        cond = blocks[loop]["inputs"].get("CONDITION")
+        cond_ids = set()
+        if isinstance(cond, list) and len(cond) > 1:
+            subtree(cond[1], cond_ids)
+        cond_ops = {blocks[x]["opcode"] for x in cond_ids}
+        row_match = any(
+            blocks[x]["opcode"] == "operator_equals"
+            and (
+                refs_var(blocks[x]["inputs"].get("OPERAND1"), director.SCROLL_ROW_ID)
+                or refs_var(blocks[x]["inputs"].get("OPERAND2"), director.SCROLL_ROW_ID)
+            )
+            for x in cond_ids
+        )
+        if not ({"operator_or", "operator_gt", "operator_not", "operator_equals"} <= cond_ops and row_match):
+            failures.add("consume-stop-condition")
+
+        return failures
+
+    def test_area_scheduler_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._area02_failures(project))
+
+    def test_area_scheduler_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._area02_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def list_named(p, name):
+            return next(v for v in stage_of(p)["lists"].values() if v[0] == name)
+
+        def consume_loop(p):
+            s = stage_of(p)
+            b = s["blocks"]
+
+            def body(loop_id):
+                sub = b[loop_id]["inputs"].get("SUBSTACK")
+                out, bid = [], (sub[1] if isinstance(sub, list) and len(sub) > 1 else None)
+                while bid:
+                    out.append(bid)
+                    bid = b[bid].get("next")
+                return out
+
+            for bid, blk in b.items():
+                if blk["opcode"] == "control_repeat_until" and any(
+                    b[x]["opcode"] == "data_changevariableby"
+                    and b[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+                    for x in body(bid)
+                ):
+                    return bid, body(bid)
+            raise AssertionError("no consume loop")
+
+        def break_length(p):
+            list_named(p, "schedule trigger row")[1].append(99)
+
+        def break_sentinel(p):
+            list_named(p, "schedule handler")[1][-1] = "add_ground_object"
+
+        def break_cursor_advance(p):
+            s = stage_of(p)
+            _, ids = consume_loop(p)
+            blk = next(
+                s["blocks"][x]
+                for x in ids
+                if s["blocks"][x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+            )
+            blk["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_fired_count(p):
+            s = stage_of(p)
+            _, ids = consume_loop(p)
+            blk = next(
+                s["blocks"][x]
+                for x in ids
+                if s["blocks"][x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_FIRED_ID
+            )
+            blk["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_empty_dispatch(p):
+            s = stage_of(p)
+            loop_id, ids = consume_loop(p)
+            # inject a bogus per-record dispatch block at the head of the loop body.
+            injected = "gd-stage-injected-dispatch"
+            s["blocks"][injected] = {
+                "opcode": "control_if",
+                "next": ids[0],
+                "parent": loop_id,
+                "inputs": {},
+                "fields": {},
+                "shadow": False,
+                "topLevel": False,
+            }
+            s["blocks"][ids[0]]["parent"] = injected
+            s["blocks"][loop_id]["inputs"]["SUBSTACK"] = [2, injected]
+
+        def break_stop_condition(p):
+            s = stage_of(p)
+            loop_id, _ = consume_loop(p)
+            cond = s["blocks"][loop_id]["inputs"]["CONDITION"][1]
+            # find the operator_not in the condition subtree and neutralize it.
+            seen, stack = set(), [cond]
+            while stack:
+                bid = stack.pop()
+                if bid in seen or bid not in s["blocks"]:
+                    continue
+                seen.add(bid)
+                if s["blocks"][bid]["opcode"] == "operator_not":
+                    s["blocks"][bid]["opcode"] = "operator_and"
+                    return
+                for v in s["blocks"][bid]["inputs"].values():
+                    if isinstance(v, list) and len(v) > 1 and isinstance(v[1], str):
+                        stack.append(v[1])
+            raise AssertionError("no operator_not in the stop condition")
+
+        cases = [
+            ("schedule-lists-length", break_length),
+            ("schedule-sentinel", break_sentinel),
+            ("consume-advances-cursor", break_cursor_advance),
+            ("consume-counts-fired", break_fired_count),
+            ("empty-dispatch", break_empty_dispatch),
+            ("consume-stop-condition", break_stop_condition),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._area02_failures(project), label)
 
     @staticmethod
     def _eco04_failures(project: dict) -> set:
@@ -4046,7 +4288,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d1d5aea5c6003a72840d0fe7a78529a87316eebe4efc466fc02ed7050082a1ca",
+            "d9b26db6763f0efbf4f94ebdacb3e0a26d6c5cd65b29e41c614ff4d42792a278",
             build_hash,
         )
 

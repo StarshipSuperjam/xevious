@@ -347,6 +347,62 @@ def _load_terrain_columns() -> list[int]:
 
 AREA_MAP_COLUMNS = _load_terrain_columns()
 
+# AREA-02 area object scheduler (docs/spec/area-progression-and-terrain.md). Each area has one
+# schedule table consumed strictly in order: a record fires when the scroll row equals its trigger
+# row, then the cursor advances. This slice ingests ONE fixture area (area 1); the representation is
+# lossless and slice-6-ready — all 16 areas append to the SAME flattened columns, and only the two
+# 16-entry index lists change. Every handler's variable `params` (slot/sprite_y, mask, row, count,
+# formation_offset, path, ...) is carried faithfully as an opaque JSON PAYLOAD so no field is
+# dropped and the schema never has to grow; the handlers themselves (spawn, formation, difficulty,
+# boss) arrive with the enemy slices (8+), so the per-record dispatch is an empty seam this slice.
+SCHEDULE_HANDLER_ID = "area-schedule-handler"
+SCHEDULE_TRIGGER_ROW_ID = "area-schedule-trigger-row"
+SCHEDULE_PAYLOAD_ID = "area-schedule-payload"
+AREA_SCHEDULE_START_ID = "area-schedule-start"
+AREA_SCHEDULE_END_ID = "area-schedule-end"
+SCHEDULE_CURSOR_ID = "area-schedule-cursor"
+SCHEDULE_FIRED_ID = "area-schedule-fired"
+SCHEDULE_SENTINEL_HANDLER = "sentinel"
+AREA_FIXTURE = 1  # the single area ingested this slice; slice 6 ingests all 16
+
+
+def _load_area_schedule(area_number: int) -> tuple[list[str], list[int], list[str]]:
+    # AREA-02: ingest one area's schedule from the committed, hash-pinned reference data as three
+    # faithful parallel columns (handler, trigger row, opaque payload). The end sentinel (a scalar
+    # in the JSON) is MATERIALIZED as the terminal row so the table is self-terminating and the
+    # extractor's "every table decodes to its sentinel" invariant is reproduced. object_type +
+    # params are serialized deterministically (sorted keys) into the payload; source_line is
+    # provenance, not runtime data, and is deliberately not ingested. The round-trip golden in
+    # tests/test_spec_docs.py proves nothing is dropped.
+    data = json.loads((SPEC_DATA_DIR / "area-schedules.json").read_text(encoding="utf-8"))
+    area = next(a for a in data["areas"] if a["area"] == area_number)
+    handlers: list[str] = []
+    rows: list[int] = []
+    payloads: list[str] = []
+    for record in area["records"]:
+        handlers.append(record["handler"])
+        rows.append(record["scroll_row"])
+        payloads.append(
+            json.dumps(
+                {"object_type": record["object_type"], "params": record["params"]},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    handlers.append(SCHEDULE_SENTINEL_HANDLER)
+    rows.append(area["end_sentinel"])
+    payloads.append("")
+    return handlers, rows, payloads
+
+
+AREA1_SCHEDULE_HANDLERS, AREA1_SCHEDULE_ROWS, AREA1_SCHEDULE_PAYLOADS = _load_area_schedule(AREA_FIXTURE)
+SCHEDULE_LENGTH = len(AREA1_SCHEDULE_ROWS)  # 54 this slice (53 records + the materialized sentinel)
+# The two 16-entry index lists — the slice-6 seam. Every area maps to area 1's table this slice
+# ({start: 1, end: SCHEDULE_LENGTH}); slice 6 sets real per-area offsets and appends areas 2-16 to
+# the flattened columns, moving no code.
+AREA_SCHEDULE_START = [1] * AREA_MAX
+AREA_SCHEDULE_END = [SCHEDULE_LENGTH] * AREA_MAX
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -1133,10 +1189,10 @@ def _set_scroll_row(blocks: Blocks) -> str:
 
 
 def _enter_area_top(blocks: Blocks) -> list[str]:
-    # The state every area entry establishes: progress at the top, the derived row snapped to
-    # the area-top row, and the per-area terrain start column. AREA-02 appends the schedule
-    # cursor reset here so every entry point (fresh game, new life, area completion) re-tops
-    # the schedule consistently.
+    # The state every area entry establishes (fresh game, new life, area completion): progress at
+    # the top, the derived row snapped to the area-top row, the per-area terrain start column, and
+    # (AREA-02) the schedule cursor pointed at the area's first record with the per-area fired
+    # counter zeroed — so every entry point re-tops the schedule consistently.
     return [
         blocks.set_var("area progress", AREA_PROGRESS_ID, number(0)),
         blocks.set_var("scroll row", SCROLL_ROW_ID, number(AREA_TOP_ROW)),
@@ -1147,24 +1203,73 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
                 "area map column", AREA_MAP_COLUMN_ID, variable("area number", AREA_NUMBER_ID)
             ),
         ),
+        blocks.set_var_expr(
+            "schedule cursor",
+            SCHEDULE_CURSOR_ID,
+            blocks.list_item(
+                "area schedule start", AREA_SCHEDULE_START_ID, variable("area number", AREA_NUMBER_ID)
+            ),
+        ),
+        blocks.set_var("schedule fired", SCHEDULE_FIRED_ID, number(0)),
     ]
 
 
+def _consume_schedule(blocks: Blocks) -> list[str]:
+    # AREA-02 ordered dispatch: consume every record at the cursor whose trigger row equals the
+    # current scroll row, in order, advancing the cursor. Fire-once is guaranteed by the monotonic
+    # cursor over monotonic progress. The loop stops when the record's trigger no longer matches the
+    # row OR the cursor passes the area's end index (`cursor > end`, the belt-and-suspenders bound
+    # slice 6 relies on so one area never bleeds into the next). The sentinel never fires because
+    # the dispatch reads the POST-increment row, which is <= 12 until the wrap and never the area-top
+    # row 0x0D. The per-record handler dispatch is an EMPTY seam this slice (like advance-slots);
+    # `schedule fired` is the observable that events fire once, in order.
+    loop = blocks.add("control_repeat_until")
+
+    def cursor() -> list[Any]:
+        return variable("schedule cursor", SCHEDULE_CURSOR_ID)
+
+    end = blocks.list_item(
+        "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
+    )
+    past_end = blocks.op_gt(cursor(), end)
+    trigger = blocks.list_item("schedule trigger row", SCHEDULE_TRIGGER_ROW_ID, cursor())
+    row_matches = blocks.op_eq(trigger, variable("scroll row", SCROLL_ROW_ID))
+    row_differs = blocks.add("operator_not")
+    blocks.blocks[row_matches]["parent"] = row_differs
+    blocks.blocks[row_differs]["inputs"] = {"OPERAND": [2, row_matches]}
+    stop = blocks.add("operator_or")
+    blocks.blocks[past_end]["parent"] = stop
+    blocks.blocks[row_differs]["parent"] = stop
+    blocks.blocks[stop]["inputs"] = {"OPERAND1": [2, past_end], "OPERAND2": [2, row_differs]}
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop]
+    # ENGINE-TODO: the per-record handler dispatch (spawn / formation / difficulty / boss, keyed on
+    # `schedule handler` + `schedule payload`) lands with the enemy slices (8+); the consume today
+    # advances the cursor and counts the fire, with no per-handler behaviour.
+    blocks.substack(
+        loop,
+        [
+            blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
+            blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
+        ],
+    )
+    return [loop]
+
+
 def install_advance_area(blocks: Blocks) -> None:
-    # AREA-01 area clock: one atomic (warp) pass per tick, called from the walk thread BEFORE
-    # `advance slots` — matching the reference frame order (handle_next_area -> handle_objects
-    # -> object updates) and fixing the PHASE order the enemy slices inherit while both
-    # dispatch bodies are still empty (no RNG is drawn in either phase yet). Advances the
-    # monotonic position, derives the row once, and on area completion advances the area
-    # (16 -> 7) and re-tops it. AREA-02 turns the completion `if` into an `if/else` whose else
-    # is the ordered schedule consume, so completion and consume never both run on one tick.
+    # AREA-01/AREA-02 area clock + scheduler: one atomic (warp) pass per tick, called from the walk
+    # thread BEFORE `advance slots` — matching the reference frame order (handle_next_area ->
+    # handle_objects -> object updates) and fixing the PHASE order the enemy slices inherit while
+    # both dispatch bodies are still empty (no RNG is drawn in either phase yet). Advances the
+    # monotonic position and derives the row once; then a single `if/else` either completes the area
+    # (advance 16 -> 7 and re-top) OR consumes the schedule for this row — never both on one tick.
     definition = _install_warp_proc(blocks, ADVANCE_AREA_PROCCODE)
     step = blocks.change_var("area progress", AREA_PROGRESS_ID, AREA_PROGRESS_STEP)
     set_row = _set_scroll_row(blocks)
-    completion = blocks.add("control_if")
+    completion = blocks.add("control_if_else")
     complete = blocks.var_equals(completion, "scroll row", SCROLL_ROW_ID, AREA_COMPLETE_ROW)
     blocks.blocks[completion]["inputs"]["CONDITION"] = [2, complete]
     blocks.substack(completion, [_advance_area_number(blocks), *_enter_area_top(blocks)])
+    blocks.substack(completion, _consume_schedule(blocks), name="SUBSTACK2")
     blocks.chain(definition, [step, set_row, completion])
 
 
@@ -2475,6 +2580,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AREA_NUMBER_ID,
         SCROLL_ROW_ID,
         TERRAIN_COLUMN_ID,
+        SCHEDULE_CURSOR_ID,
+        SCHEDULE_FIRED_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -2528,6 +2635,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AREA_NUMBER_ID: ["area number", AREA_FIRST],
         SCROLL_ROW_ID: ["scroll row", AREA_TOP_ROW],
         TERRAIN_COLUMN_ID: ["terrain column", AREA_MAP_COLUMNS[0]],
+        # AREA-02 scheduler state (Stage-written, write-forbidden): the 1-based cursor into the
+        # flattened schedule lists and the per-area count of records fired (the observable).
+        SCHEDULE_CURSOR_ID: ["schedule cursor", 1],
+        SCHEDULE_FIRED_ID: ["schedule fired", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -2541,6 +2652,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         REPEAT_BONUS_5_ID,
         HIGH_SCORE_TABLE_ID,
         AREA_MAP_COLUMN_ID,
+        SCHEDULE_HANDLER_ID,
+        SCHEDULE_TRIGGER_ROW_ID,
+        SCHEDULE_PAYLOAD_ID,
+        AREA_SCHEDULE_START_ID,
+        AREA_SCHEDULE_END_ID,
     }
     preserved_lists = {
         list_id: value
@@ -2584,6 +2700,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # area_offset_in_map_tbl), indexed by area number 1-16. Ingested, not authored; a
         # read-only reference table set on area entry, never written by a sprite.
         AREA_MAP_COLUMN_ID: ["area map column", list(AREA_MAP_COLUMNS)],
+        # AREA-02 schedule table (docs/spec/data/area-schedules.json), area 1 this slice, as three
+        # faithful parallel columns + a materialized sentinel row (53 records + 1 = 54). The two
+        # 16-entry index lists point every area at area 1's table for now; slice 6 rewrites only
+        # their data and appends areas 2-16. All read-only authority, sprite-write-forbidden.
+        SCHEDULE_HANDLER_ID: ["schedule handler", list(AREA1_SCHEDULE_HANDLERS)],
+        SCHEDULE_TRIGGER_ROW_ID: ["schedule trigger row", list(AREA1_SCHEDULE_ROWS)],
+        SCHEDULE_PAYLOAD_ID: ["schedule payload", list(AREA1_SCHEDULE_PAYLOADS)],
+        AREA_SCHEDULE_START_ID: ["area schedule start", list(AREA_SCHEDULE_START)],
+        AREA_SCHEDULE_END_ID: ["area schedule end", list(AREA_SCHEDULE_END)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 

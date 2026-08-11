@@ -19,6 +19,41 @@
       "name": "area progress",
       "scope": "Stage"
     },
+    "area-schedule-cursor": {
+      "kind": "variable",
+      "name": "schedule cursor",
+      "scope": "Stage"
+    },
+    "area-schedule-end": {
+      "kind": "list",
+      "name": "area schedule end",
+      "scope": "Stage"
+    },
+    "area-schedule-fired": {
+      "kind": "variable",
+      "name": "schedule fired",
+      "scope": "Stage"
+    },
+    "area-schedule-handler": {
+      "kind": "list",
+      "name": "schedule handler",
+      "scope": "Stage"
+    },
+    "area-schedule-payload": {
+      "kind": "list",
+      "name": "schedule payload",
+      "scope": "Stage"
+    },
+    "area-schedule-start": {
+      "kind": "list",
+      "name": "area schedule start",
+      "scope": "Stage"
+    },
+    "area-schedule-trigger-row": {
+      "kind": "list",
+      "name": "schedule trigger row",
+      "scope": "Stage"
+    },
     "area-scroll-row": {
       "kind": "variable",
       "name": "scroll row",

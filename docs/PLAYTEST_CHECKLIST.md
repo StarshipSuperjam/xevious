@@ -42,10 +42,11 @@ so area position is read from the `area progress`/`area number` variable watcher
    The release and impact presentations play. (Crosshair lock-over-target applies once ground objects
    exist.)
 4. **Terrain endurance.** Fly through at least two full terrain cycles (a minute or more): no black
-   gap, no frozen strip, no drift. Open the variable watcher for **`area progress`** and **`area
-   number`**: while you fly, `area progress` climbs steadily and **never rewinds**, and `area number`
-   ticks up when an area completes (the visual terrain is not yet driven by the clock, so this is a
-   variable-watcher check, not an on-screen one).
+   gap, no frozen strip, no drift. Open the variable watcher for **`area progress`**, **`area
+   number`**, and **`schedule fired`**: while you fly, `area progress` climbs steadily and **never
+   rewinds**, `area number` ticks up when an area completes, and `schedule fired` climbs (once per
+   schedule record as the area scrolls) and resets to 0 at each area boundary. The visual terrain is
+   not yet driven by the clock, so these are variable-watcher checks, not on-screen ones.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row (today: press D; once
    killers exist, die to a bullet, an enemy, and a Bacura): the full death presentation and sound
    complete uncut, the craft respawns immediately vulnerable, and nothing from the previous life
