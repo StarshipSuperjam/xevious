@@ -171,7 +171,7 @@ class ScratchProjectTests(unittest.TestCase):
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
         self.assertEqual(17, len(project["targets"]))
-        self.assertEqual(99, len(assets))
+        self.assertEqual(98, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -4308,7 +4308,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d9b26db6763f0efbf4f94ebdacb3e0a26d6c5cd65b29e41c614ff4d42792a278",
+            "9a71681c6aa9a7f847eb74d76a93df252bc946f1ab2b576d65ab319a8cd6aa0a",
             build_hash,
         )
 

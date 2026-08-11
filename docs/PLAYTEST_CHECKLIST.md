@@ -44,7 +44,9 @@ so area position is read from the `area progress`/`area number` variable watcher
 4. **Terrain endurance and the area clock.** Fly for **at least ~70 seconds** — long enough to cross
    at least one area boundary (one area-clock cycle is ≈68 s): no black gap, no frozen strip, no
    drift. Open the variable watchers for **`area progress`**, **`area number`**, **`scroll row`**, and
-   **`schedule fired`**. While you fly: `area progress` climbs steadily and resets to 0 **only in the
+   **`schedule fired`** — in Scratch these are hidden by default, so **tick the checkbox beside each
+   one in the Variables section of the blocks palette** to show its monitor on the stage. While you
+   fly: `area progress` climbs steadily and resets to 0 **only in the
    same moment `area number` ticks up** — a paired reset-and-advance at an area boundary is correct,
    but an `area progress` drop that is *not* paired with `area number` changing is a bug; `scroll row`
    counts 13 down to 0 then wraps 255 down toward 14; and `schedule fired` climbs (once per schedule

@@ -599,7 +599,25 @@ def _expected_state() -> tuple[
     }
     for output in glyph_outputs:
         assets[output.filename] = _overlay_glyph_record(manifest, output)
-    assets[life_output.filename] = _overlay_life_record(manifest, life_output)
+    # The life icon can dedup to an already-extracted sprite frame — the ship IS
+    # solvalou/flight/01, so `render_life_icon([5,27,16,16])` produces byte-identical pixels
+    # and the same content-hash filename. When that asset is already referenced by a non-HUD
+    # costume it is already provenanced by the sprite extractor for the identical source crop:
+    # keep that existing record rather than clobbering it, so the two generators do not fight
+    # over the shared asset's single overlay entry. (The life icon's own crop stays fully
+    # recorded in the derivative provenance.) Keying off the project's costume references — not
+    # the prior-output set — keeps this idempotent even after the life filename becomes one of
+    # the HUD's own recorded outputs.
+    life_shared = any(
+        costume.get("md5ext") == life_output.filename
+        for target in current_project["targets"]
+        if target.get("name") != "hud"
+        for costume in target.get("costumes", [])
+    )
+    if life_shared and life_output.filename in overlay["assets"]:
+        assets[life_output.filename] = overlay["assets"][life_output.filename]
+    else:
+        assets[life_output.filename] = _overlay_life_record(manifest, life_output)
     assets[sound_filename] = _overlay_sound_record(manifest, sound_filename)
     assets = dict(sorted(assets.items()))
     overlay_bytes = se._ordered_json_bytes({"version": 1, "assets": assets})
