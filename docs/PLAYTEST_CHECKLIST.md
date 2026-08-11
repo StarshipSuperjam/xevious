@@ -1,8 +1,10 @@
 # Operator playtest checklist
 
-The operator's playtest is the only gameplay verification this project has — no automated check can
-observe the running game. This is the short, ordered regression sweep to run on **every** pull request
-that can affect gameplay, before approving it (the playtest gate in
+The operator's playtest is the only gameplay verification this project has. A headless runtime tripwire
+(`harness/`) now runs the game's logic in CI and can catch state/logic regressions early, but it observes
+internal state only — never the running game on screen — so it covers **none** of the steps below and
+reduces none of them: run the full sweep regardless. This is the short, ordered regression sweep to run on
+**every** pull request that can affect gameplay, before approving it (the playtest gate in
 [the principles](principles.md)). It probes the failure modes that have actually bitten this project;
 expect about fifteen minutes. Deeper per-capability checks live in each spec document's acceptance
 table and are run when their capability changes.

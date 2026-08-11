@@ -1,0 +1,138 @@
+{
+  "constants": {
+    "shot_slot_count": 3
+  },
+  "schema": "xevious-runtime-identifiers/1",
+  "variables": {
+    "blaster-alloc-result": {
+      "kind": "variable",
+      "name": "alloc result",
+      "scope": "blaster"
+    },
+    "blaster-clone-slot": {
+      "kind": "variable",
+      "name": "clone slot",
+      "scope": "blaster"
+    },
+    "bullet-alloc-result": {
+      "kind": "variable",
+      "name": "bullet alloc result",
+      "scope": "Stage"
+    },
+    "bullet-cursor": {
+      "kind": "variable",
+      "name": "bullet cursor",
+      "scope": "Stage"
+    },
+    "game-director-allowed-transitions": {
+      "kind": "list",
+      "name": "allowed transitions",
+      "scope": "Stage"
+    },
+    "game-director-death-outcome": {
+      "kind": "variable",
+      "name": "death outcome",
+      "scope": "Stage"
+    },
+    "game-director-epoch": {
+      "kind": "variable",
+      "name": "state epoch",
+      "scope": "Stage"
+    },
+    "game-director-reset-scope": {
+      "kind": "variable",
+      "name": "reset scope",
+      "scope": "Stage"
+    },
+    "game-director-state": {
+      "kind": "variable",
+      "name": "game state",
+      "scope": "Stage"
+    },
+    "hit-slot": {
+      "kind": "variable",
+      "name": "hit slot",
+      "scope": "Stage"
+    },
+    "rng-extend-flag": {
+      "kind": "variable",
+      "name": "rng extend",
+      "scope": "Stage"
+    },
+    "rng-high": {
+      "kind": "variable",
+      "name": "rng high",
+      "scope": "Stage"
+    },
+    "rng-new-high": {
+      "kind": "variable",
+      "name": "rng new high",
+      "scope": "Stage"
+    },
+    "rng-new-low": {
+      "kind": "variable",
+      "name": "rng new low",
+      "scope": "Stage"
+    },
+    "rng-out": {
+      "kind": "variable",
+      "name": "rng out",
+      "scope": "Stage"
+    },
+    "rng-state": {
+      "kind": "variable",
+      "name": "rng state",
+      "scope": "Stage"
+    },
+    "slot-index": {
+      "kind": "variable",
+      "name": "slot index",
+      "scope": "Stage"
+    },
+    "slot-state": {
+      "kind": "list",
+      "name": "slot state",
+      "scope": "Stage"
+    },
+    "slot-type": {
+      "kind": "list",
+      "name": "slot type",
+      "scope": "Stage"
+    },
+    "solv-death-director-entry-epoch": {
+      "kind": "variable",
+      "name": "entry epoch",
+      "scope": "solv_death"
+    },
+    "solvalou-director-entry-epoch": {
+      "kind": "variable",
+      "name": "entry epoch",
+      "scope": "solvalou"
+    },
+    "terrain-scroll-step-a": {
+      "kind": "variable",
+      "name": "scroll step",
+      "scope": "area_01a"
+    },
+    "terrain-scroll-step-b": {
+      "kind": "variable",
+      "name": "scroll step",
+      "scope": "area_01b"
+    },
+    "tick": {
+      "kind": "variable",
+      "name": "tick",
+      "scope": "Stage"
+    },
+    "weapon-blaster-reload": {
+      "kind": "variable",
+      "name": "blaster reload",
+      "scope": "blaster"
+    },
+    "weapon-bomb-in-flight": {
+      "kind": "variable",
+      "name": "bomb in flight",
+      "scope": "Stage"
+    }
+  }
+}

@@ -16,6 +16,12 @@ import scratch_project
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_PATH = ROOT / "src" / "xevious" / scratch_project.PROJECT_JSON
+# Cross-language identifier index the JS runtime harness (harness/) consumes so it
+# never keeps a third, silently-drifting copy of the project's variable names. Emitted
+# beside project.json (not under assets/, so it never enters the built .sb3) and kept
+# in sync by check(); see test_runtime_identifier_manifest_is_current.
+MANIFEST_PATH = ROOT / "src" / "xevious" / "runtime_identifiers.json"
+MANIFEST_SCHEMA = "xevious-runtime-identifiers/1"
 
 STATE_ID = "game-director-state"
 EPOCH_ID = "game-director-epoch"
@@ -1704,6 +1710,42 @@ def project_bytes(project: dict[str, Any]) -> bytes:
     return scratch_project._ordered_json_bytes(project)
 
 
+def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
+    """Name↔id↔scope index the JS runtime harness reads.
+
+    Keyed by the Scratch variable/list id — the stable identity that a display-name
+    rename does not touch — with the current display name and owning target read
+    straight from the generated project, so the manifest cannot drift from what ships.
+    The harness resolves variables by these ids (game_director's own id constants) and
+    hard-errors on a missing id, so a rename or removal here surfaces as a red harness
+    test rather than a vacuous read of `undefined`.
+    """
+    variables: dict[str, Any] = {}
+    for target in project["targets"]:
+        scope = "Stage" if target.get("isStage") else target["name"]
+        for var_id, entry in target.get("variables", {}).items():
+            variables[var_id] = {"name": entry[0], "scope": scope, "kind": "variable"}
+        for list_id, entry in target.get("lists", {}).items():
+            variables[list_id] = {"name": entry[0], "scope": scope, "kind": "list"}
+    constants = {
+        # Player-shot cap: SHOT_SLOTS is an inclusive index range, so its width is the
+        # ceiling the headless harness can observe (the touching-frame replenish it
+        # cannot — that stays the playtest's). Only constants the harness actually consumes
+        # are emitted; a future scenario adds its own here rather than carrying dead keys.
+        "shot_slot_count": SHOT_SLOTS[1] - SHOT_SLOTS[0] + 1,
+    }
+    return {
+        "schema": MANIFEST_SCHEMA,
+        "constants": constants,
+        "variables": variables,
+    }
+
+
+def manifest_bytes(project: dict[str, Any]) -> bytes:
+    manifest = identifier_manifest(project)
+    return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
 def source_has_local_changes() -> bool:
     relative = str(PROJECT_PATH.relative_to(ROOT))
     for args in (
@@ -1725,18 +1767,24 @@ def generate() -> None:
             "then port owned block changes into tools/game_director.py"
         )
     current = json.loads(PROJECT_PATH.read_text(encoding="utf-8"))
-    PROJECT_PATH.write_bytes(project_bytes(expected_project(current)))
+    expected = expected_project(current)
+    PROJECT_PATH.write_bytes(project_bytes(expected))
+    MANIFEST_PATH.write_bytes(manifest_bytes(expected))
     print(f"generated {PROJECT_PATH.relative_to(ROOT)}")
+    print(f"generated {MANIFEST_PATH.relative_to(ROOT)}")
 
 
 def check() -> None:
     current = json.loads(PROJECT_PATH.read_text(encoding="utf-8"))
-    expected = project_bytes(expected_project(current))
-    actual = PROJECT_PATH.read_bytes()
-    if actual != expected:
+    expected = expected_project(current)
+    if PROJECT_PATH.read_bytes() != project_bytes(expected):
         raise SystemExit(
             "game director source is stale; inspect imported block changes before "
             "running tools/game_director.py generate"
+        )
+    if not MANIFEST_PATH.exists() or MANIFEST_PATH.read_bytes() != manifest_bytes(expected):
+        raise SystemExit(
+            "runtime identifier manifest is stale; run tools/game_director.py generate"
         )
     print("game director source is current")
 

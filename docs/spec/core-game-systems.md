@@ -152,9 +152,9 @@ the temporary D/G fixtures above; a rebinding is a spec amendment.
 
 ## Acceptance criteria
 
-No runtime harness exists in this repository — no check can execute the game. Engine rows below are
-static reads of the built project's files and data; every observation of running behavior is the
-operator's, until a runtime harness is built (a tracked follow-up, not a promise).
+A headless runtime harness (`harness/`) now executes the game's logic layer as a pre-playtest tripwire,
+but it observes internal state only, not the rendered game. Engine rows below remain static reads of the
+built project's files and data; every observation of running on-screen behavior is the operator's.
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
@@ -165,5 +165,5 @@ operator's, until a runtime harness is built (a tracked follow-up, not a promise
 | Entities never leak across a long session | Play an extended session watching for missing spawns or stuck sprites | operator |
 | Capacity limits are honored in play — never a fourth shot or a second bomb on screen | Play the built `.sb3` and probe the limits | operator |
 | The build's generator encodes the recorded update rule and its data equals the committed golden sequences | Static comparison of the build's generated RNG data against [data/rng.json](data/rng.json) | engine |
-| Seeded runs repeat exactly | Two runs from one seed look identical to the operator (fixture-automated when a runtime harness exists) | operator |
+| Seeded runs repeat exactly | Two runs from one seed look identical to the operator (a runtime-harness candidate once a consumer draws from the stream) | operator |
 | A hit never scores twice | The block graph routes all scoring through the single path (engine, structural); simultaneous-contact behavior confirmed in play | operator |

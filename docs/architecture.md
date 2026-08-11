@@ -81,3 +81,14 @@ director's authority) → explosion presentation → *respawning* with the recor
 - **Clone budget respected by design.** The entity pool plans for Scratch's clone limit; if one shared
   target proves unmaintainable, one target per behavior family keeps the same lifecycle and collision
   interfaces (measured by the planned clone/performance spike before enemy work begins).
+- **A headless runtime tripwire now, on the official VM; Whisker later.** A small `harness/` runs the
+  built `.sb3` in the official pinned `scratch-vm` — the engine stock Scratch 3 itself runs — and asserts
+  on internal state variables and clone counts as a pre-playtest regression net. Its assertions are
+  pacing-invariant (ceilings, flags, reachability): with no renderer the VM advances an unfixed number of
+  ticks per step, so the net checks outcomes, not exact timing — frame-accurate stepping is a patched-VM
+  (Whisker) capability it deliberately does not depend on. It observes the logic layer only: never rendered collision,
+  visuals, audio, or feel, which stay the operator's playtest, and a green run reflects its pinned VM, not
+  the exact runtime the operator plays. Chosen over the scratch-gui editor (the wrong layer, and archived)
+  and over adopting se2p/whisker now (a forked, heavier VM one step further from stock Scratch 3, most of
+  it unused for a fidelity restoration); Whisker stays a deliberate later step for block coverage and
+  automated mutation analysis, on this same substrate. It is never a gameplay gate.
