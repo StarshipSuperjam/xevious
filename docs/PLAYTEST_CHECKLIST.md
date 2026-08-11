@@ -41,21 +41,27 @@ so area position is read from the `area progress`/`area number` variable watcher
 3. **Bomb hammering.** Hammer B: bombs never overlap — a new bomb only after the previous resolves.
    The release and impact presentations play. (Crosshair lock-over-target applies once ground objects
    exist.)
-4. **Terrain endurance.** Fly through at least two full terrain cycles (a minute or more): no black
-   gap, no frozen strip, no drift. Open the variable watcher for **`area progress`**, **`area
-   number`**, and **`schedule fired`**: while you fly, `area progress` climbs steadily and **never
-   rewinds**, `area number` ticks up when an area completes, and `schedule fired` climbs (once per
-   schedule record as the area scrolls) and resets to 0 at each area boundary. The visual terrain is
-   not yet driven by the clock, so these are variable-watcher checks, not on-screen ones.
+4. **Terrain endurance and the area clock.** Fly for **at least ~70 seconds** — long enough to cross
+   at least one area boundary (one area-clock cycle is ≈68 s): no black gap, no frozen strip, no
+   drift. Open the variable watchers for **`area progress`**, **`area number`**, **`scroll row`**, and
+   **`schedule fired`**. While you fly: `area progress` climbs steadily and resets to 0 **only in the
+   same moment `area number` ticks up** — a paired reset-and-advance at an area boundary is correct,
+   but an `area progress` drop that is *not* paired with `area number` changing is a bug; `scroll row`
+   counts 13 down to 0 then wraps 255 down toward 14; and `schedule fired` climbs (once per schedule
+   record as the area scrolls) and resets to 0 at each area boundary. The visual terrain is not yet
+   driven by the clock, so these are variable-watcher checks, not on-screen ones.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row (today: press D; once
    killers exist, die to a bullet, an enemy, and a Bacura): the full death presentation and sound
    complete uncut, the craft respawns immediately vulnerable, and nothing from the previous life
-   lingers. Watch **`area number`** across each death: an **ordinary** death (early in an area)
-   restarts the current area from its top and **keeps** `area number`; a **near-end** death — dying in
-   roughly the final fifth of an area — **advances** `area number` by one instead (the checkpoint;
-   completing area 16 rolls to 7). With area-1-only art the screen can't show the difference, so
-   `area number` is the pass/fail signal. Draining the craft (repeated D, or G) reaches GAME OVER,
-   holds, and returns to the title; life icons in the HUD track the count.
+   lingers. Watch **`area number`** across each death, using **`area progress`** to place the death —
+   and be sure to exercise **both** kinds, or the checkpoint path goes untested: an **ordinary** death
+   (die while `area progress` is low, early in an area) restarts the area from its top and **keeps**
+   `area number`; a **near-end** death (die while `area progress` is above roughly **52,000** — the
+   final fifth before the ≈65,056 completion mark, i.e. `scroll row` in 14–67) **advances** `area
+   number` by one instead (the checkpoint; completing area 16 rolls to 7). With area-1-only art the
+   screen can't show the difference, so `area number` is the pass/fail signal. Draining the craft
+   (repeated D, or G) reaches GAME OVER, holds, and returns to the title; life icons in the HUD track
+   the count.
 6. **Life economy — score, cap, bonus, HUD.** Press **S** repeatedly (or hold it) while playing: the
    score climbs, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it
    whenever the score passes it. Reach 20,000 → an extra craft is granted with its **extend** sound and

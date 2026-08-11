@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -302,9 +303,10 @@ HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_def
 # The reference runs a 16-bit scroll counter initialized to 0x0D00 and decreased by 16 per
 # arcade frame; its high byte is the descending "scroll row" (0x0D..0x00, wrapping to 0xFF
 # and continuing down), and the area completes when that row reaches 0x0E. We store the
-# monotonic INCREASING `area progress` (0 -> 0xFF00) as the SOLE position authority (so
-# "position never rewinds during a life" is a one-line invariant) and DERIVE the arcade
-# scroll row once per tick: row = floor(((0x0D00 - area progress) mod 0x10000) / 256).
+# monotonic INCREASING `area progress` (0 up to ~0xFF00; completion actually fires at 65056,
+# see AREA_COMPLETE_ROW) as the SOLE position authority — so within an area the position never
+# rewinds, resetting to 0 only when the area completes and the area number advances — and DERIVE
+# the arcade scroll row once per tick: row = floor(((0x0D00 - area progress) mod 0x10000) / 256).
 # Cadence: 1 build tick = 2 arcade frames, so `area progress` advances 32 units per tick;
 # 256 is divisible by 32, so every row is visited (no schedule trigger is skipped).
 AREA_PROGRESS_ID = "area-progress"
@@ -336,12 +338,33 @@ AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the frozen row must be strictly less (<=
 SPEC_DATA_DIR = ROOT / "docs" / "spec" / "data"
 
 
+def _load_spec_data(name: str, *, data_dir: Path = SPEC_DATA_DIR) -> Any:
+    # Load a committed reference-data file, verifying its bytes against the pinned SHA-256 in
+    # docs/spec/data/manifest.json BEFORE parsing — so a stale, hand-edited, or corrupted data
+    # file fails the build LOUDLY at ingest (mirroring tools/hud_glyphs.py's asset-hash guard),
+    # never silently baking into project.json. The manifest is the single source of the
+    # sanctioned hashes; regenerating the data (tools/reference_extract.py) is the only way to
+    # change them.
+    raw = (data_dir / name).read_bytes()
+    manifest = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
+    expected = manifest["files"].get(name)
+    if expected is None:
+        raise SystemExit(f"{name} is not registered in docs/spec/data/manifest.json")
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected:
+        raise SystemExit(
+            f"docs/spec/data/{name} hash changed: expected {expected}, found {actual}; "
+            f"regenerate the data with tools/reference_extract.py — never hand-edit it"
+        )
+    return json.loads(raw.decode("utf-8"))
+
+
 def _load_terrain_columns() -> list[int]:
     # AREA-01: the 16 per-area terrain start columns, INGESTED (not authored) from the
-    # committed, hash-pinned reference data (guarded by docs/spec/data/manifest.json). One
-    # transcription, by the generator — the Scratch list is a faithful copy of the JSON,
-    # verified by the golden in tests/test_spec_docs.py.
-    data = json.loads((SPEC_DATA_DIR / "terrain.json").read_text(encoding="utf-8"))
+    # committed, hash-pinned reference data (verified against docs/spec/data/manifest.json at
+    # load). One transcription, by the generator — the Scratch list is a faithful copy of the
+    # JSON, verified by the golden in tests/test_spec_docs.py.
+    data = _load_spec_data("terrain.json")
     return list(data["area_offset_in_map_tbl"]["values"])
 
 
@@ -374,7 +397,7 @@ def _load_area_schedule(area_number: int) -> tuple[list[str], list[int], list[st
     # params are serialized deterministically (sorted keys) into the payload; source_line is
     # provenance, not runtime data, and is deliberately not ingested. The round-trip golden in
     # tests/test_spec_docs.py proves nothing is dropped.
-    data = json.loads((SPEC_DATA_DIR / "area-schedules.json").read_text(encoding="utf-8"))
+    data = _load_spec_data("area-schedules.json")
     area = next(a for a in data["areas"] if a["area"] == area_number)
     handlers: list[str] = []
     rows: list[int] = []

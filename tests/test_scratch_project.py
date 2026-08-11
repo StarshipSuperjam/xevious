@@ -3002,6 +3002,26 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             self.assertIn(label, self._area02_failures(project), label)
 
+    def test_spec_data_loader_verifies_manifest_hash(self) -> None:
+        # The AREA ingest loader hard-fails at build time on a data file whose bytes do not match
+        # the pinned SHA-256 in manifest.json (mirroring hud_glyphs.py) — so a stale or hand-edited
+        # terrain/schedule file can never silently bake into project.json.
+        import json as _json
+        import tempfile
+        from pathlib import Path as _Path
+
+        # the real committed file loads cleanly (positive).
+        self.assertIsNotNone(director._load_spec_data("terrain.json"))
+
+        # a tampered file against the real manifest hash raises loudly (negative).
+        manifest = _json.loads((director.SPEC_DATA_DIR / "manifest.json").read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = _Path(tmp)
+            (tmp_dir / "manifest.json").write_text(_json.dumps(manifest), encoding="utf-8")
+            (tmp_dir / "terrain.json").write_text('{"tampered": true}', encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                director._load_spec_data("terrain.json", data_dir=tmp_dir)
+
     @staticmethod
     def _eco04_failures(project: dict) -> set:
         """ECO-04 game over — the 64-tick GAME OVER hold immediately followed by the same
