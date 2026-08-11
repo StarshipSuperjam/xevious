@@ -1,0 +1,5 @@
+{
+  "env": {
+    "ENGINE_CATALOG_ROOT": ".engine/_fixtures/catalog-completeness"
+  }
+}

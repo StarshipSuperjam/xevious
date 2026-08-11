@@ -19,6 +19,7 @@ import unittest
 from unittest import mock
 
 import checkout_health
+import license_seeds
 
 
 def _git(root: str, *args: str) -> None:
@@ -1249,6 +1250,532 @@ class TestProductBuildTarget(unittest.TestCase):
             self.assertEqual(got["state"], "resolved")
             self.assertEqual(got["checkout"], os.path.join(tmp, "clone"))
             self.assertNotIn("~", got["checkout"])
+
+
+def _origin_and_dirty_subsumed(tmp: str, *, extra_upstream: bool = False,
+                               work_creates_setup: bool = False) -> tuple:
+    """#810 reconcile fixture. origin is seeded with a template LICENSE + shared.txt, then a `work` clone is
+    taken at that seed. origin then advances by ONE commit — the setup a reviewed PR landed: REMOVE LICENSE, set
+    shared.txt to the setup value, add setup.txt (and, with extra_upstream, an unrelated later `extra.txt` so the
+    target is AHEAD of the transformation on paths work never touched). `work` then applies the SAME setup to its
+    WORKING TREE, UNCOMMITTED — remove LICENSE, set shared.txt (and, with work_creates_setup, also create the
+    untracked setup.txt). So `work` is behind + dirty, and its dirty changes are SUBSUMED by the verified target.
+    Returns (work, origin). Hermetic; no network."""
+    origin = os.path.join(tmp, "origin")
+    os.makedirs(os.path.join(origin, ".claude"))
+    os.makedirs(os.path.join(origin, ".engine"))
+    with open(os.path.join(origin, ".claude", "settings.json"), "w") as fh:
+        fh.write("{}")
+    with open(os.path.join(origin, ".engine", "marker"), "w") as fh:
+        fh.write("e")
+    with open(os.path.join(origin, ".engine", "engine.json"), "w") as fh:
+        # record a home_repository that is NOT this fixture's (local) origin, so the foreign-LICENSE carve-out
+        # (repo_identity.is_home_repo) treats this as a deployed repo and the detector fires on the leftover seed.
+        json.dump({"home_repository": "StarshipSuperjam/engine-template"}, fh)
+    with open(os.path.join(origin, "LICENSE"), "w") as fh:
+        fh.write(license_seeds.CURRENT_SEED)   # a REAL engine seed, so the foreign-LICENSE detector recognises it
+    with open(os.path.join(origin, "shared.txt"), "w") as fh:
+        fh.write("base\n")
+    _git(origin, "init", "-q", "-b", "main")
+    _gcommit(origin, "2026-06-01", "add", "-A")
+    _gcommit(origin, "2026-06-01", "commit", "-q", "-m", "seed")
+    work = os.path.join(tmp, "work")
+    subprocess.run(["git", "clone", "-q", origin, work], capture_output=True, text=True, check=False)
+    # origin advances: the equivalent setup landed through a reviewed PR (LICENSE removed, shared.txt set, setup
+    # file added) and, optionally, a later unrelated PR — so the target supersedes the local transformation.
+    os.remove(os.path.join(origin, "LICENSE"))
+    with open(os.path.join(origin, "shared.txt"), "w") as fh:
+        fh.write("setup\n")
+    with open(os.path.join(origin, "setup.txt"), "w") as fh:
+        fh.write("setup value\n")
+    if extra_upstream:
+        with open(os.path.join(origin, "extra.txt"), "w") as fh:
+            fh.write("later unrelated PR\n")
+    _gcommit(origin, "2026-06-02", "add", "-A")
+    _gcommit(origin, "2026-06-02", "commit", "-q", "-m", "land the equivalent setup")
+    # work applies the SAME setup to its working tree, UNCOMMITTED (the first-run-strand shape).
+    os.remove(os.path.join(work, "LICENSE"))
+    with open(os.path.join(work, "shared.txt"), "w") as fh:
+        fh.write("setup\n")
+    if work_creates_setup:
+        with open(os.path.join(work, "setup.txt"), "w") as fh:
+            fh.write("setup value\n")
+    return work, origin
+
+
+class TestReconcileSubsumed(unittest.TestCase):
+    """#810: a behind checkout whose UNCOMMITTED changes are already SUBSUMED by the verified target (a first-run
+    transformation the reviewed upstream absorbed) is reconciled LOSSLESSLY on consent — rescue-first, then
+    brought current — instead of the plain lossless gate refusing it forever. Genuine unrelated work still blocks
+    as a true no-op; losslessness never rests on the subsumption judgment."""
+
+    def _rescue_branch(self, work: str) -> str:
+        out = checkout_health._run(["git", "-C", work, "branch", "--list", "engine-rescue/*",
+                                    "--format=%(refname:short)"]) or ""
+        names = [n for n in out.splitlines() if n.strip()]
+        self.assertEqual(len(names), 1, f"exactly one rescue branch expected, got {names}")
+        return names[0]
+
+    def test_superseding_target_is_rescued_then_brought_current(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            target = _consent_target(work)
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "fixed")
+            self.assertTrue(r["reconciled"])
+            self.assertTrue(r["applied"])
+            self.assertEqual(_head(work).strip(), target)                     # local main == verified target
+            self.assertEqual((checkout_health._run(["git", "-C", work, "symbolic-ref", "--short", "HEAD"])
+                              or "").strip(), "main")
+            self.assertFalse((checkout_health._run(["git", "-C", work, "status", "--porcelain"])
+                              or "").strip(), "the working tree must be clean after reconcile")
+            self.assertFalse(os.path.exists(os.path.join(work, "LICENSE")))   # target dropped it
+            self.assertTrue(os.path.exists(os.path.join(work, "setup.txt")))  # target's setup file materialized
+            self.assertTrue(os.path.exists(os.path.join(work, "extra.txt")))  # the superseding later PR too
+            # the dirty state is preserved on the rescue branch (LICENSE removed + shared.txt set, but NOT the
+            # target-only files) — nothing was lost.
+            rescue = r["rescue"]
+            self.assertIsNone(checkout_health._run(["git", "-C", work, "cat-file", "-e", f"{rescue}:LICENSE"]))
+            self.assertEqual(checkout_health._run(["git", "-C", work, "show", f"{rescue}:shared.txt"]), "setup\n")
+            self.assertIsNone(checkout_health._run(["git", "-C", work, "cat-file", "-e", f"{rescue}:extra.txt"]))
+
+    def test_exact_match_is_rescued_then_brought_current(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=False, work_creates_setup=True)
+            target = _consent_target(work)
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "fixed")
+            self.assertTrue(r["reconciled"])
+            self.assertEqual(_head(work).strip(), target)
+            self.assertEqual(checkout_health._run(["git", "-C", work, "show", "HEAD:setup.txt"]), "setup value\n")
+
+    def test_genuine_unrelated_work_still_blocks_as_a_true_no_op(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            # an unrelated edit to shared.txt that does NOT match the target -> not subsumed -> must NOT reconcile
+            with open(os.path.join(work, "shared.txt"), "w") as fh:
+                fh.write("my own unrelated edit\n")
+            before = _head(work)
+            target = _consent_target(work)
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "blocked")
+            self.assertEqual(r["reason"], "local-work")
+            self.assertNotIn("rescue", r, "an unsubsumed dirty tree must NOT be rescued (true no-op)")
+            self.assertEqual(_head(work), before)                              # HEAD never moved
+            with open(os.path.join(work, "shared.txt")) as fh:
+                self.assertEqual(fh.read(), "my own unrelated edit\n")         # the edit is intact
+            self.assertFalse(os.path.exists(os.path.join(work, "setup.txt")))  # nothing pulled in
+            branches = checkout_health._run(["git", "-C", work, "branch", "--list", "engine-rescue/*"]) or ""
+            self.assertFalse(branches.strip(), "no rescue branch is created on the no-op path")
+
+    def test_dry_run_never_reconciles_or_mutates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            before = _head(work)
+            r = checkout_health.catch_up(cwd=work, apply=False, do_fetch=True)
+            self.assertEqual(r["status"], "behind")
+            self.assertFalse(r["applied"])
+            self.assertEqual(_head(work), before)
+            self.assertFalse((checkout_health._run(["git", "-C", work, "branch", "--list", "engine-rescue/*"])
+                              or "").strip())
+
+    def test_a_wrong_subsumed_judgment_loses_nothing(self):
+        # The losslessness proof: force BOTH the read-only pre-check AND the authoritative gate to (wrongly) say
+        # "subsumed" on a tree that is NOT subsumed. Reconcile then adopts the target, but the discarded dirty
+        # content is fully recoverable on the retained rescue branch — losslessness never rested on the judgment.
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            with open(os.path.join(work, "shared.txt"), "w") as fh:
+                fh.write("genuinely divergent content the target does NOT have\n")
+            target = _consent_target(work)
+            with mock.patch.object(checkout_health, "_dirty_subsumed", return_value=True), \
+                 mock.patch.object(checkout_health, "_commit_subsumed", return_value=True):
+                r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "fixed")
+            self.assertEqual(_head(work).strip(), target)
+            rescue = r["rescue"]
+            self.assertEqual(
+                checkout_health._run(["git", "-C", work, "show", f"{rescue}:shared.txt"]),
+                "genuinely divergent content the target does NOT have\n",
+                "the discarded working-tree content must be fully recoverable on the rescue branch")
+
+    def test_authoritative_gate_catches_a_wrong_pre_check_and_keeps_work_safe(self):
+        # If only the CHEAP pre-check is wrong (approximation optimistic) the authoritative post-rescue gate still
+        # declines: nothing is adopted, HEAD returns to the default, and the work is safe on the rescue branch.
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            with open(os.path.join(work, "shared.txt"), "w") as fh:
+                fh.write("not actually upstream\n")
+            before = _head(work)
+            target = _consent_target(work)
+            with mock.patch.object(checkout_health, "_dirty_subsumed", return_value=True):
+                r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "blocked")
+            self.assertEqual(r["reason"], "local-work")
+            self.assertFalse(r["reconciled"])
+            self.assertEqual(_head(work).strip(), before.strip())             # target NOT adopted
+            self.assertEqual((checkout_health._run(["git", "-C", work, "symbolic-ref", "--short", "HEAD"])
+                              or "").strip(), "main")                          # HEAD back on the default
+            self.assertEqual(checkout_health._run(["git", "-C", work, "show", f"{r['rescue']}:shared.txt"]),
+                             "not actually upstream\n")                        # work safe on rescue
+
+    def test_rescue_failure_refuses_and_keeps_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            before = _head(work)
+            target = _consent_target(work)
+            with mock.patch.object(checkout_health, "save_recovery_point", return_value=None):
+                r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "blocked")
+            self.assertEqual(r["reason"], "rescue-failed")
+            self.assertFalse(r["applied"])
+            self.assertEqual(_head(work), before)
+            with open(os.path.join(work, "shared.txt")) as fh:
+                self.assertEqual(fh.read(), "setup\n")                        # the dirty tree is untouched
+
+    def test_a_stash_alongside_dirty_still_blocks_and_never_reconciles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            # a stash makes _is_lossless reasons != ["uncommitted"], so reconcile must NOT engage
+            _git(work, "stash", "push", "-u", "-m", "some other work")
+            os.remove(os.path.join(work, "LICENSE"))
+            with open(os.path.join(work, "shared.txt"), "w") as fh:
+                fh.write("setup\n")
+            target = _consent_target(work)
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "blocked")
+            self.assertEqual(r["reason"], "local-work")
+            self.assertIn("stash", r["reasons"])
+            self.assertNotIn("rescue", r)
+            stash = checkout_health._run(["git", "-C", work, "stash", "list"]) or ""
+            self.assertIn("some other work", stash)                           # the stash is byte-intact
+
+    def test_off_default_dirty_subsumed_reconciles_via_return_to_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            _git(work, "stash", "push", "-u")            # park the dirty tree so we can make a side branch...
+            _git(work, "checkout", "-q", "-b", "my-feature")
+            _git(work, "stash", "pop")                   # ...then restore the dirty subsumed tree on the side branch
+            target = _consent_target(work)
+            r = checkout_health.return_to_default(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "fixed")
+            self.assertTrue(r["reconciled"])
+            self.assertEqual(_head(work).strip(), target)
+            self.assertEqual((checkout_health._run(["git", "-C", work, "symbolic-ref", "--short", "HEAD"])
+                              or "").strip(), "main")
+            # the side branch still exists (its own ref is untouched) and the dirty work is on the rescue branch
+            self.assertTrue((checkout_health._run(["git", "-C", work, "branch", "--list", "my-feature"])
+                             or "").strip())
+            self.assertEqual(checkout_health._run(["git", "-C", work, "show", f"{r['rescue']}:shared.txt"]),
+                             "setup\n")
+
+    def test_catch_up_off_default_dirty_still_declines_off_main(self):
+        # catch_up never touches a side branch: parked off-default it declines BEFORE the reconcile arm, no mutation.
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            _git(work, "stash", "push", "-u")
+            _git(work, "checkout", "-q", "-b", "my-feature")
+            _git(work, "stash", "pop")
+            before = _head(work)
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=_consent_target(work))
+            self.assertEqual(r["status"], "off-main")
+            self.assertFalse(r["applied"])
+            self.assertEqual(_head(work), before)
+            self.assertFalse((checkout_health._run(["git", "-C", work, "branch", "--list", "engine-rescue/*"])
+                              or "").strip())
+
+
+class TestReconcileFailSafe(unittest.TestCase):
+    """#810 review fixes: the subsumption predicates fail CLOSED on an unreadable git read (never treat a failed
+    diff as 'nothing changed -> subsumed'); a rescue that fails AFTER its branch switch returns HEAD to the
+    original branch (no false 'untouched', no stray branch); and the new operator-facing CLI messages render."""
+
+    def _blocking_run(self, predicate):
+        """A _run that returns None (a git read failure) for commands matching `predicate`, else the real read."""
+        real = checkout_health._run
+
+        def flaky(cmd, **kw):
+            return None if predicate(cmd) else real(cmd, **kw)
+        return flaky
+
+    def test_commit_subsumed_is_conservative_on_an_unreadable_diff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp)
+            with mock.patch.object(checkout_health, "_run",
+                                   side_effect=self._blocking_run(lambda c: "--name-only" in c)):
+                # the name-diff read fails -> must return False (NOT subsumed), never a false True from empty paths
+                self.assertFalse(checkout_health._commit_subsumed(work, "HEAD", "HEAD", "HEAD"))
+
+    def test_dirty_subsumed_conservative_when_the_tracked_diff_read_fails(self):
+        # DISCRIMINATING: the tree is genuinely NOT subsumed (a divergent tracked edit) but ALSO has an untracked
+        # file that matches the target. Pre-fix, a None tracked-diff coalesced to [] and the untracked loop then
+        # (wrongly) returned True; the fix must return False because the tracked read was unreadable.
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True, work_creates_setup=True)
+            with open(os.path.join(work, "shared.txt"), "w", encoding="utf-8") as fh:
+                fh.write("divergent content the target does NOT have\n")   # genuinely unsubsumed tracked change
+            target = _consent_target(work)
+            with mock.patch.object(checkout_health, "_run",
+                                   side_effect=self._blocking_run(lambda c: "diff" in c and "--name-only" in c)):
+                self.assertFalse(checkout_health._dirty_subsumed(work, target))
+
+    def test_dirty_subsumed_conservative_when_the_untracked_list_read_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True, work_creates_setup=True)
+            target = _consent_target(work)
+            with mock.patch.object(checkout_health, "_run",
+                                   side_effect=self._blocking_run(lambda c: "ls-files" in c)):
+                self.assertFalse(checkout_health._dirty_subsumed(work, target))
+
+    def test_rescue_commit_failure_restores_head_and_reports_honestly(self):
+        # A REAL partial failure: the rescue's `git commit` fails (a rejecting pre-commit hook) AFTER
+        # save_recovery_point has switched onto a new engine-rescue branch. The arm must return HEAD to the
+        # original branch, leave no stray branch, keep the dirty work, and report honestly — not "untouched"
+        # while stranded on a rescue branch (the exact incoherence #810 set out to cure).
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            hook = os.path.join(work, ".git", "hooks", "pre-commit")
+            with open(hook, "w", encoding="utf-8") as fh:
+                fh.write("#!/bin/sh\nexit 1\n")
+            os.chmod(hook, 0o755)
+            target = _consent_target(work)
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "blocked")
+            self.assertEqual(r["reason"], "rescue-failed")
+            self.assertTrue(r["restored"], "HEAD must be returned to the original branch")
+            self.assertFalse(r["applied"])
+            self.assertEqual((checkout_health._run(["git", "-C", work, "symbolic-ref", "--short", "HEAD"])
+                              or "").strip(), "main")
+            self.assertFalse((checkout_health._run(["git", "-C", work, "branch", "--list", "engine-rescue/*"])
+                              or "").strip(), "no stray rescue branch is left behind")
+            self.assertFalse(os.path.exists(os.path.join(work, "LICENSE")))     # the dirty deletion is intact
+            with open(os.path.join(work, "shared.txt")) as fh:
+                self.assertEqual(fh.read(), "setup\n")                          # the dirty edit is intact
+
+    def test_rescue_commit_succeeds_but_hook_redirties_reports_incomplete(self):
+        # The subtle sub-case: the rescue COMMIT lands, but a post-commit hook writes a file so the tree is dirty
+        # again -> save_recovery_point returns None even though the work WAS saved. The arm must NOT claim
+        # "couldn't save"; it detects the surviving rescue commit (branch -d refuses it) and names it honestly.
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            hook = os.path.join(work, ".git", "hooks", "post-commit")
+            with open(hook, "w", encoding="utf-8") as fh:
+                fh.write("#!/bin/sh\necho artifact > hook-artifact.txt\n")
+            os.chmod(hook, 0o755)
+            target = _consent_target(work)
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "blocked")
+            self.assertEqual(r["reason"], "rescue-incomplete")
+            self.assertTrue(r["rescue"].startswith("engine-rescue/"))
+            # the work is genuinely on the named rescue branch (LICENSE removed, shared.txt set)
+            self.assertEqual(checkout_health._run(["git", "-C", work, "show", f"{r['rescue']}:shared.txt"]),
+                             "setup\n")
+            self.assertIsNone(checkout_health._run(["git", "-C", work, "cat-file", "-e", f"{r['rescue']}:LICENSE"]))
+            self.assertEqual((checkout_health._run(["git", "-C", work, "symbolic-ref", "--short", "HEAD"])
+                              or "").strip(), "main")                            # HEAD back on the default
+
+    def _render(self, fn, result: dict) -> str:
+        # exercise the real plain-language renderer against a crafted result dict (never touches a real checkout)
+        target = "catch_up" if fn is checkout_health._plain_catch_up else "return_to_default"
+        buf = io.StringIO()
+        with mock.patch.object(checkout_health, target, return_value=result), \
+                contextlib.redirect_stdout(buf):
+            fn(apply=True)
+        return buf.getvalue()
+
+    def test_cli_renders_reconciled_success_with_the_rescue_branch(self):
+        out = self._render(checkout_health._plain_catch_up,
+                           {"status": "fixed", "reconciled": True, "rescue": "engine-rescue/abc123",
+                            "applied": True})
+        self.assertIn("engine-rescue/abc123", out)
+        self.assertIn("nothing was lost", out.lower())
+
+    def test_cli_renders_rescue_failed_honestly_by_restored(self):
+        restored = self._render(checkout_health._plain_catch_up,
+                                {"status": "blocked", "reason": "rescue-failed", "restored": True, "applied": False})
+        self.assertIn("back exactly as it was", restored.lower())
+        not_restored = self._render(checkout_health._plain_catch_up,
+                                    {"status": "blocked", "reason": "rescue-failed", "restored": False,
+                                     "applied": True})
+        self.assertIn("check the folder", not_restored.lower())
+
+    def test_cli_renders_not_subsumed_block_with_rescue(self):
+        out = self._render(checkout_health._plain_catch_up,
+                           {"status": "blocked", "reason": "local-work", "reconciled": False,
+                            "rescue": "engine-rescue/def456", "restored": True, "applied": True})
+        self.assertIn("engine-rescue/def456", out)
+        self.assertIn("not to be part of the shared project", out.lower())
+
+    def test_cli_postcondition_failed_keeps_its_specific_message_over_the_generic_rescue_line(self):
+        out = self._render(checkout_health._plain_catch_up,
+                           {"status": "blocked", "reason": "postcondition-failed",
+                            "rescue": "engine-rescue/ghi789", "applied": True})
+        self.assertIn("raced the final update check", out.lower())
+        self.assertIn("engine-rescue/ghi789", out)
+
+    def test_cli_renders_rescue_incomplete_naming_the_branch(self):
+        for fn in (checkout_health._plain_catch_up, checkout_health._plain_return_to_default):
+            out = self._render(fn, {"status": "blocked", "reason": "rescue-incomplete",
+                                    "rescue": "engine-rescue/jkl012", "restored": True, "applied": True})
+            self.assertIn("engine-rescue/jkl012", out)
+            self.assertIn("safe on that branch", out.lower())
+            self.assertNotIn("couldn't save", out.lower())   # never the false "nothing saved" wording
+
+    def test_cli_return_to_default_postcondition_failed_names_the_rescue_branch(self):
+        # DH nit: the reconcile arm's postcondition-failed (rescue set, no `restored`) must still point at the
+        # rescue branch, not leave the operator without the safe copy's location.
+        out = self._render(checkout_health._plain_return_to_default,
+                           {"status": "blocked", "reason": "postcondition-failed",
+                            "rescue": "engine-rescue/mno345", "applied": True})
+        self.assertIn("engine-rescue/mno345", out)
+
+    def test_cli_return_to_default_renders_reconciled_success(self):
+        out = self._render(checkout_health._plain_return_to_default,
+                           {"status": "fixed", "reconciled": True, "rescue": "engine-rescue/xyz",
+                            "applied": True})
+        self.assertIn("engine-rescue/xyz", out)
+        self.assertIn("nothing was lost", out.lower())
+
+
+class TestFirstRunStrandRegression(unittest.TestCase):
+    """#810 end-to-end regression: template checkout -> first-run leaves the transformation dirty -> the
+    equivalent setup lands upstream (target advances and drops LICENSE) -> the operator checkout stays old and
+    dirty. The lossless reconcile brings it current with the dirty state preserved on a rescue branch, AND the
+    now-current HEAD no longer trips the foreign-LICENSE detector — the two misleading notices both clear."""
+
+    def test_reconcile_clears_the_stranded_checkout_and_the_license_notice(self):
+        import license_health
+        with tempfile.TemporaryDirectory() as tmp:
+            work, _ = _origin_and_dirty_subsumed(tmp, extra_upstream=True)
+            target = _consent_target(work)
+            # Before: the checkout is behind + dirty, and its committed HEAD still carries the template seed —
+            # exactly the stale-HEAD input the incident's second (misleading) LICENSE notice was read from...
+            self.assertIsNotNone(
+                license_seeds.matched_seed_id(license_health._committed(work, "LICENSE") or ""),
+                "the stranded checkout's committed HEAD still carries the leftover template LICENSE seed")
+            # ...while the VERIFIED TARGET has already dropped it, so the correlation predicate would suppress the
+            # redundant offer even before catch-up (the Part 3 coherence fix).
+            self.assertTrue(license_health.license_absent_upstream(work, target),
+                            "the verified target already removed LICENSE -> the redundant offer is suppressed")
+            r = checkout_health.catch_up(cwd=work, apply=True, do_fetch=True, expected_target=target)
+            self.assertEqual(r["status"], "fixed")
+            self.assertTrue(r["reconciled"])
+            # After: local main == verified target, clean, and the committed HEAD carries no LICENSE at all — the
+            # detector's fire condition is gone for good; the dirty transformation is preserved on the rescue branch.
+            self.assertEqual(_head(work).strip(), target)
+            self.assertFalse((checkout_health._run(["git", "-C", work, "status", "--porcelain"]) or "").strip())
+            self.assertIsNone(license_health._committed(work, "LICENSE"),
+                              "once current, the committed HEAD carries no LICENSE -> the notice cannot re-fire")
+            self.assertEqual(checkout_health._run(["git", "-C", work, "show", f"{r['rescue']}:shared.txt"]),
+                             "setup\n")
+
+
+def _mechanic_with_target(tmp: str, name: str = "mechanic", target: str | None = "acme/product") -> str:
+    """A mechanic checkout whose manifest records (or omits) a product_build_target."""
+    root = _repo(tmp, name)
+    manifest = {"product_build_target": target} if target else {"engine_release": "1.0.0"}
+    with open(os.path.join(root, ".engine", "engine.json"), "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh)
+    return root
+
+
+def _product_with_origin(tmp: str, name: str = "product",
+                         origin: str = "git@github.com:acme/product.git") -> str:
+    root = _repo(tmp, name)
+    _git(root, "remote", "add", "origin", origin)
+    return root
+
+
+class TestProductBuildSprawl(unittest.TestCase):
+    """The negative control (engine-template#902): stray product worktrees and sibling clones are surfaced so a
+    regression to the old sprawl is CAUGHT, while the sanctioned .engine/mechanic/worktrees/ home reads clean."""
+
+    def test_clean_mechanic_reports_no_sprawl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = _mechanic_with_target(tmp)
+            p = _product_with_origin(tmp)
+            with mock.patch.dict(os.environ, {"ENGINE_PRODUCT_CHECKOUT": p}):
+                self.assertIsNone(checkout_health.detect_product_build_sprawl(cwd=m))
+
+    def test_not_a_mechanic_reports_no_sprawl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = _mechanic_with_target(tmp, target=None)
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("ENGINE_PRODUCT_CHECKOUT", None)
+                self.assertIsNone(checkout_health.detect_product_build_sprawl(cwd=m))
+
+    def test_stray_worktree_outside_the_sanctioned_home_is_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = _mechanic_with_target(tmp)
+            p = _product_with_origin(tmp)
+            stray = os.path.join(tmp, "loose-wt")            # NOT under m/.engine/mechanic/worktrees
+            _git(p, "worktree", "add", "-q", "--detach", stray)
+            with mock.patch.dict(os.environ, {"ENGINE_PRODUCT_CHECKOUT": p}):
+                got = checkout_health.detect_product_build_sprawl(cwd=m)
+            self.assertIsNotNone(got)
+            self.assertIn(os.path.realpath(stray), got["stray_worktrees"])
+            self.assertEqual(got["sibling_clones"], [])
+
+    def test_sanctioned_worktree_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = _mechanic_with_target(tmp)
+            p = _product_with_origin(tmp)
+            ok = os.path.join(m, ".engine", "mechanic", "worktrees", "902-x")
+            _git(p, "worktree", "add", "-q", "--detach", ok)   # the sanctioned home — must read clean
+            with mock.patch.dict(os.environ, {"ENGINE_PRODUCT_CHECKOUT": p}):
+                self.assertIsNone(checkout_health.detect_product_build_sprawl(cwd=m))
+
+    def test_sibling_clone_with_matching_origin_is_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = _mechanic_with_target(tmp)
+            p = _product_with_origin(tmp)                      # basename "product"
+            sib = _product_with_origin(tmp, name="product-656-labels")   # same origin, sibling folder
+            with mock.patch.dict(os.environ, {"ENGINE_PRODUCT_CHECKOUT": p}):
+                got = checkout_health.detect_product_build_sprawl(cwd=m)
+            self.assertIsNotNone(got)
+            self.assertIn(os.path.realpath(sib), got["sibling_clones"])
+
+    def test_sibling_folder_with_a_different_origin_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = _mechanic_with_target(tmp)
+            p = _product_with_origin(tmp)
+            _product_with_origin(tmp, name="product-unrelated", origin="git@github.com:acme/other.git")
+            with mock.patch.dict(os.environ, {"ENGINE_PRODUCT_CHECKOUT": p}):
+                self.assertIsNone(checkout_health.detect_product_build_sprawl(cwd=m))
+
+
+class TestEngineRootAndDefaultSeams(unittest.TestCase):
+    """The two public seams the mechanic build entry rides: the durable engine root (even from a linked
+    worktree) and the confident default branch (never a guess)."""
+
+    def test_engine_common_checkout_resolves_the_main_from_a_linked_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            main = _repo(tmp, "eng")
+            wt = os.path.join(tmp, "wt")
+            _git(main, "worktree", "add", "-q", "--detach", wt)
+            self.assertEqual(os.path.realpath(checkout_health.engine_common_checkout(cwd=wt)),
+                             os.path.realpath(main))
+
+    def test_engine_common_checkout_is_none_outside_a_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(checkout_health.engine_common_checkout(cwd=tmp))
+
+    def test_confident_default_branch_reads_a_clone_origin_head(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            seed = _repo(tmp, "seed")
+            bare = os.path.join(tmp, "remote.git")
+            subprocess.run(["git", "clone", "--quiet", "--bare", seed, bare], capture_output=True, text=True)
+            clone = os.path.join(tmp, "clone")
+            subprocess.run(["git", "clone", "--quiet", bare, clone], capture_output=True, text=True)
+            got = checkout_health.confident_default_branch(clone)
+            head = subprocess.run(["git", "-C", clone, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+                                  capture_output=True, text=True).stdout.strip()
+            self.assertEqual(got, head.split("origin/", 1)[1])       # the default, without the origin/ prefix
+
+    def test_confident_default_branch_is_none_without_a_confident_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            solo = _repo(tmp, "solo")                                # no origin/HEAD, no persisted default
+            self.assertIsNone(checkout_health.confident_default_branch(solo))
 
 
 if __name__ == "__main__":

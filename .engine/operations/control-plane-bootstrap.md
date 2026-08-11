@@ -4,7 +4,7 @@ title: Bootstrap the control plane — turn the protected-branch safety gate on
 
 ## Purpose
 
-How the engine turns on the **branch protection** that makes a non-engineer's merge gate real — the #1
+How the engine turns on the **branch protection** that makes a non-engineer's merge gate real — the number-one
 trust dependency every other guardrail sits downstream of. The branch ruleset is a GitHub *setting*, not a
 file, so it does not travel with the template and must be applied once per repository by an
 operator-privileged actor. This runbook is the permanent, re-runnable mechanism: it checks whether the

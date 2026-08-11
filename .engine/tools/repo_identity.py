@@ -45,7 +45,7 @@ _ENGINE_MANIFEST_REL = ".engine/engine.json"
 # because host names are case-insensitive by specification (`GitHub.com` is `github.com`); ASCII so the fold
 # stays ASCII-only — without it Unicode case-folding lets a homograph host (`gİthub.com`, where U+0130 folds to
 # `i`) satisfy the `github.com` literal and slip through as a look-alike. The flags fold only the literal host,
-# never the structural anchors, so no look-alike host is newly accepted (#625).
+# never the structural anchors, so no look-alike host is newly accepted (StarshipSuperjam/engine-template#625).
 _GITHUB_SLUG_RE = re.compile(r"(?:^|@|//)github\.com[:/]+([^/]+/[^/]+?)(?:\.git)?/?$", re.IGNORECASE | re.ASCII)
 
 

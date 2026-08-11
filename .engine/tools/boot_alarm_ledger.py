@@ -5,7 +5,7 @@ Boot's ONE local write: boot stays read-only of *canonical* state, and its one l
 gitignored, non-canonical presentation ledger. It records, per standing governance alarm, the
 structured CONDITION VALUE last relayed IN FULL, so a SessionStart that finds the same condition
 unchanged can collapse it to a terse reminder instead of re-relaying the full paragraph every resume
-(the #313 habituation). The decision is DETERMINISTIC and lives in this hook-side code, never the model —
+(the StarshipSuperjam/engine-template#313 habituation). The decision is DETERMINISTIC and lives in this hook-side code, never the model —
 boot relays whatever variant the decision hands it.
 
 Laws (all load-bearing):
@@ -25,7 +25,7 @@ Laws (all load-bearing):
     the ledger lives in a distinct gitignored directory.
   - STABLE PER-INSTANCE PATH under the shared clone root's `.engine/boot/.cache/`, so the ledger spans
     separate sessions on the one operator's machine and is never trapped in an ephemeral worktree.
-  - TWO WRITERS, ONE LOCK (#471). The SessionStart hook's decide() writes the collapse baselines; a
+  - TWO WRITERS, ONE LOCK (StarshipSuperjam/engine-template#471). The SessionStart hook's decide() writes the collapse baselines; a
     SECOND, model-invoked writer (retire(), the operator's "I meant to keep this") writes the RETIRED
     namespace. Both take the same `<ledger>.lock` for a read-modify-write, and decide() CARRIES the RETIRED
     namespace FORWARD untouched, so neither writer erases the other's state. Retire-eligibility is a code
@@ -57,7 +57,7 @@ CACHE_SUBDIR = os.path.join(".engine", "boot", ".cache")
 LEDGER_FILENAME = "standing-alarms.json"
 
 # The RETIRED namespace — a reserved top-level key holding {fingerprint: true} for findings the operator has
-# deliberately kept ("I meant to keep this", #471). It lives in the SAME ledger file as the collapse
+# deliberately kept ("I meant to keep this", StarshipSuperjam/engine-template#471). It lives in the SAME ledger file as the collapse
 # baselines but in its own key, and decide() CARRIES IT FORWARD untouched on every rewrite (a collapse-key
 # rebuild must never erase a retire marker). No alarm key collides with this reserved name.
 _RETIRED_NS = "__retired__"
@@ -102,7 +102,19 @@ def ledger_dir(cwd: str | None = None) -> str:
     if env:
         return os.path.abspath(os.path.expanduser(env))
     root = _git_common_root(cwd)
-    base = root if root is not None else (cwd or os.getcwd())
+    if root is None:
+        # git unavailable: fall back to the launch cwd. It is typically `<root>/.engine` (tools run via
+        # `uv run --directory .engine`), so appending CACHE_SUBDIR (`.engine/boot/.cache`) would double it
+        # to `<root>/.engine/.engine/boot/.cache` INSIDE the real checkout (StarshipSuperjam/engine-template#753; the StarshipSuperjam/engine-template#176 doubled-path
+        # class). Peel a trailing `.engine` so the fallback names the clone root. normpath first (drop a
+        # trailing slash / `.`) so a `<root>/.engine/` cwd still peels.
+        # Strictly this branch — a git-CONFIRMED root (even one named `.engine`) is never peeled. Scope: the
+        # `cwd == <root>/.engine` launch case; a deeper cwd or a clone root literally named `.engine` is out
+        # of scope. (Copied law, not shared: boot's ledger shares no code path with memory's.)
+        base_cwd = os.path.normpath(cwd or os.getcwd())
+        base = os.path.dirname(base_cwd) if os.path.basename(base_cwd) == ".engine" else base_cwd
+    else:
+        base = root
     return os.path.join(base, CACHE_SUBDIR)
 
 
@@ -215,7 +227,7 @@ def decide(alarms: list, *, cwd: str | None = None, path: str | None = None) -> 
                 new_ledger[k] = {"value": val, "shown_in_full": True}   # stamp THIS true full relay
         # Keys present last session but not live now are simply absent from new_ledger -> dropped. But the RETIRED
         # namespace is NOT a collapse key and has a lifecycle of its own — carry it forward untouched so a
-        # collapse-key rebuild never erases an operator's "I meant to keep this" (#471). Preserved only when
+        # collapse-key rebuild never erases an operator's "I meant to keep this" (StarshipSuperjam/engine-template#471). Preserved only when
         # the ledger read succeeded (ok); a fresh/unreadable ledger seeds an empty namespace, never a false retire.
         retired_ns = old.get(_RETIRED_NS)
         if ok and isinstance(retired_ns, dict) and retired_ns:

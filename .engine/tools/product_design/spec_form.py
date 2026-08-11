@@ -385,7 +385,7 @@ def findings(tier: str, root: "str | None" = None) -> list:
                 # Every data row must carry all three columns. A row with fewer cells is a half-filled criterion
                 # that would silently vanish from the coverage denominator the obligation-matrix derives (a
                 # criterion the who-value check below also skips, since it guards on len(r) > 2) — catch it here
-                # so a malformed criterion can never leave the record with nothing red (spec-conformance nit, #454).
+                # so a malformed criterion can never leave the record with nothing red (spec-conformance nit, StarshipSuperjam/engine-template#454).
                 if any(len(r) < len(_CRITERIA_COLUMNS) for r in rows):
                     out.append(validate.finding(tier, _incomplete_criteria_row_message(rel, status),
                                                 {"file": rel, "line": None}))
@@ -443,7 +443,7 @@ def emit_findings() -> int:
     the rule's declared tier (the validator passes it as ENGINE_RULE_TIER, defaulting hard); the no-op is
     always soft (set inside findings())."""
     # ENGINE_SPEC_ROOT (unset in production) lets the negative-fixture meta-check point the spec scan
-    # at a seeded docs/spec tree, so the form gate is witnessed biting a real bad input (#286).
+    # at a seeded docs/spec tree, so the form gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     print(json.dumps(findings(os.environ.get("ENGINE_RULE_TIER", "hard"),
                               validate.env_override_path("ENGINE_SPEC_ROOT"))))
     return 0

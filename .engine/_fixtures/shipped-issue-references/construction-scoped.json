@@ -1,0 +1,4 @@
+{
+  "property": "no reachable failure path outside the construction repository",
+  "reason": "This check refuses a bare issue reference in a file that ships into a generated repository, where it would resolve to the wrong issue — a defect only in the repository where the engine itself is built and its references are authored. In a deployed repository a bare #N is a correct reference to that project's own issues, so the check stops at its home-repository gate and does nothing, and there is no failure here for its self-test to catch. In the engine's own repository this note does not apply and the self-test stays required."
+}

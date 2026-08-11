@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "terrain-source",
+  "note": "Operator-supplied reference source art for the terrain/area slice (Part of #17). It is NOT yet ingested by any generator, so no extracted outputs are recorded here. When the terrain extractor lands it will read this source and emit its own output provenance, mirroring assets/hud-font and assets/sprite-extraction.",
+  "sources": {
+    "xevious_area_map.png": {
+      "sha256": "4d5b5270f171053c5e88be3f0c1a9cf7933e819f3e883b1660ad783bb54f3c5f",
+      "dimensions": [2048, 1024],
+      "source": "DeviantArt: \"Xevious area map\" by ringostarr39 — https://www.deviantart.com/ringostarr39/art/Xevious-area-map-626303469",
+      "credit": "ringostarr39 (DeviantArt)",
+      "license": "No reusable license specified by source; third-party copyrighted material (fan-made map of Namco's Xevious)"
+    }
+  },
+  "cited_reference_not_vendored": {
+    "note": "A second image the operator holds locally is a fan-annotated slicing guide (the 16-area breakdown and some hidden-target locations). It is REFERENCE, not a build input, so it is cited here but deliberately not committed (kept local, git-ignored) per docs/REFERENCE_POLICY.md.",
+    "source": "arcadeblogger.com: Xevious journey map — https://i0.wp.com/arcadeblogger.com/wp-content/uploads/2022/12/xevious-journey-map.jpeg",
+    "license": "No reusable license specified by source; third-party copyrighted material"
+  }
+}

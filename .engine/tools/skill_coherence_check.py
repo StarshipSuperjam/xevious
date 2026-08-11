@@ -52,7 +52,7 @@ def engine_skills(root: str | None = None, skills_dir: str | None = None) -> lis
     """Parse the present engine-prefixed skills' frontmatter. Inject the typed name as `name` when the
     frontmatter omits it, so a finding names the command the operator would actually see.
 
-    `skills_dir` is the negative-fixture meta-check's seam (#286): glob `engine-*/SKILL.md` directly under
+    `skills_dir` is the negative-fixture meta-check's seam (StarshipSuperjam/engine-template#286): glob `engine-*/SKILL.md` directly under
     that directory instead of a real `.claude/skills` tree — so a committed negative fixture is NOT
     discovered by Claude Code's own skill loader (which scans `.claude/skills/**`) and shipped into every
     adopter as a phantom skill. The coherence logic over the parsed frontmatter is identical either way."""
@@ -128,7 +128,7 @@ def main(argv: list) -> int:
     tier = os.environ.get("ENGINE_RULE_TIER", "hard")
     # ENGINE_SKILL_FIXTURE_DIR (unset in production) lets the negative-fixture meta-check point the skill
     # scan at a seeded non-.claude fixture dir, so the coherence gate is witnessed biting a real bad input
-    # (#286) without the fixture being loaded as a real skill by Claude Code's own loader.
+    # (StarshipSuperjam/engine-template#286) without the fixture being loaded as a real skill by Claude Code's own loader.
     skills = engine_skills(skills_dir=validate.env_override_path("ENGINE_SKILL_FIXTURE_DIR"))
     return emit(validate.skill_coherence_findings(skills, tier, _MESSAGE))
 

@@ -34,7 +34,7 @@ def check() -> dict | None:
     derived = module_manager.derive_uv_groups()
     # ENGINE_PYPROJECT_PATH (unset in production) lets the negative-fixture meta-check point the
     # committed-side read at a seeded pyproject whose default-groups drifts from the real derived
-    # selection, so the drift gate is witnessed biting a real bad input (#286). The derived side
+    # selection, so the drift gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286). The derived side
     # still reads the real installed module set, so the mismatch is genuine.
     committed = module_manager.committed_default_groups(validate.env_override_path("ENGINE_PYPROJECT_PATH"))
     if derived == committed:

@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 import validate
 import module_coherence
@@ -23,12 +24,14 @@ def _write(path, obj):
         f.write("\n")
 
 
-def _module(mid, ver="0.0.0-dev", migrations=None, retired_capabilities=None):
-    m = {"id": mid, "version": ver, "status": "required", "provides": {}}
+def _module(mid, ver="0.0.0-dev", migrations=None, retired_capabilities=None, status="required", depends=None):
+    m = {"id": mid, "version": ver, "status": status, "provides": {}}
     if migrations:
         m["migrations"] = migrations
     if retired_capabilities:
         m["retired_capabilities"] = retired_capabilities
+    if depends is not None:
+        m["depends"] = depends
     return m
 
 
@@ -41,12 +44,17 @@ class _Tree:
     `home`, or by dropping a `product-version.json` in the tree (file-presence dominates the mode). Setting the
     env here keeps `release_cut.release_mode()` resolving a stable, offline mode instead of reading the real
     checkout's git origin."""
-    def __init__(self, modules, home="acme/engine-home", engine_release="0.0.0-dev", origin=None):
+    def __init__(self, modules, home="acme/engine-home", engine_release="0.0.0-dev", origin=None,
+                 removed_capabilities=None, min_upgradeable_from=None):
         self.origin = origin if origin is not None else home
         self.root = tempfile.mkdtemp()
         engine = {"engine_release": engine_release,
                   "packages": {mid: m["version"] for mid, m in modules.items()},
                   "identity": "solo", "home_repository": home}
+        if removed_capabilities is not None:
+            engine["removed_capabilities"] = removed_capabilities
+        if min_upgradeable_from is not None:
+            engine["min_upgradeable_from"] = min_upgradeable_from
         _write(os.path.join(self.root, ".engine", "engine.json"), engine)
         for mid, m in modules.items():
             _write(os.path.join(self.root, ".engine", "modules", mid, "manifest.json"), m)
@@ -87,11 +95,18 @@ class _Tree:
         return validate.load_json(p)["version"]
 
 
-def _baseline_tree(modules):
-    """A throwaway release-tree root carrying the given baseline module manifests."""
+def _baseline_tree(modules, removed_capabilities=None):
+    """A throwaway release-tree root carrying the given baseline module manifests. When
+    `removed_capabilities` is given, also writes a baseline `.engine/engine.json` carrying it — so the
+    removed-capability RETENTION leg (which reads the baseline engine.json) can be exercised."""
     root = tempfile.mkdtemp()
     for mid, m in modules.items():
         _write(os.path.join(root, ".engine", "modules", mid, "manifest.json"), m)
+    if removed_capabilities is not None:
+        _write(os.path.join(root, ".engine", "engine.json"),
+               {"engine_release": "0.0.9", "identity": "solo", "home_repository": "acme/engine-home",
+                "packages": {mid: m["version"] for mid, m in modules.items()},
+                "removed_capabilities": removed_capabilities})
     return root
 
 
@@ -358,6 +373,227 @@ class RetiredCapabilityAccumulation(unittest.TestCase):
         self.assertNotIn("retired_capability_violations", p)
 
 
+class RemovedCapabilityAccumulation(unittest.TestCase):
+    # #688: a WHOLE-module removal must carry a plain-language removal notice in engine.json removed_capabilities,
+    # both so the deployer's update can announce the loss AND so it can treat the drop as intentional (reconcile,
+    # not refuse). The cut refuses a drop with no notice (missing-notice leg) and a prior release's notice being
+    # dropped (retention leg), and refuses a survivor still depending on a removed module.
+    def _classify(self, live, baseline, removed_capabilities=None, min_upgradeable_from=None,
+                  baseline_removed=None):
+        base = _baseline_tree(baseline, removed_capabilities=baseline_removed)
+        try:
+            with _Tree(live, removed_capabilities=removed_capabilities,
+                       min_upgradeable_from=min_upgradeable_from):
+                return rc.classify(rc.Baseline("v0.0.9", False, "diff"), base)
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_a_drop_with_no_notice_is_refused(self):
+        # legacy is in the baseline, gone from the live tree, and NO removed_capabilities line records it.
+        p = self._classify({"core": _module("core")},
+                           {"core": _module("core"), "legacy": _module("legacy")})
+        self.assertEqual(len(p["removed_capability_violations"]), 1)
+        self.assertIn("legacy", p["removed_capability_violations"][0])
+        self.assertIn("removal notice", p["removed_capability_violations"][0])
+        self.assertEqual(p["removed_modules"], ["legacy"])
+
+    def test_a_drop_with_its_notice_is_clean(self):
+        p = self._classify({"core": _module("core")},
+                           {"core": _module("core"), "legacy": _module("legacy")},
+                           removed_capabilities={"legacy": {"description": "you could ask X; now ask Y"}})
+        self.assertEqual(p["removed_capability_violations"], [])
+        self.assertIn("legacy", p["removed_modules"])
+
+    def test_a_dropped_notice_key_is_flagged_by_retention(self):
+        # the baseline release recorded a notice for 'gone'; the candidate dropped the key and 'gone' is still
+        # absent and not obsolete -> a lagging holder would never learn the loss -> refuse.
+        p = self._classify({"core": _module("core")}, {"core": _module("core")},
+                           removed_capabilities={},
+                           baseline_removed={"gone": {"description": "d", "removed_in": "0.9.0"}},
+                           min_upgradeable_from="0.5.0")
+        self.assertTrue(any("gone" in v for v in p["removed_capability_violations"]))
+
+    def test_an_obsolete_notice_may_be_pruned(self):
+        # removed_in (0.4.0) is at or below the floor (0.4.0): no supported upgrader can still hold it, so
+        # dropping the notice is allowed — no retention violation.
+        p = self._classify({"core": _module("core")}, {"core": _module("core")},
+                           removed_capabilities={},
+                           baseline_removed={"gone": {"description": "d", "removed_in": "0.4.0"}},
+                           min_upgradeable_from="0.4.0")
+        self.assertEqual(p["removed_capability_violations"], [])
+
+    def test_a_readded_module_clears_its_notice_without_a_retention_refusal(self):
+        # 'gone' was recorded removed, but is present again in the live tree (re-added) — dropping its notice is
+        # legitimate, so no retention refusal.
+        p = self._classify({"core": _module("core"), "gone": _module("gone")}, {"core": _module("core")},
+                           removed_capabilities={},
+                           baseline_removed={"gone": {"description": "d", "removed_in": "0.9.0"}},
+                           min_upgradeable_from="0.5.0")
+        self.assertEqual(p["removed_capability_violations"], [])
+
+    def test_a_survivor_depending_on_a_removed_module_is_refused(self):
+        # core in the LIVE tree still depends on legacy, which this cut removes.
+        base = {"core": {**_module("core"), "depends": {"legacy": ">=0.1.0"}}, "legacy": _module("legacy")}
+        live = {"core": {**_module("core"), "depends": {"legacy": ">=0.1.0"}}}
+        p = self._classify(live, base,
+                           removed_capabilities={"legacy": {"description": "gone"}})
+        self.assertTrue(any("legacy" in v and "core" in v for v in p["dependency_violations"]))
+
+    def test_apply_stamps_removed_in_onto_the_dropped_module(self):
+        # the live engine.json carries an UNSTAMPED removal notice; apply stamps removed_in to the cut version.
+        with _Tree({"core": _module("core", ver="0.1.0")}, engine_release="0.1.0",
+                   removed_capabilities={"legacy": {"description": "gone"}}) as t:
+            proposal = {"engine_floor_version": None, "package_floor": {}, "removed_modules": ["legacy"]}
+            r = rc.apply("0.2.0", None, {}, proposal, dry_run=False)
+            self.assertTrue(r["applied"])
+            self.assertEqual(t.engine()["removed_capabilities"]["legacy"]["removed_in"], "0.2.0")
+            self.assertEqual(t.engine()["removed_capabilities"]["legacy"]["description"], "gone")
+
+    def test_apply_does_not_overwrite_a_prior_removed_in(self):
+        # 'old' is ALREADY stamped AND named in removed_modules, so the stamping loop DOES iterate it — the
+        # not-already-stamped guard is what keeps its prior removed_in (0.1.0). Drop that guard and this becomes
+        # 0.2.0 and the test fails, so it is not vacuous.
+        with _Tree({"core": _module("core", ver="0.1.0")}, engine_release="0.1.0",
+                   removed_capabilities={"old": {"description": "d", "removed_in": "0.1.0"}}) as t:
+            proposal = {"engine_floor_version": None, "package_floor": {}, "removed_modules": ["old"]}
+            r = rc.apply("0.2.0", None, {}, proposal, dry_run=False)
+            self.assertTrue(r["applied"])
+            self.assertEqual(t.engine()["removed_capabilities"]["old"]["removed_in"], "0.1.0")
+
+    def test_product_cut_has_no_removal_guard(self):
+        p = rc._product_proposal(rc.Baseline("v0.1.0", False, ""), "0.1.0", [])
+        self.assertNotIn("removed_capability_violations", p)
+
+
+class DefaultOnDependencyGuard(unittest.TestCase):
+    # #891: a default-on module is installed on every deployment unless the operator opts out (#759), so it may
+    # depend only on capabilities guaranteed present — required or other default-on. A dep that is optional /
+    # experimental / retired (or statusless) cannot be assumed present, so the module could not be coherently
+    # installed there. The cut refuses it; #759's runtime demotion is the per-deployment safety net this backstops
+    # at authoring time. The guard is baseline-independent, so it is enforced in first-cut mode too.
+    def _classify(self, live, first_cut=False):
+        base = _baseline_tree({"core": _module("core")})
+        try:
+            with _Tree(live):
+                baseline = (rc.Baseline("v0.0.0", True, "first") if first_cut
+                            else rc.Baseline("v0.0.9", False, "diff"))
+                return rc.classify(baseline, None if first_cut else base)
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def _viol(self, live, **kw):
+        return self._classify(live, **kw)["default_on_dependency_violations"]
+
+    def test_a_default_on_module_depending_on_an_optional_module_is_refused(self):
+        live = {"core": _module("core"),
+                "feature": _module("feature", status="default-on", depends={"addon": ""}),
+                "addon": _module("addon", status="optional")}
+        v = self._viol(live)
+        self.assertEqual(len(v), 1)
+        self.assertIn("feature", v[0])
+        self.assertIn("addon", v[0])
+        self.assertIn("optional", v[0])
+
+    def test_experimental_and_retired_dependencies_are_also_refused(self):
+        # the allowlist ({required, default-on}) flags every other tier, not only the `optional` the issue names.
+        for tier in ("experimental", "retired"):
+            live = {"core": _module("core"),
+                    "feature": _module("feature", status="default-on", depends={"addon": ""}),
+                    "addon": _module("addon", status=tier)}
+            v = self._viol(live)
+            self.assertTrue(any("feature" in x and "addon" in x and tier in x for x in v),
+                            f"a {tier} dependency of a default-on module should be refused: {v}")
+
+    def test_depending_only_on_required_and_default_on_is_clean(self):
+        live = {"core": _module("core"),
+                "base-on": _module("base-on", status="default-on"),
+                "feature": _module("feature", status="default-on", depends={"core": "", "base-on": ""})}
+        self.assertEqual(self._viol(live), [])
+
+    def test_a_non_default_on_module_depending_on_optional_is_not_this_guards_concern(self):
+        # this guard judges DEFAULT-ON modules only; a required module depending on optional is a separate
+        # required-depends-on-optional smell, out of scope for #891.
+        live = {"core": _module("core"),
+                "req": _module("req", status="required", depends={"addon": ""}),
+                "addon": _module("addon", status="optional")}
+        self.assertEqual(self._viol(live), [])
+
+    def test_a_dependency_absent_from_the_tree_is_left_to_the_coherence_gate(self):
+        # a missing dependency is a dependency-PRESENCE concern (the branch coherence gate owns it), not a status
+        # concern — this guard resolves-then-judges-status and skips a dep it cannot find, so the two never
+        # double-report.
+        live = {"core": _module("core"),
+                "feature": _module("feature", status="default-on", depends={"ghost": ""})}
+        self.assertEqual(self._viol(live), [])
+
+    def test_a_statusless_dependency_is_flagged_fail_closed(self):
+        # a present manifest with no status is already a schema defect; a default-on module leaning on it cannot be
+        # assumed coherent, so it is flagged (belt-and-suspenders), never silently allowed.
+        live = {"core": _module("core"),
+                "feature": _module("feature", status="default-on", depends={"addon": ""}),
+                "addon": _module("addon", status=None)}
+        self.assertTrue(any("feature" in x and "addon" in x for x in self._viol(live)))
+
+    def test_the_first_cut_also_refuses_a_default_on_optional_dependency(self):
+        # classify() returns early in first-cut mode and omits the diff siblings (they need a baseline); this
+        # invariant is baseline-independent, so it MUST still be present and enforced on the first cut.
+        live = {"core": _module("core"),
+                "feature": _module("feature", status="default-on", depends={"addon": ""}),
+                "addon": _module("addon", status="optional")}
+        self.assertEqual(len(self._viol(live, first_cut=True)), 1)
+
+    def test_propose_refuses_a_default_on_optional_dependency_with_a_plain_reason(self):
+        import io
+        import contextlib
+        import types
+        base = _baseline_tree({"core": _module("core")})
+        live = {"core": _module("core"),
+                "feature": _module("feature", status="default-on", depends={"addon": ""}),
+                "addon": _module("addon", status="optional")}
+        saved = rc.resolve_baseline
+        rc.resolve_baseline = lambda *a, **k: rc.Baseline("v0.0.9", False, "diff")
+        try:
+            with _Tree(live):
+                out, err = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = rc._cmd_propose(types.SimpleNamespace(json=True, baseline_tree=base))
+            self.assertEqual(code, 2)                              # non-zero => the propose step fails the cut
+            self.assertIn("feature", err.getvalue())              # a plain reason naming the offending module
+            self.assertIn("default-on", err.getvalue().lower())
+        finally:
+            rc.resolve_baseline = saved
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_propose_refuses_a_default_on_optional_dependency_in_first_cut_mode(self):
+        # the CLI-level refusal on the FIRST cut too: classify() omits the diff siblings there, but this
+        # baseline-independent guard is wired into the first-cut return and must still reach _cmd_propose's
+        # refusal (exit 2). Proves the first-cut path end-to-end, not only via classify().
+        import io
+        import contextlib
+        import types
+        base = _baseline_tree({"core": _module("core")})   # injected so propose never reaches the network
+        live = {"core": _module("core"),
+                "feature": _module("feature", status="default-on", depends={"addon": ""}),
+                "addon": _module("addon", status="optional")}
+        saved = rc.resolve_baseline
+        rc.resolve_baseline = lambda *a, **k: rc.Baseline("v0.0.0", True, "first")
+        try:
+            with _Tree(live):
+                out, err = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = rc._cmd_propose(types.SimpleNamespace(json=True, baseline_tree=base))
+            self.assertEqual(code, 2)
+            self.assertIn("feature", err.getvalue())
+        finally:
+            rc.resolve_baseline = saved
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_product_cut_has_no_default_on_dependency_guard(self):
+        # engine-mode only: a product cut is built by _product_proposal, which never computes the guard.
+        p = rc._product_proposal(rc.Baseline("v0.1.0", False, ""), "0.1.0", [])
+        self.assertNotIn("default_on_dependency_violations", p)
+
+
 class Apply(unittest.TestCase):
     def test_raise_only_refuses_engine_non_increase(self):
         # the ENGINE version must strictly increase — an equal engine version is refused (a cut always moves it)
@@ -448,6 +684,28 @@ class Apply(unittest.TestCase):
             rc.apply("0.1.0", "0.1.0", {}, None, dry_run=True)
             self.assertEqual(t.engine()["engine_release"], "0.0.0-dev")
             self.assertEqual(t.module_version("core"), "0.0.0-dev")
+
+    def test_apply_refuses_to_stage_through_a_symlinked_manifest(self):
+        # #923: the cut's stage/swap must never write the deployed engine.json through a shortcut —
+        # os.replace defeats only a symlinked leaf, not a symlinked ancestor, so every destination is
+        # pre-flighted before any temp file is created. Plant a symlinked engine.json (content intact
+        # through the link so the reads still work) and assert the cut refuses, writing nothing.
+        with _Tree({"core": _module("core")}) as t:
+            real = os.path.join(t.root, ".engine", "engine.json")
+            outside = os.path.join(tempfile.mkdtemp(), "outside-engine.json")
+            with open(real, encoding="utf-8") as fh:
+                content = fh.read()
+            with open(outside, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            os.remove(real)
+            os.symlink(outside, real)
+            r = rc.apply("0.1.0", "0.1.0", {}, None, dry_run=False)
+            self.assertFalse(r["applied"])
+            self.assertEqual(r["reason"], "unsafe-destination")
+            self.assertTrue(any("shortcut" in v for v in r["violations"]))
+            with open(outside, encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), content,
+                                 "nothing was written through the symlink, out of the tree")
 
     def test_apply_records_upgrade_floor_and_carries_it_forward(self):
         # #599 Slice 4: --min-upgradeable-from records the clean-upgrade floor into engine.json; a later cut
@@ -572,7 +830,7 @@ class RenderPRBody(unittest.TestCase):
         for banned in ("release-cut", "bump rule", "version production", "first-cut", "engine_floor"):
             self.assertNotIn(banned, body)
 
-    def test_body_carries_all_eight_required_sections_filled(self):
+    def test_body_carries_all_nine_required_sections_filled(self):
         # The release pull request must clear the same `pr-body-completeness` gate every engine pull request
         # meets (a RELEASE_PAT-opened PR is not author-exempt) — otherwise the release PR is un-mergeable.
         # Assert against the REAL check logic (validate.section_presence_findings), never a reimplementation,
@@ -582,13 +840,13 @@ class RenderPRBody(unittest.TestCase):
             applied = rc.apply("0.1.0", "0.1.0", {}, None, dry_run=False)
         body = rc.render_pr_body(proposal, applied)
         required = ["Purpose", "Scope", "Out of scope", "Risk", "Validation",
-                    "Review", "Files of interest", "AI involvement"]
+                    "Review", "Demonstration", "Files of interest", "AI involvement"]
         findings = validate.section_presence_findings(body, required, "hard", "", "pull-request body")
         self.assertEqual(findings, [], f"release body missing/empty required sections: {findings}")
 
     def test_body_carries_the_consent_preamble_and_clears_the_full_gate(self):
         # A RELEASE_PAT-opened release PR is not author-exempt, so its body must also carry the consent
-        # preamble the completeness gate now requires (required_phrases), not just the eight sections.
+        # preamble the completeness gate now requires (required_phrases), not just the nine sections.
         # Assert against the SHIPPED check via the real kind_presence, so this tracks the exact gate and
         # FAILS if render_pr_body ever stops emitting the preamble (the #491 preamble-drop class).
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -604,14 +862,14 @@ class RenderPRBody(unittest.TestCase):
             self.assertIn(phrase, body, f"release body dropped preamble anchor {phrase!r}")
 
     def test_body_follows_the_pr_template_form_not_just_headers(self):
-        # The completeness gate only checks the eight HEADERS are present; a header-only body passes it but is
+        # The completeness gate only checks the nine HEADERS are present; a header-only body passes it but is
         # not a template-conforming body. Every section must carry the repo template's shape — a bold one-line
         # summary AND an *Impact:* line — so the release body reads like every other engine pull request's.
         proposal = {"change_inventory": ["First release."], "impacts": []}
         applied = {"applied": True, "engine": "0.1.0", "from_engine": "0.0.0-dev", "targets": {"core": "0.1.0"}}
         body = rc.render_pr_body(proposal, applied)
         sections = ["Purpose", "Scope", "Out of scope", "Risk", "Validation",
-                    "Review", "Files of interest", "AI involvement"]
+                    "Review", "Demonstration", "Files of interest", "AI involvement"]
         for i, name in enumerate(sections):
             seg = body.split(f"## {name}", 1)[1]
             if i + 1 < len(sections):
@@ -1299,6 +1557,89 @@ class ReleaseWorkflowsAreFoundation(unittest.TestCase):
         owned = module_coherence.foundation_infra_paths()
         for w in (".github/workflows/release.yml", ".github/workflows/release-publish.yml"):
             self.assertIn(w, owned, w)
+
+
+class RenderPRBodyDeploymentCheck(unittest.TestCase):
+    """The Validation section records the deployed upgrade+rollback check (the release_gate result,
+    StarshipSuperjam/engine-template#703) on an ENGINE cut — worded as a mechanical check, keyed off the
+    gate JSON's own fields, cross-checked against the candidate tree, and suppressed on a product cut."""
+
+    _PROPOSAL = {"change_inventory": ["First release."], "impacts": []}
+    _APPLIED = {"applied": True, "engine": "0.4.2", "from_engine": "0.3.2", "targets": {"core": "0.4.2"}}
+
+    def _gate(self, transitions=None, **over):
+        g = {"ran": True, "passed": True, "candidate_tree": "abc123",
+             "upgrades": {"passed": True, "floor": "0.3.2", "baselines": ["v0.3.2"], "excluded": [],
+                          "transitions": transitions if transitions is not None else
+                          [{"baseline": "v0.3.2", "upgrade": {"passed": True, "detail": ""},
+                            "rollback": {"passed": True, "detail": ""}, "passed": True}]}}
+        g.update(over)
+        return g
+
+    def _validation(self, body):
+        return body.split("## Validation", 1)[1].split("## Review", 1)[0]
+
+    def test_block_rendered_in_validation_when_tree_matches(self):
+        with mock.patch.object(rc, "_working_tree_sha", return_value="abc123"):
+            body = rc.render_pr_body(self._PROPOSAL, self._APPLIED, deployment_gate=self._gate())
+        val = self._validation(body)
+        self.assertIn("Deployed upgrade and rollback check", val)
+        self.assertIn("from v0.3.2: practice upgrade completed, then the undo restored the copy", val)
+        self.assertIn("clean-upgrade floor 0.3.2", val)
+        self.assertIn("not the readiness judgment referred to under Risk", val)
+        # the reserved word 'qualification' must never appear — the engine never qualifies itself
+        for banned in ("qualification", "qualified", "certified"):
+            self.assertNotIn(banned, val.lower())
+
+    def test_absent_evidence_line_on_engine_cut(self):
+        # flag not passed -> None -> the honest-absence line is ALWAYS emitted (a dropped flag can't silently
+        # restore a body that looks like no check exists)
+        body = rc.render_pr_body(self._PROPOSAL, self._APPLIED, deployment_gate=None)
+        self.assertIn("no deployed upgrade/rollback evidence was supplied", self._validation(body))
+
+    def test_unreadable_evidence_renders_honestly(self):
+        body = rc.render_pr_body(self._PROPOSAL, self._APPLIED,
+                                 deployment_gate={"_unreadable": "/x", "_error": "boom"})
+        self.assertIn("could not be read", self._validation(body))
+
+    def test_candidate_mismatch_hides_the_table(self):
+        with mock.patch.object(rc, "_working_tree_sha", return_value="DIFFERENT"):
+            body = rc.render_pr_body(self._PROPOSAL, self._APPLIED, deployment_gate=self._gate())
+        val = self._validation(body)
+        self.assertIn("does not correspond to this release candidate", val)
+        self.assertNotIn("from v0.3.2", val)                   # the per-transition rows are withheld
+
+    def test_incomplete_gate_result_renders_honestly(self):
+        # a fail-closed gate result has no `transitions` key at all -> must not KeyError or render an empty pass
+        body = rc.render_pr_body(self._PROPOSAL, self._APPLIED,
+                                 deployment_gate={"ran": True, "passed": False, "reason": "setup error"})
+        self.assertIn("did not complete", self._validation(body))
+
+    def test_failed_transition_rendered_honestly(self):
+        tx = [{"baseline": "v0.3.2", "upgrade": {"passed": True, "detail": "x"},
+               "rollback": {"passed": False, "detail": "/Users/me/secret/traceback"}, "passed": False}]
+        with mock.patch.object(rc, "_working_tree_sha", return_value="abc123"):
+            body = rc.render_pr_body(self._PROPOSAL, self._APPLIED,
+                                     deployment_gate=self._gate(transitions=tx, passed=False,
+                                                                upgrades={"passed": False, "floor": "0.3.2",
+                                                                          "baselines": ["v0.3.2"],
+                                                                          "excluded": [], "transitions": tx}))
+        val = self._validation(body)
+        self.assertIn("the undo did not cleanly restore the copy", val)
+        self.assertNotIn("/Users/me/secret/traceback", val)    # raw detail never reaches the public body
+
+    def test_product_cut_suppresses_the_block(self):
+        product_applied = dict(self._APPLIED, product=True)
+        with mock.patch.object(rc, "_working_tree_sha", return_value="abc123"):
+            body = rc.render_pr_body({"change_inventory": ["Release."], "impacts": [], "product": True},
+                                     product_applied, deployment_gate=self._gate())
+        self.assertNotIn("Deployed upgrade and rollback check", body)
+
+    def test_working_tree_sha_is_real_git_plumbing(self):
+        # the candidate-correspondence check depends on this real git write-tree; every other test mocks it, so
+        # exercise the actual plumbing once. Best-effort: a real sha in a git checkout, or None on git failure.
+        sha = rc._working_tree_sha()
+        self.assertTrue(sha is None or (len(sha) == 40 and all(c in "0123456789abcdef" for c in sha)))
 
 
 if __name__ == "__main__":

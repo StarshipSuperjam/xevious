@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/manifest-write-funnel",
+  "target": { "context": "manifest-write-funnel" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/manifest_write_funnel_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A tool writes the engine's deployed manifest (.engine/engine.json) with a raw write that does not route through the guarded write funnel (engine_write / _write_engine_manifest / _manifest_write_reason). The named function is just above. A manifest writer that bypasses the funnel can follow a planted shortcut (symlink) and place the engine's own file outside the repository — the out-of-tree-write class StarshipSuperjam/engine-template#862/StarshipSuperjam/engine-template#923 exist to close, and which recurred across eight writers before this check made the funnel mechanical rather than a convention. Route the write through engine_write.write_json, or pre-flight the destination with engine_write.write_through_symlink_reason before writing, as every other manifest writer does. If the flagged code is a fixture or demo writing a throwaway tree, target a LOCAL temp root (not validate.ROOT and not a path helper) so it is not the deployed slot. This check covers the .engine/engine.json manifest slot specifically; the other engine-owned slots have their own guards."
+}

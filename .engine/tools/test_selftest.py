@@ -234,7 +234,7 @@ class SelftestLauncher(_LauncherCase):
 
     def _run_default_log(self, body, timeout=30.0):
         """Run against the DEFAULT log path (no --log-path) and recover the path the launcher announced,
-        so a test can check the delete-on-green / keep-on-failure lifecycle."""
+        so a test can check the keep-on-green / keep-on-failure log-retention lifecycle."""
         tmp = _write_suite({"test_synth.py": textwrap.dedent(body)})
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         r = subprocess.run(
@@ -250,8 +250,9 @@ class SelftestLauncher(_LauncherCase):
             self.addCleanup(lambda p=log_path: os.path.exists(p) and os.remove(p))
         return r, log_path
 
-    def test_default_log_deleted_on_green_kept_on_failure(self):
-        """A clean run leaves nothing behind; a failing run keeps its log and announces the path."""
+    def test_default_log_kept_on_green_and_on_failure(self):
+        """The log is kept whether the run passes or fails, and its path is announced both ways — so a
+        session can always read its own run and never mistakes a vanished log for a failure."""
         r_ok, log_ok = self._run_default_log("""
             import unittest
             class T(unittest.TestCase):
@@ -260,8 +261,8 @@ class SelftestLauncher(_LauncherCase):
         """)
         self.assertEqual(r_ok.returncode, 0)
         self.assertIsNotNone(log_ok)
-        self.assertFalse(os.path.exists(log_ok), "a clean run must delete its log")
-        self.assertNotIn("Full output:", r_ok.stdout)
+        self.assertTrue(os.path.exists(log_ok), "a clean run must keep its log")
+        self.assertIn("Full output:", r_ok.stdout)
 
         r_bad, log_bad = self._run_default_log("""
             import unittest

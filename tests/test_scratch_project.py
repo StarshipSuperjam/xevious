@@ -171,7 +171,7 @@ class ScratchProjectTests(unittest.TestCase):
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
         self.assertEqual(17, len(project["targets"]))
-        self.assertEqual(99, len(assets))
+        self.assertEqual(98, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -899,11 +899,27 @@ class ScratchProjectTests(unittest.TestCase):
             "craft",
             "next bonus",
         }
+        # AREA-01/AREA-02 area state — durable Stage-owned position/schedule authority read
+        # across ticks and across the death/reset boundary. It is NOT machinery (the
+        # sprite-writable working-register bucket): it is Stage-written, sprite-read, and
+        # write-forbidden below, like the economy vars.
+        area_state_names = {
+            "area progress",
+            "area number",
+            "scroll row",
+            "terrain column",
+            "schedule cursor",
+            "schedule fired",
+        }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
+        self.assertTrue(
+            area_state_names.isdisjoint(machinery_names | director_state_names | economy_names)
+        )
         stage_variable_names = {name for name, _value in stage["variables"].values()}
         self.assertEqual(
-            director_state_names | machinery_names | economy_names, stage_variable_names
+            director_state_names | machinery_names | economy_names | area_state_names,
+            stage_variable_names,
         )
         self.assertEqual(
             [
@@ -917,6 +933,31 @@ class ScratchProjectTests(unittest.TestCase):
                 "game-over -> title",
             ],
             stage["lists"][director.ALLOWED_ID][1],
+        )
+        # The Stage's LIST surface is pinned as tightly as its variable surface: exactly these
+        # lists, no strays. The reference/data tables among them are read-only authority and
+        # are additionally sprite-write-forbidden below.
+        stage_list_names = {name for name, _value in stage["lists"].values()}
+        self.assertEqual(
+            {
+                "allowed transitions",
+                "slot type",
+                "slot state",
+                "value table",
+                "starting lives",
+                "first bonus 123",
+                "first bonus 5",
+                "repeat bonus 123",
+                "repeat bonus 5",
+                "high score table",
+                "area map column",
+                "schedule handler",
+                "schedule trigger row",
+                "schedule payload",
+                "area schedule start",
+                "area schedule end",
+            },
+            stage_list_names,
         )
         definitions = [
             block
@@ -950,6 +991,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.PROCCODE,
             director.CLEAR_SLOTS_PROCCODE,
             director.ADVANCE_SLOTS_PROCCODE,
+            director.ADVANCE_AREA_PROCCODE,
             director.RESOLVE_HIT_PROCCODE,
             director.SCORE_PROCCODE,
             director.CHECK_BONUS_PROCCODE,
@@ -972,6 +1014,37 @@ class ScratchProjectTests(unittest.TestCase):
             director.LIVES_ID,
             director.NEXT_BONUS_ID,
             director.QUALIFIED_ID,
+            # AREA-01/AREA-02 area state: durable position/schedule authority, Stage-only-written.
+            director.AREA_PROGRESS_ID,
+            director.AREA_NUMBER_ID,
+            director.SCROLL_ROW_ID,
+            director.TERRAIN_COLUMN_ID,
+            director.SCHEDULE_CURSOR_ID,
+            director.SCHEDULE_FIRED_ID,
+        }
+        # Read-only reference tables: ingested, hash-pinned authority data no sprite may
+        # mutate (the mutable slot lists are deliberately excluded — allocators write those).
+        reference_list_ids = {
+            director.VALUE_TABLE_ID,
+            director.STARTING_LIVES_ID,
+            director.FIRST_BONUS_123_ID,
+            director.FIRST_BONUS_5_ID,
+            director.REPEAT_BONUS_123_ID,
+            director.REPEAT_BONUS_5_ID,
+            director.HIGH_SCORE_TABLE_ID,
+            director.AREA_MAP_COLUMN_ID,
+            director.SCHEDULE_HANDLER_ID,
+            director.SCHEDULE_TRIGGER_ROW_ID,
+            director.SCHEDULE_PAYLOAD_ID,
+            director.AREA_SCHEDULE_START_ID,
+            director.AREA_SCHEDULE_END_ID,
+        }
+        list_write_opcodes = {
+            "data_addtolist",
+            "data_replaceitemoflist",
+            "data_deleteoflist",
+            "data_deletealloflist",
+            "data_insertatlist",
         }
         for target in project["targets"]:
             if target["isStage"]:
@@ -982,6 +1055,12 @@ class ScratchProjectTests(unittest.TestCase):
                 if block["opcode"] in {"data_setvariableto", "data_changevariableby"}
             }
             self.assertTrue(director_variable_ids.isdisjoint(writes), target["name"])
+            list_writes = {
+                block["fields"].get("LIST", [None, None])[1]
+                for block in target["blocks"].values()
+                if block["opcode"] in list_write_opcodes
+            }
+            self.assertTrue(reference_list_ids.isdisjoint(list_writes), target["name"])
 
     @staticmethod
     def _sys02_slot_failures(project: dict) -> set:
@@ -2374,6 +2453,628 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._ply02_failures(project), label)
 
     @staticmethod
+    def _area01_failures(project: dict) -> set:
+        """AREA-01 area clock: `advance area` runs before the slot walk, steps the monotonic
+        `area progress` by 32, derives the scroll row once, completes an area at row 14 with the
+        16 -> 7 wrap, and the near-end checkpoint advances the area on a new life for a frozen
+        scroll row in [14, 67]. Structure only; the row VALUES are checked in test_spec_docs."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def reachable(start):
+            seen, stack = set(), [start]
+            while stack:
+                bid = stack.pop()
+                if bid in seen or bid not in blocks:
+                    continue
+                seen.add(bid)
+                b = blocks[bid]
+                if b.get("next"):
+                    stack.append(b["next"])
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    v = b["inputs"].get(slot)
+                    if isinstance(v, list) and len(v) > 1 and isinstance(v[1], str):
+                        stack.append(v[1])
+            return seen
+
+        def literal(spec):
+            if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list):
+                return spec[1][1]
+            return None
+
+        def refs_var(spec, var_id):
+            return (
+                isinstance(spec, list)
+                and len(spec) > 1
+                and isinstance(spec[1], list)
+                and spec[1][2:3] == [var_id]
+            )
+
+        def eq_var_num(cond_spec, var_id, num):
+            if not (isinstance(cond_spec, list) and len(cond_spec) > 1):
+                return False
+            b = blocks.get(cond_spec[1])
+            return (
+                b is not None
+                and b["opcode"] == "operator_equals"
+                and refs_var(b["inputs"].get("OPERAND1"), var_id)
+                and literal(b["inputs"].get("OPERAND2")) == num
+            )
+
+        def is_area_wrap(bid):
+            b = blocks.get(bid)
+            if b is None or b["opcode"] != "control_if_else":
+                return False
+            if not eq_var_num(b["inputs"].get("CONDITION"), director.AREA_NUMBER_ID, director.AREA_MAX):
+                return False
+            then_spec = b["inputs"].get("SUBSTACK")
+            if not (isinstance(then_spec, list) and len(then_spec) > 1):
+                return False
+            sets_loop_back = any(
+                blocks[x]["opcode"] == "data_setvariableto"
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.AREA_NUMBER_ID
+                and blocks[x]["inputs"].get("VALUE") == [1, [4, director.AREA_LOOP_BACK]]
+                for x in reachable(then_spec[1])
+            )
+            return sets_loop_back
+
+        # 1. advance area exists.
+        proto = next(
+            (
+                b
+                for b in blocks.values()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.ADVANCE_AREA_PROCCODE
+            ),
+            None,
+        )
+        if proto is None:
+            failures.add("advance-area-exists")
+            return failures
+        definition_id = proto["parent"]
+        body = reachable(blocks[definition_id]["next"]) if blocks[definition_id].get("next") else set()
+
+        # 2. phase order: the advance-area call is immediately followed by the advance-slots call.
+        area_call = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.ADVANCE_AREA_PROCCODE
+            ),
+            None,
+        )
+        nxt = blocks[area_call].get("next") if area_call else None
+        if not (
+            nxt
+            and blocks.get(nxt, {}).get("opcode") == "procedures_call"
+            and blocks[nxt].get("mutation", {}).get("proccode") == director.ADVANCE_SLOTS_PROCCODE
+        ):
+            failures.add("advance-area-before-slots")
+
+        # 3. area progress steps by exactly 32.
+        if not any(
+            blocks[bid]["opcode"] == "data_changevariableby"
+            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.AREA_PROGRESS_ID
+            and blocks[bid]["inputs"].get("VALUE") == [1, [4, director.AREA_PROGRESS_STEP]]
+            for bid in body
+        ):
+            failures.add("progress-steps-32")
+
+        # 4. scroll row = floor(divide(mod(subtract(3328, area progress), 65536), 256)).
+        derived_ok = False
+        for bid in body:
+            b = blocks[bid]
+            if b["opcode"] != "data_setvariableto":
+                continue
+            if b["fields"].get("VARIABLE", [None, None])[1] != director.SCROLL_ROW_ID:
+                continue
+            val = b["inputs"].get("VALUE")
+            if not (isinstance(val, list) and val[0] == 3 and isinstance(val[1], str)):
+                continue
+            floor_b = blocks.get(val[1])
+            if not floor_b or floor_b["opcode"] != "operator_mathop":
+                continue
+            if floor_b["fields"].get("OPERATOR", [None])[0] != "floor":
+                continue
+            div = blocks.get(floor_b["inputs"].get("NUM", [None, None])[1])
+            if not div or div["opcode"] != "operator_divide":
+                continue
+            if literal(div["inputs"].get("NUM2")) != director.AREA_ROW_DIVISOR:
+                continue
+            mod = blocks.get(div["inputs"].get("NUM1", [None, None])[1])
+            if not mod or mod["opcode"] != "operator_mod":
+                continue
+            if literal(mod["inputs"].get("NUM2")) != director.AREA_COUNTER_WRAP:
+                continue
+            sub = blocks.get(mod["inputs"].get("NUM1", [None, None])[1])
+            if not sub or sub["opcode"] != "operator_subtract":
+                continue
+            if literal(sub["inputs"].get("NUM1")) != director.AREA_COUNTER_INIT:
+                continue
+            if not refs_var(sub["inputs"].get("NUM2"), director.AREA_PROGRESS_ID):
+                continue
+            derived_ok = True
+            break
+        if not derived_ok:
+            failures.add("scroll-row-derived")
+
+        # 5. completion at row == 14 advances the area (a wrap in its THEN body). The block is a
+        # plain `if` when AREA-02's consume is absent and an `if/else` once it is present.
+        completion = next(
+            (
+                bid
+                for bid in body
+                if blocks[bid]["opcode"] in ("control_if", "control_if_else")
+                and eq_var_num(
+                    blocks[bid]["inputs"].get("CONDITION"),
+                    director.SCROLL_ROW_ID,
+                    director.AREA_COMPLETE_ROW,
+                )
+            ),
+            None,
+        )
+        then_spec = blocks[completion]["inputs"].get("SUBSTACK") if completion else None
+        if not (
+            completion
+            and isinstance(then_spec, list)
+            and len(then_spec) > 1
+            and any(is_area_wrap(x) for x in reachable(then_spec[1]))
+        ):
+            failures.add("completion-at-14")
+
+        # 6. every 16 -> 7 wrap is well-formed, and at least one exists.
+        wrap_conditions = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "control_if_else"
+            and eq_var_num(b["inputs"].get("CONDITION"), director.AREA_NUMBER_ID, director.AREA_MAX)
+        ]
+        if not wrap_conditions or not all(is_area_wrap(bid) for bid in wrap_conditions):
+            failures.add("area-wrap-16-7")
+
+        # 7. near-end checkpoint: a control_if on AND(scroll row > 13, 68 > scroll row) whose
+        # body advances the area — the window [14, 67] (13 and 68 exclusive).
+        checkpoint_ok = False
+        for bid, b in blocks.items():
+            if b["opcode"] != "control_if":
+                continue
+            cond = b["inputs"].get("CONDITION")
+            if not (isinstance(cond, list) and len(cond) > 1):
+                continue
+            and_b = blocks.get(cond[1])
+            if not and_b or and_b["opcode"] != "operator_and":
+                continue
+            gts = [
+                blocks.get(and_b["inputs"].get(slot, [None, None])[1])
+                for slot in ("OPERAND1", "OPERAND2")
+            ]
+            if any(g is None or g["opcode"] != "operator_gt" for g in gts):
+                continue
+            low_ok = any(
+                refs_var(g["inputs"].get("OPERAND1"), director.SCROLL_ROW_ID)
+                and literal(g["inputs"].get("OPERAND2")) == director.AREA_CHECKPOINT_LOW_EXCL
+                for g in gts
+            )
+            high_ok = any(
+                literal(g["inputs"].get("OPERAND1")) == director.AREA_CHECKPOINT_HIGH_EXCL
+                and refs_var(g["inputs"].get("OPERAND2"), director.SCROLL_ROW_ID)
+                for g in gts
+            )
+            then_spec = b["inputs"].get("SUBSTACK")
+            advances = (
+                isinstance(then_spec, list)
+                and len(then_spec) > 1
+                and any(is_area_wrap(x) for x in reachable(then_spec[1]))
+            )
+            if low_ok and high_ok and advances:
+                checkpoint_ok = True
+                break
+        if not checkpoint_ok:
+            failures.add("checkpoint-window")
+
+        return failures
+
+    def test_area_clock_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._area01_failures(project))
+
+    def test_area_clock_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._area01_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def break_phase_order(p):
+            s = stage_of(p)
+            call = next(
+                bid
+                for bid, b in s["blocks"].items()
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.ADVANCE_AREA_PROCCODE
+            )
+            s["blocks"][call]["next"] = None
+
+        def break_progress_step(p):
+            s = stage_of(p)
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.AREA_PROGRESS_ID
+                and b["inputs"].get("VALUE") == [1, [4, director.AREA_PROGRESS_STEP]]
+            )
+            b["inputs"]["VALUE"] = [1, [4, director.AREA_PROGRESS_STEP - 1]]
+
+        def break_row_wrap_constant(p):
+            s = stage_of(p)
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_mod"
+                and (b["inputs"].get("NUM2") or [None, [None, None]])[1][1] == director.AREA_COUNTER_WRAP
+            )
+            b["inputs"]["NUM2"] = [1, [4, director.AREA_COUNTER_WRAP - 1]]
+
+        def break_completion_row(p):
+            s = stage_of(p)
+            # the completion compare: operator_equals(scroll row, 14).
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_equals"
+                and isinstance(b["inputs"].get("OPERAND1"), list)
+                and b["inputs"]["OPERAND1"][1][2:3] == [director.SCROLL_ROW_ID]
+                and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1] == director.AREA_COMPLETE_ROW
+            )
+            b["inputs"]["OPERAND2"] = [1, [4, director.AREA_TOP_ROW]]
+
+        def break_wrap_target(p):
+            s = stage_of(p)
+            # retarget one wrap's `set area number to 7` to a non-loop value.
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.AREA_NUMBER_ID
+                and b["inputs"].get("VALUE") == [1, [4, director.AREA_LOOP_BACK]]
+            )
+            b["inputs"]["VALUE"] = [1, [4, 1]]
+
+        def break_checkpoint_low(p):
+            s = stage_of(p)
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_gt"
+                and isinstance(b["inputs"].get("OPERAND1"), list)
+                and b["inputs"]["OPERAND1"][1][2:3] == [director.SCROLL_ROW_ID]
+                and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_LOW_EXCL
+            )
+            b["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
+
+        def break_checkpoint_high(p):
+            s = stage_of(p)
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_gt"
+                and (b["inputs"].get("OPERAND1") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_HIGH_EXCL
+                and isinstance(b["inputs"].get("OPERAND2"), list)
+                and b["inputs"]["OPERAND2"][1][2:3] == [director.SCROLL_ROW_ID]
+            )
+            b["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
+
+        cases = [
+            ("advance-area-before-slots", break_phase_order),
+            ("progress-steps-32", break_progress_step),
+            ("scroll-row-derived", break_row_wrap_constant),
+            ("completion-at-14", break_completion_row),
+            ("area-wrap-16-7", break_wrap_target),
+            ("checkpoint-window", break_checkpoint_low),
+            ("checkpoint-window", break_checkpoint_high),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._area01_failures(project), label)
+
+    @staticmethod
+    def _area02_failures(project: dict) -> set:
+        """AREA-02/AREA-03 area object scheduler: all 16 normal areas flattened into three parallel
+        columns (each area = its records + one materialized sentinel), partitioned by two 16-entry
+        index lists into contiguous 1-based inclusive per-area spans; an ordered consume loop guarded
+        by `cursor > end` OR `trigger != scroll row`, an EMPTY per-record dispatch seam, and the
+        observable that advances the cursor and counts fires. Structure only; the per-area JSON-faithful
+        content is the round-trip golden's job (test_spec_docs), and the dynamic fire-once/in-order
+        behaviour is exercised by the scratch-vm harness and the operator playtest."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+
+        def refs_var(spec, var_id):
+            return (
+                isinstance(spec, list)
+                and len(spec) > 1
+                and isinstance(spec[1], list)
+                and spec[1][2:3] == [var_id]
+            )
+
+        # the three parallel columns are equal length and the two 16-entry index lists partition them
+        # into contiguous 1-based inclusive per-area spans (guards a column/index-list mismatch or a
+        # leaked/dropped entry). The JSON-faithful per-area CONTENT is the round-trip golden's job.
+        handlers = by_name.get("schedule handler", [])
+        rows = by_name.get("schedule trigger row", [])
+        payloads = by_name.get("schedule payload", [])
+        starts = by_name.get("area schedule start", [])
+        ends = by_name.get("area schedule end", [])
+        total = len(handlers)
+        contiguous = (
+            len(starts) == director.AREA_MAX
+            and len(ends) == director.AREA_MAX
+            and starts[:1] == [1]
+            and ends[-1:] == [total]
+            and all(starts[i] == ends[i - 1] + 1 for i in range(1, director.AREA_MAX))
+            and all(starts[i] <= ends[i] for i in range(director.AREA_MAX))
+        )
+        if not (total > 0 and len(rows) == total and len(payloads) == total and contiguous):
+            failures.add("schedule-lists-length")
+
+        # EVERY area's slice ends in the materialized sentinel (handler 'sentinel', trigger 0x0D) — a
+        # per-area check, so an interior area's sentinel corruption cannot hide behind the global tail.
+        if not (starts and ends and len(starts) == len(ends)):
+            failures.add("schedule-sentinel")
+        else:
+            for start, end in zip(starts, ends):
+                if not (
+                    1 <= end <= total
+                    and handlers[end - 1] == director.SCHEDULE_SENTINEL_HANDLER
+                    and rows[end - 1] == director.AREA_TOP_ROW
+                ):
+                    failures.add("schedule-sentinel")
+                    break
+
+        def body_ids(loop_id):
+            sub = blocks[loop_id]["inputs"].get("SUBSTACK")
+            out, bid = [], (sub[1] if isinstance(sub, list) and len(sub) > 1 else None)
+            while bid:
+                out.append(bid)
+                bid = blocks[bid].get("next")
+            return out
+
+        # the consume loop: a repeat_until whose body advances the schedule cursor.
+        loop = None
+        for bid, b in blocks.items():
+            if b["opcode"] != "control_repeat_until":
+                continue
+            if any(
+                blocks[x]["opcode"] == "data_changevariableby"
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+                for x in body_ids(bid)
+            ):
+                loop = bid
+                break
+        if loop is None:
+            failures.add("consume-loop")
+            return failures
+        ids = body_ids(loop)
+
+        if not any(
+            blocks[x]["opcode"] == "data_changevariableby"
+            and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+            and blocks[x]["inputs"].get("VALUE") == [1, [4, 1]]
+            for x in ids
+        ):
+            failures.add("consume-advances-cursor")
+
+        if not any(
+            blocks[x]["opcode"] == "data_changevariableby"
+            and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_FIRED_ID
+            and blocks[x]["inputs"].get("VALUE") == [1, [4, 1]]
+            for x in ids
+        ):
+            failures.add("consume-counts-fired")
+
+        # the per-record dispatch is an EMPTY seam: the body is only the two counters, no handler.
+        if any(blocks[x]["opcode"] != "data_changevariableby" for x in ids):
+            failures.add("empty-dispatch")
+
+        # stop condition: operator_or( gt(cursor, end), not( eq(trigger, scroll row) ) ).
+        def subtree(bid, acc):
+            if bid in acc or bid not in blocks:
+                return
+            acc.add(bid)
+            for v in blocks[bid]["inputs"].values():
+                if isinstance(v, list) and len(v) > 1 and isinstance(v[1], str):
+                    subtree(v[1], acc)
+
+        cond = blocks[loop]["inputs"].get("CONDITION")
+        cond_ids = set()
+        if isinstance(cond, list) and len(cond) > 1:
+            subtree(cond[1], cond_ids)
+        cond_ops = {blocks[x]["opcode"] for x in cond_ids}
+        row_match = any(
+            blocks[x]["opcode"] == "operator_equals"
+            and (
+                refs_var(blocks[x]["inputs"].get("OPERAND1"), director.SCROLL_ROW_ID)
+                or refs_var(blocks[x]["inputs"].get("OPERAND2"), director.SCROLL_ROW_ID)
+            )
+            for x in cond_ids
+        )
+        if not ({"operator_or", "operator_gt", "operator_not", "operator_equals"} <= cond_ops and row_match):
+            failures.add("consume-stop-condition")
+
+        return failures
+
+    def test_area_scheduler_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._area02_failures(project))
+
+    def test_area_scheduler_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._area02_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def list_named(p, name):
+            return next(v for v in stage_of(p)["lists"].values() if v[0] == name)
+
+        def consume_loop(p):
+            s = stage_of(p)
+            b = s["blocks"]
+
+            def body(loop_id):
+                sub = b[loop_id]["inputs"].get("SUBSTACK")
+                out, bid = [], (sub[1] if isinstance(sub, list) and len(sub) > 1 else None)
+                while bid:
+                    out.append(bid)
+                    bid = b[bid].get("next")
+                return out
+
+            for bid, blk in b.items():
+                if blk["opcode"] == "control_repeat_until" and any(
+                    b[x]["opcode"] == "data_changevariableby"
+                    and b[x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+                    for x in body(bid)
+                ):
+                    return bid, body(bid)
+            raise AssertionError("no consume loop")
+
+        def break_length(p):
+            list_named(p, "schedule trigger row")[1].append(99)
+
+        def break_sentinel(p):
+            # corrupt an INTERIOR area's sentinel (area 1's, at its span end), not the global tail —
+            # a global-tail-only check would miss this; the per-area check must catch it.
+            area1_end = list_named(p, "area schedule end")[1][0]
+            list_named(p, "schedule handler")[1][area1_end - 1] = "add_ground_object"
+
+        def break_cursor_advance(p):
+            s = stage_of(p)
+            _, ids = consume_loop(p)
+            blk = next(
+                s["blocks"][x]
+                for x in ids
+                if s["blocks"][x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_CURSOR_ID
+            )
+            blk["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_fired_count(p):
+            s = stage_of(p)
+            _, ids = consume_loop(p)
+            blk = next(
+                s["blocks"][x]
+                for x in ids
+                if s["blocks"][x]["fields"].get("VARIABLE", [None, None])[1] == director.SCHEDULE_FIRED_ID
+            )
+            blk["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_empty_dispatch(p):
+            s = stage_of(p)
+            loop_id, ids = consume_loop(p)
+            # inject a bogus per-record dispatch block at the head of the loop body.
+            injected = "gd-stage-injected-dispatch"
+            s["blocks"][injected] = {
+                "opcode": "control_if",
+                "next": ids[0],
+                "parent": loop_id,
+                "inputs": {},
+                "fields": {},
+                "shadow": False,
+                "topLevel": False,
+            }
+            s["blocks"][ids[0]]["parent"] = injected
+            s["blocks"][loop_id]["inputs"]["SUBSTACK"] = [2, injected]
+
+        def break_stop_condition(p):
+            s = stage_of(p)
+            loop_id, _ = consume_loop(p)
+            cond = s["blocks"][loop_id]["inputs"]["CONDITION"][1]
+            # find the operator_not in the condition subtree and neutralize it.
+            seen, stack = set(), [cond]
+            while stack:
+                bid = stack.pop()
+                if bid in seen or bid not in s["blocks"]:
+                    continue
+                seen.add(bid)
+                if s["blocks"][bid]["opcode"] == "operator_not":
+                    s["blocks"][bid]["opcode"] = "operator_and"
+                    return
+                for v in s["blocks"][bid]["inputs"].values():
+                    if isinstance(v, list) and len(v) > 1 and isinstance(v[1], str):
+                        stack.append(v[1])
+            raise AssertionError("no operator_not in the stop condition")
+
+        cases = [
+            ("schedule-lists-length", break_length),
+            ("schedule-sentinel", break_sentinel),
+            ("consume-advances-cursor", break_cursor_advance),
+            ("consume-counts-fired", break_fired_count),
+            ("empty-dispatch", break_empty_dispatch),
+            ("consume-stop-condition", break_stop_condition),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._area02_failures(project), label)
+
+    def test_generated_schedule_has_no_super_or_unknown_object(self) -> None:
+        # AREA-03 acceptance guard on the BAKED project: every scheduled record decodes to a normal
+        # object type (<= NORMAL_TYPE_MAX — INCLUSIVE; the max real type equals that ceiling) and a
+        # known handler; the materialized sentinel (empty payload) is skipped. Keyed off the canonical
+        # threshold (tools/reference_extract) and the reference registry, never a re-derived literal —
+        # so a Super-only or unknown record smuggled into the flattened columns fails here.
+        import reference_extract  # noqa: E402
+
+        registry = json.loads(
+            (ROOT / "docs" / "spec" / "data" / "object-types.json").read_text()
+        )["registry"]["types"]
+        known_handlers = {t.get("schedule_action") for t in registry} - {"none", None}
+
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        handlers = by_name["schedule handler"]
+        payloads = by_name["schedule payload"]
+        self.assertEqual(len(handlers), len(payloads))
+
+        for i, (handler, payload) in enumerate(zip(handlers, payloads)):
+            if handler == director.SCHEDULE_SENTINEL_HANDLER:
+                self.assertEqual("", payload, f"sentinel payload not empty at {i}")
+                continue
+            self.assertIn(handler, known_handlers, f"unknown handler {handler!r} at {i}")
+            obj_type = json.loads(payload)["object_type"]
+            self.assertLessEqual(
+                obj_type,
+                reference_extract.NORMAL_TYPE_MAX,
+                f"Super-only object_type {obj_type} at index {i}",
+            )
+
+    def test_spec_data_loader_verifies_manifest_hash(self) -> None:
+        # The AREA ingest loader hard-fails at build time on a data file whose bytes do not match
+        # the pinned SHA-256 in manifest.json (mirroring hud_glyphs.py) — so a stale or hand-edited
+        # terrain/schedule file can never silently bake into project.json.
+        import json as _json
+        import tempfile
+        from pathlib import Path as _Path
+
+        # the real committed file loads cleanly (positive).
+        self.assertIsNotNone(director._load_spec_data("terrain.json"))
+
+        # a tampered file against the real manifest hash raises loudly (negative).
+        manifest = _json.loads((director.SPEC_DATA_DIR / "manifest.json").read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = _Path(tmp)
+            (tmp_dir / "manifest.json").write_text(_json.dumps(manifest), encoding="utf-8")
+            (tmp_dir / "terrain.json").write_text('{"tampered": true}', encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                director._load_spec_data("terrain.json", data_dir=tmp_dir)
+
+    @staticmethod
     def _eco04_failures(project: dict) -> set:
         """ECO-04 game over — the 64-tick GAME OVER hold immediately followed by the same
         if_epoch_state/DEATH_EPOCH_ID guard the death timing above it uses (so a superseding
@@ -3659,7 +4360,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3af7f518c4336d27cb9302f4bd9d68c3437d0aa7c31000a9ed5b88f280e1f71c",
+            "4d7c2dfd15618a5f835bf79fe3592a0719e013f5625cf891f69ce77323ba7394",
             build_hash,
         )
 

@@ -26,6 +26,8 @@ When you make a significant decision about how your Engine itself is set up — 
 
 If your project builds its own safety-critical piece — say a script that guards something important — you can ask the Engine, in plain words, to protect it (*"treat this scanner as protected"*), or name a folder to cover everything inside it. The Engine keeps a short list of these for you and watches them alongside its own protections, so any change to one asks for your deliberate sign-off. Taking something back off that list later asks you to confirm too — removing a protection is a deliberate step, the same as adding one. The list is kept as yours and preserved across updates.
 
+About the Engine's own protection files: an ordinary edit to one leaves a plain-language notice on the pull request naming what changed — it does not hold the merge, because your review of the change is the real gate. Only the rare killswitch changes — repointing where the Engine fetches or writes code, demoting a merge-blocking check, deleting a gate — hold the merge for your deliberate sign-off (the `guardrail-ack` label). If you would rather a particular file always hold the merge, add it to your protected list above — anything on your list always asks.
+
 When you ask for something that changes your project, the Engine works in careful steps and shows you what it plans before it does it, so nothing significant happens without your say-so.
 
 ## Finding the commands

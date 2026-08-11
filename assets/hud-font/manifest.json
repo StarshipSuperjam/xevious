@@ -55,7 +55,7 @@
   ],
   "life_icon": {
     "name": "life/ship",
-    "rect": [138, 28, 16, 16],
+    "rect": [5, 27, 16, 16],
     "canvas": [16, 16],
     "anchor": [8, 8]
   }

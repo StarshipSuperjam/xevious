@@ -22,7 +22,7 @@ present", a directory listing, never a hand-authored registry — and the engine
     orphan; a doubly-claimed file is a conflict. The ownership inventory is the COMMITTED tree
     (git-tracked): an untracked file — sync-conflict cruft a file-sync tool dropped, or an
     intended new file not yet committed — is not yet an ownership concern, so it is not read as a
-    spurious local orphan (#281); the untracked-surface detector (untracked_surface_findings, a
+    spurious local orphan (StarshipSuperjam/engine-template#281); the untracked-surface detector (untracked_surface_findings, a
     separate soft custom/script check) names it instead.
   - WIRING — BIDIRECTIONAL "declared <-> applied". FORWARD declared->applied (validate.wiring_findings
     over wiring.is_applied): every `wires` directive a present manifest declares is applied in its shared
@@ -99,15 +99,16 @@ FOUNDATION_INFRA = (
     #                        overlay-replaced) + block-reversed in remove_engine.
     ".gitignore",          # a platform-shared keyed file like CLAUDE.md/CODEOWNERS — carries the engine's
     #                        foundation-ignores fence; OUT of FOUNDATION_CODE + block-reversed
-    #                        in remove_engine (never overlay-replaced / wholesale-deleted — #409).
+    #                        in remove_engine (never overlay-replaced / wholesale-deleted — StarshipSuperjam/engine-template#409).
     ".github/workflows/engine-ci.yml",
     ".github/workflows/engine-guard.yml",
     ".github/workflows/secret-scan.yml",
     ".github/workflows/actionlint.yml",
     ".github/workflows/audit-prep.yml",
     ".github/workflows/engine-issue-conformance.yml",
+    ".github/workflows/engine-issue-kind-label.yml",
     ".github/workflows/engine-overlay-disclosure.yml",
-    # the release lifecycle (#516): engine-owned workflows that cut + publish a release — the engine's version
+    # the release lifecycle (StarshipSuperjam/engine-template#516): engine-owned workflows that cut + publish a release — the engine's version
     # in the construction repo, the deployed repo's own product version once deployed. Foundation like every
     # other engine workflow, so an engine improvement to the release path (and the deployed-repo product wording)
     # reaches a deployed repo on its next upgrade rather than freezing at whatever the initial copy carried.
@@ -130,7 +131,7 @@ NAMED_INFRA = {p for p in FOUNDATION_INFRA if p.startswith(".engine/")}
 # OPERATOR_CONFIG — committed operator-authored config the ownership leg must NOT read as orphans: the
 # per-deployment operator policy-override of tunable policy values (.engine/operator-overrides.json, written
 # by /engine-tune) and the per-deployment instance guarded-paths declaration (.engine/operator-guarded-paths.json,
-# #532 — the deployment's own extra product-side paths for the weakening guard to watch, unioned in by
+# StarshipSuperjam/engine-template#532 — the deployment's own extra product-side paths for the weakening guard to watch, unioned in by
 # weakening_guard.is_guardrail and shape-gated by engine/check/operator-guarded-paths) and the per-deployment
 # local-reference vocabulary (.engine/operator-local-references.json — the references that mean something only
 # inside this deployment, read by local_references.py so an outbound contribution can be checked against them
@@ -152,6 +153,22 @@ OPERATOR_CONFIG = {".engine/operator-overrides.json", ".engine/operator-guarded-
                    ".engine/conduct/operator.md",
                    ".engine/provisioning/conduct-seed.md", ".engine/provisioning/security-seed.md",
                    ".engine/provisioning/readme-seed.md"}
+
+# PRESERVE_DATA — committed per-deployment DATA files that ARE declared in a module's `provides` (so they are
+# engine-OWNED surface) yet hold a value the deployment BINDS that a release must NOT overwrite. This is the
+# OPPOSITE carve-out to OPERATOR_CONFIG above: OPERATOR_CONFIG is preserved *by being outside `provides`*;
+# these stay fully inside `provides` and stay OWNED. So they must NOT be added to any ownership / CODEOWNERS /
+# orphan carve-out (doing so would wrongly read them as product-mergeable and un-own them). The preservation
+# is ONLY on the update overlay's copy leg, which skips them CREATE-IF-ABSENT: a fresh arrival still receives
+# the release placeholder; an upgrade over an already-bound value leaves it untouched (module_manager threads
+# this through every `_overlay_copy_map` consumer, so the merge-time overwrite disclosure stays in lockstep).
+# EXACT repo-relative paths, never a bare name — `.engine/memory-backup/pointer.json` holds the deployment's
+# minted backup namespace (StarshipSuperjam/engine-template#814's confirmed silent-loss case: the overlay's raw `shutil.copyfile` bypasses the
+# `skip-worktree` mitigation), and its fixture twin `.engine/_fixtures/memory-pointer-public-safety/pointer.json`
+# shares the basename and must NOT be swept in by a loose match. Derived artifacts that merely diverge per
+# deployment (`.engine/knowledge/graph.json`, `.engine/product-spec-matrix.json`) are NOT here — they are
+# REGENERATED post-overlay from the deployment's own tree instead (module_manager.REGENERATED_DERIVED).
+PRESERVE_DATA = {".engine/memory-backup/pointer.json"}
 
 # Directories under .engine/ that are regenerable derivatives or caches — never owned files. The
 # inventory's contract is "every COMMITTED engine file"; these hold gitignored regenerable artifacts
@@ -182,9 +199,9 @@ PRUNE_PATHS = {".engine/memory", ".engine/projects-sync"}
 # `provides` them and they must never read as an unowned orphan or an uncatalogued surface (the check-system
 # "fixtures are test data, not a surface" rule). Anchored on the exact path, so a committed tool or surface
 # elsewhere is unaffected. Pruned by the SAME walk mechanism as PRUNE_PATHS — and at the SHARED walk
-# (_walk_engine_files), so the namespace is excluded from BOTH the ownership leg and the #281
+# (_walk_engine_files), so the namespace is excluded from BOTH the ownership leg and the StarshipSuperjam/engine-template#281
 # untracked-surface detector intentionally (a committed fixture is not cruft to flag; fixtures are never
-# fingerprinted into the graph, so the #281 "a regen would pull it in" risk does not apply to them).
+# fingerprinted into the graph, so the StarshipSuperjam/engine-template#281 "a regen would pull it in" risk does not apply to them).
 FIXTURE_PATHS = {".engine/_fixtures"}
 
 # Repo-relative directory PATHS holding the deployment's COMMITTED per-instance eADR stream — the
@@ -194,7 +211,7 @@ FIXTURE_PATHS = {".engine/_fixtures"}
 # engine overlay like operator config. Distinct justification from every set above: it is neither a regenerable
 # cache (PRUNE_DIRS), gitignored runtime state (PRUNE_PATHS), nor test data (FIXTURE_PATHS) — it is committed
 # deployment content that must not read as an unowned orphan. Excluded by the SAME shared walk-prune as
-# FIXTURE_PATHS, so it sits outside BOTH the OWNERSHIP leg and the #281 untracked-surface detector. It IS a
+# FIXTURE_PATHS, so it sits outside BOTH the OWNERSHIP leg and the StarshipSuperjam/engine-template#281 untracked-surface detector. It IS a
 # graph entity, though — knowledge_gen's own presence walk (`deployment_contract_inventory` / Pass 1b) entitizes
 # it as a NON-CANON contract, told apart from the canon by the ABSENCE of a `provided_by` edge (by
 # provides-membership, never a path/marker), so a deployment's decisions are graph-visible but not engine-OWNED
@@ -227,7 +244,7 @@ def _git_lines(args: list) -> list | None:
 
 def _tracked_paths() -> set | None:
     """The git-tracked relpaths (`git ls-files`), or None when git is unavailable. engine_file_inventory
-    intersects with this so an UNTRACKED file is not read as a committed-ownership concern (#281)."""
+    intersects with this so an UNTRACKED file is not read as a committed-ownership concern (StarshipSuperjam/engine-template#281)."""
     lines = _git_lines(["ls-files"])
     return set(lines) if lines is not None else None
 
@@ -274,7 +291,7 @@ is_downstream_copy = repo_identity.is_downstream_copy
 _READ_HOME = repo_identity._READ_HOME
 
 
-# ---- what may travel in a contribution back to the ENGINE'S OWN HOME (issue #556) -----------------
+# ---- what may travel in a contribution back to the ENGINE'S OWN HOME (issue StarshipSuperjam/engine-template#556) -----------------
 #
 # When a deployment contributes back to the engine's home (a fork-native deployment escalating an engine fix to
 # engine-template — the OWNED engine-mechanic takes the direct-PR path, not this), the engine's own SOURCE
@@ -294,7 +311,7 @@ _CI_REQUIRED_INDEXES = frozenset({".engine/knowledge/graph.json", ".engine/self-
 
 # Committed, identical-across-instances engine build/runtime config (not under a surface namespace) that is
 # product and travels: the tool-runtime pin/lock, the suite manifest, the repo ignore rules, and the governance
-# floors (the root CLAUDE.md/AGENTS.md, which since #323 ARE the fenced adopter floor — the separate
+# floors (the root CLAUDE.md/AGENTS.md, which since StarshipSuperjam/engine-template#323 ARE the fenced adopter floor — the separate
 # .deployed.md files retired with the greenfield swap).
 _HOME_TRAVEL_FILES = frozenset({
     ".engine/pyproject.toml", ".engine/uv.lock", ".engine/suites.json",
@@ -341,6 +358,42 @@ def is_deployment_private(path: str) -> bool:
     return path in OPERATOR_CONFIG or path.startswith(tuple(d + "/" for d in DEPLOYMENT_CONTRACTS))
 
 
+# The .engine/ subdirectory holding the engine's own accreted per-instance state — written fresh at first-run
+# setup, never carried in a release seed (see is_engine_generated_unshipped).
+_ENGINE_STATE_DIR = ".engine/state"
+
+
+def is_engine_generated_unshipped(path: str) -> bool:
+    """True iff `path` is one of the engine's OWN apply-generated .engine/ files that a freshly cut release does
+    NOT ship — so it falls outside both the release file set and the release-globbed `engine_owned_paths`, and a
+    resumed brownfield arrival would otherwise read the engine's own output back as a project collision (StarshipSuperjam/engine-template#695).
+    Two families, each engine-owned by declaration yet unshipped: the engine manifest (ENGINE_MANIFEST_REL — a
+    FOUNDATION_INFRA member, but _FOUNDATION_KEYED-excluded from the overlay and version-bumped in place, so
+    never copied from a release), and the per-instance state store (.engine/state/*.json — core's `provides.state`,
+    written by the first-run state seed, not in the release seed).
+
+    Recognition is EXACT for the manifest and SINGLE-SEGMENT for state (a direct .json child of .engine/state/,
+    never a nested path), and CASE-SENSITIVE throughout — deliberately NOT fnmatch, whose `*` crosses `/` and
+    whose match case-folds on a case-insensitive filesystem, either of which would fold an operator file onto an
+    engine one (the case-fold trap the resume recognizer already guards against). It defers to the
+    operator/deployment-private carve-out FIRST, so an operator file that happens to sit under one of these
+    namespaces still surfaces. Scoped this narrowly — to these two engine-generated families, NOT to every
+    `provides` glob — precisely because operators DO author committed files under .engine/ (OPERATOR_CONFIG,
+    DEPLOYMENT_CONTRACTS): a broad provides-pattern match would silently drop them, whereas these two families
+    never hold operator content."""
+    if is_deployment_private(path):
+        return False
+    if path == ENGINE_MANIFEST_REL:
+        return True
+    # .engine/state/*.json — a flat .json child of the state store. This mirrors core's manifest `provides.state`
+    # glob; the shape is re-declared here (not derived from the manifest) so recognition stays independent of the
+    # target tree, whose manifests are absent/partial when this runs on a brownfield arrival. A drift guard
+    # (test_state_recognition_matches_core_provides) couples this shape to provides.state, so a manifest change
+    # can't silently leave the recognizer out of step — the detector/writer-drift class this change fixed for AGENTS.md.
+    parent, _, name = path.rpartition("/")
+    return parent == _ENGINE_STATE_DIR and name.endswith(".json")
+
+
 def _walk_engine_files() -> list:
     """Every file under .engine/ on the live filesystem (relpaths), pruning regenerable cache dirs
     (PRUNE_DIRS, any depth), gitignored runtime roots (PRUNE_PATHS), the committed-but-non-surface
@@ -367,7 +420,7 @@ def engine_file_inventory() -> list:
     """The COMMITTED engine files under .engine/ (relpaths) — the OWNERSHIP inventory. Ownership is a
     property of the committed tree, so the raw walk is intersected with git's tracked set: an untracked
     file (sync-conflict cruft, or an intended new file not yet committed) is not yet an ownership concern
-    and must not raise a spurious local orphan / double-claim (#281). Fail-soft: when git is unavailable
+    and must not raise a spurious local orphan / double-claim (StarshipSuperjam/engine-template#281). Fail-soft: when git is unavailable
     the raw walk is returned unchanged (the prior behavior); in CI (a clean checkout, all committed) the
     intersection is a no-op. Nothing is dropped silently — untracked_surface_findings names what is
     excluded. The product never owns a file under .engine/, so this is the exclusively-engine corner
@@ -405,7 +458,7 @@ def _surface_walk() -> list:
 
 
 def untracked_surface_findings(tier: str = "soft") -> list:
-    """Issue #281 detector: every file under the engine surface (the .engine/ tree + the catalogued
+    """Issue StarshipSuperjam/engine-template#281 detector: every file under the engine surface (the .engine/ tree + the catalogued
     .claude/ surface roots) that git neither tracks nor ignores — sync-conflict cruft a file-sync tool
     dropped, or a new engine file not yet committed — as a `tier` (soft) finding naming the file. CI runs
     on a clean checkout, so this is silent there (the pollution it guards is local-only); it surfaces on a
@@ -579,7 +632,10 @@ def check_coherence(tier: str = "hard") -> list:
         tier,
         "A module-provided check kind is discovered by the name of its file; two kinds cannot share a "
         "name and none may reuse a core kind's.")
-    return dep + own + wiring_leg + orphan_leg + block + kinds
+    vk = validate.version_key_duplicate_findings(
+        [(os.path.join(validate.ROOT, relpath), (m.get("id") or relpath)) for relpath, m in manifests], tier,
+        "Keep exactly one key per version in a module's migrations / retired_capabilities block.")
+    return dep + own + wiring_leg + orphan_leg + block + kinds + vk
 
 
 # The artifact warrant for a coherence result: what a green check shows, what it does NOT, and
@@ -666,7 +722,7 @@ def _demo(_argv: list) -> int:
 
 
 def _untracked_demo(_argv: list) -> int:
-    """Operator-runnable fail-then-pass for the #281 untracked-surface guard, on a THROWAWAY git repo
+    """Operator-runnable fail-then-pass for the StarshipSuperjam/engine-template#281 untracked-surface guard, on a THROWAWAY git repo
     (never your real tree). It commits an owned engine file, drops an UNTRACKED duplicate under the
     surface, and shows (a) the ownership inventory excludes it (no spurious orphan) and (b) the detector
     names it — then `git add`s it and shows the detector go quiet. The REAL engine_file_inventory /

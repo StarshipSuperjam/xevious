@@ -143,7 +143,7 @@ def _engine_release(root: str) -> str | None:
 # same discipline boot's repo_slug uses, because a mis-parsed slug would scope a qualification to the wrong repo.
 # IGNORECASE: host names are case-insensitive by spec (`GitHub.com` == `github.com`). ASCII keeps the fold
 # ASCII-only, so a Unicode homograph (`gİthub.com`, U+0130 folds to `i`) cannot satisfy the host literal. The
-# flags fold only the literal host, not the structural anchors, so no look-alike is newly accepted (#625).
+# flags fold only the literal host, not the structural anchors, so no look-alike is newly accepted (StarshipSuperjam/engine-template#625).
 _SLUG_RE = re.compile(r"^(?:(?:https?|ssh)://)?(?:[^@/]+@)?github\.com[:/]+([^/]+/[^/]+?)(?:\.git)?/?$",
                       re.IGNORECASE | re.ASCII)
 

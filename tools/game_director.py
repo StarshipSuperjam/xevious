@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -296,6 +297,172 @@ REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABL
 QUALIFIED_ID = "eco-qualified"
 HIGH_SCORE_TABLE_ID = "eco-high-score-table"
 HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
+
+# AREA-01 area scroll clock (docs/spec/area-progression-and-terrain.md, locked). One
+# monotonic per-area position drives the terrain, the object scheduler, and the area loop.
+# The reference runs a 16-bit scroll counter initialized to 0x0D00 and decreased by 16 per
+# arcade frame; its high byte is the descending "scroll row" (0x0D..0x00, wrapping to 0xFF
+# and continuing down), and the area completes when that row reaches 0x0E. We store the
+# monotonic INCREASING `area progress` (0 up to ~0xFF00; completion actually fires at 65056,
+# see AREA_COMPLETE_ROW) as the SOLE position authority — so within an area the position never
+# rewinds, resetting to 0 only when the area completes and the area number advances — and DERIVE
+# the arcade scroll row once per tick: row = floor(((0x0D00 - area progress) mod 0x10000) / 256).
+# Cadence: 1 build tick = 2 arcade frames, so `area progress` advances 32 units per tick;
+# 256 is divisible by 32, so every row is visited (no schedule trigger is skipped).
+AREA_PROGRESS_ID = "area-progress"
+AREA_NUMBER_ID = "area-number"
+SCROLL_ROW_ID = "area-scroll-row"
+# Dormant seam: the per-area terrain start column, set on area entry from the ingested
+# offset table. No consumer this slice (the visual terrain stays decoupled); the
+# presentation slice (20) couples the visual scroll to the clock and reads this.
+TERRAIN_COLUMN_ID = "area-terrain-column"
+AREA_MAP_COLUMN_ID = "area-map-column"
+ADVANCE_AREA_PROCCODE = "advance area"
+AREA_PROGRESS_STEP = 32  # 16 counter units/frame * 2 frames/tick
+AREA_COUNTER_INIT = 0x0D00  # 3328; the reference scroll-counter start (row 0x0D)
+AREA_COUNTER_WRAP = 0x10000  # 65536; the 16-bit counter wrap makes the row descent continuous
+AREA_ROW_DIVISOR = 0x100  # 256; a scroll "row" is the counter's high byte
+AREA_COMPLETE_ROW = 0x0E  # 14; the area completes at the first tick the derived row reaches this
+AREA_TOP_ROW = 0x0D  # 13; the row at area top (progress 0), also each table's end sentinel
+AREA_FIRST = 1
+AREA_MAX = 16
+AREA_LOOP_BACK = 7  # completing area 16 continues at area 7, not area 1 and not a win screen
+# The near-end checkpoint (docs/mechanics/003, 013): a death with the frozen scroll row in
+# [0x0E, 0x43] advances to the next area instead of restarting the current one. Checked as
+# `row > 13 AND row < 68` (Scratch has no <=). The row-14 edge is a vacuous runtime state
+# (completion resets the area before a death can be observed at row 14), but the boundary
+# logic must still handle it; the reachable checkpoint floor at death is row 15.
+AREA_CHECKPOINT_LOW_EXCL = 0x0D  # 13; the frozen row must be strictly greater (>= 0x0E)
+AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the frozen row must be strictly less (<= 0x43)
+
+SPEC_DATA_DIR = ROOT / "docs" / "spec" / "data"
+
+
+def _load_spec_data(name: str, *, data_dir: Path = SPEC_DATA_DIR) -> Any:
+    # Load a committed reference-data file, verifying its bytes against the pinned SHA-256 in
+    # docs/spec/data/manifest.json BEFORE parsing — so a stale, hand-edited, or corrupted data
+    # file fails the build LOUDLY at ingest (mirroring tools/hud_glyphs.py's asset-hash guard),
+    # never silently baking into project.json. The manifest is the single source of the
+    # sanctioned hashes; regenerating the data (tools/reference_extract.py) is the only way to
+    # change them.
+    raw = (data_dir / name).read_bytes()
+    manifest = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
+    expected = manifest["files"].get(name)
+    if expected is None:
+        raise SystemExit(f"{name} is not registered in docs/spec/data/manifest.json")
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected:
+        raise SystemExit(
+            f"docs/spec/data/{name} hash changed: expected {expected}, found {actual}; "
+            f"regenerate the data with tools/reference_extract.py — never hand-edit it"
+        )
+    return json.loads(raw.decode("utf-8"))
+
+
+def _load_terrain_columns() -> list[int]:
+    # AREA-01: the 16 per-area terrain start columns, INGESTED (not authored) from the
+    # committed, hash-pinned reference data (verified against docs/spec/data/manifest.json at
+    # load). One transcription, by the generator — the Scratch list is a faithful copy of the
+    # JSON, verified by the golden in tests/test_spec_docs.py.
+    data = _load_spec_data("terrain.json")
+    return list(data["area_offset_in_map_tbl"]["values"])
+
+
+AREA_MAP_COLUMNS = _load_terrain_columns()
+
+# AREA-02/AREA-03 area object scheduler (docs/spec/area-progression-and-terrain.md). Each area has one
+# schedule table consumed strictly in order: a record fires when the scroll row equals its trigger row,
+# then the cursor advances. All 16 normal areas are ingested into the SAME three flattened columns; the
+# two 16-entry index lists (start/end) carry each area's 1-based INCLUSIVE span into those columns, so
+# the runtime consume reads an area's slice by indexing the lists with the live `area number` — no code
+# path is per-area (that is why slice 6 moves no runtime block). Every handler's variable `params`
+# (slot/sprite_y, mask, row, count, formation_offset, path, ...) is carried faithfully as an opaque JSON
+# PAYLOAD so no field is dropped and the schema never has to grow; the handlers themselves (spawn,
+# formation, difficulty, boss) arrive with the enemy slices (8+), so the per-record dispatch is an empty
+# seam.
+SCHEDULE_HANDLER_ID = "area-schedule-handler"
+SCHEDULE_TRIGGER_ROW_ID = "area-schedule-trigger-row"
+SCHEDULE_PAYLOAD_ID = "area-schedule-payload"
+AREA_SCHEDULE_START_ID = "area-schedule-start"
+AREA_SCHEDULE_END_ID = "area-schedule-end"
+SCHEDULE_CURSOR_ID = "area-schedule-cursor"
+SCHEDULE_FIRED_ID = "area-schedule-fired"
+SCHEDULE_SENTINEL_HANDLER = "sentinel"
+
+
+def _load_area_schedule(area_number: int) -> tuple[list[str], list[int], list[str]]:
+    # AREA-02: ingest one area's schedule from the committed, hash-pinned reference data as three
+    # faithful parallel columns (handler, trigger row, opaque payload). The end sentinel (a scalar
+    # in the JSON) is MATERIALIZED as the terminal row so the table is self-terminating and the
+    # extractor's "every table decodes to its sentinel" invariant is reproduced. object_type +
+    # params are serialized deterministically (sorted keys) into the payload; source_line is
+    # provenance, not runtime data, and is deliberately not ingested. The round-trip golden in
+    # tests/test_spec_docs.py proves nothing is dropped.
+    data = _load_spec_data("area-schedules.json")
+    area = next(a for a in data["areas"] if a["area"] == area_number)
+    handlers: list[str] = []
+    rows: list[int] = []
+    payloads: list[str] = []
+    for record in area["records"]:
+        handlers.append(record["handler"])
+        rows.append(record["scroll_row"])
+        payloads.append(
+            json.dumps(
+                {"object_type": record["object_type"], "params": record["params"]},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    handlers.append(SCHEDULE_SENTINEL_HANDLER)
+    rows.append(area["end_sentinel"])
+    payloads.append("")
+    return handlers, rows, payloads
+
+
+def _load_all_area_schedules() -> tuple[
+    list[str], list[int], list[str], list[int], list[int]
+]:
+    # AREA-03: flatten all 16 normal area schedules into three parallel columns, with two 16-entry
+    # index lists giving each area's 1-based INCLUSIVE span [start..end] into those columns. Areas are
+    # visited by explicit number (not JSON array order); an up-front check requires exactly areas
+    # AREA_FIRST..AREA_MAX, once each, so a missing OR duplicated area fails LOUD with a clear message
+    # (not a bare StopIteration, and not a silently-swallowed duplicate). Each area contributes its
+    # records + one materialized sentinel, so its span length is len(records)+1; the spans are
+    # contiguous and cover the whole flattened table (the end of area AREA_MAX equals len(handlers)). No
+    # per-slice total is hardcoded — it falls out of the concatenation. The per-area round-trip golden in
+    # tests/test_spec_docs.py re-derives these spans independently from the JSON record counts and
+    # compares the flattened windows to the source records, so an offset off-by-one that leaked one area
+    # into the next would fail there.
+    defined = sorted(a["area"] for a in _load_spec_data("area-schedules.json")["areas"])
+    if defined != list(range(AREA_FIRST, AREA_MAX + 1)):
+        raise SystemExit(
+            f"area-schedules.json must define exactly areas {AREA_FIRST}..{AREA_MAX}, "
+            f"once each; found {defined}"
+        )
+    handlers: list[str] = []
+    rows: list[int] = []
+    payloads: list[str] = []
+    starts: list[int] = []
+    ends: list[int] = []
+    cursor = 1  # 1-based, matching Scratch list indexing and the runtime `schedule cursor`
+    for area_number in range(AREA_FIRST, AREA_MAX + 1):
+        area_handlers, area_rows, area_payloads = _load_area_schedule(area_number)
+        starts.append(cursor)  # this area's first index (before advancing the cursor)
+        handlers.extend(area_handlers)
+        rows.extend(area_rows)
+        payloads.extend(area_payloads)
+        cursor += len(area_rows)
+        ends.append(cursor - 1)  # this area's last index (after advancing; inclusive)
+    return handlers, rows, payloads, starts, ends
+
+
+(
+    SCHEDULE_HANDLERS,
+    SCHEDULE_ROWS,
+    SCHEDULE_PAYLOADS,
+    AREA_SCHEDULE_START,
+    AREA_SCHEDULE_END,
+) = _load_all_area_schedules()
 
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
@@ -753,6 +920,9 @@ class Blocks:
     def op_add(self, a: Any, b: Any) -> str:
         return self._reporter("operator_add", a, b)
 
+    def op_sub(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_subtract", a, b)
+
     def op_div(self, a: Any, b: Any) -> str:
         return self._reporter("operator_divide", a, b)
 
@@ -1054,6 +1224,116 @@ def install_advance_slots(blocks: Blocks) -> None:
     blocks.chain(definition, [advance_tick, set_index, loop])
 
 
+def _advance_area_number(blocks: Blocks) -> str:
+    # AREA-01 area increment with the 16 -> 7 loop (completing area 16 continues at area 7).
+    # One source, called from both the completion branch and the near-end checkpoint. Returns
+    # the single control block id.
+    branch = blocks.add("control_if_else")
+    is_last = blocks.var_equals(branch, "area number", AREA_NUMBER_ID, AREA_MAX)
+    blocks.blocks[branch]["inputs"]["CONDITION"] = [2, is_last]
+    blocks.substack(branch, [blocks.set_var("area number", AREA_NUMBER_ID, number(AREA_LOOP_BACK))])
+    blocks.substack(
+        branch, [blocks.change_var("area number", AREA_NUMBER_ID, 1)], name="SUBSTACK2"
+    )
+    return branch
+
+
+def _set_scroll_row(blocks: Blocks) -> str:
+    # scroll row = floor(((AREA_COUNTER_INIT - area progress) mod AREA_COUNTER_WRAP) / 256),
+    # built through the centralized operator helpers (never inline operator blocks — wrong
+    # slot keys there are invisible to structural tests and silently evaluate to NaN).
+    delta = blocks.op_sub(number(AREA_COUNTER_INIT), variable("area progress", AREA_PROGRESS_ID))
+    wrapped = blocks.op_mod(delta, number(AREA_COUNTER_WRAP))
+    divided = blocks.op_div(wrapped, number(AREA_ROW_DIVISOR))
+    floored = blocks.op_floor(divided)
+    return blocks.set_var_expr("scroll row", SCROLL_ROW_ID, floored)
+
+
+def _enter_area_top(blocks: Blocks) -> list[str]:
+    # The state every area entry establishes (fresh game, new life, area completion): progress at
+    # the top, the derived row snapped to the area-top row, the per-area terrain start column, and
+    # (AREA-02) the schedule cursor pointed at the area's first record with the per-area fired
+    # counter zeroed — so every entry point re-tops the schedule consistently.
+    return [
+        blocks.set_var("area progress", AREA_PROGRESS_ID, number(0)),
+        blocks.set_var("scroll row", SCROLL_ROW_ID, number(AREA_TOP_ROW)),
+        blocks.set_var_expr(
+            "terrain column",
+            TERRAIN_COLUMN_ID,
+            blocks.list_item(
+                "area map column", AREA_MAP_COLUMN_ID, variable("area number", AREA_NUMBER_ID)
+            ),
+        ),
+        blocks.set_var_expr(
+            "schedule cursor",
+            SCHEDULE_CURSOR_ID,
+            blocks.list_item(
+                "area schedule start", AREA_SCHEDULE_START_ID, variable("area number", AREA_NUMBER_ID)
+            ),
+        ),
+        blocks.set_var("schedule fired", SCHEDULE_FIRED_ID, number(0)),
+    ]
+
+
+def _consume_schedule(blocks: Blocks) -> list[str]:
+    # AREA-02 ordered dispatch: consume every record at the cursor whose trigger row equals the
+    # current scroll row, in order, advancing the cursor. Fire-once is guaranteed by the monotonic
+    # cursor over monotonic progress. The loop stops when the record's trigger no longer matches the
+    # row OR the cursor passes the area's end index (`cursor > end`, the belt-and-suspenders bound
+    # slice 6 relies on so one area never bleeds into the next). The sentinel never fires because
+    # the dispatch reads the POST-increment row, which is <= 12 until the wrap and never the area-top
+    # row 0x0D. The per-record handler dispatch is an EMPTY seam this slice (like advance-slots);
+    # `schedule fired` is the observable that events fire once, in order.
+    loop = blocks.add("control_repeat_until")
+
+    def cursor() -> list[Any]:
+        return variable("schedule cursor", SCHEDULE_CURSOR_ID)
+
+    end = blocks.list_item(
+        "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
+    )
+    past_end = blocks.op_gt(cursor(), end)
+    trigger = blocks.list_item("schedule trigger row", SCHEDULE_TRIGGER_ROW_ID, cursor())
+    row_matches = blocks.op_eq(trigger, variable("scroll row", SCROLL_ROW_ID))
+    row_differs = blocks.add("operator_not")
+    blocks.blocks[row_matches]["parent"] = row_differs
+    blocks.blocks[row_differs]["inputs"] = {"OPERAND": [2, row_matches]}
+    stop = blocks.add("operator_or")
+    blocks.blocks[past_end]["parent"] = stop
+    blocks.blocks[row_differs]["parent"] = stop
+    blocks.blocks[stop]["inputs"] = {"OPERAND1": [2, past_end], "OPERAND2": [2, row_differs]}
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop]
+    # ENGINE-TODO: the per-record handler dispatch (spawn / formation / difficulty / boss, keyed on
+    # `schedule handler` + `schedule payload`) lands with the enemy slices (8+); the consume today
+    # advances the cursor and counts the fire, with no per-handler behaviour.
+    blocks.substack(
+        loop,
+        [
+            blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
+            blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
+        ],
+    )
+    return [loop]
+
+
+def install_advance_area(blocks: Blocks) -> None:
+    # AREA-01/AREA-02 area clock + scheduler: one atomic (warp) pass per tick, called from the walk
+    # thread BEFORE `advance slots` — matching the reference frame order (handle_next_area ->
+    # handle_objects -> object updates) and fixing the PHASE order the enemy slices inherit while
+    # both dispatch bodies are still empty (no RNG is drawn in either phase yet). Advances the
+    # monotonic position and derives the row once; then a single `if/else` either completes the area
+    # (advance 16 -> 7 and re-top) OR consumes the schedule for this row — never both on one tick.
+    definition = _install_warp_proc(blocks, ADVANCE_AREA_PROCCODE)
+    step = blocks.change_var("area progress", AREA_PROGRESS_ID, AREA_PROGRESS_STEP)
+    set_row = _set_scroll_row(blocks)
+    completion = blocks.add("control_if_else")
+    complete = blocks.var_equals(completion, "scroll row", SCROLL_ROW_ID, AREA_COMPLETE_ROW)
+    blocks.blocks[completion]["inputs"]["CONDITION"] = [2, complete]
+    blocks.substack(completion, [_advance_area_number(blocks), *_enter_area_top(blocks)])
+    blocks.substack(completion, _consume_schedule(blocks), name="SUBSTACK2")
+    blocks.chain(definition, [step, set_row, completion])
+
+
 def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
     """A no-argument warp custom-block definition; returns the definition id."""
     definition = blocks.add("procedures_definition", top_level=True)
@@ -1187,6 +1467,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_rng_step(blocks)
     install_clear_slots(blocks)
     install_advance_slots(blocks)
+    install_advance_area(blocks)
     install_score(blocks)
     install_check_bonus_life(blocks)
     install_resolve_hit(blocks)
@@ -1336,13 +1617,22 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(loop, [bgm])
     blocks.chain(enter, [blocks.if_state("playing", [start_sound, loop])])
 
-    # SYS-04 centralized ordered update: a second `director enter` thread (parallel to
-    # the BGM loop above) drives one `advance slots` atomic pass per tick while playing.
+    # SYS-04 / AREA-01 centralized ordered update: a second `director enter` thread (parallel
+    # to the BGM loop above) drives one atomic pass per tick while playing. `advance area`
+    # runs BEFORE `advance slots` (the reference's area/schedule phase precedes the object
+    # walk), fixing the phase order the enemy slices inherit while both dispatch bodies are
+    # still empty.
     walk_enter = blocks.receive("director enter")
     walk_loop = blocks.add("control_repeat_until")
     walk_condition = blocks.not_state(walk_loop, "playing")
     blocks.blocks[walk_loop]["inputs"]["CONDITION"] = [2, walk_condition]
-    blocks.substack(walk_loop, [blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True)])
+    blocks.substack(
+        walk_loop,
+        [
+            blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
+            blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
+        ],
+    )
     blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
 
     # A NEW Stage `director reset` receiver — kept out of the transition procedure body
@@ -1395,6 +1685,34 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             high_reset,
         ],
     )
+
+    # AREA-01 area-state reset — a SEPARATE `director reset` receiver, kept off stage_reset's
+    # pinned opcode chain (like the eight existing reset receivers, each branching on its own
+    # scope for its own concern). It touches only the area vars, so the unordered same-target
+    # hat execution is safe. A world reset (cold-start / new-game) returns to area 1 and re-tops;
+    # a new life runs the NEAR-END CHECKPOINT: a death with the frozen scroll row in [0x0E, 0x43]
+    # advances to the next area instead of restarting (discharging docs/mechanics/003, 013),
+    # then re-tops. On a scope-`none` transition (e.g. the death itself) and on game-over this
+    # receiver does nothing, so `area progress`/`scroll row` stay frozen through the death
+    # sequence and the checkpoint reads the real death-tick row.
+    area_reset = blocks.receive("director reset")
+    world_area = reset_if(
+        blocks,
+        ("cold-start", "new-game"),
+        [blocks.set_var("area number", AREA_NUMBER_ID, number(AREA_FIRST)), *_enter_area_top(blocks)],
+    )
+    new_life = blocks.add("control_if")
+    new_life_scope = blocks.scope_is(new_life, "new-life")
+    blocks.blocks[new_life]["inputs"]["CONDITION"] = [2, new_life_scope]
+    near_end = blocks.add("operator_and")
+    low = blocks.greater(near_end, "scroll row", SCROLL_ROW_ID, AREA_CHECKPOINT_LOW_EXCL)
+    high = blocks.op_gt(number(AREA_CHECKPOINT_HIGH_EXCL), variable("scroll row", SCROLL_ROW_ID))
+    blocks.blocks[high]["parent"] = near_end
+    blocks.blocks[near_end]["inputs"] = {"OPERAND1": [2, low], "OPERAND2": [2, high]}
+    checkpoint = blocks.if_reporter(near_end, [_advance_area_number(blocks)])
+    blocks.substack(new_life, [checkpoint, *_enter_area_top(blocks)])
+    blocks.chain(area_reset, [world_area, new_life])
+
     return blocks.blocks
 
 
@@ -1587,8 +1905,10 @@ def terrain_blocks(
     # Rewind to the strip's top on cold-start, new-game, AND new-life: a new life now restarts
     # the current area from its top, the arcade rule the locked area-progression spec makes
     # normative — retiring the interim B11 preserve-terrain-on-death fixture (audit 2026-08-09).
-    # game-over is followed by a cold-start, which rewinds; the near-end checkpoint exception
-    # waits on the area clock (slice 5).
+    # The visual strip stays DECOUPLED from the area clock this slice (only area-1 art exists);
+    # the near-end checkpoint lives in the Stage `area_reset` receiver, where it advances the
+    # AREA NUMBER on a near-end death. Coupling this visual scroll to the clock is the
+    # presentation slice's (20) work.
     reset_control = blocks.add("control_if")
     tail = blocks.add("operator_or")
     ng = blocks.scope_is(tail, "new-game")
@@ -2317,6 +2637,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         LIVES_ID,
         NEXT_BONUS_ID,
         QUALIFIED_ID,
+        AREA_PROGRESS_ID,
+        AREA_NUMBER_ID,
+        SCROLL_ROW_ID,
+        TERRAIN_COLUMN_ID,
+        SCHEDULE_CURSOR_ID,
+        SCHEDULE_FIRED_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -2362,6 +2688,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # ECO-04: the best-five verdict, recorded (never a sprite write) when the game over
         # complete receiver runs, and reset only on a world reset (cold-start/new-game).
         QUALIFIED_ID: ["qualified", 0],
+        # AREA-01 area state (Stage-written, sprite-read, write-forbidden — NOT machinery).
+        # `area progress` is the monotonic position authority; `scroll row` is its once-per-tick
+        # derivation; `area number` tracks 1..16 (16 -> 7 loop); `terrain column` is the dormant
+        # per-area start-column seam. Defaults are the area-1 top, re-established on cold-start.
+        AREA_PROGRESS_ID: ["area progress", 0],
+        AREA_NUMBER_ID: ["area number", AREA_FIRST],
+        SCROLL_ROW_ID: ["scroll row", AREA_TOP_ROW],
+        TERRAIN_COLUMN_ID: ["terrain column", AREA_MAP_COLUMNS[0]],
+        # AREA-02 scheduler state (Stage-written, write-forbidden): the 1-based cursor into the
+        # flattened schedule lists and the per-area count of records fired (the observable).
+        SCHEDULE_CURSOR_ID: ["schedule cursor", 1],
+        SCHEDULE_FIRED_ID: ["schedule fired", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -2374,6 +2712,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         REPEAT_BONUS_123_ID,
         REPEAT_BONUS_5_ID,
         HIGH_SCORE_TABLE_ID,
+        AREA_MAP_COLUMN_ID,
+        SCHEDULE_HANDLER_ID,
+        SCHEDULE_TRIGGER_ROW_ID,
+        SCHEDULE_PAYLOAD_ID,
+        AREA_SCHEDULE_START_ID,
+        AREA_SCHEDULE_END_ID,
     }
     preserved_lists = {
         list_id: value
@@ -2413,6 +2757,19 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # in rank order; position 5 (1-based) is the fifth-place cutoff the game-over-complete
         # receiver compares the final score against.
         HIGH_SCORE_TABLE_ID: ["high score table", list(HIGH_SCORE_DEFAULTS)],
+        # AREA-01 per-area terrain start columns (docs/spec/data/terrain.json
+        # area_offset_in_map_tbl), indexed by area number 1-16. Ingested, not authored; a
+        # read-only reference table set on area entry, never written by a sprite.
+        AREA_MAP_COLUMN_ID: ["area map column", list(AREA_MAP_COLUMNS)],
+        # AREA-03 schedule table (docs/spec/data/area-schedules.json), ALL 16 normal areas flattened
+        # into three faithful parallel columns, each area = its records + a materialized sentinel row.
+        # The two 16-entry index lists give each area's 1-based inclusive span into the columns, read at
+        # runtime by area number. All read-only authority, sprite-write-forbidden.
+        SCHEDULE_HANDLER_ID: ["schedule handler", list(SCHEDULE_HANDLERS)],
+        SCHEDULE_TRIGGER_ROW_ID: ["schedule trigger row", list(SCHEDULE_ROWS)],
+        SCHEDULE_PAYLOAD_ID: ["schedule payload", list(SCHEDULE_PAYLOADS)],
+        AREA_SCHEDULE_START_ID: ["area schedule start", list(AREA_SCHEDULE_START)],
+        AREA_SCHEDULE_END_ID: ["area schedule end", list(AREA_SCHEDULE_END)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 

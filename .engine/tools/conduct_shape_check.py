@@ -102,7 +102,7 @@ def main(argv: list) -> int:
         return _demo()
     tier = os.environ.get("ENGINE_RULE_TIER", "hard")
     # ENGINE_CONDUCT_DIR (unset in production) lets the negative-fixture meta-check point the shape
-    # gate at a seeded conduct dir, so it is witnessed biting a real bad input (#286).
+    # gate at a seeded conduct dir, so it is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     conduct_dir = validate.env_override_path("ENGINE_CONDUCT_DIR")
     paths = sorted(glob.glob(os.path.join(conduct_dir, "*.md"))) if conduct_dir else None
     return emit(findings(tier, paths))

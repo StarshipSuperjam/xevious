@@ -1,0 +1,11 @@
+{
+  "id": "engine/check/shipped-issue-references",
+  "target": { "context": "shipped-issue-references" },
+  "kind": "custom/script",
+  "params": {
+    "script": ".engine/tools/shipped_issue_references_check.py"
+  },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "A file that ships into every generated repository carries a bare issue reference (a plain #N) in its prose. In a generated repository a bare #N resolves to THAT repository's own issue of the same number — a real page about something else — so the note points somewhere confidently wrong. The named file and line is just above. Name the repository: write the reference as StarshipSuperjam/engine-template#N. An ordinal (\"concern #1\", \"required check #2\", \"the #1 trust dependency\") and a PR-linkage line (\"Closes #1, #2\") are fine and are not flagged; this is a plain issue reference. If the flagged file does not actually ship into a generated repository, it belongs in the first-run retirement set (.engine/provisioning/first-run-assets.json). This check reads only prose — comments, docstrings, and prose fields — never a string literal, and it acts only in the engine's own home repository, where a bare #N is a defect; in a deployed repository a bare #N is correct and the check does nothing."
+}

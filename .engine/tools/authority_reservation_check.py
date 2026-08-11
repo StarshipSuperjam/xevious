@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Authority-tier reservation guard (issue #401) — the custom/script entry for
+"""Authority-tier reservation guard (issue StarshipSuperjam/engine-template#401) — the custom/script entry for
 engine/check/ontology-authority-reservation.
 
 Runs as a `custom/script` check in the CI suite: it reads the live surface catalog and every installed

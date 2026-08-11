@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Soft check: nudge that a pull request declares its Behaviors — the falsifiable capabilities it
-delivers, each naming the test or demo that exercises it — as a `### Behaviors` subsection under Scope.
+delivers, each naming the test that exercises it — as a `### Behaviors` subsection under Scope. The
+operator-runnable way to watch one of these work lives in the ## Demonstration section, not here.
 
 A custom/script (not the `presence` kind) because the declaration is a level-3 subsection, kept there
-deliberately so it does NOT add a ninth level-2 heading — the committed template's level-2 headings are
-locked to the eight canonical sections the hard completeness check enforces (test_seed.py). This is a
+deliberately so it does NOT add a further level-2 heading — the committed template's level-2 headings are
+locked to the nine canonical sections the hard completeness check enforces (test_seed.py). This is a
 SOFT nudge: it never blocks a merge, and a change with no observable behaviour (a dependency bump, a
 docs-only edit, a pure refactor) can leave the section saying so.
 
@@ -28,7 +29,8 @@ _FENCE = re.compile(r"^[ \t]*(```|~~~)")
 
 NUDGE = (
     "The pull request should declare its Behaviors — a `### Behaviors` subsection under Scope listing "
-    "the falsifiable capabilities this change delivers, each naming the test or demo that exercises it — "
+    "the falsifiable capabilities this change delivers, each naming the test that exercises it (the "
+    "operator-runnable walkthrough lives in the Demonstration section, not here) — "
     "so the change is weighed by the behaviour it completes, not its line count. This is a SOFT nudge: it "
     "never blocks a merge. A change with no observable behaviour (a dependency bump, a docs-only edit, a "
     "pure refactor) can leave the section saying so. Whether a declared behaviour is genuinely WHOLE — "

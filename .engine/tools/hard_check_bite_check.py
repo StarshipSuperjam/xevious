@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The negative-fixture meta-check (issue #286) — the custom/script entry for
+"""The negative-fixture meta-check (issue StarshipSuperjam/engine-template#286) — the custom/script entry for
 engine/check/hard-check-bite. The "checker-of-checkers".
 
 A hard check can be present, registered, runnable, and green-on-everything while its logic is a no-op or
@@ -29,14 +29,14 @@ The roster (the set proven):
 The only admissible carve-outs are bounded and disclosed, never an author's silent self-classification:
   - a unit with **no statically-decidable failure path in the CI environment** — disclosed by a
     `not-applicable.json` carrying that exact bounded reason, listed loudly here as a soft note;
-  - a **home-scoped** unit (#512) — disclosed by a `construction-scoped.json` (a frozen format name; see the
+  - a **home-scoped** unit (StarshipSuperjam/engine-template#512) — disclosed by a `construction-scoped.json` (a frozen format name; see the
     constant below) carrying the exact bounded reason, and honored ONLY where the ambient repo state confirms
     it: the unit is still run, and only a
     silent failed bite (no hard finding at all — a crash or fail-closed verdict is evidence, never excused) in a
     repo whose git origin is not the update home its manifest records — a copy of the engine, not its home —
     collapses to a loud soft note. In the engine's own home repo the declaration is inert and the bite stays
     required — so the declaration can never exempt a check where its failure path is reachable;
-  - a unit whose bite is witnessable only with a **declared live environment** (#531) — disclosed by a
+  - a unit whose bite is witnessable only with a **declared live environment** (StarshipSuperjam/engine-template#531) — disclosed by a
     `requires.json` naming the environment variables the witness needs. Ignored entirely in CI (where the
     declared environment is provided and the bite stays enforced); on a local machine missing one of the named
     variables, a failed bite collapses to a loud soft note instead of a false red.
@@ -58,7 +58,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import validate  # noqa: E402  (finding.v1, run_unit, REGISTRY, ROOT, CHECK_DIR)
-import repo_identity  # noqa: E402  (is_home_repo — the shared origin==home recognizer, #323)
+import repo_identity  # noqa: E402  (is_home_repo — the shared origin==home recognizer, StarshipSuperjam/engine-template#323)
 
 _FIXTURES_REL = os.path.join(".engine", "_fixtures")
 # The closed kinds drive against a single fixture by a path/data target; custom/script is covered by its three
@@ -67,7 +67,7 @@ _PATH_KINDS = {"presence", "schema", "shape"}
 # The exact bounded carve-out property (fixed VERBATIM precisely so a compressed slug cannot reopen
 # the self-classification escape). A not-applicable.json must carry this exact string.
 _NA_PROPERTY = "no statically-decidable failure path in the CI environment"
-# The home-scoped property (#512), same VERBATIM discipline. The declaration file must carry it, and is honored
+# The home-scoped property (StarshipSuperjam/engine-template#512), same VERBATIM discipline. The declaration file must carry it, and is honored
 # only where the ambient root confirms the repo is NOT the engine's own home.
 #
 # THIS FILENAME AND THIS STRING ARE A FROZEN ON-DISK FORMAT — do not "tidy" them to match the engine's prose.
@@ -80,7 +80,7 @@ _NA_PROPERTY = "no statically-decidable failure path in the CI environment"
 # not, and the mismatch is deliberate. TestLiveDeclarationsAreHonored pins both sides against the shipped files.
 _HS_DECLARATION = "construction-scoped.json"
 _CS_PROPERTY = "no reachable failure path outside the construction repository"
-# The declared-environment property (#531), same VERBATIM discipline for the same reason: a requires.json
+# The declared-environment property (StarshipSuperjam/engine-template#531), same VERBATIM discipline for the same reason: a requires.json
 # must carry it alongside the named variables, so this class of declaration can no more be minted casually
 # than the other two.
 _REQ_PROPERTY = "the aimed bite is witnessable only with a live repository connection"
@@ -228,10 +228,10 @@ def _failed_bite_applicability(unit, fdir: str, root: str, tier: str) -> "list |
     list that replaces the did-not-bite red (a loud soft note, or a hard rejection of a malformed declaration),
     or None when no declaration applies and the failed bite must stand. Two declarations exist:
 
-      - the home-scoped declaration (#512): the check's failure path is reachable only in the engine's own home.
+      - the home-scoped declaration (StarshipSuperjam/engine-template#512): the check's failure path is reachable only in the engine's own home.
         Honored only where the AMBIENT root confirms the repo is not the construction one — in the construction
         repo the declaration is inert and the failed bite stands, so it can never exempt a reachable check.
-      - requires.json (#531): the bite is witnessable only with the named environment variables (a live-API
+      - requires.json (StarshipSuperjam/engine-template#531): the bite is witnessable only with the named environment variables (a live-API
         witness). IGNORED in CI, where the declared environment is provided and the bite stays enforced; outside
         CI a missing named variable collapses the red to a loud soft note so a local rehearsal reads honestly.
     """

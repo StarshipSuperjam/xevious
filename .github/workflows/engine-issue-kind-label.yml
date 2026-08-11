@@ -1,0 +1,50 @@
+# engine-issue-kind-label — the on:issues applicator that keeps the GitHub-native kind labels consistent.
+# On every Issue opened or edited it derives the fitting native label (bug/enhancement/documentation/question)
+# from the title's `Kind:` prefix and applies it — apply-only, skipping a native label the repo owner deleted
+# (it mints nothing). It NEVER gates Issue creation (GitHub cannot) — an honest backstop, not a wall.
+# ADVISORY: not a required check, so a finding can never block a merge.
+#
+# DEMO-VERIFIED, NOT END-TO-END HERE. GitHub runs `on: issues` only on a live deployed repo, so in this
+# construction repo the behaviour is proven by `issue_kind_label.py demo` (real logic, fake GitHub), not
+# end-to-end. The first live firing on a deployed repo is its end-to-end confirmation.
+#
+# NO SELF-RETRIGGER. Applying a label fires a `labeled` event, which this `[opened, edited]` trigger does not
+# watch; the tool only adds a label (never edits a title/body, which would fire `edited`), so it cannot loop.
+name: engine-issue-kind-label
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read   # for the checkout (to materialize the engine tool-runtime)
+  issues: write    # to add the derived native kind label (GitHub grants no finer "labels" scope)
+
+# Serialize runs for the SAME Issue so a rapid opened+edited cannot race the read-then-add. Distinct from the
+# conformance net's group so the two unrelated on:issues workflows never needlessly serialize against each other.
+# cancel-in-progress: false — let an in-flight apply finish, never half-act.
+concurrency:
+  group: engine-issue-kind-label-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  kind-label:
+    name: engine-issue-kind-label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up uv (pinned)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.8"
+      - name: Materialize the engine tool-runtime
+        run: uv sync --directory .engine --frozen
+      - name: Apply the native kind label from the issue title
+        # The tool reads the issue title/number from $GITHUB_EVENT_PATH (.issue.*), never from an
+        # interpolated shell argument — no attacker-controlled title reaches the shell, and the label it
+        # applies is a fixed enum, never raw title text.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: uv run --directory .engine --frozen -- python tools/issue_kind_label.py

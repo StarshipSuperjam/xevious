@@ -125,7 +125,7 @@ def main(argv: list) -> int:
         return _demo()
     tier = os.environ.get("ENGINE_RULE_TIER", "hard")
     # ENGINE_OVERRIDE_PATH (unset in production) lets the negative-fixture meta-check feed a seeded
-    # saved-settings file so the stale-override gate is witnessed biting a real bad input (#286).
+    # saved-settings file so the stale-override gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     override_path = validate.env_override_path("ENGINE_OVERRIDE_PATH")
     override = validate.load_json(override_path) if override_path else None
     return emit(findings(tier, override))

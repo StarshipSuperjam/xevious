@@ -71,4 +71,6 @@ cold-start and new-game, matching the arcade rule the settled area-progression s
 discharging the 2026-08-09 audit's B11 obligation. The full change — plus the death outcome now decided
 from the craft counter rather than a hardcoded D/G value — is recorded in
 [013-death-decision-and-terrain-restart](013-death-decision-and-terrain-restart.md). The near-end
-checkpoint exception to the restart rule still waits on the area clock (slice 5).
+checkpoint exception to the restart rule is now built in the area clock and recorded in
+[015-area-clock](015-area-clock.md) — a death in the final fifth of an area advances to the next area
+instead of restarting — so the locked reset-scope rule is fully satisfied.

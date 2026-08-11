@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The native-scanning security floor (issue #124). Enables GitHub's NATIVE secret scanning + push protection, CodeQL
+"""The native-scanning security floor (issue StarshipSuperjam/engine-template#124). Enables GitHub's NATIVE secret scanning + push protection, CodeQL
 default code scanning, and private vulnerability reporting WHERE THE REPOSITORY'S TIER SUPPORTS THEM — each by
 a single operator-privileged `gh` call, branching on the call's HTTP status, never fire-and-forget. It never
 reports a feature on when the enabling call did not succeed (verify-after, mirroring bootstrap.ControlPlane),

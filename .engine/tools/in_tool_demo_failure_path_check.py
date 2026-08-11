@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""In-tool demo failure-path floor (engine-template #171) — the custom/script
+"""In-tool demo failure-path floor (StarshipSuperjam/engine-template#171) — the custom/script
 entry for engine/check/in-tool-demo-failure-path.
 
 The engine's in-tool `demo`/`demo-*`/`hook-demo` subcommand is a promoted standing falsification capability — a falsification carried INSIDE a shipped tool, AI-run on demand, which travels into every generated
@@ -11,7 +11,7 @@ rather than printing it and returning 0 regardless. A subcommand whose every exi
 print-only showcase) cannot fail and is flagged.
 
 Scope: the in-tool subcommands that TRAVEL. It scans `.engine/tools/**/*.py`, excluding the standalone
-`demo_*.py` files and `test_*.py` (a separate population — the standalone construction demos, governed by engine-template #191), and the first-run-retired assets (the `instantiator.py` construction
+`demo_*.py` files and `test_*.py` (a separate population — the standalone construction demos, governed by StarshipSuperjam/engine-template#191), and the first-run-retired assets (the `instantiator.py` construction
 subcommands, removed at first run — read from the committed manifest, never imported). Honest static reach: it follows one level of `return _handler(...)` delegation and reads the dispatch branch's own returns;
 a failure path produced only by deep indirection is a residual it does not claim to catch. It runs as a hard
 CI custom/script check: finding.v1 JSON on stdout, return 0 on a successful evaluation (empty array = every
@@ -156,7 +156,7 @@ def check(root: str | None = None) -> list:
 def main() -> int:
     # ENGINE_ROOT (unset in production) lets the negative-fixture meta-check point the scan at a
     # seeded mini-tree carrying a demo subcommand that cannot fail, so the gate is witnessed biting a
-    # real bad input (#286).
+    # real bad input (StarshipSuperjam/engine-template#286).
     print(json.dumps(check(validate.env_override_path("ENGINE_ROOT"))))
     return 0
 

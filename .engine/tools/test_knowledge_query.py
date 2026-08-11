@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import knowledge_index as ki      # noqa: E402
 import knowledge_query as kq      # noqa: E402
 import knowledge_gen as kg        # noqa: E402
+import mcp_test_support as mts    # noqa: E402
 
 D116_OPS = {"health", "get-entity", "find", "neighbors", "relate"}
 
@@ -346,34 +347,36 @@ class TestDegradeSurfacing(unittest.TestCase):
 
 
 class TestMcpServer(unittest.IsolatedAsyncioTestCase):
-    """The graph-query MCP server, headless (in-process) — no Claude Desktop, no subprocess. The
-    server's tools delegate to the op-set over the LIVE committed graph."""
+    """The graph-query MCP server, exercised through the SDK's in-memory client (mcp_test_support) — the
+    real protocol path a caller sees, no Claude Desktop, no subprocess. The server's tools delegate to the
+    op-set over the LIVE committed graph."""
 
-    @staticmethod
-    def _tool_result_json(res):
-        content = res[0] if isinstance(res, tuple) else res
-        return json.loads(content[0].text)
+    async def _call(self, name, args):
+        """Same convenience the memory suite's base class carries — kept in lockstep so a reader moving
+        between the two sibling suites can pattern-match either way without an AttributeError."""
+        import knowledge_mcp_server as srv
+        return await mts.call_tool_json(srv.server, name, args)
 
     async def test_tools_list_is_exactly_the_op_set(self):
         import knowledge_mcp_server as srv
-        names = {t.name for t in await srv.server.list_tools()}
-        self.assertEqual(names, D116_OPS)
+        tools = await mts.list_tool_objects(srv.server)
+        self.assertEqual({t.name for t in tools}, D116_OPS)
+        # The descriptions are load-bearing (they are how a caller learns what each operation does), so a
+        # regression that drops them under a new SDK must not hide behind a name-set comparison.
+        for t in tools:
+            self.assertTrue((t.description or "").strip(), f"tool {t.name!r} lost its description")
 
     async def test_health_is_content_free_and_fixed_identity(self):
-        import knowledge_mcp_server as srv
         with mock.patch.object(kq, "with_degrade", side_effect=AssertionError("health read graph")):
-            data = self._tool_result_json(await srv.server.call_tool("health", {}))
+            data = await self._call("health", {})
         self.assertEqual(data, {"status": "ok", "server": "engine-knowledge-graph"})
 
     async def test_call_tool_get_entity_delegates(self):
-        import knowledge_mcp_server as srv
-        data = self._tool_result_json(await srv.server.call_tool("get-entity", {"id": "module:core"}))
+        data = await self._call("get-entity", {"id": "module:core"})
         self.assertEqual(data["entity"]["id"], "module:core")
 
     async def test_call_tool_neighbors_matches_the_library(self):
-        import knowledge_mcp_server as srv
-        data = self._tool_result_json(
-            await srv.server.call_tool("neighbors", {"id": "schema:check.v1", "direction": "in"}))
+        data = await self._call("neighbors", {"id": "schema:check.v1", "direction": "in"})
         expected = kq.neighbors("schema:check.v1", direction="in")
         self.assertEqual({n["id"] for n in data["neighbors"]}, {n["id"] for n in expected})
         self.assertTrue(len(data["neighbors"]) >= 1)
@@ -388,15 +391,23 @@ class TestMcpServer(unittest.IsolatedAsyncioTestCase):
             result, _ = real(fn, **kw)
             return result, "KNOWLEDGE DEGRADED: test note"
         with mock.patch.object(kq, "with_degrade", fake):
-            data = self._tool_result_json(await srv.server.call_tool("get-entity", {"id": "module:core"}))
+            data = await self._call("get-entity", {"id": "module:core"})
         self.assertEqual(data["entity"]["id"], "module:core")
         self.assertEqual(data["degraded"], "KNOWLEDGE DEGRADED: test note")
 
     async def test_tool_has_no_degraded_key_on_a_fresh_committed_read(self):
         # The real committed graph is present in this checkout, so a normal read carries no degrade note.
-        import knowledge_mcp_server as srv
-        data = self._tool_result_json(await srv.server.call_tool("get-entity", {"id": "module:core"}))
+        data = await self._call("get-entity", {"id": "module:core"})
         self.assertNotIn("degraded", data)
+
+    async def test_server_launches_over_stdio_and_answers_health(self):
+        # The launch seam .mcp.json actually uses — the one place a dead server fails SILENTLY in a real
+        # deployment (it just never appears in the model's tool list). The in-memory tests above never run
+        # `server.run()`, never resolve the frozen environment, and never complete a handshake; this one
+        # runs the documented argv as a real subprocess and asserts the handshake and the health answer.
+        engine_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data = await mts.stdio_health(engine_dir, "tools/knowledge_mcp_server.py")
+        self.assertEqual(data, {"status": "ok", "server": "engine-knowledge-graph"})
 
 
 class TestEnrichedEntities(unittest.TestCase):
