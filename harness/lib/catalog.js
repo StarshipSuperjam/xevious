@@ -14,6 +14,8 @@ import {
   keyUp,
   tapKey,
   readVar,
+  writeVar,
+  fireBroadcast,
   cloneCount,
   cloneReports,
   constants,
@@ -215,6 +217,94 @@ export const SCENARIOS = [
     },
     // Break floor() so every digit becomes floor(...)=0 → all digit/0, decoding to 0 (≠ score).
     negativeMutation: (p) => mutate.misnameMathopOperator(p, 'hud'),
+  },
+  {
+    key: 'area-clock-scheduler',
+    behavior:
+      'The area clock advances a monotonic position, completes areas (advancing the area number), and the schedule consumes records once each in order',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // `area progress` is a sawtooth (it climbs within an area, then resets at completion), so
+      // assert on pacing-invariant facts: it is SEEN to advance, the area number advances as
+      // areas complete, `schedule fired` climbs, and WITHIN an area it never decreases (records
+      // fire once, in order) — it only resets at a boundary, where the area number also changes.
+      let progressAdvanced = false;
+      let firedSeen = 0;
+      let areaAdvances = 0;
+      let firedMonotonicWithinArea = true;
+      let prevProgress = readVar(vm, 'area-progress');
+      let prevArea = readVar(vm, 'area-number');
+      let prevFired = readVar(vm, 'area-schedule-fired');
+      for (let i = 0; i < 80; i += 1) {
+        step(vm, 1);
+        const progress = readVar(vm, 'area-progress');
+        const area = readVar(vm, 'area-number');
+        const fired = readVar(vm, 'area-schedule-fired');
+        if (progress > prevProgress) progressAdvanced = true;
+        if (area !== prevArea) areaAdvances += 1;
+        else if (fired < prevFired) firedMonotonicWithinArea = false;
+        firedSeen = Math.max(firedSeen, fired);
+        prevProgress = progress;
+        prevArea = area;
+        prevFired = fired;
+      }
+      return { progressAdvanced, firedSeen, areaAdvances, firedMonotonicWithinArea };
+    },
+    assert(obs) {
+      assert.equal(obs.progressAdvanced, true, 'area progress advances while playing');
+      assert.ok(obs.areaAdvances >= 1, 'the area number advances as areas complete');
+      assert.ok(obs.firedSeen >= 1, 'the schedule consumes records (schedule fired climbs)');
+      assert.equal(
+        obs.firedMonotonicWithinArea,
+        true,
+        'within an area, records fire once (schedule fired never decreases except at a boundary)',
+      );
+    },
+    // Freeze the area clock so the monotonic position never advances → progress1 === progress0.
+    negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'area progress'),
+  },
+  {
+    key: 'near-end-checkpoint',
+    behavior:
+      'A new-life death advances the area when the frozen scroll row is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
+    playtestStep: 5,
+    async drive(vm) {
+      // The live death->respawn sequence completes within a single headless pump, so it cannot be
+      // paused to inject a frozen row. Instead drive `area_reset` in isolation: green-flag to a
+      // settled state, inject the new-life scope + a chosen area number + a chosen frozen scroll
+      // row, fire `director reset`, and read the resulting area number — exactly the death-tick
+      // checkpoint decision, at every boundary.
+      const trial = (row, area) => {
+        vm.greenFlag();
+        step(vm, 2);
+        writeVar(vm, 'game-director-reset-scope', 'new-life');
+        writeVar(vm, 'area-number', area);
+        writeVar(vm, 'area-scroll-row', row);
+        fireBroadcast(vm, 'director reset');
+        step(vm, 1);
+        return readVar(vm, 'area-number');
+      };
+      return {
+        low: trial(14, 5), // 0x0E — window low edge
+        mid: trial(40, 5),
+        high: trial(67, 5), // 0x43 — window high edge
+        belowTop: trial(13, 5), // area-top row, below the window
+        aboveWindow: trial(68, 5), // just above 0x43
+        wrap16: trial(40, 16), // in-window death in area 16
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.low, 6, 'a death at row 14 (window low edge) advances the area');
+      assert.equal(obs.mid, 6, 'a death at row 40 advances the area');
+      assert.equal(obs.high, 6, 'a death at row 67 (window high edge) advances the area');
+      assert.equal(obs.belowTop, 5, 'a death at row 13 restarts (holds the area)');
+      assert.equal(obs.aboveWindow, 5, 'a death at row 68 restarts (holds the area)');
+      assert.equal(obs.wrap16, 7, 'an in-window death in area 16 wraps to area 7');
+    },
+    // Raise the window's lower bound (row > 13) out of reach, so no death is ever near-end and the
+    // in-window advances never happen → the advance assertions fail.
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 13, 999),
   },
 ];
 

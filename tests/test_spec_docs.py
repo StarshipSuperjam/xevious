@@ -389,5 +389,97 @@ class GeneratedRngStep(unittest.TestCase):
         self.assertNotEqual(outputs, fixture["outputs"])
 
 
+class GeneratedAreaClock(unittest.TestCase):
+    """AREA-01: interpret the EMITTED scroll-row derivation against hand-verified boundary
+    values (a check on the blocks that ship, not a parallel Python formula), and check the
+    ingested terrain-column list against the committed reference data."""
+
+    def _row_reporter(self, blocks):
+        # The derived `set scroll row` — a reporter VALUE ([3, block, shadow]), distinct from
+        # the plain `set scroll row to 13` re-tops (VALUE kind 1).
+        for block in blocks.values():
+            if (
+                block["opcode"] == "data_setvariableto"
+                and block["fields"]["VARIABLE"][0] == "scroll row"
+                and block["inputs"]["VALUE"][0] == 3
+            ):
+                return block["inputs"]["VALUE"][1]
+        raise AssertionError("no derived `scroll row` setter found in the emitted blocks")
+
+    def test_generated_scroll_row_derivation(self):
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        reporter = self._row_reporter(blocks)
+        # area progress -> derived arcade scroll row (hand-verified): the descent 0x0D..0x00
+        # wraps to 0xFF and continues down, and the area completes at the first row 0x0E, which
+        # is progress 65056 (not 65280 — the clock resets before that).
+        cases = {0: 13, 256: 12, 3328: 0, 3584: 255, 64800: 15, 65024: 15, 65056: 14, 65280: 14}
+        for progress, expected in cases.items():
+            row = _eval_block(blocks, reporter, {"area progress": progress})
+            self.assertEqual(expected, row, f"area progress {progress}")
+
+    def test_generated_scroll_row_never_skips_a_row(self):
+        # 32 units/tick against a 256-wide row means every row is visited, so no schedule
+        # trigger is stepped over: each tick drops the row by 0 or 1 (mod 256, so the 0x00->0xFF
+        # wrap counts as 1), and completion (row 14) is reached at the end of the sweep.
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        reporter = self._row_reporter(blocks)
+        prev = _eval_block(blocks, reporter, {"area progress": 0})
+        progress = 32
+        while progress <= 65056:
+            row = _eval_block(blocks, reporter, {"area progress": progress})
+            self.assertIn((prev - row) % 256, (0, 1), f"progress {progress}: {prev}->{row}")
+            prev = row
+            progress += 32
+        self.assertEqual(14, prev)
+
+    def test_area_map_column_matches_terrain_json(self):
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        expected = json.loads((DATA / "terrain.json").read_text())[
+            "area_offset_in_map_tbl"
+        ]["values"]
+        self.assertEqual(expected, by_name["area map column"])
+
+    def test_area1_schedule_round_trips_from_json(self):
+        # AREA-02: the ingested schedule columns are a FAITHFUL, lossless copy of area 1's records
+        # (53) plus the materialized end sentinel (= 54), with the opaque payload decodable back to
+        # object_type + params — so no handler's parameters are silently dropped.
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        handlers = by_name["schedule handler"]
+        rows = by_name["schedule trigger row"]
+        payloads = by_name["schedule payload"]
+
+        area = next(
+            a
+            for a in json.loads((DATA / "area-schedules.json").read_text())["areas"]
+            if a["area"] == 1
+        )
+        records = area["records"]
+        self.assertEqual(len(records) + 1, len(handlers))  # + materialized sentinel
+        self.assertEqual({len(handlers), len(rows)}, {len(payloads)})
+
+        for i, record in enumerate(records):
+            self.assertEqual(record["handler"], handlers[i], f"handler {i}")
+            self.assertEqual(record["scroll_row"], rows[i], f"trigger row {i}")
+            decoded = json.loads(payloads[i])
+            self.assertEqual(
+                {"object_type": record["object_type"], "params": record["params"]},
+                decoded,
+                f"payload {i}",
+            )
+
+        # the terminal row is the sentinel: the JSON's scalar end_sentinel, not a record.
+        self.assertEqual("sentinel", handlers[-1])
+        self.assertEqual(area["end_sentinel"], rows[-1])
+        self.assertEqual("", payloads[-1])
+
+        # every area maps to area 1's table this slice (the honest slice-6 seam).
+        self.assertEqual([1] * 16, by_name["area schedule start"])
+        self.assertEqual([len(handlers)] * 16, by_name["area schedule end"])
+
+
 if __name__ == "__main__":
     unittest.main()

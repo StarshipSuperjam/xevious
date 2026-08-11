@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "f523f240990e67daaeedfca6434ac0c5f0c68c8e9a68d13885db90543e15d08b",
+  "manifest_sha256": "333292e13873deebc3578b5a372fb9ae0aa19a1bbd6d15bba1967b8d052d5c30",
   "outputs": {
     "a24961bd4fd2644e06471237dfd6325b.png": {
       "kind": "glyph",
@@ -363,12 +363,12 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "3ff5b57a5857756abaf9d15288661f56.png": {
+    "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "kind": "life_icon",
       "name": "life/ship",
       "rect": [
-        138,
-        28,
+        5,
+        27,
         16,
         16
       ],
