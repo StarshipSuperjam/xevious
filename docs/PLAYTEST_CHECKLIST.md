@@ -51,9 +51,11 @@ so area position is read from the `area progress`/`area number` variable watcher
    but an `area progress` drop that is *not* paired with `area number` changing is a bug; `scroll row`
    counts 13 down to 0 then wraps 255 down toward 14; and `schedule fired` climbs (once per schedule
    record as the area scrolls) and resets to 0 at each area boundary. Every area now carries its **own**
-   schedule, so the count `schedule fired` reaches **differs from one area to the next** (an area reading
-   the wrong schedule would show as a wrong or identical count). The visual terrain is not yet driven by
-   the clock, so these are variable-watcher checks, not on-screen ones.
+   schedule, so the peak `schedule fired` reaches **varies as the area changes** — a coarse sign that each
+   area runs its own schedule. (Some areas legitimately share a record count, so two areas showing the
+   *same* peak is **not** itself a bug; the exact per-area correctness is guaranteed by the build-time
+   round-trip test, not the eye.) The visual terrain is not yet driven by the clock, so these are
+   variable-watcher checks, not on-screen ones.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row (today: press D; once
    killers exist, die to a bullet, an enemy, and a Bacura): the full death presentation and sound
    complete uncut, the craft respawns immediately vulnerable, and nothing from the previous life
@@ -65,7 +67,8 @@ so area position is read from the `area progress`/`area number` variable watcher
    number` by one instead (the checkpoint; completing area 16 rolls to 7). With area-1-only art the
    screen can't show the difference, so `area number` is the pass/fail signal. **You do not need to
    reach area 16 by play** — there is no clock-acceleration key, so confirm a **few** real area→area+1
-   advances (each with `schedule fired` reaching a per-area-distinct count, per step 4); the full
+   advances (with `schedule fired` climbing and resetting each boundary, its peak varying as areas
+   change — the coarse sanity signal of step 4); the full
    **1–16→7 loop** and the 16→7 return with **no win screen** are proven by the engine's accelerated
    trace, not by playing to the end. Draining the craft (repeated D, or G) reaches GAME OVER, holds, and
    returns to the title; life icons in the HUD track the count.

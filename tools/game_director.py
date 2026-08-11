@@ -424,13 +424,21 @@ def _load_all_area_schedules() -> tuple[
 ]:
     # AREA-03: flatten all 16 normal area schedules into three parallel columns, with two 16-entry
     # index lists giving each area's 1-based INCLUSIVE span [start..end] into those columns. Areas are
-    # visited by explicit number (not JSON array order) so a missing or duplicated area fails LOUD via
-    # _load_area_schedule's `next(...)`. Each area contributes its records + one materialized sentinel,
-    # so its span length is len(records)+1; the spans are contiguous and cover the whole flattened table
-    # (the end of area AREA_MAX equals len(handlers)). No per-slice total is hardcoded — it falls out of
-    # the concatenation. The per-area round-trip golden in tests/test_spec_docs.py re-derives these spans
-    # independently from the JSON record counts and compares the flattened windows to the source records,
-    # so an offset off-by-one that leaked one area into the next would fail there.
+    # visited by explicit number (not JSON array order); an up-front check requires exactly areas
+    # AREA_FIRST..AREA_MAX, once each, so a missing OR duplicated area fails LOUD with a clear message
+    # (not a bare StopIteration, and not a silently-swallowed duplicate). Each area contributes its
+    # records + one materialized sentinel, so its span length is len(records)+1; the spans are
+    # contiguous and cover the whole flattened table (the end of area AREA_MAX equals len(handlers)). No
+    # per-slice total is hardcoded — it falls out of the concatenation. The per-area round-trip golden in
+    # tests/test_spec_docs.py re-derives these spans independently from the JSON record counts and
+    # compares the flattened windows to the source records, so an offset off-by-one that leaked one area
+    # into the next would fail there.
+    defined = sorted(a["area"] for a in _load_spec_data("area-schedules.json")["areas"])
+    if defined != list(range(AREA_FIRST, AREA_MAX + 1)):
+        raise SystemExit(
+            f"area-schedules.json must define exactly areas {AREA_FIRST}..{AREA_MAX}, "
+            f"once each; found {defined}"
+        )
     handlers: list[str] = []
     rows: list[int] = []
     payloads: list[str] = []
