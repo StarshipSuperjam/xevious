@@ -2783,10 +2783,12 @@ class ScratchProjectTests(unittest.TestCase):
 
     @staticmethod
     def _area02_failures(project: dict) -> set:
-        """AREA-02 area object scheduler: exactly one fixture area (54 flattened entries = 53
-        records + the materialized sentinel), an ordered consume loop guarded by `cursor > end` OR
-        `trigger != scroll row`, an EMPTY per-record dispatch seam, and the observable that
-        advances the cursor and counts fires. Structure only; the dynamic fire-once/in-order
+        """AREA-02/AREA-03 area object scheduler: all 16 normal areas flattened into three parallel
+        columns (each area = its records + one materialized sentinel), partitioned by two 16-entry
+        index lists into contiguous 1-based inclusive per-area spans; an ordered consume loop guarded
+        by `cursor > end` OR `trigger != scroll row`, an EMPTY per-record dispatch seam, and the
+        observable that advances the cursor and counts fires. Structure only; the per-area JSON-faithful
+        content is the round-trip golden's job (test_spec_docs), and the dynamic fire-once/in-order
         behaviour is exercised by the scratch-vm harness and the operator playtest."""
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
@@ -2801,24 +2803,39 @@ class ScratchProjectTests(unittest.TestCase):
                 and spec[1][2:3] == [var_id]
             )
 
-        # exactly area-1's 54 entries across the three parallel columns (guards slice-6 leakage).
-        lengths = {
-            len(by_name.get(name, []))
-            for name in ("schedule handler", "schedule trigger row", "schedule payload")
-        }
-        if lengths != {director.SCHEDULE_LENGTH}:
-            failures.add("schedule-lists-length")
-
-        # the terminal row is the materialized sentinel (handler 'sentinel', trigger 0x0D).
+        # the three parallel columns are equal length and the two 16-entry index lists partition them
+        # into contiguous 1-based inclusive per-area spans (guards a column/index-list mismatch or a
+        # leaked/dropped entry). The JSON-faithful per-area CONTENT is the round-trip golden's job.
         handlers = by_name.get("schedule handler", [])
         rows = by_name.get("schedule trigger row", [])
-        if not (
-            handlers
-            and handlers[-1] == director.SCHEDULE_SENTINEL_HANDLER
-            and rows
-            and rows[-1] == director.AREA_TOP_ROW
-        ):
+        payloads = by_name.get("schedule payload", [])
+        starts = by_name.get("area schedule start", [])
+        ends = by_name.get("area schedule end", [])
+        total = len(handlers)
+        contiguous = (
+            len(starts) == director.AREA_MAX
+            and len(ends) == director.AREA_MAX
+            and starts[:1] == [1]
+            and ends[-1:] == [total]
+            and all(starts[i] == ends[i - 1] + 1 for i in range(1, director.AREA_MAX))
+            and all(starts[i] <= ends[i] for i in range(director.AREA_MAX))
+        )
+        if not (total > 0 and len(rows) == total and len(payloads) == total and contiguous):
+            failures.add("schedule-lists-length")
+
+        # EVERY area's slice ends in the materialized sentinel (handler 'sentinel', trigger 0x0D) — a
+        # per-area check, so an interior area's sentinel corruption cannot hide behind the global tail.
+        if not (starts and ends and len(starts) == len(ends)):
             failures.add("schedule-sentinel")
+        else:
+            for start, end in zip(starts, ends):
+                if not (
+                    1 <= end <= total
+                    and handlers[end - 1] == director.SCHEDULE_SENTINEL_HANDLER
+                    and rows[end - 1] == director.AREA_TOP_ROW
+                ):
+                    failures.add("schedule-sentinel")
+                    break
 
         def body_ids(loop_id):
             sub = blocks[loop_id]["inputs"].get("SUBSTACK")
@@ -2931,7 +2948,10 @@ class ScratchProjectTests(unittest.TestCase):
             list_named(p, "schedule trigger row")[1].append(99)
 
         def break_sentinel(p):
-            list_named(p, "schedule handler")[1][-1] = "add_ground_object"
+            # corrupt an INTERIOR area's sentinel (area 1's, at its span end), not the global tail —
+            # a global-tail-only check would miss this; the per-area check must catch it.
+            area1_end = list_named(p, "area schedule end")[1][0]
+            list_named(p, "schedule handler")[1][area1_end - 1] = "add_ground_object"
 
         def break_cursor_advance(p):
             s = stage_of(p)
@@ -3001,6 +3021,38 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._area02_failures(project), label)
+
+    def test_generated_schedule_has_no_super_or_unknown_object(self) -> None:
+        # AREA-03 acceptance guard on the BAKED project: every scheduled record decodes to a normal
+        # object type (<= NORMAL_TYPE_MAX — INCLUSIVE; the max real type equals that ceiling) and a
+        # known handler; the materialized sentinel (empty payload) is skipped. Keyed off the canonical
+        # threshold (tools/reference_extract) and the reference registry, never a re-derived literal —
+        # so a Super-only or unknown record smuggled into the flattened columns fails here.
+        import reference_extract  # noqa: E402
+
+        registry = json.loads(
+            (ROOT / "docs" / "spec" / "data" / "object-types.json").read_text()
+        )["registry"]["types"]
+        known_handlers = {t.get("schedule_action") for t in registry} - {"none", None}
+
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        handlers = by_name["schedule handler"]
+        payloads = by_name["schedule payload"]
+        self.assertEqual(len(handlers), len(payloads))
+
+        for i, (handler, payload) in enumerate(zip(handlers, payloads)):
+            if handler == director.SCHEDULE_SENTINEL_HANDLER:
+                self.assertEqual("", payload, f"sentinel payload not empty at {i}")
+                continue
+            self.assertIn(handler, known_handlers, f"unknown handler {handler!r} at {i}")
+            obj_type = json.loads(payload)["object_type"]
+            self.assertLessEqual(
+                obj_type,
+                reference_extract.NORMAL_TYPE_MAX,
+                f"Super-only object_type {obj_type} at index {i}",
+            )
 
     def test_spec_data_loader_verifies_manifest_hash(self) -> None:
         # The AREA ingest loader hard-fails at build time on a data file whose bytes do not match
@@ -4308,7 +4360,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "9a71681c6aa9a7f847eb74d76a93df252bc946f1ab2b576d65ab319a8cd6aa0a",
+            "4d7c2dfd15618a5f835bf79fe3592a0719e013f5625cf891f69ce77323ba7394",
             build_hash,
         )
 

@@ -370,14 +370,16 @@ def _load_terrain_columns() -> list[int]:
 
 AREA_MAP_COLUMNS = _load_terrain_columns()
 
-# AREA-02 area object scheduler (docs/spec/area-progression-and-terrain.md). Each area has one
-# schedule table consumed strictly in order: a record fires when the scroll row equals its trigger
-# row, then the cursor advances. This slice ingests ONE fixture area (area 1); the representation is
-# lossless and slice-6-ready — all 16 areas append to the SAME flattened columns, and only the two
-# 16-entry index lists change. Every handler's variable `params` (slot/sprite_y, mask, row, count,
-# formation_offset, path, ...) is carried faithfully as an opaque JSON PAYLOAD so no field is
-# dropped and the schema never has to grow; the handlers themselves (spawn, formation, difficulty,
-# boss) arrive with the enemy slices (8+), so the per-record dispatch is an empty seam this slice.
+# AREA-02/AREA-03 area object scheduler (docs/spec/area-progression-and-terrain.md). Each area has one
+# schedule table consumed strictly in order: a record fires when the scroll row equals its trigger row,
+# then the cursor advances. All 16 normal areas are ingested into the SAME three flattened columns; the
+# two 16-entry index lists (start/end) carry each area's 1-based INCLUSIVE span into those columns, so
+# the runtime consume reads an area's slice by indexing the lists with the live `area number` — no code
+# path is per-area (that is why slice 6 moves no runtime block). Every handler's variable `params`
+# (slot/sprite_y, mask, row, count, formation_offset, path, ...) is carried faithfully as an opaque JSON
+# PAYLOAD so no field is dropped and the schema never has to grow; the handlers themselves (spawn,
+# formation, difficulty, boss) arrive with the enemy slices (8+), so the per-record dispatch is an empty
+# seam.
 SCHEDULE_HANDLER_ID = "area-schedule-handler"
 SCHEDULE_TRIGGER_ROW_ID = "area-schedule-trigger-row"
 SCHEDULE_PAYLOAD_ID = "area-schedule-payload"
@@ -386,7 +388,6 @@ AREA_SCHEDULE_END_ID = "area-schedule-end"
 SCHEDULE_CURSOR_ID = "area-schedule-cursor"
 SCHEDULE_FIRED_ID = "area-schedule-fired"
 SCHEDULE_SENTINEL_HANDLER = "sentinel"
-AREA_FIXTURE = 1  # the single area ingested this slice; slice 6 ingests all 16
 
 
 def _load_area_schedule(area_number: int) -> tuple[list[str], list[int], list[str]]:
@@ -418,13 +419,42 @@ def _load_area_schedule(area_number: int) -> tuple[list[str], list[int], list[st
     return handlers, rows, payloads
 
 
-AREA1_SCHEDULE_HANDLERS, AREA1_SCHEDULE_ROWS, AREA1_SCHEDULE_PAYLOADS = _load_area_schedule(AREA_FIXTURE)
-SCHEDULE_LENGTH = len(AREA1_SCHEDULE_ROWS)  # 54 this slice (53 records + the materialized sentinel)
-# The two 16-entry index lists — the slice-6 seam. Every area maps to area 1's table this slice
-# ({start: 1, end: SCHEDULE_LENGTH}); slice 6 sets real per-area offsets and appends areas 2-16 to
-# the flattened columns, moving no code.
-AREA_SCHEDULE_START = [1] * AREA_MAX
-AREA_SCHEDULE_END = [SCHEDULE_LENGTH] * AREA_MAX
+def _load_all_area_schedules() -> tuple[
+    list[str], list[int], list[str], list[int], list[int]
+]:
+    # AREA-03: flatten all 16 normal area schedules into three parallel columns, with two 16-entry
+    # index lists giving each area's 1-based INCLUSIVE span [start..end] into those columns. Areas are
+    # visited by explicit number (not JSON array order) so a missing or duplicated area fails LOUD via
+    # _load_area_schedule's `next(...)`. Each area contributes its records + one materialized sentinel,
+    # so its span length is len(records)+1; the spans are contiguous and cover the whole flattened table
+    # (the end of area AREA_MAX equals len(handlers)). No per-slice total is hardcoded — it falls out of
+    # the concatenation. The per-area round-trip golden in tests/test_spec_docs.py re-derives these spans
+    # independently from the JSON record counts and compares the flattened windows to the source records,
+    # so an offset off-by-one that leaked one area into the next would fail there.
+    handlers: list[str] = []
+    rows: list[int] = []
+    payloads: list[str] = []
+    starts: list[int] = []
+    ends: list[int] = []
+    cursor = 1  # 1-based, matching Scratch list indexing and the runtime `schedule cursor`
+    for area_number in range(AREA_FIRST, AREA_MAX + 1):
+        area_handlers, area_rows, area_payloads = _load_area_schedule(area_number)
+        starts.append(cursor)  # this area's first index (before advancing the cursor)
+        handlers.extend(area_handlers)
+        rows.extend(area_rows)
+        payloads.extend(area_payloads)
+        cursor += len(area_rows)
+        ends.append(cursor - 1)  # this area's last index (after advancing; inclusive)
+    return handlers, rows, payloads, starts, ends
+
+
+(
+    SCHEDULE_HANDLERS,
+    SCHEDULE_ROWS,
+    SCHEDULE_PAYLOADS,
+    AREA_SCHEDULE_START,
+    AREA_SCHEDULE_END,
+) = _load_all_area_schedules()
 
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
@@ -2723,13 +2753,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # area_offset_in_map_tbl), indexed by area number 1-16. Ingested, not authored; a
         # read-only reference table set on area entry, never written by a sprite.
         AREA_MAP_COLUMN_ID: ["area map column", list(AREA_MAP_COLUMNS)],
-        # AREA-02 schedule table (docs/spec/data/area-schedules.json), area 1 this slice, as three
-        # faithful parallel columns + a materialized sentinel row (53 records + 1 = 54). The two
-        # 16-entry index lists point every area at area 1's table for now; slice 6 rewrites only
-        # their data and appends areas 2-16. All read-only authority, sprite-write-forbidden.
-        SCHEDULE_HANDLER_ID: ["schedule handler", list(AREA1_SCHEDULE_HANDLERS)],
-        SCHEDULE_TRIGGER_ROW_ID: ["schedule trigger row", list(AREA1_SCHEDULE_ROWS)],
-        SCHEDULE_PAYLOAD_ID: ["schedule payload", list(AREA1_SCHEDULE_PAYLOADS)],
+        # AREA-03 schedule table (docs/spec/data/area-schedules.json), ALL 16 normal areas flattened
+        # into three faithful parallel columns, each area = its records + a materialized sentinel row.
+        # The two 16-entry index lists give each area's 1-based inclusive span into the columns, read at
+        # runtime by area number. All read-only authority, sprite-write-forbidden.
+        SCHEDULE_HANDLER_ID: ["schedule handler", list(SCHEDULE_HANDLERS)],
+        SCHEDULE_TRIGGER_ROW_ID: ["schedule trigger row", list(SCHEDULE_ROWS)],
+        SCHEDULE_PAYLOAD_ID: ["schedule payload", list(SCHEDULE_PAYLOADS)],
         AREA_SCHEDULE_START_ID: ["area schedule start", list(AREA_SCHEDULE_START)],
         AREA_SCHEDULE_END_ID: ["area schedule end", list(AREA_SCHEDULE_END)],
     }
