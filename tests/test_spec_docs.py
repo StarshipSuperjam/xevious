@@ -231,6 +231,48 @@ class CrossTableInvariants(unittest.TestCase):
                     f"area {area['area']} schedules a Super-only type",
                 )
 
+    def test_accelerated_full_game_trace_1_16_then_7(self):
+        # AREA-03/AREA-04 acceptance (spec criterion 3 — the sole engine-checked one — and criterion
+        # 5's 16->7): a deterministic trace OVER THE COMMITTED DATA (not the generated project, and not
+        # an execution of the Scratch consume blocks — this is a data-completeness simulation) that
+        # walks all 16 normal areas in order then continues at area 7, consuming every record with no
+        # unknown handler and no Super-only object. It deliberately does NOT assert monotonic
+        # scroll_row: area 14 carries a documented out-of-order row the build reproduces as-is.
+        AREA_MAX = 16  # areas 1..16 (docs/spec/area-progression-and-terrain.md)
+        AREA_LOOP_BACK = 7  # completing area 16 continues at area 7 — no win screen
+        normal_type_max = load_extractor().NORMAL_TYPE_MAX
+
+        payload = json.loads((DATA / "area-schedules.json").read_text())
+        by_area = {a["area"]: a for a in payload["areas"]}
+        registry = json.loads((DATA / "object-types.json").read_text())["registry"]["types"]
+        known_handlers = {t.get("schedule_action") for t in registry} - {"none", None}
+
+        # the accelerated order: 1,2,...,16, then the loop continues at 7 (the extra area proves the
+        # wrap target and the absence of a 17th area / win screen).
+        self.assertNotIn(17, by_area, "there is no area 17 — the loop returns to 7, not onward")
+        order = list(range(1, AREA_MAX + 1)) + [AREA_LOOP_BACK]
+
+        consumed = 0
+        for step, area_number in enumerate(order):
+            self.assertIn(area_number, by_area, f"step {step}: area {area_number} missing")
+            for record in by_area[area_number]["records"]:
+                self.assertIn(
+                    record["handler"],
+                    known_handlers,
+                    f"area {area_number}: unknown record kind {record['handler']!r}",
+                )
+                self.assertLessEqual(
+                    record["object_type"],
+                    normal_type_max,
+                    f"area {area_number}: Super-only object_type {record['object_type']}",
+                )
+                consumed += 1
+        # every record of all 16 areas, plus the wrap re-visit of area 7, consumed in order.
+        total_records = sum(len(a["records"]) for a in payload["areas"])
+        self.assertEqual(total_records + len(by_area[AREA_LOOP_BACK]["records"]), consumed)
+        # the wrap lands on a real, already-existing area (7 <= 16), so play continues — never a win screen.
+        self.assertIn(AREA_LOOP_BACK, range(1, AREA_MAX + 1))
+
     def test_formation_indices_stay_reachable(self):
         payload = json.loads((DATA / "formations.json").read_text())
         indices = [e["index"] for e in payload["formation_table"]["entries"]]
@@ -441,44 +483,61 @@ class GeneratedAreaClock(unittest.TestCase):
         ]["values"]
         self.assertEqual(expected, by_name["area map column"])
 
-    def test_area1_schedule_round_trips_from_json(self):
-        # AREA-02: the ingested schedule columns are a FAITHFUL, lossless copy of area 1's records
-        # (53) plus the materialized end sentinel (= 54), with the opaque payload decodable back to
-        # object_type + params — so no handler's parameters are silently dropped.
+    def test_all_area_schedules_round_trip_from_json(self):
+        # AREA-03: the ingested schedule columns are a FAITHFUL, lossless copy of ALL 16 normal areas'
+        # records plus each area's materialized end sentinel, and the two 16-entry index lists give each
+        # area's 1-based INCLUSIVE span into the flattened columns. The spans are re-derived
+        # INDEPENDENTLY here from the JSON record counts (stride = len(records) + 1) — never read back
+        # from the generator's own index lists — and each flattened window is compared to its SOURCE
+        # records, so an offset off-by-one that leaked one area into the next (or a dropped/altered
+        # field) fails here rather than shipping silently.
         project = json.loads(PROJECT_JSON.read_text())
         stage = next(t for t in project["targets"] if t["isStage"])
         by_name = {value[0]: value[1] for value in stage["lists"].values()}
         handlers = by_name["schedule handler"]
         rows = by_name["schedule trigger row"]
         payloads = by_name["schedule payload"]
+        gen_start = by_name["area schedule start"]
+        gen_end = by_name["area schedule end"]
 
-        area = next(
-            a
-            for a in json.loads((DATA / "area-schedules.json").read_text())["areas"]
-            if a["area"] == 1
-        )
-        records = area["records"]
-        self.assertEqual(len(records) + 1, len(handlers))  # + materialized sentinel
+        areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
+        by_area = {a["area"]: a for a in areas}
+        self.assertEqual(16, len(areas))
+
+        # independently re-derive the contiguous 1-based inclusive spans from the JSON record counts.
+        expected_start, expected_end = [], []
+        cursor = 1
+        for area_number in range(1, 17):
+            stride = len(by_area[area_number]["records"]) + 1  # records + one materialized sentinel
+            expected_start.append(cursor)
+            expected_end.append(cursor + stride - 1)
+            cursor += stride
+        self.assertEqual(expected_start, gen_start, "area schedule start offsets")
+        self.assertEqual(expected_end, gen_end, "area schedule end offsets")
+        # the three columns are exactly as long as the last span says.
+        self.assertEqual(cursor - 1, len(handlers))
         self.assertEqual({len(handlers), len(rows)}, {len(payloads)})
 
-        for i, record in enumerate(records):
-            self.assertEqual(record["handler"], handlers[i], f"handler {i}")
-            self.assertEqual(record["scroll_row"], rows[i], f"trigger row {i}")
-            decoded = json.loads(payloads[i])
-            self.assertEqual(
-                {"object_type": record["object_type"], "params": record["params"]},
-                decoded,
-                f"payload {i}",
-            )
-
-        # the terminal row is the sentinel: the JSON's scalar end_sentinel, not a record.
-        self.assertEqual("sentinel", handlers[-1])
-        self.assertEqual(area["end_sentinel"], rows[-1])
-        self.assertEqual("", payloads[-1])
-
-        # every area maps to area 1's table this slice (the honest slice-6 seam).
-        self.assertEqual([1] * 16, by_name["area schedule start"])
-        self.assertEqual([len(handlers)] * 16, by_name["area schedule end"])
+        # each area's flattened window matches its SOURCE records + materialized sentinel.
+        for area_number in range(1, 17):
+            area = by_area[area_number]
+            start = expected_start[area_number - 1]  # 1-based
+            for j, record in enumerate(area["records"]):
+                idx = start - 1 + j  # 0-based index into the flattened columns
+                self.assertEqual(record["handler"], handlers[idx], f"area {area_number} handler {j}")
+                self.assertEqual(
+                    record["scroll_row"], rows[idx], f"area {area_number} trigger row {j}"
+                )
+                self.assertEqual(
+                    {"object_type": record["object_type"], "params": record["params"]},
+                    json.loads(payloads[idx]),
+                    f"area {area_number} payload {j}",
+                )
+            # this area's window terminates in the materialized sentinel (its scalar end_sentinel).
+            end = expected_end[area_number - 1]  # 1-based, inclusive
+            self.assertEqual("sentinel", handlers[end - 1], f"area {area_number} sentinel handler")
+            self.assertEqual(area["end_sentinel"], rows[end - 1], f"area {area_number} sentinel row")
+            self.assertEqual("", payloads[end - 1], f"area {area_number} sentinel payload")
 
 
 if __name__ == "__main__":
