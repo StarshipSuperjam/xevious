@@ -208,7 +208,7 @@ def emit_findings() -> int:
     the rule's declared tier (ENGINE_RULE_TIER, defaulting hard); the no-spec / nothing-settled / no-build-order
     notes are always soft (set inside findings())."""
     # ENGINE_SPEC_ROOT (unset in production) lets the negative-fixture meta-check point the spec scan
-    # at a seeded docs/spec tree, so the build-order gate is witnessed biting a real bad input (#286).
+    # at a seeded docs/spec tree, so the build-order gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     print(json.dumps(findings(os.environ.get("ENGINE_RULE_TIER", "hard"),
                               validate.env_override_path("ENGINE_SPEC_ROOT"))))
     return 0

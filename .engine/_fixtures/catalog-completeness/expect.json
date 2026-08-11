@@ -1,0 +1,4 @@
+{
+  "severity": "hard",
+  "message_contains": "not listed in the optional-module catalog"
+}

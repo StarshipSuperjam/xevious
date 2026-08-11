@@ -14,9 +14,6 @@ on:
 
 permissions:
   contents: read
-  # issues: read — least-privilege, read-only. The disposition-issue-resolution check (#292) resolves the
-  # follow-up issue numbers a PR's Review section cites against the live issue list; it never writes issues.
-  issues: read
 
 jobs:
   engine-ci:

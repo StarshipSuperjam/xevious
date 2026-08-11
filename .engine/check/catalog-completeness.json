@@ -1,0 +1,9 @@
+{
+  "id": "engine/check/catalog-completeness",
+  "target": { "context": "catalog-completeness" },
+  "kind": "custom/script",
+  "params": { "script": ".engine/tools/catalog_completeness_check.py" },
+  "tier": "hard",
+  "suites": ["CI"],
+  "message": "Every engine module whose status is default-on or optional must have an entry in the optional-module catalog (.engine/provisioning/module-catalog.json). The catalog is what the first-run setup, /engine-help, and — since StarshipSuperjam/engine-template#759 — an engine update read to offer a project the optional parts it can add. It is also load-bearing for safety: an update decides whether to turn on a default-on module a deployment lacks by asking whether that module was ever known here, and once a module is declined at first run its files and manifest are deleted, so the catalog is the only durable record it existed. An uncatalogued default-on module could therefore be silently turned back on by a later update against the operator's earlier choice. This check goes red on a default-on or optional module with no catalog entry; required modules are exempt (they are never offered or declined). To clear it, add an entry for the flagged module — an id, a one-line plain-language description, and a discipline category (plus a command/verb only if it has one), matching the other entries already in the catalog — before merging."
+}

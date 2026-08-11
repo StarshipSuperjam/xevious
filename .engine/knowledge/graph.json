@@ -442,6 +442,34 @@
       "type": "check"
     },
     {
+      "id": "check:catalog-completeness",
+      "kind": "custom/script",
+      "name": ".engine/check/catalog-completeness.json",
+      "owner": "validators-core",
+      "predicates": {
+        "enforced_by": [
+          "tool:catalog_completeness_check"
+        ],
+        "governed_by": [
+          "schema:check.v1"
+        ],
+        "provided_by": [
+          "module:validators-core"
+        ]
+      },
+      "slug": "catalog-completeness",
+      "source": {
+        "fingerprint": "sha256:8279bd35ef875b8002df400093f8b718c50ef564e6be8fffdd7468ece329df69",
+        "path": ".engine/check/catalog-completeness.json"
+      },
+      "status": "active",
+      "suites": [
+        "CI"
+      ],
+      "tier": "hard",
+      "type": "check"
+    },
+    {
       "id": "check:catalog-coverage",
       "kind": "coverage",
       "name": ".engine/check/catalog-coverage.json",
@@ -848,7 +876,9 @@
           "contract:eADR-0034-dual-provider-adapter-core",
           "contract:eADR-0035-deferred-work-marker",
           "contract:eADR-0037-upgrade-overwrite-disclosure",
-          "contract:eADR-0038-memory-transcript-first-recall"
+          "contract:eADR-0038-memory-transcript-first-recall",
+          "contract:eADR-0039-whole-module-removal-reconcile",
+          "contract:eADR-0040-guardrail-ack-two-tier"
         ]
       },
       "slug": "contract-frontmatter",
@@ -912,7 +942,9 @@
           "contract:eADR-0034-dual-provider-adapter-core",
           "contract:eADR-0035-deferred-work-marker",
           "contract:eADR-0037-upgrade-overwrite-disclosure",
-          "contract:eADR-0038-memory-transcript-first-recall"
+          "contract:eADR-0038-memory-transcript-first-recall",
+          "contract:eADR-0039-whole-module-removal-reconcile",
+          "contract:eADR-0040-guardrail-ack-two-tier"
         ]
       },
       "slug": "contract-shape",
@@ -977,41 +1009,15 @@
           "contract:eADR-0034-dual-provider-adapter-core",
           "contract:eADR-0035-deferred-work-marker",
           "contract:eADR-0037-upgrade-overwrite-disclosure",
-          "contract:eADR-0038-memory-transcript-first-recall"
+          "contract:eADR-0038-memory-transcript-first-recall",
+          "contract:eADR-0039-whole-module-removal-reconcile",
+          "contract:eADR-0040-guardrail-ack-two-tier"
         ]
       },
       "slug": "contract-threshold",
       "source": {
         "fingerprint": "sha256:78cdfb9ab575f242a59cdc2ffc02e8fd277fcd7da25374b4e27ed1c409111db1",
         "path": ".engine/check/contract-threshold.json"
-      },
-      "status": "active",
-      "suites": [
-        "CI"
-      ],
-      "tier": "hard",
-      "type": "check"
-    },
-    {
-      "id": "check:disposition-issue-resolution",
-      "kind": "custom/script",
-      "name": ".engine/check/disposition-issue-resolution.json",
-      "owner": "validators-core",
-      "predicates": {
-        "enforced_by": [
-          "tool:disposition_issue_resolution_check"
-        ],
-        "governed_by": [
-          "schema:check.v1"
-        ],
-        "provided_by": [
-          "module:validators-core"
-        ]
-      },
-      "slug": "disposition-issue-resolution",
-      "source": {
-        "fingerprint": "sha256:4233b285c29166bf2203592f2227b1b3f672301fc74b2196491d5f058442f24f",
-        "path": ".engine/check/disposition-issue-resolution.json"
       },
       "status": "active",
       "suites": [
@@ -1228,7 +1234,7 @@
       },
       "slug": "guardrail-weakening",
       "source": {
-        "fingerprint": "sha256:b9c78b3ed79917a5436d13103e8974c1c58a22207c08ec255d70b388675a83ad",
+        "fingerprint": "sha256:717cf2162005f324a3bde6d349a1d1eb3dac54a2959cde6caea4e6b89dd26826",
         "path": ".engine/check/guardrail-weakening.json"
       },
       "status": "active",
@@ -1254,7 +1260,7 @@
       },
       "slug": "hard-check-bite",
       "source": {
-        "fingerprint": "sha256:f184d0690b6e0a93994ba08ecc2fa4931443f0b4da70b4bbe40fb4b19e9291ce",
+        "fingerprint": "sha256:2f3a9f527eeecb80e060f4119021838e2c185b0b7b6a0d0f73e5514466f0e42d",
         "path": ".engine/check/hard-check-bite.json"
       },
       "status": "active",
@@ -1446,8 +1452,36 @@
       },
       "slug": "link-integrity",
       "source": {
-        "fingerprint": "sha256:d53d42614489feb8a1697532e5160a7bda05bfb4c5d68ae87d04220f52aafced",
+        "fingerprint": "sha256:82f635b5e1da17b0a5f4dabb9234aa5bc8fca487066f7dc6680855d5a1a14b6a",
         "path": ".engine/check/link-integrity.json"
+      },
+      "status": "active",
+      "suites": [
+        "CI"
+      ],
+      "tier": "hard",
+      "type": "check"
+    },
+    {
+      "id": "check:manifest-write-funnel",
+      "kind": "custom/script",
+      "name": ".engine/check/manifest-write-funnel.json",
+      "owner": "validators-core",
+      "predicates": {
+        "enforced_by": [
+          "tool:manifest_write_funnel_check"
+        ],
+        "governed_by": [
+          "schema:check.v1"
+        ],
+        "provided_by": [
+          "module:validators-core"
+        ]
+      },
+      "slug": "manifest-write-funnel",
+      "source": {
+        "fingerprint": "sha256:b4ee3b200dc2fc36ca6a1289614496c039c72fe0c9f9bd08ed531995b4882863",
+        "path": ".engine/check/manifest-write-funnel.json"
       },
       "status": "active",
       "suites": [
@@ -1658,7 +1692,7 @@
       },
       "slug": "operation-shape",
       "source": {
-        "fingerprint": "sha256:147603257cebfbde3c5ab0925c536ff7499c97cb670efcb20bbb0f908580b8e5",
+        "fingerprint": "sha256:edaefcee48d235ac40f0c552f5fee09a96122cd071ee6a7b029036fc4cf895a4",
         "path": ".engine/check/operation-shape.json"
       },
       "status": "active",
@@ -1739,11 +1773,13 @@
         ],
         "targets": [
           "policy:attention",
+          "policy:briefing-budget",
           "policy:contract-threshold",
           "policy:escalation",
           "policy:finding-disposition",
           "policy:model-routing",
           "policy:spec-structure-integrity",
+          "policy:supported-upgrade-matrix",
           "policy:triage-threshold"
         ]
       },
@@ -1801,11 +1837,13 @@
         ],
         "targets": [
           "policy:attention",
+          "policy:briefing-budget",
           "policy:contract-threshold",
           "policy:escalation",
           "policy:finding-disposition",
           "policy:model-routing",
           "policy:spec-structure-integrity",
+          "policy:supported-upgrade-matrix",
           "policy:triage-threshold"
         ]
       },
@@ -1840,7 +1878,7 @@
       },
       "slug": "pr-behaviors-declared",
       "source": {
-        "fingerprint": "sha256:c16d402ecf50cef2b9b4aeaee146642f465aad25264ea738e2e92e3d2d122f90",
+        "fingerprint": "sha256:d4298deb0896bb5e446dfd56c6f6e10c8d63756c770d0661e0bd3b0cfa1c988a",
         "path": ".engine/check/pr-behaviors-declared.json"
       },
       "status": "active",
@@ -1865,7 +1903,7 @@
       },
       "slug": "pr-body-completeness",
       "source": {
-        "fingerprint": "sha256:fbf9f75c8b3b3cb6b4f9b97aa76b7f68243212a9c9387779b68e25f8150292aa",
+        "fingerprint": "sha256:fc1b86a18b523532f2952e756d4caad3858ae2b3621c8b90a149ac009dbcd8a2",
         "path": ".engine/check/pr-body-completeness.json"
       },
       "status": "active",
@@ -2208,6 +2246,34 @@
       "source": {
         "fingerprint": "sha256:ef42ad2b6eacd40cb59c60db662f2870580be377b107ff92230ffa3230805a12",
         "path": ".engine/check/self-map-drift.json"
+      },
+      "status": "active",
+      "suites": [
+        "CI"
+      ],
+      "tier": "hard",
+      "type": "check"
+    },
+    {
+      "id": "check:shipped-issue-references",
+      "kind": "custom/script",
+      "name": ".engine/check/shipped-issue-references.json",
+      "owner": "validators-core",
+      "predicates": {
+        "enforced_by": [
+          "tool:shipped_issue_references_check"
+        ],
+        "governed_by": [
+          "schema:check.v1"
+        ],
+        "provided_by": [
+          "module:validators-core"
+        ]
+      },
+      "slug": "shipped-issue-references",
+      "source": {
+        "fingerprint": "sha256:d3033083a7e69949d3b960b3168981cf5a7f5244c310feb0a056904670b13f3a",
+        "path": ".engine/check/shipped-issue-references.json"
       },
       "status": "active",
       "suites": [
@@ -3043,7 +3109,7 @@
       },
       "slug": "defaults",
       "source": {
-        "fingerprint": "sha256:91b39348b7b3f24b465623b4e5a7a7e573ae2b5441ea42256265495649bd6036",
+        "fingerprint": "sha256:8626d4077c02136c6942508a63b4b51d8f98ec9786febe26c80346264e305aee",
         "path": ".engine/conduct/defaults.md"
       },
       "status": "active",
@@ -3263,7 +3329,7 @@
       },
       "slug": "eADR-0011-guardrail-integrity",
       "source": {
-        "fingerprint": "sha256:992473935a8aea09629154ed600ab2b93cbc9aa45f7e47aea80ca8509f98c201",
+        "fingerprint": "sha256:763734be8858ea7bf3cd55e026d1b1fbdc5bf1dca4b9ccdfad2d9de25c73d9ea",
         "path": ".engine/contracts/eADR-0011-guardrail-integrity.md"
       },
       "status": "accepted",
@@ -3363,7 +3429,7 @@
       },
       "slug": "eADR-0016-ontology-surfaces-catalogued-ranked",
       "source": {
-        "fingerprint": "sha256:63163a6ce90cdbc79e56822843c5692ffdf9a8d260918cc21775e208090f6221",
+        "fingerprint": "sha256:304599955e76f19edabcf692cd6048fcb1bda8bf088940ca9865d97ababde420",
         "path": ".engine/contracts/eADR-0016-ontology-surfaces-catalogued-ranked.md"
       },
       "status": "accepted",
@@ -3703,7 +3769,7 @@
       },
       "slug": "eADR-0033-boot-refresh-family",
       "source": {
-        "fingerprint": "sha256:95c19d8e9bab72d94d2f423c9f0ff7afaf0665d9ba98424e7c2cc29d2e1c6841",
+        "fingerprint": "sha256:cc54dfc9a47d61938219e94a20c617d12b2089ccf63c1c96e6fe8641fcfa6af9",
         "path": ".engine/contracts/eADR-0033-boot-refresh-family.md"
       },
       "status": "accepted",
@@ -3723,7 +3789,7 @@
       },
       "slug": "eADR-0034-dual-provider-adapter-core",
       "source": {
-        "fingerprint": "sha256:22dfa6eb20d62f07f682a436ff334ea6cd21bf7b00c9386514050966842ee639",
+        "fingerprint": "sha256:fd79a107dae05670a88946ecc1b5dcc1097a6bcb5983b22bba8e5f49d86cf4d1",
         "path": ".engine/contracts/eADR-0034-dual-provider-adapter-core.md"
       },
       "status": "accepted",
@@ -3763,7 +3829,7 @@
       },
       "slug": "eADR-0037-upgrade-overwrite-disclosure",
       "source": {
-        "fingerprint": "sha256:10b9b1f8f8a21aac173660f50656036dd2bf0d99b6590a0bf7a82c339a969612",
+        "fingerprint": "sha256:0eee5bf576c8c7df846132c140b2119c5b70b1cd4a063d43975565a678d6babe",
         "path": ".engine/contracts/eADR-0037-upgrade-overwrite-disclosure.md"
       },
       "status": "accepted",
@@ -3790,6 +3856,46 @@
       "type": "contract"
     },
     {
+      "id": "contract:eADR-0039-whole-module-removal-reconcile",
+      "name": ".engine/contracts/eADR-0039-whole-module-removal-reconcile.md",
+      "owner": "core",
+      "predicates": {
+        "governed_by": [
+          "schema:contract.v1"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "eADR-0039-whole-module-removal-reconcile",
+      "source": {
+        "fingerprint": "sha256:6328f0399316b9e5fb9a759887e658a12e82727ddcbc059032735038ee4f194d",
+        "path": ".engine/contracts/eADR-0039-whole-module-removal-reconcile.md"
+      },
+      "status": "accepted",
+      "type": "contract"
+    },
+    {
+      "id": "contract:eADR-0040-guardrail-ack-two-tier",
+      "name": ".engine/contracts/eADR-0040-guardrail-ack-two-tier.md",
+      "owner": "core",
+      "predicates": {
+        "governed_by": [
+          "schema:contract.v1"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "eADR-0040-guardrail-ack-two-tier",
+      "source": {
+        "fingerprint": "sha256:a381bbabd2b8ef84e37481a770c11c708e9eda071cc2919528b03b827bc3fca9",
+        "path": ".engine/contracts/eADR-0040-guardrail-ack-two-tier.md"
+      },
+      "status": "accepted",
+      "type": "contract"
+    },
+    {
       "id": "doc:getting-started",
       "name": ".engine/docs/getting-started.md",
       "owner": "core",
@@ -3803,7 +3909,7 @@
       },
       "slug": "getting-started",
       "source": {
-        "fingerprint": "sha256:49b1a50beefbd2244325950bcbc576ad8b31302016ecd30b3d8c8cd1197040a1",
+        "fingerprint": "sha256:38378a244c86ffcbe3f6c860efdd3311adead363054f31d5e28f5a5315d97a6c",
         "path": ".engine/docs/getting-started.md"
       },
       "status": "active",
@@ -3962,12 +4068,12 @@
       },
       "slug": "core",
       "source": {
-        "fingerprint": "sha256:6cb8f0399fb542ca926827c41b51875214de98470323fa499e48159469ecb254",
+        "fingerprint": "sha256:98736fe588bf1693ff0616d6c16809f7bf8c71f44d1c28e4958caddae95a34a3",
         "path": ".engine/modules/core/manifest.json"
       },
       "status": "required",
       "type": "module",
-      "version": "0.3.0"
+      "version": "0.5.0"
     },
     {
       "id": "module:design-review",
@@ -4097,7 +4203,7 @@
       },
       "slug": "validators-core",
       "source": {
-        "fingerprint": "sha256:df7ac218b826961b5b5130c070ee7a47a411caf06091fc1030ea39bbaca5de49",
+        "fingerprint": "sha256:8be42a77301d8304ac221a7606d07c2abfb2aca1724d86b224cc1716222289e6",
         "path": ".engine/modules/validators-core/manifest.json"
       },
       "status": "required",
@@ -4118,7 +4224,7 @@
       },
       "slug": "boot-session-start",
       "source": {
-        "fingerprint": "sha256:0d6b9a995ed0982067df88ffc195f94fb2d838aa3bd7217b2607580ec4f76bbd",
+        "fingerprint": "sha256:73c3da09fd3491c28d5f0fef72cd3b6f07bfe2a198f6801192b2f0349870e80e",
         "path": ".engine/operations/boot-session-start.md"
       },
       "status": "active",
@@ -4138,7 +4244,7 @@
       },
       "slug": "build-orchestration",
       "source": {
-        "fingerprint": "sha256:77114ad81750dca6bed6f432ac442761128b5a6b865cd9247267b9272d13ba43",
+        "fingerprint": "sha256:baa8c6abc655dd1e5245dd9178bd2080782db08048956f841c86a92501a843c2",
         "path": ".engine/operations/build-orchestration.md"
       },
       "status": "active",
@@ -4218,7 +4324,7 @@
       },
       "slug": "control-plane-bootstrap",
       "source": {
-        "fingerprint": "sha256:0269789dd5d6e9d7eacf6a80bd9295eb9ad9ea588a3387ab4d4ff9dfb5996c4d",
+        "fingerprint": "sha256:f3339c5759f012b9b10ceae792d45baf213adc68896946a06182effac93fbce2",
         "path": ".engine/operations/control-plane-bootstrap.md"
       },
       "status": "active",
@@ -4298,7 +4404,7 @@
       },
       "slug": "engine-upgrade",
       "source": {
-        "fingerprint": "sha256:23e4053a3374856e84a03a746586011d3288420c63c3346740dbcee905520154",
+        "fingerprint": "sha256:6d84cfa292894e691bcc10a0e3e51b2dc48e979bb04c2bcf43b585148c4848bc",
         "path": ".engine/operations/engine-upgrade.md"
       },
       "status": "active",
@@ -4378,7 +4484,7 @@
       },
       "slug": "module-remove",
       "source": {
-        "fingerprint": "sha256:38f7160e1891f4b9d5a6466b40d6196900fbda45a0817bc3410164213da8c7f1",
+        "fingerprint": "sha256:831b7116b45661dc6644d009c87c61247dd77c85846236f7c85e8bab32428505",
         "path": ".engine/operations/module-remove.md"
       },
       "status": "active",
@@ -4418,7 +4524,7 @@
       },
       "slug": "operating-modes",
       "source": {
-        "fingerprint": "sha256:90333bb4f1ca601fc8cac7c4d784763699e97018beb579b7fe8ee21d2d5c55e2",
+        "fingerprint": "sha256:5ef8159890d0904c496e3e550a2912621638f240809cc5c064ad69aea5ac2b45",
         "path": ".engine/operations/operating-modes.md"
       },
       "status": "active",
@@ -4503,6 +4609,27 @@
       },
       "status": "active",
       "title": "Attention",
+      "type": "policy"
+    },
+    {
+      "id": "policy:briefing-budget",
+      "name": ".engine/policies/briefing-budget.md",
+      "owner": "core",
+      "predicates": {
+        "governed_by": [
+          "schema:policy.v1"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "briefing-budget",
+      "source": {
+        "fingerprint": "sha256:d75664c0c933a8dd72d2679fbd546e990fa3648546bb151e8486c72fd75931ab",
+        "path": ".engine/policies/briefing-budget.md"
+      },
+      "status": "active",
+      "title": "Briefing budget",
       "type": "policy"
     },
     {
@@ -4651,6 +4778,27 @@
       "type": "policy"
     },
     {
+      "id": "policy:supported-upgrade-matrix",
+      "name": ".engine/policies/supported-upgrade-matrix.md",
+      "owner": "core",
+      "predicates": {
+        "governed_by": [
+          "schema:policy.v1"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "supported-upgrade-matrix",
+      "source": {
+        "fingerprint": "sha256:5a22a1d7c9c4a7070c9e36e23aee1ca2a552e86e7f6ccf507cc21dc4ea029951",
+        "path": ".engine/policies/supported-upgrade-matrix.md"
+      },
+      "status": "active",
+      "title": "Supported-version deployed upgrade and rollback matrix",
+      "type": "policy"
+    },
+    {
       "id": "policy:triage-threshold",
       "name": ".engine/policies/triage-threshold.md",
       "owner": "core",
@@ -4750,7 +4898,7 @@
       },
       "slug": "check.v1",
       "source": {
-        "fingerprint": "sha256:80f7e0799a95ad02621aa44d1f1b0982e9c4b255a6c8db033d688cd687d1dba9",
+        "fingerprint": "sha256:da2776bea46ea527ea44db3c39e8b25b46923571a624826be24fe10cb1f0c71a",
         "path": ".engine/schemas/check.v1.json"
       },
       "status": "active",
@@ -4852,7 +5000,7 @@
       },
       "slug": "conformance-verdicts.v1",
       "source": {
-        "fingerprint": "sha256:96ca205038a33a064171a03be234f37eb9d5631c795954f521c66a5087ccfe53",
+        "fingerprint": "sha256:304ee2d6728d74641ee68ecbbf3978932dca207c3748fbd5a63e79b1f4fbb9e3",
         "path": ".engine/schemas/conformance-verdicts.v1.json"
       },
       "status": "active",
@@ -4903,7 +5051,7 @@
       },
       "slug": "engine.v1",
       "source": {
-        "fingerprint": "sha256:24120c8cbc500ed703952f2f161ecacbb64501dc74b71a9c7aa623bf88f9eedc",
+        "fingerprint": "sha256:dd84e6ea48f2945f68fe88bbf014c9313412831c7b5e2fe4c83e74f9747ecd3f",
         "path": ".engine/schemas/engine.v1.json"
       },
       "status": "active",
@@ -5005,7 +5153,7 @@
       },
       "slug": "knowledge.v1",
       "source": {
-        "fingerprint": "sha256:7db5db337a794a1b45dbfae8e21bc87e78442b9f04897e32a880b93258551e4a",
+        "fingerprint": "sha256:2ed8aeaecb22ef9e3ed0c76da9e1ad8bf2c35d027d00f1e02282e210620bb75c",
         "path": ".engine/schemas/knowledge.v1.json"
       },
       "status": "active",
@@ -5039,7 +5187,7 @@
       },
       "slug": "module.v1",
       "source": {
-        "fingerprint": "sha256:f6b4224b23e38f1cb495ba7336c305b4a116c96ba7d76acae3bdd598c5f23af9",
+        "fingerprint": "sha256:3f43949315a4297833fd43276e3b37b91f5c8bd6791f7df6d20b80364ad82c64",
         "path": ".engine/schemas/module.v1.json"
       },
       "status": "active",
@@ -5158,7 +5306,7 @@
       },
       "slug": "provider-exceptions.v1",
       "source": {
-        "fingerprint": "sha256:636bec53406003d27ac86c252adaef105e9368b5869fb9ba24dfbd7d36a39745",
+        "fingerprint": "sha256:10d5727f90e01ee4e311d1f8cb093f22539f913623697a84f908d2493fe15baf",
         "path": ".engine/schemas/provider-exceptions.v1.json"
       },
       "status": "active",
@@ -5209,7 +5357,7 @@
       },
       "slug": "state.v1",
       "source": {
-        "fingerprint": "sha256:3244610970d727dc277d75d1d2e74bf28c336cba95b8891367a428f5b888d592",
+        "fingerprint": "sha256:1543308c4b2aa94798fb327a5197aa45e6c6551c07ffad7222fbbb13d751536d",
         "path": ".engine/schemas/state.v1.json"
       },
       "status": "active",
@@ -5561,7 +5709,7 @@
       },
       "slug": "agent_bindings",
       "source": {
-        "fingerprint": "sha256:5ecb380c2c10b07247f4f0ba5e7ebc5e7bcbd6789e759b14ed833f026c360cd8",
+        "fingerprint": "sha256:754091408296779c880652baad7472e81750a9027e81d11bd90860ea985ca72a",
         "path": ".engine/tools/agent_bindings.py"
       },
       "status": "active",
@@ -5584,7 +5732,7 @@
       },
       "slug": "agent_coherence_check",
       "source": {
-        "fingerprint": "sha256:951bf2035f7350f3bc8c7daffc4c1beb82b8e0448f95d16b6a21d9ba97d21a99",
+        "fingerprint": "sha256:28d234a1512590c3c9a001047c6bc44e0409e54cd34e200b7b614e55c1dadd72",
         "path": ".engine/tools/agent_coherence_check.py"
       },
       "status": "active",
@@ -5612,7 +5760,7 @@
       },
       "slug": "attention",
       "source": {
-        "fingerprint": "sha256:a24b86391fedae1f4a98348a9f2cc8142499f293b12fc0083ffdf44b46fb605d",
+        "fingerprint": "sha256:1ba1e411c52aa99da6e467e80f250d5703830211d937489af41ea58ada5de5fa",
         "path": ".engine/tools/attention.py"
       },
       "status": "active",
@@ -5650,6 +5798,7 @@
       "owner": "core",
       "predicates": {
         "imports": [
+          "tool:engine_write",
           "tool:github_client",
           "tool:moment",
           "tool:repo_identity",
@@ -5662,7 +5811,7 @@
       },
       "slug": "audit_digest",
       "source": {
-        "fingerprint": "sha256:8acc3ccfaaea60f3d222f06c061ecb91b6e470d58a4bdf78ac7054129cb29fd6",
+        "fingerprint": "sha256:63c61fd19513f5258bb10861a39694db6215c5e9b1510e3091866ff2cab17e5c",
         "path": ".engine/tools/audit_digest.py"
       },
       "status": "active",
@@ -5686,7 +5835,7 @@
       },
       "slug": "audit_digest_fingerprint_check",
       "source": {
-        "fingerprint": "sha256:8996716c8ff61a62418d821b49abf134635bff98913cd639dd8c463c7744f480",
+        "fingerprint": "sha256:4e89221c7ad2a3a5346a29d1af1b2b85e9cf1463f673a5aa75e0205c49bbd4fd",
         "path": ".engine/tools/audit_digest_fingerprint_check.py"
       },
       "status": "active",
@@ -5732,7 +5881,7 @@
       },
       "slug": "audit_soft_findings",
       "source": {
-        "fingerprint": "sha256:05220fec647db151e875c870595f0ee2fffbbb70da2e29db7fa6368a22527de1",
+        "fingerprint": "sha256:4b277fb6fb012a0176eff6e1711e1bd6b40cbe7eaf2ec73af5df627c05f58a16",
         "path": ".engine/tools/audit_soft_findings.py"
       },
       "status": "active",
@@ -5760,11 +5909,11 @@
       },
       "slug": "audit_soft_promote",
       "source": {
-        "fingerprint": "sha256:166a7fa3d937f3b81c7fdc3ad66d8b4b9586578091572c991a17b59826756d99",
+        "fingerprint": "sha256:d61fe36390f13a20666dea81821f3b2ee77aaa615b02ff6857c11a23d7354998",
         "path": ".engine/tools/audit_soft_promote.py"
       },
       "status": "active",
-      "summary": "Promote a standing length-budget soft finding to a tracked engine Issue (issue #273 half 2).",
+      "summary": "Promote a standing length-budget soft finding to a tracked engine Issue (issue StarshipSuperjam/engine-template#273 half 2).",
       "type": "tool"
     },
     {
@@ -5784,11 +5933,11 @@
       },
       "slug": "authority_reservation_check",
       "source": {
-        "fingerprint": "sha256:385cff4c162a062707a11a072c2ca2736a236eda29ca713f601bc6de2b1fb1c8",
+        "fingerprint": "sha256:3c89d3f2f011b5d20f11c07ecba07866bd77b6a63b2ac4600e3c91fd02beab74",
         "path": ".engine/tools/authority_reservation_check.py"
       },
       "status": "active",
-      "summary": "Authority-tier reservation guard (issue #401) — the custom/script entry for",
+      "summary": "Authority-tier reservation guard (issue StarshipSuperjam/engine-template#401) — the custom/script entry for",
       "type": "tool"
     },
     {
@@ -5812,7 +5961,7 @@
       },
       "slug": "backup_vault",
       "source": {
-        "fingerprint": "sha256:075ca724c96aeb3beb6eeaa95b63be6e3c8cc57d5599d4a9e6cbc4c062b5f3bd",
+        "fingerprint": "sha256:74b4e1aade26e70219afa4a69d9b45e4ad926e024a5f5edeb95937d541772c60",
         "path": ".engine/tools/memory/backup_vault.py"
       },
       "status": "active",
@@ -5837,7 +5986,7 @@
       },
       "slug": "block_coherence_check",
       "source": {
-        "fingerprint": "sha256:0ef2e7f5411cc389fafcdde43605486df9e6f8eb30c009304e87dfc6de888401",
+        "fingerprint": "sha256:a013a0fbad30e2482ec942eba0ede4359b9e0e77400b72048486f4967c1ba4bd",
         "path": ".engine/tools/block_coherence_check.py"
       },
       "status": "active",
@@ -5862,6 +6011,7 @@
           "tool:forget",
           "tool:greenfield_intake",
           "tool:hooks",
+          "tool:hooks_path_health",
           "tool:knowledge_gen",
           "tool:ledger_health",
           "tool:license_health",
@@ -5887,7 +6037,7 @@
       },
       "slug": "boot",
       "source": {
-        "fingerprint": "sha256:5e3983f5da8d2a4406fd51a16422f2e6fa85a2d2de492046c48455b2a028eeba",
+        "fingerprint": "sha256:d3e1491d7bcae93070b7417eacdbf86853823d8373f053b8c5a4e136ca0ec1da",
         "path": ".engine/tools/boot.py"
       },
       "status": "active",
@@ -5911,7 +6061,7 @@
       },
       "slug": "boot_alarm_ledger",
       "source": {
-        "fingerprint": "sha256:a13019ffd49386d2783102440ef21253e3cdd61cff8f310aa9e4ac178fb18f2f",
+        "fingerprint": "sha256:6793371885c4e05a5b5aeb4c6dd48d844d4e30e1b8f6e1f7abcb19d4d751da0f",
         "path": ".engine/tools/boot_alarm_ledger.py"
       },
       "status": "active",
@@ -5935,11 +6085,11 @@
       },
       "slug": "boot_slice",
       "source": {
-        "fingerprint": "sha256:df323a8278ff22afe5f414bdb2c9598d35a03651059a69c326a65fea48e8fdce",
+        "fingerprint": "sha256:46d7f9e18c42d66d2d7a3cc202e3e27c75875ed5c74709b185361c0fc27abd0d",
         "path": ".engine/tools/boot_slice.py"
       },
       "status": "active",
-      "summary": "The gitignored boot-slice cache (#37) — boot's rung-1 fast cache for the orientation knowledge read.",
+      "summary": "The gitignored boot-slice cache (StarshipSuperjam/engine-template#37) — boot's rung-1 fast cache for the orientation knowledge read.",
       "type": "tool"
     },
     {
@@ -5951,7 +6101,9 @@
       "predicates": {
         "imports": [
           "tool:boot",
+          "tool:engine_write",
           "tool:github_client",
+          "tool:moment",
           "tool:protection_guard",
           "tool:repo_identity",
           "tool:telemetry",
@@ -5964,7 +6116,7 @@
       },
       "slug": "bootstrap",
       "source": {
-        "fingerprint": "sha256:ff8d1d43e9a1b8b3cb9311f27c731c9ba45e655d31d5aa9d64f5d12a36fb0018",
+        "fingerprint": "sha256:3cf96b017a7241da2d29f3da78f7a028c4ee766f469041ac513ce6f5f919bed3",
         "path": ".engine/tools/bootstrap.py"
       },
       "status": "active",
@@ -6012,11 +6164,34 @@
       },
       "slug": "capture",
       "source": {
-        "fingerprint": "sha256:a70483dbe843056da1c62a126b2b03896b031ff736622304a251e9218e8ce72a",
+        "fingerprint": "sha256:8860bbb4892b0a2660753f83e17a77d329daa4f5a927d6657eccbd667ecf0c78",
         "path": ".engine/tools/memory/capture.py"
       },
       "status": "active",
       "summary": "capture.py — ambient turn-delta capture: the content half of the memory substrate.",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "ci",
+      "guarded": true,
+      "id": "tool:catalog_completeness_check",
+      "name": ".engine/tools/catalog_completeness_check.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:validate"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "catalog_completeness_check",
+      "source": {
+        "fingerprint": "sha256:1d3f0a954c71c45932f017b3b561dcdbe882567d9422d107f8dced1350137ff7",
+        "path": ".engine/tools/catalog_completeness_check.py"
+      },
+      "status": "active",
+      "summary": "engine/check/catalog-completeness — every engine MODULE whose manifest `status` is `default-on` or",
       "type": "tool"
     },
     {
@@ -6036,11 +6211,11 @@
       },
       "slug": "census_completeness_check",
       "source": {
-        "fingerprint": "sha256:2c3d2cbd68ecc39c17b33416ce4602ca80239f61c50d15973c5f2c50ae3e0e74",
+        "fingerprint": "sha256:c254e6913d4f2907b10196a62b172b2b41340b7c4f162b1367df820a3fd68ae7",
         "path": ".engine/tools/census_completeness_check.py"
       },
       "status": "active",
-      "summary": "Demo census-completeness recurrence guard (#424 U13c) — the custom/script entry for",
+      "summary": "Demo census-completeness recurrence guard (StarshipSuperjam/engine-template#424 U13c) — the custom/script entry for",
       "type": "tool"
     },
     {
@@ -6060,11 +6235,11 @@
       },
       "slug": "checkout_health",
       "source": {
-        "fingerprint": "sha256:709a3e2ee8dd224e69029dac6e28e75b4de941528c374a23011ee7863f07a45d",
+        "fingerprint": "sha256:a6410f255ecd3d7b513659e49b43ee9cb53b343bf25c35cd1ae0144e6dbe7a3e",
         "path": ".engine/tools/checkout_health.py"
       },
       "status": "active",
-      "summary": "Operator-checkout health — detect a stranded operator checkout AND offer a lossless un-stranding fix (#80).",
+      "summary": "Operator-checkout health — detect a stranded operator checkout AND offer a lossless un-stranding fix (StarshipSuperjam/engine-template#80).",
       "type": "tool"
     },
     {
@@ -6131,11 +6306,11 @@
       },
       "slug": "close_linkage_preflight",
       "source": {
-        "fingerprint": "sha256:650553c392772a8b2aa054a6c8a74cad03c3cf464d20b6eca07c987e7d615f6b",
+        "fingerprint": "sha256:6cffceb3d60dd60ce20aafffba071e6502a0ab36193441d72a1d9cddbf573f24",
         "path": ".engine/tools/close_linkage_preflight.py"
       },
       "status": "active",
-      "summary": "Submit-time close-linkage consistency pre-flight (engine-template #361).",
+      "summary": "Submit-time close-linkage consistency pre-flight (StarshipSuperjam/engine-template#361).",
       "type": "tool"
     },
     {
@@ -6271,7 +6446,7 @@
       },
       "slug": "conduct_shape_check",
       "source": {
-        "fingerprint": "sha256:e3ce3d5b3ab39dcf906fa8a0cd715acd0309b19323e3c33ffe1366bfb551ac5a",
+        "fingerprint": "sha256:917e52d3f64c38d53f1287f10a46667d771f00885d2a3879df9795e769684efb",
         "path": ".engine/tools/conduct_shape_check.py"
       },
       "status": "active",
@@ -6324,7 +6499,7 @@
       },
       "slug": "conformance_sweep",
       "source": {
-        "fingerprint": "sha256:080015b8ebc728ddf993351911ac446eacfe443498bd91846ba6b1b50901c349",
+        "fingerprint": "sha256:09477282786f1f5fa2bebda8e9e91816021346ca214fef74b43e43ae9c2ce46d",
         "path": ".engine/tools/conformance_sweep.py"
       },
       "status": "active",
@@ -6348,7 +6523,7 @@
       },
       "slug": "coverage",
       "source": {
-        "fingerprint": "sha256:05817f838517ebfb2d35a9568dfced7dc4283a63efa239af9d8d8c9df4091ef6",
+        "fingerprint": "sha256:57fac7d2e8ee3478dbd3962764508414eb20b271f0bc9beedaca3e6034a7cb11",
         "path": ".engine/tools/product_design/coverage.py"
       },
       "status": "active",
@@ -6386,6 +6561,7 @@
       "owner": "core",
       "predicates": {
         "imports": [
+          "tool:engine_fixture",
           "tool:module_manager",
           "tool:validate"
         ],
@@ -6395,7 +6571,7 @@
       },
       "slug": "demo_594_upgrade_tail_reexec",
       "source": {
-        "fingerprint": "sha256:f156ea2ddc3b473328c4c76f917969e30eb8c0fb576fead6c9d62196b0ba83d9",
+        "fingerprint": "sha256:ebaf989d4b8745bee41ca479d7267b0bd1a38c9817d7d7e6ed933f7300259f44",
         "path": ".engine/tools/demo_594_upgrade_tail_reexec.py"
       },
       "status": "active",
@@ -6410,6 +6586,7 @@
       "owner": "core",
       "predicates": {
         "imports": [
+          "tool:engine_fixture",
           "tool:module_manager",
           "tool:provider_parity_check",
           "tool:validate"
@@ -6420,11 +6597,107 @@
       },
       "slug": "demo_599_upgrade_reconcile",
       "source": {
-        "fingerprint": "sha256:6305cadc03801200f2dfb703bf476d6a2307b92986f6af14410c97755ab83eb2",
+        "fingerprint": "sha256:328a5e98e536f1934520eb60af0f4de151befdcdd4bd01add227e9fa06e1dd91",
         "path": ".engine/tools/demo_599_upgrade_reconcile.py"
       },
       "status": "active",
       "summary": "Behavioral FALSIFICATION for issue #599 — an engine update RECONCILES a deployed tree to the release:",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "demo",
+      "guarded": false,
+      "id": "tool:demo_753_ledger_dir_hermeticity",
+      "name": ".engine/tools/demo_753_ledger_dir_hermeticity.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:boot_alarm_ledger",
+          "tool:ledger"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "demo_753_ledger_dir_hermeticity",
+      "source": {
+        "fingerprint": "sha256:a6edb24ea1320446d274d134755a351edd661de035291befb6970023c752cd85",
+        "path": ".engine/tools/demo_753_ledger_dir_hermeticity.py"
+      },
+      "status": "active",
+      "summary": "Behavioral FALSIFICATION for engine-template #753 — the git-unavailable fallback of the two",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "demo",
+      "guarded": false,
+      "id": "tool:demo_757_upgrade_reconciles_default_groups",
+      "name": ".engine/tools/demo_757_upgrade_reconciles_default_groups.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:engine_fixture",
+          "tool:module_manager",
+          "tool:validate"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "demo_757_upgrade_reconciles_default_groups",
+      "source": {
+        "fingerprint": "sha256:ee96ca48eceb83aa9328a57bbb805d645ef053b4e24e855f5812cb4934382fe9",
+        "path": ".engine/tools/demo_757_upgrade_reconciles_default_groups.py"
+      },
+      "status": "active",
+      "summary": "Behavioral FALSIFICATION for issue #757 — an engine update RECONCILES its own tool-runtime dependency-group",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "demo",
+      "guarded": false,
+      "id": "tool:demo_759_upgrade_installs_new_modules",
+      "name": ".engine/tools/demo_759_upgrade_installs_new_modules.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:engine_fixture",
+          "tool:module_manager"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "demo_759_upgrade_installs_new_modules",
+      "source": {
+        "fingerprint": "sha256:fd18ad1fa5a2317779191f86016c1e5d6f25b6beac0c65d0c4a3a77e9cddc019",
+        "path": ".engine/tools/demo_759_upgrade_installs_new_modules.py"
+      },
+      "status": "active",
+      "summary": "Behavioral FALSIFICATION for issue #759 — an engine update INSTALLS the new modules a release adds that the",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "demo",
+      "guarded": false,
+      "id": "tool:demo_760_add_release_tag",
+      "name": ".engine/tools/demo_760_add_release_tag.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:module_manager"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "demo_760_add_release_tag",
+      "source": {
+        "fingerprint": "sha256:ec72f5f888271d4d417b2a0d82bb6bdc4151676bc996ef161319aaf81f283f02",
+        "path": ".engine/tools/demo_760_add_release_tag.py"
+      },
+      "status": "active",
+      "summary": "Behavioral FALSIFICATION for issue #760 — `module add` (and `upgrade`) must resolve the engine's recorded",
       "type": "tool"
     },
     {
@@ -6489,7 +6762,7 @@
       },
       "slug": "demo_overlay_disclosure",
       "source": {
-        "fingerprint": "sha256:4ffb46c8bf2ab9064e7fa61465bba2145f84729c24b8389578a2e5da09fec0b3",
+        "fingerprint": "sha256:089bddaf7ce0080ae73b3983a2ea55085226dde01cade3eb8689555dfb6918c5",
         "path": ".engine/tools/demo_overlay_disclosure.py"
       },
       "status": "active",
@@ -6631,35 +6904,11 @@
       },
       "slug": "design_form",
       "source": {
-        "fingerprint": "sha256:d0f3fc7c26513b41608f169266547f6ab3835d440af6a5c0fac931667fc4f70b",
+        "fingerprint": "sha256:d93155c0b47aae239ede5982f49b827545e3280752dc64bc981ea08d4612ce69",
         "path": ".engine/tools/product_design/design_form.py"
       },
       "status": "active",
       "summary": "Product-design form inspector — the read-only `custom/script` entry for engine/check/product-design-form",
-      "type": "tool"
-    },
-    {
-      "entrypoint": "ci",
-      "guarded": true,
-      "id": "tool:disposition_issue_resolution_check",
-      "name": ".engine/tools/disposition_issue_resolution_check.py",
-      "owner": "core",
-      "predicates": {
-        "imports": [
-          "tool:github_client",
-          "tool:validate"
-        ],
-        "provided_by": [
-          "module:core"
-        ]
-      },
-      "slug": "disposition_issue_resolution_check",
-      "source": {
-        "fingerprint": "sha256:d2c96bc328a537d06d32a3cf9b0b269f3034b72600e3af2f50d3aa99a6b072d5",
-        "path": ".engine/tools/disposition_issue_resolution_check.py"
-      },
-      "status": "active",
-      "summary": "disposition-issue-resolution check (#292) — a `custom/script` CI-suite rule",
       "type": "tool"
     },
     {
@@ -6683,6 +6932,26 @@
       },
       "status": "active",
       "summary": "embed.py — turns text into a vector using the vendored word table.",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "library",
+      "guarded": false,
+      "id": "tool:engine_fixture",
+      "name": ".engine/tools/engine_fixture.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "engine_fixture",
+      "source": {
+        "fingerprint": "sha256:68cf6127d1339b17e8949a25661e10e7702d0cf72604e340289fb215a78c271f",
+        "path": ".engine/tools/engine_fixture.py"
+      },
+      "status": "active",
+      "summary": "Shared fixture builder for the upgrade / reconcile / release-gate falsification demos.",
       "type": "tool"
     },
     {
@@ -6727,11 +6996,11 @@
       },
       "slug": "engine_status",
       "source": {
-        "fingerprint": "sha256:1da31b0561871645a432bb3aec1739676ed37ef7e545f4976e68cffa80ae7cbc",
+        "fingerprint": "sha256:96027a380a26db3054cff6c28b5917da7bf65bd8a4eccfa35c07a15d086e227c",
         "path": ".engine/tools/engine_status.py"
       },
       "status": "active",
-      "summary": "`/engine-status` — the operator's on-demand view of where the project stands (issue #83).",
+      "summary": "`/engine-status` — the operator's on-demand view of where the project stands (issue StarshipSuperjam/engine-template#83).",
       "type": "tool"
     },
     {
@@ -6781,6 +7050,26 @@
       },
       "status": "active",
       "summary": "Deferred-work marker form — the custom/script entry for engine/check/engine-todo-form (eADR-0035).",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "library",
+      "guarded": false,
+      "id": "tool:engine_write",
+      "name": ".engine/tools/engine_write.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "engine_write",
+      "source": {
+        "fingerprint": "sha256:bbdad5109202fc284e7bb9e291357acc9a49d6aa7948bf1fbec2f9ca3f180ad5",
+        "path": ".engine/tools/engine_write.py"
+      },
+      "status": "active",
+      "summary": "The write boundary for the engine's OWN files — one predicate, homed once (StarshipSuperjam/engine-template#923).",
       "type": "tool"
     },
     {
@@ -6859,7 +7148,7 @@
       },
       "slug": "execution_environment",
       "source": {
-        "fingerprint": "sha256:3f7c6ca8a6f3977c578fd00c4740c4ee73feabe1691ffb36a3b602b43224a1d2",
+        "fingerprint": "sha256:9f4312e908a9ad4fa7f9a8be5929232fa199d6678043093c161ea768aa68be76",
         "path": ".engine/tools/execution_environment.py"
       },
       "status": "active",
@@ -6908,11 +7197,11 @@
       },
       "slug": "first_run_health",
       "source": {
-        "fingerprint": "sha256:a5da9201cb1c8d18e18f5d188bb0f66504bc56c9deed71d365aaeb7a56e7f5e0",
+        "fingerprint": "sha256:27194edf67ec7ee600cb6ba3a7dfd649ff4497479fa8acf562c0bff74a61adfe",
         "path": ".engine/tools/first_run_health.py"
       },
       "status": "active",
-      "summary": "first_run_health — the standing \"this copy hasn't finished first-run setup\" detector (issue #353).",
+      "summary": "first_run_health — the standing \"this copy hasn't finished first-run setup\" detector (issue StarshipSuperjam/engine-template#353).",
       "type": "tool"
     },
     {
@@ -6931,11 +7220,11 @@
       },
       "slug": "first_run_reference_closure_check",
       "source": {
-        "fingerprint": "sha256:1d7fff28ebc5b8b1535bd2a00bd04db68d8bdfea0bcfb853632331229a22b9da",
+        "fingerprint": "sha256:fa0d96c483114304d57cfa5d31f04b0736dfe7369a160ff7a8eeb3603d78ca0a",
         "path": ".engine/tools/first_run_reference_closure_check.py"
       },
       "status": "active",
-      "summary": "First-run reference-closure gate (issue #150) — the custom/script entry for",
+      "summary": "First-run reference-closure gate (issue StarshipSuperjam/engine-template#150) — the custom/script entry for",
       "type": "tool"
     },
     {
@@ -6978,7 +7267,7 @@
       },
       "slug": "github_client",
       "source": {
-        "fingerprint": "sha256:12bcd18e515338a02ee798a89a011cc914dd00449e815a9dbea7d3ef43dc772e",
+        "fingerprint": "sha256:e91a777f8c6bb055d93744c7a74edfe4ea0176a101201fc4f02a1445c1a50627",
         "path": ".engine/tools/github_client.py"
       },
       "status": "active",
@@ -7001,11 +7290,11 @@
       },
       "slug": "greenfield_intake",
       "source": {
-        "fingerprint": "sha256:9793c16e3cd84bd782466eebb7921158b26e6bd9c06b5c30bf439d65d9372739",
+        "fingerprint": "sha256:5120eba0c36f8f85405b0aa9c944db1ed119ad4586badea1b9b8428886c3f143",
         "path": ".engine/tools/greenfield_intake.py"
       },
       "status": "active",
-      "summary": "Greenfield-intake detector — the OFFLINE, READ-ONLY signal behind boot's first-engagement nudge (#553).",
+      "summary": "Greenfield-intake detector — the OFFLINE, READ-ONLY signal behind boot's first-engagement nudge (StarshipSuperjam/engine-template#553).",
       "type": "tool"
     },
     {
@@ -7025,11 +7314,11 @@
       },
       "slug": "hard_check_bite_check",
       "source": {
-        "fingerprint": "sha256:a4c5914ac08d0840be2ed23adbf195ed350c967ff00e66ef2da2ba73e45c81f4",
+        "fingerprint": "sha256:adac0512d34e1ec270b16bfb1356dda6d3941658a79699ce828ca9c4342a7db7",
         "path": ".engine/tools/hard_check_bite_check.py"
       },
       "status": "active",
-      "summary": "The negative-fixture meta-check (issue #286) — the custom/script entry for",
+      "summary": "The negative-fixture meta-check (issue StarshipSuperjam/engine-template#286) — the custom/script entry for",
       "type": "tool"
     },
     {
@@ -7044,7 +7333,7 @@
       },
       "slug": "hook-runner",
       "source": {
-        "fingerprint": "sha256:1b7778ecc79bd5a4e485c3eae886c3331f8e3928cd2e3b198bbbf47727663e3f",
+        "fingerprint": "sha256:6ae0488a2a46ffe856516595611a0b789b70937b6b8b73543ac67d9217858de5",
         "path": ".engine/tools/hook-runner.sh"
       },
       "status": "active",
@@ -7069,11 +7358,34 @@
       },
       "slug": "hooks",
       "source": {
-        "fingerprint": "sha256:9aba28a96e40cd53113d870c4c6e11770d6cd7168b876b75e6b0acbdbcde8b23",
+        "fingerprint": "sha256:c758aa5a1bac35b8fb7dc8034ca3888de945b1dfff2a8ccb17201a3871abdead",
         "path": ".engine/tools/hooks.py"
       },
       "status": "active",
       "summary": "The hooks contract substrate — the cross-cutting hook LAWS every local gate",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "cli",
+      "guarded": false,
+      "id": "tool:hooks_path_health",
+      "name": ".engine/tools/hooks_path_health.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:boot"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "hooks_path_health",
+      "source": {
+        "fingerprint": "sha256:c69de219207a225751da64cec454cc6d913b08df50555508a23b1ad570f096c0",
+        "path": ".engine/tools/hooks_path_health.py"
+      },
+      "status": "active",
+      "summary": "hooks_path_health — the standing broken-`core.hooksPath` detector + repair (issues StarshipSuperjam/engine-template#707, StarshipSuperjam/engine-template#708; p",
       "type": "tool"
     },
     {
@@ -7092,11 +7404,11 @@
       },
       "slug": "in_tool_demo_failure_path_check",
       "source": {
-        "fingerprint": "sha256:4a70437b28bc6ab2ad52edd6187a6f03bee57778532978568f994028890bc053",
+        "fingerprint": "sha256:5a718521c6eee9a2fc701e2592c3b6286f36363a3a4714187c30f2ad1bb1171f",
         "path": ".engine/tools/in_tool_demo_failure_path_check.py"
       },
       "status": "active",
-      "summary": "In-tool demo failure-path floor (engine-template #171) — the custom/script",
+      "summary": "In-tool demo failure-path floor (StarshipSuperjam/engine-template#171) — the custom/script",
       "type": "tool"
     },
     {
@@ -7154,13 +7466,16 @@
       "name": ".engine/tools/issue_author.py",
       "owner": "core",
       "predicates": {
+        "imports": [
+          "tool:telemetry"
+        ],
         "provided_by": [
           "module:core"
         ]
       },
       "slug": "issue_author",
       "source": {
-        "fingerprint": "sha256:eb731e527470868b40fd7d2fd48b64c10f18339669ecc612d6d4281a00b66579",
+        "fingerprint": "sha256:635ec8dc3d421a8af79af73f8032efff522a22e50acea222b98af3e06d7447ab",
         "path": ".engine/tools/issue_author.py"
       },
       "status": "active",
@@ -7175,9 +7490,9 @@
       "owner": "core",
       "predicates": {
         "imports": [
-          "tool:github_client",
           "tool:issue_author",
-          "tool:issue_gate"
+          "tool:issue_gate",
+          "tool:issue_label_client"
         ],
         "provided_by": [
           "module:core"
@@ -7185,7 +7500,7 @@
       },
       "slug": "issue_conformance_ci",
       "source": {
-        "fingerprint": "sha256:8608072d07b2ca30d47da8cefd78b7c2464d2fd2afa618b9501856b5c788d56d",
+        "fingerprint": "sha256:0f4465ab9289a089cfd9fa4021200f41806a0a3de58c2264650f3ef3524e7c4c",
         "path": ".engine/tools/issue_conformance_ci.py"
       },
       "status": "active",
@@ -7213,6 +7528,52 @@
       "type": "tool"
     },
     {
+      "entrypoint": "cli",
+      "guarded": false,
+      "id": "tool:issue_kind_label",
+      "name": ".engine/tools/issue_kind_label.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:issue_label_client"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "issue_kind_label",
+      "source": {
+        "fingerprint": "sha256:1f7e7e4ad55f54b9f914d714c038718c8906f4754d76f920ff9472515f089231",
+        "path": ".engine/tools/issue_kind_label.py"
+      },
+      "status": "active",
+      "summary": "The kind-label applicator — the on:issues CI net that keeps the GitHub-native kind labels consistent.",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "library",
+      "guarded": false,
+      "id": "tool:issue_label_client",
+      "name": ".engine/tools/issue_label_client.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:github_client"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "issue_label_client",
+      "source": {
+        "fingerprint": "sha256:8bddbed9e6b26c8bb6643e4d7f9ebbe093231399852d0af0f0341039317dc8b0",
+        "path": ".engine/tools/issue_label_client.py"
+      },
+      "status": "active",
+      "summary": "The shared per-Issue label client — the ONE injectable-transport client for GitHub label reads/writes.",
+      "type": "tool"
+    },
+    {
       "entrypoint": "hook",
       "guarded": false,
       "id": "tool:knowledge_gen",
@@ -7231,7 +7592,7 @@
       },
       "slug": "knowledge_gen",
       "source": {
-        "fingerprint": "sha256:71f3238d4627b9bddd357f734cb1219705f469710aff2343c4944972e9331163",
+        "fingerprint": "sha256:c5e4c367dce80a1904d1d9154ca665323b57171393ed669ee68dd332cfca51e9",
         "path": ".engine/tools/knowledge_gen.py"
       },
       "status": "active",
@@ -7278,7 +7639,7 @@
       },
       "slug": "knowledge_mcp_server",
       "source": {
-        "fingerprint": "sha256:ff6fe96809dfa94d0ec9d25b8853ec35386c4426198def0f826f6d91d46a4105",
+        "fingerprint": "sha256:503563a6f3e051acf5178513dda5f5590ec94df74ad40d0a22f2417bf7782bc4",
         "path": ".engine/tools/knowledge_mcp_server.py"
       },
       "status": "active",
@@ -7326,7 +7687,7 @@
       },
       "slug": "knowledge_vocabulary_check",
       "source": {
-        "fingerprint": "sha256:45181ed68ec3e62d5b5242794b6782c962e60e9a4226309e657fc98bc85acb53",
+        "fingerprint": "sha256:f4795130d3c1c1097b494ea8bdab4a3827d5d94f37c208b0663d78b917a86d9d",
         "path": ".engine/tools/knowledge_vocabulary_check.py"
       },
       "status": "active",
@@ -7346,7 +7707,7 @@
       },
       "slug": "ledger",
       "source": {
-        "fingerprint": "sha256:5d60386f6b2ce594495044b71983b924c37ed3ec98e969724d93e04bf928c592",
+        "fingerprint": "sha256:61959efa69080db6f9c253089e6c28b72fcfa918cdd89f8bb557cb8c8a972866",
         "path": ".engine/tools/memory/ledger.py"
       },
       "status": "active",
@@ -7439,7 +7800,7 @@
       },
       "slug": "lens_consumption_check",
       "source": {
-        "fingerprint": "sha256:4146536a582866cba8fc9aee6b0c5a2e3e91e77168d966d51090658c8894c34a",
+        "fingerprint": "sha256:884397ddd3a536815512ced0a6f48528b2e95d73a3ee69fe44b97a692f122cff",
         "path": ".engine/tools/lens_consumption_check.py"
       },
       "status": "active",
@@ -7465,11 +7826,11 @@
       },
       "slug": "license_health",
       "source": {
-        "fingerprint": "sha256:0cde8327ec653e9534eb0ac13acdd36e34e27c8ce9bd2f71e6a7f2439dcfac50",
+        "fingerprint": "sha256:5695d22a03ec6414717655684bb190ab51592aa5e13083ae64ec7db469c53710",
         "path": ".engine/tools/license_health.py"
       },
       "status": "active",
-      "summary": "license_health — the standing foreign-template-`LICENSE` detector (issue #471).",
+      "summary": "license_health — the standing foreign-template-`LICENSE` detector (issue StarshipSuperjam/engine-template#471).",
       "type": "tool"
     },
     {
@@ -7485,7 +7846,7 @@
       },
       "slug": "license_seeds",
       "source": {
-        "fingerprint": "sha256:1a652537c342c3a7aa6d9b46b046497a748e6608d4c1dfd23566c892f5ce2a93",
+        "fingerprint": "sha256:d44c14a772d38cf50e4c342debd406f13a2969f644749460e552eec8fc2c48eb",
         "path": ".engine/tools/license_seeds.py"
       },
       "status": "active",
@@ -7542,6 +7903,29 @@
       "type": "tool"
     },
     {
+      "entrypoint": "ci",
+      "guarded": true,
+      "id": "tool:manifest_write_funnel_check",
+      "name": ".engine/tools/manifest_write_funnel_check.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:validate"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "manifest_write_funnel_check",
+      "source": {
+        "fingerprint": "sha256:de0a60b2101dd94b7829ab30b7d0239d31f9120c7f24ef2b788e1fbc0ed854e9",
+        "path": ".engine/tools/manifest_write_funnel_check.py"
+      },
+      "status": "active",
+      "summary": "Manifest-write funnel floor (StarshipSuperjam/engine-template#923) — the custom/script entry for",
+      "type": "tool"
+    },
+    {
       "entrypoint": "mcp-server",
       "guarded": false,
       "id": "tool:mcp_server",
@@ -7564,11 +7948,31 @@
       },
       "slug": "mcp_server",
       "source": {
-        "fingerprint": "sha256:046714166f9dde07e3dbd6d3342587c83fa7fa3ee314d23f4344c740e5898ed0",
+        "fingerprint": "sha256:87467df2b39547cbbdba2d25076861bb1d63e9141b997bb15d64fb8efe1061f8",
         "path": ".engine/tools/memory/mcp_server.py"
       },
       "status": "active",
       "summary": "The engine-memory MCP server: the conforming fallback for memory recall (search.json).",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "library",
+      "guarded": false,
+      "id": "tool:mcp_test_support",
+      "name": ".engine/tools/mcp_test_support.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "mcp_test_support",
+      "source": {
+        "fingerprint": "sha256:3cc3d23636cf1ec7be32e7e561ff0825881b6705c9f5ba2f67455c9019b40e22",
+        "path": ".engine/tools/mcp_test_support.py"
+      },
+      "status": "active",
+      "summary": "mcp_test_support.py — the ONE place tests talk MCP to an engine server.",
       "type": "tool"
     },
     {
@@ -7588,11 +7992,11 @@
       },
       "slug": "mechanic_build",
       "source": {
-        "fingerprint": "sha256:dc483727b00487cf6c862c7245a0ee070bb4e03509883473b4cc6b44c790c3a6",
+        "fingerprint": "sha256:f0d0aee9cc9aafc564daf7da91e42e1738d354b211f45221d8bfa5bd336f6427",
         "path": ".engine/tools/mechanic_build.py"
       },
       "status": "active",
-      "summary": "The engine-mechanic build entry (eADR-0026): the FAIL-CLOSED preflight that authorizes a cross-repo build.",
+      "summary": "The engine-mechanic build entry (eADR-0026): the FAIL-CLOSED gate behind an engine-mechanic's cross-repo build.",
       "type": "tool"
     },
     {
@@ -7637,11 +8041,11 @@
       },
       "slug": "memory_pointer_public_safety_check",
       "source": {
-        "fingerprint": "sha256:363fb55179ce412db1224aa6a7716830f1619693105c736b08abfd04124249c4",
+        "fingerprint": "sha256:fe8ee6de530cc0ecff53d94d1f94ecf7ea2d7f4e5aa8fddb7eda6a081d6c10fe",
         "path": ".engine/tools/memory_pointer_public_safety_check.py"
       },
       "status": "active",
-      "summary": "Memory-backup pointer public-safety guard (#224) — the thin custom/script entry for",
+      "summary": "Memory-backup pointer public-safety guard (StarshipSuperjam/engine-template#224) — the thin custom/script entry for",
       "type": "tool"
     },
     {
@@ -7660,7 +8064,7 @@
       },
       "slug": "milestone_emit",
       "source": {
-        "fingerprint": "sha256:8fa687535dedab599713977cb0c6b6367b2115103beb512553d13cd5a3075e00",
+        "fingerprint": "sha256:447c03253edd672f96b23b8f1f9125bf0f33f33afc1d3508d6b82b3a51b1abe6",
         "path": ".engine/tools/milestone_emit.py"
       },
       "status": "active",
@@ -7686,7 +8090,7 @@
       },
       "slug": "modes",
       "source": {
-        "fingerprint": "sha256:b2b89a93bd3a5081e3e66f04e792c9b8dbe5341cbcc74728ccab95384d67fec5",
+        "fingerprint": "sha256:8f078d51b54f6f3474a33900c57f8029adc8b333c3ec73cfd5d5881c5dc97360",
         "path": ".engine/tools/modes.py"
       },
       "status": "active",
@@ -7737,7 +8141,7 @@
       },
       "slug": "module_coherence",
       "source": {
-        "fingerprint": "sha256:b1465c2f26915f83c3db8795cafdee19480e25ca10eaff054263bccbaa4bd8b2",
+        "fingerprint": "sha256:475f565394177d0e1497939bb6cc03ff8e8ae7f3371076191e29f29684593c32",
         "path": ".engine/tools/module_coherence.py"
       },
       "status": "active",
@@ -7757,11 +8161,14 @@
           "tool:capture",
           "tool:checkout_health",
           "tool:close",
+          "tool:engine_write",
           "tool:github_client",
           "tool:knowledge_gen",
           "tool:ledger",
           "tool:memory.__init__",
+          "tool:module_catalog",
           "tool:module_coherence",
+          "tool:obligation_matrix",
           "tool:release_cut",
           "tool:repo_identity",
           "tool:restore_vault",
@@ -7776,7 +8183,7 @@
       },
       "slug": "module_manager",
       "source": {
-        "fingerprint": "sha256:aa3319fa3d673877b3355f81acafa132409d0b60345157aab3f8861a146b525b",
+        "fingerprint": "sha256:f9acdd334d5e663ecb2f20b6407e8361f68d51c74c03b640ccdbb3344e5933e7",
         "path": ".engine/tools/module_manager.py"
       },
       "status": "active",
@@ -7800,7 +8207,7 @@
       },
       "slug": "module_surfaces",
       "source": {
-        "fingerprint": "sha256:8c50b13da515cdd0d1131b7803d0f2028bba0bae4d3487fbe6a419b9e15fac1b",
+        "fingerprint": "sha256:e8fceb1549f7e667e402feed2c4626ff5f575a9adc65358e3a7b2230c50fc82c",
         "path": ".engine/tools/module_surfaces.py"
       },
       "status": "active",
@@ -7845,7 +8252,7 @@
       },
       "slug": "obligation_matrix",
       "source": {
-        "fingerprint": "sha256:b4f1e6f6a786b7f297f977b6f438b79c10d118d25e0f6fe59e9c3baa0136f307",
+        "fingerprint": "sha256:4088cc039b6f5fb49539a1a3bdf81c5c774f4b165528e986fc22f8d0429038ac",
         "path": ".engine/tools/product_design/obligation_matrix.py"
       },
       "status": "active",
@@ -7868,11 +8275,11 @@
       },
       "slug": "operator_guarded_paths_check",
       "source": {
-        "fingerprint": "sha256:42c81842ca7438a890ee9b6d3a906ed015dd237c89408c9989b4f40c6e206af4",
+        "fingerprint": "sha256:39b63f6b0de1c1df6bc03cdc3c62ff95978628cdfbee749e5245b1c191b03710",
         "path": ".engine/tools/operator_guarded_paths_check.py"
       },
       "status": "active",
-      "summary": "Instance guarded-paths declaration check (#532) — the fail-CLOSED shape gate for a deployment's own",
+      "summary": "Instance guarded-paths declaration check (StarshipSuperjam/engine-template#532) — the fail-CLOSED shape gate for a deployment's own",
       "type": "tool"
     },
     {
@@ -7932,6 +8339,7 @@
         "imports": [
           "tool:boot",
           "tool:github_client",
+          "tool:module_coherence",
           "tool:module_manager",
           "tool:repo_identity",
           "tool:validate",
@@ -7943,7 +8351,7 @@
       },
       "slug": "overlay_disclosure",
       "source": {
-        "fingerprint": "sha256:55ac7a5e8ee9f2d9aa52dd5d8509ced091899f46fe9ad7a3bf5beeb2b1215f24",
+        "fingerprint": "sha256:eca42e19273526d7e2f35b20996b78f926fa3b013514724b703da0c47939382c",
         "path": ".engine/tools/overlay_disclosure.py"
       },
       "status": "active",
@@ -7970,7 +8378,7 @@
       },
       "slug": "pins",
       "source": {
-        "fingerprint": "sha256:f5c25bd3b9bc62b8063962d8c73b76572fd3923784595d39fba563281444abc9",
+        "fingerprint": "sha256:ea80a82920d6692300169c37202521e635fd3f924385206e7371c8bd502c317a",
         "path": ".engine/tools/memory/pins.py"
       },
       "status": "active",
@@ -7995,7 +8403,7 @@
       },
       "slug": "policy_override_check",
       "source": {
-        "fingerprint": "sha256:341543591e1140216e6ac9d60132806079cea423876a698c86e9294989656f58",
+        "fingerprint": "sha256:0fdae3e5bcd733019af6dd7f55dbb0242cb9986d9bbff0853b186bc86cbe42ee",
         "path": ".engine/tools/policy_override_check.py"
       },
       "status": "active",
@@ -8040,11 +8448,11 @@
       },
       "slug": "pr_reconcile",
       "source": {
-        "fingerprint": "sha256:e0dad636667d7763cbcaf5dc874a2c9fcac8a73720370d10d41caba3eb2dce3d",
+        "fingerprint": "sha256:7bc8d7a997b3c24cf491b24b9c3677066a2eb33219b7925ef30356fbca873907",
         "path": ".engine/tools/pr_reconcile.py"
       },
       "status": "active",
-      "summary": "Reconcile a pull request stranded on the engine's derived-committed index files (#136).",
+      "summary": "Reconcile a pull request stranded on the engine's derived-committed index files (StarshipSuperjam/engine-template#136).",
       "type": "tool"
     },
     {
@@ -8084,7 +8492,7 @@
       },
       "slug": "protection_guard",
       "source": {
-        "fingerprint": "sha256:6a295eeb90182549d278f571c819beab648884d851a0da544a6c38f2e703e046",
+        "fingerprint": "sha256:c3462578b27dfdb97f051639c8fbb52f9f0cc46273998ee9af30cc1bf8568f15",
         "path": ".engine/tools/protection_guard.py"
       },
       "status": "active",
@@ -8107,7 +8515,7 @@
       },
       "slug": "provider_parity_check",
       "source": {
-        "fingerprint": "sha256:14ee399d504813ea4de90e3968f361aafb2bff378d2574995d32e74853171c55",
+        "fingerprint": "sha256:b4dc30f459c304031f11d1e4334cad842a5e1a2857f90ce68b2aa23a487f56fb",
         "path": ".engine/tools/provider_parity_check.py"
       },
       "status": "active",
@@ -8215,7 +8623,7 @@
       },
       "slug": "records",
       "source": {
-        "fingerprint": "sha256:a491666cdbf299f673046936c7ab515a66d10ba4cdf26589d044f8e69ade2c0d",
+        "fingerprint": "sha256:6c49bb692b62101c7a992b5352e20b94d898964037575a8362b3f391109c789d",
         "path": ".engine/tools/memory/records.py"
       },
       "status": "active",
@@ -8231,6 +8639,7 @@
       "predicates": {
         "imports": [
           "tool:boot",
+          "tool:engine_write",
           "tool:module_coherence",
           "tool:module_manager",
           "tool:validate"
@@ -8241,7 +8650,7 @@
       },
       "slug": "release_cut",
       "source": {
-        "fingerprint": "sha256:88058e207385e3b2b45ca46467c59605ce9a1166b6884a64e1e67ff0e4b2dd35",
+        "fingerprint": "sha256:c5783687f4b6bbdb0d576fbd26b2a27b97b75bfc1694dff141cb4c61a2e0d8d3",
         "path": ".engine/tools/release_cut.py"
       },
       "status": "active",
@@ -8266,7 +8675,7 @@
       },
       "slug": "release_gate",
       "source": {
-        "fingerprint": "sha256:09c49a802cbcc7be72865df95ee09645dcc80bd0d5a48e04d585371d1189f7e8",
+        "fingerprint": "sha256:689323bd68917c88020de0d381ddea239bf89c0fa59082fa8e6dd5477874e69d",
         "path": ".engine/tools/release_gate.py"
       },
       "status": "active",
@@ -8315,7 +8724,7 @@
       },
       "slug": "release_terminal",
       "source": {
-        "fingerprint": "sha256:9d8971d7e3b8cc011d1915116d64a27aaa922cfdd51c8bed061e8f9fbc768a29",
+        "fingerprint": "sha256:0f683ec2578e0b8d96ccb4038dffc45506e519d192a1fd51d08d60d39ecf5a93",
         "path": ".engine/tools/release_terminal.py"
       },
       "status": "active",
@@ -8339,11 +8748,11 @@
       },
       "slug": "repo_behavior",
       "source": {
-        "fingerprint": "sha256:85ef34224ac42c48f5c0c22db644dd3cad23fd59477de5ba9095e47f91224ebe",
+        "fingerprint": "sha256:1a38efe6d81a8387a5975b22a5b031b22121b26191ce5cfa4f512f4d0e60f9e0",
         "path": ".engine/tools/repo_behavior.py"
       },
       "status": "active",
-      "summary": "The repository-behavior settings leg (issue #541). Turns on the repository settings a new engine repo",
+      "summary": "The repository-behavior settings leg (issue StarshipSuperjam/engine-template#541). Turns on the repository settings a new engine repo",
       "type": "tool"
     },
     {
@@ -8362,7 +8771,7 @@
       },
       "slug": "repo_identity",
       "source": {
-        "fingerprint": "sha256:9d7a008b6a678259236adfd94fcc62d1a40d8880b1bc9441fd04499e4b65742b",
+        "fingerprint": "sha256:9d3ae532fb1c1a5055bcea34f821d98e8b5ac9d193dea737fcabf9a3dd938323",
         "path": ".engine/tools/repo_identity.py"
       },
       "status": "active",
@@ -8424,7 +8833,7 @@
       },
       "slug": "restore_vault",
       "source": {
-        "fingerprint": "sha256:9ee0427065b5711c21550988882516e30841e4542f3589eeaf80a82d45be8d54",
+        "fingerprint": "sha256:69ccb1245a52d41d6d52f6ad2f90421b2e38d9fc1a8f23c670c0821464f87e80",
         "path": ".engine/tools/memory/restore_vault.py"
       },
       "status": "active",
@@ -8474,7 +8883,7 @@
       },
       "slug": "scope_behaviors_check",
       "source": {
-        "fingerprint": "sha256:85f890d6104dc4ed3a85635765a9756f1af880e3b79911979eb9c60a0e1d67f7",
+        "fingerprint": "sha256:a4d90f4e7e0461995aaf8c6aaef6628704ad7dce3c4b9b8e056f8556877c3b78",
         "path": ".engine/tools/scope_behaviors_check.py"
       },
       "status": "active",
@@ -8494,7 +8903,7 @@
       },
       "slug": "scope_profile",
       "source": {
-        "fingerprint": "sha256:4540bdf8dbdc3085bd327ae67c50f48c9a45e0d23ea735d7f8c1f2f5f271d774",
+        "fingerprint": "sha256:16460e5371d2709a31ef0784108a0c6fc3c9731e6f1ed2198628e2257b12b2b3",
         "path": ".engine/tools/scope_profile.py"
       },
       "status": "active",
@@ -8537,11 +8946,11 @@
       },
       "slug": "security_floor",
       "source": {
-        "fingerprint": "sha256:22df5d661a19f38a039b33f98d5990d2ceed20492c344b6e54626d9b50311860",
+        "fingerprint": "sha256:3cd5873721fd257a43105bd20e11121d7f495bee0a4890fb61fe839975023b74",
         "path": ".engine/tools/security_floor.py"
       },
       "status": "active",
-      "summary": "The native-scanning security floor (issue #124). Enables GitHub's NATIVE secret scanning + push protection, CodeQL",
+      "summary": "The native-scanning security floor (issue StarshipSuperjam/engine-template#124). Enables GitHub's NATIVE secret scanning + push protection, CodeQL",
       "type": "tool"
     },
     {
@@ -8562,7 +8971,7 @@
       },
       "slug": "self_map",
       "source": {
-        "fingerprint": "sha256:08d4655f98b7c67ba004e7a17d5f8f16e5b0aae5faf3f0b5a679b5f6445ed6e8",
+        "fingerprint": "sha256:04ec162d27db56e37328b742fc7a095f6736f24171239beec8a0b1d0d3b1d181",
         "path": ".engine/tools/self_map.py"
       },
       "status": "active",
@@ -8586,7 +8995,7 @@
       },
       "slug": "self_map_check",
       "source": {
-        "fingerprint": "sha256:10a3c88e1e30e7015dc99f2ae1124e357a7ddd4e57533dba44ea94c276b31bea",
+        "fingerprint": "sha256:438dc416164fb01e434c8f9681f6023399b679559318f3321c536609ec07e71d",
         "path": ".engine/tools/self_map_check.py"
       },
       "status": "active",
@@ -8606,7 +9015,7 @@
       },
       "slug": "selftest",
       "source": {
-        "fingerprint": "sha256:0ee742c6d90eaf405edfce55a6b86d6170c68122ec9500db0bc45ee847cb9572",
+        "fingerprint": "sha256:1811b818851e10a9c90bcb848a6e5f42938940fb91349dad51d0c585a08454f7",
         "path": ".engine/tools/selftest.py"
       },
       "status": "active",
@@ -8636,6 +9045,31 @@
     {
       "entrypoint": "ci",
       "guarded": true,
+      "id": "tool:shipped_issue_references_check",
+      "name": ".engine/tools/shipped_issue_references_check.py",
+      "owner": "core",
+      "predicates": {
+        "imports": [
+          "tool:module_coherence",
+          "tool:repo_identity",
+          "tool:validate"
+        ],
+        "provided_by": [
+          "module:core"
+        ]
+      },
+      "slug": "shipped_issue_references_check",
+      "source": {
+        "fingerprint": "sha256:debd46c190ec77a6114233c01fa2bf8b3db843326c90d0a4527fbe7d6b091469",
+        "path": ".engine/tools/shipped_issue_references_check.py"
+      },
+      "status": "active",
+      "summary": "Shipped bare-issue-reference floor (engine-template StarshipSuperjam/engine-template#640) — the",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "ci",
+      "guarded": true,
       "id": "tool:skill_coherence_check",
       "name": ".engine/tools/skill_coherence_check.py",
       "owner": "core",
@@ -8649,7 +9083,7 @@
       },
       "slug": "skill_coherence_check",
       "source": {
-        "fingerprint": "sha256:bd1e5eb78bae836fc64b2c3843a892966550e11e45e5596c8dda2c06d5bc296d",
+        "fingerprint": "sha256:d99a9987bc99a9d8aa399d39805071e81713bb25476fede89bad437fa769d1e8",
         "path": ".engine/tools/skill_coherence_check.py"
       },
       "status": "active",
@@ -8672,7 +9106,7 @@
       },
       "slug": "spec_form",
       "source": {
-        "fingerprint": "sha256:d3b492222f2812d248113a9f62951383b2013d0bca41f3406228305e0bd1140f",
+        "fingerprint": "sha256:2df21318d0338780a152743433fec823a490fa826dddd3a7ab2d0e596d7bab6e",
         "path": ".engine/tools/product_design/spec_form.py"
       },
       "status": "active",
@@ -8695,7 +9129,7 @@
       },
       "slug": "spec_referent",
       "source": {
-        "fingerprint": "sha256:ff776d19b2c85a160fc18c20088dee706cb26a8bd5bb856631f32725da9bb818",
+        "fingerprint": "sha256:b33898b817949a0499d025746df7c3fe354b4a7d81c960d6dcb3b5c0ea55bfc2",
         "path": ".engine/tools/spec_referent.py"
       },
       "status": "active",
@@ -8718,7 +9152,7 @@
       },
       "slug": "standing_situation",
       "source": {
-        "fingerprint": "sha256:a68330072b9b9f05ead9f79ed218389e938c8a0199cf468d8e6f441143ee06fe",
+        "fingerprint": "sha256:b123a9defbb535badd622c2136fd952da417469a34d73f709feafd593cdf5f22",
         "path": ".engine/tools/standing_situation.py"
       },
       "status": "active",
@@ -8771,11 +9205,11 @@
       },
       "slug": "team_switch",
       "source": {
-        "fingerprint": "sha256:540a2efa056eb8c9b6a069996882b4889eeb7e819534942d994ef7432bb1ecab",
+        "fingerprint": "sha256:a5a1753a8d7f60850cb567719aada5121641a06407de76b75b3dc68a2955e129",
         "path": ".engine/tools/team_switch.py"
       },
       "status": "active",
-      "summary": "The permanent operator-privileged solo->team migration (engine-template #408).",
+      "summary": "The permanent operator-privileged solo->team migration (StarshipSuperjam/engine-template#408).",
       "type": "tool"
     },
     {
@@ -8787,6 +9221,7 @@
       "predicates": {
         "imports": [
           "tool:boot",
+          "tool:capture",
           "tool:github_client",
           "tool:issue_author",
           "tool:moment",
@@ -8800,7 +9235,7 @@
       },
       "slug": "telemetry",
       "source": {
-        "fingerprint": "sha256:a564acdf60ba3f3a3c6b5d26acba1561e4691f0e4001d97595c5a7e18e13de1c",
+        "fingerprint": "sha256:32fbade67ca2fcf2bb4b5649ed0eb4cee1e578f4e431242fa4c3642d869234ff",
         "path": ".engine/tools/telemetry.py"
       },
       "status": "active",
@@ -8823,11 +9258,11 @@
       },
       "slug": "template_shape_spec_check",
       "source": {
-        "fingerprint": "sha256:68a97114d8e7e194b7b4ddb57a397dccee09db2d5749e7ec123a226444ea1662",
+        "fingerprint": "sha256:c781d7b0f8208e33b0c9c2258fa18782c28e09b8255ee08cc5c0bf14a04d7714",
         "path": ".engine/tools/template_shape_spec_check.py"
       },
       "status": "active",
-      "summary": "Standing template shape-spec check (engine issue #405).",
+      "summary": "Standing template shape-spec check (engine issue StarshipSuperjam/engine-template#405).",
       "type": "tool"
     },
     {
@@ -9000,7 +9435,7 @@
       },
       "slug": "test_audit_digest",
       "source": {
-        "fingerprint": "sha256:830f274b5c7874aa1da5e53fb59d13df3938a80434e4dd6a09508a22bcbcdf8c",
+        "fingerprint": "sha256:e32f7b21532cce4d56de1f1613d69cd33d39557ddc7cc60e1665ba63ee18689f",
         "path": ".engine/tools/test_audit_digest.py"
       },
       "status": "active",
@@ -9173,13 +9608,14 @@
           "tool:knowledge_index",
           "tool:modes",
           "tool:module_coherence",
+          "tool:repo_identity",
           "tool:restore_vault",
           "tool:validate"
         ]
       },
       "slug": "test_boot",
       "source": {
-        "fingerprint": "sha256:4dbe528e122d3c576c19b08d7ac72c0105704d3ffe524f9896d48293518b7a4a",
+        "fingerprint": "sha256:7dbf04c9722846795589307639d1a9137679aae43e3d88d446a4ace246b88748",
         "path": ".engine/tools/test_boot.py"
       },
       "status": "active",
@@ -9203,7 +9639,7 @@
       },
       "slug": "test_boot_alarm_ledger",
       "source": {
-        "fingerprint": "sha256:e209c0dbf097c6e4ac9cececeab6c252f97359b731de6d8234afa8ac29f7da7c",
+        "fingerprint": "sha256:d6993616f06da9d527c7ad9fef10b1e9c01b1e79e61747e456b947db04d11f09",
         "path": ".engine/tools/test_boot_alarm_ledger.py"
       },
       "status": "active",
@@ -9260,7 +9696,7 @@
       },
       "slug": "test_bootstrap",
       "source": {
-        "fingerprint": "sha256:0a66d453ecbb331ad47bb2977ca5748b8944746e768ee78d193bb474bb529dcc",
+        "fingerprint": "sha256:f7537d410308a5d627a12f8da2736fb7fbbf35d58d476abc3fb10a265758bf72",
         "path": ".engine/tools/test_bootstrap.py"
       },
       "status": "active",
@@ -9311,7 +9747,7 @@
       },
       "slug": "test_capture",
       "source": {
-        "fingerprint": "sha256:b7dda3697f706ee1df2b28b55f6a29a1403080fe0d7f3d928b6eea34f529c3d4",
+        "fingerprint": "sha256:e0a48d04b7fd6a4b35ef10bfd00d1453744d74c3f5e64ef6c092ae5f8679b16d",
         "path": ".engine/tools/memory/test_capture.py"
       },
       "status": "active",
@@ -9352,12 +9788,14 @@
           "module:core"
         ],
         "tests": [
-          "tool:checkout_health"
+          "tool:checkout_health",
+          "tool:license_health",
+          "tool:license_seeds"
         ]
       },
       "slug": "test_checkout_health",
       "source": {
-        "fingerprint": "sha256:c1ed2905eb1819bbec190cf6ae635fa1b67cbc5a2a38f8306a7b6f49ceab425d",
+        "fingerprint": "sha256:339c07f8a6421650f1db14a1d9995c6774f4a7082ca1c926d0d33697610d09b7",
         "path": ".engine/tools/test_checkout_health.py"
       },
       "status": "active",
@@ -9409,7 +9847,7 @@
       },
       "slug": "test_close_linkage_preflight",
       "source": {
-        "fingerprint": "sha256:618c3d41575b35c3d4b441da84971542682c1383c3289af2370229b5be0e0673",
+        "fingerprint": "sha256:3388eb00efe04edb3930fac774e80f566dd930b6d771a05dc29fc1f509685a56",
         "path": ".engine/tools/test_close_linkage_preflight.py"
       },
       "status": "active",
@@ -9674,30 +10112,6 @@
     {
       "entrypoint": "test",
       "guarded": false,
-      "id": "tool:test_disposition_issue_resolution",
-      "name": ".engine/tools/test_disposition_issue_resolution.py",
-      "owner": "core",
-      "predicates": {
-        "provided_by": [
-          "module:core"
-        ],
-        "tests": [
-          "tool:disposition_issue_resolution_check",
-          "tool:validate"
-        ]
-      },
-      "slug": "test_disposition_issue_resolution",
-      "source": {
-        "fingerprint": "sha256:08ace0b5bab0852be62fe6996ff612e8b921e0bf53e8fe159e04bf6d7ce33f5c",
-        "path": ".engine/tools/test_disposition_issue_resolution.py"
-      },
-      "status": "active",
-      "summary": "Tests for the disposition-issue-resolution check (#292) — disposition_issue_resolution_check.",
-      "type": "tool"
-    },
-    {
-      "entrypoint": "test",
-      "guarded": false,
       "id": "tool:test_doc",
       "name": ".engine/tools/test_doc.py",
       "owner": "core",
@@ -9716,6 +10130,29 @@
       },
       "status": "active",
       "summary": "Self-tests for the doc surface: the doc.v1 operator-doc-frontmatter grammar, the committed doc",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
+      "id": "tool:test_engine_fixture",
+      "name": ".engine/tools/test_engine_fixture.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ],
+        "tests": [
+          "tool:engine_fixture"
+        ]
+      },
+      "slug": "test_engine_fixture",
+      "source": {
+        "fingerprint": "sha256:d30bd18d6c3ae4157a4d199d058cb9ce1cbd45209d0ae31860276a6e9806d8a4",
+        "path": ".engine/tools/test_engine_fixture.py"
+      },
+      "status": "active",
+      "summary": "Regression tests for `engine_fixture.clone_engine` — the tracked-only demo fixture clone (#850).",
       "type": "tool"
     },
     {
@@ -9817,6 +10254,29 @@
       },
       "status": "active",
       "summary": "Tests for the deferred-work marker parser and its form check (eADR-0035).",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
+      "id": "tool:test_engine_write",
+      "name": ".engine/tools/test_engine_write.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ],
+        "tests": [
+          "tool:engine_write"
+        ]
+      },
+      "slug": "test_engine_write",
+      "source": {
+        "fingerprint": "sha256:655d9475a4ed4285d684556689e0518ba68e94b9198da01f4743f1b6fe04b7ab",
+        "path": ".engine/tools/test_engine_write.py"
+      },
+      "status": "active",
+      "summary": "Tests for engine_write — the engine-owned write boundary, homed once (#862/#923).",
       "type": "tool"
     },
     {
@@ -9971,7 +10431,7 @@
       },
       "slug": "test_first_run_health",
       "source": {
-        "fingerprint": "sha256:0ae1e3699122c6da9238147c4cfbedc9087fc3fb234b86693647e8af7e5c3410",
+        "fingerprint": "sha256:70608e9c21117221c0ad5d42f206ffdcf1a0d414a082279967443c471bf7a8a8",
         "path": ".engine/tools/test_first_run_health.py"
       },
       "status": "active",
@@ -10098,7 +10558,7 @@
       },
       "slug": "test_hard_check_bite",
       "source": {
-        "fingerprint": "sha256:372629804f1156f87bda02215964d01b2dc397671550d5464965ff8b7675150a",
+        "fingerprint": "sha256:12e605241d10ebcba41e76fbac84e8aea370ed5ffea7a012b4da7ae99bbb1289",
         "path": ".engine/tools/test_hard_check_bite.py"
       },
       "status": "active",
@@ -10129,6 +10589,29 @@
       },
       "status": "active",
       "summary": "Self-tests for the hooks contract substrate: the closed event inventory, the block",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
+      "id": "tool:test_hooks_path_health",
+      "name": ".engine/tools/test_hooks_path_health.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ],
+        "tests": [
+          "tool:hooks_path_health"
+        ]
+      },
+      "slug": "test_hooks_path_health",
+      "source": {
+        "fingerprint": "sha256:c7c6dd6126587947da3d4f8126351c74cb0df43a75bdb20629c74568984a1062",
+        "path": ".engine/tools/test_hooks_path_health.py"
+      },
+      "status": "active",
+      "summary": "Regression coverage for hooks_path_health (issues #707, #708; part of #690).",
       "type": "tool"
     },
     {
@@ -10246,7 +10729,7 @@
       },
       "slug": "test_issue_author",
       "source": {
-        "fingerprint": "sha256:c008ac35e47bd6c07edda87aedadffa7165bb3eb302513e4710e192bc2c4e82b",
+        "fingerprint": "sha256:7817719890fff75cbebcb81123858d387b019b65378c408ad329bda906b5a4a3",
         "path": ".engine/tools/test_issue_author.py"
       },
       "status": "active",
@@ -10310,6 +10793,34 @@
     {
       "entrypoint": "test",
       "guarded": false,
+      "id": "tool:test_issue_kind_label",
+      "name": ".engine/tools/test_issue_kind_label.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ],
+        "tests": [
+          "tool:issue_kind_label",
+          "tool:issue_label_client",
+          "tool:module_coherence",
+          "tool:module_manager",
+          "tool:quiet_call",
+          "tool:validate"
+        ]
+      },
+      "slug": "test_issue_kind_label",
+      "source": {
+        "fingerprint": "sha256:f99f58d31e227041618b71809456f1d2c421c61b62e6c05192bacc4b54a15010",
+        "path": ".engine/tools/test_issue_kind_label.py"
+      },
+      "status": "active",
+      "summary": "Tests for issue_kind_label — the on:issues applicator that keeps the GitHub-native kind labels consistent.",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
       "id": "tool:test_knowledge",
       "name": ".engine/tools/test_knowledge.py",
       "owner": "core",
@@ -10349,12 +10860,13 @@
           "tool:knowledge_gen",
           "tool:knowledge_index",
           "tool:knowledge_mcp_server",
-          "tool:knowledge_query"
+          "tool:knowledge_query",
+          "tool:mcp_test_support"
         ]
       },
       "slug": "test_knowledge_query",
       "source": {
-        "fingerprint": "sha256:a6fe3747097312a58322cf0100bf22ce3715cdb8673171952cb57eb6dbf6107e",
+        "fingerprint": "sha256:7c433667c8e97bc35ea9c9352cf73e665c9f6b3622524320d01759c48882ea3b",
         "path": ".engine/tools/test_knowledge_query.py"
       },
       "status": "active",
@@ -10402,7 +10914,7 @@
       },
       "slug": "test_ledger",
       "source": {
-        "fingerprint": "sha256:b1ddd8ff1541db021bb3c637f30a66923f7c0968ee828db72cc43a6ab31fdbd4",
+        "fingerprint": "sha256:25f00dc48a1d05b46f62f3a5dddae50ffc43f517834a744d7d233818009c5d04",
         "path": ".engine/tools/memory/test_ledger.py"
       },
       "status": "active",
@@ -10500,7 +11012,7 @@
       },
       "slug": "test_license_health",
       "source": {
-        "fingerprint": "sha256:e86f26222e9d3639335e103605d3d50a7347d554b0b0d5fd9f433892b3faeef3",
+        "fingerprint": "sha256:63eb5710176451a398e09e09b53f4613d8ba1c69ce6ca867fd1b998672d3cb25",
         "path": ".engine/tools/test_license_health.py"
       },
       "status": "active",
@@ -10523,7 +11035,7 @@
       },
       "slug": "test_license_seeds",
       "source": {
-        "fingerprint": "sha256:1007f51a48427a427c34446a4c4af3b4deb8d9f55f07d816a04fdc084f26855f",
+        "fingerprint": "sha256:5ec47422f2f718f66ff95d2fa02864107e79ac87929186da2b572b03a00af532",
         "path": ".engine/tools/test_license_seeds.py"
       },
       "status": "active",
@@ -10580,6 +11092,30 @@
     {
       "entrypoint": "test",
       "guarded": false,
+      "id": "tool:test_manifest_write_funnel_check",
+      "name": ".engine/tools/test_manifest_write_funnel_check.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ],
+        "tests": [
+          "tool:manifest_write_funnel_check",
+          "tool:validate"
+        ]
+      },
+      "slug": "test_manifest_write_funnel_check",
+      "source": {
+        "fingerprint": "sha256:58f1946ec4cf1e58fefabe618dcbecaf9fece8f48f7bc5465a41d05afd00cf05",
+        "path": ".engine/tools/test_manifest_write_funnel_check.py"
+      },
+      "status": "active",
+      "summary": "Tests for engine/check/manifest-write-funnel — the mechanical funnel floor (#923).",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
       "id": "tool:test_mcp_server",
       "name": ".engine/tools/memory/test_mcp_server.py",
       "owner": "memory-substrate-sqlite-fts5",
@@ -10593,13 +11129,14 @@
           "tool:index",
           "tool:ledger",
           "tool:mcp_server",
+          "tool:mcp_test_support",
           "tool:records",
           "tool:validate"
         ]
       },
       "slug": "test_mcp_server",
       "source": {
-        "fingerprint": "sha256:5bbbb63258226bbe376fc94038a49531305ca155c3f941a793ac86c1cba1a6cc",
+        "fingerprint": "sha256:dbe0e0b9f8210640fc4f8e3cf9b6012d60247396a7a139246dbc7ef470b18d25",
         "path": ".engine/tools/memory/test_mcp_server.py"
       },
       "status": "active",
@@ -10623,7 +11160,7 @@
       },
       "slug": "test_mechanic_build",
       "source": {
-        "fingerprint": "sha256:aab6e19d131228ee2ec66e7ee306018d562cc1a92f75a267fe1fc072c6cc5203",
+        "fingerprint": "sha256:3ec9d35fc94cd6123757174bd4912540a30988442b5e3ad20f259ac06de633b2",
         "path": ".engine/tools/test_mechanic_build.py"
       },
       "status": "active",
@@ -10697,7 +11234,7 @@
       },
       "slug": "test_modes",
       "source": {
-        "fingerprint": "sha256:b80e8d07e025782fb48aeecd6246239d316947dbac38be17a887908e3c6b4ae4",
+        "fingerprint": "sha256:45ef7358b470a0b5555f447e7056471f2978bf8448927dd0f7fd2218c22f2529",
         "path": ".engine/tools/test_modes.py"
       },
       "status": "active",
@@ -10738,11 +11275,15 @@
           "module:core"
         ],
         "tests": [
+          "tool:boot",
           "tool:bootstrap",
           "tool:capture",
           "tool:demo_594_rollback_discard",
           "tool:demo_594_upgrade_tail_reexec",
           "tool:demo_599_upgrade_reconcile",
+          "tool:demo_757_upgrade_reconciles_default_groups",
+          "tool:demo_759_upgrade_installs_new_modules",
+          "tool:demo_760_add_release_tag",
           "tool:ledger",
           "tool:memory.__init__",
           "tool:module_coherence",
@@ -10757,7 +11298,7 @@
       },
       "slug": "test_module_manager",
       "source": {
-        "fingerprint": "sha256:dc463ed43124004fc00dcb3e18b2b3f484e251489e181e5005eca1dc6098ad7b",
+        "fingerprint": "sha256:13b3825c350f4824b4e2115ba207efc770bf924bfa2013cd209463d0c7ea2da8",
         "path": ".engine/tools/test_module_manager.py"
       },
       "status": "active",
@@ -10803,6 +11344,7 @@
           "tool:audit_digest",
           "tool:knowledge_gen",
           "tool:module_coherence",
+          "tool:release_cut",
           "tool:untracked_surface_check",
           "tool:validate",
           "tool:wiring"
@@ -10810,7 +11352,7 @@
       },
       "slug": "test_modules",
       "source": {
-        "fingerprint": "sha256:f2593b1b046884a4867710e429bb2988926f45318f7d0290cc0fff6c1a82aa6f",
+        "fingerprint": "sha256:bcdc62ae191215399bcad45aa2603583c196a0cb05e46080ff44a878c1f0a3c2",
         "path": ".engine/tools/test_modules.py"
       },
       "status": "active",
@@ -11005,7 +11547,7 @@
       },
       "slug": "test_overlay_disclosure",
       "source": {
-        "fingerprint": "sha256:c02f74d2e040e4397c1d121dfc35d9a36fca8f1311597e30937dbac2d48545cd",
+        "fingerprint": "sha256:e3718a6eee4bf0fbcfdf50055ff11fb6fd756c276f10e96d401b45ee1eb81659",
         "path": ".engine/tools/test_overlay_disclosure.py"
       },
       "status": "active",
@@ -11056,7 +11598,7 @@
       },
       "slug": "test_policy",
       "source": {
-        "fingerprint": "sha256:15cf13cb8c38e503cd1d51189e36c636c8464c8d2564f18f9a529429147b6345",
+        "fingerprint": "sha256:aa33ddaec1f9b944a8d548ec8aecf652481af0065622f88f23375b8b7e20ebb2",
         "path": ".engine/tools/test_policy.py"
       },
       "status": "active",
@@ -11102,7 +11644,7 @@
       },
       "slug": "test_pr_reconcile",
       "source": {
-        "fingerprint": "sha256:694c90a0de1915d9452eb412af5c3e47974298fca5e5eb5862e0fbdf58f39498",
+        "fingerprint": "sha256:ff1322b45efc77aa319a17596b2e36c35715f1c4ec3a49b680215c861e88c308",
         "path": ".engine/tools/test_pr_reconcile.py"
       },
       "status": "active",
@@ -11126,7 +11668,7 @@
       },
       "slug": "test_protection_guard",
       "source": {
-        "fingerprint": "sha256:78a61b46043bb12c98da57fa104f77ba209e8367f909d7fc1ca6f0f790a6577b",
+        "fingerprint": "sha256:215ef9949af2f0a0036e1384af2bb94c5599f261330342355244f47a41feecdc",
         "path": ".engine/tools/test_protection_guard.py"
       },
       "status": "active",
@@ -11283,7 +11825,7 @@
       },
       "slug": "test_release_cut",
       "source": {
-        "fingerprint": "sha256:ba715aa5946c5579b82219a32a94a5a5194810fa9f631ab781a90629a631874b",
+        "fingerprint": "sha256:39796fbb9c2a243ef629c0759c6c95e7f10b11ffd9fb44b1eec743c6a92ffae8",
         "path": ".engine/tools/test_release_cut.py"
       },
       "status": "active",
@@ -11308,7 +11850,7 @@
       },
       "slug": "test_release_gate",
       "source": {
-        "fingerprint": "sha256:f08c9d879e4fff8d867e80eb22ab4ce916aa4525882ca2e5294d975e8c7e47eb",
+        "fingerprint": "sha256:924b2ba21176b3e77e8df262694f6ab1df276124808ef7227f743d29ff4ebe2e",
         "path": ".engine/tools/test_release_gate.py"
       },
       "status": "active",
@@ -11552,7 +12094,7 @@
       },
       "slug": "test_scope_profile",
       "source": {
-        "fingerprint": "sha256:4f8cdfddaf379b49c558e24b7a0806b264026c6aab10d9656da244ce13d72d4d",
+        "fingerprint": "sha256:bfbbbbd8a9ec6221ff8ca9cca53d35eaa8d877978a968605e776041c70b90846",
         "path": ".engine/tools/test_scope_profile.py"
       },
       "status": "active",
@@ -11683,7 +12225,7 @@
       },
       "slug": "test_seed",
       "source": {
-        "fingerprint": "sha256:0a8c580eadb0b54ea7f895dbfba2fc1c53c7863c0a710ddf1955a53ea6f32836",
+        "fingerprint": "sha256:3b117a1160d90e486e348c2a85196a200b9aabc4bb5d5822b70103cc94b01bb7",
         "path": ".engine/tools/test_seed.py"
       },
       "status": "active",
@@ -11753,11 +12295,38 @@
       },
       "slug": "test_selftest",
       "source": {
-        "fingerprint": "sha256:b8334a9f7b79972d09d0ca55a95bec760a0ad72cd264f1fa2c3de9ed07cf59df",
+        "fingerprint": "sha256:297221c9c47977a77e06a012158ac715da96018314761ccdbb8087f12a6bcafd",
         "path": ".engine/tools/test_selftest.py"
       },
       "status": "active",
       "summary": "Regression fixture for the full-suite launcher (selftest.py).",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
+      "id": "tool:test_selftest_hermeticity",
+      "name": ".engine/tools/test_selftest_hermeticity.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ],
+        "tests": [
+          "tool:boot_alarm_ledger",
+          "tool:demo_753_ledger_dir_hermeticity",
+          "tool:ledger",
+          "tool:quiet_call",
+          "tool:validate"
+        ]
+      },
+      "slug": "test_selftest_hermeticity",
+      "source": {
+        "fingerprint": "sha256:3a1f9d83bc0b94774f96d386fb732d3e07f517f77d4e99472fff79addcf1eec0",
+        "path": ".engine/tools/test_selftest_hermeticity.py"
+      },
+      "status": "active",
+      "summary": "Hermeticity guards for the deployed self-test suite (engine-template #753).",
       "type": "tool"
     },
     {
@@ -11786,6 +12355,30 @@
       },
       "status": "active",
       "summary": "test_semantic.py — the guarantees meaning-based recall makes, and the ones it must never break.",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
+      "id": "tool:test_shipped_issue_references_check",
+      "name": ".engine/tools/test_shipped_issue_references_check.py",
+      "owner": "core",
+      "predicates": {
+        "provided_by": [
+          "module:core"
+        ],
+        "tests": [
+          "tool:shipped_issue_references_check",
+          "tool:validate"
+        ]
+      },
+      "slug": "test_shipped_issue_references_check",
+      "source": {
+        "fingerprint": "sha256:0901f111013972cf782930c73f5d7a83ac83144ac52e138a84ba8515f2ddf02f",
+        "path": ".engine/tools/test_shipped_issue_references_check.py"
+      },
+      "status": "active",
+      "summary": "Tests for engine/check/shipped-issue-references — the shipped bare-issue-reference floor",
       "type": "tool"
     },
     {
@@ -11966,6 +12559,7 @@
         ],
         "tests": [
           "tool:boot",
+          "tool:capture",
           "tool:knowledge_gen",
           "tool:standing_situation",
           "tool:telemetry",
@@ -11974,7 +12568,7 @@
       },
       "slug": "test_telemetry",
       "source": {
-        "fingerprint": "sha256:b7b8913183b26c0c6f23cecbaecb960bdf46e0b7fa993f0a3111c5cc045f437d",
+        "fingerprint": "sha256:94149b26ff16f30f216ae462f62de20ae87316c172b23176b4e59efc42ee4f43",
         "path": ".engine/tools/test_telemetry.py"
       },
       "status": "active",
@@ -11997,7 +12591,7 @@
       },
       "slug": "test_tune",
       "source": {
-        "fingerprint": "sha256:a30d1a65012cb667441d078f2af7a0dd97f01b164b4f373fb4f29169a790bf8f",
+        "fingerprint": "sha256:5d2c00de7a463b6582a5888f8484f202c65e12f0e83a1963f9968ddd87cd951d",
         "path": ".engine/tools/test_tune.py"
       },
       "status": "active",
@@ -12093,7 +12687,7 @@
       },
       "slug": "test_wiring",
       "source": {
-        "fingerprint": "sha256:ab9f6c2b6b7e1bd246f78b7e0e37c992f0316954bfc9ee77d42cc96ffeddfcfb",
+        "fingerprint": "sha256:f45a6521cd73ae4d6cdb1e1e87b425f198ee83e6ba3706060e3b0aca1aac2dd5",
         "path": ".engine/tools/test_wiring.py"
       },
       "status": "active",
@@ -12146,7 +12740,7 @@
       },
       "slug": "tune",
       "source": {
-        "fingerprint": "sha256:c380c7a668055718d586f87180e8d49aab49f3d6e9c988b77010e36dd2bf0a49",
+        "fingerprint": "sha256:0fde74757a62398e9ddc0fed7908e0dd8992c200e17410d6f94abf235421e0df",
         "path": ".engine/tools/tune.py"
       },
       "status": "active",
@@ -12166,7 +12760,7 @@
       },
       "slug": "unresolved_conversation_notice",
       "source": {
-        "fingerprint": "sha256:bc6deeeaa9fca753c8c01996ed4d9ae012be2a4253cd4348e8f539b49b9e2b36",
+        "fingerprint": "sha256:d05bc44e6eb985aa6b83e81099dc146b86ea849d2897ed820c805e513b19e5c7",
         "path": ".engine/tools/unresolved_conversation_notice.py"
       },
       "status": "active",
@@ -12189,11 +12783,11 @@
       },
       "slug": "untracked_surface_check",
       "source": {
-        "fingerprint": "sha256:e69cb563aa0e954d9a480491fbf3e18ed0d42807d8e3721614e560085d3f231d",
+        "fingerprint": "sha256:ee510ae4afce3959f32b493477d4b21e74232c8a853700376f32e94b529abcab",
         "path": ".engine/tools/untracked_surface_check.py"
       },
       "status": "active",
-      "summary": "Untracked-surface signal (issue #281) — the thin custom/script entry for engine/check/untracked-surface.",
+      "summary": "Untracked-surface signal (issue StarshipSuperjam/engine-template#281) — the thin custom/script entry for engine/check/untracked-surface.",
       "type": "tool"
     },
     {
@@ -12213,7 +12807,7 @@
       },
       "slug": "uv_group_drift_check",
       "source": {
-        "fingerprint": "sha256:fdecd1f90f375935b909179172bb67d7209571f0227e27f47876757234000db8",
+        "fingerprint": "sha256:dad4f92124aebffa264d5fcd1f84727df15972e3a05da0dee22eafe3831f8dcf",
         "path": ".engine/tools/uv_group_drift_check.py"
       },
       "status": "active",
@@ -12240,7 +12834,7 @@
       },
       "slug": "validate",
       "source": {
-        "fingerprint": "sha256:9f06b00ffd9eff809b396be4b7dde7dcbb540f2a2f8daf01821b34fb339fea9c",
+        "fingerprint": "sha256:be7122bb989bb067bdbd734ec0777e9076f79cc1929332e929ad94774b43c349",
         "path": ".engine/tools/validate.py"
       },
       "status": "active",
@@ -12281,7 +12875,7 @@
       },
       "slug": "weakening_guard",
       "source": {
-        "fingerprint": "sha256:309e9bf2bbff6485e859dc041204739b501a3cc0b4884552ba594f09802d8d55",
+        "fingerprint": "sha256:2d008e9ccca74fb912f6c11099fa8c4cec4bb1df6d97d9c9fff72d2729b46a11",
         "path": ".engine/tools/weakening_guard.py"
       },
       "status": "active",
@@ -12304,7 +12898,7 @@
       },
       "slug": "wiring",
       "source": {
-        "fingerprint": "sha256:07926df6b1badaecf75692eab2229479be13bcb42f1f8f1cc753fa4b012674c8",
+        "fingerprint": "sha256:11d3a013479dc0d403905d3eb3b778c5907350ce0399cb7417acdac9f30e3761",
         "path": ".engine/tools/wiring.py"
       },
       "status": "active",
@@ -12349,7 +12943,7 @@
       },
       "slug": "work_record",
       "source": {
-        "fingerprint": "sha256:e607931e9e94964790c6fea22ae3a188d79800d542f77a506c252d99d530945c",
+        "fingerprint": "sha256:1adabf2fb85fd9c9bde37f78429a327530f5815169f3d69a7c2369e94c093109",
         "path": ".engine/tools/work_record.py"
       },
       "status": "active",

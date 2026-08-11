@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Render the currently-firing SOFT validator findings as a feed for the read-only audit
-persona (issue #273 half 2).
+persona (issue StarshipSuperjam/engine-template#273 half 2).
 
 The gap this closes: a SOFT validator finding (a non-blocking nudge — a runbook over its line
 budget, say) is printed to a CI log and discarded. Nothing durable holds it, so the weekly

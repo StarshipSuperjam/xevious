@@ -1068,16 +1068,49 @@ class TestCodexMcpSeam(_Redirected):
         f = wiring.apply(CODEX_MCP)
         self.assertEqual(f["severity"], "hard")
         self.assertIn("Python 3.11+", f["message"])
+        # #875: the skip message must tell the truth — a REQUIRED step whose omission stops setup — never
+        # over-reassure. Guard the removed false phrase AND positively pin the load-bearing honest claim.
+        self.assertNotIn("only this one step", f["message"])
+        self.assertIn("required", f["message"])
+        self.assertIn("not an optional step", f["message"])
         self.assertEqual(_read(wiring.CODEX_CONFIG_PATH), product, "no blind write of an unreadable config")
 
-    def test_reverse_skips_loud_on_nonempty_config_without_tomllib(self):
-        # Symmetric: reverse over a non-empty config it cannot validate skips loud, file unchanged.
-        wiring.apply(CODEX_MCP)                       # land the block WITH tomllib first
+    def test_reverse_skips_loud_on_config_with_operator_bytes_without_tomllib(self):
+        # Symmetric: reverse over a config carrying OPERATOR bytes it cannot validate skips loud, file
+        # unchanged. The engine fence plus operator content is NOT engine-owned, so the fail-open holds.
+        wiring.apply(CODEX_MCP)                       # land the engine block WITH tomllib first
+        with open(wiring.CODEX_CONFIG_PATH, "a", encoding="utf-8") as fh:
+            fh.write('\n# my own notes\n[mcp_servers.my-server]\ncommand = "npx"\n')
         self._without_tomllib()
         before = _read(wiring.CODEX_CONFIG_PATH)
         f = wiring.reverse(CODEX_MCP)
         self.assertEqual(f["severity"], "hard")
         self.assertEqual(_read(wiring.CODEX_CONFIG_PATH), before, "no blind write of an unreadable config")
+
+    def test_reverse_proceeds_on_an_all_engine_config_without_tomllib(self):
+        # An entirely-engine-fenced config is the engine's OWN output, not operator config — so on 3.9,
+        # removing an engine block (a deterministic fence splice, no TOML parse) is safe and DOES proceed.
+        wiring.apply(CODEX_MCP)                       # land the engine block WITH tomllib first
+        self._without_tomllib()
+        f = wiring.reverse(CODEX_MCP)
+        self.assertEqual(f["severity"], "note", "an all-engine config is engine-owned — reverse proceeds")
+        self.assertNotIn(wiring.FENCE_BEGIN.format(id="engine-knowledge"),
+                         _read(wiring.CODEX_CONFIG_PATH), "the engine block was removed")
+
+    def test_apply_second_wire_onto_engine_owned_config_without_tomllib(self):
+        # #751: the FIRST codex-mcp wire creates .codex/config.toml (engine fence); the SECOND wire then
+        # sees a NON-EMPTY file. On 3.9 (no tomllib) the engine must recognize its own all-engine-fence
+        # output and STILL apply the second wire, rather than mistaking it for pre-existing operator config.
+        wiring.apply(CODEX_MCP)                       # first wire lands (empty -> one engine fence)
+        self._without_tomllib()
+        second = {"type": "codex-mcp", "name": "engine-memory",
+                  "definition": {"command": "uv", "args": ["run", "memory"]}}
+        f = wiring.apply(second)
+        self.assertEqual(f["severity"], "note", "second wire applies onto the engine's own config on 3.9")
+        text = _read(wiring.CODEX_CONFIG_PATH)
+        self.assertIn(wiring.FENCE_BEGIN.format(id="engine-knowledge"), text, "first block still present")
+        self.assertIn(wiring.FENCE_BEGIN.format(id="engine-memory"), text, "second block now present")
+        self.assertTrue(wiring.is_applied(second))
 
 
 class TestWorkflowsDeriveTheDefaultBranch(unittest.TestCase):
@@ -1108,6 +1141,52 @@ class TestWorkflowsDeriveTheDefaultBranch(unittest.TestCase):
         # the conformance-feed step must hand conformance_sweep the same default so its baseline read keys off
         # the real branch (a literal "main" 404s the baseline on a `master` repo, stale-flagging every row).
         self.assertIn("GITHUB_DEFAULT_BRANCH: ${{ github.ref_name }}", wf)
+
+
+class TestDanglingShortcutRefusal(_Redirected):
+    """#923: the wiring surfaces are OPERATOR-SHARED files — a LIVE shortcut (a dotfiles-linked
+    settings.json) is the operator's own arrangement and writes through it are honored, but a DANGLING
+    one reads as "absent" to every exists() check, so a blind create-through would drop a brand-new
+    file OUTSIDE the tree. Refuse exactly that case, as a finding, never a crash."""
+
+    def test_a_dangling_settings_shortcut_is_a_finding_and_nothing_is_created(self):
+        target = wiring.SETTINGS_PATH + ".nowhere"          # never created — the link stays dangling
+        os.makedirs(os.path.dirname(wiring.SETTINGS_PATH), exist_ok=True)
+        os.symlink(target, wiring.SETTINGS_PATH)
+        finding = wiring.apply(HOOK)
+        self.assertEqual(finding["severity"], "hard")
+        self.assertIn("broken shortcut", finding["message"])
+        self.assertFalse(os.path.exists(target), "nothing was created through the dangling shortcut")
+
+    def test_a_live_settings_shortcut_is_the_operators_arrangement_and_is_honored(self):
+        real = wiring.SETTINGS_PATH + ".dotfiles"           # the operator's real file, elsewhere
+        os.makedirs(os.path.dirname(wiring.SETTINGS_PATH), exist_ok=True)
+        with open(real, "w", encoding="utf-8") as fh:
+            fh.write("{}\n")
+        os.symlink(real, wiring.SETTINGS_PATH)
+        finding = wiring.apply(HOOK)
+        self.assertEqual(finding["severity"], "note", finding["message"])
+        with open(real, encoding="utf-8") as fh:
+            self.assertIn("hooks", fh.read(), "the write goes through the operator's own live link")
+
+    def test_a_dangling_gitignore_shortcut_degrades_foundation_ignores(self):
+        os.symlink(wiring.GITIGNORE_PATH + ".nowhere", wiring.GITIGNORE_PATH)
+        out = wiring.apply_foundation_ignores(wiring.GITIGNORE_PATH)
+        self.assertEqual(out["status"], "degraded")
+        self.assertFalse(os.path.exists(wiring.GITIGNORE_PATH + ".nowhere"))
+
+    def test_the_cli_reports_a_dangling_shortcut_as_a_config_error_not_a_traceback(self):
+        # the CLI reaches _write_text through _text_fence_apply, whose except only wraps the read —
+        # the write's WiringError must be a clean CONFIG ERROR, not an unhandled crash
+        with tempfile.TemporaryDirectory() as d:
+            link = os.path.join(d, "mine.gitignore")
+            os.symlink(os.path.join(d, "nowhere"), link)
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                code = wiring.main(["gitignore-apply", link, "build/"])
+            self.assertEqual(code, 2)
+            self.assertIn("CONFIG ERROR", buf.getvalue())
+            self.assertIn("broken shortcut", buf.getvalue())
 
 
 if __name__ == "__main__":

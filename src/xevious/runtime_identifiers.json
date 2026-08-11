@@ -4,6 +4,66 @@
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {
+    "area-map-column": {
+      "kind": "list",
+      "name": "area map column",
+      "scope": "Stage"
+    },
+    "area-number": {
+      "kind": "variable",
+      "name": "area number",
+      "scope": "Stage"
+    },
+    "area-progress": {
+      "kind": "variable",
+      "name": "area progress",
+      "scope": "Stage"
+    },
+    "area-schedule-cursor": {
+      "kind": "variable",
+      "name": "schedule cursor",
+      "scope": "Stage"
+    },
+    "area-schedule-end": {
+      "kind": "list",
+      "name": "area schedule end",
+      "scope": "Stage"
+    },
+    "area-schedule-fired": {
+      "kind": "variable",
+      "name": "schedule fired",
+      "scope": "Stage"
+    },
+    "area-schedule-handler": {
+      "kind": "list",
+      "name": "schedule handler",
+      "scope": "Stage"
+    },
+    "area-schedule-payload": {
+      "kind": "list",
+      "name": "schedule payload",
+      "scope": "Stage"
+    },
+    "area-schedule-start": {
+      "kind": "list",
+      "name": "area schedule start",
+      "scope": "Stage"
+    },
+    "area-schedule-trigger-row": {
+      "kind": "list",
+      "name": "schedule trigger row",
+      "scope": "Stage"
+    },
+    "area-scroll-row": {
+      "kind": "variable",
+      "name": "scroll row",
+      "scope": "Stage"
+    },
+    "area-terrain-column": {
+      "kind": "variable",
+      "name": "terrain column",
+      "scope": "Stage"
+    },
     "blaster-alloc-result": {
       "kind": "variable",
       "name": "alloc result",
@@ -22,6 +82,71 @@
     "bullet-cursor": {
       "kind": "variable",
       "name": "bullet cursor",
+      "scope": "Stage"
+    },
+    "eco-award-value": {
+      "kind": "variable",
+      "name": "award value",
+      "scope": "Stage"
+    },
+    "eco-craft": {
+      "kind": "variable",
+      "name": "craft",
+      "scope": "Stage"
+    },
+    "eco-first-bonus-123": {
+      "kind": "list",
+      "name": "first bonus 123",
+      "scope": "Stage"
+    },
+    "eco-first-bonus-5": {
+      "kind": "list",
+      "name": "first bonus 5",
+      "scope": "Stage"
+    },
+    "eco-high-score": {
+      "kind": "variable",
+      "name": "high score",
+      "scope": "Stage"
+    },
+    "eco-high-score-table": {
+      "kind": "list",
+      "name": "high score table",
+      "scope": "Stage"
+    },
+    "eco-next-bonus": {
+      "kind": "variable",
+      "name": "next bonus",
+      "scope": "Stage"
+    },
+    "eco-qualified": {
+      "kind": "variable",
+      "name": "qualified",
+      "scope": "Stage"
+    },
+    "eco-repeat-bonus-123": {
+      "kind": "list",
+      "name": "repeat bonus 123",
+      "scope": "Stage"
+    },
+    "eco-repeat-bonus-5": {
+      "kind": "list",
+      "name": "repeat bonus 5",
+      "scope": "Stage"
+    },
+    "eco-score": {
+      "kind": "variable",
+      "name": "score",
+      "scope": "Stage"
+    },
+    "eco-starting-lives": {
+      "kind": "list",
+      "name": "starting lives",
+      "scope": "Stage"
+    },
+    "eco-value-table": {
+      "kind": "list",
+      "name": "value table",
       "scope": "Stage"
     },
     "game-director-allowed-transitions": {
@@ -53,6 +178,36 @@
       "kind": "variable",
       "name": "hit slot",
       "scope": "Stage"
+    },
+    "hud-divisor": {
+      "kind": "variable",
+      "name": "hud divisor",
+      "scope": "hud"
+    },
+    "hud-is-clone": {
+      "kind": "variable",
+      "name": "hud is clone",
+      "scope": "hud"
+    },
+    "hud-life-count": {
+      "kind": "variable",
+      "name": "hud life count",
+      "scope": "hud"
+    },
+    "hud-life-index": {
+      "kind": "variable",
+      "name": "hud life index",
+      "scope": "hud"
+    },
+    "hud-place": {
+      "kind": "variable",
+      "name": "hud place",
+      "scope": "hud"
+    },
+    "hud-role": {
+      "kind": "variable",
+      "name": "hud role",
+      "scope": "hud"
     },
     "rng-extend-flag": {
       "kind": "variable",

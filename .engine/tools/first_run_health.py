@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""first_run_health — the standing "this copy hasn't finished first-run setup" detector (issue #353).
+"""first_run_health — the standing "this copy hasn't finished first-run setup" detector (issue StarshipSuperjam/engine-template#353).
 
 Catches when a repo created from the engine template ("Use this template", or a clone-and-push of it) is
 still sitting in its un-transformed, as-copied shape — so [boot] can OFFER to walk the operator
@@ -23,7 +23,7 @@ OBSERVABLE installed shape instead, using two grounded signals:
      done yet" signal (the same `os.path.isfile(...instantiator.py)` check the instantiator's arrival/finish
      demos already use). Keying on the TOOL — not on whether the floor CLAUDE.md was swapped — covers BOTH
      an untouched fresh copy and a setup INTERRUPTED partway (before or after the floor swap): the remedy is
-     identical, since `/engine-setup` resumes idempotently (#519 §1).
+     identical, since `/engine-setup` resumes idempotently (StarshipSuperjam/engine-template#519 §1).
 
 A FORK of the engine's own home (a contributor's fork: origin != home, and the one-time setup tool still
 present, because a fork of the engine's repo carries it) is the one offline false-positive the two signals
@@ -56,7 +56,7 @@ _MANIFEST_REL = os.path.join(".engine", "engine.json")
 # github.com.evil.com) — consistent with mechanic_build/boot's belts (defense-in-depth; this parser only
 # decides whether to OFFER first-run setup, but a mis-parse should never treat a look-alike as the home).
 # IGNORECASE reads a mixed-case host (`GitHub.com`); ASCII keeps that fold ASCII-only so a Unicode homograph
-# (`gİthub.com`, where U+0130 folds to `i`) cannot satisfy the host literal (#625).
+# (`gİthub.com`, where U+0130 folds to `i`) cannot satisfy the host literal (StarshipSuperjam/engine-template#625).
 _GITHUB_SLUG_RE = re.compile(
     r"^(?:(?:https?|ssh)://)?(?:[^@/]+@)?github\.com[:/]+([^/]+/[^/]+?)(?:\.git)?/?$", re.IGNORECASE | re.ASCII)
 
@@ -174,6 +174,81 @@ def detect_home_workshop(cwd: str | None = None) -> dict | None:
         return None
 
 
+# The LOCAL awaiting-landing marker instantiator.retire drops when first-run setup is APPLIED but not yet landed
+# through review (StarshipSuperjam/engine-template#810). It lives under the boot presentation cache — an engine-managed GITIGNORED path (the
+# `.engine/boot/.cache/` block ships in the template), so it is LOCAL: never committed, so it does not travel
+# through the landing commit, and it survives the operator's own branch->PR->merge->pull. Its presence is what
+# lets the post-landing "Setup is now complete" confirmation fire EXACTLY ONCE in the operator's own checkout;
+# a repo set up before this shipped (no marker) never shows the confirmation spuriously.
+_LANDING_MARKER_REL = os.path.join(".engine", "boot", ".cache", "first-run-landing.json")
+
+
+def mark_first_run_applied(main: str) -> bool:
+    """Write the local awaiting-landing marker after retire applies setup. FAIL-SOFT: a write failure only means
+    the one-time completion confirmation won't fire (setup itself still succeeded); it never raises into retire."""
+    try:
+        path = os.path.join(main, _LANDING_MARKER_REL)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"schema_version": 1, "awaiting_landing": True}, fh)
+        return True
+    except Exception:  # noqa: BLE001 — best-effort; retire must complete regardless of a marker write failure
+        return False
+
+
+def clear_first_run_marker(main: str) -> None:
+    """Remove the awaiting-landing marker once the completion confirmation has been surfaced (show-once). FAIL-SOFT:
+    a failed clear only risks the confirmation showing again next start, never a crash."""
+    try:
+        os.remove(os.path.join(main, _LANDING_MARKER_REL))
+    except FileNotFoundError:
+        pass
+    except Exception:  # noqa: BLE001 — a failed clear is harmless (at worst a duplicate confirmation)
+        pass
+
+
+def _current_branch(main: str) -> str | None:
+    b = _run(["git", "-C", main, "symbolic-ref", "--quiet", "--short", "HEAD"])
+    return b.strip() if b and b.strip() else None
+
+
+def _default_branch(main: str) -> str | None:
+    """The default branch name from `origin/HEAD`, OFFLINE. None when unresolvable (a fresh clone may not have set
+    it) — the caller then treats durability as unconfirmable and stays quiet, never guessing."""
+    head = _run(["git", "-C", main, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+    if head and head.strip().startswith("origin/"):
+        return head.strip().split("origin/", 1)[1] or None
+    return None
+
+
+def detect_setup_landed(cwd: str | None = None) -> dict | None:
+    """OFFLINE, READ-ONLY (StarshipSuperjam/engine-template#810). Returns {"present": True, "main": <path>} when first-run setup was APPLIED in
+    this checkout (the local awaiting-landing marker exists) AND the transformation is now DURABLE: the one-time
+    setup tool is retired, the working tree is CLEAN, and the checkout sits on its DEFAULT branch (so the setup
+    was committed and landed through review, not left uncommitted or parked on a setup branch). This is the
+    post-landing "Setup is now complete" confirmation boot surfaces ONCE (then clears the marker). None — quiet —
+    when there is no marker (a repo set up before this shipped, or already confirmed), the state is not yet
+    durable (applied but not landed), git state is unreadable, or the checkout cannot be resolved. Deliberately
+    OFFLINE: 'durable' means committed + clean + on the default branch, never a network freshness guarantee."""
+    try:
+        main = _main_checkout(cwd)
+        if main is None:
+            return None
+        if not os.path.isfile(os.path.join(main, _LANDING_MARKER_REL)):
+            return None                                   # no marker -> nothing to confirm
+        if os.path.isfile(os.path.join(main, _SETUP_TOOL_REL)):
+            return None                                   # setup tool still present -> retire hasn't finished
+        status = _run(["git", "-C", main, "status", "--porcelain"])
+        if status is None or status.strip():
+            return None                                   # unreadable or dirty -> applied but not yet durable
+        current, default = _current_branch(main), _default_branch(main)
+        if not current or not default or current != default:
+            return None                                   # off the default (e.g., still on a setup branch)
+        return {"present": True, "main": main}
+    except Exception:  # noqa: BLE001 — any failure degrades this one signal, never the pack
+        return None
+
+
 def forked_from_home(repo: str | None, token: str | None, home: str | None, transport=None) -> bool | None:
     """ONLINE, best-effort, READ-ONLY: is `repo` a FORK of the engine's own home `home`? True (suppress the
     offer — a fork of the engine home is a contributor's fork, not an adopter to nag), False (not a fork of
@@ -183,7 +258,7 @@ def forked_from_home(repo: str | None, token: str | None, home: str | None, tran
     path. Only a fork OF THE HOME suppresses: a template-generated copy and a clone-and-push copy are both
     `fork == false`, so neither is silenced and the dead-on-arrival case they represent is still caught.
     `transport(method, path, body) -> (status, json)` is injectable (the `GitHubIssues` seam) so a test drives
-    the real fork/parent decision logic without a network round-trip. NOTE (issue #353): this deliberately
+    the real fork/parent decision logic without a network round-trip. NOTE (issue StarshipSuperjam/engine-template#353): this deliberately
     silences a FORK-based *adopter* too (indistinguishable from a contributor's fork through this one signal);
     a fork-adopter is still rescued via `/engine-setup show`, which does not apply this suppressor. Revisit
     when the project's contribution model is defined (see README 'Contributing')."""
@@ -203,7 +278,7 @@ def forked_from_home(repo: str | None, token: str | None, home: str | None, tran
         return None
 
 
-# ---- in-tool demo: a self-checking falsification (issue #353) --------------------------------
+# ---- in-tool demo: a self-checking falsification (issue StarshipSuperjam/engine-template#353) --------------------------------
 
 def _git(root: str, *args: str) -> None:
     subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, check=False)
@@ -215,7 +290,7 @@ def _fixture(tmp: str, name: str, *, origin: str, home: str,
     optionally the one-time setup tool, and a placeholder root CLAUDE.md. The CLAUDE.md content is incidental —
     detect_first_run_pending keys on the origin vs recorded home and the setup tool's presence, never the file's
     text — so `floor_swapped` only varies a cosmetic label (a fresh copy inherits the committed floor either way
-    since #323)."""
+    since StarshipSuperjam/engine-template#323)."""
     root = os.path.join(tmp, name)
     os.makedirs(os.path.join(root, ".engine", "tools"), exist_ok=True)
     _git(root, "init", "-q")

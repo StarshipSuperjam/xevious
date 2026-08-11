@@ -38,7 +38,7 @@ permissions:
   pull-requests: write
   # Write access to the engine-labelled issues. The workflow READS the backlog (the debt register) to feed
   # the self-review's concern #2 and the offline-cache refresh, and now also WRITES it: the promote step
-  # (issue #273 half 2) opens/updates an engine-labelled issue to durably track a standing length-budget
+  # (issue StarshipSuperjam/engine-template#273 half 2) opens/updates an engine-labelled issue to durably track a standing length-budget
   # finding. The bump from read to write is scoped to the engine-labelled issues this workflow manages and
   # is the minimum that can open/update an issue; the persona never gets a GitHub token (it stays read-only).
   issues: write
@@ -143,7 +143,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
-          # The saved-memory privacy gate (#224) withholds belief specifics from a digest committed to a
+          # The saved-memory privacy gate (StarshipSuperjam/engine-template#224) withholds belief specifics from a digest committed to a
           # PUBLIC repo. Visibility is read HERE with the OWN-repo token — the vault read token on the next step is
           # scoped to the vault and cannot read this repo, and the `schedule` trigger's event payload omits
           # visibility — and handed to the memory step via the environment. Best-effort and never fails the run:
@@ -153,7 +153,7 @@ jobs:
           printf 'MEMORY_AUDIT_REPO_VISIBILITY=%s\n' "${vis}" >> "${GITHUB_ENV}"
       - name: Fetch the project's saved memory (from its backup) for the self-review
         env:
-          # The VAULT read token (#224), NOT the own-repo token: the saved-memory backup lives in a SEPARATE
+          # The VAULT read token (StarshipSuperjam/engine-template#224), NOT the own-repo token: the saved-memory backup lives in a SEPARATE
           # private repo, which the own-repo GITHUB_TOKEN provably cannot reach. MEMORY_VAULT_TOKEN is a least-
           # privilege, read-only (contents:read) token scoped to just the vault repo, set as a secret during the
           # turn-on; boot.gh_token() prefers env GITHUB_TOKEN, so passing it here routes the read through it with
@@ -181,7 +181,7 @@ jobs:
       - name: Fetch the currently-firing soft validator findings for the self-review
         run: |
           set -euo pipefail
-          # Issue #273 half 2: a SOFT validator finding (a non-blocking nudge — e.g. a runbook over its line
+          # Issue StarshipSuperjam/engine-template#273 half 2: a SOFT validator finding (a non-blocking nudge — e.g. a runbook over its line
           # budget) is otherwise printed to a CI log and discarded, so a recurring one drifts forever,
           # invisible to this review. The feed tool reads the report-only audit-prep suite (never the CI
           # gate), keeps soft-severity only, and defangs author-controlled text; the next step feeds it in.
@@ -217,7 +217,7 @@ jobs:
           GITHUB_DEFAULT_BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # The standing product-spec-conformance sweep (#449): when this project has settled a
+          # The standing product-spec-conformance sweep (StarshipSuperjam/engine-template#449): when this project has settled a
           # `docs/spec/` and its criterion record is present, prepare the persona's hunt-set — what changed since
           # the last review (read over the commits/contents API on this shallow checkout, deliberately NOT
           # `git log`, which the depth-1 clone cannot answer) plus a spot-check sample — and the honest coverage
@@ -292,7 +292,7 @@ jobs:
           GITHUB_DEFAULT_BRANCH: ${{ github.ref_name }}  # same authoritative default as the feed step above
         run: |
           set -euo pipefail
-          # The standing product-spec-conformance sweep's promote half (#449): parse the persona's
+          # The standing product-spec-conformance sweep's promote half (StarshipSuperjam/engine-template#449): parse the persona's
           # machine-readable verdicts out of the digest body, STRIP that block (so the committed digest stays
           # clean prose and the JSON never feeds back into a later review as stale judgement), and open-or-update
           # one deduped engine issue per DIVERGENCE — plus the distinct spec-settled-but-record-missing gap.
@@ -312,9 +312,9 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # Issue #273 half 2: give a STANDING soft length-budget finding a durable home — a
+          # Issue StarshipSuperjam/engine-template#273 half 2: give a STANDING soft length-budget finding a durable home — a
           # deduped, lane-aware engine-labelled issue — so it reaches boot and the tracker, not just this
-          # week's digest. The tool runs a LIVE-DERIVED telemetry pass (#403): it opens/updates an
+          # week's digest. The tool runs a LIVE-DERIVED telemetry pass (StarshipSuperjam/engine-template#403): it opens/updates an
           # issue for each over-budget surface AND auto-resolves the issue of a surface seen back under its
           # budget — telemetry's standard source-scoped resolution, confined to soft-budget sids so it can
           # never close another source's issue (auto-resolve only clears the flag; it never edits the file). It

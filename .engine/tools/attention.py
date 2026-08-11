@@ -14,7 +14,7 @@ today and degrades over the ones that do not, then exposes the operator's no-Cla
     so every neighbour enters with a flat proximity signal; the pinned ranking form
     defines no hop-distance score, so this is faithful to the spec, not a stand-in for one.
   - git/GitHub (the in-flight work-record reader, work_record): open PRs + the working branch become
-    `in_flight` candidates, and the files that work touches drive the knowledge focus above (#37).
+    `in_flight` candidates, and the files that work touches drive the knowledge focus above (StarshipSuperjam/engine-template#37).
   - telemetry (the live debt register — open engine-labelled Issues): the canonical debt source attention
     ranks. Boot performs the single live read (open_findings) and threads its
     PER-ISSUE rows in as `live_findings`, so EACH open finding is graded on its own severity into its own
@@ -91,7 +91,7 @@ def load_policy_values(policy_path: str = POLICY_PATH, override: dict | None = N
 
 def derive_focus(*, run=None, gh=None, cap: int = FOCUS_CAP, with_total: bool = False, source=None):
     """The knowledge focus for the orientation-time focused read: the distinct graph entities that OWN the
-    files the in-flight work touches (#37 — which entities neighbor the work in hand).
+    files the in-flight work touches (StarshipSuperjam/engine-template#37 — which entities neighbor the work in hand).
 
     Maps each changed path (`work_record.changed_paths`) to its entity via an EXACT source-path lookup over a
     one-shot `knowledge_query.find()` index — never a SQLite GLOB match, so a path with shell metacharacters
@@ -101,7 +101,7 @@ def derive_focus(*, run=None, gh=None, cap: int = FOCUS_CAP, with_total: bool = 
 
     `with_total` (opt-in; default off, so existing list-returning callers are bit-for-bit unaffected): when
     True, returns `(focus, total)` where `total` is the count of ALL distinct mapped entities BEFORE the cap —
-    so the render can DISCLOSE focus truncation honestly ("touching 5 of 7 you've changed", #165) rather than
+    so the render can DISCLOSE focus truncation honestly ("touching 5 of 7 you've changed", StarshipSuperjam/engine-template#165) rather than
     pass the capped few off as the whole. To know the true total the scan no longer stops early at the cap; the
     changed-path set is already bounded (work_record caps it), so the full scan stays cheap.
 
@@ -111,7 +111,7 @@ def derive_focus(*, run=None, gh=None, cap: int = FOCUS_CAP, with_total: bool = 
     (never as a default-arg expression, which would crash at import if the guarded work_record import degraded).
 
     `source` (opt-in; default off -> the `knowledge_query` module, so the CLI/tests are bit-for-bit unchanged):
-    boot passes its rung-1 boot-slice read-shim (#37) here, which exposes the same `find()` — so orientation
+    boot passes its rung-1 boot-slice read-shim (StarshipSuperjam/engine-template#37) here, which exposes the same `find()` — so orientation
     reads the cached path->entity map instead of the SQLite index. A slice present means knowledge is available
     even if the `knowledge_query` import itself degraded (`src` is then the slice)."""
     empty = ([], 0) if with_total else []
@@ -165,7 +165,7 @@ def assemble_candidates(policy_values: dict, *, state_path: str = STATE_PATH,
     state count stands in (its derived-convenience role).
 
     `source` (opt-in; default off -> the `knowledge_query` module, so the CLI's `rank` is bit-for-bit
-    unchanged): boot passes its rung-1 boot-slice read-shim (#37) so the structural-neighbours walk reads the
+    unchanged): boot passes its rung-1 boot-slice read-shim (StarshipSuperjam/engine-template#37) so the structural-neighbours walk reads the
     cache, not the SQLite index — making boot's "zero index consults at orientation" real (this discarded
     partition would otherwise still walk the index). The shim exposes the same `neighbors()` + edge vocabulary."""
     candidates: list = []
@@ -282,7 +282,7 @@ def assemble_candidates(policy_values: dict, *, state_path: str = STATE_PATH,
                 # grow it. A genuinely bare leaf (ungoverned AND untargeted, e.g. a tool) still resolves to only
                 # its module; a dense neighbourhood is returned unranked, not relevance-ordered.
                 # The focus is the work in hand — a single entity id or a SET (the changed work usually spans
-                # several entities, #37). Walk each member, then DEDUPE neighbours and EXCLUDE any neighbour that
+                # several entities, StarshipSuperjam/engine-template#37). Walk each member, then DEDUPE neighbours and EXCLUDE any neighbour that
                 # is itself a focus member (co-changed entities are not each other's "structural neighbours").
                 # FOCUS_CAP bounds the focus set; the structural_neighbors PARTITION is bounded downstream by the
                 # policy budget/trim via rank() — this cap does not (and need not) bound the candidate count.
@@ -347,7 +347,7 @@ def assemble_candidates(policy_values: dict, *, state_path: str = STATE_PATH,
 
 def neighborhood_of(focus: "str | list[str] | None", *, depth: int = 1, source=None):
     """The work-in-hand's structural neighbourhood as a per-(member, relationship) SUMMARY — the render
-    channel for the orientation block (#37). For each focus member it runs the SAME bidirectional,
+    channel for the orientation block (StarshipSuperjam/engine-template#37). For each focus member it runs the SAME bidirectional,
     edge-pinned walk assemble_candidates runs (`direction="both"`, WALK_EDGE_KINDS, depth 1), then GROUPS the
     neighbours by the relationship that reaches each one — its (predicate, direction) — carrying the FULL
     count plus a bounded sample (NEIGHBORHOOD_SAMPLE_CAP) per group.
@@ -363,7 +363,7 @@ def neighborhood_of(focus: "str | list[str] | None", *, depth: int = 1, source=N
     no block). Returns IDs, not slugs: the render owns the plain-language slugging + relationship phrasing.
 
     `source` (opt-in; default off -> the `knowledge_query` module): boot passes its rung-1 boot-slice read-shim
-    (#37), whose `neighbors()` returns the same shape in the same `(id,predicate,direction)` order — so the
+    (StarshipSuperjam/engine-template#37), whose `neighbors()` returns the same shape in the same `(id,predicate,direction)` order — so the
     grouping/sampling here, and thus the rendered block, is byte-identical whether read from the cache or the
     live walk (the parity test pins this)."""
     src = source or knowledge_query
@@ -454,7 +454,7 @@ def rank_live(*, policy_path: str = POLICY_PATH, override: dict | None = None,
     static-input determinism — attention never reads the override FILE itself. `gh` is the GitHub reader for
     the in-flight work-record read (boot builds + passes it; the CLI leaves it None -> the local-git floor).
     `source` (opt-in, default off -> `knowledge_query`) is boot's rung-1 boot-slice read-shim, threaded to
-    assemble_candidates so the structural-neighbours walk reads the cache, not the SQLite index (#37).
+    assemble_candidates so the structural-neighbours walk reads the cache, not the SQLite index (StarshipSuperjam/engine-template#37).
     `live_findings` is the live telemetry register's per-issue rows boot already read (open_findings): a list (0
     included) marks the register read -> telemetry is available and each open finding becomes its own graded
     blocking-debt candidate; None (the offline CLI, or a failed live read) -> telemetry degrades and the

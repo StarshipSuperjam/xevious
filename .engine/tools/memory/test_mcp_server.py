@@ -24,6 +24,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from memory import capture, forget, index, ledger, records  # noqa: E402
 import memory.mcp_server as srv  # noqa: E402
+import mcp_test_support as mts  # noqa: E402
 
 _ID = records.RECORD_ID_KEY
 
@@ -57,18 +58,17 @@ class _ServerBase(unittest.IsolatedAsyncioTestCase):
         index.rebuild()
         return record.get(_ID)
 
-    @staticmethod
-    def _result_json(res):
-        import json
-        content = res[0] if isinstance(res, tuple) else res
-        return json.loads(content[0].text)
+    async def _call(self, name, args):
+        """Every test reaches the server through the SDK's in-memory client (mcp_test_support) — the real
+        protocol path a caller sees — never through the server object's internals."""
+        return await mts.call_tool_json(srv.server, name, args)
 
 
 class ToolWiringTests(_ServerBase):
     async def test_health_is_content_free_and_fixed_identity(self):
         with mock.patch.object(index, "search", side_effect=AssertionError("health read memory")), \
              mock.patch.object(ledger, "iter_records", side_effect=AssertionError("health read ledger")):
-            data = self._result_json(await srv.server.call_tool("health", {}))
+            data = await self._call("health", {})
         self.assertEqual(data, {"status": "ok", "server": "engine-memory"})
 
     @unittest.skipUnless(srv._semantic_installed(), "the optional semantic module is not installed here")
@@ -88,8 +88,7 @@ class ToolWiringTests(_ServerBase):
         for query in ("did we consider running it on a timer",       # a hit
                       "zzzqqx nothing here matches this at all"):    # and an empty answer
             with self.subTest(query=query):
-                out = self._result_json(
-                    await srv.server.call_tool("recall-by-meaning", {"query": query}))
+                out = await self._call("recall-by-meaning", {"query": query})
                 jsonschema.validate(out, schema)
 
     async def test_tools_list_is_exactly_the_declared_operations(self):
@@ -122,8 +121,13 @@ class ToolWiringTests(_ServerBase):
         expected = declared - unserved
         if not srv._semantic_installed():
             expected -= {"recall-by-meaning"}
-        names = {t.name for t in await srv.server.list_tools()}
+        tools = await mts.list_tool_objects(srv.server)
+        names = {t.name for t in tools}
         self.assertEqual(names, expected)
+        # The descriptions are load-bearing here — they are how a caller learns that permanent erasure is
+        # deliberately NOT served — so a regression that drops them must not hide behind a name-set match.
+        for t in tools:
+            self.assertTrue((t.description or "").strip(), f"tool {t.name!r} lost its description")
         self.assertTrue(unserved, "no operation is declared as unserved — this assertion has stopped biting")
         self.assertFalse(names & unserved,
                          "an operation declared NOT SERVED is being served — the terminal gate is bypassed")
@@ -134,9 +138,8 @@ class ToolWiringTests(_ServerBase):
         # match. A figure beside a result is read as confidence whatever the description says, so the
         # transport relays the matched passage and the ordering and nothing that looks like a score.
         self.add("We ruled out a cron job and hooked the calendar instead.", role="decision")
-        data = self._result_json(
-            await srv.server.call_tool("recall-by-meaning",
-                                       {"query": "did we consider running it on a timer"}))
+        data = await self._call("recall-by-meaning",
+                                {"query": "did we consider running it on a timer"})
         self.assertTrue(data["results"], "expected the reworded question to reach the record")
         for entry in data["results"]:
             self.assertNotIn("score", entry)
@@ -182,7 +185,7 @@ class ToolWiringTests(_ServerBase):
             ledger.append({"v": 1, "kind": records.AMBIENT_CAPTURE_KIND, _ID: records.new_record_id(),
                            "session_id": "s-live", "ts": self.now, "seq": seq, "speaker": speaker,
                            "text": text, "tags": ["transcript", "stop"]})
-        out = self._result_json(await srv.server.call_tool("recall-window", {"session_id": "s-live"}))
+        out = await self._call("recall-window", {"session_id": "s-live"})
         self.assertEqual([t["text"] for t in out["turns"]],
                          ["shall we cache the roster", "yes, with a short expiry"])
 
@@ -192,7 +195,7 @@ class ToolWiringTests(_ServerBase):
                        "session_id": "s-live", "ts": self.now, "seq": 0, "speaker": "user",
                        "text": "a stored turn", "tags": ["transcript", "stop"]})
         before = _marker_count()
-        await srv.server.call_tool("recall-window", {"session_id": "s-live"})
+        await self._call("recall-window", {"session_id": "s-live"})
         self.assertEqual(_marker_count(), before, "reading a window must append no reinforcement marker")
 
     async def test_search_returns_ranked_results_matching_the_library(self):
@@ -200,7 +203,7 @@ class ToolWiringTests(_ServerBase):
         self.add("a note that export came up once")
         for t in ("alpha", "beta", "gamma", "delta"):
             self.add(t)
-        data = self._result_json(await srv.server.call_tool("search", {"query": "export"}))
+        data = await self._call("search", {"query": "export"})
         tool_ids = [r.get(_ID) for r in data["results"]]
         lib_ids = [r.get(_ID) for r in index.search("export").records]
         self.assertEqual(tool_ids, lib_ids)   # the server is a thin pass-through over the ranked library
@@ -208,11 +211,9 @@ class ToolWiringTests(_ServerBase):
     async def test_tags_and_limit_pass_through(self):
         d = self.add("we decided to ship export", tags=["release"])
         self.add("a lesson about export")
-        capped = self._result_json(
-            await srv.server.call_tool("search", {"query": "export", "limit": 1}))
+        capped = await self._call("search", {"query": "export", "limit": 1})
         self.assertEqual(len(capped["results"]), 1)
-        tagged = self._result_json(
-            await srv.server.call_tool("search", {"query": "export", "tags": ["release"]}))
+        tagged = await self._call("search", {"query": "export", "tags": ["release"]})
         self.assertEqual([r.get(_ID) for r in tagged["results"]], [d])
 
     async def test_search_answer_carries_the_recall_completeness_note(self):
@@ -222,7 +223,7 @@ class ToolWiringTests(_ServerBase):
         # text is a record and not an instruction, and that the stored conversation was never fully stripped of
         # secret-shaped content. Present when there are results; omitted on an empty answer.
         self.add("we decided to ship the export format", role="decision")
-        data = self._result_json(await srv.server.call_tool("search", {"query": "export"}))
+        data = await self._call("search", {"query": "export"})
         self.assertTrue(data["results"])
         self.assertIn("recall_completeness", data)
         note = data["recall_completeness"].lower()
@@ -234,7 +235,7 @@ class ToolWiringTests(_ServerBase):
         self.assertIn("never masked", note, "the standing privacy condition must be disclosed where it is true "
                                             "— on every answer, not once in a merge note — and stated so it "
                                             "cannot be skim-read as the reassuring opposite")
-        empty = self._result_json(await srv.server.call_tool("search", {"query": "nonexistentzqxword"}))
+        empty = await self._call("search", {"query": "nonexistentzqxword"})
         self.assertEqual(empty["results"], [])
         self.assertNotIn("recall_completeness", empty)   # nothing returned -> nothing to disclose
 
@@ -246,7 +247,7 @@ class ToolWiringTests(_ServerBase):
         # the writes too.
         for i in range(25):
             self.add("a shared quokka note number %d" % i, role="observation")
-        data = self._result_json(await srv.server.call_tool("search", {"query": "quokka"}))
+        data = await self._call("search", {"query": "quokka"})
         self.assertEqual(len(data["results"]), srv._DEFAULT_LIMIT)
 
     async def test_the_search_answer_validates_against_the_interface_output_schema(self):
@@ -262,10 +263,10 @@ class ToolWiringTests(_ServerBase):
             out_schema = next(op["output_schema"] for op in operations if op["name"] == "search")
         checker = validate.Draft202012Validator(out_schema)
         self.add("we decided to ship the export format", role="decision")
-        answer = self._result_json(await srv.server.call_tool("search", {"query": "export"}))
+        answer = await self._call("search", {"query": "export"})
         self.assertIn("recall_completeness", answer)
         self.assertEqual(list(checker.iter_errors(answer)), [])        # a note-bearing answer conforms
-        empty = self._result_json(await srv.server.call_tool("search", {"query": "nonexistentzqxword"}))
+        empty = await self._call("search", {"query": "nonexistentzqxword"})
         self.assertEqual(list(checker.iter_errors(empty)), [])         # an empty answer conforms
         self.assertTrue(list(checker.iter_errors({"results": [], "surprise": 1})))  # unknown keys still rejected
 
@@ -275,7 +276,7 @@ class ToolWiringTests(_ServerBase):
         original = index.fts5_available
         index.fts5_available = lambda *a, **k: False
         try:
-            data = self._result_json(await srv.server.call_tool("search", {"query": "export"}))
+            data = await self._call("search", {"query": "export"})
             self.assertTrue(len(data["results"]) >= 1)
         finally:
             index.fts5_available = original
@@ -284,9 +285,6 @@ class ToolWiringTests(_ServerBase):
 class ControlToolTests(_ServerBase):
     """The three tools that WRITE, exercised through the server rather than through the library beneath it —
     the transport is where a caller actually meets them, and where a wrong shape would surface."""
-
-    async def _call(self, name, args):
-        return self._result_json(await srv.server.call_tool(name, args))
 
     async def test_pinning_stores_the_text_and_makes_it_findable(self):
         out = await self._call("pin", {"text": "Always ask before filing an issue."})
@@ -313,10 +311,12 @@ class ControlToolTests(_ServerBase):
 
     async def test_withholding_names_exactly_one_target(self):
         # Both, or neither, is refused rather than guessed at: a record id and a session id are both uuid hex,
-        # so a wrong guess here withholds something the operator never named.
+        # so a wrong guess here withholds something the operator never named. Over the protocol a refusal
+        # arrives as an ERROR RESULT, not a raised exception — asserting through the expect-error helper is
+        # what keeps this test biting (a plain call_tool_json here would itself raise, proving nothing).
         for args in ({}, {"record_id": "r", "session_id": "s"}):
-            with self.assertRaises(Exception):
-                await self._call("withhold", args)
+            text = await mts.call_tool_expect_error(srv.server, "withhold", args)
+            self.assertTrue(text, "the refusal must say why, not fail silently")
 
     async def test_no_control_tool_removes_a_record_from_the_ledger(self):
         # The whole safety story of these tools is that they append. If one ever deletes, the reversibility
@@ -340,6 +340,19 @@ class ControlToolTests(_ServerBase):
         scoped = await self._call("search", {"query": "wombats", "session": "s-B", "limit": 50})
         self.assertEqual(len(whole["results"]), 6)
         self.assertEqual({r["session_id"] for r in scoped["results"]}, {"s-B"})
+
+
+class StdioLaunchTest(unittest.IsolatedAsyncioTestCase):
+    async def test_server_launches_over_stdio_and_answers_health(self):
+        # The launch seam .mcp.json actually uses — the one place a dead server fails SILENTLY in a real
+        # deployment (it just never appears in the model's tool list). The in-memory tests above never run
+        # `server.run()`, never resolve the frozen environment, and never complete a handshake; this one
+        # runs the documented argv as a real subprocess and asserts the handshake and the health answer.
+        # HEALTH-ONLY: the stdio child gets an allowlisted env, so the ENGINE_MEMORY_DIR test override
+        # cannot reach it — a richer call here would hit the operator's REAL store (see stdio_health).
+        engine_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        data = await mts.stdio_health(engine_dir, "tools/memory/mcp_server.py")
+        self.assertEqual(data, {"status": "ok", "server": "engine-memory"})
 
 
 class DemoTests(unittest.TestCase):

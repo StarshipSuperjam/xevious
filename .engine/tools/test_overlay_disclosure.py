@@ -12,7 +12,10 @@ These lock the behaviours a non-engineer cannot read code to verify:
     and it includes the module manifests a bare provides∪FOUNDATION_CODE would miss;
   - a crafted rename target cannot inject markup — every rendered path is whitelist-sanitized (a code span,
     not backslash-escaping, is the boundary);
-  - a preserved file and a pure add are never warned about;
+  - the notice reads THREE registers off the one overlay source: an overwrite alarm, a calm 'rebuilt' line for
+    the regenerated-derived indexes, and a positive 'kept' confirmation for preserved per-deployment data — so
+    a preserved-data change is surfaced (not silenced), a regenerated file is not alarmed, and a pure add is
+    never warned about;
   - the single marker comment is idempotent AND only ever a BOT-authored one is edited (a user comment that
     quotes the marker is never overwritten); it is posted once, updated in place, retracted when empty;
   - the workflow is an engine-owned traveler (FOUNDATION_INFRA → FOUNDATION_CODE overlay), like the others;
@@ -156,38 +159,52 @@ class TestEngineAuthoredExempt(unittest.TestCase):
                 self.assertEqual(od.main(), 0)
 
 
-class TestOverwrittenPaths(unittest.TestCase):
-    SET = {".engine/tools/boot.py", ".engine/modules/core/manifest.json"}
+class TestDisclosureRegisters(unittest.TestCase):
+    """The three registers, all read off the ONE overlay source: the overwrite alarm, the regenerated-derived
+    calm line (split OUT of the overwrite set), and the preserved-data positive confirmation (read straight
+    from PRESERVE_DATA, which overlay_replace_paths already excludes). Mocked constants so the split is asserted
+    on the classifier logic, not on today's live membership."""
+    SET = {".engine/tools/boot.py", ".engine/modules/core/manifest.json", ".engine/knowledge/graph.json"}
 
-    def _paths(self, changed):
-        with mock.patch.object(od.module_manager, "overlay_replace_paths", return_value=self.SET):
-            return od.overwritten_paths(changed)
+    def _reg(self, changed):
+        with mock.patch.object(od.module_manager, "overlay_replace_paths", return_value=self.SET), \
+             mock.patch.object(od.module_manager, "REGENERATED_DERIVED", (".engine/knowledge/graph.json",)), \
+             mock.patch.object(od.module_coherence, "PRESERVE_DATA", {".engine/memory-backup/pointer.json"}):
+            return od.disclosure_registers(changed)
 
-    def test_modified_overlay_file_is_included(self):
-        self.assertEqual(self._paths([{"filename": ".engine/tools/boot.py", "status": "modified"}]),
-                         [".engine/tools/boot.py"])
+    def test_modified_overlay_file_is_in_the_overwrite_register(self):
+        r = self._reg([{"filename": ".engine/tools/boot.py", "status": "modified"}])
+        self.assertEqual(r["overwrite"], [".engine/tools/boot.py"])
+        self.assertEqual((r["derived"], r["preserved"]), ([], []))
 
-    def test_module_manifest_is_included(self):
-        self.assertEqual(
-            self._paths([{"filename": ".engine/modules/core/manifest.json", "status": "modified"}]),
-            [".engine/modules/core/manifest.json"])
+    def test_module_manifest_is_in_the_overwrite_register(self):
+        r = self._reg([{"filename": ".engine/modules/core/manifest.json", "status": "modified"}])
+        self.assertEqual(r["overwrite"], [".engine/modules/core/manifest.json"])
 
-    def test_preserved_file_is_excluded(self):
-        self.assertEqual(self._paths([{"filename": ".engine/operator-overrides.json", "status": "modified"},
-                                      {"filename": "CLAUDE.md", "status": "modified"}]), [])
+    def test_a_regenerated_derived_file_is_split_into_the_derived_register(self):
+        r = self._reg([{"filename": ".engine/knowledge/graph.json", "status": "modified"}])
+        self.assertEqual(r["derived"], [".engine/knowledge/graph.json"])
+        self.assertEqual(r["overwrite"], [])                             # NOT the alarm
 
-    def test_pure_add_is_excluded(self):
-        self.assertEqual(self._paths([{"filename": ".engine/tools/boot.py", "status": "added"}]), [])
+    def test_a_preserved_data_file_is_in_the_preserved_register(self):
+        r = self._reg([{"filename": ".engine/memory-backup/pointer.json", "status": "modified"}])
+        self.assertEqual(r["preserved"], [".engine/memory-backup/pointer.json"])
+        self.assertEqual(r["overwrite"], [])                             # a confirmation, never the alarm
+
+    def test_config_and_pure_add_are_in_no_register(self):
+        r = self._reg([{"filename": ".engine/operator-overrides.json", "status": "modified"},
+                       {"filename": ".engine/tools/boot.py", "status": "added"}])
+        self.assertEqual((r["overwrite"], r["derived"], r["preserved"]), ([], [], []))
 
     def test_rename_uses_the_canonical_side_in_the_set(self):
-        out = self._paths([{"filename": "evil.py", "previous_filename": ".engine/tools/boot.py",
-                            "status": "renamed"}])
-        self.assertEqual(out, [".engine/tools/boot.py"])
+        r = self._reg([{"filename": "evil.py", "previous_filename": ".engine/tools/boot.py",
+                        "status": "renamed"}])
+        self.assertEqual(r["overwrite"], [".engine/tools/boot.py"])
 
 
 class TestComment(unittest.TestCase):
-    def test_body_is_plain_non_blocking_and_routes_with_home(self):
-        body = od.compose_comment([".engine/tools/boot.py"], HOME)
+    def test_overwrite_body_is_plain_non_blocking_and_routes_with_home(self):
+        body = od.compose_comment({"overwrite": [".engine/tools/boot.py"]}, HOME)
         self.assertIn(od.COMMENT_MARKER, body)
         self.assertIn(".engine/tools/boot.py", body)
         self.assertIn("does not block your merge", body)
@@ -195,53 +212,76 @@ class TestComment(unittest.TestCase):
         self.assertIn("/engine-tune", body)
         self.assertIn(HOME, body)                                        # the durable home is named
 
+    def test_derived_register_renders_a_calm_regenerated_line_not_the_alarm(self):
+        body = od.compose_comment({"derived": [".engine/knowledge/graph.json"]}, HOME)
+        self.assertIn(".engine/knowledge/graph.json", body)
+        self.assertIn("regenerated by the update", body)
+        self.assertIn("docs/spec", body)                               # routes a hand-edit to the real source
+        self.assertNotIn("won't survive the next update", body)        # not the alarm register
+        self.assertIn("does not block your merge", body)
+
+    def test_preserved_register_renders_a_positive_kept_confirmation(self):
+        body = od.compose_comment({"preserved": [".engine/memory-backup/pointer.json"]}, HOME)
+        self.assertIn(".engine/memory-backup/pointer.json", body)
+        self.assertIn("kept", body.lower())
+        self.assertIn("does not block your merge", body)
+
     def test_crafted_path_is_neutralized_not_escaped(self):
         # A rename can put a crafted name into the tree/overwrite set. It must be sanitized (unsafe chars
         # dropped), so no backtick can break the code span and no link/markup can form.
         crafted = ".engine/tools/a`b](http://evil.com).py"
         self.assertEqual(od._safe_path(crafted), ".engine/tools/a?b??http?//evil.com?.py")
-        body = od.compose_comment([crafted], HOME)
+        body = od.compose_comment({"overwrite": [crafted]}, HOME)
         self.assertNotIn("`b]", body)                                    # the raw break-out never appears
         self.assertNotIn("http://evil.com", body)
         self.assertNotIn("](", body)
 
     def test_long_list_is_capped(self):
         many = [f".engine/tools/t{i}.py" for i in range(40)]
-        body = od.compose_comment(many, HOME)
+        body = od.compose_comment({"overwrite": many}, HOME)
         self.assertIn("and 25 more", body)                               # 40 - 15 cap = 25 summarized
 
 
 class TestReconcile(unittest.TestCase):
+    OW = {"overwrite": [".engine/tools/boot.py"]}
+
     def _client(self, comments=None):
         rec = _Recorder(comments)
         return od._Comments("acme/product", "tok", transport=rec), rec
 
     def test_posts_once_when_absent(self):
         client, rec = self._client()
-        self.assertEqual(od.reconcile(client, 7, [".engine/tools/boot.py"], HOME), "posted")
+        self.assertEqual(od.reconcile(client, 7, self.OW, HOME), "posted")
+        self.assertEqual(rec.counts()["POST"], 1)
+
+    def test_posts_for_a_preserved_only_change(self):
+        # The positive register alone must still surface a comment — a preserved-data change is never silence.
+        client, rec = self._client()
+        self.assertEqual(
+            od.reconcile(client, 7, {"preserved": [".engine/memory-backup/pointer.json"]}, HOME), "posted")
         self.assertEqual(rec.counts()["POST"], 1)
 
     def test_unchanged_when_body_matches(self):
-        body = od.compose_comment([".engine/tools/boot.py"], HOME)
+        body = od.compose_comment(self.OW, HOME)
         client, rec = self._client([{"id": 1, "body": body, "user": BOT}])
-        self.assertEqual(od.reconcile(client, 7, [".engine/tools/boot.py"], HOME), "unchanged")
+        self.assertEqual(od.reconcile(client, 7, self.OW, HOME), "unchanged")
         self.assertEqual(rec.counts()["POST"], 0)
         self.assertEqual(rec.counts()["PATCH"], 0)
 
     def test_updates_in_place_when_body_differs(self):
         client, rec = self._client([{"id": 1, "body": od.COMMENT_MARKER + "\nstale", "user": BOT}])
-        self.assertEqual(od.reconcile(client, 7, [".engine/tools/boot.py"], HOME), "updated")
+        self.assertEqual(od.reconcile(client, 7, self.OW, HOME), "updated")
         self.assertEqual(rec.counts()["PATCH"], 1)
         self.assertEqual(rec.counts()["POST"], 0)
 
     def test_retracts_when_empty(self):
         client, rec = self._client([{"id": 1, "body": od.COMMENT_MARKER + "\nprior notice", "user": BOT}])
-        self.assertEqual(od.reconcile(client, 7, [], HOME), "retracted")
+        self.assertEqual(od.reconcile(client, 7, {}, HOME), "retracted")
         self.assertEqual(rec.counts()["PATCH"], 1)
 
     def test_clean_when_nothing_and_no_prior(self):
         client, rec = self._client()
-        self.assertEqual(od.reconcile(client, 7, [], HOME), "clean")
+        self.assertEqual(od.reconcile(client, 7, {}, HOME), "clean")
         self.assertEqual(rec.counts()["POST"], 0)
         self.assertEqual(rec.counts()["PATCH"], 0)
 
@@ -249,14 +289,14 @@ class TestReconcile(unittest.TestCase):
         # A non-bot comment carrying the marker string must NOT be overwritten — reconcile posts its own.
         client, rec = self._client([{"id": 1, "body": od.COMMENT_MARKER + "\nuser text",
                                      "user": {"type": "User"}}])
-        self.assertEqual(od.reconcile(client, 7, [".engine/tools/boot.py"], HOME), "posted")
+        self.assertEqual(od.reconcile(client, 7, self.OW, HOME), "posted")
         self.assertEqual(rec.counts()["PATCH"], 0)                       # the user comment untouched
         self.assertEqual(rec.counts()["POST"], 1)
 
     def test_duplicate_bot_notice_is_resolved(self):
         client, rec = self._client([{"id": 1, "body": od.COMMENT_MARKER + "\nnotice A", "user": BOT},
                                     {"id": 2, "body": od.COMMENT_MARKER + "\nnotice B", "user": BOT}])
-        od.reconcile(client, 7, [], HOME)                                # empty -> both resolved
+        od.reconcile(client, 7, {}, HOME)                               # empty -> both resolved
         self.assertTrue(all(c["body"] == od._resolved_body() for c in rec.comments))
 
 

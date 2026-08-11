@@ -177,7 +177,7 @@ def findings(tier: str, root: str | None = None) -> list:
     for slug in sorted(codex_agents - claude_agents):
         miss("agent", slug, "Codex", f"the review persona '{slug}'")
 
-    # FLOORS — since #323 the committed root CLAUDE.md/AGENTS.md ARE the fenced adopter floor (the separate
+    # FLOORS — since StarshipSuperjam/engine-template#323 the committed root CLAUDE.md/AGENTS.md ARE the fenced adopter floor (the separate
     # .deployed.md files retired with the greenfield swap), so the one pair to check is the root pair.
     pairs = [("CLAUDE.md", "AGENTS.md")]
     for claude_floor, agents_floor in pairs:

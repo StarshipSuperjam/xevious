@@ -40,13 +40,13 @@ MARKER_KIND = "consolidated"        # the in-ledger "this session has been tidie
 DEFAULT_EPISODIC_TAG = "episodic"
 MARKER_TAG = "consolidated"
 
-# Harness-injected pseudo-turns (issue #274, folding in #333). Claude Code injects non-conversational blocks as
+# Harness-injected pseudo-turns (issue StarshipSuperjam/engine-template#274, folding in StarshipSuperjam/engine-template#333). Claude Code injects non-conversational blocks as
 # `user`-role transcript turns — a background-agent completion notice (`<task-notification>`) and the `/compact`
 # continuation summary (`This session is being continued from a previous conversation…`). They reach the ledger
 # as ambient `turn-delta` records, and this tag is now the WHOLE of what keeps them out of recall — the rest of
 # the conversation is recall content, so nothing else is holding them back (see the membership block above).
 # The consolidation sweep also reads the raw ledger, so without this filter the in-context AI would consolidate
-# them as if the operator had said them. The fix is NOT a pre-ledger drop — #333 chose to keep them RESIDENT
+# them as if the operator had said them. The fix is NOT a pre-ledger drop — StarshipSuperjam/engine-template#333 chose to keep them RESIDENT
 # + recoverable (the durability
 # law: an abandoned session loses the reflection, not the content). Instead capture TAGS them (`INJECTED_TAG`, on
 # every chunk of an injected message, recognised before chunking so a multi-chunk continuation summary is fully
@@ -126,13 +126,13 @@ BATCH_KEY = "batch"                 # one id per consolidation pass, stamped on 
                                     # which episodics a *completed* pass closed — and which are orphans from a
                                     # crashed pass (their batch carries no marker), to logically retire.
 
-THROUGH_SEQ_KEY = "through_seq"     # on the `consolidated` marker (#446): the per-session HIGH-WATER-MARK — the
+THROUGH_SEQ_KEY = "through_seq"     # on the `consolidated` marker (StarshipSuperjam/engine-template#446): the per-session HIGH-WATER-MARK — the
                                     # `seq` of the last genuine turn the pass EXAMINED (reusing capture's own
                                     # per-message seq, never a parallel counter). It turns the marker from a
                                     # binary done-flag into "swept through here", so a session tidied mid-run is
                                     # re-swept for only its later half. An INT (so, like seq/ts, it stays out of
                                     # the string-leaf search body by type — no _NON_BODY_KEYS entry needed).
-                                    # OPTIONAL on read: a LEGACY marker written before #446 lacks it and is
+                                    # OPTIONAL on read: a LEGACY marker written before StarshipSuperjam/engine-template#446 lacks it and is
                                     # projected into seq-space from its `ts`; always present on a marker written
                                     # now. Effective per-session watermark = the MAX across the session's markers.
 
@@ -275,7 +275,7 @@ ERASURE_TAG = "operator-adjudicated-erasure"     # the marker's tag (kept out of
 # key OUT of the search body too (index._NON_BODY_KEYS) — belt-and-suspenders, since scored copies are never indexed.
 SCORE_KEY = "score"
 
-# Cross-session roll-up cluster sentinel (#235). Roll-up's coarse "related" pre-filter was group-by-session; the
+# Cross-session roll-up cluster sentinel (StarshipSuperjam/engine-template#235). Roll-up's coarse "related" pre-filter was group-by-session; the
 # richer signal relates COLD episodes ACROSS sessions by shared topic tag (`tag:<tag>`). Such a gist has no single
 # originating session, so it carries the CLUSTER KEY as its `session_id` — a non-empty string, so every store
 # invariant that assumes a session_id still holds. The gist's real-session provenance is NOT lost: it lives in

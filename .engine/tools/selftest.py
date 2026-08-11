@@ -13,10 +13,11 @@ a clean, self-contained result — the complete list of failing tests plus their
 needs to be piped and nothing needs to be re-run.
 
 The log is a UNIQUE per-run temp file (so concurrent sessions — this repo's normal model — never share
-or clobber one), kept only when the run FAILS (there is something to read); a clean run deletes it, and
-stale logs from killed runs are swept on the next invocation. The on-screen result is built from the
-run's own in-memory output, never by re-reading the file, so a concurrent run can never make it show
-the wrong failures.
+or clobber one) and is KEPT whether the run passes or fails, so a session can always read its own run
+rather than mistaking a vanished log for a failure; its path is printed at the start and again in the
+closing summary. Cleanup is the daily sweep — a later run removes any of this user's logs older than a
+day. The on-screen result is built from the run's own in-memory output, never by re-reading the file, so
+a concurrent run can never make it show the wrong failures.
 
 The load-bearing invariant: the launcher's exit status is the child suite's exit status, VERBATIM
 (`proc.returncode`). It is NEVER derived from parsing the run's text for an `OK`/`FAILED` line. A test
@@ -290,7 +291,7 @@ def _print_result(rc: int, elapsed: float, log_path: Optional[str], output: str)
     print("=" * 78)
     verdict = "PASSED" if rc == 0 else f"FAILED (exit {rc})"
     print(f"Self-tests {verdict} in {elapsed:0.0f}s")
-    if log_path:  # only when the log was kept (a failure to read, or a caller-chosen path)
+    if log_path:  # always set now — the log is kept for every run, and its path is printed so the session can read it
         print(f"Full output: {log_path}")
     if rc == 0:
         print("=" * 78)
@@ -366,7 +367,6 @@ def _run_parent(args: argparse.Namespace) -> int:
         "--progress-fd", str(progress_write_fd),
     ]
     env = {**os.environ, _NESTED_ENV: "1"}
-    print(f"Running the self-test suite (log: {log_path})", flush=True)
 
     progress = _Progress()
     captured: list = []   # the run's own output, held in memory for a concurrency-safe result printout
@@ -389,7 +389,10 @@ def _run_parent(args: argparse.Namespace) -> int:
         except OSError as exc:
             print(f"selftest: failed to start the suite: {exc}", file=sys.stderr)
             os.close(progress_write_fd)  # the `finally` closes the read fd and the log
-            if not args.log_path:  # drop the just-minted default log — this run never produced output
+            # The suite never started, so the log is empty — the sole exception to the otherwise-always-
+            # keep rule: there is nothing to read, and this run reports its failure loudly via the exit
+            # code and the message above, so a dropped empty log can never read as a vanished one.
+            if not args.log_path:
                 try:
                     os.remove(log_path)
                 except OSError:
@@ -397,6 +400,10 @@ def _run_parent(args: argparse.Namespace) -> int:
             return 2
 
         os.close(progress_write_fd)  # parent holds only the read end
+        # Announce the log path only now the child is running, so an announced path always names a file
+        # that will be kept. A run that never started (the branch above) reports its failure loudly on
+        # stderr instead, and so never leaves a session hunting for a log it was promised.
+        print(f"Running the self-test suite (log: {log_path})", flush=True)
         out_fd = proc.stdout.fileno()
         os.set_blocking(out_fd, False)
         os.set_blocking(progress_read_fd, False)
@@ -489,16 +496,10 @@ def _run_parent(args: argparse.Namespace) -> int:
             pass
         log_file.close()
 
-    # Keep the log only when there's a failure to read, or when the caller chose the path; a clean
-    # run leaves nothing behind (the on-screen summary already said all there is to say).
-    keep_log = rc != 0 or bool(args.log_path)
-    if not keep_log:
-        try:
-            os.remove(log_path)
-        except OSError:
-            pass
+    # The log is kept for every run — pass or fail — so a session can always read its own run and never
+    # reads a vanished log as a failure. Cleanup is the daily sweep (_sweep_stale_logs) at the next run.
     elapsed = time.monotonic() - start
-    _print_result(rc, elapsed, log_path if keep_log else None, "".join(captured))
+    _print_result(rc, elapsed, log_path, "".join(captured))
     return rc  # VERBATIM — the child's exit status is the launcher's verdict.
 
 

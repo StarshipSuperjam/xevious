@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Submit-time close-linkage consistency pre-flight (engine-template #361).
+"""Submit-time close-linkage consistency pre-flight (StarshipSuperjam/engine-template#361).
 
 GitHub auto-closes an issue from any `close`/`fixes`/`resolves #N` keyword — including one buried in prose — in
 a pull request's body OR an integrated commit message. So a PR gets accidentally set to close an issue it only
@@ -24,7 +24,7 @@ What it reads (machine-decidable facts only, no intent-guessing):
 
 Two contradictions are decidable without reading intent, and one bound is named:
   - **scope-contradiction** — the PR will close #N while its scope declares it only "Part of #N";
-  - **comma-trap** — `Closes #1, #2` links only #1, leaving #2 silently open;
+  - **comma-trap** — `Closes #1, #2` links only the first, leaving the second silently open;
   - **cross-repo (out of reach)** — a `owner/repo#N` close has no local Scope line to adjudicate, so it is
     surfaced-and-named, never silently passed and never defanged.
 
@@ -57,6 +57,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import validate  # noqa: E402 — for section_blocks (the PR-body section parser)
@@ -70,7 +71,7 @@ _KW = r"close[sd]?|fix(?:es|ed)?|resolve[sd]?"
 
 # One closing REFERENCE-LIST after a keyword: `#N`, an `owner/repo#N` cross-repo ref, or a comma-run of them
 # (`Closes #1, #2`). The whole list is captured so the comma-trap under-link can be detected. The leading \b
-# keeps it from matching inside another word ("discloses #7").
+# keeps it from matching inside another word (a bare "#N" glued to a preceding word).
 _CLOSE_LIST_RE = re.compile(
     rf"\b(?:{_KW})\b[:\s]+((?:[\w.-]+/[\w.-]+)?#\d+(?:\s*,\s*(?:[\w.-]+/[\w.-]+)?#\d+)*)",
     re.IGNORECASE,
@@ -98,6 +99,17 @@ _DECLARE_SECTIONS = ("Scope", "Out of scope")
 
 USER_AGENT = "engine-close-linkage-preflight"
 
+# Bounded retry through a transient missing-origin / shared-config blip (StarshipSuperjam/engine-template#704): under heavy parallel-worktree
+# use, a concurrent write to the one shared .git/config makes an arbitrary git command fail for a moment, then
+# self-heal. A few fast retries ride out that window; the blip fails FAST, so the common path pays nothing and
+# a genuine failure still degrades honestly. This inline retry is copied — not shared — across the five tools
+# that carry it (scope_profile, close_linkage_preflight, pr_reconcile, module_manager, tune), matching the
+# codebase's per-module retry convention (e.g. memory/capture.py's lock retry); keep the copies identical.
+# Applied only to the git-log leg (the one origin-adjacent read); the gh legs do not touch origin, so their
+# own gh-version fallback path is left to run once, never spun by this retry.
+_ORIGIN_RETRY_ATTEMPTS = 3
+_ORIGIN_RETRY_DELAY = 0.3      # seconds between attempts
+
 
 class PreflightUnavailable(Exception):
     """The will-close set could not be read at submit (a stale `gh`, a missing `issues: read` scope, an
@@ -119,7 +131,7 @@ def _refs_in_list(captured: str) -> list:
 
 def parse_close_runs(text: str) -> list:
     """Every closing keyword's reference-RUN in `text`, as `[[(slug_or_None, number), ...], ...]`. GitHub honors
-    only the FIRST reference of a run (`Closes #1, #2` closes only #1); the rest are the comma-trap leftovers. A
+    only the FIRST reference of a run (`Closes #1, #2` closes only the first); the rest are the comma-trap leftovers. A
     same-repo ref has slug None; a cross-repo ref keeps its `owner/repo` slug."""
     return [_refs_in_list(m.group(1)) for m in _CLOSE_LIST_RE.finditer(text)]
 
@@ -132,7 +144,7 @@ def body_local_closes(body: str) -> set:
 
 def comma_trap_leftovers(runs: list, honored_local: set) -> list:
     """The same-repo numbers that trail a comma-listed close whose HEAD GitHub actually honored — a real
-    `Closes #1, #2` where #1 closes but #2 (not itself honored) silently stays open. Gating on the honored head
+    `Closes #1, #2` where the first closes but the second (not itself honored) silently stays open. Gating on the honored head
     is the reconciliation that keeps a fenced / quoted / HTML-comment / prose `Closes #1, #2` *example* (whose
     head GitHub honored nothing of) from firing a false 'will stay open' warning. Order-preserving, de-duped."""
     out, seen = [], set()
@@ -188,7 +200,7 @@ def part_of_declarations(body: str) -> set:
 def commit_will_close(messages: list) -> tuple:
     """`(honored, trap)` for the integrated commit messages, which `closingIssuesReferences` does not reflect.
     `honored` is the same-repo numbers a commit will actually close — the FIRST same-repo ref of each closing
-    run; `trap` is the same-repo comma-trap leftovers (a commit `Closes #1, #2` closes only #1, so #2 silently
+    run; `trap` is the same-repo comma-trap leftovers (a commit `Closes #1, #2` closes only the first, so the second silently
     stays open — the same failure mode the body path catches). A run led by a cross-repo ref closes nothing (a
     cross-repo commit close cannot be neutralized by a body edit, and GitHub does not auto-close cross-repo), so
     its refs are ignored — never counted as a will-close or a trap."""
@@ -208,7 +220,7 @@ def commit_will_close(messages: list) -> tuple:
 
 def defang_body(body: str, number: int) -> "str | None":
     """The body with the single accidental closing keyword for `#N` neutralized — the keyword+separator removed,
-    the `#N` reference KEPT (so `... builds on Closes #274 ...` -> `... builds on #274 ...`). Deterministic and
+    the `#N` reference KEPT (so `... builds on Closes #N ...` -> `... builds on #N ...`). Deterministic and
     BYTE-IDENTICAL everywhere else. Returns None (-> the caller surfaces instead) when the occurrence is not
     exactly one, so a defang never edits the wrong (e.g. code-fenced) occurrence or misreports what it removed."""
     spans = []
@@ -387,12 +399,18 @@ def read_body(pr, runner=_default_runner) -> str:
 
 
 def read_commit_messages(base: str, head: str = "HEAD", runner=_default_runner) -> list:
-    """The integrated commit messages on `<base>..<head>` via `git log`. RAISES PreflightUnavailable on a git
-    failure (never read as no commits). An empty range is a successful read returning []."""
-    code, out, _ = runner(["git", "log", "--format=%B%x00", f"{base}..{head}"])
-    if code != 0:
-        raise PreflightUnavailable(f"could not read commit messages for {base}..{head}")
-    return [m for m in (out or "").split("\x00") if m.strip()]
+    """The integrated commit messages on `<base>..<head>` via `git log` (the one origin-adjacent read: `base`
+    is the origin-tracking default branch). RAISES PreflightUnavailable on a git failure (never read as no
+    commits). An empty range is a successful read returning []. A transient missing-origin / shared-config
+    blip (StarshipSuperjam/engine-template#704) is ridden out by a few bounded fast retries — the common (first-try) path makes exactly one
+    call and never sleeps; a persistent failure still RAISES (fail-closed to the could-not-read line)."""
+    for attempt in range(_ORIGIN_RETRY_ATTEMPTS):
+        code, out, _ = runner(["git", "log", "--format=%B%x00", f"{base}..{head}"])
+        if code == 0:
+            return [m for m in (out or "").split("\x00") if m.strip()]
+        if attempt < _ORIGIN_RETRY_ATTEMPTS - 1:
+            time.sleep(_ORIGIN_RETRY_DELAY)
+    raise PreflightUnavailable(f"could not read commit messages for {base}..{head}")
 
 
 def preflight(pr, base: str, *, runner=_default_runner) -> dict:
@@ -461,7 +479,7 @@ def _demo() -> int:
         print("   • " + ln)
     print()
 
-    # (3) Comma-trap: `Closes #1, #2` links only #1; #2 stays open.
+    # (3) Comma-trap: `Closes #1, #2` links only the first; the second stays open.
     body3 = "## Scope\n\n- the work\n\n## Out of scope\n\n- x\n\nCloses #1, #2\n"
     r3 = classify(body=body3, honored_local={1}, commit_honored=set())
     print("3) 'Closes #1, #2' — only #1 closes on merge:")
@@ -505,7 +523,7 @@ def _demo() -> int:
           f"(no false warning).")
     print()
 
-    # (7c) A commit-message comma-trap (`Closes #1, #2` in a commit): #1 closes, #2 silently stays open.
+    # (7c) A commit-message comma-trap (`Closes #1, #2` in a commit): the first closes, the second silently stays open.
     ch, ct = commit_will_close(["feat: land it\n\nCloses #1, #2"])
     r7c = classify(body="## Scope\n\n- x\n\n## Out of scope\n\n- y\n", honored_local=set(),
                    commit_honored=ch, commit_trap=ct)

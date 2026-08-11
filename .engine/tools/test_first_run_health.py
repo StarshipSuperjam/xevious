@@ -266,6 +266,85 @@ class TestReadOnly(unittest.TestCase):
         self.assertGreater(scanned, 3, "the read-only scan must cover the detection functions")
 
 
+def _landed_repo(tmp: str, name: str, *, tool_present: bool = False, marker: bool = True,
+                 dirty: bool = False, on_branch: str = "main") -> str:
+    """A committed checkout for the post-landing confirmation (#810): `.engine/boot/.cache/` is gitignored (so the
+    awaiting-landing marker is invisible to `git status`, as in production), `origin/HEAD` -> main so the default
+    resolves offline, the one-time setup tool optionally retired, optionally the marker, optionally a dirty
+    tracked edit, and optionally parked on a side branch."""
+    root = os.path.join(tmp, name)
+    os.makedirs(os.path.join(root, ".engine", "tools"), exist_ok=True)
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "t@t")
+    _git(root, "config", "user.name", "t")
+    with open(os.path.join(root, ".engine", "engine.json"), "w", encoding="utf-8") as fh:
+        json.dump({"home_repository": HOME}, fh)
+    with open(os.path.join(root, ".gitignore"), "w", encoding="utf-8") as fh:
+        fh.write(".engine/boot/.cache/\n")     # mirror the engine-managed block so the marker is ignored
+    if tool_present:
+        with open(os.path.join(root, ".engine", "tools", "instantiator.py"), "w", encoding="utf-8") as fh:
+            fh.write("# placeholder setup tool\n")
+    with open(os.path.join(root, "file.txt"), "w", encoding="utf-8") as fh:
+        fh.write("landed\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "seed")
+    _git(root, "update-ref", "refs/remotes/origin/main", "HEAD")           # a resolvable default...
+    _git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    if on_branch != "main":
+        _git(root, "checkout", "-q", "-b", on_branch)
+    if marker:
+        first_run_health.mark_first_run_applied(root)                      # ignored path -> not a dirty edit
+    if dirty:
+        with open(os.path.join(root, "file.txt"), "w", encoding="utf-8") as fh:
+            fh.write("uncommitted transformation still here\n")
+    return root
+
+
+class TestDetectSetupLanded(unittest.TestCase):
+    """#810 post-landing confirmation: fires ONLY when the awaiting-landing marker exists AND the transformation
+    is durable (setup tool retired, tree clean, on the default branch); quiet otherwise (no marker, dirty, tool
+    still present, or off the default). The marker's write/clear roundtrip is show-once."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_fires_when_marker_present_and_durable(self):
+        repo = _landed_repo(self.tmp, "landed")
+        d = first_run_health.detect_setup_landed(cwd=repo)
+        self.assertIsNotNone(d)
+        self.assertTrue(d["present"])
+        self.assertEqual(os.path.realpath(d["main"]), os.path.realpath(repo))
+
+    def test_quiet_when_no_marker(self):
+        repo = _landed_repo(self.tmp, "nomarker", marker=False)
+        self.assertIsNone(first_run_health.detect_setup_landed(cwd=repo))
+
+    def test_quiet_when_applied_but_not_yet_landed(self):
+        # marker present but the transformation is still uncommitted (dirty) -> not durable -> no confirmation yet
+        repo = _landed_repo(self.tmp, "dirty", dirty=True)
+        self.assertIsNone(first_run_health.detect_setup_landed(cwd=repo))
+
+    def test_quiet_when_setup_tool_still_present(self):
+        repo = _landed_repo(self.tmp, "tool", tool_present=True)
+        self.assertIsNone(first_run_health.detect_setup_landed(cwd=repo))
+
+    def test_quiet_when_parked_off_the_default_branch(self):
+        repo = _landed_repo(self.tmp, "side", on_branch="setup-work")
+        self.assertIsNone(first_run_health.detect_setup_landed(cwd=repo))
+
+    def test_marker_write_then_clear_is_show_once(self):
+        repo = _landed_repo(self.tmp, "once")
+        self.assertIsNotNone(first_run_health.detect_setup_landed(cwd=repo))   # first look: confirms
+        first_run_health.clear_first_run_marker(repo)                          # boot clears it (show-once)
+        self.assertIsNone(first_run_health.detect_setup_landed(cwd=repo))      # never again
+        first_run_health.clear_first_run_marker(repo)                          # idempotent, no crash
+
+    def test_unresolvable_checkout_degrades_quietly(self):
+        plain = os.path.join(self.tmp, "notgit")
+        os.makedirs(plain, exist_ok=True)
+        self.assertIsNone(first_run_health.detect_setup_landed(cwd=plain))
+
+
 class TestDemoSelfChecks(unittest.TestCase):
     def test_demo_runs_green(self):
         with contextlib.redirect_stdout(io.StringIO()):

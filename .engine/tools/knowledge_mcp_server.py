@@ -23,14 +23,16 @@ from __future__ import annotations
 import os
 import sys
 
+# Third-party import first: it needs nothing from the path bootstrap below, and importing it above the
+# sys.path mutation closes the shadowing hazard (a same-named module in tools/ could otherwise win).
+from mcp.server import MCPServer
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import knowledge_query as kq  # noqa: E402
 
-from mcp.server.fastmcp import FastMCP  # noqa: E402
-
 SERVER_NAME = "engine-knowledge-graph"
 
-server = FastMCP(SERVER_NAME)
+server = MCPServer(SERVER_NAME)
 
 
 @server.tool(name="health", description="Content-free availability probe for this exact "

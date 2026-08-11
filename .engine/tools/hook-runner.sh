@@ -16,7 +16,7 @@
 #     is what lets one committed repo work on every OS (including a mixed-OS team): it resolves the
 #     per-OS venv-bin-path at fire time rather than baking one OS into the
 #     committed command.
-#   - a BOUNDED wait for that interpreter to appear — the fresh-worktree race (issue #83): the
+#   - a BOUNDED wait for that interpreter to appear — the fresh-worktree race (issue StarshipSuperjam/engine-template#83): the
 #     gitignored .engine/.venv is provisioned a beat after a checkout, so a hook that fires in that
 #     window finds no interpreter; the wait polls for either OS's layout, then runs the one present.
 #   - it NEVER falls back to the operator's system Python — if neither layout appears within the bound,
@@ -53,7 +53,7 @@ polls="${ENGINE_HOOK_WAIT_POLLS:-50}"
 interval="${ENGINE_HOOK_WAIT_INTERVAL:-0.1}"
 n=0
 # Wait (bounded) for an EXECUTABLE interpreter of either layout — `-x`, not `-f`: a half-written file in
-# the #83 provisioning window is not run before it is complete, and a present-but-non-runnable interpreter
+# the StarshipSuperjam/engine-template#83 provisioning window is not run before it is complete, and a present-but-non-runnable interpreter
 # still reaches the fail-open readout below instead of a raw `exec` error. Git Bash reports a `.exe` as
 # executable, so `-x` resolves the Windows layout too.
 while [ ! -x "$interp" ] && [ ! -x "$alt" ] && [ "$n" -lt "$polls" ]; do
@@ -69,12 +69,12 @@ fi
 if [ -x "$interp" ]; then
     exec "$interp" "$@"
 fi
-# Neither the POSIX nor the Windows venv interpreter appeared within the wait bound (issue #83's
+# Neither the POSIX nor the Windows venv interpreter appeared within the wait bound (issue StarshipSuperjam/engine-template#83's
 # fresh-worktree window elapsed, or .engine/.venv is not provisioned). There is no interpreter here to
 # emit a structured finding, so — per the fail-open law's missing-runtime variant — NAME the absent
 # runtime plainly for the operator instead of exiting silently, and exit NON-blocking (never 2, which
-# the platform reads as a hard block: the #390 fail-closed stranding). Boot carries the standing DURABLE
-# surfacing of an unhealthy runtime (the promotion is #391/#412).
+# the platform reads as a hard block: the StarshipSuperjam/engine-template#390 fail-closed stranding). Boot carries the standing DURABLE
+# surfacing of an unhealthy runtime (the promotion is StarshipSuperjam/engine-template#391/StarshipSuperjam/engine-template#412).
 # Fail-safe: this readout cannot fail the script closed.
 printf '%s\n' "The engine could not run its own tools: its private Python runtime is not ready (looked for $interp and its Windows equivalent). I have not verified this step — this is not a block. If it keeps happening, the engine's environment needs to be set up (provisioning)." >&2
 # Leave a durable trace: the interpreter never started, so nothing here can promote a telemetry finding (that

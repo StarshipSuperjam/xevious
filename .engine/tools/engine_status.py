@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`/engine-status` — the operator's on-demand view of where the project stands (issue #83).
+"""`/engine-status` — the operator's on-demand view of where the project stands (issue StarshipSuperjam/engine-template#83).
 
 The PULL half of the operator-presentation relay. Boot PUSHES the safety-critical briefing
 every session (the alarms + the present-marker the AI must relay); this verb PULLS the routine status
@@ -59,9 +59,9 @@ _EXAMPLE_SIGNALS = {
     "shipped": ["#42 Add the sign-in page", "#41 Set up the database"],
     "stance": "Looking around — reading and planning, not changing anything yet.",
     "strand": None,   # the operator-checkout strand signal; None = the folder is healthy
-    "behind_origin": None,   # the behind-the-main-line tail (#335/#342); None = the folder isn't missing merged work
-    "off_main": None,   # the off-main Stage-1 signal (#342); None = the folder is on its main line of work
-    "pr_conflict": None,   # the stranded-PR conflict signal (#136); None = no pull request is stuck
+    "behind_origin": None,   # the behind-the-main-line tail (StarshipSuperjam/engine-template#335/StarshipSuperjam/engine-template#342); None = the folder isn't missing merged work
+    "off_main": None,   # the off-main Stage-1 signal (StarshipSuperjam/engine-template#342); None = the folder is on its main line of work
+    "pr_conflict": None,   # the stranded-PR conflict signal (StarshipSuperjam/engine-template#136); None = no pull request is stuck
     "restore_offer": None,   # the memory auto-restore offer; None = memory present or no backup configured
     # A representative self-review-has-gone-stale finding so the example also shows the
     # gentle freshness advisory in the attention list. Illustrative wording — the real text comes from
@@ -69,7 +69,7 @@ _EXAMPLE_SIGNALS = {
     "audit_stale": {"severity": "soft",
                     "message": "The engine hasn't reviewed its own health in a while — re-arm the scheduled "
                                "self-review so it refreshes on the next run, or ask me to do it for you."},
-    # the live-derived "where we are" (boot #100); present here so the example shows the current live line
+    # the live-derived "where we are" (boot StarshipSuperjam/engine-template#100); present here so the example shows the current live line
     "live_standing": {"milestone": ["Ship the beta"], "phase": "Building the checkout page (issue #128)"},
 }
 

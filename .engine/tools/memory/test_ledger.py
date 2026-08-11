@@ -360,6 +360,7 @@ class LedgerPathResolutionTests(unittest.TestCase):
 
     def test_cwd_fallback_when_not_in_a_git_repo(self):
         # A directory that is not a git repo → no common root → CWD-relative fallback.
+        # The `.engine`-cwd doubling guard on this fallback lives in test_selftest_hermeticity.py (#753).
         self.assertEqual(
             ledger.ledger_dir(cwd=self._tmp.name),
             os.path.join(self._tmp.name, ledger.DATA_SUBDIR),

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # .engine/tools on path
 from memory import capture, index, ledger, records  # noqa: E402
@@ -727,6 +728,115 @@ class CaptureScrubTests(CaptureTestCase):
         joined = "\n".join(self.texts())
         self.assertNotIn("PRIVATE KEY", joined)
         self.assertIn("[redacted:private-key]", joined)
+
+
+class CaptureDiagnosticsTests(CaptureTestCase):
+    """#774's diagnosability leg: every Claude failing state carries a content-free fingerprint
+    (which field was missing, the path-validation reason code, or the exception class name only), and
+    every failing outcome survives the next success in a bounded rolling history beside the marker.
+    The broken fixture these assertions catch is a detail-less writer — a bare state with no reason."""
+
+    def setUp(self):
+        super().setUp()
+        self._status_dir = tempfile.mkdtemp(prefix="engine-capture-status-")
+        self._saved_status = capture.CAPTURE_STATUS_PATH
+        self._saved_failures = capture.CAPTURE_FAILURES_PATH
+        capture.CAPTURE_STATUS_PATH = os.path.join(self._status_dir, "memory-capture.status")
+        capture.CAPTURE_FAILURES_PATH = os.path.join(self._status_dir, "memory-capture-failures.ndjson")
+
+    def tearDown(self):
+        capture.CAPTURE_STATUS_PATH = self._saved_status
+        capture.CAPTURE_FAILURES_PATH = self._saved_failures
+        shutil.rmtree(self._status_dir, ignore_errors=True)
+        super().tearDown()
+
+    def _history(self):
+        try:
+            with open(capture.CAPTURE_FAILURES_PATH, encoding="utf-8") as fh:
+                return [json.loads(ln) for ln in fh.read().splitlines() if ln.strip()]
+        except OSError:
+            return []
+
+    def test_no_transcript_names_the_missing_fields(self):
+        self.assertEqual(capture.capture_turn_delta({"session_id": "s"}), 0)
+        record = capture.read_capture_status()
+        self.assertEqual(record["state"], "no-transcript")
+        self.assertEqual(record["detail"]["reason"], "missing-field")
+        self.assertEqual(record["detail"]["missing"], ["transcript_path"])
+        self.assertEqual(capture.capture_turn_delta({}), 0)
+        self.assertEqual(capture.read_capture_status()["detail"]["missing"],
+                         ["session_id", "transcript_path"])
+
+    def test_invalid_path_carries_its_reason_code(self):
+        cases = (
+            (os.path.join(self.tmp, "..", "esc.jsonl"), "traversal"),
+            (os.path.join(self.tmp, "t.txt"), "suffix"),
+            ("/somewhere/else/entirely/t.jsonl", "out-of-scope"),
+            (os.path.join(self.tmp, "absent.jsonl"), "missing"),
+        )
+        for path, reason in cases:
+            with self.subTest(reason=reason):
+                self.assertEqual(capture.capture_turn_delta(self.payload(path)), 0)
+                record = capture.read_capture_status()
+                self.assertEqual(record["state"], "invalid-path")
+                self.assertEqual(record["detail"], {"reason": reason})   # a code, never path text
+
+    def test_oversized_transcript_reason(self):
+        path = self.transcript("big.jsonl", [_msg("user", "x")])
+        with mock.patch.object(capture, "MAX_TRANSCRIPT_BYTES", 1):
+            self.assertEqual(capture.capture_turn_delta(self.payload(path)), 0)
+        self.assertEqual(capture.read_capture_status()["detail"], {"reason": "oversized"})
+
+    def test_size_unreadable_reason(self):
+        # a file whose size cannot be read is its own outcome, distinct from "too big"
+        path = self.transcript("s.jsonl", [_msg("user", "x")])
+        with mock.patch.object(capture.os.path, "getsize", side_effect=OSError("io")):
+            self.assertEqual(capture.capture_turn_delta(self.payload(path)), 0)
+        self.assertEqual(capture.read_capture_status()["detail"], {"reason": "size-unreadable"})
+
+    def test_crash_records_the_exception_class_name_only(self):
+        boom = ValueError("secret-laden message /private/path never-recorded")
+        with mock.patch.object(capture, "_capture", side_effect=boom):
+            self.assertEqual(capture.capture_turn_delta(self.payload("x.jsonl")), 0)
+        record = capture.read_capture_status()
+        self.assertEqual(record["state"], "failed")
+        self.assertEqual(record["detail"], {"reason": "exception", "exception_class": "ValueError"})
+        self.assertNotIn("secret-laden", json.dumps(record))     # the message never lands anywhere
+        self.assertNotIn("secret-laden", json.dumps(self._history()))
+
+    def test_failures_survive_the_next_success(self):
+        # the #774 gap itself: marker overwritten by success, history NOT.
+        self.assertEqual(capture.capture_turn_delta({}), 0)                       # a failure
+        good = self.transcript("ok.jsonl", [_msg("user", "hello there")])
+        self.assertEqual(capture.capture_turn_delta(self.payload(good)), 1)       # then a success
+        self.assertEqual(capture.read_capture_status()["state"], "captured")      # marker overwritten
+        history = self._history()
+        self.assertEqual([h["state"] for h in history], ["no-transcript"])        # failure preserved
+        self.assertEqual(len(history), 1)                                         # success appends nothing
+
+    def test_history_trims_to_the_cap_atomically(self):
+        for i in range(capture.MAX_FAILURE_HISTORY + 7):
+            capture._write_capture_status("failed", None, detail={"reason": "exception",
+                                                                  "exception_class": f"E{i}"})
+        history = self._history()
+        self.assertEqual(len(history), capture.MAX_FAILURE_HISTORY)               # bounded
+        self.assertEqual(history[-1]["detail"]["exception_class"],
+                         f"E{capture.MAX_FAILURE_HISTORY + 6}")                   # newest kept
+        self.assertFalse([p for p in os.listdir(self._status_dir) if p.endswith(".tmp")])  # swap cleaned
+
+    def test_unwritable_history_dir_is_swallowed_by_the_writer_itself(self):
+        # the writer's OWN OSError guard, exercised for real: its parent "directory" is a plain
+        # file, so makedirs/open raise inside _append_failure_history — which must swallow, never
+        # raise into the marker write or the turn.
+        blocker = os.path.join(self._status_dir, "blocker")
+        with open(blocker, "w", encoding="utf-8") as fh:
+            fh.write("x")
+        capture.CAPTURE_FAILURES_PATH = os.path.join(blocker, "x.ndjson")
+        try:
+            capture._append_failure_history({"state": "failed"})
+            capture._write_capture_status("failed", None)   # the full path stays quiet too
+        except OSError:
+            self.fail("an unwritable history location must never raise")
 
 
 if __name__ == "__main__":

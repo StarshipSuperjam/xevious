@@ -21,7 +21,7 @@ without a regenerate. The gate runs in CI as the `coverage`-kind rule engine/che
 (mode: fingerprint), which RELAYS to check() here — knowledge owns the detection, the rule relays it.
 
 DERIVED, NOT THE QUERY LAYER: the derived query index and the graph-query MCP server are separate,
-regenerable, gitignored layers; the prioritized boot slice (#37) is a further gitignored
+regenerable, gitignored layers; the prioritized boot slice (StarshipSuperjam/engine-template#37) is a further gitignored
 layer — a never-committed cache rebuilt on demand, read live by boot. This committed file is
 the source of truth and the offline cold-start readout. Reverse traversal (who governs/enforces/provides
 me) is the derived index's job — entities store OUTGOING edges only.
@@ -444,7 +444,7 @@ def _tool_module_index(tools_root_abs: str):
 # import into such a subtree (the substrate's `mcp_server.py` imports `memory.semantic` only behind
 # `_semantic_installed()`; `rescrub.py` behind a try/except), so on a deployment without the module the AST
 # resolver sees an in-repo import that resolves to nothing — but it is NOT dangling rename-residue: the referent
-# is a whole subtree the operator opted out of (issue #663). The resolver drops such an import (no edge) instead
+# is a whole subtree the operator opted out of (issue StarshipSuperjam/engine-template#663). The resolver drops such an import (no edge) instead
 # of raising, but ONLY when the WHOLE subtree package is absent from the tool tree; a PARTIALLY-present subtree
 # (its `__init__.py` present, a submodule gone) IS residue and still raises.
 #
@@ -454,7 +454,7 @@ def _tool_module_index(tools_root_abs: str):
 # core-owned constant (cf. `first_run_reference_closure_check._REGENERATED_RETIRED_ASSETS`). A construction-time
 # test (`test_knowledge.TestOptionalModuleSubtrees`) proves each entry is present-and-optional in this home repo
 # and at least two segments deep (never a whole top-level tool package), so a rename or an over-broad entry that
-# would silently re-arm #663 on deployments breaks loudly here instead.
+# would silently re-arm StarshipSuperjam/engine-template#663 on deployments breaks loudly here instead.
 #
 # One accepted narrowing: where the whole subtree is absent, a genuinely-broken `from <subtree> import <typo>`
 # is dropped too, not just a valid one — the two are indistinguishable once the referent is gone. This can only
@@ -492,7 +492,7 @@ def _resolve_tool_imports(source_rel: str, tree, index, tools_root_rel: str) -> 
         subtree whose package is ENTIRELY absent from the tool tree — a legitimately-declined optional module,
         not rename residue. `absent` keys on the SUBTREE PACKAGE TUPLE (in neither `packages` nor `modules`),
         never a path-prefix on disk, so a PARTIALLY-present subtree (its `__init__.py` still there) reads as
-        present and its missing submodule still raises (issue #663)."""
+        present and its missing submodule still raises (issue StarshipSuperjam/engine-template#663)."""
         p = tuple(parts)
         for sub in _OPTIONAL_MODULE_SUBTREES:
             if p[:len(sub)] == sub and sub not in packages and sub not in modules:

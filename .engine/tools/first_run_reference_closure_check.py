@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""First-run reference-closure gate (issue #150) — the custom/script entry for
+"""First-run reference-closure gate (issue StarshipSuperjam/engine-template#150) — the custom/script entry for
 engine/check/first-run-reference-closure.
 
 The first-run installer removes its own setup assets at the Retire step once setup is sound (provisioning's
@@ -15,7 +15,7 @@ It reads the removed-asset set from the committed manifest (.engine/provisioning
 NEVER imports the instantiator it is about to verify nothing references (that would make this check the next
 dangler).
 
-Regenerated-asset carve-out (#404): a FEW removed first-run assets are not permanently gone — the engine
+Regenerated-asset carve-out (StarshipSuperjam/engine-template#404): a FEW removed first-run assets are not permanently gone — the engine
 rewrites them at runtime after the Retire step. The audit digest is the case: it retires so a fresh repo starts
 with no inherited self-review, then the audit cron writes a genuine one. A surviving reference to such a path is
 not the dangling reference this gate exists to catch, so the path leg skips exactly the paths named in
@@ -49,7 +49,7 @@ _TOOLS_REL = os.path.join(".engine", "tools")
 _PRUNE_DIRS = {"__pycache__", ".venv", ".pytest_cache", ".cache", ".uv"}
 
 # The removed first-run assets the engine REGENERATES at runtime, so a reference to them is never left dangling
-# (module docstring, #404). Deliberately a NAMED set — NOT "anything a module `provides`". The audit cron
+# (module docstring, StarshipSuperjam/engine-template#404). Deliberately a NAMED set — NOT "anything a module `provides`". The audit cron
 # rewrites the digest, so a fresh repo gets a real one on its first run; but most provided-and-retired paths (the
 # first-run setup guide, `.engine/operations/first-run.md`, is provided by core) are construction-only and gone
 # for GOOD after retirement, and a surviving reference to those must still be caught. Add a path here only when
@@ -102,7 +102,7 @@ def _references(tree: ast.AST, removed_modules: set, removed_files: set, regener
     kind is 'import' (an import/importlib/__import__ of a removed module) or 'path' (a string literal equal to a
     removed file's exact repo-relative path — the read/subprocess-by-path leg). Exact-path match only, so a mere
     prose mention of a name (e.g. a docstring) is never flagged. The path leg skips a target in `regenerated`
-    (a removed asset the engine rewrites at runtime, so not permanently gone; #404); the import leg is
+    (a removed asset the engine rewrites at runtime, so not permanently gone; StarshipSuperjam/engine-template#404); the import leg is
     never carved out (a genuine import of a removed module always fails closed)."""
     refs = []
     for node in ast.walk(tree):
@@ -182,7 +182,7 @@ def check(root: str | None = None) -> list:
 def main() -> int:
     # ENGINE_ROOT (unset in production) lets the negative-fixture meta-check point the scan at a seeded
     # mini-tree (a removed-asset manifest + the removed module still on disk + a survivor that imports
-    # it), so the closure gate is witnessed biting a real bad input (#286).
+    # it), so the closure gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     print(json.dumps(check(validate.env_override_path("ENGINE_ROOT"))))
     return 0
 

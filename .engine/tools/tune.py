@@ -185,13 +185,41 @@ def _pr_body(policy_id: str, key: str, value) -> str:
         "saved in a place engine updates do not touch, so an update will not undo it.\n")
 
 
+# Bounded retry through a transient missing-origin / shared-config blip (StarshipSuperjam/engine-template#704): under heavy parallel-worktree
+# use, a concurrent write to the one shared .git/config makes an arbitrary git command fail for a moment, then
+# self-heal. A few fast retries ride out that window. This inline retry is copied — not shared — across the
+# five tools that carry it (scope_profile, close_linkage_preflight, pr_reconcile, module_manager, tune),
+# matching the codebase's per-module retry convention (e.g. memory/capture.py's lock retry); keep the copies
+# identical. Applied ONLY to the `push` step — checkout/add/commit are local and deterministic (retrying
+# `checkout -b` would collide on the leftover branch it already created); a persistent failure raises a
+# diagnosable, phase-aware message (the handler in `_open_tune_pr`, StarshipSuperjam/engine-template#874), not a bare non-zero exit.
+_ORIGIN_RETRY_ATTEMPTS = 3
+_ORIGIN_RETRY_DELAY = 0.3      # seconds between attempts
+
+
+# Strip an embedded credential from surfaced git output before it is shown or logged: git writes the remote
+# URL into its push errors, and an HTTPS remote can carry a token in its userinfo (`https://<token>@host` or
+# `https://user:<token>@host`, e.g. an `x-access-token:` CI remote), which must never reach a message. Replaces
+# ONLY the userinfo, so the host and the rest of git's reason survive for diagnosis. Copied — not shared — into
+# the two PR openers (module_manager, tune) exactly like the retry constants above, because the natural shared
+# homes (github_client, repo_identity) are guardrail-floored; keep the two copies identical.
+def _redact_credentials(text: str) -> str:
+    return re.sub(r"(https?://)[^/\s@]+@", r"\1***@", text)
+
+
 def _open_tune_pr(branch: str, title: str, body: str, paths: list, repo=None, token=None) -> dict:
-    """THE GIT+PR BOUNDARY: stage the saved override on a new branch, commit, push, and open a pull request
-    so the change is reviewed + reversible like any change (mirrors the module-manager upgrade opener — git via subprocess, the PR via POST /pulls, slug/token via boot).
+    """THE GIT+PR BOUNDARY: stage the saved override on a new branch, commit, push, and open a pull request so
+    the change is reviewed + reversible like any change. Mirrors the module-manager upgrade opener — git via
+    subprocess (with the bounded StarshipSuperjam/engine-template#704 push retry), the PR via POST /pulls, slug/token via boot — INCLUDING its
+    diagnosable failure contract (StarshipSuperjam/engine-template#874): a git-step or POST failure raises a RuntimeError that names the failed
+    step, surfaces git's/GitHub's own reason (never the token), and gives the concrete finish-by-hand recourse —
+    so `set_value` shows the operator a reason and a way forward, never an opaque `exit status 1`.
     INJECTED for tests + the demo (`set_value(opener=…)`), so this real path NEVER runs in the construction
     repo (a named inductive gap — no real deployment to tune, no PR to open here)."""
     import subprocess
+    import time
     import urllib.request
+    import urllib.error
     import json as _json
     import boot  # local: only the real open needs boot's slug/token
     import repo_identity  # local: the shared default-branch resolver (dependency-light)
@@ -200,18 +228,112 @@ def _open_tune_pr(branch: str, title: str, body: str, paths: list, repo=None, to
     if not slug or not tok:
         raise RuntimeError("could not determine the engine repository / credentials to open the pull request.")
     base = repo_identity.resolve_default_branch()
-    subprocess.run(["git", "checkout", "-b", branch], cwd=validate.ROOT, check=True, capture_output=True)
-    subprocess.run(["git", "add", *paths], cwd=validate.ROOT, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", title], cwd=validate.ROOT, check=True, capture_output=True)
-    subprocess.run(["git", "push", "-u", "origin", branch], cwd=validate.ROOT, check=True, capture_output=True)
+
+    def _github_reason(exc):
+        # GitHub's own human-readable reason from a failed API response body — a 422 on /pulls carries the real
+        # cause in `message` + `errors[].message`/`code`. The body is field-validation JSON and never echoes the
+        # auth header, so the token cannot leak through it. NEVER raises — a diagnostic must not mask the HTTP
+        # failure; an unexpected shape (a non-list `errors`, non-JSON, non-dict) degrades to the code alone.
+        try:
+            raw = exc.read()
+        except Exception:  # noqa: BLE001 — an unreadable body must not mask the HTTP error it explains
+            return ""
+        if not raw:
+            return ""
+        try:
+            data = _json.loads(raw.decode("utf-8", errors="replace"))
+        except Exception:  # noqa: BLE001 — a non-JSON body: a bounded slice of raw text is still useful
+            return raw.decode("utf-8", errors="replace")[:300].strip()
+        if not isinstance(data, dict):
+            return ""
+        errs = data.get("errors")
+        parts = ([data["message"]] if data.get("message") else []) + \
+                [(e.get("message") or e.get("code")) for e in (errs if isinstance(errs, list) else [])
+                 if isinstance(e, dict) and (e.get("message") or e.get("code"))]
+        return "; ".join(str(p) for p in parts if p)
+
+    def _run_step(step):
+        # Run one staged git step. The push is the only step that can hit a transient missing origin (StarshipSuperjam/engine-template#704), so
+        # retry it a bounded number of times; checkout/add/commit run once. On a persistent failure the final
+        # CalledProcessError propagates unchanged, so the phase-aware recovery message below is reached.
+        is_push = step[1] == "push"
+        for attempt in range(_ORIGIN_RETRY_ATTEMPTS if is_push else 1):
+            try:
+                subprocess.run(step, cwd=validate.ROOT, check=True, capture_output=True)
+                return
+            except subprocess.CalledProcessError:
+                if is_push and attempt < _ORIGIN_RETRY_ATTEMPTS - 1:
+                    time.sleep(_ORIGIN_RETRY_DELAY)
+                    continue
+                raise
+
+    # STAGE-AND-PUSH. A git step failing here raises a DIAGNOSABLE RuntimeError (StarshipSuperjam/engine-template#874, mirroring module_manager's
+    # StarshipSuperjam/engine-template#672 opener): it names the failed step, surfaces git's own stderr (never the token), and on a POST failure
+    # surfaces GitHub's own reason. On failure the operator is LEFT on the branch — exactly as after a SUCCESSFUL
+    # open — where their saved change is committed and in effect, so `set_value`'s "Saved, …" stays true and the
+    # recourse is a working `git push` / `gh pr create` by hand. It deliberately does NOT return to the base branch
+    # (a checkout there would revert the not-yet-merged override out of the working tree) and never tells the
+    # operator to delete the branch they are standing on. `checkout -B` (create-or-RESET), not `-b`: `set` can be
+    # run repeatedly, and the branch is throwaway staging of an already-saved override, so a leftover branch from an
+    # earlier failed attempt is reset rather than colliding — closing the collide-then-can't-delete dead-end. The
+    # module_manager mirror cannot use `-B` (its branch holds the arrival's committed, non-re-derivable work, which
+    # a reset would discard), so it handles the same collision at the message level instead — see StarshipSuperjam/engine-template#877.
+    for args in (["git", "checkout", "-B", branch], ["git", "add", *paths],
+                 ["git", "commit", "-m", title], ["git", "push", "-u", "origin", branch]):
+        try:
+            _run_step(args)
+        except subprocess.CalledProcessError as exc:
+            def _decode(v):
+                return (v.decode("utf-8", errors="replace") if isinstance(v, bytes) else (v or "")).strip()
+            err = _redact_credentials(_decode(exc.stderr) or _decode(exc.stdout))   # stdout: "nothing to commit"; redact any tokened remote URL
+            head = (f"preparing the pull-request branch failed at `{' '.join(args)}`"
+                    + (f": {err}" if err else f" (exit {exc.returncode})"))
+            if args[1] == "checkout":
+                # The create/reset step failed, so no branch exists yet and the repo did not move.
+                recovery = (f" — so no pull request was opened and your saved setting is untouched. Fix the cause "
+                            f"above, then re-run the setting.")
+            elif args[1] == "commit" and subprocess.run(
+                    ["git", "diff", "--cached", "--quiet", "--", *paths], cwd=validate.ROOT,
+                    capture_output=True).returncode == 0:
+                # `git commit` failed with nothing staged: the override already equals what is committed, so there
+                # is no change to open a pull request for. NOT a failure of saving — the value is in effect. Say so
+                # rather than advise pushing an empty branch (which would dead-end at "no commits between base and
+                # head"). (If an earlier attempt left an unpushed branch, the first failure already told the
+                # operator to push it.)
+                recovery = (f" — there is nothing to change: this setting already holds that value, so no pull "
+                            f"request was opened. Your setting is saved and in effect.")
+            else:
+                # A later step failed after the branch was created and now holds the operator's saved change —
+                # leaving them on it keeps the setting in effect (as a successful open would). Never advise
+                # deleting the branch they are standing on, and never claim it was returned to base.
+                recovery = (f" — the branch '{branch}' was created and holds your saved change, so it is not lost. "
+                            f"The pull request was not opened; fix the cause above, then finish by pushing the "
+                            f"branch (`git push -u origin {branch}`) and opening the pull request yourself: "
+                            f"`gh pr create --repo {slug} --base {base} --head {branch}`.")
+            raise RuntimeError(head + recovery) from exc
     url = f"https://api.github.com/repos/{slug}/pulls"
     payload = _json.dumps({"title": title, "head": branch, "base": base, "body": body}).encode("utf-8")
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
                "User-Agent": "engine-tune", "Authorization": f"Bearer {tok}",
                "Content-Type": "application/json"}
-    with urllib.request.urlopen(urllib.request.Request(url, data=payload, headers=headers),
-                                timeout=60) as resp:
-        return _json.loads(resp.read())
+    # THE POST. Reached only after the branch is committed and pushed — so the branch is already on the remote and
+    # the recovery is to open the pull request by hand. Surface GitHub's OWN reason (never the token).
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=payload, headers=headers),
+                                    timeout=60) as resp:
+            return _json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        detail = _github_reason(exc)
+        reason = f"GitHub returned HTTP {exc.code}" + (f" — {detail}" if detail else "")
+        raise RuntimeError(
+            f"the branch '{branch}' was pushed but opening the pull request failed ({reason}). Your setting is "
+            f"saved; open the pull request yourself: `gh pr create --repo {slug} --base {base} --head {branch}`."
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            f"the branch '{branch}' was pushed but GitHub could not be reached ({exc.reason}), so the pull "
+            f"request was not opened. Your setting is saved; open it yourself once you are back online: "
+            f"`gh pr create --repo {slug} --base {base} --head {branch}`.") from exc
 
 
 def set_value(policy_id: str, key: str, value, *, override_path: str = OVERRIDES_PATH,

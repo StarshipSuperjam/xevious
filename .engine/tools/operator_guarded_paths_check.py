@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Instance guarded-paths declaration check (#532) — the fail-CLOSED shape gate for a deployment's own
+"""Instance guarded-paths declaration check (StarshipSuperjam/engine-template#532) — the fail-CLOSED shape gate for a deployment's own
 extra-guarded-paths list, plus a plain-language typo catcher.
 
 A deployment can extend the guardrail-weakening guard's watched set with its OWN product-side paths — a
@@ -21,7 +21,7 @@ ABSENT is the normal steady state (the construction repo, and every deployment b
 with no file this check surfaces NOTHING — mirroring `policy_override_check` over `operator-overrides.json`. It is
 a `custom/script` rule: it prints the finding.v1 array on stdout and returns 0; the run fails only on a HARD
 finding (the custom/script kind's tiering). `ENGINE_GUARDED_PATHS_PATH` (unset in production) lets the
-negative-fixture meta-check feed a seeded declaration so this gate is witnessed biting a real bad input (#286)."""
+negative-fixture meta-check feed a seeded declaration so this gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286)."""
 from __future__ import annotations
 import json
 import os
@@ -171,7 +171,7 @@ def main(argv: list) -> int:
         return _demo()
     tier = os.environ.get("ENGINE_RULE_TIER", "hard")
     # ENGINE_GUARDED_PATHS_PATH (unset in production) lets the negative-fixture meta-check feed a seeded
-    # declaration so this shape gate is witnessed biting a real bad input (#286).
+    # declaration so this shape gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     seeded = validate.env_override_path("ENGINE_GUARDED_PATHS_PATH")
     path = seeded if seeded else os.path.join(validate.ROOT, _FILE)
     return emit(findings(tier, load_declaration(path)))

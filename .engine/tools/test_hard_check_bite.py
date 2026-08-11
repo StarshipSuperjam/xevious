@@ -200,11 +200,6 @@ class TestRuleIsLiveAndWellFormed(unittest.TestCase):
         self.assertEqual(rule["suites"], ["CI"])
         self.assertEqual(rule["kind"], "custom/script")
         self.assertEqual(rule["params"]["script"], ".engine/tools/hard_check_bite_check.py")
-        # S6: the meta-check is a TOKEN CONDUIT. It makes no API call itself, but it must pass GITHUB_TOKEN
-        # to the disposition-issue-resolution grandchild it witnesses live (kind_custom_script strips the token
-        # on every hop unless the rule sets pass_token). Do not "clean this up" — without it the disposition
-        # unit runs token-less, emits unevaluable instead of the aimed unresolved bite, and this meta-check reds.
-        self.assertTrue(rule["params"]["pass_token"])
 
 
 class TestS4LiveRosterBackfill(unittest.TestCase):
@@ -223,29 +218,22 @@ class TestS4LiveRosterBackfill(unittest.TestCase):
                     self.assertTrue(found and all(f["severity"] == "soft" for f in found),
                                     f"{stem}: a not-applicable carve-out must yield only soft notes: {found}")
                     self.assertTrue(any("NOT APPLICABLE" in (f.get("message") or "") for f in found), found)
-                elif stem == "disposition-issue-resolution":
-                    # The roster's first NON-OFFLINE unit (#292): its negative path is a live issue-API query
-                    # against the cited sentinel, witnessable only with a repository + token. THREE ambient
-                    # environments, asserted rather than skipped: fully-witnessed -> the live bite; CI without
-                    # the token (this repo's own self-test step — the workflow passes the token only to the
-                    # validator step, the enforcing surface) -> the carve-out is deliberately ignored and the
-                    # fail-closed hard finding stands; a local machine missing the variables -> the
-                    # declared-environment carve-out (#531) collapses the red to a loud soft note.
-                    found = hcb._cover_script_instance(rule, LIVE_FIXTURES, ROOT, "hard")
-                    witnessed = os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN")
-                    in_ci = bool(os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"))
-                    if witnessed:
-                        self.assertEqual(found, [], f"{stem}: the live witness did not bite")
-                    elif in_ci:
-                        self.assertTrue(any(f["severity"] == "hard" and "did NOT catch" in f["message"]
-                                            for f in found), found)
-                    else:
-                        self.assertTrue(found and all(f["severity"] == "soft" for f in found), found)
-                        self.assertTrue(any("NOT WITNESSED HERE" in (f.get("message") or "") for f in found),
-                                        found)
                 elif stem == "census-completeness":
                     # Construction-scoped (#512): required to bite here in the construction repo; in a
                     # deployed repo the ambient-verified carve-out yields the loud NOT APPLICABLE HERE note.
+                    found = hcb._cover_script_instance(rule, LIVE_FIXTURES, ROOT, "hard")
+                    if repo_identity.is_home_repo(ROOT):
+                        self.assertEqual(found, [], f"{stem}: did not bite in the construction repo")
+                    else:
+                        self.assertTrue(found and all(f["severity"] == "soft" for f in found), found)
+                        self.assertTrue(any("NOT APPLICABLE HERE" in (f.get("message") or "") for f in found),
+                                        found)
+                elif stem == "shipped-issue-references":
+                    # Home-scoped (#640) and it reads its fixture from the filesystem (like census-completeness,
+                    # not `git show HEAD:`): required to bite here in the construction repo; in a deployed repo
+                    # (the deployment gate's projection) the ambient-verified carve-out yields the loud NOT
+                    # APPLICABLE HERE note. Owned by required validators-core, so the check and its
+                    # construction-scoped.json survive the add-on-declined projection too.
                     found = hcb._cover_script_instance(rule, LIVE_FIXTURES, ROOT, "hard")
                     if repo_identity.is_home_repo(ROOT):
                         self.assertEqual(found, [], f"{stem}: did not bite in the construction repo")
@@ -285,23 +273,14 @@ class TestS5GoLive(unittest.TestCase):
         # The self-entry is in the live roster and is exercised here through its committed target.json.
         stems = {r["id"].split("engine/check/")[-1] for r in _live_hard_script_rules()}
         self.assertIn("hard-check-bite", stems, "the meta-check must be in its own live roster")
-        # The full evaluate() includes the NON-OFFLINE disposition-issue-resolution unit (#292), whose live
-        # witness needs a repository + token. Three ambient environments (see the S4 disposition branch):
-        # fully-witnessed and plain-local runs produce no hard finding; CI WITHOUT the token (this repo's own
-        # self-test step) keeps exactly the disposition fail-closed hard — the carve-out is deliberately
-        # ignored there, and the enforcing validator step (which has the token) witnesses the live bite.
         findings = hcb.evaluate()
         # A merge is blocked only by a HARD finding; the disclosed carve-outs are loud SOFT notes by design.
+        # Every live hard check is offline-witnessable (bites its committed fixture) or a disclosed carve-out,
+        # so the live meta-check produces no hard finding in any ambient environment.
         hard = [f for f in findings if f["severity"] == "hard"]
-        witnessed = os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN")
-        in_ci = bool(os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"))
-        if witnessed or not in_ci:
-            self.assertEqual(hard, [], "the live meta-check must produce no hard finding over the real repo "
-                             "(every covered check bites or is a disclosed carve-out, and the self-entry "
-                             "terminates)")
-        else:
-            self.assertEqual(len(hard), 1, hard)
-            self.assertIn("disposition-issue-resolution", hard[0]["message"])
+        self.assertEqual(hard, [], "the live meta-check must produce no hard finding over the real repo "
+                         "(every covered check bites or is a disclosed carve-out, and the self-entry "
+                         "terminates)")
         # The carve-outs are surfaced loudly so the reviewer can re-derive them at the gate (not silently
         # skipped). Each `not-applicable.json` declaration surfaces one static N/A note; in a DEPLOYED repo
         # (root CLAUDE.md no longer the construction body) each `construction-scoped.json` check (#512) adds its
@@ -455,12 +434,13 @@ class TestModuleKindBite(unittest.TestCase):
 class TestFailedBiteApplicability(unittest.TestCase):
     """The two bounded failed-bite carve-outs (#512 construction-scoped, #531 declared environment): honored only
     where ambient state confirms them, rejected on any malformed declaration, and inert wherever the failure path
-    is reachable. Driven through the REAL _cover_script_instance -> run_unit subprocess path, using the real
-    disposition script env-less (it exits 0 with its honest no-op finding — a genuine run-but-no-bite unit)."""
+    is reachable. Driven through the REAL _cover_script_instance -> run_unit subprocess path, using a committed
+    no-op support script (it exits 0 with an empty finding array — a genuine run-but-no-bite unit) so the
+    fall-through to the applicability declarations is exercised end-to-end."""
 
     _RULE = {"id": "engine/check/x-live", "kind": "custom/script", "tier": "hard",
              "target": {"context": "x"},
-             "params": {"script": ".engine/tools/disposition_issue_resolution_check.py"},
+             "params": {"script": ".engine/_fixtures/hard-check-bite/noop_run.py"},
              "suites": [], "message": "m"}
 
     def _fixture(self, declarations: dict) -> str:
@@ -613,11 +593,11 @@ class TestDeclarationCensus(unittest.TestCase):
         self.assertEqual(found, [
             ".engine/_fixtures/census-completeness/construction-scoped.json",
             ".engine/_fixtures/dependency-review/not-applicable.json",
-            ".engine/_fixtures/disposition-issue-resolution/requires.json",
             ".engine/_fixtures/guardrail-weakening/not-applicable.json",
             ".engine/_fixtures/memory-pointer-public-safety/construction-scoped.json",
             ".engine/_fixtures/product-lock-integrity/not-applicable.json",
             ".engine/_fixtures/protection/not-applicable.json",
+            ".engine/_fixtures/shipped-issue-references/construction-scoped.json",
         ])
 
 

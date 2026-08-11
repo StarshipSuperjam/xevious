@@ -9,10 +9,22 @@
 # The `core` group carries the first:
 # the `jsonschema` validator the `core` validation engine's `schema` kind needs
 # to enforce JSON Schema 2020-12 (the locked schemas design requires the standard
-# built-in meta-schema, not bespoke meta-machinery), and `pyyaml`, which that same
+# built-in meta-schema, not bespoke meta-machinery); `pyyaml`, which that same
 # `schema` kind uses to read a prose surface's YAML frontmatter to a data object
 # before validating it (the validation foundation parses "a file or its YAML
-# frontmatter", and pyyaml is the reader that satisfies that).
+# frontmatter", and pyyaml is the reader that satisfies that); and `mcp`, the
+# official MCP SDK the engine's two live-helper servers (knowledge, memory) are
+# built on so protocol conformance is maintained upstream rather than hand-written.
+# `mcp` is floor-only, NO upper ceiling — a deliberate operator decision (2026-08-03,
+# mcp 1->2; the reasoning lives in PR StarshipSuperjam/engine-template#852): an uncapped floor is what lets Dependabot
+# surface a new major the moment it exists as a LOUD, red, safely-blocked pull request
+# downstream — a ceiling would trade that discovery signal for silence, with the
+# operator learning of the next major only by chance. What fixes the bytes that run is
+# the committed uv.lock plus the `--frozen` flag on CI, the hooks, and the MCP server
+# launches — NOT this specifier. The two engine paths that once ran a plain `uv sync`
+# able to re-resolve past the lock — module add / update / rollback re-sync and first-run
+# provisioning — now pass `--frozen` too (issue StarshipSuperjam/engine-template#853), so no engine path re-resolves past
+# the committed lock.
 # `default-groups` lists it so
 # every `uv sync`/`uv run` (CI and local) resolves it with no per-command flag.
 # A future dep-carrying module declares its own group under [dependency-groups]; the
@@ -26,7 +38,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [dependency-groups]
-core = ["jsonschema>=4.18", "mcp>=1.28.1", "pyyaml>=6.0"]
+core = ["jsonschema>=4.20", "mcp>=2", "pyyaml>=6.0"]
 # Meaning-based recall: numpy is the whole runtime. The word table it reads is committed
 # under the module's own directory, so nothing is fetched at install or at use, and the
 # tokenizer is implemented in the standard library rather than installed — the reference

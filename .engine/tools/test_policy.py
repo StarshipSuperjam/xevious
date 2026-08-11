@@ -388,6 +388,16 @@ class TestPolicyFrontmatterRule(unittest.TestCase):
         self.assertTrue(all(isinstance(v, (int, float)) and not isinstance(v, bool)
                             for v in attention["values"].values()),
                         "every attention tuning value is a plain number the ranking tool can read")
+        # the briefing-budget dials boot reads to fit the pack to the platform size limit (eADR-0033).
+        briefing = validate.frontmatter(os.path.join(POLICIES_DIR, "briefing-budget.md"))
+        self.assertEqual(set(briefing.get("values", {})),
+                         {"excerpt_chars", "pin_index_title_chars", "posture_lines_max",
+                          "posture_chars_max", "neighborhood_groups_max", "dashboard_chars_max",
+                          "margin_floor_chars"},
+                         "the briefing-budget policy carries exactly the dials the boot reader expects")
+        self.assertTrue(all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                            for v in briefing["values"].values()),
+                        "every briefing-budget value is a plain number the boot reader can read")
         for slug in ("finding-disposition", "escalation"):     # the value-less policies carry no block
             self.assertNotIn("values", validate.frontmatter(os.path.join(POLICIES_DIR, slug + ".md")))
 

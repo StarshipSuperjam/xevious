@@ -231,6 +231,48 @@ class CrossTableInvariants(unittest.TestCase):
                     f"area {area['area']} schedules a Super-only type",
                 )
 
+    def test_accelerated_full_game_trace_1_16_then_7(self):
+        # AREA-03/AREA-04 acceptance (spec criterion 3 — the sole engine-checked one — and criterion
+        # 5's 16->7): a deterministic trace OVER THE COMMITTED DATA (not the generated project, and not
+        # an execution of the Scratch consume blocks — this is a data-completeness simulation) that
+        # walks all 16 normal areas in order then continues at area 7, consuming every record with no
+        # unknown handler and no Super-only object. It deliberately does NOT assert monotonic
+        # scroll_row: area 14 carries a documented out-of-order row the build reproduces as-is.
+        AREA_MAX = 16  # areas 1..16 (docs/spec/area-progression-and-terrain.md)
+        AREA_LOOP_BACK = 7  # completing area 16 continues at area 7 — no win screen
+        normal_type_max = load_extractor().NORMAL_TYPE_MAX
+
+        payload = json.loads((DATA / "area-schedules.json").read_text())
+        by_area = {a["area"]: a for a in payload["areas"]}
+        registry = json.loads((DATA / "object-types.json").read_text())["registry"]["types"]
+        known_handlers = {t.get("schedule_action") for t in registry} - {"none", None}
+
+        # the accelerated order: 1,2,...,16, then the loop continues at 7 (the extra area proves the
+        # wrap target and the absence of a 17th area / win screen).
+        self.assertNotIn(17, by_area, "there is no area 17 — the loop returns to 7, not onward")
+        order = list(range(1, AREA_MAX + 1)) + [AREA_LOOP_BACK]
+
+        consumed = 0
+        for step, area_number in enumerate(order):
+            self.assertIn(area_number, by_area, f"step {step}: area {area_number} missing")
+            for record in by_area[area_number]["records"]:
+                self.assertIn(
+                    record["handler"],
+                    known_handlers,
+                    f"area {area_number}: unknown record kind {record['handler']!r}",
+                )
+                self.assertLessEqual(
+                    record["object_type"],
+                    normal_type_max,
+                    f"area {area_number}: Super-only object_type {record['object_type']}",
+                )
+                consumed += 1
+        # every record of all 16 areas, plus the wrap re-visit of area 7, consumed in order.
+        total_records = sum(len(a["records"]) for a in payload["areas"])
+        self.assertEqual(total_records + len(by_area[AREA_LOOP_BACK]["records"]), consumed)
+        # the wrap lands on a real, already-existing area (7 <= 16), so play continues — never a win screen.
+        self.assertIn(AREA_LOOP_BACK, range(1, AREA_MAX + 1))
+
     def test_formation_indices_stay_reachable(self):
         payload = json.loads((DATA / "formations.json").read_text())
         indices = [e["index"] for e in payload["formation_table"]["entries"]]
@@ -300,19 +342,23 @@ def _eval_block(blocks, block_id, env):
     if op == "data_variable":
         return env.get(block["fields"]["VARIABLE"][0], 0)
     if op == "operator_mathop":
-        assert block["fields"]["OPERATION"][0] == "floor", "only floor is interpreted"
+        assert block["fields"]["OPERATOR"][0] == "floor", "only floor is interpreted"
         return math.floor(_eval_input(blocks, block["inputs"]["NUM"], env))
     binary = {
         "operator_add": lambda a, b: a + b,
         "operator_subtract": lambda a, b: a - b,
-        "operator_mult": lambda a, b: a * b,
+        "operator_multiply": lambda a, b: a * b,
         "operator_divide": lambda a, b: a / b,
         "operator_mod": lambda a, b: a % b,
         "operator_equals": lambda a, b: 1 if a == b else 0,
     }
     if op in binary:
-        left = _eval_input(blocks, block["inputs"]["OPERAND1"], env)
-        right = _eval_input(blocks, block["inputs"]["OPERAND2"], env)
+        # Match scratch-vm's operand keys: arithmetic reads NUM1/NUM2, comparison reads
+        # OPERAND1/OPERAND2. (The generator's _reporter makes the same distinction; keeping
+        # these in lockstep is what makes this interpreter a check on the SHIPPED blocks.)
+        slot1, slot2 = ("OPERAND1", "OPERAND2") if op == "operator_equals" else ("NUM1", "NUM2")
+        left = _eval_input(blocks, block["inputs"][slot1], env)
+        right = _eval_input(blocks, block["inputs"][slot2], env)
         return binary[op](left, right)
     raise AssertionError(f"unexpected reporter opcode {op}")
 
@@ -371,8 +417,8 @@ class GeneratedRngStep(unittest.TestCase):
         first = _rng_step_first_statement(blocks)
         mutated = False
         for block in blocks.values():
-            if block["opcode"] == "operator_mult":
-                for slot in ("OPERAND1", "OPERAND2"):
+            if block["opcode"] == "operator_multiply":
+                for slot in ("NUM1", "NUM2"):
                     spec = block["inputs"].get(slot)
                     if spec and spec[0] == 1 and int(float(spec[1][1])) == 5:
                         block["inputs"][slot] = [1, [4, 4]]
@@ -383,6 +429,115 @@ class GeneratedRngStep(unittest.TestCase):
         ][1]
         outputs, _ = self._sequence(blocks, first, fixture["seed"], len(fixture["outputs"]))
         self.assertNotEqual(outputs, fixture["outputs"])
+
+
+class GeneratedAreaClock(unittest.TestCase):
+    """AREA-01: interpret the EMITTED scroll-row derivation against hand-verified boundary
+    values (a check on the blocks that ship, not a parallel Python formula), and check the
+    ingested terrain-column list against the committed reference data."""
+
+    def _row_reporter(self, blocks):
+        # The derived `set scroll row` — a reporter VALUE ([3, block, shadow]), distinct from
+        # the plain `set scroll row to 13` re-tops (VALUE kind 1).
+        for block in blocks.values():
+            if (
+                block["opcode"] == "data_setvariableto"
+                and block["fields"]["VARIABLE"][0] == "scroll row"
+                and block["inputs"]["VALUE"][0] == 3
+            ):
+                return block["inputs"]["VALUE"][1]
+        raise AssertionError("no derived `scroll row` setter found in the emitted blocks")
+
+    def test_generated_scroll_row_derivation(self):
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        reporter = self._row_reporter(blocks)
+        # area progress -> derived arcade scroll row (hand-verified): the descent 0x0D..0x00
+        # wraps to 0xFF and continues down, and the area completes at the first row 0x0E, which
+        # is progress 65056 (not 65280 — the clock resets before that).
+        cases = {0: 13, 256: 12, 3328: 0, 3584: 255, 64800: 15, 65024: 15, 65056: 14, 65280: 14}
+        for progress, expected in cases.items():
+            row = _eval_block(blocks, reporter, {"area progress": progress})
+            self.assertEqual(expected, row, f"area progress {progress}")
+
+    def test_generated_scroll_row_never_skips_a_row(self):
+        # 32 units/tick against a 256-wide row means every row is visited, so no schedule
+        # trigger is stepped over: each tick drops the row by 0 or 1 (mod 256, so the 0x00->0xFF
+        # wrap counts as 1), and completion (row 14) is reached at the end of the sweep.
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        reporter = self._row_reporter(blocks)
+        prev = _eval_block(blocks, reporter, {"area progress": 0})
+        progress = 32
+        while progress <= 65056:
+            row = _eval_block(blocks, reporter, {"area progress": progress})
+            self.assertIn((prev - row) % 256, (0, 1), f"progress {progress}: {prev}->{row}")
+            prev = row
+            progress += 32
+        self.assertEqual(14, prev)
+
+    def test_area_map_column_matches_terrain_json(self):
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        expected = json.loads((DATA / "terrain.json").read_text())[
+            "area_offset_in_map_tbl"
+        ]["values"]
+        self.assertEqual(expected, by_name["area map column"])
+
+    def test_all_area_schedules_round_trip_from_json(self):
+        # AREA-03: the ingested schedule columns are a FAITHFUL, lossless copy of ALL 16 normal areas'
+        # records plus each area's materialized end sentinel, and the two 16-entry index lists give each
+        # area's 1-based INCLUSIVE span into the flattened columns. The spans are re-derived
+        # INDEPENDENTLY here from the JSON record counts (stride = len(records) + 1) — never read back
+        # from the generator's own index lists — and each flattened window is compared to its SOURCE
+        # records, so an offset off-by-one that leaked one area into the next (or a dropped/altered
+        # field) fails here rather than shipping silently.
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        handlers = by_name["schedule handler"]
+        rows = by_name["schedule trigger row"]
+        payloads = by_name["schedule payload"]
+        gen_start = by_name["area schedule start"]
+        gen_end = by_name["area schedule end"]
+
+        areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
+        by_area = {a["area"]: a for a in areas}
+        self.assertEqual(16, len(areas))
+
+        # independently re-derive the contiguous 1-based inclusive spans from the JSON record counts.
+        expected_start, expected_end = [], []
+        cursor = 1
+        for area_number in range(1, 17):
+            stride = len(by_area[area_number]["records"]) + 1  # records + one materialized sentinel
+            expected_start.append(cursor)
+            expected_end.append(cursor + stride - 1)
+            cursor += stride
+        self.assertEqual(expected_start, gen_start, "area schedule start offsets")
+        self.assertEqual(expected_end, gen_end, "area schedule end offsets")
+        # the three columns are exactly as long as the last span says.
+        self.assertEqual(cursor - 1, len(handlers))
+        self.assertEqual({len(handlers), len(rows)}, {len(payloads)})
+
+        # each area's flattened window matches its SOURCE records + materialized sentinel.
+        for area_number in range(1, 17):
+            area = by_area[area_number]
+            start = expected_start[area_number - 1]  # 1-based
+            for j, record in enumerate(area["records"]):
+                idx = start - 1 + j  # 0-based index into the flattened columns
+                self.assertEqual(record["handler"], handlers[idx], f"area {area_number} handler {j}")
+                self.assertEqual(
+                    record["scroll_row"], rows[idx], f"area {area_number} trigger row {j}"
+                )
+                self.assertEqual(
+                    {"object_type": record["object_type"], "params": record["params"]},
+                    json.loads(payloads[idx]),
+                    f"area {area_number} payload {j}",
+                )
+            # this area's window terminates in the materialized sentinel (its scalar end_sentinel).
+            end = expected_end[area_number - 1]  # 1-based, inclusive
+            self.assertEqual("sentinel", handlers[end - 1], f"area {area_number} sentinel handler")
+            self.assertEqual(area["end_sentinel"], rows[end - 1], f"area {area_number} sentinel row")
+            self.assertEqual("", payloads[end - 1], f"area {area_number} sentinel payload")
 
 
 if __name__ == "__main__":

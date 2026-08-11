@@ -147,16 +147,15 @@ class TestHomeTreeGuard(unittest.TestCase):
 
 @unittest.skipUnless(_CONSTRUCTION, _SKIP)
 class TestUpgradeArmReporting(unittest.TestCase):
-    """`_upgrade_from` reads the practice-upgrade result and blocks on refusal, non-application, a hard gate
-    finding, a driver crash, OR a missing practice-path note (a silent network fetch of a real release)."""
+    """The UPGRADE leg (`_upgrade_leg`) reads the practice-upgrade result and blocks on refusal, non-
+    application, a hard gate finding, a driver crash, OR a missing practice-path note (a silent network fetch of
+    a real release). It is exercised directly (not through `_upgrade_from`) so the rollback leg stays out of
+    scope here; the composed transition is `TestTransitionComposition`."""
 
     def _drive(self, result_obj=None, rc=0, stdout=None, stderr=""):
         out = stdout if stdout is not None else ("GATE_RESULT:" + json.dumps(result_obj))
-        with mock.patch.object(rg, "_archive_baseline", return_value="/tmp/proj"), \
-             mock.patch.object(rg, "_project_to_deployed", return_value=[]), \
-             mock.patch.object(rg, "_assert_isolated", return_value=None), \
-             mock.patch.object(rg, "_run", return_value=_proc(rc, out, stderr)):
-            return rg._upgrade_from("v9.9.9", "/tmp/candidate")
+        with mock.patch.object(rg, "_run", return_value=_proc(rc, out, stderr)):
+            return rg._upgrade_leg("/tmp/proj", "v9.9.9", "/tmp/candidate")
 
     def _clean(self, **over):
         base = {"refused": False, "applied": True, "reason": None, "findings": [],
@@ -195,6 +194,276 @@ class TestUpgradeArmReporting(unittest.TestCase):
 
     def test_no_gate_result_marker_blocks(self):
         self.assertFalse(self._drive(stdout="garbage with no marker")["passed"])
+
+
+@unittest.skipUnless(_CONSTRUCTION, _SKIP)
+class TestRollbackLegReporting(unittest.TestCase):
+    """The ROLLBACK leg (`_rollback_leg`) undoes the staged practice upgrade and asserts the PARSED result — a
+    real staged undo with a recovery point — never the exit code. It blocks a vacuous `state:"none"` (nothing
+    seen to undo), a refusal (the StarshipSuperjam/engine-template#599 foreign-work class), a partial undo, a
+    missing recovery point, a resync failure, a memory reach a projection should never make, a dirty tree after
+    the undo, a driver crash, or a missing result marker. The rollback child's stdout AND the trailing
+    `git status --porcelain` are both `_run` calls, so cases inject an ordered two-element `side_effect`."""
+
+    def _drive(self, result_obj=None, *, rc=0, stdout=None, stderr="", status_out="", status_rc=0):
+        out = stdout if stdout is not None else ("ROLLBACK_RESULT:" + json.dumps(result_obj))
+        # call 1 = the rollback driver child; call 2 = the `git status --porcelain` clean check
+        with mock.patch.object(rg, "_run", side_effect=[_proc(rc, out, stderr),
+                                                        _proc(status_rc, status_out, "")]):
+            return rg._rollback_leg("/tmp/proj", "v9.9.9")
+
+    def _clean(self, **over):
+        base = {"state": "staged", "undone": True, "recovery_point": "engine-rescue/2026",
+                "restored": False, "memory_note": "no saved-memory change to put back"}
+        base.update(over)
+        return base
+
+    def test_clean_rollback_passes(self):
+        self.assertTrue(self._drive(self._clean())["passed"])
+
+    def test_vacuous_state_none_blocks(self):
+        # exit 0 with nothing to undo (or an in-projection git failure degrading to none) must NOT pass
+        res = self._drive(self._clean(state="none", undone=False, recovery_point=None))
+        self.assertFalse(res["passed"])
+        self.assertIn("vacuous", res["detail"])
+
+    def test_refusal_blocks_and_names_the_599_class(self):
+        res = self._drive(self._clean(refused=True, reason="you have unsaved work"))
+        self.assertFalse(res["passed"])
+        self.assertIn("StarshipSuperjam/engine-template#599", res["detail"])
+
+    def test_partial_blocks(self):
+        self.assertFalse(self._drive(self._clean(partial=True, reason="couldn't finish"))["passed"])
+
+    def test_not_undone_blocks(self):
+        self.assertFalse(self._drive(self._clean(undone=False))["passed"])
+
+    def test_missing_recovery_point_blocks(self):
+        self.assertFalse(self._drive(self._clean(recovery_point=""))["passed"])
+
+    def test_resync_failure_blocks(self):
+        self.assertFalse(self._drive(self._clean(resync_failed=True))["passed"])
+
+    def test_memory_restore_in_projection_blocks(self):
+        self.assertFalse(self._drive(self._clean(restored=True))["passed"])
+
+    def test_memory_vault_reach_blocks(self):
+        res = self._drive(self._clean(memory_note="couldn't reach your backup to put the copy back"))
+        self.assertFalse(res["passed"])
+
+    def test_dirty_tree_after_undo_blocks(self):
+        res = self._drive(self._clean(), status_out=" M .engine/tools/module_manager.py\n")
+        self.assertFalse(res["passed"])
+        self.assertIn("left changes", res["detail"])
+
+    def test_driver_crash_blocks(self):
+        self.assertFalse(self._drive(rc=1, stdout="", stderr="boom")["passed"])
+
+    def test_no_rollback_marker_blocks(self):
+        self.assertFalse(self._drive(stdout="garbage with no marker")["passed"])
+
+
+@unittest.skipUnless(_CONSTRUCTION, _SKIP)
+class TestTransitionComposition(unittest.TestCase):
+    """`_upgrade_from` composes the two legs into one transition record. The rollback leg runs ONLY if the
+    upgrade leg passed (a rollback on a half-applied tree would obscure the real upgrade failure), and the
+    rollback child is spawned AFTER the upgrade child (ordering is load-bearing — the overlay must land before
+    the candidate's rollback code is imported)."""
+
+    def _compose(self, upgrade_leg, rollback_leg):
+        with mock.patch.object(rg, "_archive_baseline", return_value="/tmp/proj"), \
+             mock.patch.object(rg, "_project_to_deployed", return_value=[]), \
+             mock.patch.object(rg, "_assert_isolated", return_value=None), \
+             mock.patch.object(rg, "_upgrade_leg", side_effect=upgrade_leg) as u, \
+             mock.patch.object(rg, "_rollback_leg", side_effect=rollback_leg) as r:
+            res = rg._upgrade_from("v9.9.9", "/tmp/candidate")
+        return res, u, r
+
+    def test_both_pass_is_a_passing_transition(self):
+        res, u, r = self._compose([{"passed": True, "detail": ""}], [{"passed": True, "detail": ""}])
+        self.assertTrue(res["passed"])
+        self.assertEqual(res["baseline"], "v9.9.9")
+        self.assertTrue(res["rollback"]["passed"])
+        self.assertEqual(u.call_count, 1)
+        self.assertEqual(r.call_count, 1)                       # rollback ran because the upgrade passed
+
+    def test_upgrade_failure_skips_the_rollback_leg(self):
+        def _boom(*a, **k):
+            raise AssertionError("the rollback leg must not run when the upgrade failed")
+        res, u, r = self._compose([{"passed": False, "detail": "upgrade/v9.9.9: red"}], _boom)
+        self.assertFalse(res["passed"])
+        self.assertIsNone(res["rollback"]["passed"])           # recorded as not-run, not as a failure
+        self.assertIn("not run", res["rollback"]["detail"])
+        self.assertEqual(r.call_count, 0)                      # the rollback leg was never called
+
+    def test_rollback_failure_fails_the_transition(self):
+        res, _u, _r = self._compose([{"passed": True, "detail": ""}],
+                                    [{"passed": False, "detail": "rollback/v9.9.9: partial"}])
+        self.assertFalse(res["passed"])
+        self.assertFalse(res["rollback"]["passed"])
+
+    def test_the_second_spawn_is_the_rollback_child(self):
+        # Prove ordering through the REAL legs (not stubs): the first `_run` argv carries the upgrade driver
+        # (module_manager.upgrade(...)), the second carries the rollback driver (module_manager.rollback(...)).
+        calls = []
+
+        def _record(cmd, *a, **k):
+            calls.append(cmd)
+            if "module_manager.upgrade(" in " ".join(cmd):
+                return _proc(0, "GATE_RESULT:" + json.dumps(
+                    {"refused": False, "applied": True, "reason": None, "findings": [],
+                     "notes": [mm.PRACTICE_RUN_NOTE]}), "")
+            if "module_manager.rollback(" in " ".join(cmd):
+                return _proc(0, "ROLLBACK_RESULT:" + json.dumps(
+                    {"state": "staged", "undone": True, "recovery_point": "engine-rescue/x",
+                     "restored": False, "memory_note": "no saved-memory change to put back"}), "")
+            return _proc(0, "", "")   # the trailing git status --porcelain clean check
+        with mock.patch.object(rg, "_archive_baseline", return_value="/tmp/proj"), \
+             mock.patch.object(rg, "_project_to_deployed", return_value=[]), \
+             mock.patch.object(rg, "_assert_isolated", return_value=None), \
+             mock.patch.object(rg, "_run", side_effect=_record):
+            res = rg._upgrade_from("v9.9.9", "/tmp/candidate")
+        self.assertTrue(res["passed"])
+        drivers = [" ".join(c) for c in calls if "-c" in c]
+        self.assertIn("module_manager.upgrade(", drivers[0])   # first driver spawn = the upgrade
+        self.assertIn("module_manager.rollback(", drivers[1])  # second driver spawn = the rollback
+
+
+@unittest.skipUnless(_CONSTRUCTION, _SKIP)
+class TestBaselineSelectionExcluded(unittest.TestCase):
+    """`_baseline_selection` records the below-floor version tags it excluded, so the evidence can show the
+    matrix was not silently shrunk."""
+
+    def test_below_floor_tags_are_recorded_as_excluded(self):
+        floor = validate.load_json(os.path.join(validate.ROOT, ".engine", "engine.json"))["min_upgradeable_from"]
+        with mock.patch.object(rg, "_run", return_value=_proc(0, "v0.1.0\nv0.2.0\nv" + floor + "\n", "")):
+            sel = rg._baseline_selection()
+        self.assertEqual(sel["floor"], floor)
+        self.assertIn("v" + floor, sel["baselines"])
+        self.assertIn("v0.1.0", sel["excluded"])               # a below-floor tag is recorded, not dropped
+        self.assertNotIn("v0.1.0", sel["baselines"])
+        for t in sel["excluded"]:
+            self.assertLess(validate._ver_tuple(t[1:]), validate._ver_tuple(floor))
+
+
+@unittest.skipUnless(_CONSTRUCTION, _SKIP)
+class TestArmUpgradesShape(unittest.TestCase):
+    """Arm B's result carries the transition matrix and its shape fields (floor / baselines / excluded), so the
+    release evidence can state the matrix instance, not just a pass/fail."""
+
+    def test_transitions_and_shape_fields_present(self):
+        with mock.patch.object(rg, "_baseline_selection",
+                               return_value={"floor": "0.3.2", "baselines": ["v0.3.2", "v0.4.0"],
+                                             "excluded": ["v0.1.0"]}), \
+             mock.patch.object(rg, "_upgrade_from",
+                               side_effect=lambda tag, cand: {"baseline": tag,
+                                                              "upgrade": {"passed": True, "detail": ""},
+                                                              "rollback": {"passed": True, "detail": ""},
+                                                              "passed": True}):
+            arm = rg._arm_upgrades("/tmp/candidate")
+        self.assertTrue(arm["passed"])
+        self.assertEqual(arm["floor"], "0.3.2")
+        self.assertEqual(arm["baselines"], ["v0.3.2", "v0.4.0"])
+        self.assertEqual(arm["excluded"], ["v0.1.0"])
+        self.assertEqual([t["baseline"] for t in arm["transitions"]], ["v0.3.2", "v0.4.0"])
+        self.assertEqual(arm["failures"], [])
+
+    def test_a_failing_transition_surfaces_leg_detail(self):
+        with mock.patch.object(rg, "_baseline_selection",
+                               return_value={"floor": "0.3.2", "baselines": ["v0.3.2"], "excluded": []}), \
+             mock.patch.object(rg, "_upgrade_from",
+                               side_effect=lambda tag, cand: {"baseline": tag,
+                                                              "upgrade": {"passed": True, "detail": ""},
+                                                              "rollback": {"passed": False,
+                                                                           "detail": "rollback/v0.3.2: partial"},
+                                                              "passed": False}):
+            arm = rg._arm_upgrades("/tmp/candidate")
+        self.assertFalse(arm["passed"])
+        self.assertEqual(arm["failures"], ["rollback/v0.3.2: partial"])
+
+    def test_an_upgrade_failure_does_not_pollute_failures_with_the_not_run_line(self):
+        # when the upgrade leg fails, the rollback leg is recorded as not-run (passed:None) — that placeholder
+        # must NOT appear in the operator-facing failures list, only the real upgrade-leg detail.
+        with mock.patch.object(rg, "_baseline_selection",
+                               return_value={"floor": "0.3.2", "baselines": ["v0.3.2"], "excluded": []}), \
+             mock.patch.object(rg, "_upgrade_from",
+                               side_effect=lambda tag, cand: {"baseline": tag,
+                                                              "upgrade": {"passed": False,
+                                                                          "detail": "upgrade/v0.3.2: red"},
+                                                              "rollback": {"passed": None,
+                                                                           "detail": "not run — the upgrade "
+                                                                                     "did not complete"},
+                                                              "passed": False}):
+            arm = rg._arm_upgrades("/tmp/candidate")
+        self.assertFalse(arm["passed"])
+        self.assertEqual(arm["failures"], ["upgrade/v0.3.2: red"])
+        self.assertFalse(any("not run" in f for f in arm["failures"]))
+
+
+@unittest.skipUnless(_CONSTRUCTION, _SKIP)
+class TestCandidateIdentity(unittest.TestCase):
+    """`_candidate_tree_sha` computes a real git tree hash of the working tree (the identity stamped into the
+    gate result). Exercised against real git — the run_gate/pr-body unit tests mock it, so this is the one place
+    the actual git plumbing is checked."""
+
+    def test_returns_a_git_tree_sha(self):
+        sha = rg._candidate_tree_sha()
+        self.assertIsInstance(sha, str)
+        self.assertEqual(len(sha), 40)                         # a git object name (SHA-1 tree hash)
+        self.assertTrue(all(c in "0123456789abcdef" for c in sha))
+
+
+@unittest.skipUnless(_CONSTRUCTION, _SKIP)
+class TestSummaryMarkdown(unittest.TestCase):
+    """`_summary_md` renders the per-transition matrix for the step summary — structured fields only, never a
+    raw `detail` string, and it states the floor and count so a shrunken matrix is visible."""
+
+    def _result(self, transitions, **overupg):
+        passed = all(t["passed"] for t in transitions)
+        up = {"passed": passed, "floor": "0.3.2", "baselines": [t["baseline"] for t in transitions],
+              "excluded": [], "transitions": transitions, "failures": []}
+        up.update(overupg)
+        return {"ran": True, "passed": passed, "upgrades": up}
+
+    def test_renders_rows_floor_and_count(self):
+        md = rg._summary_md(self._result([
+            {"baseline": "v0.3.2", "upgrade": {"passed": True, "detail": "x"},
+             "rollback": {"passed": True, "detail": "y"}, "passed": True}]))
+        self.assertIn("| `v0.3.2` | pass | pass |", md)
+        self.assertIn("floor `0.3.2`", md)
+        self.assertIn("1 transition", md)
+        self.assertNotIn("qualification", md.lower())
+
+    def test_no_raw_detail_leaks(self):
+        secret = "/Users/someone/secret/path/traceback"
+        md = rg._summary_md(self._result([
+            {"baseline": "v0.3.2", "upgrade": {"passed": False, "detail": secret},
+             "rollback": {"passed": None, "detail": secret}, "passed": False}], passed=False))
+        self.assertNotIn(secret, md)                           # detail strings never reach the summary
+        self.assertIn("FAIL", md)
+        self.assertIn("not run", md)
+
+    def test_inert_result_is_plain(self):
+        self.assertIn("not applicable", rg._summary_md({"ran": False, "passed": True}).lower())
+
+
+@unittest.skipUnless(_CONSTRUCTION, _SKIP)
+class TestRunGateIdentity(unittest.TestCase):
+    """`run_gate` stamps the candidate identity (tree sha + a UTC timestamp) so the release-PR renderer can tie
+    the transition matrix to the tree it was run against."""
+
+    def test_result_carries_candidate_identity(self):
+        with mock.patch.object(rg._ccc, "_in_home_repo", return_value=True), \
+             mock.patch.object(rg, "_worktree_digest", return_value="SAME"), \
+             mock.patch.object(rg, "_arm_operates", return_value={"passed": True, "failures": []}), \
+             mock.patch.object(rg, "_archive_candidate", return_value="/tmp/candidate"), \
+             mock.patch.object(rg, "_arm_upgrades", return_value={"passed": True, "failures": [],
+                                                                  "transitions": []}), \
+             mock.patch.object(rg, "_candidate_tree_sha", return_value="deadbeef"):
+            result = rg.run_gate()
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["candidate_tree"], "deadbeef")
+        self.assertIn("generated_at", result)
 
 
 @unittest.skipUnless(_CONSTRUCTION, _SKIP)
@@ -258,7 +527,7 @@ class TestDeclineVocabulary(unittest.TestCase):
 class TestNestedEnvScrub(unittest.TestCase):
     """Every process the gate spawns inside a projection runs with the release workflow's GitHub-Actions
     identity stripped. A projection has no real pull request, so leaking the ambient CI/PR env made the
-    PR-context checks (pr-body-completeness, disposition-issue-resolution) misfire and block the first live
+    PR-context check (pr-body-completeness) misfire and block the first live
     cut; `_nested_env` restores the offline posture of a local run. `patch.dict` restores os.environ after."""
 
     _CI_VARS = {"CI": "true", "GITHUB_ACTIONS": "true", "GITHUB_EVENT_PATH": "/x/event.json",
