@@ -6,7 +6,7 @@ Generated from ALL module manifests in the SOURCE repo (where every module is pr
 per deployment, so it keeps listing a module's surfaces even after that module is DECLINED and its manifest is
 gone. That is what lets a deployed repo recognize a path missing *because its owning optional module was
 declined* as a legitimate absence rather than a broken reference: the link-integrity check consults
-`declined_surface_owner` to TOLERATE a dangling link to such a path instead of failing it (#646).
+`declined_surface_owner` to TOLERATE a dangling link to such a path instead of failing it (StarshipSuperjam/engine-template#646).
 
 `load` and `declined_surface_owner` read only the committed registry + `engine.json` (both travel) and import
 nothing heavy, so `validate._coverage_links` can call them without a circular import; `derive`/`generate`

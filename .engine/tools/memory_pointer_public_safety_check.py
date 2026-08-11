@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Memory-backup pointer public-safety guard (#224) — the thin custom/script entry for
+"""Memory-backup pointer public-safety guard (StarshipSuperjam/engine-template#224) — the thin custom/script entry for
 engine/check/memory-pointer-public-safety.
 
 The committed memory-backup pointer (.engine/memory-backup/pointer.json) carries the vault's COORDINATES
@@ -90,7 +90,7 @@ def check(pointer_rel: str = POINTER_REL) -> "dict | None":
 def main() -> int:
     # ENGINE_POINTER_REL (unset in production) lets the negative-fixture meta-check redirect the
     # `git show HEAD:` read at a committed fixture pointer carrying placeholder-violating coordinates,
-    # so this safety gate is witnessed biting a real bad input (#286). It is a repo-relative pathspec
+    # so this safety gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286). It is a repo-relative pathspec
     # (passed verbatim to `git show HEAD:`), NOT resolved to an absolute path. The committed-state read
     # means the fixture only bites once committed at HEAD (so the live witness is in CI).
     pointer_rel = os.environ.get("ENGINE_POINTER_REL") or POINTER_REL

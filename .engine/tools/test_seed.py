@@ -47,7 +47,7 @@ def _check_quiet(rule_id, ctx):
 
 
 SECTIONS = ["Purpose", "Scope", "Out of scope", "Risk", "Validation", "Review",
-            "Files of interest", "AI involvement"]
+            "Demonstration", "Files of interest", "AI involvement"]
 COMPLETENESS_RULE = {"id": "engine/check/pr-body-completeness",
                      "target": {"context": "pull-request-body"},
                      "kind": "presence", "tier": "hard",
@@ -91,17 +91,17 @@ class TestCompletenessTeeth(unittest.TestCase):
         self.assertTrue(passed)
         self.assertTrue(all(f["severity"] != "hard" for f in found))
 
-    def test_empty_body_flags_all_eight_hard(self):
+    def test_empty_body_flags_all_sections_hard(self):
         passed, found = validate.kind_presence(COMPLETENESS_RULE, {"pr_body": ""})
         self.assertFalse(passed)
-        self.assertEqual(len(found), 8)
+        self.assertEqual(len(found), len(SECTIONS))
         self.assertTrue(all(f["severity"] == "hard" for f in found))
 
     def test_placeholder_only_body_fails(self):
         body = "\n".join(f"## {s}\n<prompt>" for s in SECTIONS)
         passed, found = validate.kind_presence(COMPLETENESS_RULE, {"pr_body": body})
         self.assertFalse(passed)
-        self.assertEqual(len(found), 8)
+        self.assertEqual(len(found), len(SECTIONS))
 
     def test_filled_body_passes(self):
         body = "\n".join(f"## {s}\nreal content for {s}" for s in SECTIONS)
@@ -190,7 +190,7 @@ class TestCiAuthorExempt(unittest.TestCase):
         passed, found = validate.kind_presence(
             COMPLETENESS_RULE, {"pr_body": "", "pr_author": "dependabot[bot]"})
         self.assertFalse(passed)
-        self.assertEqual(len(found), 8)
+        self.assertEqual(len(found), len(SECTIONS))
 
     def test_exempt_in_any_blocking_gate_suite_not_just_ci(self):
         # The positive of test_exempt_only_in_blocking_gate_suite: the gate keys on the
@@ -298,7 +298,7 @@ class TestCheckSchemaCiAuthorExempt(unittest.TestCase):
     def test_committed_pr_body_rule_declares_and_validates(self):
         # Two exempt bot AUTHORS: dependabot[bot] (its dependency PRs) and github-actions[bot] (the scheduled
         # self-review digest pull request, opened via the workflow token) — both carry their own plain-language
-        # body, never the eight-section template. Plus one exempt LABEL, engine-erasure: the single-purpose
+        # body, never the nine-section template. Plus one exempt LABEL, engine-erasure: the single-purpose
         # memory-erasure proposal is opened by a local hook under the operator's own identity (NOT a bot), so the
         # author exemption cannot reach it — its deliberate plain consent body is cleared by the label instead.
         # A drop of any of these silently re-breaks those PRs' engine-ci, so pin the exact lists.
@@ -684,6 +684,157 @@ def _write_check_json(path, obj):
         json.dump(obj, fh)
 
 
+class TestWeakeningTiers(unittest.TestCase):
+    """The eADR-0040 tier machinery: classify() and the four directional detectors. The hard criterion is
+    a property (a weakening with no mechanical correlate and no readable diff, plus the guard's own
+    machinery); everything else guarded discloses. Fail-safe direction: unclassifiable input resolves HARD."""
+
+    _IG = (set(), ())  # no instance declaration
+
+    # Hard-floor members owned by an OPTIONAL module: each is guarded by its check rule's PRESENCE, so a
+    # deployment that DECLINED the owning module (the deployment gate's add-on-declined projection) legitimately
+    # ships neither the tool file nor its `.engine/check/*.json` rule — is_guardrail() then correctly returns
+    # False, a declined-shape truth rather than dead weight. Keyed on the EXACT _HARD_EXACT path (a module may own
+    # several scripts). Any member NOT listed here is asserted unconditionally, so a typo'd or genuinely
+    # unguarded floor entry is still caught; adding a new optional-owned member without listing it here fails
+    # safe (it reds the declined projection until handled), never silently skips.
+    _OPTIONAL_FLOOR_OWNERS = {
+        ".engine/tools/product_design/lock_integrity.py": "product-design",
+        ".engine/tools/dependency_discipline/review.py": "dependency-discipline",
+    }
+
+    def test_classify_tiers(self):
+        c = weakening_guard.classify
+        # disclosure tier: the measured noise — the validator, the hook substrate, readable configs
+        for path in (".engine/tools/validate.py", ".engine/tools/modes.py", ".engine/tools/close.py",
+                     ".engine/tools/hooks.py", ".engine/pyproject.toml", ".claude/settings.json",
+                     ".github/workflows/engine-ci.yml", ".engine/check/pr-body-completeness.json",
+                     ".engine/schemas/engine.v1.json", ".github/dependabot.yml"):
+            self.assertEqual(c(path, "modified", instance_guards=self._IG), "soft", path)
+        # killswitch tier: the hard floor, on any weakening status
+        for path in weakening_guard._HARD_EXACT:
+            self.assertEqual(c(path, "modified", instance_guards=self._IG), "hard", path)
+        # removal/rename of ANY guarded file is hard — even where modification discloses
+        self.assertEqual(c(".engine/tools/validate.py", "removed", instance_guards=self._IG), "hard")
+        self.assertEqual(c(".github/workflows/engine-ci.yml", "renamed",
+                           prev=".github/workflows/engine-ci.yml", instance_guards=self._IG), "hard")
+        # a previous_filename on the hard floor is hard (a rename judged against where it came FROM)
+        self.assertEqual(c("elsewhere.py", "modified", prev=".engine/tools/repo_identity.py",
+                           instance_guards=self._IG), "hard")
+        # an instance-declared path keeps the friction its operator opted into (#532)
+        self.assertEqual(c("scanner/gate.py", "modified",
+                           instance_guards=({"scanner/gate.py"}, ())), "hard")
+        self.assertEqual(c("scanner/deep/x.py", "modified",
+                           instance_guards=(set(), ("scanner/",))), "hard")
+
+    def test_hard_floor_members_are_all_guarded(self):
+        # every hard-floor member must be IN the guarded set, or classify() would never see it — a floor
+        # entry outside is_guardrail() is dead weight that reads as protection. An optional-module-owned member
+        # is skipped ONLY where its owning module is declined (see _OPTIONAL_FLOOR_OWNERS); everywhere it is
+        # present it is still asserted, so a genuine dead-weight entry is still caught.
+        derived = weakening_guard._derive_check_scripts()
+        installed = _installed_module_ids()
+        for path in weakening_guard._HARD_EXACT:
+            owner = self._OPTIONAL_FLOOR_OWNERS.get(path)
+            if owner and owner not in installed:
+                continue
+            self.assertTrue(weakening_guard.is_guardrail(path, derived, self._IG), path)
+
+    def test_check_rule_demotion_detector(self):
+        d = weakening_guard.check_rule_demotion
+        rule = ".engine/check/foo.json"
+        # a tier flip is structural -> escalates
+        self.assertEqual(d([{"filename": rule, "status": "modified",
+                             "patch": '@@ -5 +5 @@\n-  "tier": "hard",\n+  "tier": "soft",'}]),
+                         [(rule, "structural")])
+        # deleting the suites key entirely (the silent roster drop) -> escalates
+        self.assertEqual(d([{"filename": rule, "status": "modified",
+                             "patch": '@@ -5 +5 @@\n-  "suites": ["CI"],'}]),
+                         [(rule, "structural")])
+        # a params/script repoint -> escalates (the one-PR gate-gut)
+        self.assertEqual(d([{"filename": rule, "status": "modified",
+                             "patch": '@@ -5 +5 @@\n-  "params": { "script": "a.py" },\n+  "params": { "script": "b.py" },'}]),
+                         [(rule, "structural")])
+        # a message-only reword — the one provably-benign shape — passes
+        self.assertIsNone(d([{"filename": rule, "status": "modified",
+                              "patch": '@@ -5 +5 @@\n-  "message": "old words",\n+  "message": "new words, \\"quoted\\" fine",'}]))
+        # a second key smuggled onto the message line -> escalates
+        self.assertEqual(d([{"filename": rule, "status": "modified",
+                             "patch": '@@ -5 +5 @@\n+  "message": "x", "tier": "soft",'}]),
+                         [(rule, "unclear")])
+        # unreadable patch -> fail closed
+        self.assertEqual(d([{"filename": rule, "status": "modified"}]), [(rule, "unreadable-patch")])
+        # an added rule is a pure addition — never judged here
+        self.assertIsNone(d([{"filename": rule, "status": "added",
+                              "patch": '@@ -0 +1 @@\n+  "tier": "hard",'}]))
+
+    def test_workflow_gate_edit_detector(self):
+        d = weakening_guard.workflow_gate_edit
+        wf = ".github/workflows/engine-guard.yml"
+        # the trigger flip that would run the PR's own copy of the guard -> escalates
+        self.assertEqual(d([{"filename": wf, "status": "modified",
+                             "patch": "@@ -18 +18 @@\n-  pull_request_target:\n+  pull_request:"}]),
+                         [(wf, "gate-line")])
+        # a same-action version pin (the routine dependabot bump) stays soft
+        self.assertIsNone(d([{"filename": wf, "status": "modified",
+                              "patch": "@@ -1 +1 @@\n-      - uses: astral-sh/setup-uv@aaa # v8\n+      - uses: astral-sh/setup-uv@bbb # v9"}]))
+        # an action SWAP -> escalates
+        self.assertEqual(d([{"filename": wf, "status": "modified",
+                             "patch": "@@ -1 +1 @@\n-      - uses: astral-sh/setup-uv@aaa\n+      - uses: evil/setup-uv@aaa"}]),
+                         [(wf, "action-swap")])
+        # comment churn stays soft
+        self.assertIsNone(d([{"filename": wf, "status": "modified",
+                              "patch": "@@ -1 +1 @@\n-# old comment\n+# new comment"}]))
+        # unreadable patch -> fail closed
+        self.assertEqual(d([{"filename": wf, "status": "modified"}]), [(wf, "unreadable-patch")])
+
+    def test_settings_and_bootstrap_detectors(self):
+        s = weakening_guard.settings_gate_unwire
+        # removing a gate-hook wire -> escalates; adding one stays soft
+        self.assertEqual(s([{"filename": ".claude/settings.json", "status": "modified",
+                             "patch": '@@ -1 +1 @@\n-    "command": "hook-runner.sh modes.py",'}]),
+                         [(".claude/settings.json", "gate-unwire")])
+        self.assertIsNone(s([{"filename": ".claude/settings.json", "status": "modified",
+                              "patch": '@@ -1 +1 @@\n+    "command": "hook-runner.sh boot.py",'}]))
+        b = weakening_guard.bootstrap_ruleset_edit
+        # a ruleset-vocabulary line -> escalates; label churn stays soft
+        self.assertEqual(b([{"filename": ".engine/tools/bootstrap.py", "status": "modified",
+                             "patch": "@@ -1 +1 @@\n-    required_status_checks=[...]"}]),
+                         [(".engine/tools/bootstrap.py", "ruleset-line")])
+        self.assertIsNone(b([{"filename": ".engine/tools/bootstrap.py", "status": "modified",
+                              "patch": '@@ -1 +1 @@\n+ACK_LABEL_DESCRIPTION = "words"'}]))
+
+    def test_engine_guard_workflow_preserves_the_validator_exit_code(self):
+        # DRIFT DETECTOR: the engine-guard workflow step appends output to the run summary, and three
+        # regressions would each silently break required check #2 or its reporting: (a) a bare invocation
+        # under GitHub's implicit `bash -e` aborts before the summary/annotation on a hard finding, so the
+        # invocation must be the CONDITION of an `if` (errexit-exempt); (b) an rc captured after an
+        # intervening command (cat, echo) records the wrong command's status, so rc must be set ONLY
+        # inside that if/else; (c) the step must END by exiting the captured rc. Also pins the two
+        # annotation sentinels the workflow greps for — each carries a character the guard's whitelist
+        # sanitizer strips, so PR-controlled content cannot forge them.
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        wf_path = os.path.join(root, ".github", "workflows", "engine-guard.yml")
+        with open(wf_path, encoding="utf-8") as fh:
+            wf = fh.read()
+        self.assertRegex(
+            wf, r'if uv run [^\n]*validate\.py --check engine/check/guardrail-weakening[^\n]*; then',
+            "the validator invocation must be the condition of an `if` (errexit-exempt), or a hard "
+            "finding aborts the step before its own report is surfaced")
+        run_block = wf[wf.index("if uv run"):]
+        step_lines = [ln.strip() for ln in run_block.splitlines() if ln.strip()]
+        self.assertRegex(step_lines[1], r"^rc=0$", "the then-arm must record rc=0 and nothing else")
+        self.assertRegex(step_lines[3], r"^rc=\$\?$",
+                         "the else-arm must capture rc directly from the invocation — an intervening "
+                         "command would record the wrong exit status")
+        self.assertEqual(step_lines[-1], 'exit "${rc}"',
+                         "the step must END by exiting the captured validator rc")
+        self.assertIn('grep -q "GUARDRAIL DISCLOSURE —"', wf)
+        self.assertIn('grep -q "ACKNOWLEDGED (guardrail-ack"', wf)
+        self.assertIn("GITHUB_STEP_SUMMARY:-/dev/null", wf,
+                      "the summary append must survive an unset GITHUB_STEP_SUMMARY under set -u")
+
+
 class TestWeakeningDerivedSet(unittest.TestCase):
     """The derived-by-presence clause + its ALL-OR-NOTHING fail-safe. The derivation reads the base
     check dir on disk; these tests inject a temp dir the way TestWeakeningReHome monkeypatches _read_base_home."""
@@ -990,11 +1141,11 @@ class TestDecoratedScaffold(unittest.TestCase):
 
 
 class TestPRContractNoDrift(unittest.TestCase):
-    """The control-plane 8-section PR-body contract must not silently drift.
+    """The control-plane 9-section PR-body contract must not silently drift.
 
-    The locked contract names eight required sections, in order — Purpose, Scope,
-    Out of scope, Risk, Validation, Review, Files of interest, AI involvement —
-    transcribed once above as SECTIONS (a human transcription of the control-plane
+    The locked contract names nine required sections, in order — Purpose, Scope,
+    Out of scope, Risk, Validation, Review, Demonstration, Files of interest, AI
+    involvement — transcribed once above as SECTIONS (a human transcription of the control-plane
     spec; there is no in-repo machine source to derive it from, so the transcription
     itself has no mechanical correlate and is read by a human against the spec). The
     two legs below pin BOTH committed artifacts to that canonical anchor: the PR
@@ -1022,7 +1173,7 @@ class TestPRContractNoDrift(unittest.TestCase):
 
     def test_committed_template_headings_match_canonical(self):
         # Leg (b): the committed PR template's level-2 (##) headings equal the
-        # canonical eight, in order, with no extras or omissions. Catches a
+        # canonical nine, in order, with no extras or omissions. Catches a
         # dropped/renamed/reordered section the count-only completeness test misses.
         path = os.path.join(self._repo_root(), ".github", "pull_request_template.md")
         with open(path, encoding="utf-8") as fh:
@@ -1031,7 +1182,7 @@ class TestPRContractNoDrift(unittest.TestCase):
 
     def test_committed_completeness_check_sections_match_canonical(self):
         # Leg (a): the committed pr-body-completeness check (validators-core) enforces
-        # exactly the canonical eight, in order. Pins the real gating enforcement to
+        # exactly the canonical nine, in order. Pins the real gating enforcement to
         # the contract; the other completeness tests only exercise the in-file fixture.
         path = os.path.join(self._repo_root(), ".engine", "check",
                             "pr-body-completeness.json")
@@ -1068,6 +1219,70 @@ class TestPRContractNoDrift(unittest.TestCase):
         for phrase in phrases:
             self.assertIn(phrase, template,
                           f"preamble anchor {phrase!r} required by the check is absent from the template")
+
+
+class TestDemonstrationSectionRequired(unittest.TestCase):
+    """#881: the behavioral Demonstration section is its own required slot, separate from the
+    spec-derived acceptance steps in Review. A behaviour-changing change cannot discharge it with
+    the 'no settled description' no-op line — that line clears only the spec-derived lane. The
+    floor is presence (the reviewer judges whether the demonstration is real); these pin that the
+    slot is REQUIRED and that its absence is caught by the SHIPPED hard check, with or without any
+    spec-derived content in Review (the SDD-removed shape)."""
+
+    _PREAMBLE = (
+        "> *A green mechanical check below shows this change conforms to the engine's rules. "
+        "Your merge is the binding gate.*\n>\n"
+        "> *A check that could not run leaves its area unverified.*")
+
+    def _shipped(self):
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        with open(os.path.join(root, ".engine", "check", "pr-body-completeness.json"),
+                  encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def _section(self, name, demo_filled, review_line):
+        if name == "Demonstration" and not demo_filled:
+            # a fully unfilled Demonstration: placeholder summary, bullet, and Impact line
+            return [f"## {name}", "", "**<the operator-runnable step or walkthrough>**", "",
+                    "- <give the operator something they can run>", "",
+                    "*Impact: <what the operator can watch work>*", ""]
+        summary = f"**Real summary for {name}.**"
+        if name == "Review":
+            bullet = review_line
+        elif name == "Demonstration":
+            bullet = "- run `foo` and watch the widget flip when the behaviour is correct"
+        else:
+            bullet = f"- a real bullet for {name}"
+        return [f"## {name}", "", summary, "", bullet, "", f"*Impact: real impact for {name}.*", ""]
+
+    def _body(self, demo_filled=True, review_line="- things you can confirm yourself: run X"):
+        parts = [self._PREAMBLE, ""]
+        for s in SECTIONS:
+            parts += self._section(s, demo_filled, review_line)
+        return "\n".join(parts)
+
+    def test_filled_demonstration_passes_the_shipped_gate(self):
+        passed, findings = validate.kind_presence(self._shipped(), {"pr_body": self._body(demo_filled=True)})
+        self.assertTrue(passed, f"a filled Demonstration should pass the shipped gate: {findings}")
+
+    def test_empty_demonstration_is_caught_by_the_shipped_gate(self):
+        passed, findings = validate.kind_presence(self._shipped(), {"pr_body": self._body(demo_filled=False)})
+        self.assertFalse(passed, "an empty Demonstration must fail the hard completeness gate")
+        self.assertTrue(any("Demonstration" in str(f) for f in findings),
+                        f"the finding must name the Demonstration section: {findings}")
+
+    def test_no_spec_line_in_review_does_not_excuse_an_empty_demonstration(self):
+        # the SDD-removed shape: Review carries only the honest 'no settled description' no-op line,
+        # yet an empty Demonstration is STILL caught — missing spec state never fills the behavioral slot.
+        body = self._body(demo_filled=False,
+                          review_line="- Nothing here is something you can run yourself — there's no "
+                                      "settled description for this project yet.")
+        passed, findings = validate.kind_presence(self._shipped(), {"pr_body": body})
+        self.assertFalse(passed, "a no-spec Review line must not excuse an empty Demonstration")
+        self.assertTrue(any("Demonstration" in str(f) for f in findings), findings)
+
+    def test_committed_check_requires_the_demonstration_section(self):
+        self.assertIn("Demonstration", self._shipped()["params"]["sections"])
 
 
 class TestEmptinessLabelScope(unittest.TestCase):
@@ -1130,7 +1345,7 @@ class TestSubsectionLineStatus(unittest.TestCase):
 class TestImpactFillEnforcement(unittest.TestCase):
     """The filled-Impact-line leg, gated behind params.filled_subsection_label."""
 
-    def _body(self, impact):  # 8 filled sections, each with `impact` as its Impact line
+    def _body(self, impact):  # all filled sections, each with `impact` as its Impact line
         return "\n".join(f"## {s}\n**Real summary**\n- a real bullet\n{impact}" for s in SECTIONS)
 
     def test_filled_impact_passes(self):
@@ -1138,10 +1353,10 @@ class TestImpactFillEnforcement(unittest.TestCase):
         self.assertTrue(passed)
         self.assertEqual(found, [])
 
-    def test_unfilled_impact_flags_all_eight(self):
+    def test_unfilled_impact_flags_all_sections(self):
         passed, found = validate.kind_presence(IMPACT_RULE, {"pr_body": self._body("*Impact: <slot>*")})
         self.assertFalse(passed)
-        self.assertEqual(len(found), 8)
+        self.assertEqual(len(found), len(SECTIONS))
         self.assertTrue(all("no filled Impact line" in f["message"] and f["severity"] == "hard" for f in found))
 
     def test_deleted_impact_line_flags(self):
@@ -1149,13 +1364,13 @@ class TestImpactFillEnforcement(unittest.TestCase):
         body = "\n".join(f"## {s}\n**Real summary**\n- a real bullet" for s in SECTIONS)
         passed, found = validate.kind_presence(IMPACT_RULE, {"pr_body": body})
         self.assertFalse(passed)
-        self.assertEqual(len(found), 8)
+        self.assertEqual(len(found), len(SECTIONS))
         self.assertTrue(all("no filled Impact line" in f["message"] for f in found))
 
     def test_missing_section_not_double_counted(self):
         # a wholly-missing body yields ONE finding per section (presence leg), never two
         passed, found = validate.kind_presence(IMPACT_RULE, {"pr_body": ""})
-        self.assertEqual(len(found), 8)
+        self.assertEqual(len(found), len(SECTIONS))
 
     def test_present_but_empty_section_not_double_counted(self):
         # a section PRESENT but only placeholders (incl. its Impact slot) is reported once,
@@ -1163,7 +1378,7 @@ class TestImpactFillEnforcement(unittest.TestCase):
         body = "\n".join(f"## {s}\n**<summary>**\n- <detail>\n*Impact: <slot>*" for s in SECTIONS)
         passed, found = validate.kind_presence(IMPACT_RULE, {"pr_body": body})
         self.assertFalse(passed)
-        self.assertEqual(len(found), 8)
+        self.assertEqual(len(found), len(SECTIONS))
         self.assertTrue(all("empty or only contains the template placeholder" in f["message"] for f in found))
 
     def test_param_absent_skips_the_leg(self):
@@ -1185,7 +1400,7 @@ class TestImpactFillEnforcement(unittest.TestCase):
         # this _body carries no preamble, so the shipped rule also fires its required_phrases leg; assert on
         # the Impact-leg findings specifically (the behaviour this test pins), not the total count.
         impact_findings = [f for f in found if "no filled Impact line" in f["message"]]
-        self.assertEqual(len(impact_findings), 8)
+        self.assertEqual(len(impact_findings), len(SECTIONS))
 
 
 class TestRequiredPhrasesLeg(unittest.TestCase):
@@ -1193,11 +1408,11 @@ class TestRequiredPhrasesLeg(unittest.TestCase):
     anchor a heading scan cannot see — the consent preamble that drops when a body is
     reconstructed instead of filled verbatim. Absent param => the leg is skipped."""
 
-    def _sections(self):  # 8 filled sections + Impact lines, no preamble
+    def _sections(self):  # all filled sections + Impact lines, no preamble
         return "\n".join(f"## {s}\n**Real summary**\n- a real bullet\n*Impact: real consequence*"
                          for s in SECTIONS)
 
-    def _body(self, anchors):  # the anchors (a preamble stand-in) above the eight filled sections
+    def _body(self, anchors):  # the anchors (a preamble stand-in) above the filled sections
         return ("\n".join(anchors) + "\n" + self._sections()) if anchors else self._sections()
 
     def test_all_missing_anchors_flag_in_one_finding(self):
@@ -1868,14 +2083,17 @@ class TestProtectionReHome(unittest.TestCase):
 # ---- re-home the weakening guard as a custom/script rule ----
 
 class TestWeakeningReHome(unittest.TestCase):
-    """The re-homed weakening guard emits finding.v1 JSON via the custom/script contract:
-    [] when nothing weakens or the ack label is present, one hard finding (carrying the
-    plain-language ack guidance) on an unacknowledged guardrail change, and a hard
-    fail-closed finding when the pull-request context cannot be read OR the guard could not
-    read every changed file (a partial view — a too-large PR past GitHub's file-listing
-    cap). The latter is the non-falsifiability property: a weakening edit
-    must not hide past file 100 of a big PR, so the guard paginates the diff to completion
-    and cross-checks what it read against the pull request's authoritative changed_files."""
+    """The re-homed weakening guard emits finding.v1 JSON via the custom/script contract
+    (two tiers, eADR-0040): [] when nothing weakens; one HARD finding (carrying the
+    plain-language ack guidance) on an unacknowledged killswitch-tier change, DOWNGRADED
+    to a soft ACKNOWLEDGED record when the ack label is present (never erased); one SOFT
+    disclosure finding whenever disclosure-tier enforcement files are modified (the ack
+    does not touch it); and a hard fail-closed finding when the pull-request context
+    cannot be read OR the guard could not read every changed file (a partial view — a
+    too-large PR past GitHub's file-listing cap). The latter is the non-falsifiability
+    property: a weakening edit must not hide past file 100 of a big PR, so the guard
+    paginates the diff to completion and cross-checks what it read against the pull
+    request's authoritative changed_files."""
 
     _AUTO = object()  # sentinel: derive expected from len(files) unless overridden
 
@@ -1932,21 +2150,57 @@ class TestWeakeningReHome(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out, [])
 
-    def test_unacked_weakening_is_one_hard_with_ack_guidance(self):
+    def test_soft_tier_modification_is_one_soft_disclosure(self):
+        # validate.py is DISCLOSURE tier (eADR-0040): the check passes, the notice still names the file
+        # and says plainly it needs no action.
         rc, out = self._main_json(
             {"pull_request": {"number": 1, "labels": []}},
             [{"filename": ".engine/tools/validate.py", "status": "modified"}])
         self.assertEqual(rc, 0)
         self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("GUARDRAIL DISCLOSURE", out[0]["message"])
+        self.assertIn("validate.py", out[0]["message"])
+        self.assertIn("does not block", out[0]["message"])
+
+    def test_unacked_hard_floor_edit_is_one_hard_with_ack_guidance(self):
+        # a hard-floor member (the suite declarations — a global killswitch) still blocks pending the ack.
+        rc, out = self._main_json(
+            {"pull_request": {"number": 1, "labels": []}},
+            [{"filename": ".engine/suites.json", "status": "modified"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(out), 1)
         self.assertEqual(out[0]["severity"], "hard")
         self.assertIn("guardrail-ack", out[0]["message"])  # the informed-consent surface
 
-    def test_ack_label_clears_to_empty(self):
+    def test_removal_of_any_guarded_file_is_hard(self):
+        # removal/rename of ANY guarded file is killswitch tier, even where modification discloses.
+        rc, out = self._main_json(
+            {"pull_request": {"number": 1, "labels": []}},
+            [{"filename": ".engine/tools/validate.py", "status": "removed"}])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "hard")
+        self.assertIn("guardrail-ack", out[0]["message"])
+
+    def test_ack_label_downgrades_hard_to_disclosure_never_erases(self):
+        # eADR-0040: the ack DOWNGRADES the killswitch finding to a soft ACKNOWLEDGED record.
+        rc, out = self._main_json(
+            {"pull_request": {"number": 1, "labels": [{"name": "guardrail-ack"}]}},
+            [{"filename": ".engine/suites.json", "status": "modified"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("ACKNOWLEDGED", out[0]["message"])
+        self.assertIn("suites.json", out[0]["message"])
+
+    def test_ack_label_leaves_the_disclosure_untouched(self):
+        # the ack is about the killswitch tier; a disclosure still emits with the label present.
         rc, out = self._main_json(
             {"pull_request": {"number": 1, "labels": [{"name": "guardrail-ack"}]}},
             [{"filename": ".engine/tools/validate.py", "status": "modified"}])
-        self.assertEqual(rc, 0)
-        self.assertEqual(out, [])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("GUARDRAIL DISCLOSURE", out[0]["message"])
 
     # ---- the engine's update-home repoint is a guardrail weakening (content-aware; #367) ----
     _REPOINT_PATCH = ('@@ -1,4 +1,4 @@\n'
@@ -1969,12 +2223,15 @@ class TestWeakeningReHome(unittest.TestCase):
         self.assertIn("evil/look-alike", out[0]["message"])
         self.assertIn("guardrail-ack", out[0]["message"])
 
-    def test_home_repoint_is_cleared_by_the_ack(self):
+    def test_home_repoint_is_downgraded_by_the_ack_never_erased(self):
         rc, out = self._main_json(
             {"pull_request": {"number": 1, "labels": [{"name": "guardrail-ack"}]}},
             [{"filename": ".engine/engine.json", "status": "modified", "patch": self._REPOINT_PATCH}],
             base_home="acme/engine-home")
-        self.assertEqual(out, [])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("ACKNOWLEDGED", out[0]["message"])
+        self.assertIn("update home", out[0]["message"])  # the record survives the operator's act
 
     def test_home_first_recording_is_not_a_repoint(self):
         # No home in the base (base_home=None) -> the seed/back-fill add is a first recording, not a redirect,
@@ -2251,8 +2508,8 @@ class TestWeakeningReHome(unittest.TestCase):
         self.assertFalse(d(self._f('@@ -15,1 +15,1 @@\r\n-  "identity": "team"\r\n'
                                    '+  "identity": "team",\r\n'), "team"))
 
-    def test_identity_downgrade_is_flagged_and_cleared_by_the_ack(self):
-        # end-to-end through main(): a team->solo edit on a team-base repo blocks until the ack, then clears.
+    def test_identity_downgrade_is_flagged_and_downgraded_by_the_ack(self):
+        # end-to-end through main(): a team->solo edit on a team-base repo blocks until the ack, which downgrades it to a record.
         rc, out = self._main_json(
             {"pull_request": {"number": 1, "labels": []}},
             self._f(self._DOWNGRADE_PATCH), base_tier="team")
@@ -2263,7 +2520,9 @@ class TestWeakeningReHome(unittest.TestCase):
         rc, out = self._main_json(
             {"pull_request": {"number": 1, "labels": [{"name": "guardrail-ack"}]}},
             self._f(self._DOWNGRADE_PATCH), base_tier="team")
-        self.assertEqual(out, [])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("ACKNOWLEDGED", out[0]["message"])
 
     # ---- arming the executable build target is a guardrail weakening; INVERTED from home (first-set FIRES) ----
     _ARM_PATCH = ('@@ -1,3 +1,4 @@\n'
@@ -2314,8 +2573,8 @@ class TestWeakeningReHome(unittest.TestCase):
                      '+  "product_build_target": "acme/ok",\r  "product_build_target": "evil/x"\n')
         self.assertEqual(a(cr, None), (None, None, "escaped"))
 
-    def test_product_build_target_first_set_is_flagged_and_cleared_by_the_ack(self):
-        # end-to-end through main(): arming the target on a repo with none recorded blocks until the ack, then clears.
+    def test_product_build_target_first_set_is_flagged_and_downgraded_by_the_ack(self):
+        # end-to-end through main(): arming the target on a repo with none recorded blocks until the ack, which downgrades it to a record.
         rc, out = self._main_json(
             {"pull_request": {"number": 1, "labels": []}},
             self._f(self._ARM_PATCH))  # base_product_build_target None -> first-set
@@ -2329,7 +2588,9 @@ class TestWeakeningReHome(unittest.TestCase):
         rc, out = self._main_json(
             {"pull_request": {"number": 1, "labels": [{"name": "guardrail-ack"}]}},
             self._f(self._ARM_PATCH))
-        self.assertEqual(out, [])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("ACKNOWLEDGED", out[0]["message"])
 
     def test_product_build_target_repoint_names_old_and_new(self):
         rc, out = self._main_json(
@@ -2451,17 +2712,108 @@ class TestWeakeningReHome(unittest.TestCase):
         finally:
             github_client._urlopen = orig
 
+    def test_directional_escalation_promotes_to_hard_through_main(self):
+        # end-to-end: a check-rule tier flip (a disclosure-tier FILE, a killswitch-shaped EDIT) must land
+        # in the hard finding with the escalation note — and downgrade to ACKNOWLEDGED under the ack.
+        files = [{"filename": ".engine/check/foo.json", "status": "modified",
+                  "patch": '@@ -5 +5 @@\n-  "tier": "hard",\n+  "tier": "soft",'}]
+        rc, out = self._main_json({"pull_request": {"number": 1, "labels": []}}, files)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "hard")
+        self.assertIn("foo.json", out[0]["message"])
+        self.assertIn("configures the gate itself", out[0]["message"])
+        self.assertIn("guardrail-ack", out[0]["message"])
+        rc, out = self._main_json({"pull_request": {"number": 1, "labels": [{"name": "guardrail-ack"}]}}, files)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("ACKNOWLEDGED", out[0]["message"])
+
+    def test_mixed_hard_and_soft_emit_two_findings(self):
+        files = [{"filename": ".engine/suites.json", "status": "modified"},
+                 {"filename": ".engine/tools/modes.py", "status": "modified"}]
+        rc, out = self._main_json({"pull_request": {"number": 1, "labels": []}}, files)
+        self.assertEqual(len(out), 2)
+        self.assertEqual({f["severity"] for f in out}, {"hard", "soft"})
+        hard = next(f for f in out if f["severity"] == "hard")
+        soft = next(f for f in out if f["severity"] == "soft")
+        self.assertIn("suites.json", hard["message"])
+        self.assertIn("modes.py", soft["message"])
+
+    def test_oversized_pr_with_ack_downgrades_to_record(self):
+        # the fail-closed completeness path honors the ack as a DOWNGRADE (it used to promise this and
+        # never check the label at all).
+        files = [{"filename": f"docs/f{i}.md", "status": "modified"} for i in range(100)]
+        rc, out = self._main_json({"pull_request": {"number": 1, "labels": [{"name": "guardrail-ack"}]}},
+                                  files, expected=5000)
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+        self.assertIn("acknowledged", out[0]["message"].lower())
+
+    def test_pr_controlled_values_are_sanitized_in_findings(self):
+        # a crafted filename and a crafted repoint value must not carry markdown/workflow-command
+        # metacharacters into any rendered finding (the eADR-0040 sanitization guarantee).
+        # under the guarded .engine/check/ prefix, so the crafted name genuinely enters the rendered
+        # listing (a non-guarded evil name never reaches _listing at all — re-audit).
+        evil_file = {"filename": ".engine/check/foo.json`[x](https://e)::stop-commands::",
+                     "status": "modified",
+                     "patch": '@@ -5 +5 @@\n-  "tier": "hard",\n+  "tier": "soft",'}
+        patch = ('@@ -1,4 +1,4 @@\n'
+                 '   "identity": "solo",\n'
+                 '-  "home_repository": "acme/engine-home"\n'
+                 '+  "home_repository": "evil/[CLICK](https://phish)::notice::x"\n'
+                 ' }\n')
+        files = [evil_file,
+                 {"filename": ".engine/engine.json", "status": "modified", "patch": patch}]
+        rc, out = self._main_json({"pull_request": {"number": 1, "labels": []}}, files,
+                                  base_home="acme/engine-home")
+        joined = "\n".join(f["message"] for f in out)
+        # the guard's own static prose legitimately uses backticks (`guardrail-ack`), so assert the
+        # INJECTED sequences are gone — including the backtick-bearing filename fragment.
+        for bad in ("[CLICK]", "::notice::", "::stop-commands::", "foo.json`", "(https"):
+            self.assertNotIn(bad, joined)
+        self.assertIn("foo.json", joined)  # the sanitized name itself IS rendered
+
+    def test_settings_matcher_rewrite_escalates_to_hard(self):
+        # neutering the write-gate by rewriting a PreToolUse block's matcher (never touching a hook line)
+        # must escalate — the adversarial shape the divergence review proved against the token list.
+        files = [{"filename": ".claude/settings.json", "status": "modified",
+                  "patch": '@@ -10 +10 @@\n-        "matcher": "",\n+        "matcher": "never-match-anything",'}]
+        rc, out = self._main_json({"pull_request": {"number": 1, "labels": []}}, files)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "hard")
+
+    def test_bootstrap_comment_churn_stays_soft(self):
+        # the ordinary self.required_checks attribute (and prose around it) must NOT escalate — the
+        # tokens are full ruleset-field literals, never bare required_/require_ prefixes (re-audit).
+        files = [{"filename": ".engine/tools/bootstrap.py", "status": "modified",
+                  "patch": "@@ -1 +1 @@\n-        # self.required_checks is the effective set\n"
+                           "+        # self.required_checks is the effective SET"}]
+        rc, out = self._main_json({"pull_request": {"number": 1, "labels": []}}, files)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["severity"], "soft")
+
+    def test_bootstrap_real_ruleset_vocabulary_escalates(self):
+        # the fields bootstrap.py actually writes (beyond the required_status_checks family) must escalate.
+        for line in ('-            "require_code_owner_review": True,',
+                     '-            {"type": "non_fast_forward"},',
+                     '-            "dismiss_stale_reviews_on_push": True,'):
+            files = [{"filename": ".engine/tools/bootstrap.py", "status": "modified",
+                      "patch": "@@ -1 +1 @@\n" + line}]
+            rc, out = self._main_json({"pull_request": {"number": 1, "labels": []}}, files)
+            self.assertEqual(out[0]["severity"], "hard", line)
+
     def test_weakening_on_a_late_page_is_caught(self):
         """The classifier sees the WHOLE paginated list, so a guardrail edit that lands
         after file 100 is flagged — the behavior the single-page fetch missed."""
         files = [{"filename": f"docs/f{i}.md", "status": "modified"} for i in range(100)]
-        files.append({"filename": ".engine/tools/validate.py", "status": "modified"})
+        files.append({"filename": ".engine/uv.lock", "status": "modified"})
         rc, out = self._main_json({"pull_request": {"number": 1, "labels": []}}, files)
         self.assertEqual(rc, 0)
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0]["severity"], "hard")
         self.assertIn("guardrail-ack", out[0]["message"])
-        self.assertIn("validate.py", out[0]["message"])
+        self.assertIn("uv.lock", out[0]["message"])
         self.assertIn("GUARDRAIL CHANGE DETECTED", out[0]["message"])
 
     def test_oversized_pr_fails_closed_not_clean(self):

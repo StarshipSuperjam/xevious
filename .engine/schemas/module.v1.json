@@ -138,6 +138,7 @@
     "migrations": {
       "description": "Version-keyed data or schema transforms, run in dependency order when the engine is upgraded. Each key is the module version the transform brings the module TO (for example 1.4.0); its value names the transform to run at that version. Empty or absent for a module that needs none. A 'data' transform reshapes a gitignored store and is backed up before it runs, so the change is reversible; a 'config' transform reshapes a committed file, which a reverted upgrade restores on its own.",
       "type": "object",
+      "propertyNames": { "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
       "additionalProperties": {
         "type": "object",
         "required": ["description", "run", "kind"],
@@ -163,6 +164,7 @@
     "retired_capabilities": {
       "description": "Version-keyed announcements that a capability this module used to offer has been REMOVED. This is neither the module-level `status: retired` (which retires a whole module) nor a `migrations` entry (which runs code to reshape state): a retired-capability entry runs nothing and reshapes nothing. It exists solely so an operator who upgrades ACROSS the version is told, in the update's pull request and its preview, that something they could ask for before is gone. Each key is the module version at which the capability went away; its value is the plain-language line the operator reads. Entries are selected by the SAME version RANGE as `migrations` — shown once when an upgrade crosses the version, never to a fresh adopter who never had the capability — and fire only while THIS module is still present, so a capability retired by removing the whole module cannot be announced here (that removal is the release cut's own inventory, and an announcement meant to outlive its module belongs in a module that survives). Once shipped, a key is NEVER removed: an engine upgrading from an older version must still cross it to see the notice, and unlike a migration there is no no-op form to fall back on — to stop announcing is simply not an option. This key raises a module's version floor at the release cut but does not certify severity: a breaking removal must still carry its own major/impact signal. Empty or absent for a module that has retired nothing.",
       "type": "object",
+      "propertyNames": { "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
       "additionalProperties": {
         "type": "object",
         "required": ["description"],

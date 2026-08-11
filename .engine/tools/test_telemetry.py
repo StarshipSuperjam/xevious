@@ -1422,6 +1422,17 @@ class TestSeverityMarker(unittest.TestCase):
                                                  "rule:x", telemetry.PERSISTENT_BENIGN, T[0], T[0])
         self.assertEqual(telemetry.parse_severity(body), telemetry.PERSISTENT_BENIGN)
 
+    def test_severity_trailer_is_the_single_source_and_round_trips(self):
+        # severity_trailer is the ONE composer of the marker (used by _with_tracking_trailers AND, via
+        # issue_author, by a session grading an Issue). Each known class round-trips through parse_severity.
+        for sev in (telemetry.TRUST_CRITICAL, telemetry.PERSISTENT_BENIGN):
+            self.assertEqual(telemetry.parse_severity(telemetry.severity_trailer(sev)), sev)
+
+    def test_severity_trailer_refuses_a_class_outside_the_two(self):
+        for bad in ("HIJACK", "high", "", "trust_critical"):
+            with self.assertRaises(ValueError):
+                telemetry.severity_trailer(bad)
+
     def test_list_open_engine_issues_exposes_each_issues_severity(self):
         f = FakeGH(labels={"engine"})
         telemetry.promote_finding(gh(f), rec("ci/x", telemetry.PERSISTENT_BENIGN), T[0])
@@ -1962,6 +1973,153 @@ class TestSessionPassSerialization(unittest.TestCase):
              mock.patch.object(telemetry, "_run_cli", return_value=0):
             telemetry.main(["run"])
         lock.assert_not_called()
+
+
+class TestCaptureRecoveryResolve(unittest.TestCase):
+    """#774: the dedicated live-derived resolve pass for memory/capture-degraded. Clearance is
+    REPO-WIDE (the marker is per-tree, the Issue per-repo): the pass closes the stuck Issue only when
+    NO tree carries a failing marker, prepends a plain-language resolution note, and drops the
+    signal's cache entry so a recurrence re-accrues freshly. The wrongly-eager broken fixture — a
+    single-tree read that would close while a sibling tree still fails — is what the any-failing-tree
+    case exists to catch."""
+
+    _SID = telemetry.CAPTURE_DEGRADED_SOURCE_ID
+
+    def setUp(self):
+        self._td = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self._td, ignore_errors=True)
+        self.repo = os.path.join(self._td, "repo")
+        os.makedirs(self.repo)
+        self.cachep = os.path.join(self._td, "inbox-streams.json")
+
+    def _marker(self, tree, state):
+        d = os.path.join(tree, ".engine", "telemetry", ".cache")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "memory-capture.status"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"state": state, "session_id": None, "ts": 1}))
+
+    def _worktree(self, name):
+        p = os.path.join(self.repo, ".claude", "worktrees", name)
+        os.makedirs(p, exist_ok=True)
+        return p
+
+    def _gh(self, **kw):
+        fake = telemetry._FakeGitHub(**kw)
+        return fake, telemetry.GitHubIssues("o/r", "tok", transport=fake.transport)
+
+    def _stuck(self, gh):
+        body = ("The engine keeps failing to save session conversations to this project's memory.\n\n"
+                f"<!-- engine-signal: {self._SID} -->")
+        return gh.open_issue("Engine health: capture keeps failing", body)["number"]
+
+    def test_recovered_everywhere_closes_with_a_plain_note(self):
+        wt = self._worktree("wt-a")
+        self._marker(self.repo, "captured")
+        self._marker(wt, "captured")
+        fake, gh = self._gh()
+        num = self._stuck(gh)
+        # run from the WORKTREE root — the sweep must reach the parent and siblings from either end
+        self.assertTrue(telemetry.resolve_capture_marker(gh, root=wt, cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "closed")
+        self.assertTrue(fake.issues[num]["body"].startswith("**Resolved"))   # why, never a silent vanish
+        self.assertIn(f"<!-- engine-signal: {self._SID} -->", fake.issues[num]["body"])  # trailer intact
+
+    def test_any_failing_tree_blocks_the_close(self):
+        # the broken-fixture case: a single-tree read would wrongly close here — the sweep must not.
+        dormant = self._worktree("wt-dormant")
+        self._marker(self.repo, "captured")
+        self._marker(dormant, "unparseable")
+        fake, gh = self._gh()
+        num = self._stuck(gh)
+        self.assertFalse(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "open")
+
+    def test_all_absent_clears(self):
+        # captured/absent both clear (#774's live-derived semantics): no marker anywhere -> no failing
+        # evidence -> the stuck Issue closes.
+        self._worktree("wt-fresh")
+        fake, gh = self._gh()
+        num = self._stuck(gh)
+        self.assertTrue(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "closed")
+
+    def test_corrupt_marker_is_no_evidence_never_a_block(self):
+        wt = self._worktree("wt-b")
+        self._marker(self.repo, "captured")
+        d = os.path.join(wt, ".engine", "telemetry", ".cache")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "memory-capture.status"), "w", encoding="utf-8") as fh:
+            fh.write("not json at all")
+        fake, gh = self._gh()
+        num = self._stuck(gh)
+        self.assertTrue(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "closed")
+
+    def test_no_open_issue_is_a_noop(self):
+        self._marker(self.repo, "captured")
+        fake, gh = self._gh()
+        self.assertFalse(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        self.assertEqual(len(fake.issues), 0)   # close-only: it never opens anything
+
+    def test_other_sids_issues_are_untouched(self):
+        self._marker(self.repo, "captured")
+        fake, gh = self._gh()
+        num = self._stuck(gh)
+        other = gh.open_issue("Engine health: something else",
+                              "body\n\n<!-- engine-signal: ambient/other-signal -->")["number"]
+        self.assertTrue(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "closed")
+        self.assertEqual(fake.issues[other]["state"], "open")
+
+    def test_github_degraded_is_a_noop_retried_next_session(self):
+        self._marker(self.repo, "captured")
+        _fake, gh = self._gh(fail_status=403)
+        self.assertFalse(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+
+    def test_close_drops_only_this_signals_cache_entry(self):
+        self._marker(self.repo, "captured")
+        with open(self.cachep, "w", encoding="utf-8") as fh:
+            json.dump({self._SID: {"persist": 3, "absent": 0, "issue": 1},
+                       "boot/refused-cursor": {"persist": 1, "absent": 0, "issue": 7}}, fh)
+        fake, gh = self._gh()
+        self._stuck(gh)
+        self.assertTrue(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        with open(self.cachep, encoding="utf-8") as fh:
+            counts = json.load(fh)
+        self.assertNotIn(self._SID, counts)                     # a recurrence re-accrues freshly
+        self.assertIn("boot/refused-cursor", counts)            # nobody else's counts are touched
+
+    def test_clearance_fails_closed_on_an_undecidable_sweep(self):
+        with mock.patch.object(telemetry, "_capture_tree_roots", side_effect=RuntimeError("boom")):
+            self.assertFalse(telemetry.capture_clearance(self.repo))
+
+    def test_state_vocabulary_derives_from_capture_and_unknown_states_block(self):
+        # the lockstep pin: telemetry never restates capture's vocabulary, it derives it — and the
+        # drift DIRECTION is pinned too: a recorded outcome this module has never heard of BLOCKS
+        # the close (fails toward the Issue staying open), never reads as no-evidence.
+        from memory import capture as capture_mod
+        self.assertEqual(telemetry.CAPTURE_FAILING_STATES,
+                         frozenset(capture_mod.CAPTURE_STATUS_STATES) - {"captured"})
+        self._marker(self.repo, "some-future-failing-state")
+        fake, gh = self._gh()
+        num = self._stuck(gh)
+        self.assertFalse(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "open")
+
+    def test_noted_but_unclosed_issue_does_not_stack_banners_on_retry(self):
+        # transient close failure after the body note landed: the retry must not stack a second
+        # banner, and the eventual close carries exactly one.
+        self._marker(self.repo, "captured")
+        fake, gh = self._gh()
+        num = self._stuck(gh)
+        with mock.patch.object(telemetry.GitHubIssues, "close_issue",
+                               side_effect=RuntimeError("transient")):
+            self.assertFalse(telemetry.resolve_capture_marker(gh, root=self.repo,
+                                                              cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "open")            # left to retry next session
+        self.assertTrue(telemetry.resolve_capture_marker(gh, root=self.repo, cache_path=self.cachep))
+        self.assertEqual(fake.issues[num]["state"], "closed")
+        self.assertEqual(fake.issues[num]["body"].count("**Resolved"), 1)
 
 
 if __name__ == "__main__":

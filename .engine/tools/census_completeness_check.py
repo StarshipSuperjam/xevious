@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Demo census-completeness recurrence guard (#424 U13c) — the custom/script entry for
+"""Demo census-completeness recurrence guard (StarshipSuperjam/engine-template#424 U13c) — the custom/script entry for
 engine/check/census-completeness.
 
 The engine's standalone construction demos (`.engine/tools/demo_*.py`) are maintainer build evidence, not
@@ -7,7 +7,7 @@ operator capability. Each must either RETIRE at first run (walled in the first-r
 not travel into a generated repo) or have a real reason to travel — a surviving file that reaches it. This check
 catches the drift where a demo silently does NEITHER: it is absent from the census AND nothing that stays in a
 finished project uses it, so it would ship into every generated repo as leftover workshop clutter. Nine such
-demos had accreted before this check existed (#424 U13a walled them).
+demos had accreted before this check existed (StarshipSuperjam/engine-template#424 U13a walled them).
 
 What it is, honestly (the demo-fate policy vs the reference-closure fact): this is a CENSUS-COMPLETENESS / reference-closure-
 consistency guard, NOT a fate-enforcement gate. The demo-fate policy gives a construction demo two sanctioned fates — retired
@@ -24,10 +24,10 @@ generated/deployed repo, where the demos are already retired and there is nothin
 keyed off the root CLAUDE.md "construction governance" marker; the structural, non-inherited origin==home signal
 replaces that proxy, which both travels into every copy and vanishes when the floor is promoted.) Like
 memory_pointer_public_safety_check.py it therefore ships-and-no-ops rather than retiring (its check.json travels
-in validators-core; retiring the script would dangle that reference — the #411 trap).
+in validators-core; retiring the script would dangle that reference — the StarshipSuperjam/engine-template#411 trap).
 
 It reads the census from the committed manifest (.engine/provisioning/first-run-assets.json) — NEVER by importing
-the retiring instantiator (the #411 reference-closure lesson). Within the construction repo it FAILS CLOSED:
+the retiring instantiator (the StarshipSuperjam/engine-template#411 reference-closure lesson). Within the construction repo it FAILS CLOSED:
 if the census can't be read it emits a hard finding rather than silently passing — a completeness guard that
 degrades to a pass would green-light the very drift it exists to catch. It runs as a hard CI
 custom/script check: finding.v1 JSON on stdout, return 0 on a successful evaluation (empty array = every demo is
@@ -61,7 +61,7 @@ def _in_home_repo() -> bool:
 
 def _census(root: str) -> "set | None":
     """The first-run retirement set (repo-relative file paths), read from the committed manifest as PLAIN DATA —
-    never by importing the retiring instantiator (#411). Returns None when the manifest is missing, unreadable,
+    never by importing the retiring instantiator (StarshipSuperjam/engine-template#411). Returns None when the manifest is missing, unreadable,
     not valid JSON, or structurally malformed (not an object, or `files` not a list) — anything that stops this
     check reading the census; check() turns that into one hard fail-closed finding. The manifest is permanent (it
     never self-retires), so a missing one is always a fault, never a legitimate state. A present-but-empty `files`
@@ -186,7 +186,7 @@ def check(root: str | None = None) -> list:
 def main() -> int:
     # ENGINE_CENSUS_ROOT (unset in production) lets the negative-fixture meta-check point the scan at a seeded
     # mini-tree (an orphan demo + a census manifest that omits it + no surviving non-demo importer), so this
-    # completeness guard is witnessed biting a real bad input (#286 fixture seam). The home-scope gate
+    # completeness guard is witnessed biting a real bad input (StarshipSuperjam/engine-template#286 fixture seam). The home-scope gate
     # still reads the REAL root, so the fixture bites only in the home repo's CI (never in a deployed one).
     print(json.dumps(check(validate.env_override_path("ENGINE_CENSUS_ROOT"))))
     return 0

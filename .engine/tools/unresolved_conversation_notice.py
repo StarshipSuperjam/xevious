@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Passive pre-arm for a merge blocked by an unresolved review conversation — the branch ruleset's
-conversation-resolution rule (engine-template #408).
+conversation-resolution rule (StarshipSuperjam/engine-template#408).
 
 The branch ruleset requires every review conversation to be resolved before merging. When one is still open,
 GitHub simply GREYS the merge button — a native state a non-engineer cannot self-diagnose (all the checks are

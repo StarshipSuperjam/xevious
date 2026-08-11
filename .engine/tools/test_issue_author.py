@@ -14,6 +14,7 @@ The deliverable-gate cold review attests each test's assertion matches its name.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import unittest
 
@@ -85,6 +86,41 @@ class TestNoBareIdDump(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 issue_author.render_engine_issue_body(what_this_is="a", whats_next="b", references=bad)
+
+
+class TestImportOrderStaysCycleFree(unittest.TestCase):
+    def test_both_import_orders_work_in_a_fresh_interpreter(self):
+        # telemetry imports issue_author at module load; issue_author must therefore import telemetry only
+        # function-locally (inside render_engine_issue_body). A module-scope `import telemetry` sneaking back
+        # into issue_author would crash whichever order loads telemetry first — this pins BOTH orders in
+        # fresh interpreters, which the in-process suite (one fixed order) cannot exercise.
+        tools = os.path.dirname(os.path.abspath(__file__))
+        for order in ("import telemetry, issue_author", "import issue_author, telemetry"):
+            proc = subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, {tools!r}); {order}"],
+                                  capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, f"{order!r} failed:\n{proc.stderr}")
+
+
+class TestUrgencyAtFiling(unittest.TestCase):
+    def test_default_unrated_leaves_body_unchanged(self):
+        # Omitting urgency (the default) must render byte-for-byte what a pre-urgency caller got — no marker.
+        without = issue_author.render_engine_issue_body(what_this_is="a", whats_next="b")
+        explicit_none = issue_author.render_engine_issue_body(what_this_is="a", whats_next="b", urgency=None)
+        self.assertEqual(without, explicit_none)
+        self.assertIsNone(telemetry.parse_severity(without))
+
+    def test_each_class_appends_the_marker_last_and_round_trips(self):
+        for sev in (telemetry.TRUST_CRITICAL, telemetry.PERSISTENT_BENIGN):
+            body = issue_author.render_engine_issue_body(what_this_is="a", whats_next="b", urgency=sev)
+            # The marker telemetry writes, recovered by the same reader — appended LAST so a forged prose
+            # marker cannot win (parse_severity takes the last match).
+            self.assertEqual(telemetry.parse_severity(body), sev)
+            self.assertTrue(body.rstrip().endswith(f"<!-- engine-severity: {sev} -->"))
+
+    def test_urgency_outside_the_two_classes_is_refused(self):
+        for bad in ("high", "trust_critical", "", "TRUST-CRITICAL"):
+            with self.assertRaises(ValueError):
+                issue_author.render_engine_issue_body(what_this_is="a", whats_next="b", urgency=bad)
 
 
 class TestSingleAuthoringPath(unittest.TestCase):

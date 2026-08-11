@@ -58,7 +58,9 @@ CLI:
   python tools/module_manager.py sync-groups         # re-derive + rewrite [tool.uv] default-groups
   python tools/module_manager.py add <id> [--json]   # fetch + install a module at the current release
   python tools/module_manager.py plan-remove <id>    # read-only: refusal reasons / what remove would do
-  python tools/module_manager.py remove <id> [--json]
+  python tools/module_manager.py remove <id> [--removal-notice "…"] [--json]
+      # --removal-notice: on a release-publishing engine, record in plain language what an operator could ask
+      #   for before and no longer can — the release cut refuses to ship a whole-module removal without it.
   python tools/module_manager.py upgrade [ref]           # preview an update (checks only; changes nothing)
   python tools/module_manager.py upgrade [ref] --confirm [--json]  # apply the whole-engine update vX -> vY
   python tools/module_manager.py demo                # mutation-free fail-then-pass (remove + add + upgrade; fixtures)
@@ -83,13 +85,24 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import validate          # noqa: E402  (finding.v1 + ROOT + read)
 import wiring            # noqa: E402  (the wiring library: reverse_all, apply, the shared-file constants)
 import module_coherence  # noqa: E402  (the present-set reader + the coherence legs)
+import module_catalog    # noqa: E402  (the degrade-safe optional-module catalog reader — offer text + the decline discriminator)
 import bootstrap         # noqa: E402  (ControlPlane.de_bootstrap — the clean-removal control-plane leg; one-way)
+import engine_write      # noqa: E402  (the engine-owned write boundary — homed once, StarshipSuperjam/engine-template#862/StarshipSuperjam/engine-template#923)
 
 
 # ---- paths (computed from validate.ROOT at CALL time so a test/demo can redirect ROOT) --------
 
 def _engine_manifest_path() -> str:
     return os.path.join(validate.ROOT, module_coherence.ENGINE_MANIFEST_REL)
+
+
+def _write_engine_manifest(engine: dict) -> None:
+    """The ONLY writer of the deployed `.engine/engine.json` (StarshipSuperjam/engine-template#923): every lifecycle path — remove, add,
+    the failed-install cleanup, the upgrade tail's bump — funnels here, so the write-boundary guard is
+    inherited rather than re-remembered per site. Raises `engine_write.EngineWriteRefused` when the
+    manifest is a symlink or resolves outside the tree; each caller owns its failure mode (a refusal
+    result, a disclosed residue line, the tail's staged-refusal reason)."""
+    engine_write.write_json(_engine_manifest_path(), engine, base=validate.ROOT)
 
 
 def _pyproject_path() -> str:
@@ -102,7 +115,11 @@ def _modules_dir(module_id: str) -> str:
 
 def _write_json(path: str, data) -> None:
     """2-space-indent + trailing-newline JSON writer (mirrors wiring._write_json) so an
-    operator's later diff of engine.json stays minimal."""
+    operator's later diff of engine.json stays minimal. Deliberately UNGUARDED (StarshipSuperjam/engine-template#923): part of its real
+    job is writing release-tree and fixture files OUTSIDE the repository root (the demo builders write
+    throwaway release trees before `_redirect_root` engages), so a root-containment rule here would
+    refuse legitimate writes. The deployed manifest routes through `_write_engine_manifest` instead —
+    guard destinations, not this writer."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
@@ -171,7 +188,22 @@ def rewrite_default_groups_text(text: str, new_groups: list) -> tuple:
 
 
 def _maybe_rewrite_default_groups(new_groups: list, pyproject_path: str | None = None) -> bool:
-    path = pyproject_path or _pyproject_path()
+    # ONE discriminator for both the path and the guard base (a falsy-vs-None mismatch here would let an
+    # empty-string argument resolve to the REAL slot while downgrading its guard — the QA gate reproduced
+    # exactly that bypass): `is None` means the real engine-owned slot, anything else is caller-supplied.
+    use_default = pyproject_path is None
+    path = _pyproject_path() if use_default else pyproject_path
+    # StarshipSuperjam/engine-template#923: .engine/pyproject.toml is engine-owned and rewritten IN PLACE on the same add/remove/upgrade
+    # paths as the manifest — never write it through a shortcut. The guard runs BEFORE the exists() check:
+    # exists() FOLLOWS a link and reads a DANGLING shortcut as "absent", which would silently skip the
+    # refusal (the StarshipSuperjam/engine-template#862 ordering lesson). Base per the engine_write doctrine: the repository root for the
+    # real slot, the target's own parent for an injected path (tests pass temp trees — an ambient-root
+    # base would refuse those legitimate writes). Every lifecycle caller wraps this in a fail-open except
+    # that discloses the refusal in its notes/left_in_place.
+    base = validate.ROOT if use_default else os.path.dirname(os.path.abspath(path))
+    reason = engine_write.write_through_symlink_reason(path, base)
+    if reason:
+        raise engine_write.EngineWriteRefused(reason)
     if not os.path.exists(path):
         return False
     text = validate.read(path)
@@ -241,11 +273,18 @@ def _permission_residue(target: dict) -> list:
     return out
 
 
-def remove(module_id: str) -> dict:
+def remove(module_id: str, removal_notice: str | None = None) -> dict:
     """Remove one installed module (manifest-derived reversal). Returns a structured result; the CLI
     renders it in plain language. Refuses (no mutation) per plan_remove; otherwise reverses wiring,
     deletes the engine-identified files it owns + its manifest folder, drops it from engine.json,
-    re-derives the tool-runtime dependency groups, and re-runs coherence."""
+    re-derives the tool-runtime dependency groups, and re-runs coherence.
+
+    `removal_notice` (optional): the plain-language line an update will show the operator when a release
+    drops this whole module ("what you could ask for before and no longer can"). When given, it is recorded
+    into engine.json `removed_capabilities[module_id]` (the release cut later stamps its `removed_in`) — the
+    authored-at-source path so the maintainer need not hand-edit the manifest. Local operator uninstalls omit
+    it (no release is cut from a deployment). When omitted, a mild reminder rides the result, and the release
+    cut is the belt: it refuses to cut a release that drops a module without its notice."""
     manifests = module_coherence.discover_manifests()
     plan = plan_remove(module_id, manifests)
     if plan["refused"]:
@@ -255,7 +294,7 @@ def remove(module_id: str) -> dict:
     manifest_path, target = by_id[module_id]
     result = {"module_id": module_id, "refused": False, "applied": True,
               "reversed": [], "left_in_place": _permission_residue(target),
-              "deleted": [], "groups_after": None, "findings": []}
+              "deleted": [], "groups_after": None, "findings": [], "notes": []}
 
     # (1) reverse the module's wiring (idempotent; permission no-op leaves honest residue)
     for f in wiring.reverse_all(target.get("wires") or []):
@@ -264,7 +303,7 @@ def remove(module_id: str) -> dict:
     # (2) delete the engine-identified files the module owns — sole-owner, at ANY path (the reversal law
     #     deletes the engine-identified files a module provides regardless of where they live; whole-engine
     #     remove_engine already does this, so a per-module remove that stopped at .engine/ left a removed
-    #     module's .claude/ personas + skills orphaned on disk — #409). A module's `provides` are always
+    #     module's .claude/ personas + skills orphaned on disk — StarshipSuperjam/engine-template#409). A module's `provides` are always
     #     wholly engine-owned files; anything shared with the operator (a settings.json hook, a permission)
     #     arrives via `wires` and is reversed in step (1), so the sole-owner guard is the only gate needed.
     target_claims = module_coherence.provides_claims([(manifest_path, target)])
@@ -282,11 +321,41 @@ def remove(module_id: str) -> dict:
         shutil.rmtree(mod_dir)
         result["deleted"].append(f".engine/modules/{module_id}/")
 
-    # (3) drop the module from the engine manifest
+    # (3) drop the module from the engine manifest; optionally record its plain-language removal notice so a
+    #     release that drops this whole module can announce the loss (and reconcile it away) rather than refuse.
     engine = module_coherence.load_engine_manifest()
-    if engine and module_id in (engine.get("packages") or {}):
-        del engine["packages"][module_id]
-        _write_json(_engine_manifest_path(), engine)
+    if engine is not None:
+        changed_engine = False
+        if module_id in (engine.get("packages") or {}):
+            del engine["packages"][module_id]
+            changed_engine = True
+        if removal_notice:
+            engine.setdefault("removed_capabilities", {})[module_id] = {"description": removal_notice}
+            changed_engine = True
+        if changed_engine:
+            try:
+                _write_engine_manifest(engine)
+            except engine_write.EngineWriteRefused as exc:
+                # StarshipSuperjam/engine-template#923: the module's FILES are already deleted (steps 1-2), so this is a disclosed
+                # half-state, never a "nothing was changed" refusal — the one dishonest message here.
+                # One authored note (not a `left_in_place` entry — that render heading says "on
+                # purpose", and a refused write is not a deliberate keep). Phase-aware remedy: the
+                # module's manifest folder is already gone, so a RE-RUN would refuse ("not
+                # installed"), and NOTHING catches the stale entry automatically (check_coherence
+                # never compares `packages` to the discovered manifests) — the hand-edit is the
+                # only recourse, and the note must not promise a safety net that does not exist.
+                result["notes"].append(
+                    f"The module's files were removed, but its entry could not be dropped from "
+                    f".engine/engine.json: {exc} Once the shortcut is gone, remove the "
+                    f"'{module_id}' line from \"packages\" in .engine/engine.json by hand — this "
+                    f"stale entry won't be caught automatically.")
+    if not removal_notice:
+        result["notes"].append(
+            f"If this engine publishes releases, record what removing '{module_id}' takes away by adding it to "
+            f"engine.json's removed_capabilities — {{ \"{module_id}\": {{ \"description\": \"…what an operator "
+            f"could ask for before and no longer can…\" }} }} — or the release cut will ask for it. (Next time, "
+            f"pass --removal-notice at removal to record it in one step; '{module_id}' is already gone now, so "
+            f"the notice is a hand-edit here.)")
 
     # (4) re-derive + rewrite the tool-runtime dependency-group selection for the remaining set
     try:
@@ -309,7 +378,36 @@ def remove(module_id: str) -> dict:
 class _NoPublishedRelease(RuntimeError):
     """The home is reachable but has NO release to resolve (the releases API returned 200 with no
     `tag_name`) — a genuine missing-release condition, distinct from a transport failure, so the caller
-    refuses LOUDLY naming the home rather than degrading it as a network problem (#367)."""
+    refuses LOUDLY naming the home rather than degrading it as a network problem (StarshipSuperjam/engine-template#367)."""
+
+
+def _release_api_request(path: str, *, token: str | None,
+                         user_agent: str = "engine-module-manager"):
+    """Build the authenticated-OR-anonymous GitHub API Request that the three release/tag network
+    boundaries below share (the tarball fetch, the latest-release resolve, the tag-published probe), so the
+    token resolution and the header block live in ONE place — an API-version or auth change is now a single
+    edit here, not three. Resolves the token ITSELF: the caller passes its own `token`, or None to fall back
+    to `boot.gh_token()` (matching the `tok = token if token is not None else boot.gh_token()` the three
+    callers each used to inline). `path` is an `api.github.com`-relative path the caller builds.
+
+    Deliberately NOT `github_client.request`: that core client sets `Authorization: Bearer` UNCONDITIONALLY
+    (its off-host guard protects a token-BEARING request), but these release reads stay OPTIONALLY
+    authenticated — a public engine home's release is fetchable with no token, and an empty `Bearer ` would
+    401 even a public repo. So this helper keeps the `if tok` conditional. It also carries no off-host guard:
+    the callers build their own paths and never follow a `Link` header, so there is no redirect to guard.
+    Callers keep their own slug-resolve (each with its own not-found message) and their own transport (raw
+    tarball bytes / JSON parse / 404-vs-raise), mirroring github_client's own request/get seam split. `path`
+    must be host-relative (a leading `/`): it is joined onto the host verbatim, so a slash-less path would
+    silently build a malformed URL — refuse it loudly instead."""
+    if not path.startswith("/"):
+        raise ValueError(f"release API path must be host-relative and start with '/': {path!r}")
+    import urllib.request, boot   # lazy: only the real network path needs these (matches the call sites)
+    tok = token if token is not None else boot.gh_token()
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
+               "User-Agent": user_agent}
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    return urllib.request.Request(f"https://api.github.com{path}", headers=headers)
 
 
 def _fetch_release_tree(ref: str, dest_dir: str, repo: str | None = None,
@@ -327,17 +425,12 @@ def _fetch_release_tree(ref: str, dest_dir: str, repo: str | None = None,
     branch (the supply-chain control)."""
     import tarfile                # local: only the real network path needs these
     import urllib.request
-    import boot                   # lazy: only the real fetch needs the repo slug + token
+    import boot                   # lazy: only the real fetch needs the repo slug
     slug = repo or boot.repo_slug()
     if not slug:
         raise RuntimeError("could not determine the engine repository to fetch the release from.")
-    tok = token if token is not None else boot.gh_token()
-    url = f"https://api.github.com/repos/{slug}/tarball/{ref}"
-    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
-               "User-Agent": "engine-module-manager"}
-    if tok:
-        headers["Authorization"] = f"Bearer {tok}"
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as resp:
+    req = _release_api_request(f"/repos/{slug}/tarball/{ref}", token=token)
+    with urllib.request.urlopen(req, timeout=60) as resp:
         payload = resp.read()
     with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as tf:
         tops = {n.split("/", 1)[0] for n in tf.getnames() if n}
@@ -368,33 +461,92 @@ def _archive_tree(ref: str, dest_dir: str) -> str:
 
 
 def _resolve_release_ref(ref: str | None, repo: str | None = None, token: str | None = None) -> str:
-    """Resolve a target release ref to a CONCRETE tag. A pinned tag/sha passes through unchanged; None or
-    "latest" is resolved to the repository's latest published release tag via the GitHub releases API — so
-    the engine never fetches, runs, or RECORDS a moving ref (the tag-pin is the supply-chain control). THE NETWORK BOUNDARY for ref resolution — only the real
-    upgrade path reaches it (the injected release_tree path passes a concrete ref), so it is part of the
-    same named inductive gap as the release fetch (never run in the construction repo)."""
+    """Resolve a target release ref to a CONCRETE, fetchable tag. A pinned tag/sha passes through unchanged;
+    None or "latest" is resolved to the repository's latest published release tag via the GitHub releases
+    API; a BARE version (`0.4.1` — the shape the manifest records, since `_bump_engine_manifest` strips the
+    leading `v`) is resolved to the home's real published tag (`v0.4.1` or `0.4.1`), so a home that tags
+    releases `vX.Y.Z` is fetched correctly instead of 404ing on the bare version (issue StarshipSuperjam/engine-template#760). The engine
+    never fetches, runs, or RECORDS a moving ref (the tag-pin is the supply-chain control). THE NETWORK
+    BOUNDARY for ref resolution — only the real add/upgrade path reaches it (the injected release_tree path
+    passes a concrete ref), so it is part of the same named inductive gap as the release fetch (never run in
+    the construction repo)."""
     if ref and ref != "latest":
-        return ref
+        if not _is_bare_version(ref):
+            return ref                                                  # a real tag / sha — pinned, untouched
+        return _resolve_bare_version_tag(ref, repo=repo, token=token)   # bare X.Y.Z -> the home's real tag
     import urllib.request, json as _json, boot   # local: only the real resolve needs these
     slug = repo or boot.repo_slug()
     if not slug:
         raise RuntimeError("could not determine the engine repository to resolve the latest release.")
-    tok = token if token is not None else boot.gh_token()
-    url = f"https://api.github.com/repos/{slug}/releases/latest"
-    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
-               "User-Agent": "engine-module-manager"}
-    if tok:
-        headers["Authorization"] = f"Bearer {tok}"
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as resp:
+    req = _release_api_request(f"/repos/{slug}/releases/latest", token=token)
+    with urllib.request.urlopen(req, timeout=60) as resp:
         tag = (_json.loads(resp.read()) or {}).get("tag_name")
     if not tag:
         raise _NoPublishedRelease("the engine repository has no published release to update to.")
     return tag
 
 
+# ---- bare-version -> published-tag resolution (issue StarshipSuperjam/engine-template#760) ------------------------------------------
+# `_bump_engine_manifest` records the engine release BARE (it strips a leading `v`), so the manifest holds a
+# VERSION (`0.4.1`), not a fetchable TAG. A home tags its releases either `vX.Y.Z` (the common convention) or
+# bare `X.Y.Z`; `add`/`upgrade` must resolve the bare version to whichever tag the home actually published,
+# rather than fetching the bare version verbatim (which 404s on a `v`-tagging home — the StarshipSuperjam/engine-template#760 bug). Resolution
+# is a DIRECT `releases/tags/{tag}` lookup per candidate, never a paginated releases LIST (a list drops an
+# older pinned version off page 1, and admits drafts/pre-releases) — authoritative and O(1) per candidate.
+
+_BARE_VERSION = re.compile(r"\d+\.\d+\.\d+")
+
+
+def _is_bare_version(ref: str | None) -> bool:
+    """True iff `ref` is a bare three-part semantic version like `0.4.1` — a VERSION, not a fetchable tag. A
+    real tag (`v0.4.1`), a sha, a branch, or `latest`/None is not bare and the resolver leaves it untouched.
+    A pre-release / build-metadata suffix (`0.4.1-rc1`) is deliberately treated as NOT bare and passes
+    through: the engine's release flow only ever records a stable `X.Y.Z` (the `releases/latest` resolution
+    excludes pre-releases), so this boundary is safe, not a gap."""
+    return bool(ref) and _BARE_VERSION.fullmatch(ref) is not None
+
+
+def _release_ref_candidates(version: str) -> list[str]:
+    """The tags a bare `version` could have been published under, in probe order. `v`-first matches the
+    dominant convention (and the `v` that `_bump_engine_manifest` strips on the way in), so the usual home
+    resolves in a single probe; the bare candidate covers a home that tags without the prefix."""
+    return [f"v{version}", version]
+
+
+def _release_tag_published(tag: str, repo: str | None = None, token: str | None = None) -> bool:
+    """Does the home publish a RELEASE at this exact `tag`? A direct `releases/tags/{tag}` lookup: 200 -> True;
+    404 -> False (try the next candidate); any other failure propagates so the caller degrades on a transport
+    fault, never silently. THE NETWORK BOUNDARY for tag resolution — joins `_resolve_release_ref` /
+    `_fetch_release_tree` as a named inductive gap (never run in the construction repo; tests inject it)."""
+    import urllib.request, urllib.error, boot   # local: only the real probe needs these
+    slug = repo or boot.repo_slug()
+    if not slug:
+        raise RuntimeError("could not determine the engine repository to resolve the release tag.")
+    req = _release_api_request(f"/repos/{slug}/releases/tags/{tag}", token=token)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            resp.read()
+        return True
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return False
+        raise
+
+
+def _resolve_bare_version_tag(version: str, repo: str | None = None, token: str | None = None) -> str:
+    """Resolve a bare recorded `version` (`0.4.1`) to the home's real published tag, probing the candidates in
+    order. Raises `_NoPublishedRelease` (classified MISSING by `_release_is_missing`, so the caller refuses
+    LOUDLY and names the home) when no candidate is a published release — never a silent wrong or moving ref.
+    A transport fault on a probe propagates (the caller degrades to the current version)."""
+    for cand in _release_ref_candidates(version):
+        if _release_tag_published(cand, repo=repo, token=token):
+            return cand
+    raise _NoPublishedRelease(f"the engine's update home publishes no release for version {version}.")
+
+
 def _home_repository() -> str | None:
     """The engine's HOME repository slug (`owner/repo`) recorded in the manifest — the single source of
-    truth for where engine updates are fetched from (issue #367). None when the manifest
+    truth for where engine updates are fetched from (issue StarshipSuperjam/engine-template#367). None when the manifest
     records no home (a repo generated before this coordinate shipped). The release-fetch callers pass this
     as `repo=` so they resolve the HOME, never the deployed repo's own `origin` (which `boot.repo_slug()`
     returns and which has no engine releases). On a None home the caller REFUSES with a plain remedy and
@@ -491,7 +643,7 @@ def add(module_id: str, release_tree: str | None = None, ref: str | None = None)
                 return {"module_id": module_id, "refused": True, "applied": False,
                         "reason": "could not determine which engine release to fetch the module from."}
             # A module's files come from the engine's HOME release too, never this repo's own origin
-            # (#367). Absent home -> refuse with a remedy; never fall back to origin.
+            # (StarshipSuperjam/engine-template#367). Absent home -> refuse with a remedy; never fall back to origin.
             home = _home_repository()
             if not home:
                 return {"module_id": module_id, "refused": True, "applied": False,
@@ -500,6 +652,9 @@ def add(module_id: str, release_tree: str | None = None, ref: str | None = None)
                                   f"record it, then you can add the module again. Nothing was changed."}
             tmp = tempfile.mkdtemp(prefix="engine-add-")
             try:
+                # `engine_release` is recorded BARE (0.4.1); resolve it to the home's real published tag
+                # (v0.4.1 or 0.4.1) before fetching, so a `v`-tagging home isn't fetched as a 404 (StarshipSuperjam/engine-template#760).
+                target_ref = _resolve_release_ref(target_ref, repo=home)
                 release_tree = _fetch_release_tree(target_ref, tmp, repo=home)
             except Exception as exc:
                 if _release_is_missing(exc):   # recorded home, but no such release/repo -> refuse, NAME it
@@ -553,10 +708,10 @@ def add(module_id: str, release_tree: str | None = None, ref: str | None = None)
         # (3) apply the module's wiring (the real appliers)
         for f in wiring.apply_all(candidate.get("wires") or []):
             result["applied_wires"].append(validate.fmt(f))
-        # (4) record it in the engine manifest at its version
+        # (4) record it in the engine manifest at its version (the guarded writer — StarshipSuperjam/engine-template#923)
         engine = module_coherence.load_engine_manifest() or {"packages": {}}
         engine.setdefault("packages", {})[module_id] = candidate.get("version")
-        _write_json(_engine_manifest_path(), engine)
+        _write_engine_manifest(engine)
         # (5) re-derive + rewrite the dependency-group selection now that module_id is present. (The
         #     module's [dependency-groups] declaration + its uv.lock entries ship with the engine, so add
         #     flips only the SELECTION; an engine upgrade is what introduces a wholly new declaration.)
@@ -570,6 +725,16 @@ def add(module_id: str, release_tree: str | None = None, ref: str | None = None)
         result["applied"] = True
         result["findings"] = module_coherence.check_coherence()
         return result
+    except engine_write.EngineWriteRefused as exc:
+        # StarshipSuperjam/engine-template#923: the manifest write refused (a symlinked/escaping engine.json) AFTER files were copied and
+        # wires applied — undo the partial install (the same best-effort cleanup the upgrade tail uses),
+        # then refuse HONESTLY: name what was rolled back rather than claiming nothing was changed.
+        residue = _cleanup_failed_install(module_id, release_tree)
+        reason = (f"Refused to record '{module_id}' in the engine manifest: {exc} The module's copied "
+                  f"files and settings were rolled back.")
+        for r in residue:
+            reason += f" — {r} was left in place and may need your review"
+        return {"module_id": module_id, "refused": True, "applied": False, "reason": reason}
     finally:
         if tmp and os.path.isdir(tmp):
             shutil.rmtree(tmp, ignore_errors=True)
@@ -586,13 +751,13 @@ _UNSET = object()   # sentinel: "no GitHub boundary passed (resolve close._githu
 
 # Root CLAUDE.md is keyed-MERGED on upgrade, not wholesale-overlaid: it carries the engine's `floor` as a
 # comment-fenced section so a brownfield adopter's own CLAUDE.md co-exists with the engine's entries rather
-# than being seized (the #234/#272 coexistence obligation). Since #323 the floor is sourced from the `floor`
+# than being seized (the StarshipSuperjam/engine-template#234/StarshipSuperjam/engine-template#272 coexistence obligation). Since StarshipSuperjam/engine-template#323 the floor is sourced from the `floor`
 # fence in the release's committed root CLAUDE.md/AGENTS.md (the promoted adopter floor) by `_merge_claude_floor`
 # / `_read_release_floor`, not a whole-file `.deployed.md`.
 _ROOT_CLAUDE_REL = "CLAUDE.md"
 _ROOT_AGENTS_REL = "AGENTS.md"                     # the Codex floor — same keyed-merge/block-reverse posture
 _FLOOR_FENCE = "floor"
-_GITIGNORE_REL = ".gitignore"           # the foundation-ignores fence lives here (#409) — a shared keyed
+_GITIGNORE_REL = ".gitignore"           # the foundation-ignores fence lives here (StarshipSuperjam/engine-template#409) — a shared keyed
 #                                         file, so it is block-reversed like CODEOWNERS/CLAUDE.md, never
 #                                         overlay-replaced (FOUNDATION_CODE) or wholesale-deleted (remove_engine)
 
@@ -615,7 +780,7 @@ _GITIGNORE_REL = ".gitignore"           # the foundation-ignores fence lives her
 # forward-only).
 # The five FOUNDATION_INFRA members the overlay must NOT fetch-and-replace — the engine manifest (identity,
 # bumped in place), CODEOWNERS + the two root floors + root .gitignore (re-rendered / keyed-merged locally).
-# Single-homed here so FOUNDATION_CODE (below) and the reconcile keep-set / carve-outs (issue #599) cannot drift.
+# Single-homed here so FOUNDATION_CODE (below) and the reconcile keep-set / carve-outs (issue StarshipSuperjam/engine-template#599) cannot drift.
 _FOUNDATION_KEYED = (module_coherence.ENGINE_MANIFEST_REL, ".github/CODEOWNERS", _ROOT_CLAUDE_REL,
                      _ROOT_AGENTS_REL, _GITIGNORE_REL)
 FOUNDATION_CODE = tuple(p for p in module_coherence.FOUNDATION_INFRA if p not in _FOUNDATION_KEYED)
@@ -642,7 +807,7 @@ def _resolve_backup_seam(backup):
     Live via `memory.snapshot_for_migration` (+ `memory.migration_backup_available`): memory owns the
     mechanism AND the restore contract and may not be widened here. The handle's concrete shape is memory's
     leaf (the close._trigger_ambient_capture precedent). The snapshot lands as a distinct, retained git tag the
-    routine backup never overwrites — memory's point-in-time pre-migration snapshot (resolving #287);
+    routine backup never overwrites — memory's point-in-time pre-migration snapshot (resolving StarshipSuperjam/engine-template#287);
     the restore command targets that tag. This consumer widens nothing of that mechanism."""
     if backup is not None:
         return backup
@@ -677,21 +842,13 @@ def _load_migration(module_dir: str, run_rel: str):
     return fn
 
 
-def _ver_key(v):
-    """A LENGTH-NORMALIZED version tuple for RANGE-boundary comparison, so a two-part key ('0.4') and its
-    three-part form ('0.4.0') compare EQUAL rather than '0.4' sorting BELOW '0.4.0' as a tuple prefix. Migration
-    and retired-capability keys are conventionally MAJOR.MINOR.PATCH but that is NOT schema-enforced (the schemas
-    constrain the entry VALUE, not the key), so a hand-authored two-part key at a range boundary is possible and
-    must not fall on the wrong side. Padding is a no-op for conventional three-part (and any 4+-part, e.g. a
-    digit-bearing pre-release suffix) tuples, so behaviour is unchanged for every real version in the tree.
-
-    THE SINGLE NORMALIZER for version-key range comparison: called directly by select_migrations and
-    select_retired_capabilities, and reached by release_cut._norm_ver (which delegates here) for BOTH
-    release-cut accumulation guards. So editing this moves a release-refusal safety guard's normalization too —
-    the mirrored regression tests (test_module_manager selector-boundary tests + test_release_cut
-    test_rekeyed_migration_is_not_a_false_drop) are the backstop."""
-    t = validate._ver_tuple(v)
-    return (t + (0,) * (3 - len(t))) if len(t) < 3 else t
+# THE single version-key normalizer now lives in `validate` (beside `_ver_tuple`), so the lowest-layer
+# coherence leg `validate.version_key_duplicate_findings` (StarshipSuperjam/engine-template#694) can share the one normalizer. Re-exported here
+# under its long-standing name so select_migrations / select_retired_capabilities (below) and
+# release_cut._norm_ver (which reaches it as `module_manager._ver_key`) are unchanged. See validate._ver_key for
+# the contract, including why the length-padding is kept now that the MAJOR.MINOR.PATCH key format is
+# schema-enforced at authoring.
+_ver_key = validate._ver_key
 
 
 def select_migrations(from_versions: dict, target_versions: dict, manifests: list) -> list:
@@ -747,12 +904,274 @@ def select_retired_capabilities(from_versions: dict, target_versions: dict, mani
     return out
 
 
+def select_removed_capabilities(dropped_ids, release_engine: dict) -> list:
+    """PURE: the plain-language announcement for each WHOLE module this update retires (StarshipSuperjam/engine-template#688) — the sibling of
+    select_retired_capabilities for the case where the module itself is gone, so its manifest can no longer carry
+    the notice. Driven off `dropped_ids` (the SAME set the upgrade's reconcile acts on, single-homed so a module
+    is never reconciled-away without being announced), NOT re-derived from a second signal; each entry's text is
+    read from the release's own engine.json `removed_capabilities` (the record that outlives the gone module's
+    manifest). Returns a list of {module_id, description, removed_in}, module-id sorted for stable rendering.
+    Announcement-only: nothing executes, so it can never refuse. Fixture-testable with no disk/network."""
+    rc = (release_engine or {}).get("removed_capabilities") or {}
+    out = []
+    for mid in sorted(set(dropped_ids or ())):
+        entry = rc.get(mid) or {}
+        out.append({"module_id": mid, "description": entry.get("description"),
+                    "removed_in": entry.get("removed_in")})
+    return out
+
+
+def _dep_order(ids, deps_by_id) -> list:
+    """Deterministic topological order (dependencies first) over `ids` — edges are a module's `depends` that
+    are ALSO in `ids` (a dependency already present in the deployment doesn't constrain the install order). Ties
+    break by id for stability. A cycle (a malformed release) emits the remainder sorted rather than hanging."""
+    idset, remaining, out = set(ids), set(ids), []
+    while remaining:
+        ready = sorted(m for m in remaining
+                       if all(d not in remaining for d in (deps_by_id.get(m) or {}) if d in idset))
+        if not ready:                       # cycle — never loop forever; emit the rest deterministically
+            out.extend(sorted(remaining))
+            break
+        out.extend(ready)
+        remaining.difference_update(ready)
+    return out
+
+
+def _classify_available_modules(available, present_ids, pre_overlay_known, *,
+                                catalog_trusted=True, catalog_text=None) -> dict:
+    """PURE (no I/O): split the release modules a deployment LACKS into auto-install vs offer (StarshipSuperjam/engine-template#759).
+
+    `available` is the list of ABSENT release modules as dicts `{"id","status","depends"}` (already filtered:
+    id neither installed nor a dropped module). `present_ids` is the deployment's SURVIVOR set. `pre_overlay_known`
+    is the set of module ids the deployment knew BEFORE the overlay (installed ∪ pre-overlay catalog ∪ pre-overlay
+    manifests) — the discriminator between a NET-NEW `default-on` module (never known here → auto-install opt-out)
+    and a previously-DECLINED one (known but absent → offer, NEVER resurrect). `catalog_trusted=False` (the
+    pre-overlay catalog could not be read) means the discriminator is UNPROVEN, so `default-on` FAILS CLOSED to
+    offer-only; `required` is unaffected (it can never be declined). `catalog_text` maps id → {"description","verb"}
+    for offer wording.
+
+    Classification by the RELEASE manifest's `status`: `required` → install (mandatory — the deployment needs it
+    for coherence; a required module with an unmet dependency STAYS in `install` so the tail's
+    required-completeness gate refuses cleanly rather than the release silently shipping incomplete). `default-on`
+    → install when net-new AND the catalog is trusted, else offer. `optional`/`experimental`/anything else →
+    offer (never auto-installed). A `default-on` whose dependency the deployment will still lack is demoted to an
+    offer (never pull an unchosen module in as a side effect). Returns
+    `{"install": [{"id","status","prior_declined"}], "offered": [{"id","status","description","verb"}]}`, install
+    dependency-ordered, offered id-sorted."""
+    present, known, text = set(present_ids or ()), set(pre_overlay_known or ()), (catalog_text or {})
+    install, offered = [], []
+
+    def _as_offer(mid, status):
+        info = text.get(mid) or {}
+        offered.append({"id": mid, "status": status or "optional",
+                        "description": info.get("description") or "", "verb": info.get("verb") or ""})
+
+    for m in sorted(available, key=lambda e: e.get("id") or ""):
+        mid, status = m.get("id"), (m.get("status") or "optional")
+        if not mid or status == "retired":
+            continue                             # a retired module is neither installed nor offered — it is gone
+        desc = (text.get(mid) or {}).get("description") or ""
+        if status == "required":
+            install.append({"id": mid, "status": "required", "prior_declined": mid in known,
+                            "depends": m.get("depends") or {}, "description": desc})
+        elif status == "default-on" and catalog_trusted and mid not in known:
+            install.append({"id": mid, "status": "default-on", "prior_declined": False,
+                            "depends": m.get("depends") or {}, "description": desc})
+        else:                                # declined default-on, catalog untrusted, optional/experimental/other
+            _as_offer(mid, status)
+
+    # Dependency satisfaction for the OPT-OUT (default-on) installs only — demote to an offer, to a fixpoint so a
+    # cascade resolves, any whose dependency the deployment will still lack. `required` stays regardless (the tail
+    # refuses on it). `required` ids are counted as satisfiers optimistically; if a required install fails, the
+    # whole update refuses anyway, so a default-on that depended on it is moot.
+    changed = True
+    while changed:
+        changed = False
+        scheduled = present | {e["id"] for e in install}
+        for e in [e for e in install if e["status"] == "default-on"]:
+            if any(dep not in scheduled for dep in (e.get("depends") or {})):
+                install.remove(e)
+                _as_offer(e["id"], "default-on")
+                changed = True
+
+    order = _dep_order([e["id"] for e in install], {e["id"]: (e.get("depends") or {}) for e in install})
+    by_id = {e["id"]: e for e in install}
+    install = [{"id": i, "status": by_id[i]["status"], "prior_declined": by_id[i]["prior_declined"],
+                "description": by_id[i].get("description") or ""} for i in order]
+    offered.sort(key=lambda e: e["id"])
+    return {"install": install, "offered": offered}
+
+
+def classify_available_modules(release_tree, present_ids, pre_overlay_known, *,
+                               catalog_trusted=True, dropped_ids=()) -> dict:
+    """The I/O wrapper around `_classify_available_modules` (StarshipSuperjam/engine-template#759): enumerate the release tree's module manifests
+    (`status`/`depends`), read the release catalog for offer text, and classify the ones this deployment lacks.
+    The release catalog is read at its explicit path (never `module_catalog`'s import-bound constant, which a
+    `_redirect_root` fixture does not repoint). A MALFORMED release manifest is NEVER silently skipped — a
+    net-new `required` module could hide behind it, so a module the classifier can't read would vanish before the
+    tail's required-completeness check and reproduce StarshipSuperjam/engine-template#759's silent omission. Malformed manifests are collected in
+    the returned `malformed` list so the caller fails closed (the engine's fail-loud house rule)."""
+    skip = set(present_ids or ()) | set(dropped_ids or ())
+    available, malformed = [], []
+    # Enumerate module DIRECTORIES (not `*/manifest.json`) so a module dir that carries NO manifest at all — a
+    # broken/incomplete release publish — is caught too: globbing `*/manifest.json` would silently skip it, and a
+    # net-new REQUIRED module could hide behind that missing file, reproducing StarshipSuperjam/engine-template#759's silent omission.
+    for mod_dir in sorted(glob.glob(os.path.join(release_tree, ".engine", "modules", "*"))):
+        if not os.path.isdir(mod_dir):
+            continue
+        man_path = os.path.join(mod_dir, "manifest.json")
+        rel = os.path.relpath(man_path, release_tree).replace(os.sep, "/")
+        # A module dir whose id (its basename) the deployment already has (present/dropped) is not net-new — its
+        # manifest is the parent phase's concern, not the classifier's. Only a module the deployment LACKS matters.
+        if os.path.basename(mod_dir) in skip:
+            continue
+        if not os.path.isfile(man_path):
+            malformed.append(rel)               # a module directory with no manifest — a broken release
+            continue
+        try:
+            m = validate.load_json(man_path)
+        except Exception:   # noqa: BLE001 — a malformed release manifest is a BROKEN release, surfaced not skipped
+            malformed.append(rel)
+            continue
+        if not isinstance(m, dict) or not m.get("id"):
+            malformed.append(rel)               # an id-less/wrong-shaped manifest could hide a required module
+            continue
+        if m["id"] not in skip:
+            available.append({"id": m["id"], "status": m.get("status"), "depends": m.get("depends") or {}})
+    catalog_text = {e["id"]: {"description": e.get("description"), "verb": e.get("verb")}
+                    for e in module_catalog.entries(
+                        path=os.path.join(release_tree, ".engine", "provisioning", "module-catalog.json"))
+                    if e.get("id")}
+    result = _classify_available_modules(available, present_ids, pre_overlay_known,
+                                         catalog_trusted=catalog_trusted, catalog_text=catalog_text)
+    result["malformed"] = sorted(malformed)
+    return result
+
+
+def _pre_overlay_known(present_ids) -> tuple:
+    """The set of module ids this deployment KNEW before the overlay — installed ∪ the pre-overlay catalog's ids
+    ∪ the pre-overlay module manifests' ids — the StarshipSuperjam/engine-template#759 discriminator that tells a NET-NEW `default-on` module
+    (never known here → safe to auto-install opt-out) from a previously-DECLINED one (known but absent → never
+    resurrect). Returns `(known_set, catalog_trusted)`: `catalog_trusted` is False when the catalog is absent or
+    unreadable, so the discriminator is UNPROVEN and the caller fails `default-on` CLOSED (offer-only). The
+    catalog is `core`-provided and the overlay OVERWRITES it, so this MUST run pre-overlay; its path is built
+    from the CURRENT `validate.ENGINE_DIR` (redirected under a fixture), not `module_catalog`'s import-bound
+    constant. A declined `default-on` module leaves no manifest and no package entry after first-run, so the
+    catalog is its only durable trace — the catalog-completeness check keeps every default-on module catalogued
+    so this discriminator cannot be fooled."""
+    known = set(present_ids or ())
+    catalog_trusted = True
+    cat_path = os.path.join(validate.ENGINE_DIR, "provisioning", "module-catalog.json")
+    if os.path.isfile(cat_path):
+        try:
+            with open(cat_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, list):
+                known |= {str(e.get("id")) for e in data if isinstance(e, dict) and e.get("id")}
+            else:                                   # a wrong-shaped catalog is unproven evidence → fail closed
+                catalog_trusted = False
+        except Exception:   # noqa: BLE001 — an unreadable catalog is unproven evidence → fail closed
+            catalog_trusted = False
+    else:
+        catalog_trusted = False                     # absent catalog → unproven → default-on fails closed
+    try:
+        known |= {m.get("id") for _p, m in module_coherence.discover_manifests() if m.get("id")}
+    except Exception:   # noqa: BLE001 — best-effort; the installed ids are always in `known`
+        pass
+    return known, catalog_trusted
+
+
+def _cleanup_failed_install(module_id: str, release_tree: str) -> list:
+    """Best-effort UNDO of a partially- or wrongly-applied `add()` — one that RAISED mid-way, or returned
+    `applied=True` with a hard coherence finding (a wire the dispatcher captured as a finding rather than an
+    exception). Reverses the module's wires FIRST (so a hook/mcp/gitignore/codex edit doesn't linger and trip the
+    structural gate — which would flip an intended default-on fail-OPEN into a whole-update refusal), then removes
+    the module's `provides` files, its manifest folder, and its package entry. Returns a list of plain-language
+    residue notes for anything that could NOT be reversed — chiefly a `permission` grant, which the engine's
+    reversal firewall deliberately never auto-removes (it may also be the operator's) — so the caller surfaces it
+    at the merge instead of leaving it silent. Never raises — the structural gate is the backstop."""
+    residue = []
+    try:
+        man_path = os.path.join(release_tree, ".engine", "modules", module_id, "manifest.json")
+        candidate = validate.load_json(man_path) if os.path.isfile(man_path) else {}
+    except Exception:   # noqa: BLE001 — an unreadable candidate: nothing to reverse from, still clean files below
+        candidate = {}
+    wires = (candidate.get("wires") or []) if isinstance(candidate, dict) else []
+    # (a) reverse the wires the add may have applied (idempotent — an un-applied wire reverses to a no-op). A
+    #     `permission` wire is intentionally NOT auto-removed, so name each as residue for the operator.
+    for w in wires:
+        if isinstance(w, dict) and w.get("type") == "permission":
+            residue.append(f"a permission setting the add-on '{module_id}' had started to grant "
+                           f"({w.get('value') or w.get('name') or 'an engine permission'})")
+    try:
+        wiring.reverse_all(wires)
+    except Exception:   # noqa: BLE001 — reversal is best-effort; the gate still backstops any residue
+        pass
+    # (b) remove the module's own files, its manifest folder, and its package entry
+    try:
+        provides = (candidate.get("provides") or {}) if isinstance(candidate, dict) else {}
+        for patterns in provides.values():
+            for pattern in patterns:
+                for src in glob.glob(os.path.join(release_tree, pattern), recursive=True):
+                    rel = os.path.relpath(src, release_tree).replace(os.sep, "/")
+                    if _within_root(rel):
+                        try:
+                            os.remove(os.path.join(validate.ROOT, rel))
+                        except OSError:
+                            pass
+        shutil.rmtree(_modules_dir(module_id), ignore_errors=True)
+        engine = module_coherence.load_engine_manifest()
+        if engine and module_id in (engine.get("packages") or {}):
+            del engine["packages"][module_id]
+            try:
+                _write_engine_manifest(engine)
+            except engine_write.EngineWriteRefused:
+                # StarshipSuperjam/engine-template#923: honor "Never raises", but AUTHOR the disclosure instead of leaving the stale
+                # package entry to surface only incidentally at the structural gate.
+                residue.append(f"the stale '{module_id}' entry in .engine/engine.json (the file could "
+                               f"not be safely written — it is, or sits under, a shortcut)")
+    except Exception:   # noqa: BLE001 — cleanup is best-effort; the structural gate is the real backstop
+        pass
+    return residue
+
+
+def _new_hard_findings(before, after) -> list:
+    """The hard findings in `after` beyond those already in `before`, as a MULTISET (count) diff — not set
+    membership. An orphan-wire coherence finding does not encode WHICH wire is orphaned (only the seam type and
+    the shared file), so two distinct orphans of the same kind produce byte-identical finding dicts; a plain
+    `f not in before` would mask a module's genuinely-new second orphan behind a pre-existing first. Consuming one
+    baseline occurrence per match counts "one more than before" correctly. Used to attribute an install failure to
+    the module that actually caused it (the per-module delta), never to a pre-existing tree-wide problem."""
+    remaining = [f for f in (before or []) if f.get("severity") == "hard"]
+    new = []
+    for f in (after or []):
+        if f.get("severity") != "hard":
+            continue
+        if f in remaining:
+            remaining.remove(f)      # consume one matching baseline occurrence (multiset semantics)
+        else:
+            new.append(f)            # a hard finding beyond the baseline count — genuinely introduced here
+    return new
+
+
+def _required_install_refuse_reason(missing) -> str:
+    """The plain-language refusal when a REQUIRED module the release adds could not be installed (StarshipSuperjam/engine-template#759). No
+    structural check compares the deployed set to the release's required set, so the tail refuses HERE rather
+    than opening a review pull request that silently omits a required capability. Names the cause in words and
+    points at undo + reporting (a re-run cannot fix a release that can't install its own required module)."""
+    names = ", ".join(sorted(missing))
+    return (f"The update was applied to your working copy, but a capability this version REQUIRES could not be "
+            f"turned on ({names}), so it was NOT opened for review and nothing was merged. This points to a "
+            f"problem in the release itself, so running the update again will not fix it: ask me to undo the "
+            f"update's changes, and report it to your engine's update home.")
+
+
 def _bind_migration_id(seam, module_id: str, version: str, reversibility_floor: bool = False, sink=None):
     """Bind the migration's identity into the backup seam so memory names the pre-migration snapshot collision-free
     by it (the retained-tag mechanism). The migration calls `context['backup'](store, engine_version)`
     exactly as before — the migration id rides along, so migration authors need not know about it and module_manager
     stays a pure consumer that knows nothing of the snapshot's tag mechanism. `reversibility_floor` (True only for the
-    first data migration of the upgrade — #303) likewise rides along so memory records THAT snapshot as the undo floor;
+    first data migration of the upgrade — StarshipSuperjam/engine-template#303) likewise rides along so memory records THAT snapshot as the undo floor;
     module_manager passes only this boolean and never learns the snapshot's tag. Passing the extra kwargs is forward-
     compatible: a seam that ignores them still works (memory falls back to engine-version + generation).
 
@@ -794,7 +1213,7 @@ def run_migrations(selected: list, from_versions: dict, engine_version: str,
     handles: list = []                                   # each data migration's snapshot handle, so after the run we
     #                                                      can relay one plain property (could the retained pre-update
     #                                                      copy be locked?) without learning the snapshot's tag mechanism.
-    floor_taken = False                                  # #303: the FIRST data migration of this upgrade is the
+    floor_taken = False                                  # StarshipSuperjam/engine-template#303: the FIRST data migration of this upgrade is the
     #                                                      reversibility floor — one run_migrations call == one upgrade
     #                                                      == one reversibility unit (true for the sole caller upgrade()).
     for item in selected:
@@ -923,6 +1342,34 @@ def _overlay_copy_map(tree_root: str, manifests_by_id: dict) -> dict:
     return to_copy
 
 
+# The deployed-state-dependent index files the reconcile tail REGENERATES post-overlay (never preserves): the
+# overlay delivers the release's CONSTRUCTION copy, but each derives from / fingerprints the DEPLOYED shape, so
+# the shipped copy drifts and must be rebuilt from the reconciled tree. `_regen_indexes` regenerates exactly
+# this set, and the overwrite disclosure reads the SAME set to render them as one calm "refreshed" line rather
+# than a per-file alarm — single-sourced here so behaviour and notice cannot disagree. `product-spec-matrix.json`
+# is regenerated only where the OPTIONAL product-design module (and a settled `docs/spec/`) is present; skipped,
+# never fabricated, otherwise.
+REGENERATED_DERIVED = (
+    ".engine/self-map.md",
+    ".engine/knowledge/graph.json",
+    ".engine/product-spec-matrix.json",
+)
+
+
+def _preserved_present(dest_root: "str | None" = None) -> set:
+    """The `module_coherence.PRESERVE_DATA` paths that ALREADY EXIST under `dest_root` (default: the live
+    `validate.ROOT`). These are the per-deployment operator-DATA files the overlay must NOT overwrite —
+    create-if-absent: a fresh arrival lacking the file still receives the release placeholder, while an
+    upgrade over an existing bound value leaves it untouched. THE SINGLE refinement of `_overlay_copy_map`
+    every overlay consumer applies: the copy legs (`_overlay_engine_code`, `_copy_synced`) skip these, and the
+    overwrite views (`overlay_replace_paths`, `plan_upgrade`) subtract them — so the operator-facing
+    disclosure/preview stay in lockstep with what the update actually does (eADR-0037: the overwrite set is
+    `_overlay_copy_map` MINUS this). Exact repo-relative membership (never a basename), matching the map keys."""
+    root = validate.ROOT if dest_root is None else dest_root
+    return {rel for rel in module_coherence.PRESERVE_DATA
+            if os.path.lexists(os.path.join(root, *rel.split("/")))}
+
+
 def overlay_replace_paths() -> set:
     """The repo-relative engine files the NEXT engine update would OVERWRITE, expanded against the LIVE
     tree — exactly the membership `_overlay_engine_code` copies (present modules' `provides` files + their
@@ -935,9 +1382,13 @@ def overlay_replace_paths() -> set:
 
     DISTINCT from `module_coherence.engine_owned_paths()` — do NOT dedupe into it: that set unions the
     FULL `FOUNDATION_INFRA` (including the keyed-merge/CODEOWNERS carve-outs the overlay PRESERVES) and
-    omits module manifests, so reusing it would both cry wolf on preserved files and miss the manifests."""
+    omits module manifests, so reusing it would both cry wolf on preserved files and miss the manifests.
+
+    MINUS the create-if-absent preserve set (`_preserved_present`): a per-deployment DATA file the update now
+    leaves untouched is not overwritten, so it must not be disclosed as such — the overwrite set is
+    `_overlay_copy_map` minus the present preserved files, keeping the notice in lockstep with the copy leg."""
     manifests = {m.get("id"): m for _rel, m in module_coherence.discover_manifests()}
-    return set(_overlay_copy_map(validate.ROOT, manifests).keys())
+    return set(_overlay_copy_map(validate.ROOT, manifests).keys()) - _preserved_present()
 
 
 def _overlay_engine_code(release_tree: str, present_ids: list, exclude=None) -> tuple:
@@ -967,9 +1418,12 @@ def _overlay_engine_code(release_tree: str, present_ids: list, exclude=None) -> 
         shown = ", ".join(escapes[:3]) + ("…" if len(escapes) > 3 else "")
         raise _UpgradeRefused(f"the update was stopped because it tried to place files outside the engine "
                               f"({shown}); nothing was changed.")
+    preserved = _preserved_present()         # PRESERVE_DATA already on disk — leave the bound value (StarshipSuperjam/engine-template#814)
     copied = []
     for rel, src in sorted(to_copy.items()):
         if rel in skip:                      # an operator file the arrival is keeping (class-1 leave-as-is)
+            continue
+        if rel in preserved:                 # create-if-absent: never overwrite a bound per-deployment value
             continue
         dst = os.path.join(validate.ROOT, rel)
         os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -978,7 +1432,7 @@ def _overlay_engine_code(release_tree: str, present_ids: list, exclude=None) -> 
     return copied, candidates
 
 
-# ---- the release-authoritative synced surface (issue #599) --------------------------------------------
+# ---- the release-authoritative synced surface (issue StarshipSuperjam/engine-template#599) --------------------------------------------
 #
 # The copy-only overlay (_overlay_copy_map) is a hand-enumerated subset, so every release that grows a new
 # KIND of file silently under-covers it. The reconcile drives a deployed tree to `provision(release)` — the
@@ -1041,7 +1495,7 @@ def engine_synced_map(tree_root: str, manifests_by_id: dict, *, project_retire: 
     """{repo-relative -> source-abspath} the reconcile DELIVERS from `tree_root`: the copy-only overlay
     membership (`_overlay_copy_map` — provides ∪ manifests ∪ FOUNDATION_CODE) UNIONED with the committed
     fixture namespace (`module_coherence.FIXTURE_PATHS` — `.engine/_fixtures/**`, the file CATEGORY the
-    hand-enumerated overlay silently missed, #599 class 3). When `project_retire` (the upgrade path), the
+    hand-enumerated overlay silently missed, StarshipSuperjam/engine-template#599 class 3). When `project_retire` (the upgrade path), the
     release's OWN retire set is SUBTRACTED — the `provision()` projection that makes the surface the DEPLOYED
     shape, not the template shape, so a first-run-only file is never delivered onto a deployed repo. Arrival
     passes `project_retire=False` (it delivers the full template surface and runs `retire()` itself). Layered
@@ -1070,7 +1524,7 @@ def engine_synced_paths(tree_root: str, manifests_by_id: dict, *, project_retire
     candidates. DISTINCT from `module_coherence.engine_owned_paths` (which omits fixtures + manifests) — do
     not dedupe.
 
-    INVARIANT (pinned by test_module_manager.TestReconcileDeliverySuperset, #599 Slice 3): this deliver set is a
+    INVARIANT (pinned by test_module_manager.TestReconcileDeliverySuperset, StarshipSuperjam/engine-template#599 Slice 3): this deliver set is a
     SUPERSET of every `provides`-owned `.engine/` file — the reconcile never ships less than the owned surface.
     Honest bound: that is all it proves. It does NOT prove a file is delivered to the RIGHT place, nor that an
     operator-authored file parked under an engine glob is classified correctly — those stay merge-gate concerns."""
@@ -1079,11 +1533,14 @@ def engine_synced_paths(tree_root: str, manifests_by_id: dict, *, project_retire
 
 def _reconcile_carveouts() -> tuple:
     """The never-delete carve-outs for the reconcile delete leg, as (exact:set, prefixes:tuple): operator
-    config, the pruned runtime roots, the deployment's per-instance eADR stream, the committed fixture
-    namespace, and the five keyed/rendered foundation files. Mirrors module_coherence's carve-out sets so an
-    operator's tuning, saved data, instance decision records, and product files are never delete candidates
-    (they are outside `old_owned` by construction — this is the belt, not the sole protection)."""
-    exact = set(module_coherence.OPERATOR_CONFIG) | set(_FOUNDATION_KEYED)
+    config, the preserved per-deployment DATA files, the pruned runtime roots, the deployment's per-instance
+    eADR stream, the committed fixture namespace, and the five keyed/rendered foundation files. Mirrors
+    module_coherence's carve-out sets so an operator's tuning, saved data, instance decision records, and
+    product files are never delete candidates (they are outside `old_owned` by construction — this is the belt,
+    not the sole protection). NOTE the FIXTURE_PATHS prefix is spared here for the DIRECTORY-retire leg (whose
+    `rmtree` has no untracked guard); the FILE-delete leg deliberately drops it (see `_reconcile_surface`) so a
+    stale, tracked fixture the release no longer ships is reconciled away like any other owned file."""
+    exact = set(module_coherence.OPERATOR_CONFIG) | set(_FOUNDATION_KEYED) | set(module_coherence.PRESERVE_DATA)
     prefixes = tuple(sorted(d + "/" for d in (set(module_coherence.PRUNE_PATHS)
                                               | set(module_coherence.DEPLOYMENT_CONTRACTS)
                                               | set(module_coherence.FIXTURE_PATHS))))
@@ -1102,9 +1559,12 @@ def _copy_synced(to_deliver: dict, *, exclude=None) -> list:
         raise _UpgradeRefused(f"the update was stopped because it tried to place files outside the engine "
                               f"({shown}); nothing was changed.")
     skip = set(exclude or ())
+    preserved = _preserved_present()             # PRESERVE_DATA already on disk — deliver create-if-absent only
     delivered = []
     for rel, src in sorted(to_deliver.items()):
         if rel in skip:                          # an operator file arrival is keeping (class-1 leave-as-is)
+            continue
+        if rel in preserved:                     # a bound per-deployment value is present — never overwrite (StarshipSuperjam/engine-template#814)
             continue
         dst = os.path.join(validate.ROOT, rel)
         if os.path.isfile(dst) and filecmp.cmp(src, dst, shallow=False):
@@ -1117,7 +1577,7 @@ def _copy_synced(to_deliver: dict, *, exclude=None) -> list:
 
 def _deliver_synced(tree_root: str, manifests_by_id: dict, *, project_retire: bool, exclude=None) -> list:
     """The shared deliver primitive for BOTH the upgrade tail reconcile (`project_retire=True`) and brownfield
-    arrival (`project_retire=False`) — so arrival now delivers the fixture category too (#599). Computes the
+    arrival (`project_retire=False`) — so arrival now delivers the fixture category too (StarshipSuperjam/engine-template#599). Computes the
     `engine_synced_map` and copies via `_copy_synced`."""
     return _copy_synced(engine_synced_map(tree_root, manifests_by_id, project_retire=project_retire),
                         exclude=exclude)
@@ -1128,7 +1588,7 @@ def _wiring_delta(old_by_id: dict, new_by_id: dict) -> dict:
     manifests (`new_by_id`): {"added", "removed", "updated"}, each a list of (module_id, wire).
 
     Reads DECLARATIONS only — `wiring.declared_wire_identity`, never `is_applied`/`apply_all` — so a release's
-    brand-new seam vocabulary is never executed by the running (pre-overlay) process (#594). It is the SINGLE
+    brand-new seam vocabulary is never executed by the running (pre-overlay) process (StarshipSuperjam/engine-template#594). It is the SINGLE
     SOURCE of the removal rule shared with `_apply_wiring_deltas`, so the read-only preview (`plan_upgrade`)
     cannot promise a wiring change the apply won't make:
       - removed  = an old engine-identifiable wire whose identity is gone in the new version — EXACTLY the set
@@ -1170,17 +1630,25 @@ def _wiring_delta(old_by_id: dict, new_by_id: dict) -> dict:
     return {"added": added, "removed": removed, "updated": updated}
 
 
-def _apply_wiring_deltas(old_by_id: dict, new_by_id: dict) -> list:
+def _apply_wiring_deltas(old_by_id: dict, new_by_id: dict, dropped_ids=()) -> list:
     """Reverse the wires a module no longer declares and (re)apply the wires it declares now (the
     scenario's 'apply/reverse wiring deltas'). For an unchanged version the delta is empty (apply_all is
     idempotent). A removed engine-identifiable wire is reversed so it does not linger; a same-identity
     content change is re-applied, and if a seam cannot update in place the forward coherence leg (step 5)
     catches the drift. The removal decision is single-homed in `_wiring_delta` so the read-only preview
-    reports the same reversals this applies. Returns plain-language lines."""
+    reports the same reversals this applies. Returns plain-language lines.
+
+    `dropped_ids` are modules the release removed WHOLE (not in `new_by_id`): reverse ALL their wires via
+    `wiring.reverse_all` (mirroring remove(), which reverses every wire — unlike `_wiring_delta`, which skips
+    identity-less wires), and do it BEFORE re-applying the survivors below, so a wire a survivor also declares is
+    re-applied rather than left stripped by the dropped module's reversal."""
+    lines = []
+    for mid in dropped_ids:
+        for f in wiring.reverse_all((old_by_id.get(mid) or {}).get("wires") or []):
+            lines.append(validate.fmt(f))
     removed_by_mid: dict = {}
     for mid, w in _wiring_delta(old_by_id, new_by_id)["removed"]:
         removed_by_mid.setdefault(mid, []).append(w)
-    lines = []
     for mid, new_m in new_by_id.items():
         for w in removed_by_mid.get(mid, []):               # reverse this module's removed wires first
             lines.append(validate.fmt(wiring.reverse(w)))
@@ -1189,10 +1657,12 @@ def _apply_wiring_deltas(old_by_id: dict, new_by_id: dict) -> list:
     return lines
 
 
-def _bump_engine_manifest(target_versions: dict, engine_release: str) -> dict:
+def _bump_engine_manifest(target_versions: dict, engine_release: str, dropped_ids=()) -> dict:
     """Update the engine manifest in place: set engine_release + each present package's version to the
     release's, PRESERVING identity and any other operator-owned keys (engine.json is operator config, not
-    overlaid). Returns the new manifest."""
+    overlaid). `dropped_ids` are modules the release removed WHOLE — prune each from `packages`, so engine.json
+    stops listing a module whose files and manifest are gone (mirrors remove()'s package drop). Returns the new
+    manifest."""
     engine = module_coherence.load_engine_manifest() or {"packages": {}}
     # Release tags are v-prefixed (`v0.1.0` — the git/GitHub convention and what the maintainer sees), but
     # `engine_release` is stored BARE so it matches the bare per-package versions below; otherwise the
@@ -1204,18 +1674,22 @@ def _bump_engine_manifest(target_versions: dict, engine_release: str) -> dict:
     for mid, ver in target_versions.items():
         if mid in pkgs:
             pkgs[mid] = ver
-    _write_json(_engine_manifest_path(), engine)
+    for mid in dropped_ids:
+        pkgs.pop(mid, None)
+    _write_engine_manifest(engine)   # the guarded writer (StarshipSuperjam/engine-template#923) — raises EngineWriteRefused on a symlink
     return engine
 
 
 def _resync_tool_runtime() -> bool:
-    """Group-scoped `uv sync` rebuilds the tool-runtime from the overlaid lockfile BEFORE migrations run
-    in it (provisioning step 3) — shelled via subprocess (the bootstrap.py pattern). It materializes the
+    """Group-scoped `uv sync --frozen` rebuilds the tool-runtime from the overlaid lockfile BEFORE migrations
+    run in it (provisioning step 3) — shelled via subprocess (the bootstrap.py pattern). `--frozen` installs
+    exactly the overlaid/restored lock and never re-resolves past it, so a module add or an engine
+    update/rollback can't silently pull a newer version than the lock pins (issue StarshipSuperjam/engine-template#853). It materializes the
     runtime only and never mutates a gitignored data store. Returns True on success. NEVER runs in tests /
     the demo (the injected-release path skips it) — one of the four named inductive gaps."""
     import subprocess   # local: only the real re-sync needs it
     try:
-        subprocess.run(["uv", "sync"], cwd=os.path.join(validate.ROOT, ".engine"),
+        subprocess.run(["uv", "sync", "--frozen"], cwd=os.path.join(validate.ROOT, ".engine"),
                        check=True, capture_output=True, timeout=300)
         return True
     except Exception:   # noqa: BLE001 — degrade: the caller surfaces a re-sync failure, never crashes
@@ -1252,7 +1726,7 @@ def _retired_capability_line(description) -> str:
 
 
 def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: dict) -> str:
-    """The engine update's own pull-request body, authored in the repository template's shape — the eight
+    """The engine update's own pull-request body, authored in the repository template's shape — the nine
     required sections plus the consent preamble every engine pull request carries — so an engine update reads
     like every other engine pull request and clears the same body-completeness gate (the free-form body it
     replaces did not). Operator-facing and consent-critical: it is what a non-engineer reads to decide whether
@@ -1265,7 +1739,7 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
     second copy to drift from the gate's anchor phrases. Imported LAZILY: release_cut imports this module, so a
     top-level import would cycle; both modules are fully loaded by the time an upgrade authors its body.
     Tolerant of a partial `result`: any outcome absent from it produces no line, never a fabricated
-    'nothing happened' claim. The reconcile facts (#599) — fixtures delivered, floors created, and files
+    'nothing happened' claim. The reconcile facts (StarshipSuperjam/engine-template#599) — fixtures delivered, floors created, and files
     removed (bucketed so an operator's file under an engine folder is surfaced, never removed silently) — ride
     the durable Scope, so the destructive delete leg is visible at the merge."""
     import release_cut  # noqa: E402 — lazy: avoids the release_cut<->module_manager import cycle (see docstring)
@@ -1303,6 +1777,12 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
         scope += ["", f"Capabilities this update removed — things you could ask for before and no longer can "
                   f"({len(retired)}):"]
         scope += [_retired_capability_line(r.get("description")) for r in retired]
+    # A WHOLE capability the release dropped (StarshipSuperjam/engine-template#688). Rendered further down, immediately BESIDE the "Engine files
+    # this version dropped or renamed" list, so the plain-language line meets the raw paths in the same place —
+    # the operator's core ask (the largest loss must not get the rawest treatment). `caps_lost` folds both this
+    # and the within-module retirement into the Scope/ Risk framing, since both change what an operator can ask.
+    removed_caps = result.get("removed_capabilities") or []
+    caps_lost = bool(retired) or bool(removed_caps)
     shared: list = []
     co = result.get("codeowners")
     if co == "written":
@@ -1348,7 +1828,7 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
     if shared:
         scope += ["", "What this update did to the engine's marked blocks in shared files:"] + shared
 
-    # Reconcile outcomes (#599): files this version DELIVERED (fixtures an older update would have missed) and
+    # Reconcile outcomes (StarshipSuperjam/engine-template#599): files this version DELIVERED (fixtures an older update would have missed) and
     # files it REMOVED (renamed/dropped engine files, so stale copies don't linger). Removals are BUCKETED so a
     # file that merely sits under an engine folder — and could be one the operator added — is surfaced for a
     # deliberate look at the merge, never removed silently.
@@ -1362,6 +1842,12 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
     if eng_removed:
         scope += ["", "Engine files this version dropped or renamed, now removed so stale copies don't linger:"]
         scope += [f"- {r}" for r in eng_removed]
+    if removed_caps:
+        # BESIDE the file list above: the plain-language translation of what those dropped files mean to the
+        # operator — a whole capability they could ask for before and no longer can (no engine jargon).
+        scope += ["", f"What that removal means — things you could ask for before and no longer can "
+                  f"({len(removed_caps)}):"]
+        scope += [_retired_capability_line(r.get("description")) for r in removed_caps]
     susp_removed = removed.get("suspect") or []
     if susp_removed:
         scope += ["", "Files removed that sat inside an engine folder this version no longer ships — if any of "
@@ -1373,6 +1859,63 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
                   "them):"]
         scope += [f"- {r}" for r in left]
 
+    # Tool-runtime dependency-group change (StarshipSuperjam/engine-template#757) — surfaced ONLY when the operator's committed selection
+    # genuinely changed across this update (`groups_changed` = the final selection differs, AS A SET, from the
+    # deployment's TRUE pre-overlay committed value — the operator's real prior, not the transient value the
+    # overlay wrote moments earlier). It decides which modules' Python dependencies the engine installs, a
+    # supply-chain-relevant change the operator must see at the merge. A genuine add/remove is always backed by a
+    # real diff line; a pure reorder of an already non-canonical committed line installs the identical set and is
+    # deliberately not announced (and is unreachable in normal operation, where every write path emits sorted).
+    # Shown as a delta against what the deployment had BEFORE the update, plus the full resulting selection.
+    if result.get("groups_changed"):
+        before = result.get("groups_before") or []
+        after = result.get("groups_after") or []
+        added = [g for g in after if g not in before]
+        removed_groups = [g for g in before if g not in after]
+        scope += ["", "This update changes which modules' Python dependencies the engine installs (the "
+                  "tool-runtime dependency-group selection):"]
+        if added:
+            scope.append(f"- now installed: {', '.join(added)}")
+        if removed_groups:
+            scope.append(f"- no longer installed: {', '.join(removed_groups)}")
+        scope.append(f"- the full selection is now: {', '.join(after) if after else '(none)'}")
+
+    # New modules this update brings in (StarshipSuperjam/engine-template#759): a REQUIRED capability the release adds is installed automatically
+    # (the deployment needs it to be coherent); a NET-NEW default add-on is turned on opt-out; optional/
+    # experimental/previously-declined ones are OFFERED, not installed. This is how an update stops a capability
+    # the release ships from silently staying off — the operator weighs each here, at the merge. A required
+    # addition changes the deployment's spine, so it also rides the Risk framing (via `mods_added` below).
+    installed759 = result.get("modules_installed") or []
+    offered759 = result.get("modules_offered") or []
+    req_added = [m for m in installed759 if m.get("status") == "required"]
+    opt_added = [m for m in installed759 if m.get("status") != "required"]
+    mods_added = bool(installed759)
+    def _mod_desc(m):
+        return (": " + _retired_capability_text(m.get("description")).translate(_MD_LITERAL)
+                if m.get("description") else "")
+    if req_added:
+        scope += ["", f"New required capabilities this version adds — installed automatically because this "
+                  f"version needs them ({len(req_added)}):"]
+        for m in req_added:
+            # `prior_declined` = the id was in the deployment's pre-overlay known set; that does not PROVE the
+            # operator made a decline decision (a module can be catalogued without ever being offered), so state
+            # the fact — available before, not installed — rather than assert a choice they may not have made.
+            note = (" (this add-on was available in your version and not installed; this version now requires it)"
+                    if m.get("prior_declined") else "")
+            scope.append(f"- {m['id']}{_mod_desc(m)}{note}")
+    if opt_added:
+        scope += ["", f"New add-ons this version turns on by default ({len(opt_added)}) — included in this "
+                  f"update; if you'd rather not have one, tell me before merging and I'll remove just that one:"]
+        scope += [f"- {m['id']}{_mod_desc(m)}" for m in opt_added]
+    if offered759:
+        scope += ["", f"Optional add-ons this version makes available ({len(offered759)}) — NOT turned on; ask "
+                  f"me to add any you want, now or later:"]
+        for m in offered759:
+            # Distinguish a default-on the deployment doesn't have (something it ships on by default, offered here
+            # because it was declined or the catalog couldn't be read) from a genuinely-optional add-on.
+            kind = " (a default add-on you don't have)" if m.get("status") == "default-on" else ""
+            scope.append(f"- {m['id']}{_mod_desc(m)}{kind} (add with `add {m['id']}`)")
+
     out = ["# Updating the engine", "", release_cut.template_preamble(), ""]
     out += release_cut.pr_section(
         "Purpose",
@@ -1381,16 +1924,33 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
          "place.",
          "- An update only ever moves the engine version forward."],
         "merging is your consent to run the updated engine; nothing changes until you merge.")
-    out += release_cut.pr_section(
-        "Scope",
-        ("The version this update records, the shared-file blocks it refreshed, and the capabilities it retires."
-         if retired else
-         "The version this update records and the shared-file blocks it refreshed."),
-        scope,
-        ("the exact versions written into the engine's records, the marked-block refreshes noted, and — listed "
-         "above — the things you could ask for before and no longer can."
-         if retired else
-         "these are the exact versions written into the engine's records, plus the marked-block refreshes noted."))
+    scope_summary = ("The version this update records, the shared-file blocks it refreshed, and the capabilities "
+                     "it retires." if caps_lost else
+                     "The version this update records and the shared-file blocks it refreshed.")
+    scope_impact = ("the exact versions written into the engine's records, the marked-block refreshes noted, and "
+                    "— listed above — the things you could ask for before and no longer can." if caps_lost else
+                    "these are the exact versions written into the engine's records, plus the marked-block "
+                    "refreshes noted.")
+    if result.get("groups_changed"):
+        # Fold the group change into the SKIMMABLE summary + impact too — an operator who reads only headers and
+        # Impact lines must still meet a supply-chain-relevant change, not only find it in the Scope body.
+        scope_summary += " It also changes which modules' Python dependencies the engine installs."
+        scope_impact += " It also changes the tool-runtime dependency-group selection (see Scope above)."
+    if mods_added:
+        # A header-skimming reader must meet EVERY new capability this update turned on — a required addition
+        # changes the deployment's spine, and a default add-on is the one they can still opt out of before merge —
+        # not only find them in the Scope body. Name both when both are present, so the opt-out-eligible one is
+        # never hidden behind the required one. This is how StarshipSuperjam/engine-template#759's install-on-update keeps a shipped capability
+        # from silently staying off; the operator weighs it here, at the merge.
+        _kinds = (["required capabilities"] if req_added else []) + (["default add-ons (opt-out)"] if opt_added else [])
+        scope_summary += f" It also turns on new {' and '.join(_kinds)} this version brings in."
+        scope_impact += (" It also brings in the new modules the release adds that this deployment lacked — "
+                         "required ones automatically (the version needs them), net-new default add-ons opt-out "
+                         "— so a shipped capability doesn't silently stay off; each is listed under Scope for you "
+                         "to weigh at the merge.")
+    if offered759:
+        scope_summary += " It lists optional add-ons you can enable."
+    out += release_cut.pr_section("Scope", scope_summary, scope, scope_impact)
     out += release_cut.pr_section(
         "Out of scope",
         "What merging does not do.",
@@ -1399,13 +1959,23 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
          "- It changes nothing outside the engine's own files and its marked blocks in shared files."],
         "the update touches only engine-owned files and the engine's marked blocks in shared files.")
     risk_bullets = []
-    if retired:
+    if caps_lost:
         # The one change in an update that alters what the operator can ASK the engine to do — surfaced here, in
         # "what to weigh before merging", so a header-skimming reader meets it and not only in the Scope body.
+        # A whole-capability removal (StarshipSuperjam/engine-template#688) is the LARGEST such loss, so it belongs here too.
         risk_bullets.append(
-            "- A capability you could use before is gone — see \"Capabilities this update removed\" under Scope. "
+            "- A capability you could use before is gone — see the capabilities-removed notes under Scope. "
             "This is the one part of an update that changes what you can ask the engine to do, so read it before "
             "you merge.")
+    if req_added:
+        risk_bullets.append(
+            "- This version adds a required capability and turned it on automatically (it needs it to run) — see "
+            "\"New required capabilities\" under Scope. It's part of what this version is; review it before you "
+            "merge.")
+    if opt_added:
+        risk_bullets.append(
+            "- This version turned on a new default add-on — see \"New add-ons this version turns on\" under "
+            "Scope. If you'd rather not have one, tell me before merging and I'll remove just that one.")
     risk_bullets += [
         "- An update replaces the engine's own tool and rule files with the new version's, and removes engine "
         "files this version renamed or dropped; your project content is not touched.",
@@ -1419,7 +1989,7 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
         risk_bullets,
         ("a capability you could use is gone (see Scope); and the update changes and removes engine-owned files, "
          "with every removal and anything it could not apply disclosed in Scope."
-         if retired else
+         if caps_lost else
          "the update changes and removes engine-owned files; every removal and anything it could not apply is "
          "disclosed in Scope."))
     out += release_cut.pr_section(
@@ -1439,12 +2009,33 @@ def render_upgrade_pr_body(from_versions: dict, target_versions: dict, result: d
          "- To undo the update after merging, ask me to undo it or revert this pull request."],
         "merging applies the update, and it stays reversible afterward.")
     out += release_cut.pr_section(
+        "Demonstration",
+        "Nothing to run here — applying the update is the action, not a behaviour to walk through.",
+        ["- Merging applies the update; its effects are the engine's own version records and files, listed "
+         "below. There is no separate operator-runnable walkthrough to paste — this is engine-update plumbing, "
+         "not a single behaviour change with a falsifiable step.",
+         "- After merging, the update stays reversible (see Review above)."],
+        "there is no behavioural walkthrough to run; the update's effects are the recorded version and files below.")
+    files_bullets = [
+        "- The engine's version record (.engine/engine.json) and the module manifests.",
+        "- The engine's own files this version added or removed, and its marked blocks in shared files "
+        "(CODEOWNERS, CLAUDE.md, AGENTS.md, .gitignore), where this version updated them — each is noted "
+        "under Scope."]
+    if result.get("groups_changed"):
+        # Gated on the GENUINE net change (not the write signal): only then does `.engine/pyproject.toml`'s
+        # default-groups line actually differ in the opened pull request, so this enumeration matches the diff
+        # rather than naming a file the reconcile restored to its prior value (StarshipSuperjam/engine-template#757).
+        files_bullets.append(
+            "- The tool-runtime dependency-group selection (.engine/pyproject.toml), changed to match your "
+            "installed modules — noted under Scope.")
+    if installed759:
+        files_bullets.append(
+            "- The newly-installed modules' files — each module's manifest under .engine/modules/<id>/ and the "
+            "files it provides — listed under Scope.")
+    out += release_cut.pr_section(
         "Files of interest",
         "What this changes.",
-        ["- The engine's version record (.engine/engine.json) and the module manifests.",
-         "- The engine's own files this version added or removed, and its marked blocks in shared files "
-         "(CODEOWNERS, CLAUDE.md, AGENTS.md, .gitignore), where this version updated them — each is noted "
-         "under Scope."],
+        files_bullets,
         "the changed files are the engine's own records and files plus its marked blocks in shared files.")
     out += release_cut.pr_section(
         "AI involvement",
@@ -1489,6 +2080,28 @@ def _github_error_detail(exc) -> str:
     return "; ".join(parts)
 
 
+# Bounded retry through a transient missing-origin / shared-config blip (StarshipSuperjam/engine-template#704): under heavy parallel-worktree
+# use, a concurrent write to the one shared .git/config makes an arbitrary git command fail for a moment, then
+# self-heal. A few fast retries ride out that window. This inline retry is copied — not shared — across the
+# five tools that carry it (scope_profile, close_linkage_preflight, pr_reconcile, module_manager, tune),
+# matching the codebase's per-module retry convention (e.g. memory/capture.py's lock retry); keep the copies
+# identical. Applied ONLY to the `push` step below — checkout/add/commit are local and deterministic (retrying
+# `checkout -b` would collide on the leftover branch it already created), and on a persistent push failure the
+# original CalledProcessError propagates unchanged so the phase-aware StarshipSuperjam/engine-template#672 recovery message is byte-identical.
+_ORIGIN_RETRY_ATTEMPTS = 3
+_ORIGIN_RETRY_DELAY = 0.3      # seconds between attempts
+
+
+# Strip an embedded credential from surfaced git output before it is shown or logged: git writes the remote
+# URL into its push errors, and an HTTPS remote can carry a token in its userinfo (`https://<token>@host` or
+# `https://user:<token>@host`, e.g. an `x-access-token:` CI remote), which must never reach a message. Replaces
+# ONLY the userinfo, so the host and the rest of git's reason survive for diagnosis. Copied — not shared — into
+# the two PR openers (module_manager, tune) exactly like the retry constants above, because the natural shared
+# homes (github_client, repo_identity) are guardrail-floored; keep the two copies identical.
+def _redact_credentials(text: str) -> str:
+    return re.sub(r"(https?://)[^/\s@]+@", r"\1***@", text)
+
+
 def _open_upgrade_pr(branch: str, title: str, body: str, repo=None, token=None) -> dict:
     """THE GIT+PR BOUNDARY (provisioning step 6): stage the overlaid change on a new branch, commit, push,
     and open a pull request so an upgrade is reviewed + reversible like any change. NET-NEW (no
@@ -1497,15 +2110,18 @@ def _open_upgrade_pr(branch: str, title: str, body: str, repo=None, token=None) 
     home). INJECTED for tests + the demo (upgrade(opener=...)), so this real path NEVER runs in the construction
     repo — one of the four named inductive gaps (no release to upgrade to, no PR to open).
 
-    On a failed POST it raises a DIAGNOSABLE, caller-agnostic RuntimeError (#672): the branch is already
+    On a failed POST it raises a DIAGNOSABLE, caller-agnostic RuntimeError (StarshipSuperjam/engine-template#672): the branch is already
     committed and pushed by the time the POST runs, so the message names the resolved repo/base/head/URL and
     GitHub's own safe reason (read via _github_error_detail — never the auth token or headers) and says the
     branch is already pushed so the recovery is to open the pull request by hand, not to re-run. A git step
-    failing EARLIER (checkout/add/commit/push) raises the OPPOSITE contract — the branch was NOT pushed, so it
-    names the failed step, surfaces git's stderr, and says to clear a leftover branch and run again — because a
-    "branch is pushed" claim would be false there. Each caller frames its own surrounding recovery; this
-    boundary supplies only the diagnostics both callers share."""
-    import subprocess, urllib.request, urllib.error, json as _json, boot, github_client  # local: only the real open needs these
+    failing EARLIER raises the OPPOSITE contract — the branch was NOT pushed — and is PHASE-AWARE (StarshipSuperjam/engine-template#877): a
+    `checkout -b` collision points to resuming the leftover branch by hand and never to a blind delete of the
+    branch the operator is standing on; a `commit` with nothing staged says the change is already applied; an
+    `add` or a non-empty `commit` failure says nothing was committed yet, so fix and re-run rather than push an
+    empty branch; and a `push` failure says the branch holds this attempt's committed changes, so keep it and
+    finish by hand. Each caller frames its own surrounding recovery; this boundary supplies only the diagnostics
+    both callers share."""
+    import subprocess, time, urllib.request, urllib.error, json as _json, boot, github_client  # local: only the real open needs these
     import repo_identity  # local: the shared default-branch resolver (dependency-light)
     slug = repo or boot.repo_slug()
     tok = token if token is not None else boot.gh_token()
@@ -1513,36 +2129,121 @@ def _open_upgrade_pr(branch: str, title: str, body: str, repo=None, token=None) 
         raise RuntimeError("could not determine the engine repository / credentials to open the update "
                            "pull request.")
     base = repo_identity.resolve_default_branch()
+
+    def _run_step(step):
+        # Run one staged git step. The push is the only step that can hit a transient missing origin (StarshipSuperjam/engine-template#704), so
+        # retry it a bounded number of times; checkout/add/commit run once. On a persistent push failure the
+        # final CalledProcessError propagates unchanged, so the phase-aware StarshipSuperjam/engine-template#672 recovery message below is
+        # reached and byte-identical.
+        is_push = step[1] == "push"
+        for attempt in range(_ORIGIN_RETRY_ATTEMPTS if is_push else 1):
+            try:
+                subprocess.run(step, cwd=validate.ROOT, check=True, capture_output=True)
+                return
+            except subprocess.CalledProcessError:
+                if is_push and attempt < _ORIGIN_RETRY_ATTEMPTS - 1:
+                    time.sleep(_ORIGIN_RETRY_DELAY)
+                    continue
+                raise
+
     # STAGE-AND-PUSH. A git step failing here means the branch was NOT (fully) pushed, so the recovery is the
-    # OPPOSITE of the POST-failure case below — there is no branch to open a pull request from yet. The most
-    # common cause is a leftover branch from an earlier partial attempt colliding on `checkout -b`, so the
-    # message names the failed step, surfaces git's own stderr (captured but otherwise dropped), and says
-    # plainly the branch is not pushed and how to clear the collision — never the false "already pushed" claim.
+    # OPPOSITE of the POST-failure case below — there is no branch to open a pull request from yet. The message
+    # names the failed step, surfaces git's own reason, and is PHASE-AWARE so it never dead-ends the operator or
+    # steers them into discarding committed work (StarshipSuperjam/engine-template#877): a `checkout -b` COLLISION with a leftover branch from an
+    # earlier attempt (which holds that attempt's committed, non-re-derivable changes) must NOT be met with
+    # `git branch -D` — the operator is usually standing on that very branch, so the delete cannot run, and even
+    # off it a force-delete would destroy the work. Unlike tune's throwaway staging branch (which safely uses
+    # `checkout -B`, StarshipSuperjam/engine-template#874), this branch is not disposable, so the collision is handled at the message level.
+    def _decode(v):
+        return (v.decode("utf-8", errors="replace") if isinstance(v, bytes) else (v or "")).strip()
+
+    def _nothing_staged():
+        # Deterministic, read-only: is the index empty relative to HEAD? Wrapped like the collision probe — a
+        # probe that cannot run must not mask the recovery, so fail toward "something IS staged" (the safe
+        # message that never falsely claims a no-op change).
+        try:
+            return subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=validate.ROOT,
+                                  capture_output=True).returncode == 0
+        except Exception:  # noqa: BLE001 — a probe that cannot run fails safe to "staged"
+            return False
+
     for args in (["git", "checkout", "-b", branch], ["git", "add", "-A"],
                  ["git", "commit", "-m", title], ["git", "push", "-u", "origin", branch]):
         try:
-            subprocess.run(args, cwd=validate.ROOT, check=True, capture_output=True)
+            _run_step(args)
         except subprocess.CalledProcessError as exc:
-            err = exc.stderr.decode("utf-8", errors="replace").strip() if isinstance(exc.stderr, bytes) \
-                else (exc.stderr or "").strip()
+            err = _redact_credentials(_decode(exc.stderr) or _decode(exc.stdout))   # stdout: git writes "nothing to commit" there; redact any tokened remote URL
+            # A `commit` that failed ONLY because nothing was staged is not really a failure — the working tree
+            # already matches, so this change is already applied. Say that plainly WITHOUT the alarming "failed"
+            # head, rather than steer the operator to push an empty branch. Caller-neutral (upgrade + removal).
+            if args[1] == "commit" and _nothing_staged():
+                raise RuntimeError(
+                    "no pull request was opened because there was nothing to commit"
+                    + (f" ({err})" if err else "")
+                    + " — the working tree already matches, so this change is already applied and nothing "
+                      "changed.") from exc
             head = (f"preparing the pull-request branch failed at `{' '.join(args)}`"
                     + (f": {err}" if err else f" (exit {exc.returncode})"))
             if args[1] == "checkout":
-                # The CREATE step failed, so no branch (and no commit) exists yet — most often a name collision
-                # with a leftover branch from an earlier attempt. Deleting that is safe (nothing new is on it).
-                recovery = (f" — so the branch '{branch}' was not created and there is no pull request to open "
-                            f"yet. A common cause is a leftover '{branch}' branch from an earlier attempt; "
-                            f"remove it (locally with `git branch -D {branch}`, and on the remote if it was "
-                            f"pushed) and run this again.")
+                # The CREATE step failed, so THIS run made no branch and committed nothing. Tell a name
+                # COLLISION (a leftover branch from an earlier attempt, which may hold that attempt's committed
+                # work) from any other checkout failure with a deterministic, read-only probe — qualified to
+                # `refs/heads/` so a same-named tag is never mistaken for a branch, and in validate.ROOT like
+                # the steps above. If the probe itself cannot run, fail SAFE: assume the branch may hold work,
+                # and say the state could not be confirmed rather than asserting the branch exists.
+                probe_ran, exists = True, False
+                try:
+                    exists = subprocess.run(
+                        ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
+                        cwd=validate.ROOT, capture_output=True).returncode == 0
+                except Exception:  # noqa: BLE001 — a probe that cannot run must not mask recovery; fail safe
+                    probe_ran, exists = False, True
+                if exists:
+                    # A leftover '{branch}' from an earlier attempt (or, when the probe could not run, possibly
+                    # so). It may hold committed changes that cannot be re-created, and the operator is most
+                    # likely standing on it — so NEVER a blind delete. Resume it by hand; delete only if sure it
+                    # is stale, with lowercase `-d` (which git REFUSES on an unmerged branch — the safety net)
+                    # after switching off it first.
+                    lead = (f"a branch named '{branch}' already exists" if probe_ran
+                            else f"a branch named '{branch}' may already exist (that check could not run here)")
+                    recovery = (f" — {lead}, most likely the committed changes from an earlier attempt whose "
+                                f"pull request was not opened. It may hold work that cannot be re-created, so do "
+                                f"not delete it blindly. If it is that earlier attempt, finish it by hand: switch "
+                                f"to it if you are not already there (`git switch {branch}`), then `git push -u "
+                                f"origin {branch}` and open the pull request yourself: `gh pr create --repo "
+                                f"{slug} --base {base} --head {branch}`. Only if you are certain it is stale — for "
+                                f"example, you have confirmed no pull request from it was merged — first switch "
+                                f"off it (`git switch {base}`) so you are not standing on it, then `git branch -d "
+                                f"{branch}` (git refuses if it still holds unmerged work) and run this again.")
+                else:
+                    # Not a collision — some other checkout failure. No branch was created and nothing changed,
+                    # so there is nothing to delete or recover; fix the reported cause and re-run.
+                    recovery = (f" — so no branch was created and nothing changed. Fix the cause reported above "
+                                f"and run this again.")
+            elif args[1] == "add":
+                # `git add -A` failed: the branch was created but nothing was staged or committed, so there is
+                # nothing to push. Do not claim it holds changes. Caller-neutral. (Rare — I/O / index faults.)
+                recovery = (f" — the branch '{branch}' was created but staging the changes failed, so nothing "
+                            f"was committed and there is nothing to push. Fix the cause reported above and run "
+                            f"this again.")
+            elif args[1] == "commit":
+                # Reached only when something IS staged (the nothing-staged case raised above): `git commit`
+                # failed for another reason — a rejecting commit hook, GPG signing, or no configured git
+                # identity. The branch exists but NOTHING was committed, so never claim it holds committed work
+                # or advise pushing (that would open an empty-diff pull request). Caller-neutral.
+                recovery = (f" — the branch '{branch}' was created and your changes are staged, but the commit "
+                            f"did not complete, so nothing was committed. Do not push it — that would open an "
+                            f"empty pull request. Fix the cause reported above and run this again.")
             else:
-                # A LATER step failed (add/commit/push): the branch was already created and may hold the
-                # arrival's committed changes, so DO NOT tell the operator to delete it — that would discard
-                # their work. A push failure (the common case) is usually authentication, network, or branch
-                # protection. Fix the reported cause, then finish by hand.
-                recovery = (f" — the branch '{branch}' was created and holds the arrival's changes, so do not "
-                            f"delete it. The pull request was not opened; fix the cause reported above, then "
-                            f"finish by pushing the branch (`git push -u origin {branch}`) and opening the pull "
-                            f"request yourself: `gh pr create --repo {slug} --base {base} --head {branch}`.")
+                # The PUSH failed: checkout/add/commit already succeeded, so the branch holds this attempt's
+                # committed changes. DO NOT tell the operator to delete it — that would discard the work. A push
+                # failure (the common case) is usually authentication, network, or branch protection.
+                # Caller-neutral wording — the upgrade and the removal path share this opener.
+                recovery = (f" — the branch '{branch}' was created and holds the committed changes from this "
+                            f"attempt, so do not delete it. The pull request was not opened; fix the cause "
+                            f"reported above, then finish by pushing the branch (`git push -u origin {branch}`) "
+                            f"and opening the pull request yourself: `gh pr create --repo {slug} --base {base} "
+                            f"--head {branch}`.")
             raise RuntimeError(head + recovery) from exc
     path = f"/repos/{slug}/pulls"
     payload = _json.dumps({"title": title, "head": branch, "base": base, "body": body}).encode("utf-8")
@@ -1587,7 +2288,7 @@ def _refresh_codeowners(handle) -> str:
 
 
 def _read_release_floor(release_tree: str, root_rel: str) -> "list | None":
-    """The floor SOURCE for the upgrade path (#323): the `floor` fence body extracted from the release's
+    """The floor SOURCE for the upgrade path (StarshipSuperjam/engine-template#323): the `floor` fence body extracted from the release's
     committed root file (CLAUDE.md / AGENTS.md — the promoted adopter floor). None when the release ships no
     usable floor — its root file is absent, carries no `floor` fence, or carries a malformed one (an old
     pre-promotion release, whose root file is the construction body with no fence, reads as None and is
@@ -1614,13 +2315,13 @@ def _merge_agents_floor(release_tree: str) -> str:
 def _merge_claude_floor(release_tree: str) -> str:
     """Keyed-merge the engine's root-CLAUDE.md floor from the RELEASE's committed root CLAUDE.md into the local
     CLAUDE.md, replacing ONLY the engine `floor` fence and preserving any operator content outside it
-    (keyed, reversible entries; the #234/#272 coexistence obligation). The floor SOURCE is the `floor` fence
-    body extracted from the release's root CLAUDE.md — the promoted adopter floor (#323). CLAUDE.md is kept
+    (keyed, reversible entries; the StarshipSuperjam/engine-template#234/StarshipSuperjam/engine-template#272 coexistence obligation). The floor SOURCE is the `floor` fence
+    body extracted from the release's root CLAUDE.md — the promoted adopter floor (StarshipSuperjam/engine-template#323). CLAUDE.md is kept
     OUT of FOUNDATION_CODE and keyed-merged (never wholesale-overlaid), so the release's own root file is only
     ever read for its fenced floor block, never copied whole over an adopter's file.
 
     Returns: 'merged' (the engine block was replaced); 'created' (the floor file was ABSENT and is created
-    from the release floor source — the AGENTS.md-never-created case, #599 class 2); 'skipped' (the release
+    from the release floor source — the AGENTS.md-never-created case, StarshipSuperjam/engine-template#599 class 2); 'skipped' (the release
     ships no floor source — its root file is absent or carries no/ malformed `floor` fence, e.g. a pre-promotion
     release); 'skipped-no-section' (the local CLAUDE.md EXISTS but carries no engine `floor` fence — leave it
     untouched, NEVER append a duplicate floor: the pre-keyed-merge raw-floor case); 'degraded' (a malformed
@@ -1643,7 +2344,7 @@ def _merge_floor(release_tree: str, root_rel: str) -> str:
     local = validate.read(local_path) if local_exists else ""
     try:
         if not local_exists:
-            # CREATE-IF-ABSENT (#599 class 2): the foundation floor file was never created on this deployed
+            # CREATE-IF-ABSENT (StarshipSuperjam/engine-template#599 class 2): the foundation floor file was never created on this deployed
             # repo — a floor a LATER version introduced (the AGENTS.md case, which the keyed-merge below would
             # otherwise skip forever). Create it from the DEPLOYED floor source, exactly as first-run
             # provisioning would have. This branch fires ONLY when the file is truly absent; an EXISTING
@@ -1664,9 +2365,9 @@ def _merge_floor(release_tree: str, root_rel: str) -> str:
     return "merged"
 
 
-# ---- the version-sensitive upgrade tail: run as freshly-overlaid code (issue #594) ----
+# ---- the version-sensitive upgrade tail: run as freshly-overlaid code (issue StarshipSuperjam/engine-template#594) ----
 #
-# THE BUG (#594): `upgrade()` overlays the new release's `.engine/tools/*.py` (core's `provides` glob covers
+# THE BUG (StarshipSuperjam/engine-template#594): `upgrade()` overlays the new release's `.engine/tools/*.py` (core's `provides` glob covers
 # wiring.py / module_coherence.py) onto disk, but the running process keeps the `wiring`/`module_coherence`
 # it imported at startup. So the wire APPLIER and the coherence VERIFIER ran the PRE-upgrade library, and any
 # wire seam a release newly introduced (v0.3.0's codex-mcp/codex-hook) could never be applied by its own
@@ -1719,14 +2420,21 @@ def _glob_namespace_prefixes(old_by_id: dict) -> tuple:
     return tuple(sorted(prefixes))
 
 
-def _reconcile_surface(release_tree: str, candidates: dict, old_owned: list, old_by_id: dict) -> tuple:
-    """The #599 reconcile: drive the deployed FILE surface to `provision(release)`. ADD — deliver every
+def _reconcile_surface(release_tree: str, candidates: dict, old_owned: list, old_by_id: dict,
+                       dropped_ids=(), tracked=None) -> tuple:
+    """The StarshipSuperjam/engine-template#599 reconcile: drive the deployed FILE surface to `provision(release)`. ADD — deliver every
     `engine_synced_map` member the tree lacks or that differs (fixtures + any overlay-missed file), projected
     so the first-run-retired set is never delivered. DELETE — reusing `remove_engine`'s compute-the-whole-set-
     before-any-deletion discipline: candidates are the OLD engine-owned surface (`old_owned`, threaded from
     the parent pre-overlay — the rename/drop orphans) UNIONED with the release's RETIRE set (the first-run
     files the parent's copy-only overlay resurrected onto this deployed tree), minus the KEEP set and the
-    carve-outs. Returns (fixtures_delivered:list, removed:dict{engine, suspect, left_in_place})."""
+    carve-outs. Returns (fixtures_delivered:list, removed:dict{engine, suspect, left_in_place}).
+
+    `dropped_ids` are modules the release removed WHOLE (StarshipSuperjam/engine-template#688): their `provides` are already in `old_owned`, so
+    they are already delete candidates — but because a whole-module drop is AUTOMATIC and release-initiated (no
+    per-file operator intent, unlike remove()), the git-tracked-only recoverability guard is widened to EVERY
+    file a dropped module owns, not just the glob-`suspect` bucket, so an untracked (unrecoverable) file a dropped
+    module happened to own is left in place, never deleted."""
     # Compute the release's synced map + retire set ONCE — the deliver leg and the KEEP set both read the map;
     # a bad/dangerous retire manifest raises up to the tail (clean refusal).
     r_files, r_dirs = retire_set(release_tree)
@@ -1739,24 +2447,46 @@ def _reconcile_surface(release_tree: str, candidates: dict, old_owned: list, old
     # DELETE — compute the WHOLE candidate set first (the live globs need the files still on disk).
     keep = set(synced.keys()) | set(_FOUNDATION_KEYED)
     exact_cv, prefix_cv = _reconcile_carveouts()
+    if tracked is None:                            # git-tracked relpaths, or None when git is unavailable
+        tracked = module_coherence._tracked_paths()   # (threaded from the caller so a drop-upgrade reads git once)
+    # The FILE-delete leg reconciles the committed fixture namespace like any other owned surface (StarshipSuperjam/engine-template#699): a
+    # fixture the release NO LONGER SHIPS must retire, not survive (a superseded `not-applicable.json` that
+    # lingered was StarshipSuperjam/engine-template#599's residual — it reddens `engine-ci`). Fixtures are in NO module's `provides` (so never
+    # in `old_owned`) and are blanket-spared by `prefix_cv`, so here (a) add the deployed tree's TRACKED
+    # fixture files as candidates — TRACKED-ONLY, because an UNTRACKED fixture is the operator's own and is not
+    # git-restorable, so it must never be a delete candidate (the recoverability invariant) — and (b) drop the
+    # fixture prefix from the FILE-leg carve-out only. A LIVE release fixture stays spared: it is in `keep`
+    # (the release delivered its own fixtures into the synced map), which `_spared` checks first. The
+    # DIRECTORY-retire leg below keeps the full `prefix_cv` (its `rmtree` has no untracked guard).
+    fixture_pref = tuple(ns + "/" for ns in module_coherence.FIXTURE_PATHS)
+    file_prefix_cv = tuple(p for p in prefix_cv if p not in fixture_pref)
+    fixture_candidates = ({rel for rel in tracked if rel.startswith(fixture_pref)}
+                          if tracked is not None else set())
 
     def _spared(rel: str) -> bool:
-        return rel in keep or rel in exact_cv or rel.startswith(prefix_cv)
+        return rel in keep or rel in exact_cv or rel.startswith(file_prefix_cv)
 
-    to_delete = sorted(rel for rel in (set(old_owned) | set(r_files))
+    to_delete = sorted(rel for rel in (set(old_owned) | set(r_files) | fixture_candidates)
                        if not _spared(rel) and _within_root(rel)
                        and os.path.isfile(os.path.join(validate.ROOT, rel)))
     glob_prefixes = _glob_namespace_prefixes(old_by_id)
-    tracked = module_coherence._tracked_paths()   # git-tracked relpaths, or None when git is unavailable
+    # Every file a WHOLE-dropped module owns (StarshipSuperjam/engine-template#688): its removal is automatic/release-initiated, so the
+    # recoverability guard below applies to ALL of them, not only the glob-suspect ones. Use `provides_claims`
+    # (the module's OWN `provides` files) — NOT `engine_owned_paths`, which unions in the global FOUNDATION_INFRA
+    # set unrelated to any dropped module (inert here since foundation paths are always in `keep`, but the guard
+    # must mean exactly "this module's files").
+    dropped_owned = set(module_coherence.provides_claims(
+        [(f".engine/modules/{mid}/manifest.json", old_by_id.get(mid) or {}) for mid in (dropped_ids or ())]))
     removed = {"engine": [], "suspect": [], "left_in_place": []}
     for rel in to_delete:
         # A known first-run (retire-set) file is engine; otherwise a file under a GLOB provides namespace could
         # be one the operator added — surface it — while a literal-named file is engine.
         suspect = rel not in r_files and bool(glob_prefixes) and rel.startswith(glob_prefixes)
-        if suspect and tracked is not None and rel not in tracked:
-            # An UNTRACKED (git-ignored) file under an engine folder is almost certainly the operator's own,
-            # and the undo cannot restore it (git only restores tracked files). LEAVE it, surface it — so every
-            # file the reconcile actually removes stays recoverable (security review).
+        if (suspect or rel in dropped_owned) and tracked is not None and rel not in tracked:
+            # An UNTRACKED (git-ignored) file — under a glob namespace, or owned by a whole-dropped module —
+            # is almost certainly the operator's own, and the undo cannot restore it (git only restores tracked
+            # files). LEAVE it, surface it — so every file the reconcile actually removes stays recoverable
+            # (security review; widened to the whole-module drop for StarshipSuperjam/engine-template#688).
             removed["left_in_place"].append(
                 f"{rel} — left in place: it looks like a file you added (the engine does not track it), so I "
                 f"did not remove it. Delete it yourself if you don't need it.")
@@ -1789,25 +2519,76 @@ def _reconcile_surface(release_tree: str, candidates: dict, old_owned: list, old
     return fixtures_delivered, removed
 
 
+def _retire_dropped_module_dirs(dropped_ids, removed: dict, tracked=None) -> None:
+    """Retire each intentionally-dropped module's OWN manifest folder (`.engine/modules/<id>/`) — the one part
+    of a whole-module removal the file-reconcile leg cannot cover, because a manifest is never in its module's
+    `provides` (so never in `old_owned`). Left behind, the folder is a ZOMBIE: `discover_manifests` still reports
+    the module installed while `packages` no longer lists it, an incoherence the structural gate would fail on.
+
+    Removes the TRACKED files under the folder (de-registering the module — its manifest is tracked) and LEAVES
+    any UNTRACKED file in place, surfacing it: a whole-module drop is automatic and release-initiated, so the
+    same recoverability invariant the file-delete leg keeps — an untracked, undo-unrestorable file is never
+    deleted — must hold for the WHOLE owned surface, not just the `provides` paths (a plain `rmtree` here would
+    silently take an untracked co-located file the undo could not bring back; security review). Then prunes the
+    now-empty directories. When git is unavailable (`tracked is None`) the guard cannot run and the undo is also
+    unavailable, so it mirrors remove()/the file leg and removes the folder wholesale (the pre-existing residual).
+    `tracked` is threaded from the caller to avoid a second `git ls-files` per drop-upgrade."""
+    if tracked is None:
+        tracked = module_coherence._tracked_paths()
+    for mid in sorted(set(dropped_ids or ())):
+        d = _modules_dir(mid)
+        if not os.path.isdir(d):
+            continue
+        if tracked is None:   # git unavailable — the recoverability guard cannot run; mirror remove()'s rmtree
+            try:
+                shutil.rmtree(d)
+                removed["engine"].append(f".engine/modules/{mid}/")
+            except OSError as exc:
+                removed["left_in_place"].append(
+                    f".engine/modules/{mid}/ (could not remove: {_plain_oserror(exc)})")
+            continue
+        for root, _dirs, files in os.walk(d, topdown=False):
+            for fn in files:
+                p = os.path.join(root, fn)
+                rel = os.path.relpath(p, validate.ROOT).replace(os.sep, "/")
+                if rel not in tracked:
+                    removed["left_in_place"].append(
+                        f"{rel} — left in place: it looks like a file you added (the engine does not track "
+                        f"it), so I did not remove it. Delete it yourself if you don't need it.")
+                    continue
+                try:
+                    os.remove(p)
+                except OSError as exc:
+                    removed["left_in_place"].append(f"{rel} (could not remove: {_plain_oserror(exc)})")
+            try:
+                os.rmdir(root)   # prunes the folder only once nothing (an untracked residual) remains under it
+            except OSError:
+                pass
+        removed["engine"].append(f".engine/modules/{mid}/")   # its tracked surface is gone → the module retired
+
+
+
+
 # The offline-reproducible STRUCTURAL subset of CI the pre-open gate runs against the reconciled tree. NOT
 # full CI: the full `engine-ci` required check is a TWO-step job (the validator AND the self-tests), and its
 # hard checks read a PR/event/network context that does not exist pre-open on the operator's machine
-# (arch-S4, feasibility-B1/S1). This subset reads the reconciled TREE live and is exactly what #599 trips —
+# (arch-S4, feasibility-B1/S1). This subset reads the reconciled TREE live and is exactly what StarshipSuperjam/engine-template#599 trips —
 # and none of it reaches the network or needs the repo token. The full-CI proof lives in the cut-time
-# deployment gate, which practice-upgrades real past releases to the candidate before a release is cut (#664),
+# deployment gate, which practice-upgrades real past releases to the candidate before a release is cut (StarshipSuperjam/engine-template#664),
 # never on an operator's upgrade.
 _STRUCTURAL_GATE_CHECK_IDS = frozenset({
     "engine/check/catalog-coverage",        # a delivered/removed file leaving the surface catalog incomplete
     "engine/check/census-completeness",     # the census of catalogued surfaces vs the tree
     "engine/check/self-map-drift",          # the regenerated self-map matching the reconciled module graph
     "engine/check/knowledge-coverage",      # the regenerated knowledge graph matching the reconciled surfaces
-    "engine/check/codex-provider-parity",   # an orphaned .claude/agents/* with no .codex twin (the #599 class)
+    "engine/check/codex-provider-parity",   # an orphaned .claude/agents/* with no .codex twin (the StarshipSuperjam/engine-template#599 class)
     "engine/check/codex-agent-coherence",   # the Codex agent renders matching their .claude sources
+    "engine/check/uv-group-drift",          # the committed default-groups matching the deployed module set (StarshipSuperjam/engine-template#757)
 })
 # NOT in the gate: `hard-check-bite` — it is a release-cut META-check that every hard check bites its
 # negative fixture, a property of the CHECK CORPUS (verified where releases are cut), not of the reconciled
 # deployed tree, and some checks only bite with construction/vault state a deployed repo need not have. The
-# fixture DELIVERY it once caught missing (#599 class 3) is now guaranteed by the reconcile's deliver leg and
+# fixture DELIVERY it once caught missing (StarshipSuperjam/engine-template#599 class 3) is now guaranteed by the reconcile's deliver leg and
 # asserted by the regression; the release's own CI still runs hard-check-bite on the opened pull request.
 
 
@@ -1837,13 +2618,25 @@ def _coherence_only_gate(body: str) -> list:
     deployed upgrade (`in_process` ⇒ an injected release tree + injected callables — a real upgrade fetches a
     release and spawns a child), so the full gate on the child path is the one that matters, and it is proven
     against a real reconciled tree by `demo_599` and by the cut-time deployment gate's practice upgrades from
-    real past releases (#664). `body` is accepted for signature parity with `_reconcile_gate`."""
+    real past releases (StarshipSuperjam/engine-template#664). `body` is accepted for signature parity with `_reconcile_gate`."""
     return list(module_coherence.check_coherence())
 
 
-def _reconcile_refuse_reason() -> str:
+def _reconcile_refuse_reason(findings: list | None = None) -> str:
     """The plain-language refusal when the structural gate finds a problem in the rebuilt engine — names the
-    class of problem in words, never a check id (product-S3), and points at the re-run / undo recourse."""
+    class of problem in words, never a check id (product-S3), and points at the recourse. When the blocking
+    problem is a dependency-group mismatch the reconcile could not fix (a malformed `default-groups` array the
+    single-line rewriter can't touch — reachable only from a malformed RELEASE, since the overlay replaces the
+    operator's pyproject wholesale), a re-run repeats the same failure, so it names that specific cause and
+    points at undo + reporting rather than a dead-end "retry". Matches on `source_rule` (the id `collect`
+    stamps on each finding under `with_source`), never the operator-facing message."""
+    for f in (findings or []):
+        if f.get("source_rule") == "engine/check/uv-group-drift" and f.get("severity") == "hard":
+            return ("The update was applied to your working copy, but the engine's tool-runtime dependency "
+                    "groups — which decide which modules' Python dependencies get installed — could not be "
+                    "reconciled to your installed modules, so it was NOT opened for review and nothing was "
+                    "merged. This points to a problem in the release itself, so running the update again will "
+                    "not fix it: ask me to undo the update's changes, and report it to your engine's update home.")
     return ("The update was applied to your working copy, but a consistency check on the rebuilt engine found "
             "a problem, so it was NOT opened for review and nothing was merged. Run the update again to retry, "
             "or ask me to undo the update's changes.")
@@ -1862,35 +2655,72 @@ def _stage_worktree() -> None:
 
 
 def _regen_indexes() -> None:
-    """Regenerate the deployed-state-dependent index files — the self-map and the knowledge graph — from the
-    reconciled tree, so they describe the DEPLOYED shape (post first-run projection), NOT the construction
-    shape the release ships. Both are in `core`'s `provides`, so the overlay delivers the release's
-    construction versions; but they fingerprint the surface the reconcile just changed (the retire set is
-    absent on a deployed repo), so the shipped copies would drift (self-map-drift / knowledge-coverage). These
-    are exactly the §B 'render locally iff a function of deployed state' artifacts. Best-effort: a regen
-    failure surfaces as a drift finding at the gate (a clean refusal), never a crash mid-upgrade."""
+    """Regenerate the deployed-state-dependent index files listed in REGENERATED_DERIVED — the self-map, the
+    knowledge graph, and the product-spec-matrix — from the reconciled tree, so they describe the DEPLOYED
+    shape (post first-run projection), NOT the construction shape the release ships. The overlay delivers the
+    release's construction versions, but each derives from / fingerprints the surface the reconcile just
+    changed, so the shipped copy would drift (self-map-drift / knowledge-coverage; the matrix's own drift
+    gate). The self-map and graph are `core`'s; the product-spec-matrix is the same shape but supplied by the
+    OPTIONAL product-design module — it derives from the deployment's OWN `docs/spec/`, so an update refreshes
+    its format without freezing the deployment's settled-criteria rows (StarshipSuperjam/engine-template#814). Each is regenerated ONLY where
+    the tree already carries it (never fabricated on a minimal fixture, nor on a deployment that never settled
+    a spec), and the product-design generator is imported LAZILY and guarded (the module, hence its tool, is
+    absent on a deployment without it). Best-effort: a regen failure surfaces as a drift finding, never a crash
+    mid-upgrade — but WHERE it surfaces differs: the self-map and graph drift is caught PRE-OPEN by the
+    structural gate (`self-map-drift` / `knowledge-coverage`, a clean refusal that opens nothing), whereas the
+    product-spec-matrix's drift check is NOT in that offline subset, so a swallowed matrix-regen failure is
+    caught instead by the full `engine-ci` run on the OPENED pull request (a red required check) — still never
+    silent, but post-open rather than a pre-open refusal."""
     import self_map            # lazy: only the reconcile tail needs the generators
     import knowledge_gen
-    # Pass an EXPLICIT target under the CURRENT validate.ENGINE_DIR: the generators' own default-path constants
-    # are bound at import to the real repo, so a bare generate() would write there even under a redirected tree
-    # (a test/demo fixture). validate.ENGINE_DIR IS redirected, so building the path from it writes to the tree
-    # actually being reconciled — the deployed repo on the real child path, the fixture under a redirect.
-    for gen, target in ((self_map.generate, os.path.join(validate.ENGINE_DIR, "self-map.md")),
-                        (knowledge_gen.generate, os.path.join(validate.ENGINE_DIR, "knowledge", "graph.json"))):
+
+    # Resolve each REGENERATED_DERIVED path to its generator. Pass an EXPLICIT target under the CURRENT
+    # validate.ENGINE_DIR: the generators' own default-path constants are bound at import to the real repo, so
+    # a bare generate() would write there even under a redirected tree (a test/demo fixture). ENGINE_DIR IS
+    # redirected, so the path built from it writes the tree actually being reconciled.
+    def _generator(rel: str):
+        if rel == ".engine/self-map.md":
+            return self_map.generate
+        if rel == ".engine/knowledge/graph.json":
+            return knowledge_gen.generate
+        if rel == ".engine/product-spec-matrix.json":
+            try:
+                from product_design import obligation_matrix   # OPTIONAL module: absent is EXPECTED → skip
+            except ImportError:
+                return None
+            return obligation_matrix.generate
+        # A REGENERATED_DERIVED member with no generator here is a MAINTENANCE BUG — the tuple and this resolver
+        # must stay in lockstep, or the disclosure would promise 'regenerated' for a file the update never
+        # rebuilds. Fail LOUD (this runs outside the regen swallow below), never a silent skip.
+        raise KeyError(f"REGENERATED_DERIVED member {rel!r} has no generator in _regen_indexes — add one")
+
+    for rel in REGENERATED_DERIVED:
+        target = os.path.join(validate.ENGINE_DIR, *rel.split("/")[1:])
         if not os.path.isfile(target):
-            continue   # the tree does not carry this index (a minimal fixture) — never fabricate one
+            continue   # the tree does not carry this index (a minimal fixture / no settled spec) — never fabricate
+        # StarshipSuperjam/engine-template#862: os.path.isfile FOLLOWS a symlink, so a live symlink at an engine index would be regenerated
+        # THROUGH it — an out-of-tree write (self-map/matrix use a plain open('w')). Refuse via the shared
+        # predicate (StarshipSuperjam/engine-template#923): SKIP the regen — keep this a `continue`, never a raise, even if the isfile check
+        # above is ever reordered — so no write follows the link; the drift gate (arrival's index gate / the
+        # upgrade reconcile) then surfaces the un-regenerated index as a hard finding, disclosed never silent.
+        if engine_write.write_through_symlink_reason(target, validate.ROOT):
+            continue
+        gen = _generator(rel)          # OUTSIDE the swallow: an unmapped member is a loud maintenance bug
+        if gen is None:
+            continue                   # optional module absent — nothing to regenerate here
         try:
-            gen(path=target)
-        except Exception:  # noqa: BLE001 — a regen failure becomes a drift finding at the gate, not a traceback
+            gen(path=target)           # a genuine regen failure IS swallowed (drift-gate backstop), never a crash
+        except Exception:  # noqa: BLE001 — a regen failure surfaces as a drift finding, not a traceback
             pass
 
 
 def _upgrade_tail(*, release_tree, target_ref, from_versions, target_versions, old_by_id, old_owned,
-                  candidates, handle, selected, seam, practice, opener, gate=None) -> dict:
+                  candidates, handle, selected, seam, practice, opener, groups_before=None, gate=None,
+                  dropped_ids=(), pre_overlay_known=(), catalog_trusted=True) -> dict:
     """The version-sensitive tail of an upgrade — the work that MUST run as the freshly-overlaid engine code
-    (the #594 fix): apply the new version's wiring with the FRESH appliers, re-render the release-evolvable
+    (the StarshipSuperjam/engine-template#594 fix): apply the new version's wiring with the FRESH appliers, re-render the release-evolvable
     seams (ownership wall, CLAUDE/AGENTS floor, foundation ignores), RECONCILE the file surface to
-    `provision(release)` (deliver what the release added, remove what it dropped/renamed — #599), run
+    `provision(release)` (deliver what the release added, remove what it dropped/renamed — StarshipSuperjam/engine-template#599), run
     migrations, bump the engine manifest AFTER migrations succeed (so an abort before them leaves nothing to
     silently skip on a re-run), gate the rebuilt tree on the structural check subset, and open the review pull
     request. Returns the tail portion of the result dict; the caller merges it over the phase-1 result. On the
@@ -1902,31 +2732,48 @@ def _upgrade_tail(*, release_tree, target_ref, from_versions, target_versions, o
             "foundation_ignores": None, "fixtures_delivered": [],
             "orphans_removed": {"engine": [], "suspect": [], "left_in_place": []},
             "migrations": {"ran": [], "refused": []}, "retired_capabilities": [],
-            "findings": [], "pr": None, "notes": [], "applied": False, "reason": None}
+            "removed_capabilities": [],
+            "findings": [], "pr": None, "notes": [], "applied": False, "reason": None,
+            "groups_before": groups_before, "groups_after": None, "groups_changed": False,
+            "modules_installed": [], "modules_offered": []}
     # (a0) RETIRED-CAPABILITY ANNOUNCEMENTS — derived from the FULL present-manifest set (`candidates`), NEVER
     # from `selected`: a version that retires a capability but ships no migration must still announce it, so this
     # is independent of migration selection (design-review). Announcement-only, so it is computed once up front
     # and simply rides the result — it runs nothing and can never refuse.
     tail["retired_capabilities"] = select_retired_capabilities(
         from_versions, target_versions, list(candidates.values()))
-    # (a) WIRING DELTAS — reverse a wire the new version drops, (re)apply the wires it declares now, with the
-    # freshly-overlaid appliers (this is the seam #594 fixed: a new wire type now actually applies).
-    tail["wiring"] = _apply_wiring_deltas(old_by_id, candidates)
+    # (a0b) WHOLE-MODULE REMOVAL ANNOUNCEMENTS — the plain-language line for each module this update retires,
+    # driven off the SAME `dropped_ids` set the teardown below acts on (single-homed, so a module is never
+    # reconciled-away without being announced) and its text read from the release's own removed_capabilities.
+    tail["removed_capabilities"] = select_removed_capabilities(
+        dropped_ids, _release_engine_manifest(release_tree))
+    # (a) WIRING DELTAS — reverse a dropped module's wires FIRST (mirrors remove()'s reversal), then reverse a
+    # wire the new version drops and (re)apply the wires the survivors declare now, with the freshly-overlaid
+    # appliers (StarshipSuperjam/engine-template#594). Ordering matters: reversing the dropped module before re-applying survivors means a wire a
+    # survivor also declares (a shared permission, a keyed gitignore fence) is re-applied, not left stripped.
+    tail["wiring"] = _apply_wiring_deltas(old_by_id, candidates, dropped_ids=dropped_ids)
     # (b) RE-RENDER the release-evolvable seams. The floor merge now CREATES a never-created foundation floor
-    # (the AGENTS.md case, #599 class 2) rather than skipping it forever.
+    # (the AGENTS.md case, StarshipSuperjam/engine-template#599 class 2) rather than skipping it forever.
     tail["codeowners"] = _refresh_codeowners(handle)
     tail["claude_floor"] = _merge_claude_floor(release_tree)
     tail["agents_floor"] = _merge_agents_floor(release_tree)
     tail["foundation_ignores"] = wiring.apply_foundation_ignores(wiring.GITIGNORE_PATH)
     tail["applied"] = True   # the working copy is now mutated (overlay + seams); any refusal below is half-state
-    # (b2) RECONCILE the file surface to provision(release) — the #599 authority the copy-only overlay is not.
+    # (b2) RECONCILE the file surface to provision(release) — the StarshipSuperjam/engine-template#599 authority the copy-only overlay is not.
     # A refusal (a bad retire manifest, a containment escape) surfaces cleanly: staged, un-merged, nothing opened.
+    # Read the git-tracked set ONCE and thread it to both the reconcile and the dropped-module retire below (the
+    # recoverability guard both apply), so a drop-upgrade spawns a single `git ls-files`.
+    tracked = module_coherence._tracked_paths()
     try:
         tail["fixtures_delivered"], tail["orphans_removed"] = _reconcile_surface(
-            release_tree, candidates, old_owned, old_by_id)
+            release_tree, candidates, old_owned, old_by_id, dropped_ids=dropped_ids, tracked=tracked)
     except _UpgradeRefused as ur:
         tail["reason"] = ur.reason
         return tail
+    # (b3) RETIRE each intentionally-dropped module's OWN manifest folder — the one teardown step the file
+    # reconcile can't cover (a manifest is never in its module's `provides`), mirroring remove()'s rmtree. Runs
+    # BEFORE the manifest bump and the gate, so the gate sees a coherent tree (no folder for a pruned package).
+    _retire_dropped_module_dirs(dropped_ids, tail["orphans_removed"], tracked=tracked)
     # (c) MIGRATIONS (selected + dependency-ordered; the no-backup guard already pre-flighted in phase 1).
     tail["migrations"] = run_migrations(selected, from_versions, target_ref, backup=seam)
     if tail["migrations"].get("refused"):
@@ -1945,10 +2792,126 @@ def _upgrade_tail(*, release_tree, target_ref, from_versions, target_versions, o
     # (d) BUMP the engine manifest — AFTER migrations succeed, BEFORE the gate. A child-launch / import /
     # migration failure therefore leaves engine.json UNbumped, so a re-run re-selects the migrations rather
     # than seeing from==to and silently skipping them (risk-review). The gate sees a bumped manifest that
-    # matches the overlaid modules.
-    _bump_engine_manifest(target_versions, target_ref)
+    # matches the overlaid modules. It also PRUNES each dropped module from `packages`, so engine.json no longer
+    # lists a module whose files are gone. (Because this prune is durable, a drop half-state — the gate refusing
+    # below — is recovered by UNDO, which restores the module and lets a fresh update re-detect and re-announce
+    # it; a plain re-run would complete with the module already pruned and never disclose it. See the reconcile
+    # KNOWN BOUND on undo-as-recovery in upgrade().)
+    try:
+        _bump_engine_manifest(target_versions, target_ref, dropped_ids=dropped_ids)
+    except engine_write.EngineWriteRefused as exc:
+        # StarshipSuperjam/engine-template#923: a symlinked/escaping engine.json is a PERSISTENT condition — the generic "run it again
+        # with --confirm" copy would loop (re-running the migrations each attempt). Join the tail's
+        # clean-refusal idiom with a purpose-written remedy instead. The upgrade() pre-flight refuses
+        # this before any overlay on the normal path; this is the fail-closed backstop for a shortcut
+        # planted mid-flight or a tail entered directly.
+        tail["reason"] = (f"The update was applied to the working copy but was NOT opened for review "
+                          f"and nothing was merged, because the engine's own record could not be safely "
+                          f"written: {exc} Or ask me to undo the update's changes instead.")
+        return tail
+    # (d0b) StarshipSuperjam/engine-template#759 INSTALL the net-new modules this release adds that the deployment needs, and record the rest as
+    # OFFERS. A `required` module the release adds is installed mandatorily (the deployment needs it to be
+    # coherent); a NET-NEW `default-on` module is turned on opt-out; `optional`/`experimental`/previously-declined
+    # modules are OFFERED, never installed (the operator opts in later with `add`). The discriminator between a
+    # net-new and a previously-declined `default-on` is the deployment's PRE-OVERLAY known set (threaded from
+    # phase 1); an unreadable pre-overlay catalog fails `default-on` CLOSED to offer-only. Runs AFTER the manifest
+    # bump/teardown (the survivor set is settled) and BEFORE the group reconcile + index regen + gate below, so
+    # `derive_uv_groups()` and the indexes and the gate all see the assembled tree with the new modules present.
+    # Installs via the same `add()` primitive an operator uses, reading files from the already-extracted release
+    # tree (no second fetch). Per-module fail posture: a `required` failure is NOT hidden — it leaves the tree
+    # incomplete and the required-completeness refusal below stops the update cleanly (no structural check compares
+    # the deployed set to the release's required set, so the tail must); a `default-on` failure fails OPEN (cleaned
+    # up, then demoted to an offer) so a single add hiccup can't block an otherwise-legitimate update.
+    plan759 = classify_available_modules(release_tree, list(candidates), pre_overlay_known,
+                                         catalog_trusted=catalog_trusted, dropped_ids=dropped_ids)
+    # A malformed module manifest in the release means a BROKEN release — and a net-new `required` module could
+    # hide behind one, so it must never be silently skipped (that would reproduce StarshipSuperjam/engine-template#759's silent omission). Fail
+    # closed BEFORE any install: staged, not opened.
+    if plan759.get("malformed"):
+        shown = ", ".join(plan759["malformed"][:3]) + ("…" if len(plan759["malformed"]) > 3 else "")
+        tail["reason"] = ("The update was applied to your working copy, but the release contains a malformed "
+                          f"module description ({shown}), so it was NOT opened for review and nothing was merged. "
+                          "This points to a problem in the release itself, so running the update again will not "
+                          "fix it: ask me to undo the update's changes, and report it to your engine's update home.")
+        return tail
+    if not catalog_trusted:
+        tail["notes"].append("(could not read the module catalog before the update, so any add-on this version "
+                             "includes by default was OFFERED rather than turned on automatically — check your "
+                             "engine's module catalog.)")
+    tail["modules_offered"] = list(plan759["offered"])
+    for entry in plan759["install"]:
+        mid, status = entry["id"], entry["status"]
+        residue = []
+        # `add()` returns applied=True with a WIRE failure captured as a hard finding (the wiring dispatcher
+        # turns a bad wire into a finding, not an exception) — so a broken install must be caught here, not
+        # silently recorded. But `add()`'s `findings` are `check_coherence()` over the WHOLE tree, so a
+        # PRE-EXISTING unrelated problem (e.g. an orphan from an earlier incomplete removal) would be wrongly
+        # blamed on this module. Attribute only the findings THIS install introduced: baseline the hard findings
+        # immediately before `add()` and count only NEW ones (the same delta idiom `plan_add` uses). A genuinely
+        # tree-wide pre-existing problem then surfaces at the final structural gate with its own accurate message,
+        # never as a false "the release is broken" that rolls back an innocent module.
+        baseline_hard = module_coherence.check_coherence()
+        try:
+            res = add(mid, release_tree=release_tree)
+            new_hard = _new_hard_findings(baseline_hard, res.get("findings"))   # MULTISET diff, not set membership
+            if res.get("applied") and not new_hard:
+                reason = None
+            else:
+                reason = (res.get("reason") if not res.get("applied")
+                          else "the add-on's setup did not complete cleanly (its own settings could not be applied)")
+                residue = _cleanup_failed_install(mid, release_tree)   # undo files + wires; surface irreversibles
+        except Exception as exc:   # noqa: BLE001 — never crash the tail; undo any partial write
+            residue = _cleanup_failed_install(mid, release_tree)
+            reason = str(exc)
+        if reason is None:
+            tail["modules_installed"].append({"id": mid, "status": status,
+                                              "prior_declined": entry.get("prior_declined", False),
+                                              "description": entry.get("description") or ""})
+        else:
+            note = f"(could not install the new module '{mid}' automatically: {reason})"
+            for r in residue:
+                note += f" — {r} was left in place and may need your review"
+            tail["notes"].append(note)
+            if status != "required":   # a required failure is handled by the completeness refusal, not an offer
+                tail["modules_offered"].append(
+                    {"id": mid, "status": status, "verb": "",
+                     "description": entry.get("description")
+                     or f"(the engine could not turn this on automatically: {reason})"})
+    # Required-completeness refusal: a REQUIRED module the release adds that could not be installed leaves an
+    # incomplete engine no structural check would catch (required modules aren't catalogued, and nothing already
+    # present references a net-new one). Refuse cleanly HERE — staged, not opened — rather than shipping a green
+    # pull request missing a required capability (StarshipSuperjam/engine-template#759's primary path).
+    _installed_ids = {e["id"] for e in tail["modules_installed"]}
+    _missing_required = [e["id"] for e in plan759["install"]
+                         if e["status"] == "required" and e["id"] not in _installed_ids]
+    if _missing_required:
+        tail["reason"] = _required_install_refuse_reason(_missing_required)
+        return tail
+    # (d1) RECONCILE the tool-runtime dependency-group SELECTION to the upgraded module set. The overlay
+    # replaced `.engine/pyproject.toml` WHOLESALE with the release's `default-groups` (its CONSTRUCTION set —
+    # every default-on module), but THIS deployment's installed set may be smaller (a declined optional module)
+    # or differ, so `derive_uv_groups()` now yields a different selection. Without this, the committed selection
+    # drifts and the update's OWN pull request is born failing `uv-group-drift` (StarshipSuperjam/engine-template#757) — the operator would have
+    # to hand-run `sync-groups`. Mirrors add()/remove(): re-derive from the present set, rewrite the single-line
+    # array, and let `_stage_worktree()` below fold the edit into the SAME update commit. Runs AFTER the dropped-
+    # module teardown above, so `derive_uv_groups()` reads the post-teardown present set and a whole-dropped
+    # module's own dependency group falls out of the selection too (StarshipSuperjam/engine-template#688 composes with StarshipSuperjam/engine-template#757). Fail-open (a
+    # malformed release array, an unreadable file) — surfaced as a note, never a crash; the structural gate below
+    # now carries `uv-group-drift`, so a fail-open that leaves real drift is REFUSED cleanly rather than opening a
+    # red pull request. `groups_before` is the deployment's TRUE pre-overlay committed selection (captured in
+    # phase 1 before the overlay and threaded in here — the overlay's transient value is NOT a valid baseline;
+    # like `old_owned`, a prior interrupted run that already overlaid the tree is the one bounded exception, and
+    # it fails safe — see the capture site). So `groups_changed` is the operator-facing NET change the opened
+    # pull request's diff shows for a genuine change: it is the disclosure signal, never the mere fact that a byte
+    # was rewritten this run (which fires even when the reconcile just restores the operator's prior selection).
+    try:
+        tail["groups_after"] = derive_uv_groups()
+        _maybe_rewrite_default_groups(tail["groups_after"])   # write the reconciled selection (close the drift)
+        tail["groups_changed"] = set(groups_before or []) != set(tail["groups_after"])
+    except Exception as exc:   # noqa: BLE001 — fail open: a malformed/absent array or an unreadable pyproject
+        tail["notes"].append(f"(Could not reconcile the tool-runtime dependency groups: {exc})")
     # Regenerate the deployed-state-dependent indexes (self-map + knowledge graph) from the reconciled tree,
-    # so they describe the DEPLOYED shape rather than the construction shape the release shipped (#599).
+    # so they describe the DEPLOYED shape rather than the construction shape the release shipped (StarshipSuperjam/engine-template#599).
     _regen_indexes()
     # Author the review-PR body FIRST — it carries the reconcile facts (fixtures, removals) into the pull
     # request, and rendering it early catches a template-read failure before staging (the structural gate does
@@ -1968,7 +2931,7 @@ def _upgrade_tail(*, release_tree, target_ref, from_versions, target_versions, o
     _stage_worktree()
     tail["findings"] = (gate or _reconcile_gate)(body)
     if any(f.get("severity") == "hard" for f in tail["findings"]):
-        tail["reason"] = _reconcile_refuse_reason()
+        tail["reason"] = _reconcile_refuse_reason(tail["findings"])
         return tail
     # (f) LAND as a reviewed pull request (skipped on a practice run — no git/PR boundary).
     if practice or opener is None:
@@ -1996,8 +2959,13 @@ def _run_upgrade_tail(state: dict) -> None:
     present_ids = state["present_ids"]
     from_versions = state["from_versions"]
     target_versions = state["target_versions"]
+    dropped_ids = state.get("dropped_ids") or []
+    # Rebuild `candidates` for SURVIVORS only — a dropped module has no release manifest to load (loading it
+    # would crash), and its old manifest already rode across in `old_by_id` for the tail's wiring reversal.
     candidates, release_manifests = {}, []
     for mid in present_ids:
+        if mid in dropped_ids:
+            continue
         man = validate.load_json(os.path.join(release_tree, ".engine", "modules", mid, "manifest.json"))
         candidates[mid] = man
         release_manifests.append(man)
@@ -2009,12 +2977,15 @@ def _run_upgrade_tail(state: dict) -> None:
         release_tree=release_tree, target_ref=state["target_ref"], from_versions=from_versions,
         target_versions=target_versions, old_by_id=state["old_by_id"],
         old_owned=state.get("old_owned") or [], candidates=candidates,
-        handle=state.get("handle"), selected=selected, seam=seam, practice=practice, opener=opener)
+        handle=state.get("handle"), selected=selected, seam=seam, practice=practice, opener=opener,
+        groups_before=state.get("groups_before") or [], dropped_ids=dropped_ids,
+        pre_overlay_known=set(state.get("pre_overlay_known") or []),
+        catalog_trusted=state.get("catalog_trusted", True))
     _upgrade_state_dump(tail, state["result_path"])
 
 
 def _spawn_upgrade_tail(state: dict) -> dict:
-    """Parent side of the #594 fix: run the version-sensitive tail in a FRESH child interpreter of the
+    """Parent side of the StarshipSuperjam/engine-template#594 fix: run the version-sensitive tail in a FRESH child interpreter of the
     just-overlaid `module_manager.py`, so the new version's wiring/coherence code actually runs. State
     crosses as a temp JSON file (callables cannot); the child writes its result to a sibling file we read
     back and merge. A child that dies or writes nothing maps to a clean 'staged but not completed' result,
@@ -2083,8 +3054,23 @@ def _describe_wire(w: dict) -> str:
     return label
 
 
+def _release_engine_manifest(release_tree: str) -> dict:
+    """The release tree's engine manifest (.engine/engine.json) as a dict, or {} when absent/unreadable. FAIL-OPEN,
+    mirroring `_below_floor_refusal`'s tolerant read: it is the source of the release's `removed_capabilities` —
+    both the discriminator that tells an intentional whole-module removal from a broken release, and the text the
+    removal notice renders. A release predating this block, or a throwaway fixture without one, reads as {} → no
+    module is treated as an intentional drop (so an unrecorded absence still refuses)."""
+    mf = os.path.join(release_tree, ".engine", "engine.json")
+    if not os.path.isfile(mf):
+        return {}
+    try:
+        return validate.load_json(mf) or {}
+    except Exception:   # noqa: BLE001 — an unreadable release engine.json never crashes the update
+        return {}
+
+
 def _below_floor_refusal(deployed_release: str | None, release_tree: str) -> str | None:
-    """The clean-upgrade floor preflight (#599 Slice 4). Returns a plain refusal reason when the DEPLOYED engine
+    """The clean-upgrade floor preflight (StarshipSuperjam/engine-template#599 Slice 4). Returns a plain refusal reason when the DEPLOYED engine
     is OLDER than the target release's recorded `min_upgradeable_from`, else None (proceed). Below the floor the
     deployed engine's own already-shipped upgrade code predates the reconcile, so an automatic update cannot fully
     tidy files renamed/removed since then — it would stall without opening a pull request. So refuse cleanly here,
@@ -2125,7 +3111,7 @@ def plan_upgrade(ref: str | None = None, release_tree: str | None = None,
     Composes the SAME pure blocks the apply uses so the preview cannot drift from what the apply does:
     `_overlay_copy_map` (the overlay's own file membership, guarded by the SAME `_within_root` containment
     wall — a tampered release can never make the preview enumerate host paths), `_wiring_delta` (the shared
-    removal rule, declaration-only so a release's new seam vocabulary is never executed — #594), and
+    removal rule, declaration-only so a release's new seam vocabulary is never executed — StarshipSuperjam/engine-template#594), and
     `select_migrations` (the same selector the apply pre-flights with).
 
     Fixture-testable offline: inject `release_tree` (a local extracted release) and the network is never
@@ -2138,7 +3124,8 @@ def plan_upgrade(ref: str | None = None, release_tree: str | None = None,
            "from_versions": {}, "target_versions": {},
            "files": {"replaced": [], "added": []},
            "wires": {"added": [], "removed": [], "updated": []},
-           "migrations": [], "retired_capabilities": [], "backed_up": None}
+           "migrations": [], "retired_capabilities": [], "removed_capabilities": [], "backed_up": None,
+           "modules_installed": [], "modules_offered": []}
     tmp = None
     try:
         engine = module_coherence.load_engine_manifest() or {"packages": {}}
@@ -2176,16 +3163,24 @@ def plan_upgrade(ref: str | None = None, release_tree: str | None = None,
                 release_tree = _fetch_release_tree(target_ref, tmp, repo=home)
             except Exception as exc:   # noqa: BLE001
                 return _preview_degrade(out, home, exc, target=target_ref)
-        # FLOOR PREFLIGHT (#599 Slice 4): if this engine is below the target's clean-upgrade floor, say so in the
+        # FLOOR PREFLIGHT (StarshipSuperjam/engine-template#599 Slice 4): if this engine is below the target's clean-upgrade floor, say so in the
         # preview too — an update from a version this old would refuse, so the operator learns it before --confirm.
         below = _below_floor_refusal(out["current"], release_tree)
         if below:
             return {**out, "refused": True, "status": "below-floor", "reason": below}
-        # Read the release's manifests + capture the installed ones — the SAME reads upgrade() does, no writes.
-        candidates = {}
+        # Read the release's manifests + capture the installed ones — the SAME reads upgrade() does, no writes. A
+        # deployed module absent from the release is an INTENTIONAL whole-module removal when the release records
+        # it in removed_capabilities (previewed as a capability loss, mirroring the apply's reconcile), else the
+        # release is broken and the preview refuses (as the apply would).
+        release_engine = _release_engine_manifest(release_tree)
+        release_removed = release_engine.get("removed_capabilities") or {}
+        candidates, dropped_ids = {}, []
         for mid in present_ids:
             man_src = os.path.join(release_tree, ".engine", "modules", mid, "manifest.json")
             if not os.path.isfile(man_src):
+                if mid in release_removed:
+                    dropped_ids.append(mid)
+                    continue
                 return {**out, "refused": True, "status": "missing-module",
                         "reason": f"The update at {target_ref} does not contain the installed module '{mid}', "
                                   f"so it can't be previewed and nothing was changed."}
@@ -2207,11 +3202,24 @@ def plan_upgrade(ref: str | None = None, release_tree: str | None = None,
                               f"the engine ({shown}), so nothing further was read. This can mean the release "
                               f"is not one to trust — check your engine's update home."}
         replaced, added_files = [], []
+        preserved = _preserved_present()   # a bound per-deployment value the apply KEEPS — neither replaced nor added
         for rel in sorted(to_copy):
+            if rel in preserved:
+                continue                    # create-if-absent: the update preserves it, so the preview must not
+                                            # list it as replaced (that would contradict the apply — plan/apply drift)
             (replaced if os.path.exists(os.path.join(validate.ROOT, rel)) else added_files).append(rel)
         out["files"] = {"replaced": replaced, "added": added_files}
-        # SETTINGS (wiring) — the shared identity delta, so the preview reports the apply's own reversals.
+        # SETTINGS (wiring) — the shared identity delta, so the preview reports the apply's own reversals. A
+        # WHOLE-dropped module has ALL its wires reversed by the apply (`_apply_wiring_deltas`' dropped leg, via
+        # `wiring.reverse_all`), INCLUDING identity-less wires (a `permission`, an `ontology-entry`) that
+        # `_wiring_delta` omits — so add those here too, or the preview would under-report a reversal the apply
+        # performs (the "preview mirrors apply" invariant). Identity-bearing wires of a dropped module already
+        # appear in the delta's `removed`, so only the identity-less ones are added.
         out["wires"] = _wiring_delta(old_by_id, candidates)
+        for mid in dropped_ids:
+            for w in (old_by_id.get(mid) or {}).get("wires") or []:
+                if wiring.declared_wire_identity(w) is None:
+                    out["wires"]["removed"].append((mid, w))
         # STORED-DATA / CONFIG changes — the same pure selector the apply pre-flights with.
         selected = select_migrations(from_versions, out["target_versions"], list(candidates.values()))
         out["migrations"] = [{"module_id": s.get("module_id"), "version": s.get("version"),
@@ -2220,6 +3228,26 @@ def plan_upgrade(ref: str | None = None, release_tree: str | None = None,
         # whether any migration was selected (a retirement can ship with no migration). Preview mirrors apply.
         out["retired_capabilities"] = select_retired_capabilities(
             from_versions, out["target_versions"], list(candidates.values()))
+        # Whole-module removals (StarshipSuperjam/engine-template#688) — the plain-language loss the apply would announce, previewed here so the
+        # operator learns it before --confirm (single-homed off the same dropped_ids the apply reconciles).
+        out["removed_capabilities"] = select_removed_capabilities(dropped_ids, release_engine)
+        # New modules this update would bring in (StarshipSuperjam/engine-template#759) — the SAME classification the apply performs, computed
+        # read-only so the preview lists what would be installed (required/default-on) vs offered (optional). The
+        # "known" discriminator + catalog-trust are read from the un-mutated live tree, which IS the pre-overlay
+        # state (this preview overlays nothing); the present set is the survivors, matching the apply (no drift).
+        known759, catalog_trusted759 = _pre_overlay_known(present_ids)
+        plan759 = classify_available_modules(release_tree, list(candidates), known759,
+                                             catalog_trusted=catalog_trusted759, dropped_ids=dropped_ids)
+        # Surface a malformed release manifest in the preview too, so the read-only check can't say "update
+        # available, nothing new" while `--confirm` would refuse — the "preview mirrors apply" invariant.
+        if plan759.get("malformed"):
+            shown = ", ".join(plan759["malformed"][:3]) + ("…" if len(plan759["malformed"]) > 3 else "")
+            return {**out, "refused": True, "status": "broken-release",
+                    "reason": f"The update at {target_ref} contains a malformed module description ({shown}), so "
+                              f"it can't be previewed safely and nothing was changed. This points to a problem in "
+                              f"the release itself — report it to your engine's update home."}
+        out["modules_installed"] = plan759["install"]
+        out["modules_offered"] = plan759["offered"]
         if any(s.get("kind") == "data" for s in selected):
             out["backed_up"] = _resolve_backup_seam(None) is not None   # engine-wide readiness probe; no write
         out["status"] = "update-available"
@@ -2244,7 +3272,7 @@ def _preview_degrade(out: dict, home: str, exc: BaseException, target: str) -> d
 
 
 def upgrade_preview(ref: str | None = None) -> dict:
-    """Read-only pre-flight for the `upgrade` command's preview-by-default surface (the #594 footgun close):
+    """Read-only pre-flight for the `upgrade` command's preview-by-default surface (the StarshipSuperjam/engine-template#594 footgun close):
     mutate NOTHING. First the coherence pre-check — a half-applied earlier update leaves engine.json bumped
     but the tree inconsistent, so a version-only check would wrongly read 'up to date'; then the full impact
     preview via `plan_upgrade` (current vs available version, and — when an update is available or a version
@@ -2315,15 +3343,33 @@ def _render_upgrade_preview(p: dict) -> None:
                 else "a setting" if m.get("kind") == "config" else "an engine record")
         print(f"  Changes {what}: {m.get('description') or m.get('module_id')}")
     retired = p.get("retired_capabilities") or []
-    for r in retired:
+    removed_caps = p.get("removed_capabilities") or []
+    # A within-module retirement and a whole-module removal read identically to the operator ("a capability is
+    # gone"), so they render through one loop (a dropped module can never also be in retired — no double-count).
+    for r in retired + removed_caps:
         print(f"  Removes a capability: {_retired_capability_text(r.get('description'))}")
+    # New modules this update brings in (StarshipSuperjam/engine-template#759): required capabilities added automatically, net-new default
+    # add-ons turned on opt-out, optional ones offered for you to add.
+    mods_installed = p.get("modules_installed") or []
+    mods_offered = p.get("modules_offered") or []
+    for m in mods_installed:
+        if m.get("status") == "required":
+            extra = (" — it was available in your version and not installed, and now this version requires it"
+                     if m.get("prior_declined") else "")
+            print(f"  Adds a required capability: {m['id']} (this version needs it{extra})")
+        else:
+            print(f"  Turns on a new add-on: {m['id']} (included by default in this version)")
+    for m in mods_offered:
+        kind = "a default add-on you don't have" if m.get("status") == "default-on" else "optional"
+        print(f"  New add-on available ({kind}): {m['id']} — ask me to add it (or run `add {m['id']}`)")
     if any(m.get("kind") == "data" for m in migs):
         if p.get("backed_up") is True:
             print("  Your stored data is backed up before any data change.")
         elif p.get("backed_up") is False:
             print("  Note: a stored-data change needs a backup set up first — ask me to set one up before "
                   "applying, or the update refuses that step and changes nothing.")
-    if not (nrep or nadd or any(w.get(k) for k in ("added", "updated", "removed")) or migs or retired):
+    if not (nrep or nadd or any(w.get(k) for k in ("added", "updated", "removed"))
+            or migs or retired or removed_caps or mods_installed or mods_offered):
         print("  No file or settings changes — a version bump only.")
     tail = f" (or run `upgrade --confirm{(' ' + named) if named else ''}`)"
     print(f"\nThis only checked your engine — nothing changed. To apply, type `/engine-upgrade` and confirm"
@@ -2345,7 +3391,7 @@ def upgrade(ref: str | None = None, release_tree: str | None = None, opener=None
     Phase 1 (parent, THIS interpreter — version-agnostic work): fetch, capture the pre-overlay manifests,
     pre-flight the backup guard, overlay the engine code, re-sync the tool-runtime. Phase 2 (the
     version-sensitive TAIL — wiring, seams, migrations, manifest bump, coherence, PR) MUST run as the
-    freshly-overlaid code (issue #594), so on every real path it runs in a fresh child interpreter
+    freshly-overlaid code (issue StarshipSuperjam/engine-template#594), so on every real path it runs in a fresh child interpreter
     (`_spawn_upgrade_tail`); only a fully-injected test/demo caller runs it in-process (`_upgrade_tail`).
 
     Injectable boundaries (so tests + the demo run the REAL overlay/wiring/coherence and never touch the
@@ -2381,7 +3427,7 @@ def upgrade(ref: str | None = None, release_tree: str | None = None, opener=None
             if not present_ids:
                 return {**result, "refused": True, "reason": "There are no installed modules to update."}
             # Resolve the engine's HOME from the manifest and fetch the release FROM THE HOME, never from
-            # this repo's own origin (#367). Absent home -> refuse with a remedy (three-state).
+            # this repo's own origin (StarshipSuperjam/engine-template#367). Absent home -> refuse with a remedy (three-state).
             home = _home_repository()
             if not home:
                 return {**result, "refused": True,
@@ -2405,23 +3451,43 @@ def upgrade(ref: str | None = None, release_tree: str | None = None, opener=None
                                   f"the network may be down, or the home may not be reachable right now. The "
                                   f"engine is unchanged and still working. ({exc})"}
         # read target versions + capture the CURRENTLY-installed manifests (for wiring deltas) BEFORE the
-        # overlay overwrites them
-        target_versions, old_by_id = {}, {}
+        # overlay overwrites them. A deployed module ABSENT from the release is either an INTENTIONAL whole-module
+        # removal — the release's engine.json records it in `removed_capabilities` — or a broken/incomplete
+        # release. An intentional drop is RECONCILED away (its files removed, wiring reversed, package pruned) and
+        # ANNOUNCED in plain language, rather than refused (StarshipSuperjam/engine-template#688); an unrecorded absence still refuses (refuse-
+        # don't-guess). `dropped_ids` is the single set that drives BOTH the reconcile and the disclosure, so a
+        # module is never reconciled-away without being announced.
+        release_removed = _release_engine_manifest(release_tree).get("removed_capabilities") or {}
+        target_versions, old_by_id, dropped_ids = {}, {}, []
         for mid in present_ids:
             man_src = os.path.join(release_tree, ".engine", "modules", mid, "manifest.json")
+            cur = os.path.join(_modules_dir(mid), "manifest.json")
             if not os.path.isfile(man_src):
+                if mid in release_removed:
+                    dropped_ids.append(mid)     # intentional drop — capture its old manifest for wiring reversal
+                    old_by_id[mid] = validate.load_json(cur) if os.path.isfile(cur) else {}
+                    continue
                 return {**result, "refused": True,
                         "reason": f"The engine release does not contain the installed module '{mid}', so "
                                   f"the update was stopped and nothing was changed."}
             target_versions[mid] = validate.load_json(man_src).get("version")
-            cur = os.path.join(_modules_dir(mid), "manifest.json")
             old_by_id[mid] = validate.load_json(cur) if os.path.isfile(cur) else {}
         result["to"] = target_versions
-        # FLOOR PREFLIGHT (#599 Slice 4): refuse cleanly BEFORE any overlay if this engine is older than the
+        # FLOOR PREFLIGHT (StarshipSuperjam/engine-template#599 Slice 4): refuse cleanly BEFORE any overlay if this engine is older than the
         # target's clean-upgrade floor — a version this old can't reconcile cleanly and would stall without a PR.
         below = _below_floor_refusal(engine.get("engine_release"), release_tree)
         if below:
             return {**result, "refused": True, "reason": below}
+        # StarshipSuperjam/engine-template#923 MANIFEST PRE-FLIGHT: the tail's bump (step d) rewrites .engine/engine.json IN PLACE, and a
+        # symlinked/escaping manifest is statically knowable RIGHT NOW — refuse before any overlay, so the
+        # operator never pays for an overlay + seams + data migrations only to stop at the bump. The
+        # at-write guard in _bump_engine_manifest stays the fail-closed backstop; this is the cheap early
+        # warning — the same warn-early + guarantee pairing StarshipSuperjam/engine-template#862 built for arrival.
+        manifest_reason = engine_write.write_through_symlink_reason(_engine_manifest_path(), validate.ROOT)
+        if manifest_reason:
+            return {**result, "refused": True,
+                    "reason": f"Your engine's own record file can't be safely written: "
+                              f"{manifest_reason} The engine is unchanged."}
         # Capture the OLD engine-owned surface NOW — pre-overlay, with THIS (source) version's code: the old
         # `provides` globbed against the pristine deployed tree, UNIONED with the old FOUNDATION_INFRA (a code
         # constant only the pre-overlay process holds). The reconcile delete leg (in the tail) needs it to
@@ -2434,12 +3500,26 @@ def upgrade(ref: str | None = None, release_tree: str | None = None, opener=None
         # longer sees that orphan — the gate then keeps refusing. It fails SAFE (nothing merges); the recourse
         # is the undo, then update again. A self-healing recovery (persisting the pre-overlay set) is not attempted.
         old_owned = sorted(set(module_coherence.engine_owned_paths(module_coherence.discover_manifests())))
+        # Capture the deployment's TRUE committed dependency-group selection NOW — pre-overlay — so the tail can
+        # tell a genuine operator-facing group change from the transient value the overlay is about to write
+        # (StarshipSuperjam/engine-template#757). Threaded into the tail next to `old_owned`; fail-soft to [] so a missing/unreadable pyproject
+        # never blocks the update (the reconcile itself fails open too).
+        try:
+            pre_overlay_groups = committed_default_groups()
+        except Exception:   # noqa: BLE001 — a missing/unreadable pyproject: no baseline, never a crash
+            pre_overlay_groups = []
+        # Capture the deployment's PRE-OVERLAY "known modules" set (StarshipSuperjam/engine-template#759) — installed ∪ pre-overlay catalog ∪
+        # pre-overlay manifests — the discriminator between a NET-NEW default-on module (auto-installed opt-out)
+        # and a previously-DECLINED one (offered, never resurrected). The catalog is core-provided and the overlay
+        # OVERWRITES it, so this MUST run pre-overlay; `catalog_trusted=False` (an absent/unreadable catalog) fails
+        # default-on CLOSED to offer-only. Threaded into the tail next to `groups_before`.
+        pre_overlay_known, catalog_trusted = _pre_overlay_known(present_ids)
         # PRE-FLIGHT the data-migration backup guard BEFORE any overlay (the half-state law): refuse the
         # WHOLE upgrade if a data migration in range has no backup seam — nothing is applied.
         selected = select_migrations(
             from_versions, target_versions,
             [validate.load_json(os.path.join(release_tree, ".engine", "modules", mid, "manifest.json"))
-             for mid in present_ids])
+             for mid in target_versions])   # SURVIVORS only — a dropped module has no release manifest to read
         seam = _resolve_backup_seam(backup)
         data_no_seam = sorted({s["module_id"] for s in selected
                                if s.get("kind") == "data" and seam is None})
@@ -2453,7 +3533,10 @@ def upgrade(ref: str | None = None, release_tree: str | None = None, opener=None
         # release's `.engine/tools/*.py` on disk — but THIS process still holds the pre-upgrade libraries,
         # which is exactly why the version-sensitive tail below runs as a fresh child of the overlaid code.
         try:
-            result["copied"], candidates = _overlay_engine_code(release_tree, present_ids)
+            # SURVIVORS only: a dropped module has nothing to overlay, and handing the shared overlay the full
+            # present set would re-trip its own missing-manifest refusal (it is also the brownfield-arrival path,
+            # so its body stays untouched).
+            result["copied"], candidates = _overlay_engine_code(release_tree, list(target_versions))
         except _UpgradeRefused as ur:
             return {**result, "refused": True, "reason": ur.reason}
         # (3) RE-SYNC the tool-runtime BEFORE the tail's child boots (real path only; the injected/practice
@@ -2474,7 +3557,7 @@ def upgrade(ref: str | None = None, release_tree: str | None = None, opener=None
                                     "again, or ask me to undo the update's changes.")
                 return result
         # (4) THE VERSION-SENSITIVE TAIL — wiring, seams, migrations, manifest bump, coherence, PR. It MUST
-        # run as the freshly-overlaid engine code (else a release's new wire seams silently no-op — #594),
+        # run as the freshly-overlaid engine code (else a release's new wire seams silently no-op — StarshipSuperjam/engine-template#594),
         # so every real path runs it in a child interpreter of the overlaid module_manager; only a
         # fully-injected test/demo caller runs it in-process (a callable cannot cross a process boundary).
         if in_process:
@@ -2485,13 +3568,16 @@ def upgrade(ref: str | None = None, release_tree: str | None = None, opener=None
                 release_tree=release_tree, target_ref=target_ref, from_versions=from_versions,
                 target_versions=target_versions, old_by_id=old_by_id, old_owned=old_owned,
                 candidates=candidates, handle=engine.get("handle"), selected=selected, seam=seam,
-                practice=practice, opener=opener, gate=_coherence_only_gate)
+                practice=practice, opener=opener, groups_before=pre_overlay_groups,
+                gate=_coherence_only_gate, dropped_ids=dropped_ids,
+                pre_overlay_known=pre_overlay_known, catalog_trusted=catalog_trusted)
         else:
             tail = _spawn_upgrade_tail({
                 "release_tree": release_tree, "target_ref": target_ref, "from_versions": from_versions,
                 "target_versions": target_versions, "present_ids": present_ids, "old_by_id": old_by_id,
-                "old_owned": old_owned, "handle": engine.get("handle"), "practice": practice,
-                "marker": _UPGRADE_TAIL_MARKER})
+                "old_owned": old_owned, "groups_before": pre_overlay_groups, "handle": engine.get("handle"),
+                "practice": practice, "dropped_ids": dropped_ids, "marker": _UPGRADE_TAIL_MARKER,
+                "pre_overlay_known": sorted(pre_overlay_known), "catalog_trusted": catalog_trusted})
         _merge_tail(result, tail)
         return result
     finally:
@@ -2691,7 +3777,19 @@ def remove_engine(opener=None, transport=None, choice: str | None = None, announ
         try:
             result["pr"] = open_fn(branch="engine-remove", title="Removal: remove the engine", body=body)
         except Exception as exc:  # noqa: BLE001 — staged but not opened; surfaced, never a traceback
-            result["notes"].append(f"(removal is staged but the pull request could not be opened: {exc})")
+            # The removal already deleted the engine files from the working tree (step 3 above), so a failure
+            # here leaves the engine gone from disk — a removal-specific fact the shared opener cannot know.
+            # Name it and reassure: the opener's own message (in {exc}) already tells the operator how to
+            # FINISH; this adds the on-disk fact and that nothing is lost. The exact UNDO command is NOT
+            # prescribed on purpose — how far the failed attempt got decides it (an unstaged deletion, a staged
+            # one, or one already committed to the branch each need a DIFFERENT git command), so any single
+            # command would be wrong — or a silent no-op — for the other cases. Point at the pre-removal state
+            # instead; nothing is ever lost, since git holds every removed file (StarshipSuperjam/engine-template#877, finding folded in).
+            result["notes"].append(
+                f"(removal is staged but the pull request could not be opened: {exc} — note that this removal "
+                f"has already removed the engine files from your working tree. Nothing is lost: every removed "
+                f"file is preserved in git. To finish the removal, follow the branch guidance above; to undo it "
+                f"instead, restore your working tree to its pre-removal state from git.)")
 
     # The sharpened reversal disclosure (names the unprotected window + the drop case explicitly).
     db = result["de_bootstrap"] or {}
@@ -2723,6 +3821,8 @@ def _render_remove(result: dict) -> None:
         print(f"  - deleted {rel}")
     if result.get("groups_after") is not None:
         print(f"  - tool-runtime dependency groups are now: {result['groups_after'] or '(none)'}")
+    for note in result.get("notes", []):
+        print("\n" + note)
     if result.get("left_in_place"):
         print("\nLeft in place (on purpose):")
         for line in result["left_in_place"]:
@@ -2736,7 +3836,7 @@ def _render_remove(result: dict) -> None:
         print("\nThe remaining modules are consistent.")
     # The structural-not-fitness warrant, single-homed in module_coherence and matching the standalone
     # CLI's _print_report (printed on EVERY non-refused report) — so "consistent" is never misread as
-    # "the module works" on the higher-traffic lifecycle renders (#400 F5).
+    # "the module works" on the higher-traffic lifecycle renders (StarshipSuperjam/engine-template#400 F5).
     print(module_coherence.COHERENCE_WARRANT)
 
 
@@ -2761,7 +3861,7 @@ def _render_add(result: dict) -> None:
             print("  - " + validate.fmt(f))
     else:
         print("\nThe installed modules are consistent.")
-    print(module_coherence.COHERENCE_WARRANT)  # structural-not-fitness warrant (#400 F5) — see _render_remove
+    print(module_coherence.COHERENCE_WARRANT)  # structural-not-fitness warrant (StarshipSuperjam/engine-template#400 F5) — see _render_remove
 
 
 def _render_upgrade(result: dict) -> None:
@@ -2797,8 +3897,15 @@ def _render_upgrade(result: dict) -> None:
         print(f"  - ran update: {r}")
     for r in result.get("migrations", {}).get("refused", []):
         print(f"  - {r}")
-    for r in result.get("retired_capabilities", []):
+    for r in (result.get("retired_capabilities", []) + result.get("removed_capabilities", [])):
         print(f"  - removed a capability: {_retired_capability_text(r.get('description'))}")
+    for m in result.get("modules_installed", []):
+        if m.get("status") == "required":
+            print(f"  - added a required capability: {m['id']} (this version needs it)")
+        else:
+            print(f"  - turned on a new add-on: {m['id']} (included by default)")
+    for m in result.get("modules_offered", []):
+        print(f"  - new add-on available: {m['id']} (add with `add {m['id']}`)")
     for line in result.get("notes", []):
         print("  - " + line)
     pr = result.get("pr")
@@ -2821,7 +3928,7 @@ def _render_upgrade(result: dict) -> None:
         print("\nThe update is staged and consistent.")
     # Reached on every non-refused path — the staged-consistent line, the hard-findings line, AND the
     # PR-opened path (the dominant upgrade case, which prints neither branch above) — so the warrant is
-    # never skipped on an upgrade that opens a review PR (#400 F5).
+    # never skipped on an upgrade that opens a review PR (StarshipSuperjam/engine-template#400 F5).
     print(module_coherence.COHERENCE_WARRANT)
 
 
@@ -3205,9 +4312,9 @@ def _build_upgrade_release(root: str) -> str:
         fh.write("> A green mechanical check below shows this change conforms to the engine's rules; it does "
                  "not judge whether the change is correct. Your merge is the binding gate. A safety check "
                  "that could not run leaves its area unverified.\n\n## Purpose\n\n<why this change exists>\n")
-    # Since #323 the release's root CLAUDE.md/AGENTS.md ARE the fenced adopter floor — the source the keyed-merge
+    # Since StarshipSuperjam/engine-template#323 the release's root CLAUDE.md/AGENTS.md ARE the fenced adopter floor — the source the keyed-merge
     # reads (its `floor` fence body). The floor body carries a v2 marker so the merge is observable; the AGENTS
-    # floor is likewise fenced so a repo with no AGENTS.md yet has it CREATED on upgrade (#599 class 2).
+    # floor is likewise fenced so a repo with no AGENTS.md yet has it CREATED on upgrade (StarshipSuperjam/engine-template#599 class 2).
     for rel, body in (
             ("CLAUDE.md", "# Your project runs on an Engine (v2)\n\nProject status block, refreshed in v2.\n"),
             ("AGENTS.md", "# Your project runs on an Engine — Codex floor (v2)\n\nCodex status block, refreshed in v2.\n")):
@@ -3220,7 +4327,7 @@ def _build_upgrade_release(root: str) -> str:
             # what gives the merge test real bite (a fence_read that grabbed the whole file would leak it).
             fh.write(wiring.fence_apply("", _FLOOR_FENCE, lines, style=wiring.MD_FENCE)
                      + "\n<!-- release-only content outside the floor fence; must never travel -->\n")
-    # The committed FIXTURE namespace the copy-only overlay missed (#599 class 3) — delivered by the reconcile.
+    # The committed FIXTURE namespace the copy-only overlay missed (StarshipSuperjam/engine-template#599 class 3) — delivered by the reconcile.
     os.makedirs(os.path.join(eng, "_fixtures", "probe"), exist_ok=True)
     with open(os.path.join(eng, "_fixtures", "probe", "bad_input.md"), "w", encoding="utf-8") as fh:
         fh.write("a negative-fixture input a hard check bites on\n")
@@ -3645,7 +4752,7 @@ def _git_deleted_paths(root: str) -> set:
     discard's `git checkout <branch>` restores it from HEAD, and the recovery point commits it first — so it is
     NEVER operator work at risk. The reconcile's delete leg leaves a renamed-away OLD path here as a staged
     deletion (a rename that also rewrote the file shows as `D`+`A`, not `R`), and it must not be mistaken for
-    the operator's own uncommitted work and refuse the undo (#599). Empty when git is unavailable."""
+    the operator's own uncommitted work and refuse the undo (StarshipSuperjam/engine-template#599). Empty when git is unavailable."""
     paths: set = set()
     for line in (_git(root, "status", "--porcelain") or "").splitlines():
         if len(line) < 4:
@@ -3665,7 +4772,7 @@ def _upgrade_footprint() -> set:
     module manifests + FOUNDATION_CODE) PLUS the `.engine/_fixtures/**` namespace the reconcile delivers PLUS
     the five keyed/rendered foundation files (engine.json, CODEOWNERS, root CLAUDE.md/AGENTS.md, .gitignore) —
     then the wiring-seam target files. Sourcing from the deliver set is what keeps a reconcile-delivered fixture
-    from reading as the operator's own work at discard time (#599: the pre-Slice-2a footprint knew only the
+    from reading as the operator's own work at discard time (StarshipSuperjam/engine-template#599: the pre-Slice-2a footprint knew only the
     overlay copy-map, never the fixtures the reconcile now delivers). `project_retire=False` skips the
     first-run-assets read so this never raises on the rollback path."""
     manifests_by_id = {m.get("id"): m for _rel, m in module_coherence.discover_manifests()}
@@ -3747,7 +4854,7 @@ def _discard_staged_update(resync, transport) -> dict:
     # (a) GUARD — refuse if the operator has their OWN uncommitted work (anything the update didn't write).
     # Tracked-file deletions are excluded: a staged/unstaged delete is losslessly restored by the branch
     # switch below (and captured on the recovery point first), so a reconcile's renamed-away old path — or even
-    # the operator's own deletion — is never work at risk, and must not false-refuse the undo (#599).
+    # the operator's own deletion — is never work at risk, and must not false-refuse the undo (StarshipSuperjam/engine-template#599).
     foreign = sorted(_git_status_paths(root) - _upgrade_footprint() - _git_deleted_paths(root))
     if foreign:
         result["refused"] = True
@@ -3866,7 +4973,8 @@ def _render_rollback(r: dict, applied: bool) -> None:
 def main(argv: list) -> int:
     if not argv:
         print("usage: module_manager.py {status | sync-groups | add <id> [--json] | "
-              "plan-remove <id> | remove <id> [--json] | upgrade [ref] [--confirm] [--json] | "
+              "plan-remove <id> | remove <id> [--removal-notice \"…\"] [--json] | "
+              "upgrade [ref] [--confirm] [--json] | "
               "rollback [--confirm] [--json] | "
               "remove-engine [--confirm] [--keep-protection|--remove-protection] [--json] | demo}",
               file=sys.stderr)
@@ -3874,7 +4982,7 @@ def main(argv: list) -> int:
     cmd = argv[0]
     try:
         if cmd == "__upgrade_tail__":
-            # INTERNAL: the child half of `upgrade` (issue #594). Gated so a stray operator command or an
+            # INTERNAL: the child half of `upgrade` (issue StarshipSuperjam/engine-template#594). Gated so a stray operator command or an
             # injected instruction can't drive the mutating tail — it runs ONLY when spawned by a real
             # upgrade (the private env marker) with a valid state (the in-state marker, checked downstream).
             if os.environ.get("ENGINE_UPGRADE_CHILD") != "1" or len(argv) < 2:
@@ -3890,7 +4998,12 @@ def main(argv: list) -> int:
         if cmd == "status":
             return _status()
         if cmd == "sync-groups":
-            res = sync_groups()
+            try:
+                res = sync_groups()
+            except engine_write.EngineWriteRefused as exc:   # StarshipSuperjam/engine-template#923: a clean stop, not a CONFIG ERROR
+                print(f"Did not update the tool-runtime dependency groups: {exc} Nothing was changed.",
+                      file=sys.stderr)
+                return 1
             tail = f"{res['groups'] or '(none)'}."
             print((f"Updated the tool-runtime dependency groups to match the installed modules: {tail}")
                   if res["changed"] else
@@ -3917,10 +5030,23 @@ def main(argv: list) -> int:
                   f"change(s), delete its files, and re-check that what remains is consistent.")
             return 0
         if cmd == "remove":
-            if len(argv) < 2:
+            # Hand-parse the optional value-bearing --removal-notice flag out of the argv, then take the module
+            # id as the first remaining non-flag token — so flag order (before or after the id) does not matter.
+            rest = argv[1:]
+            removal_notice = None
+            if "--removal-notice" in rest:
+                i = rest.index("--removal-notice")
+                if i + 1 >= len(rest) or rest[i + 1].startswith("--"):
+                    print("CONFIG ERROR: --removal-notice needs a value (the plain-language line an update "
+                          "shows the operator).", file=sys.stderr)
+                    return 2
+                removal_notice = rest[i + 1]
+                rest = rest[:i] + rest[i + 2:]
+            positional = [a for a in rest if not a.startswith("--")]
+            if not positional:
                 print("CONFIG ERROR: remove needs a module id.", file=sys.stderr)
                 return 2
-            result = remove(argv[1])
+            result = remove(positional[0], removal_notice=removal_notice)
             if "--json" in argv:
                 print(json.dumps(result, indent=2))
             else:
@@ -3941,7 +5067,7 @@ def main(argv: list) -> int:
                 return 1
             return 1 if any(f.get("severity") == "hard" for f in result.get("findings", [])) else 0
         if cmd == "upgrade":
-            # PREVIEW BY DEFAULT (the #594 footgun close): bare `upgrade` — and `upgrade --help`, and any
+            # PREVIEW BY DEFAULT (the StarshipSuperjam/engine-template#594 footgun close): bare `upgrade` — and `upgrade --help`, and any
             # stray flag — must NEVER apply a real update. Applying takes a deliberate `--confirm`, mirroring
             # `remove-engine`'s gate.
             if "--help" in argv or "-h" in argv:

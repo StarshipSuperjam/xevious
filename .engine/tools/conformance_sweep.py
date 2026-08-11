@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Standing product-spec-conformance sweep — the mechanical half of the audit's conditional conformance leg
-(design of record: issue #449; the criterion record it reads is the
+(design of record: issue StarshipSuperjam/engine-template#449; the criterion record it reads is the
 product-design spec-obligation matrix, built in PR-1).
 
 WHAT IT IS. The audit persona runs a *judgment* each cron: given a product that has SETTLED a `docs/spec/`,
@@ -215,7 +215,7 @@ class _MatrixHistory:
         # The branch the recency baseline is read from. Resolved from GITHUB_DEFAULT_BRANCH (the conformance
         # workflow step sets it to github.ref_name) -> recorded manifest -> origin/HEAD -> "main". A literal
         # "main" here 404s the commits read on a `master` repo, silently emptying the baseline so every row
-        # stale-flags as a fresh lock every cron — the exact #671 wrong-branch failure.
+        # stale-flags as a fresh lock every cron — the exact StarshipSuperjam/engine-template#671 wrong-branch failure.
         self.base = base or repo_identity.resolve_default_branch(env_var="GITHUB_DEFAULT_BRANCH")
         self._transport = transport or self._http
 

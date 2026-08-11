@@ -103,6 +103,49 @@ class TestDetectForeignLicense(unittest.TestCase):
         self.assertIsNone(license_health.detect_foreign_license(cwd=plain))
 
 
+class TestLicenseAbsentUpstream(unittest.TestCase):
+    """The verified-target correlation predicate (#810): True ONLY when LICENSE is PROVABLY absent at the given
+    target commit, and FAIL TOWARD RE-OFFER on any inconclusive read — so a real leftover is never suppressed."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def _head(self, repo: str) -> str:
+        return subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
+                              capture_output=True, text=True, check=False).stdout.strip()
+
+    def test_true_when_license_removed_at_target(self):
+        # HEAD carries the leftover LICENSE (present), a later commit removes it (the reviewed upstream).
+        repo = _repo(self.tmp, "removed", license_text=SEED)
+        present_oid = self._head(repo)
+        os.remove(os.path.join(repo, "LICENSE"))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "remove leftover LICENSE")
+        removed_oid = self._head(repo)
+        self.assertTrue(license_health.license_absent_upstream(repo, removed_oid),
+                        "LICENSE provably absent at the target commit -> suppress the redundant offer")
+        self.assertFalse(license_health.license_absent_upstream(repo, present_oid),
+                         "LICENSE still present at that commit -> keep offering")
+
+    def test_fails_toward_reoffer_on_unresolvable_target(self):
+        repo = _repo(self.tmp, "bogus", license_text=SEED)
+        self.assertFalse(license_health.license_absent_upstream(repo, "0" * 40),
+                         "an unresolvable target commit is inconclusive -> re-offer, never suppress")
+
+    def test_no_target_or_main_returns_false(self):
+        repo = _repo(self.tmp, "none", license_text=SEED)
+        self.assertFalse(license_health.license_absent_upstream(repo, None))
+        self.assertFalse(license_health.license_absent_upstream("", "0" * 40))
+
+    def test_blob_present_distinguishes_absent_from_unreadable(self):
+        repo = _repo(self.tmp, "blob", license_text=SEED)
+        present_oid = self._head(repo)
+        self.assertIs(license_health._blob_present_at(repo, present_oid, "LICENSE"), True)
+        self.assertIs(license_health._blob_present_at(repo, present_oid, "NOPE"), False)
+        self.assertIsNone(license_health._blob_present_at(repo, "0" * 40, "LICENSE"),
+                          "an unresolvable commit is inconclusive (None), not a false 'absent'")
+
+
 class TestRemovalPrDedupe(unittest.TestCase):
     def test_no_repo_or_token_returns_none(self):
         # Best-effort online step: without credentials it cannot determine -> None (caller offers normally).

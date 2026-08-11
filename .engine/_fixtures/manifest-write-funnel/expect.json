@@ -1,0 +1,4 @@
+{
+  "severity": "hard",
+  "message_contains": "does not route through the guarded write funnel"
+}

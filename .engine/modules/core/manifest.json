@@ -1,6 +1,6 @@
 {
   "id": "core",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "status": "required",
   "provides": {
     "check": [
@@ -63,11 +63,13 @@
     ],
     "policy": [
       ".engine/policies/attention.md",
+      ".engine/policies/briefing-budget.md",
       ".engine/policies/contract-threshold.md",
       ".engine/policies/escalation.md",
       ".engine/policies/finding-disposition.md",
       ".engine/policies/model-bindings.json",
       ".engine/policies/model-routing.md",
+      ".engine/policies/supported-upgrade-matrix.md",
       ".engine/policies/triage-threshold.md"
     ],
     "conduct": [
@@ -432,6 +434,11 @@
       "description": "Removes the per-prompt hint's strength setting from your saved settings \u2014 the reminder now appears on every message and no longer has a strength to set, so a saved value for it would be ignored.",
       "run": "migrations/retire_scent_threshold.py",
       "kind": "config"
+    }
+  },
+  "retired_capabilities": {
+    "0.4.0": {
+      "description": "Editing a file that enforces a safety gate no longer blocks the merge by itself. You now get a plain-language notice on the pull request (the engine-guard check's run summary and a checks-tab note) instead of a red check demanding the guardrail-ack label. The label still blocks \u2014 and still asks for your deliberate confirmation \u2014 for the rare killswitch changes: repointing where the engine fetches its own code or where it may write, switching team mode off, shrinking your protected-paths list, demoting a merge-blocking check, or deleting a gate outright. To make any path always-blocking again, add it to .engine/operator-guarded-paths.json \u2014 paths you declare there hold the merge for your label, exactly as before."
     }
   }
 }

@@ -12,8 +12,8 @@ when those modules leave. They now all import from here.
 GUARDRAIL-CLASS. `request` carries the off-host guard that protects a token-bearing
 `pull_request_target` request from being redirected off-host by a crafted `Link` header (the
 weakening guard's load-bearing security property). Weakening that check is a guardrail-weakening change
-exactly as it was inside weakening_guard — which is why this file lives under the `.engine/tools/`
-guarded prefix.
+exactly as it was inside weakening_guard — which is why this file is a member of the guard's enforcement-hook
+floor (_FLOOR_ENFORCEMENT_HOOKS; disclosure tier on modification, hard on removal — eADR-0040).
 
 Two deliberate seams preserve each caller's own contract — this module does NOT impose one error model:
   - `request` BUILDS a Request and applies the guard; it never executes it. `get_json` / `get_page`

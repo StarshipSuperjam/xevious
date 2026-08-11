@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Promote a standing length-budget soft finding to a tracked engine Issue (issue #273 half 2).
+"""Promote a standing length-budget soft finding to a tracked engine Issue (issue StarshipSuperjam/engine-template#273 half 2).
 
 The soft-findings feed lets the weekly self-review SEE the firing soft validator findings; this closes the loop by giving
 a standing one a durable home — a deduped, lane-aware engine-labelled Issue — so it reaches boot and the
@@ -127,7 +127,7 @@ def _entity_reference(rel: str, repo: str | None) -> list | None:
 
 
 # The closing bullet every lane ends on — the self-review + auto-close reassurance. Defined once so a future
-# wording change lands in one place, not three (technical-integrity review of #658).
+# wording change lands in one place, not three (technical-integrity review of StarshipSuperjam/engine-template#658).
 _SELF_REVIEW_TRAILER = (
     "- This is also noted in your weekly self-review. The engine will **close this tracking issue "
     "on its own** once the file is back under its limit — that only clears the flag, it does not "

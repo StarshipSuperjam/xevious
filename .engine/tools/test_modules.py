@@ -85,6 +85,24 @@ class TestModuleSchema(unittest.TestCase):
             self.assertTrue(_errors(MODULE_SCHEMA, {**VALID_MODULE, "version": bad}),
                             f"{bad} is not MAJOR.MINOR.PATCH semver and must be rejected")
 
+    def test_migration_and_retired_capability_keys_must_be_canonical_semver(self):
+        # #693: a version KEY in migrations/retired_capabilities is schema-constrained (propertyNames) to strict
+        # MAJOR.MINOR.PATCH — no two-part key (the #689 range-boundary hazard), no pre-release suffix or fourth
+        # part (a >3-part hazard), and no leading zeros (which int()-normalise to a colliding version, #694).
+        # This is the KEY constraint, distinct from the entry-VALUE constraint (additionalProperties).
+        mig = {"description": "x", "run": "migrations/a.py", "kind": "config"}
+        ret = {"description": "gone"}
+        for good in ("0.1.0", "1.4.0", "10.20.30"):
+            self.assertEqual(_errors(MODULE_SCHEMA, {**VALID_MODULE, "migrations": {good: mig}}), [],
+                             f"{good} is a canonical version key and must pass (migrations)")
+            self.assertEqual(_errors(MODULE_SCHEMA, {**VALID_MODULE, "retired_capabilities": {good: ret}}), [],
+                             f"{good} is a canonical version key and must pass (retired_capabilities)")
+        for bad in ("0.4", "0.4.0-1", "0.4.0.0", "0.04.0", "00.4.0", "1", "", "latest"):
+            self.assertTrue(_errors(MODULE_SCHEMA, {**VALID_MODULE, "migrations": {bad: mig}}),
+                            f"{bad} is not a canonical version key and must be rejected (migrations)")
+            self.assertTrue(_errors(MODULE_SCHEMA, {**VALID_MODULE, "retired_capabilities": {bad: ret}}),
+                            f"{bad} is not a canonical version key and must be rejected (retired_capabilities)")
+
     def test_field_outside_the_grammar_is_flagged(self):
         self.assertTrue(_errors(MODULE_SCHEMA, {**VALID_MODULE, "extra": 1}))
 
@@ -118,6 +136,71 @@ class TestModuleSchema(unittest.TestCase):
         self.assertEqual(_errors(MODULE_SCHEMA, {**VALID_MODULE, "depends": {"core": ">=1.0.0"}}), [])
 
 
+class TestVersionKeyDuplicateFindings(unittest.TestCase):
+    """#694: two keys in a migrations/retired_capabilities block that normalise to the SAME version are refused.
+    The leg reads RAW json so it also catches a LITERAL duplicate key (which json.load silently collapses)."""
+
+    def _find(self, raw, mid="m"):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write(d, "manifest.json", raw)
+            return validate.version_key_duplicate_findings([(p, mid)], "hard", "fix it")
+
+    def test_distinct_keys_that_normalise_equal_are_flagged(self):
+        fs = self._find('{"id":"m","migrations":{"0.4":{"description":"a","run":"r","kind":"config"},'
+                        '"0.4.0":{"description":"b","run":"r2","kind":"config"}}}')
+        self.assertEqual(len(fs), 1)
+        self.assertEqual(fs[0]["severity"], "hard")
+        self.assertIn("mean the same version", fs[0]["message"])
+
+    def test_a_literal_duplicate_key_json_collapses_is_still_caught(self):
+        # json.load keeps only the last "0.4.0"; the leg re-reads raw to see the collapsed duplicate.
+        fs = self._find('{"id":"m","retired_capabilities":{"0.4.0":{"description":"a"},'
+                        '"0.4.0":{"description":"b"}}}')
+        self.assertEqual(len(fs), 1)
+        self.assertIn("0.4.0", fs[0]["message"])
+
+    def test_leading_zero_collision_is_flagged(self):
+        # 0.04.0 and 0.4.0 both pass the schema pattern yet int()-normalise to (0,4,0).
+        self.assertEqual(len(self._find(
+            '{"id":"m","migrations":{"0.04.0":{"description":"a","run":"r","kind":"config"},'
+            '"0.4.0":{"description":"b","run":"r2","kind":"config"}}}')), 1)
+
+    def test_distinct_versions_and_absent_or_empty_blocks_are_clean(self):
+        self.assertEqual(self._find(
+            '{"id":"m","migrations":{"0.3.0":{"description":"a","run":"r","kind":"config"},'
+            '"0.4.0":{"description":"b","run":"r2","kind":"config"}}}'), [])
+        self.assertEqual(self._find('{"id":"m"}'), [])
+        self.assertEqual(self._find('{"id":"m","migrations":{}}'), [])
+
+    def test_an_unreadable_manifest_is_surfaced_not_silently_skipped(self):
+        # Fail-closed: if the raw re-read fails (a race after discovery already parsed the file), the leg
+        # SURFACES it rather than reporting clean — matching the codebase's halt-on-malformed posture.
+        fs = validate.version_key_duplicate_findings([("/no/such/manifest.json", "ghost")], "hard", "fix it")
+        self.assertEqual(len(fs), 1)
+        self.assertEqual(fs[0]["severity"], "hard")
+        self.assertIn("Could not re-read", fs[0]["message"])
+
+    def test_check_coherence_surfaces_a_collision(self):
+        # Wiring proof: a colliding manifest in the discovered set makes check_coherence report a HARD finding.
+        with tempfile.TemporaryDirectory() as d:
+            p = _write(d, "manifest.json",
+                       '{"id":"dupmod","migrations":{"0.4":{"description":"a","run":"r","kind":"config"},'
+                       '"0.4.0":{"description":"b","run":"r2","kind":"config"}}}')
+            fake = (p, {"id": "dupmod", "migrations": {
+                "0.4": {"description": "a", "run": "r", "kind": "config"},
+                "0.4.0": {"description": "b", "run": "r2", "kind": "config"}}})
+            real = module_coherence.discover_manifests()
+            saved = module_coherence.discover_manifests
+            module_coherence.discover_manifests = lambda: real + [fake]
+            try:
+                findings = module_coherence.check_coherence()
+            finally:
+                module_coherence.discover_manifests = saved
+        hard = [f for f in findings if f["severity"] == "hard"]
+        self.assertTrue(any("mean the same version" in f["message"] for f in hard),
+                        "check_coherence must surface a version-key collision as a hard finding")
+
+
 class TestEngineSchema(unittest.TestCase):
     def test_schema_is_well_formed(self):
         validate.Draft202012Validator.check_schema(ENGINE_SCHEMA)
@@ -139,6 +222,29 @@ class TestEngineSchema(unittest.TestCase):
 
     def test_field_outside_the_grammar_is_flagged(self):
         self.assertTrue(_errors(ENGINE_SCHEMA, {**VALID_ENGINE, "extra": 1}))
+
+    def test_removed_capabilities_stamped_entry_validates(self):
+        # #688: a fully-stamped removal record is valid.
+        rc = {"legacy": {"description": "you could ask X; now ask Y", "removed_in": "0.4.0"}}
+        self.assertEqual(_errors(ENGINE_SCHEMA, {**VALID_ENGINE, "removed_capabilities": rc}), [])
+
+    def test_removed_capabilities_description_only_entry_validates(self):
+        # removed_in is OPTIONAL: an entry authored at removal time (before the cut stamps removed_in) must
+        # validate, or CI would redden the tree during the merge-to-cut window.
+        rc = {"legacy": {"description": "you could ask X; now ask Y"}}
+        self.assertEqual(_errors(ENGINE_SCHEMA, {**VALID_ENGINE, "removed_capabilities": rc}), [])
+
+    def test_removed_capabilities_requires_a_nonempty_description(self):
+        self.assertTrue(_errors(ENGINE_SCHEMA, {**VALID_ENGINE, "removed_capabilities": {"x": {}}}))
+        self.assertTrue(_errors(ENGINE_SCHEMA, {**VALID_ENGINE,
+                                                "removed_capabilities": {"x": {"description": ""}}}))
+
+    def test_removed_capabilities_rejects_an_extra_field(self):
+        rc = {"x": {"description": "d", "surprise": 1}}
+        self.assertTrue(_errors(ENGINE_SCHEMA, {**VALID_ENGINE, "removed_capabilities": rc}))
+
+    def test_removed_capabilities_block_is_optional(self):
+        self.assertEqual(_errors(ENGINE_SCHEMA, VALID_ENGINE), [])   # absent stays valid
 
 
 class TestSchemaRulesIntegration(unittest.TestCase):
@@ -338,9 +444,7 @@ class TestModuleCoherenceConsumer(unittest.TestCase):
     def test_check_corpus_split_core_two_guards_validators_core_owns_the_rest(self):
         # The locked engine/corpus boundary:
         # core ships the validation engine and owns ZERO rules EXCEPT the two frozen-named guards;
-        # the self-validation corpus is validators-core's (60 rules: the disposition-issue-resolution check
-        # (engine-template #292 — confirms a PR's cited follow-up issues resolve to real
-        # engine-labeled issues, the first non-offline meta-check unit) atop the read-only-persona write-lock
+        # the self-validation corpus is validators-core's (65 rules: the read-only-persona write-lock
         # guard (the read-only-persona write-lock guard — every read-only review/audit persona must block
         # the file-writing tools, the live consumer of agent_coherence_findings) atop the negative-fixture
         # meta-check (engine-template #286 — the checker-of-checkers) atop
@@ -412,6 +516,7 @@ class TestModuleCoherenceConsumer(unittest.TestCase):
             ".engine/check/audit-digest-fingerprint.json",
             ".engine/check/audit-digest-staleness.json",
             ".engine/check/block-coherence.json",
+            ".engine/check/catalog-completeness.json",
             ".engine/check/catalog-coverage.json",
             ".engine/check/census-completeness.json",
             ".engine/check/codex-agent-coherence.json",
@@ -427,7 +532,6 @@ class TestModuleCoherenceConsumer(unittest.TestCase):
             ".engine/check/contract-frontmatter.json",
             ".engine/check/contract-shape.json",
             ".engine/check/contract-threshold.json",
-            ".engine/check/disposition-issue-resolution.json",
             ".engine/check/doc-frontmatter.json",
             ".engine/check/doc-shape.json",
             ".engine/check/engine-manifest.json",
@@ -443,6 +547,7 @@ class TestModuleCoherenceConsumer(unittest.TestCase):
             ".engine/check/knowledge-vocabulary.json",
             ".engine/check/lens-consumption.json",
             ".engine/check/link-integrity.json",
+            ".engine/check/manifest-write-funnel.json",
             ".engine/check/memory-pointer-public-safety.json",
             ".engine/check/model-bindings-schema.json",
             ".engine/check/module-manifest.json",
@@ -461,6 +566,7 @@ class TestModuleCoherenceConsumer(unittest.TestCase):
             ".engine/check/provisioning-catalog.json",
             ".engine/check/release-integrity.json",
             ".engine/check/self-map-drift.json",
+            ".engine/check/shipped-issue-references.json",
             ".engine/check/skill-coherence.json",
             ".engine/check/skill-frontmatter.json",
             ".engine/check/skill-shape.json",
@@ -468,7 +574,7 @@ class TestModuleCoherenceConsumer(unittest.TestCase):
             ".engine/check/template-shape-spec.json",
             ".engine/check/untracked-surface.json",
             ".engine/check/uv-group-drift.json",
-        ], "validators-core owns exactly the 63 corpus rules")
+        ], "validators-core owns exactly the 65 corpus rules")
         # the optional-module-owned DOMAIN checks: dependency-discipline inspects the product's dependencies,
         # not the engine — outside both core's guards and validators-core's self-validation corpus.
         dd_checks = optional_owner("dependency-discipline", [
@@ -699,6 +805,16 @@ class TestModuleCoherenceConsumer(unittest.TestCase):
         findings = module_coherence.check_coherence()
         hard = [f for f in findings if f["severity"] == "hard"]
         self.assertEqual(hard, [], f"unexpected coherence findings: {[f['message'] for f in hard]}")
+
+    def test_no_default_on_module_depends_on_a_capability_not_guaranteed_present(self):
+        # #891: the committed tree must satisfy the release-cut author guard — no default-on module may depend on
+        # an optional / experimental / retired capability a deployment might lack. Runs the SAME guard the cut
+        # uses, over the REAL present set, on every PR (unittest discovery in engine-ci) — so a future bad manifest
+        # is caught at its introducing PR (and in first-cut mode), WITHOUT a check_coherence leg that would re-fire
+        # tree-wide at operator upgrade and wedge #759's graceful default-on -> offer demotion.
+        import release_cut
+        violations = release_cut._default_on_dependency_violations(release_cut._present_modules())
+        self.assertEqual(violations, [], f"default-on dependency violations in the committed tree: {violations}")
 
     def test_inventory_prunes_gitignored_memory_runtime_but_keeps_the_memory_code_package(self):
         # #180: the ownership inventory must skip the gitignored RUNTIME store `.engine/memory/` (the live

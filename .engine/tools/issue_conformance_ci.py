@@ -31,12 +31,11 @@ applied in a SEPARATE step AFTER creation fires a `labeled` event, which this tr
 Issue is caught only on its next body edit. Cold sessions apply `--label engine` AT create (caught on `opened`)
 and the in-session gate is the first line — widening the trigger would diverge from the locked design.
 
-SELF-CONTAINED TRANSPORT. telemetry.GitHubIssues has no per-Issue label/comment operations (its label is baked
-in at construction and it only opens/updates engine-health Issues), so this tool carries its own transport — its
-own urlopen + (status, json) return + injectable `_transport` seam (30s timeout), building requests through the
-shared `github_client` (the audit_digest / telemetry idiom) — over the per-Issue label and comment operations it
-needs (label ensure/add/remove, comment list/post). telemetry.py is left untouched; the markers are
-single-sourced from issue_gate.
+SHARED LABEL TRANSPORT, LOCAL COMMENTS. The per-Issue label operations and the injectable transport (urlopen +
+(status, json) + 30s `_transport` seam, over the shared `github_client`) live in `issue_label_client`, so a
+transport fix reaches every on:issues backstop rather than one copy. This tool inherits that client and adds
+only the comment operations the conformance net alone needs (list/post, with the dedup marker). telemetry.py is
+left untouched; the body-contract markers are single-sourced from issue_gate.
 
 CLI (operator-runnable, falsifiable — the live net is what the workflow invokes):
   uv run --directory .engine -- python tools/issue_conformance_ci.py demo   # scripted, fake GitHub, self-checks
@@ -46,14 +45,12 @@ from __future__ import annotations
 import json
 import os
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import issue_author  # noqa: E402
-import github_client  # noqa: E402  (the shared authenticated GitHub API client; request-build)
 import issue_gate    # noqa: E402
+import issue_label_client  # noqa: E402  (the shared per-Issue label client + injectable transport)
+from issue_label_client import DegradedWriteError  # noqa: E402,F401  (re-exported: callers use icc.DegradedWriteError)
 
 USER_AGENT = "engine-issue-conformance"
 
@@ -75,59 +72,14 @@ _LABEL_DESCRIPTION = NEEDS_REAUTHORING_LABEL_DESCRIPTION
 COMMENT_MARKER = "<!-- engine-issue-conformance -->"
 
 
-class DegradedWriteError(Exception):
-    """Raised when a GitHub API call the backstop depends on fails. It is NEVER swallowed as success — a real
-    API failure must surface as a red CI run (the net's own breakage is visible), never a silent pass."""
-
-
-class IssueConformanceClient:
-    """The per-Issue label/comment client. Mirrors telemetry/audit_digest's injectable-transport seam:
-    `transport(method, path, body) -> (status, json|None)` is injectable, so the demo and tests fake ONLY the
-    network and run the real logic. Deliberately NOT telemetry.GitHubIssues — that class is engine-issue-domain
-    shaped (label baked in, opens/updates whole Issues); this exposes only the per-Issue label and comment
-    operations the backstop needs (ensure/add/remove a label, list/post a comment)."""
+class IssueConformanceClient(issue_label_client.IssueLabelClient):
+    """The conformance net's per-Issue client: the shared label operations (ensure/add/remove, plus the
+    injectable `transport` seam and `DegradedWriteError`) inherited from `issue_label_client.IssueLabelClient`,
+    PLUS the comment operations only this backstop needs (list/post, with the dedup marker). The label layer is
+    shared with the kind-label applicator so a transport fix reaches both; the comment layer stays here."""
 
     def __init__(self, repo: str, token: str, *, transport=None):
-        self.repo = repo
-        self.token = token
-        self._transport = transport or self._http
-
-    def _http(self, method: str, path: str, body=None):
-        data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = github_client.request(path, self.token, user_agent=USER_AGENT, method=method, data=data)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = resp.read().decode("utf-8")
-                return resp.status, (json.loads(raw) if raw else None)
-        except urllib.error.HTTPError as exc:           # 4xx/5xx — surface the status, never swallow
-            return exc.code, None
-        except urllib.error.URLError as exc:             # network unreachable — a write failure
-            raise DegradedWriteError(f"GitHub is unreachable: {exc}") from exc
-
-    def ensure_label(self, name: str, color: str, description: str) -> None:
-        """Idempotently ensure a repo label exists (create it iff absent). Mirrors telemetry.ensure_label,
-        parametrised on name/color/description (telemetry's is hardcoded to the engine label). The name is
-        URL-encoded into the GET path — the label string is an operator-picked build-spec leaf and could
-        carry a space (e.g. `engine: needs formatting`), so it must never be interpolated raw into a URL."""
-        status, _ = self._transport("GET", f"/repos/{self.repo}/labels/{urllib.parse.quote(name, safe='')}", None)
-        if status == 404:
-            self._transport("POST", f"/repos/{self.repo}/labels",
-                            {"name": name, "color": color, "description": description})
-        elif status >= 400:
-            raise DegradedWriteError(f"GitHub returned {status} checking the '{name}' label")
-
-    def add_label(self, number: int, name: str) -> None:
-        status, _ = self._transport("POST", f"/repos/{self.repo}/issues/{number}/labels", {"labels": [name]})
-        if status >= 400:
-            raise DegradedWriteError(f"GitHub returned {status} adding '{name}' to issue #{number}")
-
-    def remove_label(self, number: int, name: str) -> None:
-        # 404 = the label was not on the Issue — a tolerated no-op (the state we wanted is already true).
-        # The name is URL-encoded (the label is an operator-picked leaf that could carry a space/`/`).
-        status, _ = self._transport(
-            "DELETE", f"/repos/{self.repo}/issues/{number}/labels/{urllib.parse.quote(name, safe='')}", None)
-        if status not in (200, 204, 404):
-            raise DegradedWriteError(f"GitHub returned {status} removing '{name}' from issue #{number}")
+        super().__init__(repo, token, user_agent=USER_AGENT, transport=transport)
 
     def list_comments(self, number: int) -> list:
         """Every comment on the Issue, paginated to exhaustion (the endpoint defaults to 30/page — telemetry's

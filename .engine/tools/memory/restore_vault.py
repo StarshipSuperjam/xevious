@@ -136,7 +136,7 @@ def fetch_snapshot(*, transport=None, ref=None) -> dict:
 
 
 # ============================================================================================================
-# The engine-run test read — the positive correlate that ends provisioning's saved-memory turn-on (#224).
+# The engine-run test read — the positive correlate that ends provisioning's saved-memory turn-on (StarshipSuperjam/engine-template#224).
 # ============================================================================================================
 # A plain-language fault->fix map (Floor 4): one message per fetch_snapshot code, each naming the exact fault AND
 # the one fix, NEVER a git/HTTP error. POINTER_REL is named so a missing-pointer fault points at the exact file.
@@ -344,7 +344,7 @@ _MSG_NAMESPACE_MISSING = ("Your project's saved-memory folder is no longer in th
                           "is gone for good.")
 # The migration-revert distinct miss: the CITED pre-update snapshot is gone. The message names
 # the CONSEQUENCE + one honest recovery action, not the cause — so this does NOT assert "removed by hand" (it could
-# also be the engine's own retention prune, the open reversibility-unit question, #303). The recovery action is
+# also be the engine's own retention prune, the open reversibility-unit question, StarshipSuperjam/engine-template#303). The recovery action is
 # DELIBERATELY NOT _MSG_NAMESPACE_MISSING's "set up the backup again" — that would re-push the RESHAPED store and
 # destroy the right copy's addressability. The honest action is re-run the update / ask for help, never a silent
 # no-restore.
@@ -555,7 +555,7 @@ def detect_restore_offer() -> "dict | None":
 
 
 # ============================================================================================================
-# The code-older-than-data detector (#303): is the local store AHEAD of the engine code?
+# The code-older-than-data detector (StarshipSuperjam/engine-template#303): is the local store AHEAD of the engine code?
 # OFFLINE detection (the migration stamp records what no other local file does — the migrated version);
 # boot relays the one-action restore offer, and when online the durable tracked Issue is promoted too.
 # ============================================================================================================
@@ -803,7 +803,7 @@ def _demo_body() -> bool:
     part7 = part7a and part7b and part7c
     print(f"  => {'a reverted update can be undone to the true pre-update memory.' if part7 else '!!! the migration-revert restore failed'}")
 
-    # --- PART 8 — the engine DETECTS the store is ahead of the code and OFFERS the whole-update undo (#303) -
+    # --- PART 8 — the engine DETECTS the store is ahead of the code and OFFERS the whole-update undo (StarshipSuperjam/engine-template#303) -
     print("\nPART 8 — the engine notices your memory is ahead of your code after a reverted update, and offers the undo")
     print("-" * 96)
     import boot       # noqa: E402 — lazy: only the demo renders the boot offer (boot -> restore_vault is a lazy back-edge)
@@ -815,7 +815,7 @@ def _demo_body() -> bool:
             json.dump({"engine_release": v}, fh)
 
     # A clean pre-update state; the FIRST migration of the upgrade is the reversibility floor (stamped), then two more
-    # migrations of the SAME multi-step update reshape the store (#303 — "undo the update" must reach before ALL of them).
+    # migrations of the SAME multi-step update reshape the store (StarshipSuperjam/engine-template#303 — "undo the update" must reach before ALL of them).
     os.remove(ledger.ledger_path()); _quiet_remove(ledger.meta_path())
     bv._demo_plant("Pre-update note: the roadmap is locked — SNORGLE.")
     ledger.set_generation(4)

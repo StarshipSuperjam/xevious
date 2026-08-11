@@ -23,4 +23,10 @@ The strongest rejected alternative was a guard that simply *surfaces* every enfo
 
 ## Status
 
-accepted
+accepted — with the blocking clause superseded in part by eADR-0040 (2026-08-08): a weakening MODIFICATION of
+most guarded files now emits a plain-language non-blocking disclosure instead of hard-blocking, while the
+killswitch floor (supply-chain repoints, check demotions, gate removals, the guard's own machinery, and every
+fail-closed path) keeps the deliberate `guardrail-ack` block. The classification property, the trusted-base
+isolation, the frozen names, the fail-safe when-in-doubt-guard rule, and the instance-floor extension all
+stand; eADR-0040 also blesses declaring ENGINE paths in the instance floor as a deployment's opt-back-in to
+blocking, amending the "own territory" framing above.

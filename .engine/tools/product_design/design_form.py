@@ -3,7 +3,7 @@
 (the product-design module's form check over the *fuller* design documents that live beside the `docs/spec/`
 corpus: the guiding principles, the architecture overview with its diagram, and the user guides).
 
-Why this exists (issue #553): the intake now produces the full structured description by DEFAULT — the
+Why this exists (issue StarshipSuperjam/engine-template#553): the intake now produces the full structured description by DEFAULT — the
 corpus PLUS a structural backbone (guiding principles + an architecture overview) — and the operator opts
 *out* to a lighter, corpus-only description. So the backbone is owed by default, and "the engine drafts these
 but does not check them" is no longer true: this check inspects the fuller documents for FORM, exactly as

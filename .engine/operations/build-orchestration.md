@@ -45,9 +45,11 @@ everything else is a deliberate-effort nudge whose only wall is the protected-br
    cost figure, which the engine cannot know; a made-up number is the false confidence the trust model
    refuses), the how-careful depth choice, and — only when the change weakens an engine guardrail — the
    plain-language warning naming which protection weakens and what the AI could then do unwatched.
-   Applying the `guardrail-ack` is the operator's act, never the engine's: when a change weakens a guardrail,
-   surface it and leave the gate red for the operator to clear — the engine never labels its own change to
-   clear its own gate. The
+   Applying the `guardrail-ack` is the operator's act, never the engine's: when a change trips the
+   killswitch tier (eADR-0040 — a supply-chain repoint, a check demotion, a gate removal), surface it and
+   leave the gate red for the operator to clear — the engine never labels its own change to clear its own
+   gate. An ordinary enforcement-file touch instead leaves a non-blocking plain-language disclosure on the
+   pull request; it needs no label and must never be a reason to reshape the design. The
    operator iterates the plan to solid and approves the plan and the depth **before any work starts**. This
    plan gate (steps 1–2) *always runs as a shape*, even with zero review packs — its depth collapses to a
    single plain-language headline on the fast path (Notes), but the gate itself is never skipped.
@@ -90,7 +92,9 @@ everything else is a deliberate-effort nudge whose only wall is the protected-br
    … -b` run CI uses (`.github/workflows/engine-ci.yml`) and makes one run enough to read: it buffers each
    test's stdout so demo walkthroughs never bury the `Ran N … OK` summary, forces the child's stdin to
    end-of-input so no demo blocks under an attached terminal, prints a heartbeat so a live run is never
-   mistaken for a hang, and writes the full output to a log whose path it prints — so **read that log, never
+   mistaken for a hang, and writes the full output to a log whose path it prints — the log is kept whether
+   the run passes or fails (a later run sweeps any older than a day), so its announced path always points at
+   a readable file and a missing log is never a failure signal. So **read that log, never
    pipe the run through `tail`/`grep`**, which truncates the tracebacks and forces a re-run. **The suite
    runs about 4 minutes (4,000+ tests, varying with machine and cache)** — run it with a generous timeout
    or in the background: a tool whose command timeout defaults to ~2 minutes cuts it off mid-run, which
@@ -130,9 +134,20 @@ everything else is a deliberate-effort nudge whose only wall is the protected-br
    fold its lines into Review, applying any disclosed defang it emits (see Notes). **Render the
    change-profile** (`scope_profile.py`) into `Scope` and fill the `Behaviors` section — the plain-language
    shape of the change (size, kinds of surface touched, where it lands) and the falsifiable capabilities it
-   delivers, each naming its test or demo. Both are report-only: the profile gates nothing and the Behaviors
-   nudge is soft, there so the operator weighs a change by what it does, not its line count; a change with
-   nothing observable (a dependency bump, a docs-only edit) says so in Behaviors and moves on. **Mark the pull request
+   delivers, each naming the test that exercises it; Behaviors declares *what* the change delivers, while the
+   operator-runnable way to watch one work lives in **Demonstration**. Both are report-only: the profile gates
+   nothing and the Behaviors nudge is soft, there so the operator weighs a change by what it does, not its line
+   count; a change with nothing observable (a dependency bump, a docs-only edit) says so in Behaviors and moves
+   on. **Fill the `Demonstration` section** — the behavioral-evidence slot eADR-0013 requires at every layer: a
+   behaviour-changing change gives the operator a step or walkthrough that drives the real changed surface and
+   can genuinely fail (a committed demo, a reproducible scratch, or a live one), or points to the spec-derived
+   acceptance steps in Review when those already drive it; a genuinely non-behavioral change names the actual
+   reason it has none (docs / dependency / behaviour-preserving refactor / release plumbing). Two things it is
+   NOT: the absence of a settled description is not a valid reason — that clears only the spec-derived lane in
+   Review, never this slot; and an automated test, CI, or a cold review is not a demonstration unless the
+   invocation it offers is itself an operator-legible walkthrough of the changed surface. Its presence-gate
+   confirms the slot is filled, never that the demonstration is real or runnable — that stays the reviewer's
+   judgment. **Mark the pull request
    ready** (`gh pr ready`) — the act that submits it —
    **only once** validation is green, the pre-submission review is clean (no unresolved `blocking` or
    `serious` finding), and every post-review fix is pushed; until then it stays a **draft**, which cannot be
@@ -244,10 +259,11 @@ item (it follows work item → its `docs/spec/` document → that document's acc
 description). Hand those criteria **verbatim** (never a summary or a built-vs-spec judgment of your own) to the
 plan-review and pre-submission passes as the description they check against; when none resolves the pass
 discloses that plainly — never a silent pass. The **same one resolution** (consumed, not re-resolved) fills the
-**Review** record's operator-runnable acceptance steps (`spec_referent.py review-steps`): the steps the operator
+**Review** record's **spec-derived acceptance steps** (`spec_referent.py review-steps`): the steps the operator
 can run themselves, copied verbatim into two plain groups — "things you can confirm yourself" and "things I
 checked for you" — or a plain reason-named line when nothing is operator-runnable (an in-tool demo and a CLI-only
-check go on the engine's account). It is an offer for when the change matters, not a duty, and an unrun step is a
+check go on the engine's account). That reason-named line clears only this spec-derived lane; it never stands in
+for the **Demonstration** section, which a behaviour-changing change still owes on its own terms. It is an offer for when the change matters, not a duty, and an unrun step is a
 promise, not proof — never beside a green check; a step the operator will actually run beats one they won't (a
 screen they click over a paste-this-command); and a step must be able to fail — it exercises the real changed
 surface, never a staged recipe that can only succeed (posture, not a gate). The resolution holds with or without the optional product-design
@@ -266,8 +282,7 @@ request **will** close — GitHub's computed linkage (`gh pr view --json closing
 graphql` beneath it) **plus** the closing keywords in the integrated commit messages, which that field does
 not reflect — against what the pull request **declares**: a deliberate `Closes #N` line versus a `Part of #N`
 dependency in its own Scope/Out-of-scope. Two contradictions are decidable without guessing intent: an issue
-the change will close while declaring itself only *part of* it, and the comma-trap (`Closes #1, #2` links only
-`#1`). **Detect-and-surface, never silent-and-unilateral:** the default is a plain Review line the operator
+the change will close while declaring itself only *part of* it, and the comma-trap (`Closes #1, #2` links only the first). **Detect-and-surface, never silent-and-unilateral:** the default is a plain Review line the operator
 reads at the merge; only an **unambiguously-accidental, body-sourced** keyword (declared *part of*, no
 deliberate close line, uniquely locatable) is **neutralized** — a minimal keyword-only edit of the engine's
 own PR body, never a narrative rewrite, never product scope — and the removal is **disclosed** in Review. A
@@ -300,30 +315,52 @@ checkout**, NOT through `external-contribution-submit` (that path is for the un-
 
   ```
   ~/code/my-engine-mechanic/     <- the Engine (this folder)
-  ~/code/engine-template/        <- the product it builds (a separate clone)
+  ~/code/engine-template/        <- the product it builds (ONE durable clone, the shared anchor)
   ```
 
   Then record the path: write it into **`.engine/mechanic/product-checkout-path`** — one line, gitignored, so it
   is durable AND stays on this machine. (`ENGINE_PRODUCT_CHECKOUT` also works and takes precedence, but an
   environment variable set inside a session does not survive it, so it suits a one-off override, not setup.) A
   `~`-relative path is fine — the reader expands it. Boot surfaces a setup offer whenever the target is recorded
-  but the path is missing or points at nothing.
-- **Preflight from the mechanic tree.** Run `mechanic_build.py preflight`. It REFUSES fail-closed — with a plain
-  reason + remedy — unless the checkout is genuinely that product on a real `github.com` origin and clean to
-  write into; on success it emits the verified `ENGINE_PRODUCT_CHECKOUT` and `GITHUB_REPOSITORY`.
-- **Build in-place.** `cd` into the emitted path and run every product step as a subprocess INSIDE the checkout —
-  `uv run --directory <checkout>/.engine …` with `GITHUB_REPOSITORY=<emitted slug>` exported — so the checkout's
-  own tools, its validator, and `gh` resolve engine-template natively. The mechanic's own hooks act on the
-  mechanic tree, so **run the product's index regeneration and validation EXPLICITLY as in-checkout subprocess
-  steps**, never assumed. Branch from the checkout's default, implement, and run the plan-review and
-  pre-submission passes above against the product diff in the checkout.
+  but the path is missing or points at nothing. That ONE clone is a durable anchor, never a build workspace:
+  every build gets its own isolated worktree of it (next bullet), homed INSIDE the mechanic — so "clone as a
+  sibling, never inside" is the setup rule for the single anchor, and is NOT licence to spin up more `~/code`
+  siblings per build. **The worker owns the workspace.**
+- **Cut an isolated worktree — the build never happens in the shared checkout.** The one clone above is a shared
+  anchor a peer session may be using right now, so building in it (or switching its branch) breaks peers, and a
+  per-build sibling clone is the sprawl this replaces (StarshipSuperjam/engine-template#902). Instead run
+  `mechanic_build.py worktree <name>` from the mechanic tree (`<name>` = the issue number + a short slug). It
+  REFUSES fail-closed — plain reason + remedy — unless the checkout is genuinely that product on a real
+  `github.com` origin; it fetches, cuts a fresh worktree from the product's default branch, homes it under the
+  mechanic's own **`.engine/mechanic/worktrees/<name>`** (gitignored, durable across the harness session's
+  teardown), and emits `ENGINE_PRODUCT_WORKTREE=<path>`, `ENGINE_PRODUCT_BASE=origin/<default>` (the ref to diff
+  a build against), and `GITHUB_REPOSITORY`. It never moves the shared
+  checkout's HEAD or touches its tree — so it does NOT require that checkout to be clean; a peer mid-build there
+  is fine. (`preflight` remains the read-only identity/health CHECK, emitting `ENGINE_PRODUCT_CHECKOUT` — the
+  durable anchor, a DIFFERENT variable — for when you want to verify without cutting a workspace.) Note: the
+  per-session worktree the harness gave you is a worktree of the MECHANIC, not the product — the product build
+  never happens there.
+- **Build in that worktree.** `cd "$ENGINE_PRODUCT_WORKTREE"` and run every product step as a subprocess INSIDE
+  it — `uv run --directory <worktree>/.engine …` with `GITHUB_REPOSITORY=<emitted slug>` exported — so the
+  product's own tools, its validator, and `gh` resolve engine-template natively. The mechanic's own hooks act on
+  the mechanic tree, so **run the product's index regeneration and validation EXPLICITLY as in-worktree
+  subprocess steps**, never assumed. The branch (`claude/<name>`) is already created off the default; implement,
+  and run the plan-review and pre-submission passes above against the product diff in the worktree. **When the
+  pull request is submitted and the build is done, remove the worktree** from the mechanic tree —
+  `git -C <shared checkout> worktree remove <path>` (never from inside it, and never while it holds a branch
+  with unpushed commits); `git -C <shared checkout> worktree prune` clears any registration a crashed session
+  left behind.
 - **Scan for this repo's OWN references before opening — run this one from the MECHANIC tree, not the
-  checkout.** Every other step above runs inside the product checkout; this one deliberately does not. Run
-  `uv run --directory .engine -- python tools/local_references.py scan --ref <the checkout's default branch>
-  --checkout <the emitted path>`. It reads the vocabulary from **here** — the repository whose shorthand
-  would dangle — and scans the diff **there**. Run it inside the checkout and it reads the product's own
-  declaration — which ships ABSENT — so it would report that nothing was checked, on the one path with
-  no merge gate behind it. If it names anything, rewrite each one to
+  worktree.** Every other step above runs inside the product worktree; this one deliberately does not. Run
+  `uv run --directory .engine -- python tools/local_references.py scan --ref "$ENGINE_PRODUCT_BASE"
+  --checkout "$ENGINE_PRODUCT_WORKTREE"`. It reads the vocabulary from **here** — the repository whose
+  shorthand would dangle — and scans the diff **there**. `ENGINE_PRODUCT_BASE` is the `origin/<default>` ref the
+  `worktree` verb emitted alongside the worktree path; diff against it, not the shared repo's local default,
+  because the worktree was cut from `origin/<default>`, which a plain fetch does not fast-forward the shared
+  checkout's local branch to — a local-default base would report unrelated upstream files as changed. Run this
+  scan from the PRODUCT side instead of the mechanic tree and it reads the product's own vocabulary declaration —
+  which ships ABSENT — so it would report that nothing was checked, on the one path with no merge gate behind it.
+  If it names anything, rewrite each one to
   say what it MEANS rather than what it refers to; the operator may wave one through, and that is their call.
   **This is a mandated step, not a wall:** the mechanic does not own the product's CI, so no merge gate is
   available on this path — the discipline is the instrument, and a skipped step is a real gap, not a caught one.
@@ -345,7 +382,7 @@ built-in gate linkage. So **run the plan-review and pre-submission passes above 
 submit tool records on the prepared pull request and in its body whether that review ran — an honest
 disclosure, never a substitute for it. **When the target gates body completeness (engine-template does), author
 the full body to its template (as you would an in-repo PR's) and pass it via `submit(authored_body=...)`**
-(#557) — submit won't open an unfilled template against the engine's home, and only advises it elsewhere.
+(StarshipSuperjam/engine-template#557) — submit won't open an unfilled template against the engine's home, and only advises it elsewhere.
 
 **A recognized automation's pull request carries a disclosed not-applicable check — relay both decisions
 plainly.** Walking the operator to merge a dependency-update pull request from a recognized automation

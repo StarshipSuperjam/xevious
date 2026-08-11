@@ -6,6 +6,12 @@ do that again" — that has no canonical artifact to live in and would otherwise
 conversation nobody thinks to search for. eADR-0038 puts it in the one substrate as a record-type rather than a
 sixth store, and that is exactly what this is: an ordinary ledger record that ordinary recall surfaces.
 
+WHAT A PIN IS NOT FOR (StarshipSuperjam/engine-template#650, StarshipSuperjam/engine-template#766). An assistant's own material is different in kind and does not belong
+here, however durable it feels: an operating note (a navigation map, a tool quirk, a build lesson) goes in the
+assistant's own harness memory notebook, and a project conclusion gets stated plainly in the session, where
+capture makes it recallable. Pinning either forces it into every future boot briefing — the operator's
+context, spent forever on something they never asked to be remembered.
+
 WHY IT IS DELIBERATE AND SMALL. Pins are the one thing here nothing ages out and nothing summarises away, and
 the cold-start briefing carries them into every session. That is the whole point, and it is also why minting
 one is an explicit act rather than something inferred: a store that pins generously stops being a small set of
@@ -56,6 +62,10 @@ class PinRefused(ValueError):
 def add(text: str, *, session_id: "str | None" = None, via: str = records.PIN_VIA_ASSISTANT,
         path: "str | None" = None, now: "int | None" = None) -> dict:
     """Save one pin and return the record as written. Raises PinRefused on empty or over-long text.
+
+    A pin is standing OPERATOR intent — call this when the operator asked for something to be remembered,
+    never for the assistant's own notes or conclusions (WHAT A PIN IS NOT FOR, module docstring: those have
+    their own homes, and every pin is read into the operator's boot briefing forever).
 
     The text is scrubbed before it is stored (module docstring), so what lands in the ledger is what every
     later reader sees — there is no unscrubbed copy anywhere. `session_id` records where it was asked for, so
@@ -149,10 +159,15 @@ def _print_list(path: "str | None" = None) -> int:
 
 
 def main(argv: list) -> int:
-    parser = argparse.ArgumentParser(prog="pins.py", description="Save and read back durable operator intent.")
+    parser = argparse.ArgumentParser(
+        prog="pins.py",
+        description="Save and read back durable operator intent — what the OPERATOR asked to be "
+                    "remembered. An assistant's own note does not belong here: an operating note goes in "
+                    "its harness memory notebook, a project conclusion gets stated plainly in the session, "
+                    "where recall can find it.")
     sub = parser.add_subparsers(dest="cmd")
-    add_cmd = sub.add_parser("add", help="save a pin")
-    add_cmd.add_argument("text", help="the standing instruction to keep")
+    add_cmd = sub.add_parser("add", help="save a pin (something the operator asked to be remembered)")
+    add_cmd.add_argument("text", help="the standing instruction to keep, in the operator's own terms")
     add_cmd.add_argument("--session", default=None, help="the session it was asked for in")
     sub.add_parser("list", help="read back every live pin")
     rm = sub.add_parser("remove", help="stop surfacing one pin (reversible)")

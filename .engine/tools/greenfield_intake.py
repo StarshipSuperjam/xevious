@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Greenfield-intake detector — the OFFLINE, READ-ONLY signal behind boot's first-engagement nudge (#553).
+"""Greenfield-intake detector — the OFFLINE, READ-ONLY signal behind boot's first-engagement nudge (StarshipSuperjam/engine-template#553).
 
 When a project has an Engine but has not yet described what to build, boot offers the operator the
 `engine-design` intake — the structured, checked way to write down a product description — so a non-engineer
@@ -47,7 +47,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # .engine/tools for the sibling import below
-import repo_identity  # noqa: E402  (is_home_repo — the home-repo identity seam; #323)
+import repo_identity  # noqa: E402  (is_home_repo — the home-repo identity seam; StarshipSuperjam/engine-template#323)
 
 # The product-design intake runbook — present iff the optional product-design module is installed, so the
 # `engine-design` command it drives actually exists. The module provides this path and nothing else does.

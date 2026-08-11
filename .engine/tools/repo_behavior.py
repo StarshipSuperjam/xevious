@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The repository-behavior settings leg (issue #541). Turns on the repository settings a new engine repo
+"""The repository-behavior settings leg (issue StarshipSuperjam/engine-template#541). Turns on the repository settings a new engine repo
 should carry that GitHub leaves off by default: delete-branch-on-merge (the engine's own flows create
 branches constantly; without it every merge strands one and the session-start card nags about merged work),
 the "update branch" button on pull requests (exactly the affordance a non-engineer needs when a sibling
@@ -35,7 +35,7 @@ FAILED = security_floor.FAILED
 
 # The one unlock category this leg adds: a Dependabot switch an organization's policy reserves.
 ORG_CONTROLLED = "org-controlled"
-# The turn-OFF outcomes (#541 item 4): a surface a new engine repo doesn't use, disabled on a fresh repo.
+# The turn-OFF outcomes (StarshipSuperjam/engine-template#541 item 4): a surface a new engine repo doesn't use, disabled on a fresh repo.
 OFF = "off"                # was on, just turned off, read-back confirms it off
 OFF_ALREADY = "off-already"  # already off — left untouched
 
@@ -134,7 +134,7 @@ class RepoBehavior:
             return Toggle("dependabot-fixes", UNVERIFIED)
         return Toggle("dependabot-fixes", ON if bool(data.get("enabled")) else FAILED)
 
-    # -- turn OFF the surfaces a fresh engine repo doesn't use (#541 item 4): wiki, and unused project boards --
+    # -- turn OFF the surfaces a fresh engine repo doesn't use (StarshipSuperjam/engine-template#541 item 4): wiki, and unused project boards --
 
     def disable_unused_surfaces(self, disable_wiki: bool, disable_projects: bool) -> list:
         """Turn OFF the requested surfaces — the same read-first / verify-after / augment-never-override
@@ -174,7 +174,7 @@ class RepoBehavior:
 
     def apply(self, announce=None, *, disable_wiki: bool = False, disable_projects: bool = False) -> list:
         """Enable the four working-comfort settings, and — on a fresh repo — turn OFF the surfaces it doesn't
-        use (#541 item 4). Branches on each status, discloses the outcome in plain language. Returns the list
+        use (StarshipSuperjam/engine-template#541 item 4). Branches on each status, discloses the outcome in plain language. Returns the list
         of Toggles (data). NEVER touches the branch ruleset / required checks, and never changes visibility."""
         say = announce if announce is not None else (lambda text: print(text))
         toggles = self.enable_merge_hygiene() + [self.enable_dependabot_alerts(),

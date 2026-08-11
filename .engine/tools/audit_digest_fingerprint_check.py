@@ -26,7 +26,7 @@ import validate  # noqa: E402  (the negative-fixture meta-check's input-substitu
 
 def main() -> int:
     # ENGINE_AUDIT_DIGEST_PATH (unset in production) lets the negative-fixture meta-check point the
-    # seal gate at a seeded tampered digest, so it is witnessed biting a real bad input (#286).
+    # seal gate at a seeded tampered digest, so it is witnessed biting a real bad input (StarshipSuperjam/engine-template#286).
     f = audit_digest.check(validate.env_override_path("ENGINE_AUDIT_DIGEST_PATH"))
     print(json.dumps([f] if f["severity"] == "hard" else []))
     return 0

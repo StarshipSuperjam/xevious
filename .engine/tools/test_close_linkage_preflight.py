@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import close_linkage_preflight as clp  # noqa: E402
@@ -243,8 +244,39 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual([m.strip() for m in msgs], ["a\n\nCloses #1", "b"])
 
     def test_read_commit_messages_raises_on_git_failure(self):
-        with self.assertRaises(clp.PreflightUnavailable):
-            clp.read_commit_messages("main", runner=_runner(fail="git"))
+        with mock.patch("time.sleep"):  # #704: a persistent failure still raises — no real wait in the suite
+            with self.assertRaises(clp.PreflightUnavailable):
+                clp.read_commit_messages("main", runner=_runner(fail="git"))
+
+    def test_a_transient_git_log_failure_is_retried_and_recovers(self):
+        # #704: the git-log leg (the one origin-adjacent read: `base` is the origin-tracking branch) fails on a
+        # transient shared-config blip, then heals. A bounded retry returns the real messages instead of
+        # raising PreflightUnavailable (which would surface the could-not-read line and force a manual re-run).
+        calls = {"n": 0}
+
+        def flaky(cmd):
+            if cmd[:2] == ["git", "log"]:
+                calls["n"] += 1
+                if calls["n"] < 2:
+                    return 1, "", "fatal: transient"
+                return 0, "feat: land it\x00", ""
+            return 1, "", "unhandled"
+        with mock.patch("time.sleep") as slept:
+            msgs = clp.read_commit_messages("main", runner=flaky)
+        self.assertEqual([m.strip() for m in msgs], ["feat: land it"])  # recovered
+        self.assertEqual(calls["n"], 2)                                 # exactly one retry
+        slept.assert_called_once()
+
+    def test_a_clean_git_log_read_makes_exactly_one_call_and_never_sleeps(self):
+        calls = {"n": 0}
+
+        def once(cmd):
+            calls["n"] += 1
+            return 0, "feat: land it\x00", ""
+        with mock.patch("time.sleep") as slept:
+            clp.read_commit_messages("main", runner=once)
+        self.assertEqual(calls["n"], 1)      # the healthy path pays nothing
+        slept.assert_not_called()
 
     def test_preflight_end_to_end_defang(self):
         body = _SCOPE + "\nThis work Closes #274 as it lands.\n"

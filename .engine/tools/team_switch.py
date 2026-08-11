@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The permanent operator-privileged solo->team migration (engine-template #408).
+"""The permanent operator-privileged solo->team migration (StarshipSuperjam/engine-template#408).
 
 Team mode is the "cannot weaken at all" structural close: a distinct, NON-ADMIN GitHub identity (a machine-user
 account the operator creates) authors the engine's commits and pull requests, so the operator becomes the

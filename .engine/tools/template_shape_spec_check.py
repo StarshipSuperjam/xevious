@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standing template shape-spec check (engine issue #405).
+"""Standing template shape-spec check (engine issue StarshipSuperjam/engine-template#405).
 
 The validator reads a prose surface's required shape from its TEMPLATE frontmatter (catalog -> template -> shape
 -> instance), so the template's shape settings are the single, authoritative source kind_shape checks every

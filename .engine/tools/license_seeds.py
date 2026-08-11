@@ -4,29 +4,43 @@ Two consumers read this: the **first-run clear** in `instantiator.py` (which ret
 **standing foreign-`LICENSE`-seed detector** in `license_health.py` (which is permanent and runs every boot in a
 provisioned repo). Because the detector outlives the retiring first-run clear, the seed set and recognizer live
 here, in a permanent module both import — never in `instantiator.py`, which the standing detector could not depend
-on after first-run retirement (issue #471).
+on after first-run retirement (issue StarshipSuperjam/engine-template#471).
 
 **Recognition is self-seed, never operator-identity.** The engine matches only its *own* shipped template-license
 seed — a build constant — never "a copyright that isn't the operator's" (the engine holds no notion of the
 operator's legal identity). The match is a whitespace-normalized **full-text** comparison against each seed, which
-is a stricter realization of the design's body-∧-distinctive-anchor conjunction: the Commons Clause
-`Licensor:`/`Software:`/`Copyright` header is part of the matched text, so an adopter's own plain Apache-2.0, or
-this exact body with the Licensor renamed to themselves, normalizes differently and is **preserved**.
-**Preserve-on-doubt**: absent, unreadable, or anchor-edited text does not match, so a product's own `LICENSE` and a
-deliberately-inherited one are structurally never touched.
+realizes the design's body-∧-distinctive-anchor conjunction: each seed carries a **distinctive holder anchor** as
+part of the matched text, so an adopter's own license — even the same body carrying a different holder, or no
+holder — normalizes differently and is **preserved**. **Preserve-on-doubt**: absent, unreadable, or anchor-edited
+text does not match, so a product's own `LICENSE` and a deliberately-inherited one are structurally never touched.
+
+**The current seed is plain Apache-2.0, and its holder line is the SOLE delete-safety anchor — NEVER remove it.**
+The current seed (`_APACHE_2_0_SEED`) is stock Apache-2.0 whose only distinguishing text is its leading copyright
+line, `Copyright 2026 StarshipSuperjam - The Engine (engine-template)`. Because the Apache body is universal
+boilerplate — byte-identical for every Apache adopter on earth — that one line is the ENTIRE thing separating "the
+engine's own traveled `LICENSE`" (which the first-run clear DELETES and the boot detector offers to delete) from
+"an adopter's own independently-chosen Apache-2.0" (which must never be touched). Stripping the line to "look more
+standard" for GitHub's badge would make the seed byte-equal to stock Apache-2.0 and arm the deleter against every
+adopter's own license — a catastrophic false positive. The line is deliberately **copyright-form**: GitHub's
+Licensee strips copyright lines before detecting, so the repo still shows a named "Apache-2.0", while `recognize()`
+matches the **raw** text and keeps `StarshipSuperjam`/`The Engine` as the discriminator an adopter's own license
+can never carry. `test_stock_apache_without_the_holder_line_is_preserved` is the red tripwire guarding this — do
+not weaken it.
 
 **`HISTORICAL_SEEDS` is append-only.** Each entry is a full committed license the template has shipped at a
 release; a repo that upgraded past its generation-era seed is still recognized because every past seed stays in the
-set. A future relicense **appends** the then-current text (and `CURRENT_SEED` follows the tail). Membership is a
-build-spec leaf. The set has **one** member — the current Apache-2.0 + Commons Clause seed — and no
-pre-Apache (MIT-era) member: no project has ever been generated from the template (issue #471), and "Use this
-template" always copies the current default branch, so no MIT-seed repo can arise now or going forward. The seed↔
-shipped-`LICENSE` byte-parity is held by a construction-scoped parity test (`test_instantiator.py`, which retires
-at first run — root `LICENSE` exists only in the template/construction repo, never a cleared product repo).
+set. A relicense **appends** the then-current text (and `CURRENT_SEED` follows the tail). Membership is a
+build-spec leaf. The set has **two** members — the retired Apache-2.0 + Commons Clause seed (kept so any repo
+generated from the template before the relicense still recognizes its lingering Commons Clause `LICENSE`) and the
+current plain Apache-2.0 seed — and no pre-Apache (MIT-era) member: "Use this template" always copies the current
+default branch, so no MIT-seed repo can arise. The seed↔shipped-`LICENSE` byte-parity is held by a
+construction-scoped parity test (`test_instantiator.py`, which retires at first run — root `LICENSE` exists only in
+the template/construction repo, never a cleared product repo).
 """
 import hashlib
 
-# The current shipped template LICENSE (Apache-2.0 + Commons Clause), verbatim. The append-only newest member.
+# The RETIRED Apache-2.0 + Commons Clause seed, verbatim — kept in the append-only set (no longer the current seed)
+# so any repo generated from the template before the relicense still recognizes its lingering Commons Clause LICENSE.
 _APACHE_COMMONS_CLAUSE_SEED = """\
 "Commons Clause" License Condition v1.0
 
@@ -255,8 +269,20 @@ Copyright 2026 StarshipSuperjam
    limitations under the License.
 """
 
-# Append-only, newest last. See the module docstring for why the set has a single member.
-HISTORICAL_SEEDS = (_APACHE_COMMONS_CLAUSE_SEED,)
+# The current shipped template LICENSE: plain Apache-2.0. Derived from the retired seed's OWN Apache body (split off
+# at the 75-dash rule) so the stock license text is byte-identical to what shipped before — no retyping, so no
+# transcription drift and the Apache terms stay verbatim — with the Commons Clause header replaced by a single
+# copyright-form holder line. That line is the SOLE delete-safety anchor (see the module docstring): copyright-form
+# so GitHub's Licensee strips it and detects a named "Apache-2.0", while recognize() matches the RAW text and keeps
+# `StarshipSuperjam`/`The Engine` as the discriminator an adopter's own Apache-2.0 can never carry.
+_APACHE_2_0_HOLDER = "Copyright 2026 StarshipSuperjam - The Engine (engine-template)"
+_APACHE_2_0_BODY = _APACHE_COMMONS_CLAUSE_SEED.split("-" * 75 + "\n\n", 1)[1]
+_APACHE_2_0_SEED = _APACHE_2_0_HOLDER + "\n\n" + _APACHE_2_0_BODY
+
+# Append-only, newest last (module docstring). Two members: the retired Apache-2.0 + Commons Clause seed, then the
+# current plain Apache-2.0 seed. Retaining the retired seed keeps any pre-relicense repo's Commons Clause LICENSE
+# recognizable by the standing detector.
+HISTORICAL_SEEDS = (_APACHE_COMMONS_CLAUSE_SEED, _APACHE_2_0_SEED)
 
 # The tail — the license a freshly-generated repo would carry, and the drift target the detector re-fires on.
 CURRENT_SEED = HISTORICAL_SEEDS[-1]

@@ -3,7 +3,7 @@
 # depends on where it runs: in the ENGINE's construction repo it cuts the engine's version (from what changed
 # since the last engine release, recorded into the manifests); once the engine is DEPLOYED into a product repo
 # it cuts that repo's OWN PRODUCT version (from product-version.json), publishing the product, not the engine
-# (#516). The tool detects which automatically — the workflow is the same in both. THE MERGE IS THE ONLY
+# (StarshipSuperjam/engine-template#516). The tool detects which automatically — the workflow is the same in both. THE MERGE IS THE ONLY
 # GO-AHEAD: this workflow opens the pull request and STOPS — it has no merge step, no auto-merge, and never
 # tags or publishes a release (the tag + GitHub Release on merge is release-publish.yml). The maintainer's
 # merge click stays the sole, human, unbypassable consent act.
@@ -176,7 +176,7 @@ jobs:
           set -euo pipefail
           uv run --directory .engine --frozen -- python tools/knowledge_gen.py generate
           uv run --directory .engine --frozen -- python tools/self_map.py generate
-      # Deployment gate (#664): prove this release OPERATES and UPGRADES when deployed BEFORE the pull request
+      # Deployment gate (StarshipSuperjam/engine-template#664): prove this release OPERATES and UPGRADES when deployed BEFORE the pull request
       # is written or opened. Placed after the map refresh and before the PR steps, so a red fails the job and
       # NO pull request is ever opened (the branch/commit/push all live in the final step). Fails CLOSED: any
       # block or setup error exits nonzero and stops the cut. The gate is home-repo only; a deployed repo
@@ -184,20 +184,26 @@ jobs:
       # MUST run, so if this IS the engine's home repo (github.repository == the recorded home, an independent
       # signal) yet the gate reported it did not run, that is an origin-signal misdetection and the cut fails
       # closed rather than shipping the engine ungated.
-      - name: Verify the release operates and upgrades when deployed
+      - name: Verify the release operates, upgrades, and rolls back when deployed
         timeout-minutes: 60
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -uo pipefail
           out="${RUNNER_TEMP}/deployment-gate.json"
-          # No --json here: the gate prints its PLAIN-LANGUAGE render to the log (the operator's signal), and
-          # --json-out writes the machine-readable result to a file for the home/ran misdetection check below.
-          uv run --directory .engine --frozen -- python tools/release_gate.py --json-out "${out}"
+          sum="${RUNNER_TEMP}/deployment-gate-summary.md"
+          # No --json here: the gate prints its PLAIN-LANGUAGE render to the log (the operator's signal).
+          # --json-out writes the machine-readable result for the home/ran misdetection check below AND for the
+          # pull-request body's Validation section; --summary-out writes the per-transition matrix table (the
+          # gate renders it — never assembled in this shell) for the step summary.
+          uv run --directory .engine --frozen -- python tools/release_gate.py --json-out "${out}" --summary-out "${sum}"
           gate_rc=$?
           if [ "${gate_rc}" -ne 0 ]; then
-            echo "::error::This release would not operate or upgrade cleanly when deployed, so no release pull request was opened and nothing was changed. See the plain-language reason in the step log above; fix the problem and cut the release again (a transient infrastructure hiccup clears by re-running the release-gate workflow)."
+            echo "::error::This release would not operate, upgrade, or roll back cleanly when deployed, so no release pull request was opened and nothing was changed. See the plain-language reason in the step log above; fix the problem and cut the release again (a transient infrastructure hiccup clears by re-running the release-gate workflow)."
             echo "### Deployment gate: BLOCKED — the release was not opened. The step log above says, in plain words, what would not deploy." >> "${GITHUB_STEP_SUMMARY}"
+            # Surface the per-transition matrix too (the gate writes it whether it passed or failed), so a
+            # blocked run shows which baseline and leg failed rather than only a raw stderr log.
+            if [ -s "${sum}" ]; then cat "${sum}" >> "${GITHUB_STEP_SUMMARY}"; fi
             exit 1
           fi
           # The gate's home-repo signal reads the on-disk git origin; this is the INDEPENDENT context signal.
@@ -213,7 +219,13 @@ jobs:
             exit 1
           fi
           if [ "${ran}" = "True" ]; then
-            echo "### Deployment gate: passed — verified this release operates and upgrades when deployed" >> "${GITHUB_STEP_SUMMARY}"
+            # The gate rendered the per-transition matrix table to ${sum}; surface it as the step summary. Fall
+            # back to a one-line note if the summary file is somehow absent.
+            if [ -s "${sum}" ]; then
+              cat "${sum}" >> "${GITHUB_STEP_SUMMARY}"
+            else
+              echo "### Deployment gate: passed — verified this release operates, upgrades, and rolls back when deployed" >> "${GITHUB_STEP_SUMMARY}"
+            fi
           else
             echo "### Deployment gate: not applicable here — this repository does not run the engine's own deployment gate (its own engine-ci runs the suite directly)" >> "${GITHUB_STEP_SUMMARY}"
           fi
@@ -224,6 +236,7 @@ jobs:
           set -euo pipefail
           uv run --directory .engine --frozen -- python tools/release_cut.py pr-body \
             --proposal "${RUNNER_TEMP}/proposal.json" --applied "${RUNNER_TEMP}/applied.json" \
+            --deployment-gate-json "${RUNNER_TEMP}/deployment-gate.json" \
             > "${RUNNER_TEMP}/pr-body.md"
       # Open the release pull request. The branch is pushed with the built-in token; the pull request is opened
       # with RELEASE_PAT so `engine-ci` actually runs on it. This step OPENS THE PR AND STOPS — no merge, ever.

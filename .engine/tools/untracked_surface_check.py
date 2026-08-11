@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Untracked-surface signal (issue #281) — the thin custom/script entry for engine/check/untracked-surface.
+"""Untracked-surface signal (issue StarshipSuperjam/engine-template#281) — the thin custom/script entry for engine/check/untracked-surface.
 
 Runs as a `custom/script` rule in CI and audit-prep. It relays module_coherence.untracked_surface_findings:
 every file under the engine surface that git neither tracks nor ignores — a sync-conflict duplicate a

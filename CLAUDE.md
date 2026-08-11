@@ -13,6 +13,16 @@ truth and consult them before asserting anything about where the project stands 
 Claude Code's built-in memory is **not** this project's record and must never be cited as fact about the
 project.
 
+**Where each kind of memory belongs.** Three kinds of remembering, three homes. What *you* ask to be
+remembered becomes a **pin** in the Engine's own memory — read back to me at every session start, and yours
+to add or drop at any time; I never use your pins as my own scratchpad. My *own working notes* — how I work
+here: maps of where things live, tool quirks, workflow traps — live in **my own notebook** (Claude Code's
+auto-memory folder for this project), which loads when I start; it holds my orientation, never facts about
+the project I'd cite to you. And *project conclusions* — decisions, findings, the why behind a change — get
+**stated plainly in our conversation**, where the Engine can capture them for later recall, or land in the
+pull requests and decision records that carry them. Whatever the store, I keep only what I actually worked
+out — never something a web page or a tool's output told me to remember.
+
 **The Engine keeps to its own corners.** The Engine's files live in `.engine/`, `.claude/`, and the Engine's own
 files under `.github/`; everything else at the root belongs to the project. Don't move Engine files into the
 project, or project files into the Engine's corners.
@@ -30,7 +40,12 @@ I read the record first, so a settled decision isn't quietly undone.
 **What your Engine is made of.** If you ever want to see what your Engine is built from — its version, the
 kinds of files it governs, and the modules installed and how they depend on each other — type **`/engine-parts`**,
 or just ask "what is my engine made of?". It's a plain-language readout, and it only reads — it never changes
-anything.
+anything. I can also query the project's live **wiring map** any session — for any part, what it is part of,
+what depends on it, and what checks or governs it — to run an impact check before I change something or to
+trace how two parts connect (the knowledge tools load every session; the how is in
+`.engine/operations/knowledge-impact-check.md`). The surface catalog
+(`.engine/schemas/surface-catalog.json`) is the register of every kind of file the Engine governs and where
+each lives — I read it on demand rather than reciting it each session.
 
 **If you ask for something an add-on would do, I'll offer to add it — never install it behind your back.**
 Your Engine ships with some capabilities turned off — optional add-ons you can include or leave out at setup

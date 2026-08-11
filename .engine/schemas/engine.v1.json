@@ -21,6 +21,27 @@
       "type": "object",
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
+    "removed_capabilities": {
+      "description": "The release cut's own inventory of capabilities removed by dropping a WHOLE module — the sibling of a surviving module's manifest-level `retired_capabilities`, kept HERE because a removed module has no manifest left to carry its own notice. Each key is a removed module's id; each value carries the plain-language line the update shows the operator (`description`) and the engine release the removal took effect in (`removed_in`, stamped by the cut). This block does DOUBLE duty: it is the operator-facing explanation AND the release's proof that the module's absence is intentional (not a broken or incomplete release) — which is what authorizes the update to reconcile the module away rather than refuse. Unlike the append-only, version-keyed `retired_capabilities`, this is CURRENT-STATE and keyed by module-id (one entry per removed module): the update announces it while a deployer still holds the module and this release no longer ships it, so no version-range history is needed. An entry accumulates and is never dropped while any supported upgrader could still hold the module (once `removed_in` is at or below `min_upgradeable_from`, no such upgrader remains and the entry may be pruned). Optional: absent on a release that has removed no module, and on releases cut before this block shipped.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description"],
+        "properties": {
+          "description": {
+            "description": "The one plain-language line the update shows the operator — what they could ask the engine for before and no longer can, in operator language (for example 'The engine no longer offers to bring a set-aside note back into search; ask me to search your notes directly instead.'). Authored when the module is removed (via `remove --removal-notice` or by hand); never empty.",
+            "type": "string",
+            "minLength": 1
+          },
+          "removed_in": {
+            "description": "The engine release this removal took effect in, stamped by the release cut when it records the removal. Optional: an entry authored at removal time carries only `description` until the next cut stamps this, so a not-yet-stamped entry is valid.",
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+          }
+        }
+      }
+    },
     "identity": {
       "description": "The identity tier governing how the engine's own guardrails may change. solo: a single gate-holder — a guardrail can never weaken silently, but a weakening can still happen with the operator's explicit consent (the engine acts with the operator's credentials). team: a distinct engine identity holds enforcement-admin, so a guardrail cannot weaken at all. This is per-repository and re-chosen at first-run setup; it is not inherited from a template.",
       "enum": ["solo", "team"]
@@ -72,6 +93,33 @@
             "checks": { "type": "array", "items": { "type": "string" } },
             "rules": { "type": "array", "items": { "type": "string" } }
           }
+        }
+      }
+    },
+    "protection_posture": {
+      "description": "A deliberate, operator-consented record that this repository's GitHub plan cannot host branch-protection rulesets at all, so the standing protection check reports it as an honest, non-blocking warning instead of hard-failing every pull request. Written ONLY by `bootstrap.py accept-unprotected`, which first re-verifies that the branch-rules API genuinely returns GitHub's plan-limitation 403 for this repo — never inferred, never written silently. Its mere presence never softens the gate: the standing check ALSO demands a live plan-limitation 403 at evaluation time, so on any repo whose plan can host protection (the read succeeds there) this record is inert and the check stays hard. Absent on every deployment whose platform can host protection (the default) — and that absence is exactly what keeps the check hard-failing when protection SHOULD be available but is missing or unreadable. The `operator_login`/`recorded_on` fields are an advisory audit breadcrumb of who ran the accept and when — never authenticated proof of consent (a repository whose plan cannot host branch rulesets has no enforced review on the pull request that records this, so the field is a recorded 'by', not a verified one).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason", "operator_login", "recorded_on"],
+      "properties": {
+        "status": {
+          "description": "The recorded posture. unsupported-platform: the repository's GitHub plan cannot host branch rulesets (the branch-rules API returns GitHub's plan-limitation 403). An enum-of-one deliberately, leaving room for a future posture without reshaping the block.",
+          "enum": ["unsupported-platform"]
+        },
+        "reason": {
+          "description": "A short plain-language reason recorded with the acceptance, for the operator reading engine.json later (for example 'This private repository's plan does not expose branch rulesets; the owner accepted running without the protection floor.'). Never empty.",
+          "type": "string",
+          "minLength": 1
+        },
+        "operator_login": {
+          "description": "The GitHub login whose token recorded this decision, read from GET /user at record time — an advisory 'recorded by', the who of the acceptance. It is the token owner, NOT authenticated proof of the operator's consent (the reviewed pull request carrying this block is that); downstream copy presents it as 'recorded by', never as governance evidence.",
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_on": {
+          "description": "The UTC date the operator accepted the posture (YYYY-MM-DD), which the standing warning and boot's calm line cite. Recorded via the engine's sanctioned clock, not a hand-rolled time idiom.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
         }
       }
     },
