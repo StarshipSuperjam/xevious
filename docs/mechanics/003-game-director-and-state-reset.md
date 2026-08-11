@@ -62,3 +62,13 @@ original stays in its locked spec section, cited above, never restated: blaster 
 and adds the repository's first negative fixtures (one per restored behavior, proving the contract goes
 red when broken). This catches removal and shape drift of the asserted blocks — a real gain over what let
 PR #9 through — but not shape-preserving behavioral drift; the operator playtest remains the gameplay gate.
+
+## Update (life-economy slice, PLY-02)
+
+The `new-life reset preserves terrain` behavior recorded in the acceptance criteria above (the interim
+B11 fixture) is **retired**: a new life now restarts the current area from its top, alongside
+cold-start and new-game, matching the arcade rule the settled area-progression spec makes normative and
+discharging the 2026-08-09 audit's B11 obligation. The full change — plus the death outcome now decided
+from the craft counter rather than a hardcoded D/G value — is recorded in
+[013-death-decision-and-terrain-restart](013-death-decision-and-terrain-restart.md). The near-end
+checkpoint exception to the restart rule still waits on the area clock (slice 5).

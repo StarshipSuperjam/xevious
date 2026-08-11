@@ -170,8 +170,8 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        self.assertEqual(16, len(project["targets"]))
-        self.assertEqual(67, len(assets))
+        self.assertEqual(17, len(project["targets"]))
+        self.assertEqual(99, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -224,6 +224,15 @@ class ScratchProjectTests(unittest.TestCase):
                 for key in ("variables", "lists", "broadcasts"):
                     expected.pop(key)
                     actual.pop(key)
+                # hud_glyphs.py appends one new "extend" sound on top of the
+                # historical two (docs/mechanics/010); verify it precisely, then
+                # drop sounds from the general preserved-content comparison.
+                self.assertEqual(
+                    [sound["name"] for sound in expected["sounds"]] + ["extend"],
+                    [sound["name"] for sound in actual["sounds"]],
+                )
+                expected.pop("sounds")
+                actual.pop("sounds")
             elif target["name"] in {
                 "solvalou",
                 "solv_death",
@@ -875,10 +884,27 @@ class ScratchProjectTests(unittest.TestCase):
             "hit slot",
             "bullet alloc result",
             "bullet cursor",
+            # ECO-01 award-value seam: set by the collision detector a later slice wires
+            # (parallel to `hit slot`), so it is machinery, not Stage-write-protected state.
+            "award value",
+            # ECO-04 best-five verdict: Stage-computed only (never a sprite write, unlike
+            # `award value`) — added to the write-forbid set below too.
+            "qualified",
+        }
+        # ECO economy state — Stage-written, HUD reads only. Held in its own category and
+        # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
+        economy_names = {
+            "score",
+            "high score",
+            "craft",
+            "next bonus",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
+        self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
         stage_variable_names = {name for name, _value in stage["variables"].values()}
-        self.assertEqual(director_state_names | machinery_names, stage_variable_names)
+        self.assertEqual(
+            director_state_names | machinery_names | economy_names, stage_variable_names
+        )
         self.assertEqual(
             [
                 "boot -> title",
@@ -926,16 +952,26 @@ class ScratchProjectTests(unittest.TestCase):
             director.ADVANCE_SLOTS_PROCCODE,
             director.RESOLVE_HIT_PROCCODE,
             director.SCORE_PROCCODE,
+            director.CHECK_BONUS_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
         )
 
+        # Only the Stage writes the director-control vars AND the economy vars: no sprite may
+        # write them (a HUD sprite touching `score` is exactly the bug this guards). The
+        # award-value seam is deliberately absent — the enemy slice's detector (which may be a
+        # sprite) sets it, like `hit slot`.
         director_variable_ids = {
             director.STATE_ID,
             director.EPOCH_ID,
             director.SCOPE_ID,
             director.OUTCOME_ID,
+            director.SCORE_ID,
+            director.HIGH_SCORE_ID,
+            director.LIVES_ID,
+            director.NEXT_BONUS_ID,
+            director.QUALIFIED_ID,
         }
         for target in project["targets"]:
             if target["isStage"]:
@@ -1327,13 +1363,17 @@ class ScratchProjectTests(unittest.TestCase):
         ]
         if len(hit_writes) != 1 or hit_writes[0] not in resolve_body:
             failures.add("single-hit-resolver")
-        score_calls = [
-            b
-            for b in blocks.values()
-            if b["opcode"] == "procedures_call"
-            and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+        # SYS-03's guarantee: a resolved hit scores exactly once — the `score` call lives in
+        # the resolver body, once. (The one `score` PROC is the single scoring path; ECO-01's
+        # contract enforces that nothing writes `score` outside it. Other legitimate callers of
+        # that proc — e.g. the debug scoring fixture — are ECO-01's concern, not SYS-03's.)
+        score_calls_in_resolver = [
+            bid
+            for bid in resolve_body
+            if blocks[bid]["opcode"] == "procedures_call"
+            and blocks[bid].get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
         ]
-        if len(score_calls) != 1:  # all scoring flows through the one path
+        if len(score_calls_in_resolver) != 1:  # one hit resolves to one award
             failures.add("single-score-path")
         defined = {
             b["mutation"]["proccode"]
@@ -1353,15 +1393,35 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(set(), self._sys03_failures(base))
 
         def double_score(p: dict) -> None:
+            # Make the resolver score TWICE for one hit — the SYS-03 violation.
             stage = next(t for t in p["targets"] if t["isStage"])
-            call = next(
-                b
-                for b in stage["blocks"].values()
-                if b["opcode"] == "procedures_call"
-                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            blocks = stage["blocks"]
+            proto = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
             )
-            clone = copy.deepcopy(call)
-            stage["blocks"]["injected-second-score"] = clone
+            definition = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto
+            )
+            cursor = blocks[definition]["next"]
+            score_call_id = None
+            while cursor:
+                b = blocks[cursor]
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get(
+                    "proccode"
+                ) == director.SCORE_PROCCODE:
+                    score_call_id = cursor
+                    break
+                cursor = b["next"]
+            clone = copy.deepcopy(blocks[score_call_id])
+            clone["next"] = blocks[score_call_id]["next"]
+            blocks[score_call_id]["next"] = "injected-second-resolver-score"
+            blocks["injected-second-resolver-score"] = clone
 
         def skip_hit_write(p: dict) -> None:
             stage = next(t for t in p["targets"] if t["isStage"])
@@ -1381,6 +1441,1319 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._sys03_failures(project), label)
+
+    @staticmethod
+    def _eco01_failures(project: dict) -> set:
+        """ECO-01 single scoring path — award, 9,999,990 cap, high-score track, bonus tail,
+        and no score bypass. Structure only; the arithmetic is the operator's playtest."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        proto = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            ),
+            None,
+        )
+        definition = (
+            None
+            if proto is None
+            else next(
+                (
+                    bid
+                    for bid, b in blocks.items()
+                    if b["opcode"] == "procedures_definition"
+                    and b["inputs"].get("custom_block", [None, None])[1] == proto
+                ),
+                None,
+            )
+        )
+        if definition is None:
+            return {"score-proc-defined"}
+        body, cur = [], blocks[definition]["next"]
+        while cur:
+            body.append(cur)
+            cur = blocks[cur]["next"]
+
+        # award -> score: `change score by (award value)`. (NOT `set score = score + award
+        # value`: a `set var = operator(...)` value-input does not evaluate in the Scratch VM,
+        # so the score path adds via `change ... by` the award-value variable directly.)
+        if not any(
+            b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+            and refs(b["inputs"].get("VALUE"), director.AWARD_VALUE_ID)
+            for b in blocks.values()
+        ):
+            failures.add("score-add-award")
+
+        # cap: a `score > 9,999,990` test and a set-score to the ceiling literal.
+        gt_cap = any(
+            b["opcode"] == "operator_gt"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            for b in blocks.values()
+        )
+        set_cap = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+            and b["inputs"].get("VALUE") == [1, [4, director.SCORE_CAP]]
+            for b in blocks.values()
+        )
+        if not (gt_cap and set_cap):
+            failures.add("score-cap")
+
+        # high score: a `score > high score` test and a set-high-score to `score`.
+        gt_high = any(
+            b["opcode"] == "operator_gt"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and refs(b["inputs"].get("OPERAND2"), director.HIGH_SCORE_ID)
+            for b in blocks.values()
+        )
+        set_high = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.HIGH_SCORE_ID
+            and refs(b["inputs"].get("VALUE"), director.SCORE_ID)
+            for b in blocks.values()
+        )
+        if not (gt_high and set_high):
+            failures.add("high-score-track")
+
+        # the bonus-life check runs after every award — the tail of the score path.
+        if not (
+            body
+            and blocks[body[-1]]["opcode"] == "procedures_call"
+            and blocks[body[-1]].get("mutation", {}).get("proccode")
+            == director.CHECK_BONUS_PROCCODE
+        ):
+            failures.add("bonus-check-tail")
+
+        # no bypass: the ONLY `change score by` in the whole project is the single award inside
+        # the score proc — a second one anywhere is the classic scoring bypass.
+        score_changes = [
+            bid
+            for target in project["targets"]
+            for bid, b in target["blocks"].items()
+            if b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+        ]
+        if len(score_changes) != 1 or score_changes[0] not in body:
+            failures.add("score-no-bypass")
+        return failures
+
+    def test_scoring_path_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco01_failures(project))
+
+    def test_scoring_path_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco01_failures(base))
+        stage = next(t for t in base["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def break_award(p: dict) -> None:
+            s = next(t for t in p["targets"] if t["isStage"])
+            chg = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+            )
+            chg["inputs"]["VALUE"] = [1, [4, 0]]  # award nothing, not `award value`
+
+        def break_cap(p: dict) -> None:
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.SCORE_ID
+                    and b["inputs"].get("VALUE") == [1, [4, director.SCORE_CAP]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, director.SCORE_CAP + 10]]
+
+        def break_high(p: dict) -> None:
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1]
+                    == director.HIGH_SCORE_ID
+                ):
+                    b["fields"]["VARIABLE"] = ["score", director.SCORE_ID]
+
+        def break_bonus_tail(p: dict) -> None:
+            s = next(t for t in p["targets"] if t["isStage"])
+            proto = next(
+                bid
+                for bid, b in s["blocks"].items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.SCORE_PROCCODE
+            )
+            definition = next(
+                bid
+                for bid, b in s["blocks"].items()
+                if b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto
+            )
+            cur = s["blocks"][definition]["next"]
+            prev = definition
+            while s["blocks"][cur]["next"]:
+                prev = cur
+                cur = s["blocks"][cur]["next"]
+            s["blocks"][prev]["next"] = None  # drop the trailing check-bonus call
+
+        def inject_bypass(p: dict) -> None:
+            s = next(t for t in p["targets"] if t["isStage"])
+            s["blocks"]["injected-score-bypass"] = {
+                "opcode": "data_changevariableby",
+                "next": None,
+                "parent": None,
+                "inputs": {"VALUE": [1, [4, 100]]},
+                "fields": {"VARIABLE": ["score", director.SCORE_ID]},
+                "shadow": False,
+                "topLevel": False,
+            }
+
+        cases = [
+            ("score-add-award", break_award),
+            ("score-cap", break_cap),
+            ("high-score-track", break_high),
+            ("bonus-check-tail", break_bonus_tail),
+            ("score-no-bypass", inject_bypass),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._eco01_failures(project), label)
+
+    def test_value_table_matches_scores_json(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
+        expected = [e["points"] for e in data["tables"]["master_value_table"]["entries"]]
+        self.assertEqual(expected, by_name["value table"])
+
+    def test_scoring_fixture_drives_the_single_path(self) -> None:
+        # The debug S fixture sets the award-value seam from the value table and runs the one
+        # `score` path (the stand-in producer of `award value` until slice 8's detector lands).
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        hats = [
+            b
+            for b in blocks.values()
+            if b["opcode"] == "event_whenkeypressed"
+            and b["fields"].get("KEY_OPTION", [None])[0] == director.SCORE_FIXTURE_KEY
+        ]
+        self.assertEqual(1, len(hats))
+        sets_award = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AWARD_VALUE_ID
+            for b in blocks.values()
+        )
+        self.assertTrue(sets_award)
+
+    @staticmethod
+    def _eco03_failures(project: dict) -> set:
+        """ECO-03 lives/bonus economy — enabled guard, cap quirk, threshold grant + advance,
+        the grant's craft/sound/signal, and the DIP-seeded starting craft and first threshold."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        vals = list(blocks.values())
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        def sets_from_list(var_id: str, list_name: str) -> bool:
+            for b in vals:
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == var_id
+                ):
+                    val = b["inputs"].get("VALUE")
+                    if isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str):
+                        child = blocks.get(val[1], {})
+                        if (
+                            child.get("opcode") == "data_itemoflist"
+                            and child["fields"].get("LIST", [None])[0] == list_name
+                        ):
+                            return True
+            return False
+
+        # the bonus check only runs when enabled (threshold sentinel non-zero).
+        if not any(
+            b["opcode"] == "operator_gt"
+            and refs(b["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
+            and b["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
+            for b in vals
+        ):
+            failures.add("bonus-enabled-guard")
+        # cap quirk: an at-cap test (score == 9,999,990) drives an every-award grant branch.
+        if not any(
+            b["opcode"] == "operator_equals"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            for b in vals
+        ):
+            failures.add("cap-quirk")
+        # grant: +1 craft, the extend sound, and the craft-changed HUD signal.
+        if not any(
+            b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+            and b["inputs"].get("VALUE") == [1, [4, 1]]
+            for b in vals
+        ):
+            failures.add("bonus-craft-grant")
+        if not any(
+            b["opcode"] == "sound_sounds_menu"
+            and b["fields"].get("SOUND_MENU", [None])[0] == "extend"
+            for b in vals
+        ):
+            failures.add("bonus-extend-sound")
+        if not any(
+            b["opcode"] == "event_broadcast"
+            and b["inputs"].get("BROADCAST_INPUT", [None, [None, None]])[1][1] == "craft changed"
+            for b in vals
+        ):
+            failures.add("bonus-craft-changed")
+        # advance: next bonus += the per-setting increment read from the repeat table.
+        advance = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.NEXT_BONUS_ID
+            and isinstance(b["inputs"].get("VALUE"), list)
+            and isinstance(b["inputs"]["VALUE"][1], str)
+            and blocks.get(b["inputs"]["VALUE"][1], {}).get("opcode") == "operator_add"
+            for b in vals
+        )
+        repeat_read = any(
+            b["opcode"] == "data_itemoflist"
+            and b["fields"].get("LIST", [None])[0] == "repeat bonus 123"
+            for b in vals
+        )
+        if not (advance and repeat_read):
+            failures.add("bonus-advance")
+        # DIP seeds: starting craft and the first threshold, read from the ingested tables.
+        if not sets_from_list(director.LIVES_ID, "starting lives"):
+            failures.add("lives-seeded")
+        if not sets_from_list(director.NEXT_BONUS_ID, "first bonus 123"):
+            failures.add("bonus-seeded")
+        return failures
+
+    def test_bonus_economy_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco03_failures(project))
+
+    def test_bonus_economy_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco03_failures(base))
+
+        def first(pred):
+            def f(p):
+                stage = next(t for t in p["targets"] if t["isStage"])
+                return next(b for b in stage["blocks"].values() if pred(b))
+            return f
+
+        def each(p, pred):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return [b for b in stage["blocks"].values() if pred(b)]
+
+        def break_guard(p):
+            b = first(
+                lambda b: b["opcode"] == "operator_gt"
+                and b["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
+                and isinstance(b["inputs"].get("OPERAND1"), list)
+                and b["inputs"]["OPERAND1"][1][2] == director.NEXT_BONUS_ID
+            )(p)
+            b["inputs"]["OPERAND1"] = [1, [4, 1]]
+
+        def break_cap(p):
+            b = first(
+                lambda b: b["opcode"] == "operator_equals"
+                and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            )(p)
+            b["inputs"]["OPERAND2"] = [1, [4, 0]]
+
+        def break_grant(p):
+            # the grant is emitted at both branches (cap quirk + normal) — break every one.
+            for b in each(
+                p,
+                lambda b: b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID,
+            ):
+                b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_sound(p):
+            for b in each(
+                p,
+                lambda b: b["opcode"] == "sound_sounds_menu"
+                and b["fields"].get("SOUND_MENU", [None])[0] == "extend",
+            ):
+                b["fields"]["SOUND_MENU"] = ["pop", None]
+
+        def break_signal(p):
+            for b in each(
+                p,
+                lambda b: b["opcode"] == "event_broadcast"
+                and b["inputs"].get("BROADCAST_INPUT", [None, [None, None]])[1][1]
+                == "craft changed",
+            ):
+                b["inputs"]["BROADCAST_INPUT"][1][1] = "director stop"
+
+        def break_advance(p):
+            b = first(
+                lambda b: b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == "repeat bonus 123"
+            )(p)
+            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def break_lives_seed(p):
+            b = first(
+                lambda b: b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == "starting lives"
+            )(p)
+            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def break_bonus_seed(p):
+            b = first(
+                lambda b: b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == "first bonus 123"
+            )(p)
+            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        cases = [
+            ("bonus-enabled-guard", break_guard),
+            ("cap-quirk", break_cap),
+            ("bonus-craft-grant", break_grant),
+            ("bonus-extend-sound", break_sound),
+            ("bonus-craft-changed", break_signal),
+            ("bonus-advance", break_advance),
+            ("lives-seeded", break_lives_seed),
+            ("bonus-seeded", break_bonus_seed),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._eco03_failures(project), label)
+
+    def test_bonus_and_lives_data_match_scores_json(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())["tables"]
+
+        def sentinel(values: list) -> list:
+            return [director.BONUS_DISABLED if v is None else v for v in values]
+
+        self.assertEqual(data["starting_lives"]["values"], by_name["starting lives"])
+        self.assertEqual(
+            sentinel(data["first_bonus_thresholds"]["table_123"]), by_name["first bonus 123"]
+        )
+        self.assertEqual(
+            sentinel(data["first_bonus_thresholds"]["table_5"]), by_name["first bonus 5"]
+        )
+        self.assertEqual(
+            sentinel(data["repeat_bonus_increments"]["table_123"]), by_name["repeat bonus 123"]
+        )
+        self.assertEqual(
+            sentinel(data["repeat_bonus_increments"]["table_5"]), by_name["repeat bonus 5"]
+        )
+
+    @staticmethod
+    def _eco02_failures(project: dict) -> set:
+        """ECO-02 HUD render — clone spawning/dispatch, the score and high-score digit
+        costume-switch expressions, the craft/craft-changed life-icon wiring, the
+        flashing 1UP label, and the HUD's read-only invariant (structure only; the
+        arithmetic and on-screen layout are the operator's playtest)."""
+        failures = set()
+        hud = next(t for t in project["targets"] if t.get("name") == "hud")
+        blocks = hud["blocks"]
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        if not any(b["opcode"] == "control_create_clone_of" for b in blocks.values()):
+            failures.add("hud-spawns-clones")
+        if not any(b["opcode"] == "control_start_as_clone" for b in blocks.values()):
+            failures.add("hud-clone-handler")
+
+        # A digit clone's costume comes from a switch fed (walking up the reporter tree
+        # from a `score`/`high score` division) through floor -> mod -> ... -> the
+        # switch-costume block: floor(value / divisor) mod 10, joined into "digit/<n>".
+        def digit_costume_chain(var_id: str) -> bool:
+            for div in blocks.values():
+                if div["opcode"] != "operator_divide" or not refs(
+                    div["inputs"].get("NUM1"), var_id
+                ):
+                    continue
+                floor = blocks.get(div.get("parent"))
+                if (
+                    floor is None
+                    or floor["opcode"] != "operator_mathop"
+                    or floor["fields"].get("OPERATOR", [None])[0] != "floor"
+                ):
+                    continue
+                mod = blocks.get(floor.get("parent"))
+                if mod is None or mod["opcode"] != "operator_mod":
+                    continue
+                cursor = mod.get("parent")
+                for _ in range(4):
+                    node = blocks.get(cursor)
+                    if node is None:
+                        break
+                    if node["opcode"] == "looks_switchcostumeto":
+                        return True
+                    cursor = node.get("parent")
+            return False
+
+        if not digit_costume_chain(director.SCORE_ID):
+            failures.add("score-digit-costume")
+        if not digit_costume_chain(director.HIGH_SCORE_ID):
+            failures.add("high-score-digit-costume")
+
+        if not any(
+            refs(value, director.LIVES_ID)
+            for b in blocks.values()
+            for value in b.get("inputs", {}).values()
+        ):
+            failures.add("craft-referenced")
+        if not any(
+            b["opcode"] == "event_whenbroadcastreceived"
+            and b["fields"].get("BROADCAST_OPTION", [None])[0] == "craft changed"
+            for b in blocks.values()
+        ):
+            failures.add("craft-changed-listener")
+
+        # A flashing "1UP" is a loop whose body both shows and hides.
+        def has_flash_loop() -> bool:
+            for b in blocks.values():
+                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                    continue
+                substack = b["inputs"].get("SUBSTACK")
+                if not substack:
+                    continue
+                cursor, opcodes = substack[1], set()
+                while cursor:
+                    node = blocks[cursor]
+                    opcodes.add(node["opcode"])
+                    cursor = node["next"]
+                if {"looks_show", "looks_hide"} <= opcodes:
+                    return True
+            return False
+
+        if not has_flash_loop():
+            failures.add("flashing-1up")
+
+        # Regression guard for the "header flashes then vanishes" bug: a clone's keep-alive
+        # `repeat until` must LOOP while the HUD is visible and stop only on return to
+        # title/boot, so its condition is "state is title or boot" (operator_or) — never the
+        # negation, which is true during play and exits the loop immediately (the clone then
+        # falls straight through to hide + delete).
+        for b in blocks.values():
+            if b["opcode"] != "control_repeat_until":
+                continue
+            cond = b["inputs"].get("CONDITION")
+            if (
+                isinstance(cond, list)
+                and len(cond) > 1
+                and isinstance(cond[1], str)
+                and blocks.get(cond[1], {}).get("opcode") == "operator_not"
+            ):
+                failures.add("hud-loop-inverted")
+
+        # Regression guard: a life clone must switch to the life/ship costume, not inherit
+        # whatever glyph the sprite last held at spawn (which rendered the icons as a letter).
+        if not any(
+            b["opcode"] == "looks_costume"
+            and b["fields"].get("COSTUME", [None])[0] == "life/ship"
+            for b in blocks.values()
+        ):
+            failures.add("life-ship-costume")
+
+        # Read-only invariant: every hud-owned variable write targets a hud-local id —
+        # never a Stage variable (score/high score/craft included). Reinforces (at the
+        # hud target specifically) the extended Stage-variable write-forbid guard above.
+        allowed = {
+            director.HUD_ROLE_ID,
+            director.HUD_PLACE_ID,
+            director.HUD_DIVISOR_ID,
+            director.HUD_LIFE_INDEX_ID,
+            director.HUD_LIFE_COUNT_ID,
+            director.HUD_IS_CLONE_ID,
+        }
+        writes = {
+            b["fields"].get("VARIABLE", [None, None])[1]
+            for b in blocks.values()
+            if b["opcode"] in {"data_setvariableto", "data_changevariableby"}
+        }
+        if not writes <= allowed:
+            failures.add("hud-writes-only-local")
+
+        # Life-icon row cap (usability fix): the render loop's TIMES reads the capped
+        # `hud life count` local (never the uncapped `craft` directly), and that local is
+        # clamped to HUD_LIFE_MAX before the loop runs.
+        loop_capped = any(
+            b["opcode"] == "control_repeat"
+            and refs(b["inputs"].get("TIMES"), director.HUD_LIFE_COUNT_ID)
+            for b in blocks.values()
+        )
+        if not loop_capped:
+            failures.add("hud-life-spawn-loop-capped")
+        cap_present = any(
+            b["opcode"] == "control_if"
+            and isinstance(b["inputs"].get("CONDITION"), list)
+            and len(b["inputs"]["CONDITION"]) > 1
+            and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_gt"
+            and refs(
+                blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1"),
+                director.HUD_LIFE_COUNT_ID,
+            )
+            and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+            == [1, [4, director.HUD_LIFE_MAX]]
+            for b in blocks.values()
+        )
+        if not cap_present:
+            failures.add("hud-life-count-capped")
+
+        # "HIGH SCORE" switches to the yellow hs/* costume set (director.HUD_HIGH_SCORE_LABEL),
+        # distinct from the white glyph/* set every digit and the other labels use.
+        hs_names = {glyph for glyph, _slot in director.HUD_HIGH_SCORE_LABEL}
+        costume_menu_names = {
+            b["fields"].get("COSTUME", [None, None])[0]
+            for b in blocks.values()
+            if b["opcode"] == "looks_costume"
+        }
+        if not (
+            hs_names
+            and all(name.startswith("hs/") for name in hs_names)
+            and hs_names <= costume_menu_names
+        ):
+            failures.add("hud-high-score-label-yellow")
+        return failures
+
+    def test_hud_render_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco02_failures(project))
+
+    def test_hud_render_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco02_failures(base))
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        def hud_blocks(p: dict) -> dict:
+            return next(t for t in p["targets"] if t.get("name") == "hud")["blocks"]
+
+        def break_spawn(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "control_create_clone_of":
+                    b["opcode"] = "control_create_clone_of_disabled"
+
+        def break_clone_handler(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "control_start_as_clone":
+                    b["opcode"] = "control_start_as_clone_disabled"
+
+        def break_score_digit(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("NUM1"), director.SCORE_ID
+                ):
+                    b["inputs"]["NUM1"] = [1, [4, 0]]
+
+        def break_high_score_digit(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("NUM1"), director.HIGH_SCORE_ID
+                ):
+                    b["inputs"]["NUM1"] = [1, [4, 0]]
+
+        def break_craft_reference(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                for key, value in list(b.get("inputs", {}).items()):
+                    if refs(value, director.LIVES_ID):
+                        b["inputs"][key] = [1, [4, 0]]
+
+        def break_craft_changed(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if (
+                    b["opcode"] == "event_whenbroadcastreceived"
+                    and b["fields"].get("BROADCAST_OPTION", [None])[0] == "craft changed"
+                ):
+                    b["fields"]["BROADCAST_OPTION"] = [
+                        "director stop",
+                        director.MESSAGES["director stop"],
+                    ]
+
+        def break_flash(p: dict) -> None:
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                    continue
+                substack = b["inputs"].get("SUBSTACK")
+                if not substack:
+                    continue
+                cursor, nodes = substack[1], []
+                opcodes = set()
+                while cursor:
+                    node = blocks[cursor]
+                    opcodes.add(node["opcode"])
+                    nodes.append(node)
+                    cursor = node["next"]
+                if {"looks_show", "looks_hide"} <= opcodes:
+                    for node in nodes:
+                        if node["opcode"] == "looks_hide":
+                            node["opcode"] = "looks_show"
+
+        def break_write_only_local(p: dict) -> None:
+            blocks = hud_blocks(p)
+            blocks["injected-hud-score-write"] = {
+                "opcode": "data_setvariableto",
+                "next": None,
+                "parent": None,
+                "inputs": {"VALUE": [1, [4, 0]]},
+                "fields": {"VARIABLE": ["score", director.SCORE_ID]},
+                "shadow": False,
+                "topLevel": False,
+            }
+
+        def break_life_spawn_loop_cap(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "control_repeat" and refs(
+                    b["inputs"].get("TIMES"), director.HUD_LIFE_COUNT_ID
+                ):
+                    b["inputs"]["TIMES"] = [3, [12, "craft", director.LIVES_ID], [10, ""]]
+
+        def break_life_count_cap(p: dict) -> None:
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] != "control_if":
+                    continue
+                condition = b["inputs"].get("CONDITION")
+                if not (isinstance(condition, list) and len(condition) > 1):
+                    continue
+                cond = blocks.get(condition[1])
+                if (
+                    cond is not None
+                    and cond["opcode"] == "operator_gt"
+                    and refs(cond["inputs"].get("OPERAND1"), director.HUD_LIFE_COUNT_ID)
+                ):
+                    cond["inputs"]["OPERAND2"] = [1, [4, 999]]
+
+        def break_high_score_label_yellow(p: dict) -> None:
+            hs_names = {glyph for glyph, _slot in director.HUD_HIGH_SCORE_LABEL}
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "looks_costume" and b["fields"].get(
+                    "COSTUME", [None, None]
+                )[0] in hs_names:
+                    name = b["fields"]["COSTUME"][0]
+                    b["fields"]["COSTUME"][0] = name.replace("hs/", "glyph/")
+
+        def break_loop_inverted(p: dict) -> None:
+            # re-introduce the "flash then vanish" bug: make a keep-alive loop's condition a
+            # negation (true during play), so `repeat until` exits at once.
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] == "control_repeat_until":
+                    cond = b["inputs"].get("CONDITION")
+                    if isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str):
+                        blocks[cond[1]]["opcode"] = "operator_not"
+                        break
+
+        def break_life_ship_costume(p: dict) -> None:
+            for b in hud_blocks(p).values():
+                if (
+                    b["opcode"] == "looks_costume"
+                    and b["fields"].get("COSTUME", [None])[0] == "life/ship"
+                ):
+                    b["fields"]["COSTUME"][0] = "digit/0"
+
+        cases = [
+            ("hud-spawns-clones", break_spawn),
+            ("hud-clone-handler", break_clone_handler),
+            ("score-digit-costume", break_score_digit),
+            ("high-score-digit-costume", break_high_score_digit),
+            ("craft-referenced", break_craft_reference),
+            ("craft-changed-listener", break_craft_changed),
+            ("flashing-1up", break_flash),
+            ("hud-writes-only-local", break_write_only_local),
+            ("hud-life-spawn-loop-capped", break_life_spawn_loop_cap),
+            ("hud-life-count-capped", break_life_count_cap),
+            ("hud-high-score-label-yellow", break_high_score_label_yellow),
+            ("hud-loop-inverted", break_loop_inverted),
+            ("life-ship-costume", break_life_ship_costume),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._eco02_failures(project), label)
+
+    @staticmethod
+    def _ply02_failures(project: dict) -> set:
+        """PLY-02: the death outcome is decided from the craft counter, the D/G triggers drive
+        the counter without hardcoding an outcome, and a new life restarts the terrain."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def key_hat(key: str):
+            return next(
+                (
+                    bid
+                    for bid, b in blocks.items()
+                    if b["opcode"] == "event_whenkeypressed"
+                    and b["fields"].get("KEY_OPTION", [None])[0] == key
+                ),
+                None,
+            )
+
+        def reachable(start: str) -> set:
+            seen, stack = set(), [start]
+            while stack:
+                bid = stack.pop()
+                if bid in seen or bid not in blocks:
+                    continue
+                seen.add(bid)
+                b = blocks[bid]
+                if b.get("next"):
+                    stack.append(b["next"])
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    val = b["inputs"].get(slot)
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            return seen
+
+        d_body = reachable(key_hat("d")) if key_hat("d") else set()
+        g_body = reachable(key_hat("g")) if key_hat("g") else set()
+        # D takes one hit: change craft by -1.
+        if not any(
+            blocks[bid]["opcode"] == "data_changevariableby"
+            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+            and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
+            for bid in d_body
+        ):
+            failures.add("d-decrements-craft")
+        # G drains to terminal: set craft to 0.
+        if not any(
+            blocks[bid]["opcode"] == "data_setvariableto"
+            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+            and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
+            for bid in g_body
+        ):
+            failures.add("g-drains-craft")
+        # neither trigger hardcodes a death outcome any more (the counter decides).
+        if any(
+            blocks[bid]["opcode"] == "data_setvariableto"
+            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.OUTCOME_ID
+            for bid in (d_body | g_body)
+        ):
+            failures.add("trigger-hardcodes-outcome")
+        # the death-complete handler decides from craft > 0: respawn vs game over.
+        decision = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "control_if_else"
+                and isinstance(b["inputs"].get("CONDITION"), list)
+                and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_gt"
+                and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1", [None, [None]])[1][2:3]
+                == [director.LIVES_ID]
+            ),
+            None,
+        )
+        if decision is None:
+            failures.add("lives-driven-decision")
+        else:
+            # each branch (respawn / game over) must reach its own transition call.
+            def branch_transitions(slot: str) -> int:
+                spec = blocks[decision]["inputs"].get(slot)
+                if not (isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str)):
+                    return 0
+                return sum(
+                    blocks[bid]["opcode"] == "procedures_call"
+                    and blocks[bid].get("mutation", {}).get("proccode") == director.PROCCODE
+                    for bid in reachable(spec[1])
+                )
+
+            if branch_transitions("SUBSTACK") < 1 or branch_transitions("SUBSTACK2") < 1:
+                failures.add("lives-driven-decision")
+        return failures
+
+    def test_death_decision_is_lives_driven(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ply02_failures(project))
+
+    def test_death_decision_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ply02_failures(base))
+        stage = next(t for t in base["targets"] if t["isStage"])
+
+        def find(pred):
+            def f(p):
+                s = next(t for t in p["targets"] if t["isStage"])
+                return next(b for b in s["blocks"].values() if pred(b))
+            return f
+
+        def break_d(p):
+            b = find(
+                lambda b: b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                and b["inputs"].get("VALUE") == [1, [4, -1]]
+            )(p)
+            b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_g(p):
+            # retarget G's `set craft to 0` to a different variable
+            s = next(t for t in p["targets"] if t["isStage"])
+            gid = next(
+                bid
+                for bid, b in s["blocks"].items()
+                if b["opcode"] == "event_whenkeypressed"
+                and b["fields"].get("KEY_OPTION", [None])[0] == "g"
+            )
+            # walk to the set-craft-0 in g's body
+            for b in s["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 0]]
+                ):
+                    b["fields"]["VARIABLE"] = ["award value", director.AWARD_VALUE_ID]
+                    break
+
+        def break_decision(p):
+            b = find(
+                lambda b: b["opcode"] == "operator_gt"
+                and isinstance(b["inputs"].get("OPERAND1"), list)
+                and b["inputs"]["OPERAND1"][1][2:3] == [director.LIVES_ID]
+            )(p)
+            b["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
+
+        cases = [
+            ("d-decrements-craft", break_d),
+            ("g-drains-craft", break_g),
+            ("lives-driven-decision", break_decision),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._ply02_failures(project), label)
+
+    @staticmethod
+    def _eco04_failures(project: dict) -> set:
+        """ECO-04 game over — the 64-tick GAME OVER hold immediately followed by the same
+        if_epoch_state/DEATH_EPOCH_ID guard the death timing above it uses (so a superseding
+        transition cancels a stale hold and the broadcast is never sent outside the guard),
+        the HUD's "GAME OVER" glyph text spawned only while `game state` is game-over with its
+        own clone role, and the best-five check that compares the final score to the table's
+        5th entry and records `qualified` before the transition back to title. Structure only;
+        on-screen layout is the operator's playtest."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        stage_blocks = stage["blocks"]
+        death_blocks = next(t for t in project["targets"] if t["name"] == "solv_death")["blocks"]
+        hud_blocks = next(t for t in project["targets"] if t["name"] == "hud")["blocks"]
+
+        def refs(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        def is_epoch_state_guard(block_id, blocks_map, local_id: str, state: str) -> bool:
+            block = blocks_map.get(block_id)
+            if block is None or block["opcode"] != "control_if":
+                return False
+            cond = block["inputs"].get("CONDITION")
+            if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
+                return False
+            and_block = blocks_map.get(cond[1])
+            if and_block is None or and_block["opcode"] != "operator_and":
+                return False
+            op1_id = and_block["inputs"].get("OPERAND1", [None, None])[1]
+            op2_id = and_block["inputs"].get("OPERAND2", [None, None])[1]
+            op1 = blocks_map.get(op1_id)
+            op2 = blocks_map.get(op2_id)
+            epoch_ok = (
+                op1 is not None
+                and op1["opcode"] == "operator_equals"
+                and refs(op1["inputs"].get("OPERAND1"), local_id)
+            )
+            state_ok = (
+                op2 is not None
+                and op2["opcode"] == "operator_equals"
+                and op2["inputs"].get("OPERAND2") == [1, [10, state]]
+            )
+            return epoch_ok and state_ok
+
+        def broadcasts_to(block_id, blocks_map, message: str) -> bool:
+            block = blocks_map.get(block_id)
+            return (
+                block is not None
+                and block["opcode"] == "event_broadcast"
+                and block["inputs"].get("BROADCAST_INPUT", [None, [None, None]])[1][1]
+                == message
+            )
+
+        # The 64-tick hold, followed directly by the epoch/state("game-over") guard, whose
+        # substack directly broadcasts `game over complete`.
+        hold = next(
+            (
+                bid
+                for bid, b in death_blocks.items()
+                if b["opcode"] == "control_repeat"
+                and b["inputs"].get("TIMES") == [1, [4, director.GAME_OVER_HOLD_TICKS]]
+            ),
+            None,
+        )
+        if hold is None:
+            failures.add("game-over-hold-64-ticks")
+        else:
+            guard = death_blocks[hold].get("next")
+            guarded_ok = is_epoch_state_guard(
+                guard, death_blocks, director.DEATH_EPOCH_ID, "game-over"
+            )
+            if guarded_ok:
+                substack = death_blocks[guard]["inputs"].get("SUBSTACK")
+                broadcast_id = (
+                    substack[1] if isinstance(substack, list) and len(substack) > 1 else None
+                )
+                guarded_ok = broadcasts_to(broadcast_id, death_blocks, "game over complete")
+            if not guarded_ok:
+                failures.add("game-over-hold-epoch-guarded")
+
+        # No bypass: every `game over complete` broadcast in solv_death sits inside SOME
+        # epoch/state("game-over") guard — never sent unconditionally.
+        guarded_broadcast_ids = set()
+        for bid, b in death_blocks.items():
+            if not is_epoch_state_guard(bid, death_blocks, director.DEATH_EPOCH_ID, "game-over"):
+                continue
+            substack = b["inputs"].get("SUBSTACK")
+            if isinstance(substack, list) and len(substack) > 1:
+                guarded_broadcast_ids.add(substack[1])
+        all_broadcasts = {
+            bid for bid in death_blocks if broadcasts_to(bid, death_blocks, "game over complete")
+        }
+        if not all_broadcasts <= guarded_broadcast_ids:
+            failures.add("game-over-broadcast-not-guarded")
+
+        # HUD: the "GAME OVER" glyph clones are spawned only under a `game state` ==
+        # game-over check (nested inside the broader HUD-visible gate).
+        game_over_gate = next(
+            (
+                bid
+                for bid, b in hud_blocks.items()
+                if b["opcode"] == "control_if"
+                and isinstance(b["inputs"].get("CONDITION"), list)
+                and len(b["inputs"]["CONDITION"]) > 1
+                and hud_blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode")
+                == "operator_equals"
+                and refs(
+                    hud_blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1"),
+                    director.STATE_ID,
+                )
+                and hud_blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+                == [1, [10, "game-over"]]
+            ),
+            None,
+        )
+        if game_over_gate is None:
+            failures.add("hud-game-over-glyphs-gated")
+        else:
+            substack = hud_blocks[game_over_gate]["inputs"].get("SUBSTACK")
+            cursor = substack[1] if isinstance(substack, list) and len(substack) > 1 else None
+            gated_ids = set()
+            while cursor:
+                gated_ids.add(cursor)
+                cursor = hud_blocks[cursor]["next"]
+            role_sets = sum(
+                1
+                for bid in gated_ids
+                if hud_blocks[bid]["opcode"] == "data_setvariableto"
+                and hud_blocks[bid]["fields"].get("VARIABLE", [None, None])[1]
+                == director.HUD_ROLE_ID
+                and hud_blocks[bid]["inputs"].get("VALUE")
+                == [1, [4, director.HUD_ROLE_GAME_OVER_GLYPH]]
+            )
+            clones = sum(
+                1 for bid in gated_ids if hud_blocks[bid]["opcode"] == "control_create_clone_of"
+            )
+            expected = len(director.HUD_GAME_OVER_LABEL)
+            if role_sets < expected or clones < expected:
+                failures.add("hud-game-over-glyphs-spawned")
+
+        # The clone script dispatches the distinct game-over-glyph role (never colliding with
+        # the digit/life/label roles) to a static show — the shared director-stop clone-clear
+        # retires it, so it never deletes itself.
+        role_dispatch = any(
+            b["opcode"] == "control_if"
+            and isinstance(b["inputs"].get("CONDITION"), list)
+            and len(b["inputs"]["CONDITION"]) > 1
+            and hud_blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode")
+            == "operator_equals"
+            and refs(
+                hud_blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1"),
+                director.HUD_ROLE_ID,
+            )
+            and hud_blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+            == [1, [4, director.HUD_ROLE_GAME_OVER_GLYPH]]
+            for b in hud_blocks.values()
+        )
+        if not role_dispatch:
+            failures.add("hud-game-over-role-dispatch")
+
+        # Best-five check: `score > high score table item 5`, and the set-`qualified` that
+        # follows it reaches the transition-procedure call in the `game over complete` receiver
+        # (computed before the transition resets `reset scope` and, via cold-start, the score).
+        def reachable(start) -> set:
+            seen, stack = set(), [start] if start else []
+            while stack:
+                bid = stack.pop()
+                if bid is None or bid in seen or bid not in stage_blocks:
+                    continue
+                seen.add(bid)
+                b = stage_blocks[bid]
+                if b.get("next"):
+                    stack.append(b["next"])
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    val = b["inputs"].get(slot)
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            return seen
+
+        receiver = next(
+            (
+                bid
+                for bid, b in stage_blocks.items()
+                if b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "game over complete"
+            ),
+            None,
+        )
+        body = reachable(receiver)
+
+        def is_fifth_place_item(spec) -> bool:
+            if not (isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str)):
+                return False
+            item = stage_blocks.get(spec[1])
+            return (
+                item is not None
+                and item["opcode"] == "data_itemoflist"
+                and item["fields"].get("LIST", [None, None])[1] == director.HIGH_SCORE_TABLE_ID
+                and item["inputs"].get("INDEX") == [1, [4, 5]]
+            )
+
+        # The comparison reporter is nested inside the set-`qualified` VALUE input (not on
+        # the command next-chain `body` walks), so it is found by shape, like ECO-01's
+        # score-add-award/cap/high-score-track checks scan `blocks.values()` directly.
+        compares_fifth = any(
+            b["opcode"] == "operator_gt"
+            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and is_fifth_place_item(b["inputs"].get("OPERAND2"))
+            for b in stage_blocks.values()
+        )
+        if not compares_fifth:
+            failures.add("qualified-compares-fifth-place")
+
+        qualify_block = next(
+            (
+                bid
+                for bid in body
+                if stage_blocks[bid]["opcode"] == "data_setvariableto"
+                and stage_blocks[bid]["fields"].get("VARIABLE", [None, None])[1]
+                == director.QUALIFIED_ID
+            ),
+            None,
+        )
+        reaches_transition = False
+        if qualify_block is not None:
+            cursor, steps = stage_blocks[qualify_block]["next"], 0
+            while cursor and steps < 10:
+                b = stage_blocks[cursor]
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.PROCCODE
+                ):
+                    reaches_transition = True
+                    break
+                cursor, steps = b["next"], steps + 1
+        if qualify_block is None or not reaches_transition:
+            failures.add("qualified-is-set")
+
+        return failures
+
+    def test_game_over_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco04_failures(project))
+
+    def test_high_score_table_matches_scores_json(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
+        expected = data["tables"]["high_score_defaults"]["scores"]
+        self.assertEqual(expected, by_name["high score table"])
+
+    def test_game_over_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco04_failures(base))
+
+        def death_blocks(p: dict) -> dict:
+            return next(t for t in p["targets"] if t["name"] == "solv_death")["blocks"]
+
+        def hud_blocks(p: dict) -> dict:
+            return next(t for t in p["targets"] if t["name"] == "hud")["blocks"]
+
+        def stage_blocks(p: dict) -> dict:
+            return next(t for t in p["targets"] if t["isStage"])["blocks"]
+
+        def break_hold_ticks(p: dict) -> None:
+            blocks = death_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] == "control_repeat" and b["inputs"].get("TIMES") == [
+                    1,
+                    [4, director.GAME_OVER_HOLD_TICKS],
+                ]:
+                    b["inputs"]["TIMES"] = [1, [4, director.GAME_OVER_HOLD_TICKS - 1]]
+
+        def break_hold_guard(p: dict) -> None:
+            blocks = death_blocks(p)
+            hold = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "control_repeat"
+                and b["inputs"].get("TIMES") == [1, [4, director.GAME_OVER_HOLD_TICKS]]
+            )
+            guard = blocks[hold]["next"]
+            and_block = blocks[blocks[guard]["inputs"]["CONDITION"][1]]
+            epoch_eq = blocks[and_block["inputs"]["OPERAND1"][1]]
+            epoch_eq["inputs"]["OPERAND1"][1][2] = "corrupted-epoch-id"
+
+        def inject_unguarded_broadcast(p: dict) -> None:
+            blocks = death_blocks(p)
+            blocks["injected-gameover-bypass"] = {
+                "opcode": "event_broadcast",
+                "next": None,
+                "parent": None,
+                "inputs": {
+                    "BROADCAST_INPUT": [
+                        1,
+                        [11, "game over complete", director.MESSAGES["game over complete"]],
+                    ]
+                },
+                "fields": {},
+                "shadow": False,
+                "topLevel": False,
+            }
+
+        def break_hud_gate(p: dict) -> None:
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "control_if"
+                    and isinstance(b["inputs"].get("CONDITION"), list)
+                    and len(b["inputs"]["CONDITION"]) > 1
+                    and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode")
+                    == "operator_equals"
+                    and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+                    == [1, [10, "game-over"]]
+                    and blocks[b["inputs"]["CONDITION"][1]]["inputs"]["OPERAND1"][1][2]
+                    == director.STATE_ID
+                ):
+                    blocks[b["inputs"]["CONDITION"][1]]["inputs"]["OPERAND2"] = [1, [10, "title"]]
+
+        def break_hud_spawn_count(p: dict) -> None:
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] == "data_setvariableto" and b["inputs"].get("VALUE") == [
+                    1,
+                    [4, director.HUD_ROLE_GAME_OVER_GLYPH],
+                ]:
+                    b["inputs"]["VALUE"] = [1, [4, director.HUD_ROLE_LABEL_HIGH_SCORE]]
+
+        def break_hud_role_dispatch(p: dict) -> None:
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "control_if"
+                    and isinstance(b["inputs"].get("CONDITION"), list)
+                    and len(b["inputs"]["CONDITION"]) > 1
+                    and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode")
+                    == "operator_equals"
+                    and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+                    == [1, [4, director.HUD_ROLE_GAME_OVER_GLYPH]]
+                ):
+                    blocks[b["inputs"]["CONDITION"][1]]["inputs"]["OPERAND2"] = [1, [4, 99]]
+
+        def break_fifth_place_index(p: dict) -> None:
+            blocks = stage_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] == "data_itemoflist" and b["fields"].get(
+                    "LIST", [None, None]
+                )[1] == director.HIGH_SCORE_TABLE_ID:
+                    b["inputs"]["INDEX"] = [1, [4, 1]]
+
+        def break_qualified_set(p: dict) -> None:
+            blocks = stage_blocks(p)
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.QUALIFIED_ID
+                ):
+                    b["fields"]["VARIABLE"] = ["score", director.SCORE_ID]
+
+        cases = [
+            ("game-over-hold-64-ticks", break_hold_ticks),
+            ("game-over-hold-epoch-guarded", break_hold_guard),
+            ("game-over-broadcast-not-guarded", inject_unguarded_broadcast),
+            ("hud-game-over-glyphs-gated", break_hud_gate),
+            ("hud-game-over-glyphs-spawned", break_hud_spawn_count),
+            ("hud-game-over-role-dispatch", break_hud_role_dispatch),
+            ("qualified-compares-fifth-place", break_fifth_place_index),
+            ("qualified-is-set", break_qualified_set),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._eco04_failures(project), label)
 
     @staticmethod
     def _rng_reseed_guard_scopes(project: dict) -> set:
@@ -1966,6 +3339,7 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(28, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS)  # 56 frames
         self.assertEqual(16, director.POST_DEATH_PAUSE_TICKS)  # PLY-02: 32-frame pause
         self.assertEqual(30, director.READY_HOLD_TICKS)  # project-defined 30-tick beat
+        self.assertEqual(64, director.GAME_OVER_HOLD_TICKS)  # ECO-04: 128-frame hold
 
     def test_reset_scope_matrix_has_canonical_and_preserving_paths(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -1993,7 +3367,9 @@ class ScratchProjectTests(unittest.TestCase):
 
         for name in ("area_01a", "area_01b"):
             blocks = targets[name]["blocks"]
-            self.assertEqual({"cold-start", "new-game"}, scope_literals(blocks))
+            # PLY-02 / audit B11: a new life now restarts the current area from its top, so the
+            # terrain rewinds on new-life too (retiring the interim preserve-terrain fixture).
+            self.assertEqual({"cold-start", "new-game", "new-life"}, scope_literals(blocks))
             self.assertEqual(2, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
 
         player = targets["solvalou"]["blocks"]
@@ -2283,7 +3659,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3726340fb369039b9e1b729614715550b33a450aba50407548656c659e9956fa",
+            "3af7f518c4336d27cb9302f4bd9d68c3437d0aa7c31000a9ed5b88f280e1f71c",
             build_hash,
         )
 

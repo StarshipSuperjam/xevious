@@ -49,6 +49,7 @@ EXPLOSION_STEPS = 7  # 7 costume cycles ...
 EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (PLY-02)
 POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
 READY_HOLD_TICKS = 30  # project-defined READY beat (no reference basis; core-game-systems)
+GAME_OVER_HOLD_TICKS = 64  # arcade 128-frame GAME OVER hold (`game_over` 549-591; ECO-04)
 
 # SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
 # normative record in docs/spec/data/rng.json (mirrored by tools/reference_extract.py
@@ -157,6 +158,145 @@ ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
 
+# ECO-02 HUD target (docs/mechanics/010, docs/mechanics/012). game_director owns this target's
+# EXISTENCE and BLOCKS — the HUD render itself (hud_blocks(), installed below); its costumes
+# (the white glyph/digit set, the yellow hs/* "HIGH SCORE" set, and the life icon) are owned
+# entirely by tools/hud_glyphs.py, mirroring the solvalou split (one generator owns blocks, the
+# other owns costumes, neither touches the other's field).
+HUD_TARGET = "hud"
+
+# ECO-02 HUD render (docs/mechanics/012). The hud sprite stays hidden and only ever spawns
+# clones; every clone's costume/position is display logic reading score/high score/craft — the
+# HUD never writes them (the existing director-variable write-forbid guard already spans every
+# non-Stage target, so it enforces this read-only invariant for free). All HUD state below is
+# sprite-local to the hud target, never a Stage variable.
+HUD_ROLE_ID = "hud-role"
+HUD_PLACE_ID = "hud-place"
+HUD_DIVISOR_ID = "hud-divisor"
+HUD_LIFE_INDEX_ID = "hud-life-index"
+HUD_LIFE_COUNT_ID = "hud-life-count"
+HUD_IS_CLONE_ID = "hud-is-clone"
+# Role tags snapshotted into each clone at creation (the blaster clone-slot idiom): which of the
+# five clone kinds this clone is. 0 (unset) never matches any role, so it also doubles as the
+# original sprite's permanent "I am not a clone" marker for `hud is clone` gating.
+HUD_ROLE_SCORE_DIGIT = 1
+HUD_ROLE_HIGH_SCORE_DIGIT = 2
+HUD_ROLE_LIFE = 3
+HUD_ROLE_LABEL_1UP = 4
+HUD_ROLE_LABEL_HIGH_SCORE = 5
+HUD_ROLE_GAME_OVER_GLYPH = 6  # ECO-04: the "GAME OVER" text, distinct from every other role
+HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
+HUD_DIGIT_SPACING = 14
+# Project-defined top-band layout (stage -240..240 x, -180..180 y, +y up); the operator
+# fine-tunes exact placement at playtest (no reference basis this commit — see ECO-02 record).
+HUD_SCORE_LEFT_X = -220  # place 6 (leftmost, most significant digit)
+HUD_SCORE_Y = 155
+HUD_HIGH_SCORE_LEFT_X = -20
+HUD_HIGH_SCORE_Y = 155
+HUD_LABEL_Y = 172
+HUD_1UP_LEFT_X = -192
+HUD_HIGH_SCORE_LABEL_LEFT_X = -40
+HUD_LIFE_LEFT_X = -220
+HUD_LIFE_Y = 128
+HUD_LIFE_SPACING = 18
+# Rendered life-icon cap (usability fix): uncapped, the row is one clone per `craft`, and at
+# ~169 craft (reachable by holding the debug S key to the score cap) the icons run off the
+# right edge of the 480-wide stage. Capping the RENDERED row at 9 ends it at x = HUD_LIFE_LEFT_X
+# + (HUD_LIFE_MAX - 1) * HUD_LIFE_SPACING = -220 + 8*18 = -76, clear of the high-score group at
+# x=-20. The true `craft` count (and the score digits the cap-test actually exercises) is
+# unaffected — only the icon DISPLAY is bounded.
+HUD_LIFE_MAX = 9
+HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
+# (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
+HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
+# "HIGH SCORE" renders in the yellow hs/* costume set (arcade fidelity: that one HUD label is
+# yellow, everything else — score/high-score digits, 1UP, GAME OVER — is white).
+HUD_HIGH_SCORE_LABEL = (
+    ("hs/H", 0), ("hs/I", 1), ("hs/G", 2), ("hs/H", 3),
+    ("hs/S", 5), ("hs/C", 6), ("hs/O", 7), ("hs/R", 8), ("hs/E", 9),
+)
+# ECO-04: "GAME OVER", centered on the stage (slot 4 — the untyped space between the two
+# words — sits at x=0). Fully unrolled like the two label rows above, so no runtime index
+# var is needed; the HUD_ROLE_GAME_OVER_GLYPH clones are static once spawned.
+HUD_GAME_OVER_LEFT_X = -64
+HUD_GAME_OVER_Y = 8
+HUD_GAME_OVER_SPACING = 16
+HUD_GAME_OVER_LABEL = (
+    ("glyph/G", 0), ("glyph/A", 1), ("glyph/M", 2), ("glyph/E", 3),
+    ("glyph/O", 5), ("glyph/V", 6), ("glyph/E", 7), ("glyph/R", 8),
+)
+HUD_SPAWN_CRAFT_PROCCODE = "hud spawn craft"
+
+# ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
+# one Stage `score` proc: add the pending award, pin at the 3-byte BCD ceiling, lift the
+# running high score, then run the bonus-life check. The `score` variable is written ONLY
+# inside this proc — that is the "single scoring path" guarantee (SYS-03 / ECO-01), enforced
+# by _eco01_failures. The HUD reads score/high score; only the Stage writes them.
+SCORE_ID = "eco-score"
+HIGH_SCORE_ID = "eco-high-score"
+# The resolved point value to add — a MACHINERY seam (parallel to `hit slot`): set by the
+# collision detector the enemy slice (slice 8) wires, so it is not write-forbidden to sprites.
+# The debug scoring fixture below sets it this slice so the economy is operator-verifiable.
+AWARD_VALUE_ID = "eco-award-value"
+SCORE_CAP = 9_999_990  # set_score_to_9999990: three BCD bytes, x10 implicit
+HIGH_SCORE_START = 40_000  # top default best-five entry (high_score_defaults[0])
+CHECK_BONUS_PROCCODE = "check bonus life"
+# The 22 object point values in table order (docs/spec/data/scores.json master_value_table,
+# BCD-decoded). INDEX CONVENTION (cross-slice seam, pinned in docs/mechanics/009): `value
+# table` position i (1-based) holds entries[i-1].points; the enemy slice resolves an object's
+# points via this list and sets `award value` to that points value. Ingested here, not authored.
+VALUE_TABLE_ID = "eco-value-table"
+VALUE_TABLE_POINTS = [
+    10, 20, 30, 50, 70, 100, 150, 200, 250, 300, 400,
+    500, 600, 700, 800, 900, 1000, 1500, 2000, 2500, 4000, 10000,
+]
+# Debug scoring fixture: while playing, pressing S sets the award-value seam to the top
+# value-table entry (10,000) and runs the one `score` path — exactly as slice 8's collision
+# detector will — so score, cap, high score, the bonus award, and the HUD digits are
+# operator-verifiable before an enemy exists to award points. Holding S accelerates toward
+# the cap. A stand-in producer of `award value`, removed with the D/G death fixtures when the
+# real collision trigger lands (slice 8).
+SCORE_FIXTURE_KEY = "s"
+
+# ECO-03 lives and bonus economy (docs/spec/data/scores.json; docs/spec/scoring-lives-and-game-over.md).
+# Starting craft come from a DIP-indexed table; bonus craft are granted as the score passes a
+# threshold that then advances by a per-setting increment. A `null` threshold disables bonuses
+# (BONUS_DISABLED sentinel — real thresholds are >= 10,000). Once the score is pinned at the cap,
+# every further award grants a craft (the recorded arcade quirk). The runtime reads the live
+# ingested tables at the fixed DIP index, so the committed data is the single source of truth.
+LIVES_ID = "eco-craft"
+NEXT_BONUS_ID = "eco-next-bonus"
+STARTING_LIVES_ID = "eco-starting-lives"
+FIRST_BONUS_123_ID = "eco-first-bonus-123"
+FIRST_BONUS_5_ID = "eco-first-bonus-5"
+REPEAT_BONUS_123_ID = "eco-repeat-bonus-123"
+REPEAT_BONUS_5_ID = "eco-repeat-bonus-5"
+BONUS_DISABLED = 0  # the `null`-threshold (bonuses off) sentinel; real thresholds are >= 10,000
+# DIP defaults — a project choice, recorded with its uncertainty (docs/mechanics/011): the
+# raw-index->physical-switch mapping is unrecorded upstream, and the 123-vs-5 table selection
+# carries the reference's own recorded inconsistency (the build follows the repeat-award site).
+# Starting item 4 of [5,2,1,3] -> 3 craft; bonus item 1 of the 1/2/3-lives tables -> first bonus
+# 20,000 then every 60,000.
+DIP_STARTING_ITEM = 4
+DIP_BONUS_ITEM = 1
+STARTING_LIVES = [5, 2, 1, 3]
+# `null` (bonuses disabled at that setting) -> BONUS_DISABLED; the data-equality test maps it the
+# same way. Both table pairs are ingested for the data-equality criterion and a future DIP config;
+# the runtime uses the 1/2/3-lives pair at the default DIP.
+FIRST_BONUS_123 = [20000, 10000, 10000, 20000, 20000, 20000, 20000, BONUS_DISABLED]
+FIRST_BONUS_5 = [20000, 10000, 20000, 20000, 20000, 30000, 20000, BONUS_DISABLED]
+REPEAT_BONUS_123 = [60000, 40000, 50000, 50000, 70000, 80000, 60000, BONUS_DISABLED]
+REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABLED]
+
+# ECO-04 game over (docs/spec/scoring-lives-and-game-over.md `check_for_high_score` 1618-1672;
+# docs/spec/data/scores.json high_score_defaults). Losing the last craft first runs the best-five
+# check: `qualified` records whether the final score beats fifth place — a VERDICT ONLY. The
+# initials-entry screen a qualifying score would show (cabinet-flow.md) is DEFERRED to slice 19;
+# both a qualifying and a non-qualifying score still show GAME OVER and return to title here.
+QUALIFIED_ID = "eco-qualified"
+HIGH_SCORE_TABLE_ID = "eco-high-score-table"
+HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
+
 MESSAGES = {
     "director enter": "broadcastMsgId-director-enter",
     "director stop": "broadcastMsgId-director-stop",
@@ -164,6 +304,7 @@ MESSAGES = {
     "ready complete": "broadcastMsgId-ready-complete",
     "death complete": "broadcastMsgId-death-complete",
     "game over complete": "broadcastMsgId-game-over-complete",
+    "craft changed": "broadcastMsgId-craft-changed",
     "bomb": "broadcastMsgId-bomb-release",
     "target_b": "broadcastMsgId-target-bounds-bottom",
     "target_l": "broadcastMsgId-target-bounds-left",
@@ -307,6 +448,13 @@ class Blocks:
         }
         return block_id
 
+    def not_either_state(self, parent: str, left: str, right: str) -> str:
+        block_id = self.add("operator_not")
+        self.blocks[block_id]["parent"] = parent
+        either = self.either_state(block_id, left, right)
+        self.blocks[block_id]["inputs"] = {"OPERAND": [2, either]}
+        return block_id
+
     def either_scope(self, parent: str, left: str, right: str) -> str:
         block_id = self.add("operator_or")
         self.blocks[block_id]["parent"] = parent
@@ -377,6 +525,13 @@ class Blocks:
         self.substack(block_id, body)
         return block_id
 
+    def if_not_either_state(self, left: str, right: str, body: list[str]) -> str:
+        block_id = self.add("control_if")
+        condition = self.not_either_state(block_id, left, right)
+        self.blocks[block_id]["inputs"]["CONDITION"] = [2, condition]
+        self.substack(block_id, body)
+        return block_id
+
     def send(self, name: str, *, wait: bool = False) -> str:
         return self.add(
             "event_broadcastandwait" if wait else "event_broadcast",
@@ -408,6 +563,20 @@ class Blocks:
 
     def go(self, x: int, y: int) -> str:
         return self.add("motion_gotoxy", inputs={"X": number(x), "Y": number(y)})
+
+    def go_expr(self, x: Any, y: Any) -> str:
+        # Like go(), but X/Y accept a reporter (nested block id) or a value-input spec,
+        # for a position computed at runtime (e.g. a clone-spawn index).
+        block_id = self.add("motion_gotoxy")
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("X", x), ("Y", y)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
 
     def go_to_sprite(self, sprite: str) -> str:
         menu = self.add(
@@ -489,6 +658,21 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
+    def switch_costume_expr(self, reporter_id: str) -> str:
+        # Like switch_costume(), but the costume NAME is computed at runtime (a reporter,
+        # e.g. a joined "digit/<n>" string). The costume input is a MENU input, so the
+        # reporter must OBSCURE a costume-menu shadow ([3, reporter, shadow]) — a bare
+        # [2, reporter] leaves the menu input unread and the switch never happens.
+        menu = self.add(
+            "looks_costume", fields={"COSTUME": ["digit/0", None]}, shadow=True
+        )
+        block_id = self.add(
+            "looks_switchcostumeto", inputs={"COSTUME": [3, reporter_id, menu]}
+        )
+        self.blocks[reporter_id]["parent"] = block_id
+        self.blocks[menu]["parent"] = block_id
+        return block_id
+
     def play_sound(self, sound: str) -> str:
         menu = self.add(
             "sound_sounds_menu", fields={"SOUND_MENU": [sound, None]}, shadow=True
@@ -513,6 +697,15 @@ class Blocks:
         self.blocks[block_id]["parent"] = parent
         return block_id
 
+    def if_var_equals(
+        self, name: str, variable_id: str, value: int, body: list[str]
+    ) -> str:
+        block_id = self.add("control_if")
+        condition = self.var_equals(block_id, name, variable_id, value)
+        self.blocks[block_id]["inputs"]["CONDITION"] = [2, condition]
+        self.substack(block_id, body)
+        return block_id
+
     def stop_others(self) -> str:
         return self.add(
             "control_stop",
@@ -525,8 +718,22 @@ class Blocks:
     # parent wired here so the tree serializes correctly.
     def _reporter(self, opcode: str, operand1: Any, operand2: Any) -> str:
         block_id = self.add(opcode)
+        # scratch-vm reads arithmetic operands from NUM1/NUM2 but comparison/boolean
+        # operands from OPERAND1/OPERAND2 (see scratch3_operators.js). Attaching to the
+        # wrong pair leaves the reporter's inputs unread, so it silently evaluates to
+        # NaN at runtime — invisible to structural tests but fatal to the digit HUD/RNG.
+        if opcode in (
+            "operator_add",
+            "operator_subtract",
+            "operator_multiply",
+            "operator_divide",
+            "operator_mod",
+        ):
+            slot1, slot2 = "NUM1", "NUM2"
+        else:
+            slot1, slot2 = "OPERAND1", "OPERAND2"
         inputs: dict[str, Any] = {}
-        for slot, spec in (("OPERAND1", operand1), ("OPERAND2", operand2)):
+        for slot, spec in ((slot1, operand1), (slot2, operand2)):
             if isinstance(spec, str):
                 inputs[slot] = [2, spec]
                 self.blocks[spec]["parent"] = block_id
@@ -539,7 +746,9 @@ class Blocks:
         return self._reporter("operator_mod", a, b)
 
     def op_mul(self, a: Any, b: Any) -> str:
-        return self._reporter("operator_mult", a, b)
+        # scratch-vm registers multiply as `operator_multiply`; `operator_mult` is an
+        # unknown opcode the runtime resolves to nothing (returns undefined).
+        return self._reporter("operator_multiply", a, b)
 
     def op_add(self, a: Any, b: Any) -> str:
         return self._reporter("operator_add", a, b)
@@ -550,8 +759,25 @@ class Blocks:
     def op_eq(self, a: Any, b: Any) -> str:
         return self._reporter("operator_equals", a, b)
 
+    def op_gt(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_gt", a, b)
+
+    def op_join(self, a: Any, b: Any) -> str:
+        block_id = self.add("operator_join")
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("STRING1", a), ("STRING2", b)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
+
     def op_floor(self, operand: Any) -> str:
-        block_id = self.add("operator_mathop", fields={"OPERATION": ["floor", None]})
+        # scratch-vm's mathop reads its function from the OPERATOR field (not OPERATION);
+        # a wrong key leaves the operator unset and mathop returns 0 for every input.
+        block_id = self.add("operator_mathop", fields={"OPERATOR": ["floor", None]})
         if isinstance(operand, str):
             self.blocks[block_id]["inputs"] = {"NUM": [2, operand]}
             self.blocks[operand]["parent"] = block_id
@@ -850,11 +1076,90 @@ def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
 
 
 def install_score(blocks: Blocks) -> None:
-    # SYS-03: the single scoring path everything routes through — so a hit can never
-    # double-score. Empty this slice; award / high-score / cap land with ECO-01.
-    _install_warp_proc(blocks, SCORE_PROCCODE)
-    # ENGINE-TODO: scoring (award, high score, 9,999,990 cap) lands with ECO-01; every
-    # future scoring route calls through this one `score` hook.
+    # ECO-01: the single scoring path everything routes through, so scoring can never
+    # double-count or bypass the cap. Add the pending award to the score, pin it at the
+    # 9,999,990 BCD ceiling (set_score_to_9999990), lift the running high score, then run the
+    # bonus-life check after every award (check_for_extra_solvalou). `award value` is the
+    # resolved point value, set by the collision detector a later slice wires (machinery seam,
+    # parallel to `hit slot`); the debug S fixture sets it this slice.
+    definition = _install_warp_proc(blocks, SCORE_PROCCODE)
+    # NOTE: `set score = op_add(score, award value)` does NOT evaluate in the Scratch VM
+    # (a `set var = operator(...)` value-input the runtime leaves unread); `change ... by` does.
+    add_award = blocks.add(
+        "data_changevariableby",
+        inputs={"VALUE": variable("award value", AWARD_VALUE_ID)},
+        fields={"VARIABLE": ["score", SCORE_ID]},
+    )
+    cap_if = blocks.add("control_if")
+    cap_cond = blocks.greater(cap_if, "score", SCORE_ID, SCORE_CAP)
+    blocks.blocks[cap_if]["inputs"]["CONDITION"] = [2, cap_cond]
+    blocks.substack(cap_if, [blocks.set_var("score", SCORE_ID, number(SCORE_CAP))])
+    high_if = blocks.add("control_if")
+    high_cond = blocks.add(
+        "operator_gt",
+        inputs={
+            "OPERAND1": variable("score", SCORE_ID),
+            "OPERAND2": variable("high score", HIGH_SCORE_ID),
+        },
+    )
+    blocks.blocks[high_cond]["parent"] = high_if
+    blocks.blocks[high_if]["inputs"]["CONDITION"] = [2, high_cond]
+    blocks.substack(
+        high_if, [blocks.set_var("high score", HIGH_SCORE_ID, variable("score", SCORE_ID))]
+    )
+    blocks.chain(
+        definition,
+        [add_award, cap_if, high_if, blocks.call_proc(CHECK_BONUS_PROCCODE, warp=True)],
+    )
+
+
+def install_check_bonus_life(blocks: Blocks) -> None:
+    # ECO-03: grant a bonus craft as the score passes the current threshold, then advance the
+    # threshold by the per-setting increment. A disabled setting (BONUS_DISABLED sentinel) never
+    # grants. Once the score is pinned at the cap, every award grants a craft (the recorded arcade
+    # quirk: the threshold can no longer exceed the score). Called by `score` after every award.
+    definition = _install_warp_proc(blocks, CHECK_BONUS_PROCCODE)
+
+    def grant() -> list[str]:
+        return [
+            blocks.change_var("craft", LIVES_ID, 1),
+            blocks.play_sound("extend"),
+            blocks.send("craft changed"),
+        ]
+
+    # score >= next bonus, as `not (score < next bonus)` (thresholds are exact 10,000 multiples).
+    below = blocks.add(
+        "operator_lt",
+        inputs={
+            "OPERAND1": variable("score", SCORE_ID),
+            "OPERAND2": variable("next bonus", NEXT_BONUS_ID),
+        },
+    )
+    at_or_past = blocks.add("operator_not", inputs={"OPERAND": [2, below]})
+    blocks.blocks[below]["parent"] = at_or_past
+    advance = blocks.set_var_expr(
+        "next bonus",
+        NEXT_BONUS_ID,
+        blocks.op_add(
+            variable("next bonus", NEXT_BONUS_ID),
+            blocks.list_item("repeat bonus 123", REPEAT_BONUS_123_ID, number(DIP_BONUS_ITEM)),
+        ),
+    )
+    normal_if = blocks.if_reporter(at_or_past, grant() + [advance])
+
+    # cap quirk vs the ordinary threshold: at the pinned cap, grant every award.
+    quirk = blocks.add("control_if_else")
+    at_cap = blocks.var_equals(quirk, "score", SCORE_ID, SCORE_CAP)
+    blocks.blocks[quirk]["inputs"]["CONDITION"] = [2, at_cap]
+    blocks.substack(quirk, grant())
+    blocks.substack(quirk, [normal_if], name="SUBSTACK2")
+
+    # the whole check only runs when bonuses are enabled (threshold sentinel is non-zero).
+    enabled_if = blocks.add("control_if")
+    enabled = blocks.greater(enabled_if, "next bonus", NEXT_BONUS_ID, BONUS_DISABLED)
+    blocks.blocks[enabled_if]["inputs"]["CONDITION"] = [2, enabled]
+    blocks.substack(enabled_if, [quirk])
+    blocks.chain(definition, [enabled_if])
 
 
 def install_resolve_hit(blocks: Blocks) -> None:
@@ -883,6 +1188,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_clear_slots(blocks)
     install_advance_slots(blocks)
     install_score(blocks)
+    install_check_bonus_life(blocks)
     install_resolve_hit(blocks)
     install_alloc_bullet_slot(blocks)
 
@@ -900,11 +1206,52 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     space = blocks.key("space")
     blocks.chain(space, [blocks.if_state("title", [blocks.call_transition("ready", "new-game")])])
 
-    for key, outcome in (("d", "respawn"), ("g", "game-over")):
-        hat = blocks.key(key)
-        set_outcome = blocks.set_var("death outcome", OUTCOME_ID, text(outcome))
-        transition = blocks.call_transition("player-dead", "none")
-        blocks.chain(hat, [blocks.if_state("playing", [set_outcome, transition])])
+    # Death triggers — stand-ins until a real attacker exists (slice 8), now driving the real
+    # life economy instead of a hardcoded outcome. D takes one hit (lose a craft); G drains to
+    # the terminal life so the game-over path is reachable in one press. The death-complete
+    # handler decides respawn-vs-game-over from the craft counter, not from which key was pressed.
+    d_hat = blocks.key("d")
+    blocks.chain(
+        d_hat,
+        [
+            blocks.if_state(
+                "playing",
+                [
+                    blocks.change_var("craft", LIVES_ID, -1),
+                    blocks.send("craft changed"),
+                    blocks.call_transition("player-dead", "none"),
+                ],
+            )
+        ],
+    )
+    g_hat = blocks.key("g")
+    blocks.chain(
+        g_hat,
+        [
+            blocks.if_state(
+                "playing",
+                [
+                    blocks.set_var("craft", LIVES_ID, number(0)),
+                    blocks.send("craft changed"),
+                    blocks.call_transition("player-dead", "none"),
+                ],
+            )
+        ],
+    )
+
+    # Debug scoring fixture (S): set the award-value seam to the top value-table entry and run
+    # the one `score` path, so the economy is operator-verifiable before an enemy awards points.
+    # Removed with the D/G fixtures when the real collision trigger lands (slice 8).
+    score_key = blocks.key(SCORE_FIXTURE_KEY)
+    set_award = blocks.set_var_expr(
+        "award value",
+        AWARD_VALUE_ID,
+        blocks.list_item("value table", VALUE_TABLE_ID, number(len(VALUE_TABLE_POINTS))),
+    )
+    blocks.chain(
+        score_key,
+        [blocks.if_state("playing", [set_award, blocks.call_proc(SCORE_PROCCODE, warp=True)])],
+    )
 
     ready = blocks.receive("ready complete")
     blocks.chain(
@@ -919,27 +1266,50 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
 
     death = blocks.receive("death complete")
-    respawn_if = blocks.add("control_if")
-    respawn_condition = blocks.equals_var(
-        respawn_if, "death outcome", OUTCOME_ID, "respawn"
+    # Decide from the craft counter (PLY-02): a craft left means respawn; none left means game
+    # over. `death outcome` now RECORDS the decision (kept, not removed, so the transition-cleanup
+    # opcode sequence and the reset-scope matrix stay byte-identical) — it is no longer the input.
+    decide = blocks.add("control_if_else")
+    has_craft = blocks.greater(decide, "craft", LIVES_ID, 0)
+    blocks.blocks[decide]["inputs"]["CONDITION"] = [2, has_craft]
+    blocks.substack(
+        decide,
+        [
+            blocks.set_var("death outcome", OUTCOME_ID, text("respawn")),
+            blocks.call_transition("respawning", "new-life"),
+        ],
     )
-    blocks.blocks[respawn_if]["inputs"]["CONDITION"] = [2, respawn_condition]
-    blocks.substack(respawn_if, [blocks.call_transition("respawning", "new-life")])
-    game_over_if = blocks.add("control_if")
-    game_over_condition = blocks.equals_var(
-        game_over_if, "death outcome", OUTCOME_ID, "game-over"
+    blocks.substack(
+        decide,
+        [
+            blocks.set_var("death outcome", OUTCOME_ID, text("game-over")),
+            blocks.call_transition("game-over", "game-over"),
+        ],
+        name="SUBSTACK2",
     )
-    blocks.blocks[game_over_if]["inputs"]["CONDITION"] = [2, game_over_condition]
-    blocks.substack(game_over_if, [blocks.call_transition("game-over", "game-over")])
-    blocks.chain(
-        death,
-        [blocks.if_state("player-dead", [respawn_if, game_over_if])],
-    )
+    blocks.chain(death, [blocks.if_state("player-dead", [decide])])
 
     game_over = blocks.receive("game over complete")
+    # ECO-04 best-five check: qualified = the final score beats fifth place in the ingested
+    # high-score table. A verdict only (the initials-entry screen a qualifying score would show
+    # is deferred to the cabinet-flow slice, 19) — computed here, before the transition back to
+    # title resets `reset scope` and (via the cold-start scope) the score itself.
+    set_qualified = blocks.set_var_expr(
+        "qualified",
+        QUALIFIED_ID,
+        blocks.op_gt(
+            variable("score", SCORE_ID),
+            blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5)),
+        ),
+    )
     blocks.chain(
         game_over,
-        [blocks.if_state("game-over", [blocks.call_transition("title", "cold-start")])],
+        [
+            blocks.if_state(
+                "game-over",
+                [set_qualified, blocks.call_transition("title", "cold-start")],
+            )
+        ],
     )
 
     enter = blocks.receive("director enter")
@@ -982,6 +1352,15 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # (cold-start / new-game), seeds the shared stream (SYS-04, so seeded runs repeat)
     # and starts the frame clock at zero.
     stage_reset = blocks.receive("director reset")
+    # High score is the RUNNING best: it persists across a new game and is restored to the
+    # default top entry only at cold start (power-on). Score restarts every new game.
+    high_reset = blocks.add("control_if")
+    high_scope = blocks.scope_is(high_reset, "cold-start")
+    blocks.blocks[high_reset]["inputs"]["CONDITION"] = [2, high_scope]
+    blocks.substack(
+        high_reset,
+        [blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START))],
+    )
     blocks.chain(
         stage_reset,
         [
@@ -992,8 +1371,28 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                 [
                     blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED)),
                     blocks.set_var("tick", TICK_ID, number(0)),
+                    blocks.set_var("score", SCORE_ID, number(0)),
+                    # ECO-04: the best-five verdict is only meaningful for the game just ended.
+                    blocks.set_var("qualified", QUALIFIED_ID, number(0)),
+                    # ECO-03: starting craft and the first bonus threshold, read live from the
+                    # ingested DIP tables (the committed data is the one source of truth).
+                    blocks.set_var_expr(
+                        "craft",
+                        LIVES_ID,
+                        blocks.list_item(
+                            "starting lives", STARTING_LIVES_ID, number(DIP_STARTING_ITEM)
+                        ),
+                    ),
+                    blocks.set_var_expr(
+                        "next bonus",
+                        NEXT_BONUS_ID,
+                        blocks.list_item(
+                            "first bonus 123", FIRST_BONUS_123_ID, number(DIP_BONUS_ITEM)
+                        ),
+                    ),
                 ],
             ),
+            high_reset,
         ],
     )
     return blocks.blocks
@@ -1149,13 +1548,17 @@ def death_blocks() -> dict[str, dict[str, Any]]:
         ),
     ]
     dead = blocks.if_state("player-dead", death_body)
-    # A2: the invented GAME OVER speech bubble is removed. The game-over presentation —
-    # its 128-frame hold included — is owned by ECO-04 and deferred there; recorded,
-    # not silently dropped.
+    # A2: the invented GAME OVER speech bubble is removed; the text is the HUD's glyph-costume
+    # "GAME OVER" (ECO-04, hud_blocks), gated on `game state` == game-over.
+    # ECO-04: the 128-frame (64-tick) GAME OVER hold, epoch-guarded exactly like the death
+    # explosion above — the hold itself runs unconditionally, but the epoch check right before
+    # the broadcast means a superseding transition (which bumps the epoch) cancels a stale hold,
+    # so `game over complete` is never sent outside the guard.
     over = blocks.if_state(
         "game-over",
         [
             blocks.show(),
+            blocks.hold_ticks(GAME_OVER_HOLD_TICKS),
             blocks.if_epoch_state(
                 DEATH_EPOCH_ID,
                 "game-over",
@@ -1174,20 +1577,30 @@ def terrain_blocks(
     common_stop(blocks, hide=False)
     reset = blocks.receive("director reset")
     switch = blocks.switch_costume(costume)
-    # Cold-start / new-game rewind to the strip's top and re-seed its scroll counter;
-    # a new life preserves both (the recorded B11 terrain-on-death fixture), so the
-    # strip resumes seamlessly rather than restarting.
-    reset_control = reset_if(
-        blocks,
-        ("cold-start", "new-game"),
-        [
-            switch,
-            blocks.go(0, start_y),
-            blocks.set_var("scroll step", step_id, number(initial_step)),
-            blocks.send_backward(),  # B9: terrain sits behind the sprites
-            blocks.show(),
-        ],
-    )
+    rewind = [
+        switch,
+        blocks.go(0, start_y),
+        blocks.set_var("scroll step", step_id, number(initial_step)),
+        blocks.send_backward(),  # B9: terrain sits behind the sprites
+        blocks.show(),
+    ]
+    # Rewind to the strip's top on cold-start, new-game, AND new-life: a new life now restarts
+    # the current area from its top, the arcade rule the locked area-progression spec makes
+    # normative — retiring the interim B11 preserve-terrain-on-death fixture (audit 2026-08-09).
+    # game-over is followed by a cold-start, which rewinds; the near-end checkpoint exception
+    # waits on the area clock (slice 5).
+    reset_control = blocks.add("control_if")
+    tail = blocks.add("operator_or")
+    ng = blocks.scope_is(tail, "new-game")
+    nl = blocks.scope_is(tail, "new-life")
+    blocks.blocks[tail]["inputs"] = {"OPERAND1": [2, ng], "OPERAND2": [2, nl]}
+    condition = blocks.add("operator_or")
+    blocks.blocks[tail]["parent"] = condition
+    cs = blocks.scope_is(condition, "cold-start")
+    blocks.blocks[condition]["inputs"] = {"OPERAND1": [2, cs], "OPERAND2": [2, tail]}
+    blocks.blocks[condition]["parent"] = reset_control
+    blocks.blocks[reset_control]["inputs"]["CONDITION"] = [2, condition]
+    blocks.substack(reset_control, rewind)
     blocks.chain(reset, [reset_control])
 
     enter = blocks.receive("director enter")
@@ -1579,8 +1992,307 @@ def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def install_hud_spawn_craft(blocks: Blocks) -> None:
+    # ECO-02: (re)spawn one life/ship clone per remaining craft, left to right, capped at
+    # HUD_LIFE_MAX rendered icons so the row can never run off-stage (usability fix; the
+    # true `craft` count is UNAFFECTED — only the icon DISPLAY is bounded, via a hud-local
+    # counter capped before the spawn loop reads it). A warp (atomic) block so the whole
+    # row appears in a single frame; called both by the initial director-enter spawn and
+    # again whenever `craft changed` fires (a bonus grant now, a death later), so the row
+    # always reflects the live `craft` count (up to the cap).
+    definition = _install_warp_proc(blocks, HUD_SPAWN_CRAFT_PROCCODE)
+    set_role = blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LIFE))
+    set_index = blocks.set_var("hud life index", HUD_LIFE_INDEX_ID, number(0))
+    set_count = blocks.set_var(
+        "hud life count", HUD_LIFE_COUNT_ID, variable("craft", LIVES_ID)
+    )
+    cap_if = blocks.add("control_if")
+    cap_cond = blocks.greater(cap_if, "hud life count", HUD_LIFE_COUNT_ID, HUD_LIFE_MAX)
+    blocks.blocks[cap_if]["inputs"]["CONDITION"] = [2, cap_cond]
+    blocks.substack(
+        cap_if,
+        [blocks.set_var("hud life count", HUD_LIFE_COUNT_ID, number(HUD_LIFE_MAX))],
+    )
+    loop = blocks.add(
+        "control_repeat", inputs={"TIMES": variable("hud life count", HUD_LIFE_COUNT_ID)}
+    )
+    x_expr = blocks.op_add(
+        number(HUD_LIFE_LEFT_X),
+        blocks.op_mul(
+            variable("hud life index", HUD_LIFE_INDEX_ID), number(HUD_LIFE_SPACING)
+        ),
+    )
+    go = blocks.go_expr(x_expr, number(HUD_LIFE_Y))
+    create = blocks.create_clone()
+    advance = blocks.change_var("hud life index", HUD_LIFE_INDEX_ID, 1)
+    blocks.substack(loop, [go, create, advance])
+    blocks.chain(definition, [set_role, set_index, set_count, cap_if, loop])
+
+
+def hud_blocks() -> dict[str, dict[str, Any]]:
+    # ECO-02 HUD render (docs/mechanics/012). The original hud sprite stays hidden and
+    # only ever spawns clones (three kinds, tagged by a snapshotted `hud role`): 7 score
+    # digits, 7 high-score digits, and a craft-sized row of life icons, plus two glyph
+    # labels ("1UP" flashing, "HIGH SCORE" static). Clones are cleared on every
+    # `director stop` (common_stop's clones=True) and rebuilt on `director enter`
+    # whenever the state is HUD-visible (anything but title/boot) — director stop always
+    # precedes director enter on every transition, so nothing ever double-stacks.
+    blocks = Blocks("hud")
+    common_stop(blocks, hide=True, clones=True)
+    install_hud_spawn_craft(blocks)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for place in range(HUD_DIGIT_PLACES):
+        x = HUD_SCORE_LEFT_X + (HUD_DIGIT_PLACES - 1 - place) * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_SCORE_DIGIT)),
+            blocks.set_var("hud place", HUD_PLACE_ID, number(place)),
+            blocks.go(x, HUD_SCORE_Y),
+            blocks.create_clone(),
+        ]
+    for place in range(HUD_DIGIT_PLACES):
+        x = HUD_HIGH_SCORE_LEFT_X + (HUD_DIGIT_PLACES - 1 - place) * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_HIGH_SCORE_DIGIT)),
+            blocks.set_var("hud place", HUD_PLACE_ID, number(place)),
+            blocks.go(x, HUD_HIGH_SCORE_Y),
+            blocks.create_clone(),
+        ]
+    for glyph, slot in HUD_1UP_LABEL:
+        x = HUD_1UP_LEFT_X + slot * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LABEL_1UP)),
+            blocks.switch_costume(glyph),
+            blocks.go(x, HUD_LABEL_Y),
+            blocks.create_clone(),
+        ]
+    for glyph, slot in HUD_HIGH_SCORE_LABEL:
+        x = HUD_HIGH_SCORE_LABEL_LEFT_X + slot * HUD_DIGIT_SPACING
+        spawn_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LABEL_HIGH_SCORE)),
+            blocks.switch_costume(glyph),
+            blocks.go(x, HUD_LABEL_Y),
+            blocks.create_clone(),
+        ]
+    # ECO-04: "GAME OVER", spawned only while `game state` is game-over (nested inside the
+    # broader not-title/not-boot gate above, which already covers this state).
+    game_over_body: list[str] = []
+    for glyph, slot in HUD_GAME_OVER_LABEL:
+        x = HUD_GAME_OVER_LEFT_X + slot * HUD_GAME_OVER_SPACING
+        game_over_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_GAME_OVER_GLYPH)),
+            blocks.switch_costume(glyph),
+            blocks.go(x, HUD_GAME_OVER_Y),
+            blocks.create_clone(),
+        ]
+    spawn_body.append(blocks.if_state("game-over", game_over_body))
+    # The life-icon row is spawned by the shared proc below (also used on `craft changed`).
+    spawn_body.append(blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True))
+    gate = blocks.if_not_either_state("title", "boot", spawn_body)
+    blocks.chain(enter, [gate])
+
+    # Each clone snapshots its role (and, for digit clones, its place) at creation — the
+    # blaster clone-slot idiom — then dispatches on that role. `hud is clone` is marked
+    # here unconditionally, on every clone, so the original (which never runs this hat)
+    # stays the only instance where it reads 0 — the craft-changed handler below's "am I
+    # the original" gate.
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    mark_clone = blocks.set_var("hud is clone", HUD_IS_CLONE_ID, number(1))
+
+    def digit_role_body(var_name: str, var_id: str) -> list[str]:
+        # 10^place, computed once at clone start (place never changes for this clone).
+        set_divisor = blocks.set_var("hud divisor", HUD_DIVISOR_ID, number(1))
+        divisor_loop = blocks.add(
+            "control_repeat", inputs={"TIMES": variable("hud place", HUD_PLACE_ID)}
+        )
+        blocks.substack(
+            divisor_loop,
+            [
+                blocks.set_var_expr(
+                    "hud divisor",
+                    HUD_DIVISOR_ID,
+                    blocks.op_mul(variable("hud divisor", HUD_DIVISOR_ID), number(10)),
+                )
+            ],
+        )
+        # Every tick while HUD-visible: digit = floor(value / 10^place) mod 10, shown as
+        # leading-zero-preserving digit/D (deterministic integer math, arcade-faithful).
+        # Update every tick while the HUD is visible; stop (fall through to hide+delete) only
+        # when the state returns to title/boot. `repeat until` halts when its condition is TRUE,
+        # so the condition is "we have LEFT to title/boot" — not its negation.
+        tick_loop = blocks.add("control_repeat_until")
+        tick_condition = blocks.either_state(tick_loop, "title", "boot")
+        blocks.blocks[tick_loop]["inputs"]["CONDITION"] = [2, tick_condition]
+        digit_expr = blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    variable(var_name, var_id), variable("hud divisor", HUD_DIVISOR_ID)
+                )
+            ),
+            number(10),
+        )
+        name_expr = blocks.op_join(text("digit/"), digit_expr)
+        blocks.substack(tick_loop, [blocks.switch_costume_expr(name_expr)])
+        return [
+            # Compute 10^place while still hidden, then show and update the costume every tick
+            # (the first iteration sets the right digit before the frame renders — no flash).
+            set_divisor,
+            divisor_loop,
+            blocks.to_front(),
+            blocks.show(),
+            tick_loop,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ]
+
+    score_role = blocks.if_var_equals(
+        "hud role", HUD_ROLE_ID, HUD_ROLE_SCORE_DIGIT, digit_role_body("score", SCORE_ID)
+    )
+    high_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_HIGH_SCORE_DIGIT,
+        digit_role_body("high score", HIGH_SCORE_ID),
+    )
+    # A life clone must SHOW the ship icon — switch to it explicitly rather than inherit
+    # whatever costume the sprite last held at spawn (which is a label glyph).
+    life_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LIFE,
+        [blocks.switch_costume("life/ship"), blocks.to_front(), blocks.show()],
+    )
+    # 1UP: flashes (show/hide, held HUD_1UP_FLASH_HOLD_TICKS each way) for as long as the
+    # HUD is visible, epoch/state-safe via the same title/boot guard as the digit loops.
+    flash_loop = blocks.add("control_repeat_until")
+    flash_condition = blocks.either_state(flash_loop, "title", "boot")
+    blocks.blocks[flash_loop]["inputs"]["CONDITION"] = [2, flash_condition]
+    blocks.substack(
+        flash_loop,
+        [
+            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
+            blocks.hide(),
+            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
+            blocks.show(),
+        ],
+    )
+    label_1up_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LABEL_1UP,
+        [
+            blocks.to_front(),
+            blocks.show(),
+            flash_loop,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+    label_hs_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LABEL_HIGH_SCORE,
+        [blocks.to_front(), blocks.show()],
+    )
+    # ECO-04: each "GAME OVER" glyph clone is static once spawned (like the "HIGH SCORE"
+    # label above) — director-stop's clone-clear (common_stop) retires it on the next
+    # transition, so it never needs to delete itself here.
+    game_over_glyph_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_GAME_OVER_GLYPH,
+        [blocks.to_front(), blocks.show()],
+    )
+    blocks.chain(
+        clone,
+        [
+            mark_clone,
+            score_role,
+            high_role,
+            life_role,
+            label_1up_role,
+            label_hs_role,
+            game_over_glyph_role,
+        ],
+    )
+
+    # ECO-03's bonus grant broadcasts `craft changed`; every life-icon clone deletes
+    # itself, and only the original (the sole instance where `hud is clone` stays 0)
+    # rebuilds the row from the live `craft` count via the shared spawn proc.
+    craft_changed = blocks.receive("craft changed")
+    delete_life = blocks.if_var_equals(
+        "hud role", HUD_ROLE_ID, HUD_ROLE_LIFE, [blocks.add("control_delete_this_clone")]
+    )
+    respawn = blocks.if_var_equals(
+        "hud is clone",
+        HUD_IS_CLONE_ID,
+        0,
+        [blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True)],
+    )
+    blocks.chain(craft_changed, [delete_life, respawn])
+
+    return blocks.blocks
+
+
+def _ensure_hud_target(project: dict[str, Any]) -> None:
+    """Create or update the `hud` target's EXISTENCE and BLOCKS only.
+
+    Costumes are never touched here: when the target already exists (because
+    tools/hud_glyphs.py already attached its glyph/life costumes), whatever
+    costume list is present is preserved untouched, exactly like the
+    solvalou split lets sprite_extractor own that target's costumes while
+    this module owns its blocks.
+    """
+    existing = next(
+        (target for target in project["targets"] if target.get("name") == HUD_TARGET),
+        None,
+    )
+    if existing is not None:
+        # hud blocks are (re)installed unconditionally by expected_project's replacements
+        # map below — nothing to do here but leave the existing target's costumes, sounds,
+        # and every other field untouched.
+        return
+    insertion = next(
+        (
+            index
+            for index, target in enumerate(project["targets"])
+            if target.get("name") in ("toroid_sprite_proof", "sprite_sheets")
+        ),
+        len(project["targets"]),
+    )
+    existing_orders = [
+        target.get("layerOrder")
+        for target in project["targets"]
+        if isinstance(target.get("layerOrder"), int)
+    ]
+    hud_target = {
+        "isStage": False,
+        "name": HUD_TARGET,
+        "variables": {},
+        "lists": {},
+        "broadcasts": {},
+        "blocks": {},
+        "comments": {},
+        "currentCostume": 0,
+        "costumes": [],
+        "sounds": [],
+        "volume": 100,
+        "layerOrder": max(existing_orders, default=-1) + 1,
+        "visible": False,
+        "x": 0,
+        "y": 0,
+        "size": 100,
+        "direction": 90,
+        "draggable": False,
+        "rotationStyle": "don't rotate",
+    }
+    project["targets"].insert(insertion, hud_target)
+
+
 def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(project)
+    _ensure_hud_target(result)
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,
@@ -1599,6 +2311,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         HIT_SLOT_ID,
         BULLET_ALLOC_RESULT_ID,
         BULLET_CURSOR_ID,
+        SCORE_ID,
+        HIGH_SCORE_ID,
+        AWARD_VALUE_ID,
+        LIVES_ID,
+        NEXT_BONUS_ID,
+        QUALIFIED_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -1632,8 +2350,31 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # the allocator's own, never shared with the blaster or the slot-sweep cursor).
         BULLET_ALLOC_RESULT_ID: ["bullet alloc result", 0],
         BULLET_CURSOR_ID: ["bullet cursor", 0],
+        # ECO-01 economy: the running score and high score (Stage-written, HUD reads only) and
+        # the award-value seam (machinery, set by the collision detector a later slice wires).
+        SCORE_ID: ["score", 0],
+        HIGH_SCORE_ID: ["high score", HIGH_SCORE_START],
+        AWARD_VALUE_ID: ["award value", 0],
+        # ECO-03 lives economy: remaining craft and the next bonus-life threshold (seeded from
+        # the DIP tables on a world reset).
+        LIVES_ID: ["craft", 0],
+        NEXT_BONUS_ID: ["next bonus", 0],
+        # ECO-04: the best-five verdict, recorded (never a sprite write) when the game over
+        # complete receiver runs, and reset only on a world reset (cold-start/new-game).
+        QUALIFIED_ID: ["qualified", 0],
     }
-    owned_lists = {ALLOWED_ID, SLOT_TYPE_ID, SLOT_STATE_ID}
+    owned_lists = {
+        ALLOWED_ID,
+        SLOT_TYPE_ID,
+        SLOT_STATE_ID,
+        VALUE_TABLE_ID,
+        STARTING_LIVES_ID,
+        FIRST_BONUS_123_ID,
+        FIRST_BONUS_5_ID,
+        REPEAT_BONUS_123_ID,
+        REPEAT_BONUS_5_ID,
+        HIGH_SCORE_TABLE_ID,
+    }
     preserved_lists = {
         list_id: value
         for list_id, value in stage["lists"].items()
@@ -1657,6 +2398,21 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # state 0 = idle. Fixed length 64; alloc/free change entries, never length.
         SLOT_TYPE_ID: ["slot type", [0] * SLOT_COUNT],
         SLOT_STATE_ID: ["slot state", [0] * SLOT_COUNT],
+        # ECO-01 object point values (docs/spec/data/scores.json master_value_table), in table
+        # order; position i (1-based) = entries[i-1].points. Slice 8 resolves award value here.
+        VALUE_TABLE_ID: ["value table", list(VALUE_TABLE_POINTS)],
+        # ECO-03 lives/bonus tables (docs/spec/data/scores.json), `null` mapped to the
+        # BONUS_DISABLED sentinel. Both bonus pairs are ingested; the runtime reads the 1/2/3-lives
+        # pair at the default DIP.
+        STARTING_LIVES_ID: ["starting lives", list(STARTING_LIVES)],
+        FIRST_BONUS_123_ID: ["first bonus 123", list(FIRST_BONUS_123)],
+        FIRST_BONUS_5_ID: ["first bonus 5", list(FIRST_BONUS_5)],
+        REPEAT_BONUS_123_ID: ["repeat bonus 123", list(REPEAT_BONUS_123)],
+        REPEAT_BONUS_5_ID: ["repeat bonus 5", list(REPEAT_BONUS_5)],
+        # ECO-04 best-five table (docs/spec/data/scores.json high_score_defaults.scores),
+        # in rank order; position 5 (1-based) is the fifth-place cutoff the game-over-complete
+        # receiver compares the final score against.
+        HIGH_SCORE_TABLE_ID: ["high score table", list(HIGH_SCORE_DEFAULTS)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 
@@ -1676,6 +2432,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "target_a": target_blocks("target_a", 15),
         "target_b": target_blocks("target_b", 2),
         "bomb": bomb_blocks(),
+        "hud": hud_blocks(),
     }
     for target in result["targets"]:
         if target["name"] in replacements:
@@ -1702,6 +2459,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         elif target["name"] == "area_01b":
             target["variables"] = target["variables"] | {
                 TERRAIN_STEP_B_ID: ["scroll step", 0]
+            }
+        elif target["name"] == "hud":
+            # ECO-02: all HUD state is sprite-local (never a Stage variable) — the role
+            # and place snapshotted into each clone at creation, the cached 10^place
+            # divisor, the life-icon spawn cursor, and the original-vs-clone marker.
+            target["variables"] = target["variables"] | {
+                HUD_ROLE_ID: ["hud role", 0],
+                HUD_PLACE_ID: ["hud place", 0],
+                HUD_DIVISOR_ID: ["hud divisor", 1],
+                HUD_LIFE_INDEX_ID: ["hud life index", 0],
+                HUD_LIFE_COUNT_ID: ["hud life count", 0],
+                HUD_IS_CLONE_ID: ["hud is clone", 0],
             }
     return result
 

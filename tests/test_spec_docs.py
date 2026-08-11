@@ -300,19 +300,23 @@ def _eval_block(blocks, block_id, env):
     if op == "data_variable":
         return env.get(block["fields"]["VARIABLE"][0], 0)
     if op == "operator_mathop":
-        assert block["fields"]["OPERATION"][0] == "floor", "only floor is interpreted"
+        assert block["fields"]["OPERATOR"][0] == "floor", "only floor is interpreted"
         return math.floor(_eval_input(blocks, block["inputs"]["NUM"], env))
     binary = {
         "operator_add": lambda a, b: a + b,
         "operator_subtract": lambda a, b: a - b,
-        "operator_mult": lambda a, b: a * b,
+        "operator_multiply": lambda a, b: a * b,
         "operator_divide": lambda a, b: a / b,
         "operator_mod": lambda a, b: a % b,
         "operator_equals": lambda a, b: 1 if a == b else 0,
     }
     if op in binary:
-        left = _eval_input(blocks, block["inputs"]["OPERAND1"], env)
-        right = _eval_input(blocks, block["inputs"]["OPERAND2"], env)
+        # Match scratch-vm's operand keys: arithmetic reads NUM1/NUM2, comparison reads
+        # OPERAND1/OPERAND2. (The generator's _reporter makes the same distinction; keeping
+        # these in lockstep is what makes this interpreter a check on the SHIPPED blocks.)
+        slot1, slot2 = ("OPERAND1", "OPERAND2") if op == "operator_equals" else ("NUM1", "NUM2")
+        left = _eval_input(blocks, block["inputs"][slot1], env)
+        right = _eval_input(blocks, block["inputs"][slot2], env)
         return binary[op](left, right)
     raise AssertionError(f"unexpected reporter opcode {op}")
 
@@ -371,8 +375,8 @@ class GeneratedRngStep(unittest.TestCase):
         first = _rng_step_first_statement(blocks)
         mutated = False
         for block in blocks.values():
-            if block["opcode"] == "operator_mult":
-                for slot in ("OPERAND1", "OPERAND2"):
+            if block["opcode"] == "operator_multiply":
+                for slot in ("NUM1", "NUM2"):
                     spec = block["inputs"].get(slot)
                     if spec and spec[0] == 1 and int(float(spec[1][1])) == 5:
                         block["inputs"][slot] = [1, [4, 4]]

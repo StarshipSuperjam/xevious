@@ -15,7 +15,9 @@ import {
   tapKey,
   readVar,
   cloneCount,
+  cloneReports,
   constants,
+  variable,
 } from './harness.js';
 import { reachPlaying, stateOf } from './build.js';
 import * as mutate from './mutate.js';
@@ -167,6 +169,53 @@ export const SCENARIOS = [
     // Remove player-dead -> game-over so it cannot reach title → assertion fails.
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> game-over'),
   },
+  {
+    key: 'score-digits-render',
+    behavior:
+      'Score and high-score HUD digit clones display the running values as digit costumes, not a stuck glyph',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // S is the scoring fixture: each press awards a fixed value from the master table.
+      for (let i = 0; i < 3; i += 1) tapKey(vm, 's');
+      step(vm, 20);
+      const roleName = variable('hud-role').name;
+      const placeName = variable('hud-place').name;
+      // Decode each 7-place digit-clone group (score, high score) from its costumes:
+      // most-significant place first, e.g. costumes 0,0,3,0,0,0,0 (place 6..0) → 30000.
+      const PLACES = 7;
+      const byRole = new Map();
+      for (const r of cloneReports(vm, 'hud', [roleName, placeName])) {
+        const m = /^digit\/([0-9])$/.exec(r.costume || '');
+        if (!m) continue;
+        const role = r.vars[roleName];
+        if (!byRole.has(role)) byRole.set(role, new Map());
+        byRole.get(role).set(r.vars[placeName], Number(m[1]));
+      }
+      const decoded = [];
+      for (const places of byRole.values()) {
+        if (places.size !== PLACES) continue; // skip the lone digit in the 1UP label
+        let value = 0;
+        for (let place = PLACES - 1; place >= 0; place -= 1) value = value * 10 + (places.get(place) ?? 0);
+        decoded.push(value);
+      }
+      return {
+        score: readVar(vm, 'eco-score'),
+        high: readVar(vm, 'eco-high-score'),
+        decoded: decoded.sort((a, b) => a - b),
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.score > 0, 'the S fixture raised the score above zero');
+      assert.deepEqual(
+        obs.decoded,
+        [obs.score, obs.high].sort((a, b) => a - b),
+        'the two 7-digit HUD groups decode to the live score and high score',
+      );
+    },
+    // Break floor() so every digit becomes floor(...)=0 → all digit/0, decoding to 0 (≠ score).
+    negativeMutation: (p) => mutate.misnameMathopOperator(p, 'hud'),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"
@@ -175,5 +224,6 @@ export const EXCLUSIONS = [
   "A shot freeing its slot on reaching the top frame (touching-frame collision — headless can't see it)",
   'The bomb flight/explosion duration and true concurrent lockout (timing collapses headless)',
   'Collision-driven death from an enemy or bullet (rendered collision)',
-  'Sprite visibility, layering, costumes, audio, and overall feel',
+  "Sprite visibility, layering, a costume's rendered pixels, audio, and overall feel (the digit " +
+    'scenario observes WHICH costume a clone switches to — deterministic state — never how it looks)',
 ];

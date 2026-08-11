@@ -115,4 +115,27 @@ export function cloneCount(vm, spriteName) {
   ).length;
 }
 
+/**
+ * Report each live clone of a sprite: the requested local variables (by display name) and
+ * the NAME of its current costume. `currentCostume` is deterministic runtime state the VM
+ * tracks with no renderer, so a costume the clone SWITCHED to is observable here — which is
+ * how a digit clone stuck on the wrong costume (a broken reporter → an unmatched costume
+ * name) is caught. What is NOT observable is the costume's PIXELS; that stays the playtest's.
+ */
+export function cloneReports(vm, spriteName, localVarNames = []) {
+  return vm.runtime.targets
+    .filter((t) => !t.isStage && !t.isOriginal && t.sprite && t.sprite.name === spriteName)
+    .map((c) => {
+      const vars = {};
+      for (const id of Object.keys(c.variables)) {
+        const v = c.variables[id];
+        if (localVarNames.includes(v.name)) vars[v.name] = v.value;
+      }
+      const costume = c.sprite.costumes[c.currentCostume]
+        ? c.sprite.costumes[c.currentCostume].name
+        : null;
+      return { vars, costume, visible: c.visible };
+    });
+}
+
 export { constants, variable };
