@@ -82,3 +82,27 @@ asset's source page. This carries the same rights-status caveat as the
 Spriters Resource sprite sheets above: recording provenance is not a claim
 that credit grants permission, and no ownership of the Xevious audio is
 claimed.
+
+## Terrain area map (reference source, not yet ingested)
+
+Operator-supplied source art for the upcoming terrain/area slice (Part of #17).
+It is committed as a source only — no generator ingests it yet, so it produces
+no `src/xevious/assets/` overlay costume and no `project.json` change. When the
+terrain extractor lands it will read this source and record its extracted
+outputs, mirroring the sprite-extraction and HUD-font pipelines above.
+
+| Supplied file | Description | Credit | Source | License | SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `xevious_area_map.png` | Xevious area map (terrain reference source) | ringostarr39 (DeviantArt) | [DeviantArt](https://www.deviantart.com/ringostarr39/art/Xevious-area-map-626303469) | No reusable license specified by source; third-party copyrighted material | `4d5b5270f171053c5e88be3f0c1a9cf7933e819f3e883b1660ad783bb54f3c5f` |
+
+The raw image is committed byte-for-byte at `assets/terrain/xevious_area_map.png`
+with its provenance in `assets/terrain/provenance.json`. It carries the same
+rights-status caveat as the material above: recorded attribution is not a claim
+that credit grants permission, this is a fan-made map of Namco's Xevious, and a
+rights review is needed before broader distribution (`docs/REFERENCE_POLICY.md`).
+
+**Cited but not vendored.** A related fan-annotated slicing guide (the 16-area
+breakdown and some hidden-target locations,
+[arcadeblogger.com Xevious journey map](https://i0.wp.com/arcadeblogger.com/wp-content/uploads/2022/12/xevious-journey-map.jpeg))
+is *reference*, not a build input, so it is cited here and deliberately kept
+local (git-ignored) rather than committed.
