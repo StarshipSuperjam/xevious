@@ -40,6 +40,14 @@ def _cand(mid, version="0.1.0", status="optional", depends=None, provides=None, 
             "provides": provides or {}, "depends": depends or {}, "wires": wires or []}
 
 
+def _installed_module_ids() -> set:
+    """The ids of the modules present on disk (installed-means-present). A deployment that DECLINED an optional
+    or default-on module removes its subtree, so its id drops out here — the roster-aware signal (#646) that lets
+    a test skip a leg which assumes that module is installed (e.g. inside the deployment gate's add-on-declined
+    projection). Mirrors the helper of the same name in test_seed.py."""
+    return {m.get("id") for _p, m in module_coherence.discover_manifests()}
+
+
 class TestRemoveRefusals(unittest.TestCase):
     """Pure refusal policy over an injected manifest list — no disk."""
 
@@ -118,8 +126,7 @@ class TestUvGroupDerivation(unittest.TestCase):
         self.assertEqual(module_manager.derive_uv_groups(), module_manager.committed_default_groups())
         # Core always carries dependencies; the semantic-recall module (numpy) carries a group only when it is
         # installed, so a deployment that DECLINED it legitimately has just ["core"] here (#646).
-        import module_coherence
-        installed = {m.get("id") for _p, m in module_coherence.discover_manifests()}
+        installed = _installed_module_ids()
         groups = module_manager.committed_default_groups()
         self.assertIn("core", groups)
         if "memory-semantic-recall" in installed:
@@ -156,6 +163,102 @@ class TestUvGroupDerivation(unittest.TestCase):
         with self.assertRaises(ValueError):
             module_manager.rewrite_default_groups_text(
                 '[tool.uv]\ndefault-groups = [\n  "base",\n]\n', ["base"])
+
+
+class TestUpgradeDefaultGroupsReconcile(unittest.TestCase):
+    """#757 — an engine update reconciles its OWN tool-runtime dependency-group selection so the update's pull
+    request is born green, and the structural gate now carries `uv-group-drift` so a fail-open reconcile refuses
+    cleanly instead of opening a self-red pull request. The end-to-end tail + gate behaviour is the shipped
+    falsification demo; these pin the pieces it rests on."""
+
+    def test_the_reconcile_gate_carries_uv_group_drift(self):
+        # The gate membership is the safety net's whole hinge — a typo would fail open silently (the rule_filter
+        # would simply never collect the check), so pin the EXACT registered id.
+        self.assertIn("engine/check/uv-group-drift", module_manager._STRUCTURAL_GATE_CHECK_IDS)
+
+    def test_reconcile_removes_a_group_the_deployment_declined(self):
+        # The field case of #757: committed default-groups lists a group whose module the deployment does not
+        # have, so the re-derive drops it and the rewrite lands the smaller selection.
+        with tempfile.TemporaryDirectory() as d:
+            py = os.path.join(d, "pyproject.toml")
+            with open(py, "w") as fh:
+                fh.write('[dependency-groups]\nbase = ["p"]\noptx = ["q"]\n'
+                         '[tool.uv]\ndefault-groups = ["base", "optx"]\n')
+            derived = module_manager.derive_uv_groups(manifests=[_m("base")], pyproject_path=py)
+            self.assertEqual(derived, ["base"])                       # optx declined -> dropped
+            self.assertTrue(module_manager._maybe_rewrite_default_groups(derived, pyproject_path=py))
+            self.assertEqual(module_manager.committed_default_groups(pyproject_path=py), ["base"])
+
+    def test_reconcile_adds_a_group_the_deployment_has(self):
+        # The mirror the demo drives end-to-end: committed UNDER-lists what the present set derives, so the
+        # rewrite adds the missing group back.
+        with tempfile.TemporaryDirectory() as d:
+            py = os.path.join(d, "pyproject.toml")
+            with open(py, "w") as fh:
+                fh.write('[dependency-groups]\nbase = ["p"]\noptx = ["q"]\n'
+                         '[tool.uv]\ndefault-groups = ["base"]\n')
+            derived = module_manager.derive_uv_groups(manifests=[_m("base"), _m("optx")], pyproject_path=py)
+            self.assertEqual(derived, ["base", "optx"])
+            self.assertTrue(module_manager._maybe_rewrite_default_groups(derived, pyproject_path=py))
+            self.assertEqual(module_manager.committed_default_groups(pyproject_path=py), ["base", "optx"])
+
+    def test_refuse_reason_names_the_group_cause_for_a_drift_finding(self):
+        # When the blocking gate finding IS the group-drift check, the refusal names the dependency-group cause
+        # and points at undo + report — never the generic dead-end "retry", which cannot help the only way this
+        # drift survives the wholesale pyproject overlay (a malformed release array).
+        drift = [{"severity": "hard", "source_rule": "engine/check/uv-group-drift", "message": "..."}]
+        reason = module_manager._reconcile_refuse_reason(drift)
+        self.assertIn("dependency groups", reason)
+        self.assertIn("update home", reason)
+        self.assertNotIn("Run the update again to retry", reason)
+        # any OTHER structural finding keeps the generic retry/undo recourse
+        other = [{"severity": "hard", "source_rule": "engine/check/self-map-drift", "message": "..."}]
+        self.assertIn("Run the update again to retry", module_manager._reconcile_refuse_reason(other))
+
+    def test_pr_body_discloses_the_group_delta_against_the_true_prior(self):
+        # groups_changed = the final selection differs from the deployment's TRUE pre-overlay value, so the delta
+        # is measured against what the operator actually had (never the overlay's transient value).
+        result = {"groups_changed": True, "groups_before": ["core"],
+                  "groups_after": ["core", "memory-semantic-recall"]}
+        body = module_manager.render_upgrade_pr_body({"core": "0.4.0"}, {"core": "0.5.0"}, result)
+        self.assertIn("changes which modules' Python dependencies", body)   # the Scope disclosure + skimmable summary
+        self.assertIn("now installed: memory-semantic-recall", body)        # the delta vs the operator's prior
+        self.assertIn(".engine/pyproject.toml", body)                       # Files of interest names the changed file
+
+    def test_pr_body_discloses_a_removed_group_the_direction_757_reported(self):
+        # #757's OWN field direction: a group dropped from the selection (a declined module the release listed)
+        # must render "no longer installed:" — the operator-facing supply-chain disclosure for the reported case.
+        result = {"groups_changed": True, "groups_before": ["core", "memory-semantic-recall"],
+                  "groups_after": ["core"]}
+        body = module_manager.render_upgrade_pr_body({"core": "0.4.0"}, {"core": "0.5.0"}, result)
+        self.assertIn("no longer installed: memory-semantic-recall", body)
+        self.assertIn("the full selection is now: core", body)
+        self.assertIn("changes which modules' Python dependencies", body)   # skimmable summary still fires
+
+    def test_pr_body_omits_the_group_lines_when_selection_unchanged(self):
+        # The common #757 case: the reconcile restored the operator's own selection (final == prior), so the
+        # pyproject default-groups line has ZERO net change in the opened PR — the body must NOT announce a change
+        # nor list the file, matching what a git diff of the PR actually shows.
+        result = {"groups_changed": False, "groups_before": ["core"], "groups_after": ["core"]}
+        body = module_manager.render_upgrade_pr_body({"core": "0.4.0"}, {"core": "0.5.0"}, result)
+        self.assertNotIn("changes which modules' Python dependencies", body)
+        self.assertNotIn(".engine/pyproject.toml", body)
+
+    def test_the_757_falsification_demo_passes(self):
+        # The shipped end-to-end falsification (real upgrade tail + real structural gate). Running it here is
+        # what makes it travel under `unittest discover` and guard #757 in every generated repo — demo_599's
+        # permanent-regression pattern.
+        # The demo's GENUINE-change arm sets the live default-groups to ["core"] and asserts the derivation is
+        # FULLER than that — which needs the only dependency-group-carrying optional module,
+        # `memory-semantic-recall` (default-on), to be installed. In a deployment that DECLINED it (the
+        # deployment gate's add-on-declined projection), `derive_uv_groups()` legitimately collapses to ["core"],
+        # so the genuine arm can't fire and the demo can't pass — a real declined-shape truth, not a #757 break.
+        if "memory-semantic-recall" not in _installed_module_ids():
+            self.skipTest("demo_757's genuine-change arm needs the memory-semantic-recall dependency group; "
+                          "it is declined in this deployment")
+        import demo_757_upgrade_reconciles_default_groups as demo
+        import quiet_call
+        self.assertEqual(quiet_call.run(demo.main), 0)
 
 
 class TestRemoveEndToEnd(unittest.TestCase):
@@ -282,12 +385,15 @@ class TestAddSafety(unittest.TestCase):
             with module_manager._redirect_root(live):
                 module_manager._build_add_fixture(live)                  # engine_release "0.0.0"
                 saved = module_manager._fetch_release_tree
+                saved_pub = module_manager._release_tag_published         # bare "0.0.0" resolves to a tag first (#760)
+                module_manager._release_tag_published = lambda *a, **k: True
                 module_manager._fetch_release_tree = lambda *a, **k: (_ for _ in ()).throw(
                     RuntimeError("HTTP Error 404: Not Found"))
                 try:
                     res = module_manager.add("feat")                    # real-fetch path -> raises
                 finally:
                     module_manager._fetch_release_tree = saved
+                    module_manager._release_tag_published = saved_pub
                 engine = module_manager.module_coherence.load_engine_manifest()
             self.assertTrue(res["refused"])
             self.assertIn("Couldn't reach", res["reason"])              # plain, not a raw urllib error
@@ -303,6 +409,8 @@ class TestAddSafety(unittest.TestCase):
             with module_manager._redirect_root(live):
                 module_manager._build_add_fixture(live)                 # records home "acme/engine-home"
                 saved = module_manager._fetch_release_tree
+                saved_pub = module_manager._release_tag_published        # bare "0.0.0" resolves to a tag first (#760)
+                module_manager._release_tag_published = lambda *a, **k: True
 
                 def _spy(ref, dest, repo=None, token=None):
                     seen["repo"] = repo
@@ -312,6 +420,7 @@ class TestAddSafety(unittest.TestCase):
                     module_manager.add("feat")
                 finally:
                     module_manager._fetch_release_tree = saved
+                    module_manager._release_tag_published = saved_pub
         self.assertEqual(seen.get("repo"), "acme/engine-home")          # the HOME, not boot.repo_slug()/origin
 
     def test_add_with_no_recorded_home_refuses_with_a_remedy_never_origin(self):
@@ -343,15 +452,203 @@ class TestAddSafety(unittest.TestCase):
             with module_manager._redirect_root(live):
                 module_manager._build_add_fixture(live)
                 saved = module_manager._fetch_release_tree
+                saved_pub = module_manager._release_tag_published        # bare "0.0.0" resolves to a tag first (#760)
+                module_manager._release_tag_published = lambda *a, **k: True
                 module_manager._fetch_release_tree = lambda *a, **k: (_ for _ in ()).throw(
                     urllib.error.HTTPError("u", 404, "Not Found", {}, None))   # a REAL 404 at the home
                 try:
                     res = module_manager.add("feat")
                 finally:
                     module_manager._fetch_release_tree = saved
+                    module_manager._release_tag_published = saved_pub
         self.assertTrue(res["refused"])
         self.assertIn("acme/engine-home", res["reason"])               # NAMES the home so the operator can check
         self.assertIn("Nothing was changed", res["reason"])
+
+
+class TestReleaseApiRequest(unittest.TestCase):
+    """#867: the three release/tag network boundaries (`_fetch_release_tree`, `_resolve_release_ref`,
+    `_release_tag_published`) now build their GitHub Request through ONE shared helper, so the header block
+    and the token resolution live in one place. These offline tests are the FIRST coverage of that block —
+    the three call sites are a named inductive gap the suite never runs against the network. The load-bearing
+    property is the CONDITIONAL auth: a tokenless call must send NO `Authorization` (an empty `Bearer ` would
+    401 even an anonymous public-release fetch), which the pre-#867 copies preserved by hand and this helper
+    must keep — hence the deliberate `if tok:` rather than github_client.request's unconditional Bearer."""
+
+    @staticmethod
+    def _headers(req):
+        # urllib capitalizes header keys on store; normalize for a case-insensitive assertion.
+        return {k.lower(): v for k, v in req.header_items()}
+
+    def test_an_explicit_token_sets_a_bearer_authorization_and_the_full_header_block(self):
+        req = module_manager._release_api_request("/repos/acme/home/releases/latest", token="ghp_secret")
+        self.assertEqual(req.full_url, "https://api.github.com/repos/acme/home/releases/latest")
+        h = self._headers(req)
+        self.assertEqual(h["authorization"], "Bearer ghp_secret")
+        self.assertEqual(h["accept"], "application/vnd.github+json")
+        self.assertEqual(h["x-github-api-version"], "2022-11-28")
+        self.assertEqual(h["user-agent"], "engine-module-manager")
+
+    def test_no_token_and_no_ambient_token_sends_no_authorization(self):
+        # The anonymous public-release fetch: boot.gh_token() -> None, so NO Authorization header at all.
+        import boot
+        saved = boot.gh_token
+        boot.gh_token = lambda: None
+        try:
+            req = module_manager._release_api_request("/repos/acme/home/tarball/v1.0.0", token=None)
+        finally:
+            boot.gh_token = saved
+        h = self._headers(req)
+        self.assertNotIn("authorization", h)                          # the property this de-dup must preserve
+        self.assertEqual(h["accept"], "application/vnd.github+json")   # the rest of the block still present
+        self.assertEqual(h["x-github-api-version"], "2022-11-28")
+        self.assertEqual(h["user-agent"], "engine-module-manager")
+
+    def test_no_explicit_token_falls_back_to_the_ambient_gh_token(self):
+        import boot
+        saved = boot.gh_token
+        boot.gh_token = lambda: "ambient_tok"
+        try:
+            req = module_manager._release_api_request("/repos/acme/home/releases/tags/v1.0.0", token=None)
+        finally:
+            boot.gh_token = saved
+        self.assertEqual(self._headers(req)["authorization"], "Bearer ambient_tok")
+
+    def test_an_empty_token_string_sends_no_authorization_and_never_consults_boot(self):
+        # `token=""` is "not None", so the fallback is skipped, and the empty string is falsy, so no auth
+        # header — matching the pre-#867 `if tok:` truthiness exactly, never drawing an empty `Bearer `.
+        import boot
+        saved = boot.gh_token
+        boot.gh_token = lambda: (_ for _ in ()).throw(AssertionError("consulted boot for an explicit token"))
+        try:
+            req = module_manager._release_api_request("/repos/acme/home/tarball/main", token="")
+        finally:
+            boot.gh_token = saved
+        self.assertNotIn("authorization", self._headers(req))
+
+    def test_the_user_agent_is_overridable_and_defaults_to_the_module_manager_agent(self):
+        default = module_manager._release_api_request("/x", token="t")
+        custom = module_manager._release_api_request("/x", token="t", user_agent="engine-something-else")
+        self.assertEqual(self._headers(default)["user-agent"], "engine-module-manager")
+        self.assertEqual(self._headers(custom)["user-agent"], "engine-something-else")
+
+    def test_a_path_without_a_leading_slash_is_refused(self):
+        # The path is joined onto the host verbatim, so a slash-less path would silently build a malformed
+        # URL (https://api.github.comrepos/...); the helper must refuse it loudly, not emit a bad request.
+        with self.assertRaises(ValueError):
+            module_manager._release_api_request("repos/acme/home/releases/latest", token="t")
+
+
+class TestBareVersionTagResolution(unittest.TestCase):
+    """#760: the manifest records the engine release BARE (`_bump_engine_manifest` strips a leading `v`), so
+    `add`/`upgrade` must resolve that bare version to the home's REAL published tag before fetching — a
+    `v`-tagging home was fetched as `tarball/0.4.1` and 404'd. `_release_tag_published` is the single network
+    boundary; every test below injects it so the REAL resolution logic runs offline."""
+
+    def test_is_bare_version_matches_only_a_plain_semver(self):
+        self.assertTrue(module_manager._is_bare_version("0.4.1"))
+        self.assertTrue(module_manager._is_bare_version("12.0.30"))
+        self.assertFalse(module_manager._is_bare_version("v0.4.1"))    # a real tag, not bare
+        self.assertFalse(module_manager._is_bare_version("main"))      # a branch
+        self.assertFalse(module_manager._is_bare_version("abc1234"))   # a sha
+        self.assertFalse(module_manager._is_bare_version("latest"))
+        self.assertFalse(module_manager._is_bare_version(None))
+
+    def test_release_ref_candidates_probe_v_first(self):
+        # v-first so the dominant convention (and the `v` that _bump_engine_manifest strips) resolves in one hit.
+        self.assertEqual(module_manager._release_ref_candidates("0.4.1"), ["v0.4.1", "0.4.1"])
+
+    def test_bare_version_resolves_to_the_v_tag_on_a_v_home(self):
+        saved = module_manager._release_tag_published
+        module_manager._release_tag_published = lambda tag, repo=None, token=None: tag in {"v0.4.1", "v0.4.0"}
+        try:
+            self.assertEqual(module_manager._resolve_release_ref("0.4.1", repo="acme/home"), "v0.4.1")
+        finally:
+            module_manager._release_tag_published = saved
+
+    def test_bare_version_falls_back_to_the_bare_tag_on_a_bare_home(self):
+        saved = module_manager._release_tag_published
+        module_manager._release_tag_published = lambda tag, repo=None, token=None: tag == "0.4.1"
+        try:
+            self.assertEqual(module_manager._resolve_release_ref("0.4.1", repo="acme/home"), "0.4.1")
+        finally:
+            module_manager._release_tag_published = saved
+
+    def test_a_pinned_tag_or_sha_passes_through_without_a_probe(self):
+        # A non-bare ref must never touch the network — the tag-pin supply-chain control is unchanged.
+        saved = module_manager._release_tag_published
+        module_manager._release_tag_published = lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("probed a pinned ref"))
+        try:
+            self.assertEqual(module_manager._resolve_release_ref("v0.4.1", repo="acme/home"), "v0.4.1")
+            self.assertEqual(module_manager._resolve_release_ref("abc1234def", repo="acme/home"), "abc1234def")
+        finally:
+            module_manager._release_tag_published = saved
+
+    def test_no_matching_release_is_classified_missing_not_transport(self):
+        saved = module_manager._release_tag_published
+        module_manager._release_tag_published = lambda *a, **k: False   # the home publishes no such release
+        try:
+            with self.assertRaises(module_manager._NoPublishedRelease) as ctx:
+                module_manager._resolve_release_ref("0.4.1", repo="acme/home")
+        finally:
+            module_manager._release_tag_published = saved
+        self.assertTrue(module_manager._release_is_missing(ctx.exception))   # refuse loudly, never degrade
+
+    def test_a_transport_fault_on_the_probe_propagates_and_degrades(self):
+        import urllib.error
+        saved = module_manager._release_tag_published
+        module_manager._release_tag_published = lambda *a, **k: (_ for _ in ()).throw(
+            urllib.error.URLError("network down"))
+        try:
+            with self.assertRaises(urllib.error.URLError) as ctx:
+                module_manager._resolve_release_ref("0.4.1", repo="acme/home")
+        finally:
+            module_manager._release_tag_published = saved
+        self.assertFalse(module_manager._release_is_missing(ctx.exception))  # transport -> degrade, not refuse
+
+    def test_add_resolves_the_bare_recorded_version_to_the_tag_before_fetching(self):
+        # End to end on the real add path: the bare recorded "0.0.0" is resolved to "v0.0.0" and THAT is what
+        # the fetch is asked for — the exact wiring that fixes #760.
+        seen = {}
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            with module_manager._redirect_root(live):
+                module_manager._build_add_fixture(live)                  # engine_release "0.0.0", v-less
+                saved_pub = module_manager._release_tag_published
+                saved_fetch = module_manager._fetch_release_tree
+                module_manager._release_tag_published = lambda tag, repo=None, token=None: tag == "v0.0.0"
+
+                def _spy(ref, dest, repo=None, token=None):
+                    seen["ref"] = ref
+                    raise RuntimeError("stop after capturing the resolved ref")
+                module_manager._fetch_release_tree = _spy
+                try:
+                    module_manager.add("feat")
+                finally:
+                    module_manager._fetch_release_tree = saved_fetch
+                    module_manager._release_tag_published = saved_pub
+        self.assertEqual(seen.get("ref"), "v0.0.0")   # fetched the resolved tag, not the bare "0.0.0"
+
+    def test_the_760_falsification_demo_passes(self):
+        # Runs the shipped #760 demo (its negative control reproduces the original 404). This surviving
+        # reference is also what lets the demo travel (census-completeness) rather than retire.
+        import demo_760_add_release_tag as demo
+        import quiet_call
+        self.assertEqual(quiet_call.run(demo.main), 0)
+
+
+class TestFrozenLockSync(unittest.TestCase):
+    """#853: the runtime re-sync must install exactly the committed lock, never re-resolve past it — so it
+    must pass `--frozen`. This asserts the real argv so a future accidental drop of the flag goes red."""
+
+    def test_resync_tool_runtime_passes_frozen(self):
+        from unittest import mock
+        with mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)) as run:
+            self.assertTrue(module_manager._resync_tool_runtime())
+        self.assertIn("--frozen", run.call_args[0][0])              # never a bare `uv sync` that can re-resolve
+        self.assertEqual(run.call_args[0][0][:3], ["uv", "sync", "--frozen"])
 
 
 class TestCli(unittest.TestCase):
@@ -675,6 +972,243 @@ class TestEngineReleaseNormalization(unittest.TestCase):
         self.assertEqual((engine or {}).get("engine_release"), "0.2.0")
 
 
+class TestEngineManifestWriteBoundary(unittest.TestCase):
+    """#923: every lifecycle writer of the deployed .engine/engine.json funnels through the guarded
+    `_write_engine_manifest`, so a symlinked (or tree-escaping) manifest is never written THROUGH — the
+    upgrade pre-flights it before any overlay, the tail backstops it, add rolls back and refuses
+    honestly, remove discloses its half-state, and the failed-install cleanup authors its residue."""
+
+    @staticmethod
+    def _symlink_manifest_out(live: str, d: str) -> str:
+        """Replace the fixture's engine.json with a symlink to an out-of-tree copy of the SAME content
+        (reads through the link keep working; only a write-through must refuse). Returns the outside path."""
+        real = os.path.join(live, ".engine", "engine.json")
+        outside = os.path.join(d, "outside-engine.json")
+        with open(real, encoding="utf-8") as fh:
+            content = fh.read()
+        with open(outside, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.remove(real)
+        os.symlink(outside, real)
+        return outside
+
+    def test_bump_refuses_to_write_the_manifest_through_a_symlink(self):
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                outside = self._symlink_manifest_out(live, d)
+                with open(outside, encoding="utf-8") as fh:
+                    before = fh.read()
+                with self.assertRaises(module_manager.engine_write.EngineWriteRefused):
+                    module_manager._bump_engine_manifest({"base": "0.2.0"}, "v0.2.0")
+                with open(outside, encoding="utf-8") as fh:
+                    self.assertEqual(fh.read(), before,
+                                     "nothing was written through the symlink, out of the tree")
+
+    def test_upgrade_preflights_a_symlinked_manifest_before_any_overlay(self):
+        # the warn-early half of the pairing: the WHOLE upgrade refuses before any overlay, seams, or
+        # migrations — the operator never pays for an applied half-state on a statically-knowable condition
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                outside = self._symlink_manifest_out(live, d)
+                with open(outside, encoding="utf-8") as fh:
+                    before = fh.read()
+                res = module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                             opener=lambda **k: {"number": 7},
+                                             backup=lambda *a, **k: {"ok": 1})
+                self.assertTrue(res["refused"])
+                self.assertIn("can't be safely written", res["reason"])
+                self.assertIn("The engine is unchanged", res["reason"])
+                # nothing was applied: the live base module still carries the OLD version (no overlay ran)
+                base_man = validate.load_json(
+                    os.path.join(live, ".engine", "modules", "base", "manifest.json"))
+                self.assertEqual(base_man.get("version"), "0.0.0", "the overlay must not have run")
+                with open(outside, encoding="utf-8") as fh:
+                    self.assertEqual(fh.read(), before, "the out-of-tree file is untouched")
+
+    def test_upgrade_tail_backstops_a_refused_bump_as_a_staged_refusal(self):
+        # the guarantee half: a shortcut the pre-flight could not see (planted mid-flight, or a tail
+        # entered directly by the child re-exec) still never writes through — the tail converts the
+        # refusal into its staged-refusal reason instead of the generic "run it again" loop
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                saved = module_manager._bump_engine_manifest
+                module_manager._bump_engine_manifest = lambda *a, **k: (_ for _ in ()).throw(
+                    module_manager.engine_write.EngineWriteRefused("planted mid-flight"))
+                try:
+                    res = module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                                 opener=lambda **k: {"number": 7},
+                                                 backup=lambda *a, **k: {"ok": 1})
+                finally:
+                    module_manager._bump_engine_manifest = saved
+                self.assertIn("could not be safely written", res.get("reason") or "")
+                self.assertIn("NOT opened for review", res.get("reason") or "")
+                self.assertIsNone(res.get("pr"), "no pull request opens on a refused bump")
+
+    def test_add_rolls_back_and_refuses_honestly_through_a_symlinked_manifest(self):
+        # the manifest write refuses AFTER files were copied — add must undo the partial install and
+        # say what was rolled back, never "nothing was changed"
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = os.path.join(d, "release")
+            os.makedirs(os.path.join(release, ".engine", "modules", "feat"))
+            module_manager._write_json(
+                os.path.join(release, ".engine", "modules", "feat", "manifest.json"),
+                {"id": "feat", "version": "0.1.0", "status": "optional",
+                 "provides": {"tool": [".engine/tools/feat_tool.py"]}, "depends": {"base": ""}})
+            os.makedirs(os.path.join(release, ".engine", "tools"), exist_ok=True)
+            with open(os.path.join(release, ".engine", "tools", "feat_tool.py"), "w",
+                      encoding="utf-8") as fh:
+                fh.write("# the module's tool\n")
+            with module_manager._redirect_root(live):
+                module_manager._build_add_fixture(live)
+                outside = self._symlink_manifest_out(live, d)
+                with open(outside, encoding="utf-8") as fh:
+                    before = fh.read()
+                res = module_manager.add("feat", release_tree=release)
+                self.assertTrue(res["refused"])
+                self.assertFalse(res["applied"])
+                self.assertIn("Refused to record 'feat'", res["reason"])
+                self.assertIn("rolled back", res["reason"], "the refusal names the rollback honestly")
+                self.assertFalse(os.path.isdir(os.path.join(live, ".engine", "modules", "feat")),
+                                 "the partial install was cleaned up")
+                self.assertFalse(os.path.exists(os.path.join(live, ".engine", "tools", "feat_tool.py")),
+                                 "the copied provide was cleaned up")
+                with open(outside, encoding="utf-8") as fh:
+                    self.assertEqual(fh.read(), before, "the out-of-tree file is untouched")
+
+    def test_remove_discloses_the_half_state_through_a_symlinked_manifest(self):
+        # remove deletes files BEFORE the manifest write, so a refusal there is a DISCLOSED half-state
+        # (applied, with the stale entry named and a phase-aware hand-edit remedy) — never a "nothing
+        # was changed" refusal after files are already gone
+        with tempfile.TemporaryDirectory() as d:
+            with module_manager._redirect_root(d):
+                module_manager._build_fixture(d)
+                outside = self._symlink_manifest_out(d, d)
+                with open(outside, encoding="utf-8") as fh:
+                    before = fh.read()
+                res = module_manager.remove("optx")
+                self.assertFalse(res["refused"])
+                self.assertTrue(res["applied"])
+                self.assertIn(".engine/modules/optx/", res["deleted"], "the files really were removed")
+                self.assertTrue(any("engine.json" in n and "by hand" in n for n in res["notes"]),
+                                "one authored note discloses the stale entry with the hand-edit remedy")
+                self.assertTrue(any("won't be caught automatically" in n for n in res["notes"]),
+                                "the note must not promise a safety net that does not exist")
+                self.assertFalse(any("engine.json" in line for line in res["left_in_place"]),
+                                 'a refused write is not a deliberate keep — never under "on purpose"')
+                with open(outside, encoding="utf-8") as fh:
+                    self.assertEqual(fh.read(), before, "the out-of-tree file is untouched")
+
+    def test_cleanup_failed_install_authors_its_residue_through_a_symlinked_manifest(self):
+        # "Never raises" holds, and the un-prunable package entry is an AUTHORED residue line rather
+        # than a silent skip left for the structural gate to notice
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = os.path.join(d, "release")
+            os.makedirs(os.path.join(release, ".engine", "modules", "feat"))
+            module_manager._write_json(
+                os.path.join(release, ".engine", "modules", "feat", "manifest.json"),
+                {"id": "feat", "version": "0.1.0", "status": "optional",
+                 "provides": {}, "depends": {}})
+            with module_manager._redirect_root(live):
+                module_manager._build_add_fixture(live)
+                engine = module_manager.module_coherence.load_engine_manifest()
+                engine.setdefault("packages", {})["feat"] = "0.1.0"   # the entry cleanup must prune
+                module_manager._write_engine_manifest(engine)
+                outside = self._symlink_manifest_out(live, d)
+                residue = module_manager._cleanup_failed_install("feat", release)
+                self.assertTrue(any("engine.json" in r for r in residue),
+                                "the stale entry is authored residue, not a silent skip")
+                with open(outside, encoding="utf-8") as fh:
+                    self.assertIn('"feat"', fh.read(), "the out-of-tree file is untouched (entry still there)")
+
+    def test_pyproject_rewrite_refuses_a_symlinked_real_slot(self):
+        # .engine/pyproject.toml is engine-owned on the same lifecycle paths — the real slot gets the
+        # full root wall; the raise is caught fail-open (disclosed) by every lifecycle caller
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(os.path.join(live, ".engine"))
+            outside = os.path.join(d, "outside-pyproject.toml")
+            with open(outside, "w", encoding="utf-8") as fh:
+                fh.write("[tool.uv]\ndefault-groups = []\n")
+            with module_manager._redirect_root(live):
+                os.symlink(outside, os.path.join(live, ".engine", "pyproject.toml"))
+                with self.assertRaises(module_manager.engine_write.EngineWriteRefused):
+                    module_manager._maybe_rewrite_default_groups(["base"])
+            with open(outside, encoding="utf-8") as fh:
+                self.assertNotIn("base", fh.read(), "nothing was written through the symlink")
+
+    def test_pyproject_rewrite_refuses_a_symlinked_injected_path_but_allows_a_plain_one(self):
+        # an injected path is guarded against its OWN parent (the leaf rule): a plain temp file outside
+        # the repo is legitimate (tests/fixtures), a symlinked one still refuses
+        with tempfile.TemporaryDirectory() as d:
+            outside = os.path.join(d, "real-pyproject.toml")
+            with open(outside, "w", encoding="utf-8") as fh:
+                fh.write("[tool.uv]\ndefault-groups = []\n")
+            link = os.path.join(d, "linked-pyproject.toml")
+            os.symlink(outside, link)
+            with self.assertRaises(module_manager.engine_write.EngineWriteRefused):
+                module_manager._maybe_rewrite_default_groups(["base"], pyproject_path=link)
+            # the same content at a PLAIN out-of-tree path is written fine (the injection seam survives)
+            self.assertTrue(module_manager._maybe_rewrite_default_groups(["base"], pyproject_path=outside))
+
+    def test_pyproject_rewrite_refuses_a_dangling_shortcut_at_the_real_slot(self):
+        # exists() FOLLOWS a link and reads a dangling shortcut as "absent" — the guard must run FIRST
+        # (the #862 ordering lesson), or the refusal silently degrades to a no-op while the result
+        # still claims a groups selection that was never written
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(os.path.join(live, ".engine"))
+            with module_manager._redirect_root(live):
+                os.symlink(os.path.join(d, "never-created.toml"),
+                           os.path.join(live, ".engine", "pyproject.toml"))
+                with self.assertRaises(module_manager.engine_write.EngineWriteRefused):
+                    module_manager._maybe_rewrite_default_groups(["base"])
+
+    def test_pyproject_rewrite_treats_an_empty_string_path_as_caller_supplied_never_the_real_slot(self):
+        # one discriminator for both the path and the guard base: an empty-string argument must NOT
+        # resolve to the real slot with a downgraded (leaf-only) guard — the reproduced bypass shape
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(os.path.join(live, ".engine"))
+            with open(os.path.join(live, ".engine", "pyproject.toml"), "w", encoding="utf-8") as fh:
+                fh.write("[tool.uv]\ndefault-groups = []\n")
+            with module_manager._redirect_root(live):
+                self.assertFalse(module_manager._maybe_rewrite_default_groups(["base"], pyproject_path=""),
+                                 "an empty-string path is a caller no-op, never a real-slot write")
+            with open(os.path.join(live, ".engine", "pyproject.toml"), encoding="utf-8") as fh:
+                self.assertNotIn("base", fh.read(), "the real slot was not written via the empty-string path")
+
+    def test_sync_groups_cli_reports_a_refusal_plainly(self):
+        # the standalone fixer CLI surfaces the refusal as a clean one-line stop, never the blanket
+        # CONFIG ERROR channel
+        saved = module_manager.sync_groups
+        module_manager.sync_groups = lambda *a, **k: (_ for _ in ()).throw(
+            module_manager.engine_write.EngineWriteRefused("a planted shortcut"))
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                code = module_manager.main(["sync-groups"])
+        finally:
+            module_manager.sync_groups = saved
+        self.assertEqual(code, 1)
+        self.assertIn("a planted shortcut", buf.getvalue())
+        self.assertIn("Nothing was changed", buf.getvalue())
+
+
 class TestMigrationsSchema(unittest.TestCase):
     """The tightened module.v1.json `migrations` shape: a well-formed entry passes, a malformed one fails
     the same schema the hard/CI module-manifest check enforces."""
@@ -985,6 +1519,27 @@ class TestUpgradeSafety(unittest.TestCase):
                 engine = module_manager.module_coherence.load_engine_manifest()
         self.assertEqual((engine or {}).get("home_repository"), "acme/engine-home")   # preserved
         self.assertEqual((engine or {}).get("packages", {}).get("base"), "0.2.0")     # but versions bumped
+
+    def test_upgrade_preserves_a_recorded_protection_posture(self):
+        # #809: an unsupported-platform posture is operator config (a top-level manifest key), so a version bump
+        # must carry it across unchanged — otherwise a retired plan-limited deployment (e.g. a private repo on a
+        # ruleset-less plan) would lose its accepted exception on upgrade and go permanently red again.
+        posture = {"status": "unsupported-platform", "reason": "plan can't host rulesets",
+                   "operator_login": "owner", "recorded_on": "2026-08-08"}
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                data = module_manager.module_coherence.load_engine_manifest()
+                data["protection_posture"] = posture                       # operator-recorded exception
+                module_manager._write_json(module_manager._engine_manifest_path(), data)
+                module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                       opener=lambda **k: {"number": 1}, backup=lambda *a, **k: {"ok": 1})
+                engine = module_manager.module_coherence.load_engine_manifest()
+        self.assertEqual((engine or {}).get("protection_posture"), posture)          # preserved verbatim
+        self.assertEqual((engine or {}).get("packages", {}).get("base"), "0.2.0")    # versions still bumped
 
     def test_upgrade_reasserts_the_foundation_gitignore_fence_and_keeps_operator_lines(self):
         # #409: the foundation fence is release-evolvable — an upgrade re-applies it (like the CODEOWNERS
@@ -1705,6 +2260,37 @@ class TestRemoveEngine(unittest.TestCase):
         self.assertEqual(len(prs), 1)
         self.assertIsNotNone(r["pr"])
 
+    def test_a_failed_opener_notes_the_engine_is_removed_on_disk_and_how_to_restore(self):
+        # #877 (folded in): when the removal PR opener fails, the engine files are already deleted from the
+        # working tree. The note must name that on-disk fact and give a WORKING, scoped way to undo — restoring
+        # `.engine` from the default branch (correct whether or not the removal was already committed) — never a
+        # blanket `git restore .` (a silent no-op once the deletion is committed, and it would discard unrelated
+        # work), and it must not contradict the opener's own finish-by-hand guidance.
+        _, transport, _, _ = self._fakes(True)
+
+        def failing_opener(branch, title, body):
+            # mimic the opener's real push-failure message (the committed case), which the note embeds via {exc}
+            raise RuntimeError(
+                f"preparing the pull-request branch failed at `git push -u origin {branch}`: fatal: "
+                f"Authentication failed — the branch '{branch}' was created and holds the committed changes "
+                f"from this attempt, so do not delete it. ... finish by pushing the branch ... gh pr create ...")
+        with tempfile.TemporaryDirectory() as d:
+            with module_manager._redirect_root(d):
+                self._fixture_with_github(d)
+                r = module_manager.remove_engine(opener=failing_opener, transport=transport,
+                                                 choice="keep", announce=lambda m: None)
+                engine_gone = not os.path.isdir(os.path.join(d, ".engine"))
+        self.assertIsNone(r["pr"])                            # the pull request was not opened
+        self.assertTrue(engine_gone)                          # the on-disk premise holds: .engine is deleted
+        note = next(n for n in r["notes"]
+                    if "removal is staged but the pull request could not be opened" in n)
+        self.assertIn("already removed the engine files", note)   # names the removal-specific on-disk fact
+        self.assertIn("preserved in git", note)                   # reassures: nothing is lost
+        self.assertIn("pre-removal state", note)                  # points at the recovery target
+        self.assertIn("branch guidance above", note)              # defers finishing to the opener — no contradiction
+        self.assertNotIn("git restore .", note)                   # no single command prescribed (it is case-dependent)
+        self.assertNotIn("git checkout", note)                    # ...so none can be wrong for the sub-case that hit
+
     def test_github_member_is_in_the_delete_set_unlike_per_module_remove(self):
         # whole-engine removal deletes the .github/ foundation files + root CLAUDE.md too — these are
         # foundation infra, NOT any module's `provides`, so per-module remove() (which deletes only the
@@ -2068,6 +2654,191 @@ class TestUpgradeReconcile(unittest.TestCase):
         # GATE PASSED -> a review pull request was opened
         self.assertTrue(res.get("pr"), f"the reconcile did not open a pull request: {res.get('reason')}")
         self.assertEqual(len(opened), 1)
+
+    @staticmethod
+    def _write_file(root, rel, txt):
+        p = os.path.join(root, *rel.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(txt)
+
+    @staticmethod
+    def _add_provides(root, group, rel):
+        """Declare `rel` under a `provides` group of the fixture's base manifest, so the overlay/reconcile
+        treat it as engine-owned surface (the precondition that gives a PRESERVE_DATA test real bite — a file
+        in no `provides` would never be touched, a vacuous green)."""
+        man_p = os.path.join(root, ".engine", "modules", "base", "manifest.json")
+        with open(man_p, encoding="utf-8") as fh:
+            man = json.load(fh)
+        man.setdefault("provides", {}).setdefault(group, [])
+        if rel not in man["provides"][group]:
+            man["provides"][group].append(rel)
+        with open(man_p, "w", encoding="utf-8") as fh:
+            json.dump(man, fh)
+
+    def test_a_fixture_the_release_dropped_is_retired_while_live_and_untracked_survive(self):
+        # #699 residual: the delete leg must retire a COMMITTED fixture the release NO LONGER ships (a
+        # superseded not-applicable.json that lingered and reddened engine-ci), while sparing a fixture the
+        # release still ships and NEVER deleting an untracked operator file (not git-restorable — recoverability).
+        stale = ".engine/_fixtures/superseded/not-applicable.json"    # release does not ship this
+        kept = ".engine/_fixtures/probe/bad_input.md"                 # the release DOES ship this
+        untracked = ".engine/_fixtures/superseded/operator_scratch.json"
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._write_file(live, stale, "{}\n")
+                self._write_file(live, kept, "old fixture body\n")
+                # Make the live tree a git repo so the reconcile can tell a TRACKED engine fixture from an
+                # untracked operator file — the whole basis of the recoverability guard.
+                _git(live, "init", "-q")
+                _git(live, "config", "user.email", "t@t")
+                _git(live, "config", "user.name", "t")
+                _git(live, "add", "-A")
+                _git(live, "commit", "-qm", "seed")
+                self._write_file(live, untracked, "{}\n")             # added AFTER the commit -> untracked
+                res = module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                             opener=lambda **k: {"number": 7},
+                                             backup=lambda *a, **k: {"ok": 1})
+
+                def _exists(rel):
+                    return os.path.exists(os.path.join(live, *rel.split("/")))
+                self.assertFalse(_exists(stale), "a superseded fixture the release dropped survived the upgrade")
+                self.assertTrue(_exists(kept), "a fixture the release still ships was wrongly removed")
+                self.assertTrue(_exists(untracked),
+                                "an untracked operator fixture was deleted — it is not git-restorable")
+        self.assertIn(stale, res["orphans_removed"]["engine"])
+
+    def test_a_bound_operator_data_file_is_preserved_across_an_upgrade(self):
+        # #814: a committed per-deployment DATA file declared in `provides` (the backup pointer's bound
+        # namespace) must NOT be overwritten by the release placeholder — the confirmed silent-loss case.
+        ptr = ".engine/memory-backup/pointer.json"                   # the exact PRESERVE_DATA member
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_provides(live, "backup", ptr)
+                self._add_provides(release, "backup", ptr)
+                self._write_file(live, ptr, '{"configured": true, "namespace": "deadbeef-bound"}\n')
+                self._write_file(release, ptr, '{"configured": false}\n')   # release ships only the placeholder
+                module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                       opener=lambda **k: {"number": 7}, backup=lambda *a, **k: {"ok": 1})
+                with open(os.path.join(live, *ptr.split("/")), encoding="utf-8") as fh:
+                    kept = fh.read()
+        self.assertIn("deadbeef-bound", kept)          # the operator's bound namespace survived
+        self.assertIn('"configured": true', kept)      # not reverted to the release placeholder
+
+    def test_a_preserved_data_file_is_delivered_when_absent(self):
+        # create-if-absent: a fresh tree LACKING the preserved file still receives the release placeholder,
+        # so a first delivery is never suppressed by the preserve carve-out.
+        ptr = ".engine/memory-backup/pointer.json"
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_provides(live, "backup", ptr)
+                self._add_provides(release, "backup", ptr)
+                self._write_file(release, ptr, '{"configured": false}\n')
+                self.assertFalse(os.path.exists(os.path.join(live, *ptr.split("/"))))   # absent to start
+                module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                       opener=lambda **k: {"number": 7}, backup=lambda *a, **k: {"ok": 1})
+                self.assertTrue(os.path.exists(os.path.join(live, *ptr.split("/"))),
+                                "the release placeholder was not delivered to a fresh tree (create-if-absent)")
+
+    def test_overlay_replace_paths_excludes_a_present_preserved_file(self):
+        # Guards the `- _preserved_present()` subtraction in overlay_replace_paths (the disclosure's overwrite
+        # set): a present PRESERVE_DATA file must drop out, or the merge-time notice would cry wolf on bound
+        # data the update actually keeps. The mocked disclosure-register tests can't see this subtraction.
+        ptr = ".engine/memory-backup/pointer.json"
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_provides(live, "backup", ptr)
+                self._write_file(live, ptr, '{"configured": true, "namespace": "bound"}\n')
+                paths = module_manager.overlay_replace_paths()
+                self.assertNotIn(ptr, paths)                          # present preserved -> not overwritten
+                self.assertIn(".engine/tools/base_tool.py", paths)    # a normal provides file still IS in the set
+
+    def test_plan_upgrade_preview_omits_a_preserved_file_from_replaced(self):
+        # Guards the plan_upgrade preserved-subtraction: apply preserves a present pointer, so the PREVIEW must
+        # not list it as 'replaced' (that would be plan/apply drift — the preview lying about what apply does).
+        ptr = ".engine/memory-backup/pointer.json"
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_provides(live, "backup", ptr)
+                self._add_provides(release, "backup", ptr)
+                self._write_file(live, ptr, '{"configured": true}\n')
+                self._write_file(release, ptr, '{"configured": false}\n')
+                preview = module_manager.plan_upgrade(ref="v0.2.0", release_tree=release)
+        self.assertIn("files", preview, f"the preview refused: {preview.get('reason')}")
+        self.assertNotIn(ptr, preview["files"]["replaced"])           # apply keeps it -> preview must not say replaced
+        self.assertNotIn(ptr, preview["files"]["added"])
+
+    def test_regen_indexes_refreshes_the_product_spec_matrix_from_docs_spec(self):
+        # #814: product-spec-matrix.json is REGENERATED post-overlay (not preserved). Drive _regen_indexes with
+        # a settled docs/spec and a STALE committed matrix; assert it is rebuilt from the deployment's own
+        # docs/spec — the guarded, optional-module regenerate path the upgrade fixtures otherwise never carry.
+        # That regenerate path is `product_design.obligation_matrix`, provided by the OPTIONAL product-design
+        # module: `_regen_indexes` imports it lazily and skips (matrix stays empty) when it is absent. In a
+        # deployment that DECLINED product-design (the deployment gate's add-on-declined projection) there is no
+        # generator, so this leg cannot run — skip it there rather than assert a matrix nothing regenerates.
+        if "product-design" not in _installed_module_ids():
+            self.skipTest("the product-spec-matrix regenerate path is provided by the declined product-design "
+                          "module")
+        cap = ("---\nstatus: locked\n---\n\n# A capability\n\n## Summary\nWhat.\n\n## Behavior\nHow.\n\n"
+               "## Acceptance criteria\n\n| Criterion | How verified | Who checks it |\n"
+               "| --- | --- | --- |\n| It works end to end | a behavioral demo | operator |\n")
+        with tempfile.TemporaryDirectory() as d:
+            with module_manager._redirect_root(d):
+                self._write_file(d, "docs/spec/index.md",
+                                 "# Product spec\n\n| Capability | Status | Doc |\n| --- | --- | --- |\n"
+                                 "| A | settled | [A](a.md) |\n")
+                self._write_file(d, "docs/spec/a.md", cap)
+                # a STALE committed matrix (empty rows) the update must refresh
+                self._write_file(d, ".engine/product-spec-matrix.json",
+                                 '{"schema_version": 1, "source": "docs/spec", "rows": []}\n')
+                module_manager._regen_indexes()
+                with open(os.path.join(d, ".engine", "product-spec-matrix.json"), encoding="utf-8") as fh:
+                    regenerated = json.load(fh)
+        self.assertTrue(regenerated["rows"], "the product-spec-matrix was not regenerated from docs/spec")
+        self.assertEqual(regenerated["rows"][0]["who"], "operator")
+
+    def test_regen_indexes_refuses_to_regenerate_through_a_symlinked_index(self):
+        # #862: os.path.isfile FOLLOWS a symlink, so a live symlink at an engine index would be regenerated
+        # THROUGH it — an out-of-tree write. _regen_indexes must skip it, leaving the out-of-tree target
+        # untouched. Uses the product-spec-matrix path (a settled docs/spec makes the generator SUCCEED, so the
+        # test genuinely bites: without the guard the outside file IS overwritten). This is the guarded path for
+        # the floored obligation_matrix writer, reached without editing it.
+        cap = ("---\nstatus: locked\n---\n\n# A capability\n\n## Summary\nWhat.\n\n## Behavior\nHow.\n\n"
+               "## Acceptance criteria\n\n| Criterion | How verified | Who checks it |\n"
+               "| --- | --- | --- |\n| It works end to end | a behavioral demo | operator |\n")
+        with tempfile.TemporaryDirectory() as d:
+            outside = os.path.join(d, "outside-matrix.json")
+            with open(outside, "w", encoding="utf-8") as fh:
+                fh.write('{"schema_version": 1, "source": "docs/spec", "rows": ["ORIGINAL"]}\n')
+            with module_manager._redirect_root(d):
+                self._write_file(d, "docs/spec/index.md",
+                                 "# Product spec\n\n| Capability | Status | Doc |\n| --- | --- | --- |\n"
+                                 "| A | settled | [A](a.md) |\n")
+                self._write_file(d, "docs/spec/a.md", cap)
+                os.makedirs(os.path.join(d, ".engine"), exist_ok=True)
+                os.symlink(outside, os.path.join(d, ".engine", "product-spec-matrix.json"))
+                module_manager._regen_indexes()
+            with open(outside, encoding="utf-8") as fh:
+                self.assertIn("ORIGINAL", fh.read(),
+                              "a symlinked engine index must not be regenerated through the link, out of the tree")
 
     def test_refuses_cleanly_on_a_hard_consistency_finding_without_opening(self):
         # An .engine file no module claims makes check_coherence hard-flag; the gate must refuse in plain
@@ -2750,46 +3521,210 @@ class TestOpenUpgradePrDiagnostics(unittest.TestCase):
         out = self._run(ok)
         self.assertEqual(out["number"], 7)
 
-    def test_a_git_step_failure_says_the_branch_is_NOT_pushed(self):
-        # The failure-before-the-POST case (e.g. `checkout -b` colliding with a leftover branch): the recovery is
-        # the OPPOSITE of the POST case — the branch is not pushed, so re-running after clearing the collision is
-        # the fix, NOT opening a PR from a branch that isn't there. git's own stderr is surfaced.
+    def test_a_checkout_collision_never_dead_ends_or_force_deletes(self):
+        # #877: `checkout -b` colliding with a leftover branch from an earlier attempt. That branch may hold
+        # committed, non-re-derivable work and the operator is usually standing on it, so the recovery must NOT
+        # steer them to delete it: no `git branch -D` (force), no dead-end. The opener tells a collision from
+        # other checkout failures with a read-only `git rev-parse --verify refs/heads/<branch>` probe — faked
+        # here to report the branch EXISTS.
         import subprocess
         from unittest import mock
 
-        def boom(args, **kw):
-            raise subprocess.CalledProcessError(128, args,
-                                                stderr=b"fatal: a branch named 'engine-arrival' already exists\n")
-        with mock.patch("subprocess.run", side_effect=boom), \
+        def fake(args, **kw):
+            if args[:2] == ["git", "checkout"]:
+                raise subprocess.CalledProcessError(
+                    128, args, stderr=b"fatal: a branch named 'engine-arrival' already exists\n")
+            if args[:3] == ["git", "rev-parse", "--verify"]:
+                return subprocess.CompletedProcess(args, 0)   # the branch EXISTS -> a collision
+            return None                                       # anything else (e.g. base resolution) is benign
+        with mock.patch("subprocess.run", side_effect=fake), \
              mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
             with self.assertRaises(RuntimeError) as ctx:
                 module_manager._open_upgrade_pr(branch="engine-arrival", title="t", body="b",
                                                 repo="acme/widget", token="secret-token-xyz")
         msg = str(ctx.exception)
-        self.assertIn("was not created", msg)                 # the CREATE step failed → no branch yet
         self.assertIn("already exists", msg)                  # surfaces git's real stderr
-        self.assertIn("git branch -D engine-arrival", msg)    # delete is safe ONLY for the checkout collision
-        self.assertNotIn("was pushed but", msg)               # never the POST-case "branch was pushed" claim
+        self.assertNotIn("git branch -D", msg)                # NEVER force-delete: that would discard the work
+        self.assertIn("git branch -d", msg)                   # only the safe lowercase form (git refuses unmerged)
+        self.assertIn("switch off it", msg)                   # delete only after moving OFF the branch — no dead-end
+        self.assertIn("git switch ", msg)                     # resume/switch-off path, not a standing-on-it delete
+        self.assertIn("gh pr create", msg)                    # a real finish-by-hand recovery
+        self.assertNotIn("was pushed", msg)                   # pre-push failure: never the "branch was pushed" claim
         self.assertNotIn("secret-token-xyz", msg)
+
+    def test_a_non_collision_checkout_failure_advises_no_delete(self):
+        # #877: a checkout failure that is NOT a name collision (the probe reports the branch is absent). No
+        # branch was created and nothing changed, so the recovery is simply fix-and-re-run — never delete advice.
+        import subprocess
+        from unittest import mock
+
+        def fake(args, **kw):
+            if args[:2] == ["git", "checkout"]:
+                raise subprocess.CalledProcessError(1, args, stderr=b"fatal: unable to update HEAD\n")
+            if args[:3] == ["git", "rev-parse", "--verify"]:
+                return subprocess.CompletedProcess(args, 1)   # branch ABSENT -> not a collision
+            return None
+        with mock.patch("subprocess.run", side_effect=fake), \
+             mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
+            with self.assertRaises(RuntimeError) as ctx:
+                module_manager._open_upgrade_pr(branch="engine-arrival", title="t", body="b",
+                                                repo="acme/widget", token="secret-token-xyz")
+        msg = str(ctx.exception)
+        self.assertIn("no branch was created", msg)           # honest: this run created nothing
+        self.assertIn("run this again", msg)                  # the recovery is just fix-and-re-run
+        self.assertNotIn("git branch -d", msg)                # nothing exists to delete
+        self.assertNotIn("git branch -D", msg)
+        self.assertNotIn("was pushed", msg)
+        self.assertNotIn("secret-token-xyz", msg)
+
+    def test_nothing_to_commit_is_reported_from_stdout_not_as_opaque_exit_1(self):
+        # #877: a no-op `git commit` writes "nothing to commit" to STDOUT (not stderr) and exits 1. The opener
+        # must surface that reason (read stdout) and give the caller-neutral no-change recovery — never the wrong
+        # "holds the committed changes, push it". Faked: commit fails with the reason on stdout, and the
+        # staged-diff probe reports nothing staged.
+        import subprocess
+        from unittest import mock
+
+        def fake(args, **kw):
+            if args[:2] == ["git", "commit"]:
+                raise subprocess.CalledProcessError(
+                    1, args, output=b"nothing to commit, working tree clean\n", stderr=b"")
+            if args[:3] == ["git", "diff", "--cached"]:
+                return subprocess.CompletedProcess(args, 0)   # nothing staged
+            return None                                       # checkout, add succeed
+        with mock.patch("subprocess.run", side_effect=fake), \
+             mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
+            with self.assertRaises(RuntimeError) as ctx:
+                module_manager._open_upgrade_pr(branch="engine-update-v2", title="t", body="b",
+                                                repo="acme/widget", token="secret-token-xyz")
+        msg = str(ctx.exception)
+        self.assertIn("nothing to commit", msg.lower())       # the reason, read from STDOUT
+        self.assertIn("working tree already matches", msg)    # the caller-neutral no-change recovery
+        self.assertNotIn("holds the committed changes", msg)  # NOT the wrong "push it" advice
+        self.assertNotIn("(exit 1)", msg)                     # never the opaque bare exit
+        self.assertNotIn("git branch", msg)                   # nothing to delete
+        self.assertNotIn("failed", msg.lower())               # a benign no-op is not framed as a failure
+        self.assertNotIn("secret-token-xyz", msg)
+
+    def test_an_add_failure_says_nothing_was_committed_not_holds_changes(self):
+        # #877: `git add -A` fails → the branch was created but nothing was staged or committed. The message
+        # must NOT claim it holds committed changes or advise pushing (that would open an empty PR).
+        import subprocess
+        from unittest import mock
+
+        def fake(args, **kw):
+            if args[:2] == ["git", "add"]:
+                raise subprocess.CalledProcessError(1, args, stderr=b"fatal: unable to index file\n")
+            return None                                       # checkout succeeds; nothing later is reached
+        with mock.patch("subprocess.run", side_effect=fake), \
+             mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
+            with self.assertRaises(RuntimeError) as ctx:
+                module_manager._open_upgrade_pr(branch="engine-update-v2", title="t", body="b",
+                                                repo="acme/widget", token="secret-token-xyz")
+        msg = str(ctx.exception)
+        self.assertIn("nothing was committed", msg)           # honest: no commit exists
+        self.assertNotIn("holds the committed changes", msg)  # NOT the false "push it" claim
+        self.assertNotIn("git push -u", msg)                  # never advise pushing an empty branch
+        self.assertNotIn("secret-token-xyz", msg)
+
+    def test_a_commit_failure_with_staged_changes_is_not_called_committed(self):
+        # #877: `git commit` fails for a reason OTHER than an empty index (a rejecting hook, no git identity,
+        # GPG) while something IS staged → the branch exists but nothing was committed. Must NOT claim it holds
+        # committed changes. Faked: checkout/add succeed, commit raises, and the staged-diff probe reports STAGED.
+        import subprocess
+        from unittest import mock
+
+        def fake(args, **kw):
+            if args[:2] == ["git", "commit"]:
+                raise subprocess.CalledProcessError(1, args, stderr=b"error: commit-msg hook rejected\n")
+            if args[:3] == ["git", "diff", "--cached"]:
+                return subprocess.CompletedProcess(args, 1)   # something IS staged (not the nothing-to-commit case)
+            return None                                       # checkout, add succeed
+        with mock.patch("subprocess.run", side_effect=fake), \
+             mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
+            with self.assertRaises(RuntimeError) as ctx:
+                module_manager._open_upgrade_pr(branch="engine-update-v2", title="t", body="b",
+                                                repo="acme/widget", token="secret-token-xyz")
+        msg = str(ctx.exception)
+        self.assertIn("staged", msg)                          # names the true state
+        self.assertIn("nothing was committed", msg)           # not committed
+        self.assertIn("commit-msg hook rejected", msg)        # surfaces git's real reason
+        self.assertNotIn("holds the committed changes", msg)  # NOT the false claim
+        self.assertNotIn("git push -u", msg)                  # never advise pushing an empty branch
+        self.assertNotIn("secret-token-xyz", msg)
+
+    def test_a_checkout_failure_with_an_unrunnable_probe_fails_safe_to_no_delete(self):
+        # #877: if the collision probe itself cannot run, fail SAFE — assume the branch may hold work (never a
+        # delete) and say the state could not be confirmed rather than asserting the branch exists as fact.
+        import subprocess
+        from unittest import mock
+
+        def fake(args, **kw):
+            if args[:2] == ["git", "checkout"]:
+                raise subprocess.CalledProcessError(128, args, stderr=b"fatal: could not create branch\n")
+            if args[:3] == ["git", "rev-parse", "--verify"]:
+                raise OSError("git not found")                # the probe itself cannot run
+            return None
+        with mock.patch("subprocess.run", side_effect=fake), \
+             mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
+            with self.assertRaises(RuntimeError) as ctx:
+                module_manager._open_upgrade_pr(branch="engine-arrival", title="t", body="b",
+                                                repo="acme/widget", token="secret-token-xyz")
+        msg = str(ctx.exception)
+        self.assertIn("could not run", msg)                   # hedged: the collision state was not confirmed
+        self.assertNotIn("git branch -D", msg)                # still never force-delete
+        self.assertIn("git branch -d", msg)                   # the safe form remains the only delete offered
+        self.assertNotIn("secret-token-xyz", msg)
+
+    def test_a_git_error_with_an_embedded_credential_is_redacted(self):
+        # #877 review: git writes the remote URL into push errors, and an HTTPS remote can embed a token in its
+        # userinfo. The surfaced message must redact the credential (host and reason preserved for diagnosis).
+        import subprocess
+        from unittest import mock
+
+        def fake(args, **kw):
+            if "push" in args:
+                raise subprocess.CalledProcessError(
+                    128, args,
+                    stderr=b"fatal: unable to access "
+                           b"'https://x-access-token:ghs_SECRETTOKEN@github.com/acme/widget.git/': 403\n")
+            return None                                       # checkout/add/commit succeed
+        with mock.patch("subprocess.run", side_effect=fake), \
+             mock.patch("time.sleep"), \
+             mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
+            with self.assertRaises(RuntimeError) as ctx:
+                module_manager._open_upgrade_pr(branch="engine-arrival", title="t", body="b",
+                                                repo="acme/widget", token="secret-token-xyz")
+        msg = str(ctx.exception)
+        self.assertNotIn("ghs_SECRETTOKEN", msg)              # the embedded git credential is redacted
+        self.assertIn("***@github.com", msg)                  # ...the host survives
+        self.assertIn("github.com/acme/widget", msg)          # ...and the useful part of git's reason remains
+        self.assertNotIn("secret-token-xyz", msg)             # the API token still never leaks
 
     def test_a_push_failure_does_NOT_tell_the_operator_to_delete_the_branch(self):
         # The far more likely git failure (auth/network/branch-protection at `git push`): checkout/add/commit
         # already succeeded, so the branch holds the arrival's committed work. The recovery must NOT say
         # `git branch -D` (that would discard the work) — it must say the branch was created, keep it, and finish
-        # by hand.
+        # by hand. #704: the push is now bounded-retried, so a PERSISTENT failure exhausts the bound and then
+        # raises the SAME phase-aware #672 message, byte-for-byte (checked below); time.sleep is faked so the
+        # suite never actually waits.
         import subprocess
         from unittest import mock
+        pushes = {"n": 0}
 
         def fail_on_push(args, **kw):
             if "push" in args:
+                pushes["n"] += 1
                 raise subprocess.CalledProcessError(1, args, stderr=b"fatal: Authentication failed\n")
             return None                                        # checkout/add/commit succeed
         with mock.patch("subprocess.run", side_effect=fail_on_push), \
+             mock.patch("time.sleep"), \
              mock.patch("urllib.request.urlopen", side_effect=AssertionError("POST must not be reached")):
             with self.assertRaises(RuntimeError) as ctx:
                 module_manager._open_upgrade_pr(branch="engine-arrival", title="t", body="b",
                                                 repo="acme/widget", token="secret-token-xyz")
         msg = str(ctx.exception)
+        self.assertEqual(pushes["n"], module_manager._ORIGIN_RETRY_ATTEMPTS)  # the push was bounded-retried
         self.assertIn("git push", msg)                        # names the failed step
         self.assertIn("Authentication failed", msg)           # surfaces git's real stderr
         self.assertIn("was created", msg)                     # tells the operator the branch exists
@@ -2797,6 +3732,36 @@ class TestOpenUpgradePrDiagnostics(unittest.TestCase):
         self.assertNotIn("git branch -D", msg)                # the destructive advice is absent for a push failure
         self.assertIn("gh pr create", msg)                    # the finish-by-hand recovery
         self.assertNotIn("secret-token-xyz", msg)
+
+    def test_a_transient_push_failure_is_retried_and_the_pull_request_opens(self):
+        # #704: a transient missing-origin on the push (a shared-config blip) self-heals on retry — the branch
+        # opens its pull request instead of hard-stopping the operator mid-upgrade. checkout/add/commit run
+        # once each and are NOT retried.
+        import subprocess
+        from unittest import mock
+        seen = {"push": 0, "checkout": 0}
+
+        def flaky(args, **kw):
+            if "push" in args:
+                seen["push"] += 1
+                if seen["push"] < 2:                          # fail once (the blip), then self-heal
+                    raise subprocess.CalledProcessError(1, args, stderr=b"fatal: could not read from remote\n")
+            if "checkout" in args:
+                seen["checkout"] += 1
+            return None
+        resp = mock.MagicMock()
+        resp.read.return_value = json.dumps({"number": 11}).encode()
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = False
+        with mock.patch("subprocess.run", side_effect=flaky), \
+             mock.patch("time.sleep") as slept, \
+             mock.patch("urllib.request.urlopen", side_effect=lambda req, timeout=None: resp):
+            out = module_manager._open_upgrade_pr(branch="engine-arrival", title="t", body="b",
+                                                  repo="acme/widget", token="secret-token-xyz")
+        self.assertEqual(out["number"], 11)                   # recovered -> the pull request opened
+        self.assertEqual(seen["push"], 2)                     # one retry
+        self.assertEqual(seen["checkout"], 1)                 # checkout is NOT retried
+        slept.assert_called_once()
 
     def test_github_error_detail_ignores_a_non_list_errors_field(self):
         # The helper must NEVER raise (it explains an HTTP failure); a malformed `errors` that is not a list must
@@ -2837,6 +3802,488 @@ class TestOpenUpgradePrDiagnostics(unittest.TestCase):
         import urllib.error
         exc = urllib.error.HTTPError("u", 500, "Server Error", {}, None)   # fp=None -> a read would raise
         self.assertEqual(module_manager._github_error_detail(exc), "")
+
+
+class TestSelectRemovedCapabilities(unittest.TestCase):
+    """#688: the pure selector for whole-module removal announcements — driven off the dropped set, text from
+    the release's own removed_capabilities record."""
+
+    def test_announces_each_dropped_id_from_the_release_record(self):
+        rel = {"packages": {"base": "0.2.0"},
+               "removed_capabilities": {"legacy": {"description": "ask X; now Y", "removed_in": "0.2.0"}}}
+        self.assertEqual(module_manager.select_removed_capabilities(["legacy"], rel),
+                         [{"module_id": "legacy", "description": "ask X; now Y", "removed_in": "0.2.0"}])
+
+    def test_empty_when_nothing_dropped(self):
+        rel = {"removed_capabilities": {"legacy": {"description": "d"}}}
+        self.assertEqual(module_manager.select_removed_capabilities([], rel), [])
+
+    def test_is_single_homed_off_dropped_ids_not_the_record(self):
+        # a record entry whose module is NOT in the dropped set is never announced — the disclosure is driven off
+        # the reconcile set, so a module can never be reconciled-away-and-not-announced (or vice versa).
+        rel = {"removed_capabilities": {"legacy": {"description": "d"}, "other": {"description": "e"}}}
+        out = module_manager.select_removed_capabilities(["legacy"], rel)
+        self.assertEqual([o["module_id"] for o in out], ["legacy"])
+
+    def test_sorted_and_tolerant_of_a_pre_feature_release(self):
+        out = module_manager.select_removed_capabilities(["b", "a"], {})   # no removed_capabilities key at all
+        self.assertEqual([o["module_id"] for o in out], ["a", "b"])        # sorted; no KeyError
+        self.assertIsNone(out[0]["description"])
+
+
+class TestUpgradeReconcileDrop(unittest.TestCase):
+    """#688: a release that drops a WHOLE module is a reconcilable, disclosed upgrade outcome — the module is
+    retired (its files + manifest folder removed, wiring reversed, package pruned) and the loss is announced in
+    plain language — rather than the update hard-refusing. An UNRECORDED drop still refuses; an untracked file a
+    dropped module owns is left in place (recoverability)."""
+
+    _DESC = "You could ask the engine to run the extra helper before; now use the base tool instead."
+
+    @staticmethod
+    def _add_extra_module(live, with_data=False):
+        eng = os.path.join(live, ".engine")
+        os.makedirs(os.path.join(eng, "modules", "extra"))
+        provides = {"tool": [".engine/tools/extra_tool.py"]}
+        if with_data:
+            provides["data"] = [".engine/extra/data.json"]
+        module_manager._write_json(os.path.join(eng, "modules", "extra", "manifest.json"),
+                                    {"id": "extra", "version": "0.0.0", "status": "optional",
+                                     "provides": provides, "depends": {}, "migrations": {},
+                                     "wires": [{"type": "gitignore", "key": "extracache",
+                                                "lines": [".engine/extra/.cache/"]}]})
+        with open(os.path.join(eng, "tools", "extra_tool.py"), "w", encoding="utf-8") as fh:
+            fh.write("# extra v0\n")
+        ep = os.path.join(eng, "engine.json")
+        e = validate.load_json(ep)
+        e["packages"]["extra"] = "0.0.0"
+        module_manager._write_json(ep, e)
+        module_manager.wiring.apply_all([{"type": "gitignore", "key": "extracache",
+                                          "lines": [".engine/extra/.cache/"]}])
+
+    @staticmethod
+    def _release_drops_extra(release, record=True):
+        eng = {"engine_release": "0.2.0", "packages": {"base": "0.2.0"}, "identity": "solo",
+               "home_repository": "acme/engine-home"}
+        if record:
+            eng["removed_capabilities"] = {"extra": {"description": TestUpgradeReconcileDrop._DESC}}
+        module_manager._write_json(os.path.join(release, ".engine", "engine.json"), eng)
+
+    def _run(self, record=True, with_data=False, untracked_data=False, untracked_in_dir=False):
+        opened = []
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            self._release_drops_extra(release, record=record)
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_extra_module(live, with_data=with_data)
+                _git(live, "init", "-q")
+                _git(live, "config", "user.email", "t@t")
+                _git(live, "config", "user.name", "t")
+                _git(live, "add", "-A")
+                _git(live, "commit", "-qm", "seed")
+                if untracked_data:   # a file extra owns, added AFTER the commit -> untracked -> not deletable
+                    self._write_file(live, ".engine/extra/data.json", "operator data\n")
+                if untracked_in_dir:   # an untracked stray INSIDE the module's own manifest folder
+                    self._write_file(live, ".engine/modules/extra/scratch.txt", "operator scratch\n")
+                res = module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                             opener=lambda **k: opened.append(k) or {"number": 7},
+                                             backup=lambda *a, **k: {"ok": 1})
+                snap = {
+                    "extra_dir": os.path.isdir(os.path.join(live, ".engine", "modules", "extra")),
+                    "extra_manifest": os.path.exists(
+                        os.path.join(live, ".engine", "modules", "extra", "manifest.json")),
+                    "extra_scratch": os.path.exists(
+                        os.path.join(live, ".engine", "modules", "extra", "scratch.txt")),
+                    "extra_tool": os.path.exists(os.path.join(live, ".engine", "tools", "extra_tool.py")),
+                    "extra_data": os.path.exists(os.path.join(live, ".engine", "extra", "data.json")),
+                    "packages": validate.load_json(os.path.join(live, ".engine", "engine.json")).get("packages"),
+                    "gitignore": open(os.path.join(live, ".gitignore"), encoding="utf-8").read(),
+                }
+                body = (module_manager.render_upgrade_pr_body(res.get("from"), res.get("to"), res)
+                        if res.get("applied") else "")
+        return res, snap, body, opened
+
+    @staticmethod
+    def _write_file(root, rel, txt):
+        p = os.path.join(root, *rel.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(txt)
+
+    def test_a_recorded_drop_reconciles_and_announces(self):
+        res, snap, body, opened = self._run(record=True)
+        self.assertTrue(res.get("applied"), f"the drop-upgrade did not apply: {res.get('reason')}")
+        self.assertTrue(res.get("pr") and opened, "no review pull request was opened")
+        # RECONCILED: files gone, manifest folder gone, package pruned, wiring reversed
+        self.assertFalse(snap["extra_dir"], "the dropped module's manifest folder was not removed (zombie)")
+        self.assertFalse(snap["extra_tool"], "the dropped module's owned file was not removed")
+        self.assertNotIn("extra", snap["packages"], "the dropped module was not pruned from engine.json packages")
+        self.assertNotIn(".engine/extra/.cache/", snap["gitignore"], "the dropped module's wire was not reversed")
+        self.assertIn(".engine/modules/extra/", res["orphans_removed"]["engine"])
+        # ANNOUNCED: the plain-language line rides the result and renders in the PR body, beside the file list
+        self.assertTrue(any(r["module_id"] == "extra" and r["description"] == self._DESC
+                            for r in res["removed_capabilities"]))
+        self.assertIn(self._DESC, body)
+        self.assertIn("things you could ask for before and no longer can", body)
+
+    def test_an_unrecorded_drop_still_refuses(self):
+        res, snap, _body, opened = self._run(record=False)
+        self.assertTrue(res.get("refused"), "a drop with no removal notice must refuse, not silently reconcile")
+        self.assertIn("does not contain the installed module 'extra'", res.get("reason", ""))
+        self.assertTrue(snap["extra_tool"], "nothing must be applied on a refused drop")
+        self.assertFalse(opened, "no pull request on a refused drop")
+
+    def test_an_untracked_file_a_dropped_module_owns_is_left_in_place(self):
+        res, snap, _body, _opened = self._run(record=True, with_data=True, untracked_data=True)
+        self.assertTrue(res.get("applied"), f"the drop-upgrade did not apply: {res.get('reason')}")
+        self.assertTrue(snap["extra_data"], "an untracked file a dropped module owns must NOT be deleted")
+        self.assertTrue(any(".engine/extra/data.json" in x for x in res["orphans_removed"]["left_in_place"]))
+
+    def test_an_untracked_file_inside_the_manifest_folder_is_left_in_place(self):
+        # a whole-`rmtree` of .engine/modules/extra/ would silently take an untracked co-located file the undo
+        # can't restore — the manifest-folder retire must leave it, like the file leg does, while still
+        # de-registering the module (its tracked manifest.json IS removed).
+        res, snap, _body, _opened = self._run(record=True, untracked_in_dir=True)
+        self.assertTrue(res.get("applied"), f"the drop-upgrade did not apply: {res.get('reason')}")
+        self.assertTrue(snap["extra_scratch"], "an untracked file inside the manifest folder must NOT be deleted")
+        self.assertFalse(snap["extra_manifest"], "the tracked manifest must be removed (the module de-registers)")
+        self.assertTrue(any("scratch.txt" in x for x in res["orphans_removed"]["left_in_place"]))
+
+    def test_the_preview_discloses_the_drop_without_applying(self):
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            self._release_drops_extra(release, record=True)
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_extra_module(live)
+                out = module_manager.plan_upgrade(release_tree=release, target_ref="v0.2.0")
+                still_there = os.path.exists(os.path.join(live, ".engine", "tools", "extra_tool.py"))
+        self.assertFalse(out.get("refused"), f"preview refused a recorded drop: {out.get('reason')}")
+        self.assertTrue(any(r["module_id"] == "extra" for r in out["removed_capabilities"]))
+        self.assertTrue(still_there, "the preview must not delete anything")
+
+    def test_the_preview_refuses_an_unrecorded_drop(self):
+        # the preview must refuse an UNRECORDED drop exactly as the apply does (a broken/incomplete release) —
+        # the third refusal site the design requires (upgrade, overlay, AND preview).
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            self._release_drops_extra(release, record=False)   # drops extra WITHOUT a removal record
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_extra_module(live)
+                out = module_manager.plan_upgrade(release_tree=release, target_ref="v0.2.0")
+        self.assertTrue(out.get("refused"), "the preview must refuse an unrecorded drop")
+        self.assertEqual(out.get("status"), "missing-module")
+        self.assertIn("does not contain the installed module 'extra'", out.get("reason", ""))
+
+    def test_two_dropped_modules_are_both_reconciled_and_announced(self):
+        # the accumulated 'lagging upgrader' case: a release drops TWO whole modules at once — both must
+        # reconcile and both must be announced (the loops are keyed off the multi-id dropped set).
+        opened = []
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, "live")
+            os.makedirs(live)
+            release = module_manager._build_upgrade_release(os.path.join(d, "release"))
+            # release engine.json: survivors = base only; drops extra AND extra2, each with its own notice
+            module_manager._write_json(
+                os.path.join(release, ".engine", "engine.json"),
+                {"engine_release": "0.2.0", "packages": {"base": "0.2.0"}, "identity": "solo",
+                 "home_repository": "acme/engine-home",
+                 "removed_capabilities": {"extra": {"description": self._DESC},
+                                          "extra2": {"description": "The second helper is gone; use base."}}})
+            with module_manager._redirect_root(live):
+                module_manager._build_upgrade_fixture(live)
+                self._add_extra_module(live)
+                # a second dropped module
+                eng = os.path.join(live, ".engine")
+                os.makedirs(os.path.join(eng, "modules", "extra2"))
+                module_manager._write_json(
+                    os.path.join(eng, "modules", "extra2", "manifest.json"),
+                    {"id": "extra2", "version": "0.0.0", "status": "optional",
+                     "provides": {"tool": [".engine/tools/extra2_tool.py"]}, "depends": {}, "migrations": {},
+                     "wires": []})
+                with open(os.path.join(eng, "tools", "extra2_tool.py"), "w", encoding="utf-8") as fh:
+                    fh.write("# extra2 v0\n")
+                ep = os.path.join(eng, "engine.json")
+                e = validate.load_json(ep)
+                e["packages"]["extra2"] = "0.0.0"
+                module_manager._write_json(ep, e)
+                _git(live, "init", "-q")
+                _git(live, "config", "user.email", "t@t")
+                _git(live, "config", "user.name", "t")
+                _git(live, "add", "-A")
+                _git(live, "commit", "-qm", "seed")
+                res = module_manager.upgrade(ref="v0.2.0", release_tree=release,
+                                             opener=lambda **k: opened.append(k) or {"number": 7},
+                                             backup=lambda *a, **k: {"ok": 1})
+                dirs_gone = (not os.path.isdir(os.path.join(eng, "modules", "extra"))
+                             and not os.path.isdir(os.path.join(eng, "modules", "extra2")))
+                pkgs = validate.load_json(ep).get("packages")
+        self.assertTrue(res.get("applied"), f"the two-drop upgrade did not apply: {res.get('reason')}")
+        self.assertTrue(dirs_gone, "both dropped modules' folders must be removed")
+        self.assertNotIn("extra", pkgs)
+        self.assertNotIn("extra2", pkgs)
+        announced = {r["module_id"] for r in res["removed_capabilities"]}
+        self.assertEqual(announced, {"extra", "extra2"}, "both removals must be announced")
+
+
+class TestRemoveRemovalNotice(unittest.TestCase):
+    """#688: `remove --removal-notice` records the plain-language line into engine.json removed_capabilities at
+    removal time; a bare remove leaves a reminder."""
+
+    def test_records_the_notice_into_engine_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            with module_manager._redirect_root(d):
+                module_manager._build_fixture(d)
+                res = module_manager.remove("optx", removal_notice="You could ask for optx; now do X.")
+                engine = validate.load_json(os.path.join(d, ".engine", "engine.json"))
+        self.assertFalse(res["refused"])
+        self.assertNotIn("optx", engine.get("packages", {}))
+        self.assertEqual(engine["removed_capabilities"]["optx"]["description"], "You could ask for optx; now do X.")
+        self.assertNotIn("removed_in", engine["removed_capabilities"]["optx"])   # the cut stamps it later
+
+    def test_a_bare_remove_records_no_notice_but_reminds(self):
+        with tempfile.TemporaryDirectory() as d:
+            with module_manager._redirect_root(d):
+                module_manager._build_fixture(d)
+                res = module_manager.remove("optx")
+                engine = validate.load_json(os.path.join(d, ".engine", "engine.json"))
+        self.assertFalse(res["refused"])
+        self.assertNotIn("removed_capabilities", engine)
+        self.assertTrue(any("removal-notice" in n for n in res.get("notes", [])))
+
+
+class TestUpgradeInstallsNewModules(unittest.TestCase):
+    """#759 — an engine update installs the net-new modules a release adds that the deployment needs (required
+    mandatorily, net-new default-on opt-out), offers the optional ones, and never resurrects a declined module.
+    The end-to-end tail + gate behaviour is the shipped falsification demo; these pin the pieces it rests on —
+    the pure classifier, the discriminator's fail-closed posture, the required-completeness refusal, and the
+    operator-facing disclosure."""
+
+    # ---- the pure classifier (`_classify_available_modules`) — every branch, no I/O ----
+    def _avail(self, *specs):
+        return [{"id": i, "status": s, "depends": (dep or {})} for (i, s, dep) in specs]
+
+    def test_required_is_installed_regardless_of_known(self):
+        # A required module is never declinable — install it whether net-new or previously known.
+        for known in ({"core"}, {"core", "r"}):
+            out = module_manager._classify_available_modules(
+                self._avail(("r", "required", None)), ["core"], known, catalog_trusted=True)
+            self.assertEqual([e["id"] for e in out["install"]], ["r"])
+            self.assertEqual(out["install"][0]["status"], "required")
+        # a required module the operator had turned off is flagged prior_declined (for the "now requires it" line)
+        out = module_manager._classify_available_modules(
+            self._avail(("r", "required", None)), ["core"], {"core", "r"}, catalog_trusted=True)
+        self.assertTrue(out["install"][0]["prior_declined"])
+
+    def test_net_new_default_on_is_installed_but_declined_is_only_offered(self):
+        # THE safety property: a default-on module never known here is auto-installed; one known-but-absent is a
+        # prior decline and is offered, never resurrected.
+        net_new = module_manager._classify_available_modules(
+            self._avail(("d", "default-on", None)), ["core"], {"core"}, catalog_trusted=True)
+        self.assertEqual([e["id"] for e in net_new["install"]], ["d"])
+        declined = module_manager._classify_available_modules(
+            self._avail(("d", "default-on", None)), ["core"], {"core", "d"}, catalog_trusted=True)
+        self.assertEqual(declined["install"], [])
+        self.assertEqual([e["id"] for e in declined["offered"]], ["d"])
+
+    def test_untrusted_catalog_fails_default_on_closed(self):
+        # When the pre-overlay catalog could not be read the discriminator is unproven, so a net-new-LOOKING
+        # default-on must NOT be auto-installed (it could be a decline whose catalog trace we couldn't read).
+        out = module_manager._classify_available_modules(
+            self._avail(("d", "default-on", None)), ["core"], {"core"}, catalog_trusted=False)
+        self.assertEqual(out["install"], [])
+        self.assertEqual([e["id"] for e in out["offered"]], ["d"])
+
+    def test_optional_and_experimental_are_offered_never_installed(self):
+        out = module_manager._classify_available_modules(
+            self._avail(("o", "optional", None), ("x", "experimental", None)), ["core"], set(), catalog_trusted=True)
+        self.assertEqual(out["install"], [])
+        self.assertEqual(sorted(e["id"] for e in out["offered"]), ["o", "x"])
+
+    def test_retired_is_skipped(self):
+        out = module_manager._classify_available_modules(
+            self._avail(("gone", "retired", None)), ["core"], set(), catalog_trusted=True)
+        self.assertEqual(out["install"], [])
+        self.assertEqual(out["offered"], [])
+
+    def test_install_is_dependency_ordered(self):
+        # b (default-on) depends on a net-new required a -> a installs before b.
+        out = module_manager._classify_available_modules(
+            self._avail(("b", "default-on", {"a": ""}), ("a", "required", None)),
+            ["core"], set(), catalog_trusted=True)
+        self.assertEqual([e["id"] for e in out["install"]], ["a", "b"])
+
+    def test_default_on_with_an_unmet_dependency_is_demoted_to_offer(self):
+        # Never pull an unchosen module in as a side effect: a default-on whose dependency the deployment will
+        # still lack is offered, not installed.
+        out = module_manager._classify_available_modules(
+            self._avail(("d", "default-on", {"missing": ""})), ["core"], set(), catalog_trusted=True)
+        self.assertEqual(out["install"], [])
+        self.assertEqual([e["id"] for e in out["offered"]], ["d"])
+
+    def test_offer_text_falls_back_when_no_catalog_entry(self):
+        # An experimental module with no catalog entry still surfaces — description/verb fall back to empty, no crash.
+        out = module_manager._classify_available_modules(
+            self._avail(("x", "experimental", None)), ["core"], set(), catalog_trusted=True, catalog_text=None)
+        self.assertEqual(out["offered"][0], {"id": "x", "status": "experimental", "description": "", "verb": ""})
+
+    # ---- the discriminator capture (`_pre_overlay_known`) — catalog trust ----
+    def test_pre_overlay_known_trust_flag(self):
+        with tempfile.TemporaryDirectory() as d:
+            with module_manager._redirect_root(d):
+                known, trusted = module_manager._pre_overlay_known(["core"])
+                self.assertIn("core", known)
+                self.assertFalse(trusted)                       # absent catalog -> unproven -> fail closed
+                prov = os.path.join(d, ".engine", "provisioning")
+                os.makedirs(prov, exist_ok=True)
+                cat = os.path.join(prov, "module-catalog.json")
+                with open(cat, "w") as fh:
+                    json.dump([{"id": "z", "status": "optional"}], fh)
+                known2, trusted2 = module_manager._pre_overlay_known(["core"])
+                self.assertTrue(trusted2)
+                self.assertIn("z", known2)                      # a readable list catalog contributes its ids
+                with open(cat, "w") as fh:
+                    json.dump({"not": "a list"}, fh)
+                _known3, trusted3 = module_manager._pre_overlay_known(["core"])
+                self.assertFalse(trusted3)                      # a wrong-shaped catalog is unproven -> fail closed
+
+    # ---- the required-completeness refusal ----
+    def test_required_install_refuse_reason_names_the_cause(self):
+        reason = module_manager._required_install_refuse_reason(["scanner"])
+        self.assertIn("REQUIRES", reason)
+        self.assertIn("scanner", reason)
+        self.assertIn("update home", reason)
+
+    # ---- the operator-facing disclosure (PR body + preview) ----
+    def test_pr_body_discloses_installed_and_offered_modules(self):
+        result = {"modules_installed": [{"id": "fx-req", "status": "required", "prior_declined": False},
+                                        {"id": "fx-def", "status": "default-on", "prior_declined": False}],
+                  "modules_offered": [{"id": "fx-opt", "status": "optional", "description": "a thing", "verb": ""}]}
+        body = module_manager.render_upgrade_pr_body({"core": "0.4.0"}, {"core": "0.5.0"}, result)
+        self.assertIn("New required capabilities", body)
+        self.assertIn("fx-req", body)
+        self.assertIn("turns on by default", body)
+        self.assertIn("fx-def", body)
+        self.assertIn("add with `add fx-opt`", body)                     # the deferred-offer hint names the follow-up
+        self.assertIn("Optional add-ons this version makes available", body)
+
+    def test_pr_body_flags_a_previously_known_module_now_required(self):
+        # A required module the deployment KNEW before but didn't have installed is flagged — worded as the FACT
+        # (available and not installed), never as an unproven claim that the operator deliberately declined it.
+        result = {"modules_installed": [{"id": "fx-req", "status": "required", "prior_declined": True}],
+                  "modules_offered": []}
+        body = module_manager.render_upgrade_pr_body({"core": "0.4.0"}, {"core": "0.5.0"}, result)
+        self.assertIn("was available in your version and not installed", body)
+        self.assertNotIn("you had turned this off", body)              # never assert a decision we can't prove
+
+    def test_pr_body_omits_module_lines_when_none(self):
+        result = {"modules_installed": [], "modules_offered": []}
+        body = module_manager.render_upgrade_pr_body({"core": "0.4.0"}, {"core": "0.5.0"}, result)
+        self.assertNotIn("New required capabilities", body)
+        self.assertNotIn("Optional add-ons this version makes available", body)
+
+    def test_preview_renders_module_lines_and_suppresses_no_changes(self):
+        p = {"status": "update-available", "current": "0.4.0", "target_ref": "0.5.0",
+             "files": {"replaced": [], "added": []}, "wires": {}, "migrations": [],
+             "retired_capabilities": [], "removed_capabilities": [],
+             "modules_installed": [{"id": "fx-req", "status": "required", "prior_declined": False}],
+             "modules_offered": [{"id": "fx-opt", "status": "optional", "description": "", "verb": ""}]}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            module_manager._render_upgrade_preview(p)
+        out = buf.getvalue()
+        self.assertIn("Adds a required capability: fx-req", out)
+        self.assertIn("New add-on available (optional): fx-opt", out)
+        self.assertNotIn("No file or settings changes", out)   # an install/offer-only update is NOT "a version bump only"
+
+    def test_classify_surfaces_malformed_and_manifestless_release_modules(self):
+        # A malformed manifest AND a module directory with no manifest at all must both be SURFACED (so the tail
+        # fails closed), never silently skipped — a net-new required module could hide behind either and vanish
+        # before the required-completeness check (#759).
+        with tempfile.TemporaryDirectory() as d:
+            good = os.path.join(d, ".engine", "modules", "good")
+            bad = os.path.join(d, ".engine", "modules", "bad")
+            gone = os.path.join(d, ".engine", "modules", "gone")   # a dir with NO manifest.json
+            os.makedirs(good); os.makedirs(bad); os.makedirs(gone)
+            with open(os.path.join(good, "manifest.json"), "w") as fh:
+                json.dump({"id": "good", "version": "0.1.0", "status": "optional", "provides": {}}, fh)
+            with open(os.path.join(bad, "manifest.json"), "w") as fh:
+                fh.write("{ not valid json ")
+            out = module_manager.classify_available_modules(d, ["core"], {"core"}, catalog_trusted=True)
+        self.assertEqual(out["malformed"], [".engine/modules/bad/manifest.json",
+                                            ".engine/modules/gone/manifest.json"])
+        self.assertEqual([e["id"] for e in out["offered"]], ["good"])   # the readable one still classifies
+
+    def test_cleanup_failed_install_drops_the_package_and_surfaces_permission_residue(self):
+        # A failed install is undone (package entry dropped, module dir removed); a permission wire it had begun
+        # to grant CANNOT be auto-removed (the reversal firewall), so it is returned as residue for disclosure.
+        with tempfile.TemporaryDirectory() as d:
+            release = os.path.join(d, "release")
+            mod = os.path.join(release, ".engine", "modules", "fx")
+            os.makedirs(mod)
+            with open(os.path.join(mod, "manifest.json"), "w") as fh:
+                json.dump({"id": "fx", "version": "0.1.0", "status": "optional", "provides": {},
+                           "wires": [{"type": "permission", "value": "Bash(fx:*)"}]}, fh)
+            live = os.path.join(d, "live")
+            os.makedirs(os.path.join(live, ".engine", "modules", "fx"))
+            with open(os.path.join(live, ".engine", "modules", "fx", "manifest.json"), "w") as fh:
+                fh.write("{}")
+            with open(os.path.join(live, ".engine", "engine.json"), "w") as fh:
+                json.dump({"packages": {"core": "0.4.0", "fx": "0.1.0"}}, fh)
+            with module_manager._redirect_root(live):
+                residue = module_manager._cleanup_failed_install("fx", release)
+                eng = json.load(open(os.path.join(live, ".engine", "engine.json")))
+        self.assertTrue(any("permission" in r for r in residue))          # the irreversible grant is surfaced
+        self.assertNotIn("fx", eng.get("packages", {}))                   # the package entry is undone
+        self.assertFalse(os.path.isdir(os.path.join(live, ".engine", "modules", "fx")))   # the module dir is gone
+
+    def test_new_hard_findings_is_a_multiset_diff_not_set_membership(self):
+        # Two orphan-wire findings of the same seam/file are byte-identical dicts; a module's own SECOND such
+        # orphan (beyond a pre-existing first) must be counted as NEW, not masked by set membership.
+        orphan = {"severity": "hard", "message": "an orphan wire in .claude/settings.json"}
+        other = {"severity": "hard", "message": "a different problem"}
+        self.assertEqual(module_manager._new_hard_findings([orphan], [orphan]), [])          # same count -> nothing new
+        self.assertEqual(module_manager._new_hard_findings([orphan], [orphan, orphan]), [orphan])  # one MORE -> new
+        self.assertEqual(module_manager._new_hard_findings([], [other]), [other])            # brand-new -> new
+        self.assertEqual(module_manager._new_hard_findings([orphan], []), [])                # resolved -> nothing new
+        # soft findings are ignored on both sides
+        soft = {"severity": "soft", "message": "note"}
+        self.assertEqual(module_manager._new_hard_findings([soft], [soft, orphan]), [orphan])
+
+    def test_offered_default_on_is_distinguished_from_optional_in_disclosure(self):
+        # The literal ask-1 surface: an offered default-on (a default the deployment doesn't have) must read
+        # differently from a genuinely-optional add-on, in BOTH the PR body and the terminal preview.
+        result = {"modules_installed": [], "modules_offered": [
+            {"id": "fx-def", "status": "default-on", "description": "", "verb": ""},
+            {"id": "fx-opt", "status": "optional", "description": "", "verb": ""}]}
+        body = module_manager.render_upgrade_pr_body({"core": "0.4.0"}, {"core": "0.5.0"}, result)
+        self.assertIn("fx-def", body)
+        self.assertIn("a default add-on you don't have", body)          # the default-on distinction
+        p = {"status": "update-available", "current": "0.4.0", "target_ref": "0.5.0",
+             "files": {"replaced": [], "added": []}, "wires": {}, "migrations": [],
+             "retired_capabilities": [], "removed_capabilities": [],
+             "modules_installed": [], "modules_offered": result["modules_offered"]}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            module_manager._render_upgrade_preview(p)
+        out = buf.getvalue()
+        self.assertIn("New add-on available (a default add-on you don't have): fx-def", out)
+        self.assertIn("New add-on available (optional): fx-opt", out)
+
+    def test_the_759_falsification_demo_passes(self):
+        # The shipped end-to-end falsification (real upgrade tail + real structural gate + the in-process negative
+        # control). Running it here is what makes it travel under `unittest discover` and guard #759 in every
+        # generated repo — demo_757's permanent-regression pattern; it is deliberately NOT in first-run-assets.json.
+        import demo_759_upgrade_installs_new_modules as demo
+        import quiet_call
+        self.assertEqual(quiet_call.run(demo.main), 0)
 
 
 if __name__ == "__main__":

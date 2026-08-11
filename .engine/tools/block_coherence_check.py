@@ -44,7 +44,7 @@ _MESSAGE = ("Fix the block declaration so only PreToolUse/Stop hard-block and ev
 def registrations() -> list:
     """The block-eligible registry to validate. ENGINE_BLOCK_FIXTURE (unset in production) lets the
     negative-fixture meta-check point the read at a seeded registry JSON — a list of block dicts — so
-    the coherence gate is witnessed biting a real bad input (#286) without a malformed invariant having
+    the coherence gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286) without a malformed invariant having
     to live in the real modes/close declarations. Unset → the live assembled registry."""
     fixture = validate.env_override_path("ENGINE_BLOCK_FIXTURE")
     if fixture:

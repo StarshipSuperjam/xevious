@@ -5,7 +5,7 @@ A non-engineer needs a lay of the land. This tool generates ONE committed Markdo
 `.engine/self-map.md`, that answers "what is my engine made of": the engine release, the kinds
 of file the engine governs (surfaces), and the packages it is assembled from (modules). It is
 DERIVED from the declarations the engine already requires — the surface catalog and the module
-manifests, plus (#513) the first-run retirement census cross-checked against what actually
+manifests, plus (StarshipSuperjam/engine-template#513) the first-run retirement census cross-checked against what actually
 exists on disk, so a deployed repo's map never advertises a file the retire step deleted. It is
 never hand-authored (it would drift) and never boot-only (a human opening the repo could not read it).
 
@@ -16,12 +16,12 @@ catches both a hand-edit of the map and a source change with no regenerate, with
 (the standard generated-file check, like `gofmt -l` / `prettier --check`). The gate runs in CI as
 the `custom/script` rule engine/check/self-map-drift (its thin entry is self_map_check.py).
 
-REGENERATION AT THE COMMIT BOUNDARY (resolves the #136 self-map/graph asymmetry): the `hook` verb is the
+REGENERATION AT THE COMMIT BOUNDARY (resolves the StarshipSuperjam/engine-template#136 self-map/graph asymmetry): the `hook` verb is the
 `PreToolUse` entry the engine wires (beside knowledge_gen's graph hook). On a `git commit` it refreshes the
 committed self-map best-effort and ALWAYS proceeds — the refresh lands UNSTAGED in the working tree and is
 captured by the following commit. It is a MUTATION, not a gate: it never blocks the commit, and on any failure
 proceeds (the CI drift gate is the durable backstop). This gives the self-map the same commit-boundary refresh
-the knowledge graph already had — closing the asymmetry the #136 resolution noted (graph.json had a hook, the
+the knowledge graph already had — closing the asymmetry the StarshipSuperjam/engine-template#136 resolution noted (graph.json had a hook, the
 self-map did not). Both are subordinate to `integrate`'s authoritative regenerate-last and the unbypassable CI
 drift gate (best-effort hook -> integrate regenerate-last -> CI gate).
 
@@ -50,7 +50,7 @@ per-type directive BODY is rendered for manifests that carry wires. The
 operator-reachable access path is the `/engine-parts` command (`.claude/skills/engine-parts/`), the
 plain-language "what is my engine made of" readout — it runs `show`, is auto-advertised by /engine-help,
 and is pointed at from getting-started.md and the root CLAUDE.md floor; `show` and the directly-openable
-committed file remain the readout it renders (#400).
+committed file remain the readout it renders (StarshipSuperjam/engine-template#400).
 """
 from __future__ import annotations
 import os
@@ -158,7 +158,7 @@ def render_surfaces(surfaces: dict) -> list:
 
 def _retired_absent() -> "tuple[set, tuple]":
     """The first-run retirement census entries that are ALSO absent on disk — the post-retire state of a
-    deployed repo (#513), as (absent files, absent directories). Without this filter the map keeps
+    deployed repo (StarshipSuperjam/engine-template#513), as (absent files, absent directories). Without this filter the map keeps
     advertising the retired first-run operation file, the deleted setup-skill trees, and their census
     siblings after first-run removed them, pointing a session at files that don't exist. Read as plain
     data from the committed census (never by importing the retiring instantiator — the reference-closure
@@ -194,7 +194,7 @@ def render_module(manifest: dict) -> list:
     Renders id, version (from the manifest's own `version`), status, depends, provides, and the
     `wires` directive TYPE list (the locked closed seam vocabulary; per-type bodies land later).
     Provides entries that first-run has retired AND that are absent on disk are filtered out
-    (#513, see _retired_absent) — the map never advertises a file the retire step deleted."""
+    (StarshipSuperjam/engine-template#513, see _retired_absent) — the map never advertises a file the retire step deleted."""
     mid = manifest.get("id", "?")
     version = manifest.get("version", "?")
     status = manifest.get("status", "?")

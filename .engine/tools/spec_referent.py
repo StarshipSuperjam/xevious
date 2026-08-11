@@ -23,7 +23,7 @@ SELF-CONTAINED ON PURPOSE. This is a CORE tool, but the spec corpus is authored 
 module. So it imports NO product-design code — a required tool must not depend on an optional module, or it would
 crash on every repo that never installed product-design. It carries its own minimal markdown parser (a knowing
 duplicate of the trivial bits of `product_design/spec_form.py`); its GitHub boundary builds requests through the
-shared `github_client` (the gh-client consolidation engine-template #295 began) while keeping its own
+shared `github_client` (the gh-client consolidation StarshipSuperjam/engine-template#295 began) while keeping its own
 injectable-transport seam (`milestone_emit` / `standing_situation`).
 
 Fail-closed (the load-bearing safety): the work-item body is the one REMOTE read. A read FAILURE (HTTP >= 400, a
@@ -268,7 +268,7 @@ def resolve_doc(root: str, pointer: str, *, require_locked: bool = True) -> dict
 
     `require_locked` defaults True — the BUILD-REFERENT contract: a build is only ever checked against a SETTLED
     spec, so the lock gate is load-bearing and every build-path caller (`resolve` / `resolve_from_body`) inherits
-    it. `require_locked=False` is the intake-time acceptance-split path ONLY (#420): at intake a capability doc is
+    it. `require_locked=False` is the intake-time acceptance-split path ONLY (StarshipSuperjam/engine-template#420): at intake a capability doc is
     still a draft, so the count skips the lock gate — but every OTHER guard (the confined-read wall, existence,
     `no-criteria`) still runs, and the returned `status` is the doc's OBSERVED frontmatter (never a hardcoded
     "locked"), so a relaxed resolution can never be mistaken for a settled build referent."""
@@ -316,7 +316,7 @@ def resolve(root: str, *, issue=None, doc=None, gh=None) -> dict:
     return resolve_from_body(root, body)
 
 
-# ---- the review-steps projection (#282 — operator-runnable acceptance steps, two plain groups) -----
+# ---- the review-steps projection (StarshipSuperjam/engine-template#282 — operator-runnable acceptance steps, two plain groups) -----
 
 def _is_terminal_command(how_verified: str) -> bool:
     """Whether a how-verified cell is a bare terminal command (-> the engine's account, rule 4). A FORM read: it
@@ -360,7 +360,9 @@ _ENGINE_FRAMING = ("_(these ran on the engine's side — listed so you know what
 def render_review_steps(resolved: dict) -> str:
     """The plain-language Review-section block the orchestrator drops in verbatim. Two labelled groups when there
     are runnable steps; a single plain reason-named line when there are none — never a raw reason token, never a
-    typing token, never "settled"/"locked" framework vocabulary. Deterministic, so it is testable."""
+    typing token, never "settled"/"locked" framework vocabulary. Deterministic, so it is testable. This fills the
+    SPEC-DERIVED acceptance lane only: its no-op line clears that lane, and never discharges the PR's Demonstration
+    section (the behavioral-evidence slot), which a behaviour-changing change owes on its own terms (issue StarshipSuperjam/engine-template#881)."""
     proj = review_steps(resolved)
 
     def rows(items):
@@ -385,7 +387,7 @@ def render_review_steps(resolved: dict) -> str:
     return out
 
 
-# ---- the acceptance-split projection (#420 — the two-tier count for the intake/settle surface) -----
+# ---- the acceptance-split projection (StarshipSuperjam/engine-template#420 — the two-tier count for the intake/settle surface) -----
 # The SAME classification as review-steps, projected to a COUNT rather than the verbatim steps: at the PR/merge
 # moment the operator reads the grouped steps; at the intake/settle moment they read the count, before they lock.
 # Reusing review_steps() (not a second classifier) is the point — a criterion is typed identically at both
@@ -587,7 +589,7 @@ def _demo() -> int:
     r12 = resolve(alleng, doc="docs/spec/x.md")
     render_eng = render_review_steps(r12)
 
-    # (13) acceptance-split (#420): the intake two-tier COUNT, over a DRAFT doc (pre-lock), reusing the SAME
+    # (13) acceptance-split (StarshipSuperjam/engine-template#420): the intake two-tier COUNT, over a DRAFT doc (pre-lock), reusing the SAME
     #      classifier. Same four rows as (1): two plain operator rows are verify-yourself; the operator-but-
     #      terminal row and the engine row are on the engine's account (rule 4 in the count, matching merge).
     draft_split = _seed({"docs/spec/index.md": "# Spec\n",
@@ -622,7 +624,7 @@ def _demo() -> int:
                    "all-engine-account", "no-issue-pointer", "doc-not-locked", "[operator]", "[engine]",
                    "who checks it")
     leaks = [t for t in leak_tokens if t.lower() in render.lower() or t.lower() in render_eng.lower()
-             or t.lower() in split_render.lower()                    # #420: the intake split render...
+             or t.lower() in split_render.lower()                    # StarshipSuperjam/engine-template#420: the intake split render...
              or t.lower() in nocrit_render.lower()]                  # ...and its no-op are leak-scanned too
 
     checks = {
@@ -645,7 +647,7 @@ def _demo() -> int:
         "a traversal pointer is a no-op and never read": r11["no_op_reason"] == "pointer-not-under-docs-spec",
         "an all-engine doc renders a plain reason-named no-op": "run yourself" in render_eng.lower(),
         "no framework/typing token leaks into the operator render": not leaks,
-        # (#420) the pre-lock intake count reuses the classifier: 2 verify-yourself, 2 on the engine's account
+        # (StarshipSuperjam/engine-template#420) the pre-lock intake count reuses the classifier: 2 verify-yourself, 2 on the engine's account
         # (the terminal-command operator row demotes, matching the merge readout), and a draft doc counts.
         "a draft doc resolves for the count (require_locked=False), keeping its observed status":
             split_resolved.get("ok") and split_resolved.get("status") == "draft",
@@ -654,7 +656,7 @@ def _demo() -> int:
         "the split render states BOTH numbers and never collapses to 'all good'":
             "confirm yourself" in split_render and "engine's account" in split_render
             and "all good" not in split_render.lower() and "all green" not in split_render.lower(),
-        # (#420) the intake no-op guides the operator to add criteria and NEVER calls their draft "settled".
+        # (StarshipSuperjam/engine-template#420) the intake no-op guides the operator to add criteria and NEVER calls their draft "settled".
         "the intake no-op is draft-framed and action-guiding (not the merge-review 'settled' wording)":
             "acceptance criteria" in nocrit_render.lower() and "settled" not in nocrit_render.lower(),
     }
@@ -739,7 +741,7 @@ def main(argv: "list | None" = None) -> int:
         print(render_review_steps(out))
         return 0
     if argv and argv[0] == "acceptance-split":
-        # Intake-time two-tier count (#420): a LOCAL, OFFLINE `--doc`-only read — at intake there is no settled
+        # Intake-time two-tier count (StarshipSuperjam/engine-template#420): a LOCAL, OFFLINE `--doc`-only read — at intake there is no settled
         # work item to follow, so `--issue` (the remote path) is deliberately not offered here. It routes
         # STRAIGHT through resolve_doc (so the confined-read wall guard still runs) with require_locked=False,
         # because at step 5 the capability doc is still a draft.

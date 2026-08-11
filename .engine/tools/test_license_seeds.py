@@ -23,10 +23,20 @@ class TestSeedSetShape(unittest.TestCase):
         self.assertIsInstance(license_seeds.HISTORICAL_SEEDS, tuple)
         self.assertGreaterEqual(len(license_seeds.HISTORICAL_SEEDS), 1)
 
-    def test_carries_exactly_one_member(self):
-        # The set carries one member (maintainer decision, #471): the current Apache-2.0 + Commons Clause seed
-        # only. A relicense APPENDS a new seed — updating this count is the deliberate act that records the new era.
-        self.assertEqual(len(license_seeds.HISTORICAL_SEEDS), 1)
+    def test_carries_two_members_after_the_apache_relicense(self):
+        # Two members: the RETIRED Apache-2.0 + Commons Clause seed (index 0) and the CURRENT plain Apache-2.0
+        # seed (the tail). The retired seed stays so any repo generated from the template before the relicense
+        # still recognizes its lingering Commons Clause LICENSE. A future relicense APPENDS again — updating this
+        # count is the deliberate act that records the new era (#471).
+        self.assertEqual(len(license_seeds.HISTORICAL_SEEDS), 2)
+        self.assertIn("Commons Clause", license_seeds.HISTORICAL_SEEDS[0])
+        self.assertNotIn("Commons Clause", license_seeds.HISTORICAL_SEEDS[-1])
+
+    def test_current_seed_is_plain_apache_without_commons_clause(self):
+        # The relicense outcome: the shipped seed is plain Apache-2.0, no Commons Clause, and still self-recognized.
+        self.assertNotIn("Commons Clause", license_seeds.CURRENT_SEED)
+        self.assertIn("Apache License", license_seeds.CURRENT_SEED)
+        self.assertTrue(license_seeds.recognize(license_seeds.CURRENT_SEED))
 
 
 class TestRecognizeMatches(unittest.TestCase):
@@ -68,13 +78,25 @@ class TestRecognizePreservesOnDoubt(unittest.TestCase):
         mine = license_seeds.CURRENT_SEED.replace("StarshipSuperjam", "Acme Corp")
         self.assertFalse(license_seeds.recognize(mine))
 
-    def test_plain_apache_without_commons_clause_is_preserved(self):
-        # An adopter who independently chose plain Apache-2.0: the Commons Clause header is absent, so the
-        # full-text match fails (the reason the recognizer is not a body-only match).
-        seed = license_seeds.CURRENT_SEED
-        marker = "---------------------------------------------------------------------------"
-        apache_only = seed.split(marker, 1)[1].lstrip("\n") if marker in seed else seed
-        self.assertFalse(license_seeds.recognize(apache_only))
+    def test_stock_apache_without_the_holder_line_is_preserved(self):
+        # THE load-bearing guard (see the license_seeds module docstring). The current seed is plain Apache-2.0
+        # whose ONLY distinguishing text is its leading holder line. Strip that line and what remains is stock
+        # Apache-2.0 — byte-identical to what any adopter would independently choose — which MUST NOT be
+        # recognized, so the first-run clear and the boot detector can never delete an adopter's own Apache
+        # license. If a future edit "cleans up" the LICENSE to look standard by dropping the holder line, this
+        # test goes red instead of silently arming the deleter against every Apache adopter.
+        holder = license_seeds._APACHE_2_0_HOLDER
+        stock_apache = license_seeds.CURRENT_SEED.replace(holder + "\n\n", "", 1)
+        self.assertNotIn(holder, stock_apache)
+        self.assertTrue(stock_apache.lstrip().startswith("Apache License"), "left with bare stock Apache body")
+        self.assertFalse(license_seeds.recognize(stock_apache),
+                         "stock Apache-2.0 without the engine's holder line must be preserved")
+
+    def test_stock_apache_with_a_different_holder_is_preserved(self):
+        # An adopter who independently chose plain Apache-2.0 and put their OWN copyright at the top — never touched.
+        theirs = license_seeds.CURRENT_SEED.replace(license_seeds._APACHE_2_0_HOLDER,
+                                                    "Copyright 2026 Acme Corp", 1)
+        self.assertFalse(license_seeds.recognize(theirs))
 
     def test_extra_appended_term_is_preserved(self):
         self.assertFalse(license_seeds.recognize(license_seeds.CURRENT_SEED + "\n\nExtra adopter term.\n"))

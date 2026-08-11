@@ -108,11 +108,61 @@ export function readVar(vm, id) {
   return readVariable(vm, scope, name);
 }
 
+/** Write a variable by display name within a given scope (hard-errors on miss). */
+export function writeVariable(vm, scope, name, value) {
+  const target = targetForScope(vm, scope);
+  for (const id of Object.keys(target.variables)) {
+    if (target.variables[id].name === name) {
+      target.variables[id].value = value;
+      return;
+    }
+  }
+  throw new Error(`harness: variable '${name}' not found on scope '${scope}'`);
+}
+
+/** Write a variable by its stable manifest id — used to inject a controlled state (e.g. the
+ * frozen death-tick scroll row) before firing a director broadcast in isolation. */
+export function writeVar(vm, id, value) {
+  const { scope, name } = variable(id);
+  writeVariable(vm, scope, name, value);
+}
+
+/** Fire a director broadcast's receiver hats directly, to drive one receiver (e.g. `area_reset`)
+ * in isolation against injected state — the only way to exercise the death-tick checkpoint
+ * deterministically, since the live death->respawn sequence completes within a single headless
+ * pump and cannot be paused to inject a frozen row. */
+export function fireBroadcast(vm, name) {
+  vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: name.toUpperCase() });
+}
+
 /** Count live clones of a sprite (originals excluded). */
 export function cloneCount(vm, spriteName) {
   return vm.runtime.targets.filter(
     (t) => !t.isStage && !t.isOriginal && t.sprite && t.sprite.name === spriteName,
   ).length;
+}
+
+/**
+ * Report each live clone of a sprite: the requested local variables (by display name) and
+ * the NAME of its current costume. `currentCostume` is deterministic runtime state the VM
+ * tracks with no renderer, so a costume the clone SWITCHED to is observable here — which is
+ * how a digit clone stuck on the wrong costume (a broken reporter → an unmatched costume
+ * name) is caught. What is NOT observable is the costume's PIXELS; that stays the playtest's.
+ */
+export function cloneReports(vm, spriteName, localVarNames = []) {
+  return vm.runtime.targets
+    .filter((t) => !t.isStage && !t.isOriginal && t.sprite && t.sprite.name === spriteName)
+    .map((c) => {
+      const vars = {};
+      for (const id of Object.keys(c.variables)) {
+        const v = c.variables[id];
+        if (localVarNames.includes(v.name)) vars[v.name] = v.value;
+      }
+      const costume = c.sprite.costumes[c.currentCostume]
+        ? c.sprite.costumes[c.currentCostume].name
+        : null;
+      return { vars, costume, visible: c.visible };
+    });
 }
 
 export { constants, variable };

@@ -2,7 +2,7 @@
 # terminal half of a release: release.yml opens the release PR and stops; when the maintainer merges it,
 # THIS workflow tags the exact reviewed merge commit and publishes the GitHub Release the version points
 # at, then comments the outcome back onto the PR in plain language. WHAT it publishes follows the cut: the
-# ENGINE's version in the construction repo, the deployed repo's OWN PRODUCT version once deployed (#516) —
+# ENGINE's version in the construction repo, the deployed repo's OWN PRODUCT version once deployed (StarshipSuperjam/engine-template#516) —
 # read automatically from the merged commit; either way the tag + Release land in THIS repository. The
 # maintainer's merge click is still the only go-ahead — this runs AFTER that consent, on a commit already
 # trusted (it landed on protected `main`).

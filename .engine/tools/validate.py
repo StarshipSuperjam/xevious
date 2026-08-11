@@ -147,7 +147,7 @@ def disclosed_noop(message: str, location: dict | None = None) -> dict:
 
 def env_override_path(var: str, default: "str | None" = None) -> "str | None":
     """Resolve an input-substitution env var to a path — the one shared seam the negative-fixture
-    meta-check's custom/script units use (#286). When `var` is set and non-empty,
+    meta-check's custom/script units use (StarshipSuperjam/engine-template#286). When `var` is set and non-empty,
     return it resolved under ROOT (an absolute value is used as-is); otherwise return `default`
     unchanged. So when the variable is UNSET — every production run — the caller gets its own
     default and behaviour is byte-unchanged; the seam is inert outside a `run_unit` fixture run,
@@ -711,7 +711,7 @@ def kind_shape(rule, ctx):
                 findings.append(finding("soft", f"'{rel}' is {lines} lines, over its "
                                 f"{file_budget}-line budget — a nudge to trim, never a block.", loc(path)))
     # Each override must be well-formed and live: an integer `budget` (the line ceiling) and a
-    # recorded `why` (#273's recorded-rationale, made mechanical so a budget cannot be raised
+    # recorded `why` (StarshipSuperjam/engine-template#273's recorded-rationale, made mechanical so a budget cannot be raised
     # without a stated reason), keyed to a file that still exists. A malformed entry, or a key
     # left dangling by a rename, would otherwise sit as inert, consented config that grants
     # nothing while looking like a live budget. Each failure is the rule's hard tier so a dead
@@ -778,7 +778,7 @@ def _coverage_links(rule, ctx):
     """Every relative Markdown link must resolve to an existing file. A link that resolves
     OUTSIDE the repo cannot be checked in a CI checkout, so it is a soft note, never hard. A link into a
     surface owned by a module this deployment DECLINED is likewise a note, never hard — the target is gone
-    because the operator opted the module out, not because the link is broken (#646)."""
+    because the operator opted the module out, not because the link is broken (StarshipSuperjam/engine-template#646)."""
     import module_surfaces as _module_surfaces  # lazy: avoids a validate<->module_surfaces import cycle
     tier = rule["tier"]
     exclude = set((rule.get("params") or {}).get("exclude_dirs", []))
@@ -846,7 +846,7 @@ def _coverage_catalog(rule, ctx):
     """catalog-coverage over the live surface catalog + filesystem (see the pure
     catalog_coverage_findings); non-surface infra directories are passed via
     params.infra_dirs. The catalog source and the walk root default to the live globals
-    (CATALOG_PATH / ROOT — what CI runs); run_unit (#286) may override BOTH
+    (CATALOG_PATH / ROOT — what CI runs); run_unit (StarshipSuperjam/engine-template#286) may override BOTH
     via ctx (coverage_catalog / coverage_root) to point the REAL callable at a seeded
     mini-tree, so the meta-check witnesses this exact entry point. Production callers pass
     neither key, so the behaviour is byte-unchanged."""
@@ -884,6 +884,99 @@ def markdown_files(exclude_dirs: set) -> list:
 
 def _ver_tuple(v: str) -> tuple:
     return tuple(int(x) for x in re.findall(r"\d+", v or "0")) or (0,)
+
+
+def _ver_key(v):
+    """A LENGTH-NORMALIZED version tuple for RANGE-boundary comparison, so a two-part key ('0.4') and its
+    three-part form ('0.4.0') compare EQUAL rather than '0.4' sorting BELOW '0.4.0' as a tuple prefix.
+
+    THE SINGLE NORMALIZER for version-key range comparison: called (via a re-export) by module_manager's
+    select_migrations and select_retired_capabilities, and reached by release_cut._norm_ver for BOTH release-cut
+    accumulation guards. It lives HERE (moved from module_manager) so version_key_duplicate_findings — a
+    coherence leg in the lowest layer — can share the one normalizer.
+
+    The MAJOR.MINOR.PATCH key FORMAT is now enforced at authoring, going forward, by module.v1.json's
+    `propertyNames` pattern on the migrations / retired_capabilities blocks. The padding here is KEPT regardless:
+    the release-cut accumulation guards compare a candidate against PREVIOUSLY-SHIPPED baseline manifests, which
+    may legitimately still hold a pre-rule two-part key (the test_rekeyed_migration_is_not_a_false_drop
+    scenario), and it is defense in depth at the module-manager / instantiator gate, which does NOT run the
+    schema. Padding is a no-op for a conventional three-part (or any 4+-part) tuple, so behaviour is unchanged
+    for every real key in the tree."""
+    t = _ver_tuple(v)
+    return (t + (0,) * (3 - len(t))) if len(t) < 3 else t
+
+
+# The manifest blocks whose KEYS are module versions (selected by RANGE at upgrade). The schema constrains each
+# key's FORMAT (propertyNames); this list drives the coherence leg that forbids two keys meaning one version. A
+# future third version-keyed block inherits the collision check by being added here.
+VERSION_KEYED_BLOCKS = ("migrations", "retired_capabilities")
+
+
+class _KeyPairDict(dict):
+    """A dict that also records, on `.duplicated`, the keys that appeared MORE THAN ONCE in the source JSON
+    object. `json.load` silently collapses a duplicate key (last value wins) before any check can see it, so a
+    leg that reads the parsed dict alone cannot catch a literally-duplicated version key — this carries the
+    fact forward on the parsed object."""
+
+
+def _load_manifest_keypairs(path: str) -> dict:
+    """Load a manifest as `_KeyPairDict`s, so every object remembers its literally-duplicated keys. Used only by
+    version_key_duplicate_findings; a `_KeyPairDict` IS a dict, so nothing else is affected."""
+    def _hook(pairs):
+        d = _KeyPairDict(pairs)
+        seen, dup = set(), []
+        for k, _v in pairs:
+            if k in seen:
+                dup.append(k)
+            else:
+                seen.add(k)
+        d.duplicated = dup
+        return d
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh, object_pairs_hook=_hook)
+
+
+def version_key_duplicate_findings(manifest_ids: list, tier: str, message: str) -> list:
+    """Coherence leg (StarshipSuperjam/engine-template#694): a manifest's migrations / retired_capabilities block may not declare two keys that
+    mean the SAME version. Two keys collide when they normalise equal under `_ver_key`: distinct spellings
+    ('0.4' & '0.4.0', or the leading-zero '0.04.0' & '0.4.0'), OR a LITERAL duplicate ('0.4.0' twice, which
+    `json.load` collapses — caught by re-reading the raw file). Either way an upgrade would act on that version
+    twice, or silently drop one entry (a migration that never runs, a retirement notice that never shows).
+
+    This is NOT shadowed by the schema `propertyNames` format rule. That rule runs at engine-ci (the
+    module-manifest schema check) and the release cut, but NOT at the module-manager / instantiator gate
+    (install / uninstall / upgrade / arrival) — where this leg, via `check_coherence`, is the sole
+    version-key-collision guard for a locally-authored manifest — and a leading-zero or literal-duplicate
+    collision passes the format rule regardless. `manifest_ids` is a list of (manifest_path, module_id) pairs;
+    the leg reads raw JSON to see collapsed duplicates. Returns one finding per colliding group."""
+    findings = []
+    for path, mid in manifest_ids:
+        try:
+            man = _load_manifest_keypairs(path)
+        except Exception as exc:  # noqa: BLE001 — a re-read failure (a race after discovery already loud-parsed
+            #   the file) is SURFACED, never silently passed: reporting clean when a manifest could not be
+            #   re-checked would break the codebase's halt-on-malformed posture (cf. validate.load_json).
+            findings.append(finding(
+                tier, f"Could not re-read module '{mid}' manifest to verify its version keys "
+                f"({type(exc).__name__}); a duplicate-version key cannot be ruled out for it. {message}"))
+            continue
+        if not isinstance(man, dict):
+            continue
+        for block in VERSION_KEYED_BLOCKS:
+            obj = man.get(block)
+            if not isinstance(obj, dict):
+                continue
+            authored = list(obj.keys()) + list(getattr(obj, "duplicated", ()))
+            groups: dict = {}
+            for k in authored:
+                groups.setdefault(_ver_key(k), []).append(k)
+            for _norm, keys in sorted(groups.items()):
+                if len(keys) > 1:
+                    findings.append(finding(
+                        tier, f"Module '{mid}' declares version keys {sorted(keys)} in its '{block}' block that "
+                        f"mean the same version — an upgrade would act on that version twice, or silently drop "
+                        f"one. Keep exactly one key per version. {message}"))
+    return findings
 
 
 def _version_in_range(version: str, spec: str) -> bool:
@@ -1105,7 +1198,7 @@ def orphan_wire_findings(applied: list, declared_ids, tier: str, message: str) -
 # the SOLE `standing-rules` surface. The reservation is a BIJECTION — a reserved surface holds exactly its
 # reserved tier, and a reserved tier sits on no other surface — so it is broken by BOTH a squatter (an added
 # surface climbing to a reserved rank) AND a downgrade/swap (a reserved surface knocked off its rank). Homed
-# once here (issue #401) and consumed by the write-time seam guard (wiring.catalog_add) and the merge-gate
+# once here (issue StarshipSuperjam/engine-template#401) and consumed by the write-time seam guard (wiring.catalog_add) and the merge-gate
 # scan (authority_reservation_findings) alike, so the law lives in exactly one place.
 _RESERVED_AUTHORITY = {"contract": "decisions", "policy": "standing-rules"}
 _RESERVED_TIER_OWNER = {tier: name for name, tier in _RESERVED_AUTHORITY.items()}
@@ -1120,7 +1213,7 @@ def _reserved_rank_phrase(authority: str) -> tuple:
 
 
 def reserved_authority_reason(name: str, authority) -> "str | None":
-    """The single-homed authority-tier reservation law (issue #401): a plain-language, DISPOSITION-NEUTRAL
+    """The single-homed authority-tier reservation law (issue StarshipSuperjam/engine-template#401): a plain-language, DISPOSITION-NEUTRAL
     reason iff the (surface name, authority) pair breaks the reserved bijection {contract<->decisions,
     policy<->standing-rules}; None when the pair is allowed (every additive surface holds a lower tier). The
     reason states only the VIOLATION (never "accepted"/"refused"), so the write-time seam guard can append its
@@ -1145,7 +1238,7 @@ def reserved_authority_reason(name: str, authority) -> "str | None":
 
 
 def authority_reservation_findings(catalog: dict, manifests: list, tier: str, message: str) -> list:
-    """Pure authority-tier reservation scan (issue #401) — the merge-gate half of the reservation law, beside
+    """Pure authority-tier reservation scan (issue StarshipSuperjam/engine-template#401) — the merge-gate half of the reservation law, beside
     the write-time seam guard in wiring.catalog_add. Two legs over the live set:
       LEG A (catalogued surfaces): every surface must satisfy the reserved bijection (reserved_authority_reason)
         — catches a hand-edited surface-catalog.json where an added surface climbs to a reserved rank, OR
@@ -1889,7 +1982,7 @@ def _exemption_note(rule: dict, ctx: dict) -> "str | None":
                 f"authored by {author} in the merge gate, so it was not evaluated "
                 f"here (a disclosed not-applicable pass — not a verification). This narrative "
                 f"check is waived for this author only; any guardrail-touching change in the pull "
-                f"request is still gated by the guardrail-ack label the maintainer applies.")
+                f"request is still judged by the weakening guard (blocking at its killswitch tier).")
     matched = sorted(set(ctx.get("pr_labels") or []) & set(rule.get("ci_label_exempt") or []))
     if matched:
         return (f"NOT APPLICABLE — check '{rule.get('id')}' does not bind for pull requests "
@@ -1938,7 +2031,7 @@ def _evaluate(rules: list, suite: str, gates: bool, ctx: dict, with_source: bool
             # NOT a disclosed_noop: this is a check WAIVED in the merge-gating context (an exempt
             # author/label), a consequential disclosure that must stay prominent in the CI log — never
             # collapsed into the dormant "nothing to do" summary. It also never fires on a clean local
-            # run, so it is outside the soft-note noise #322 targets.
+            # run, so it is outside the soft-note noise StarshipSuperjam/engine-template#322 targets.
             found = [finding("soft", exempt_note)]
         else:
             _verdict, found = _run_kind(registry, rule, ctx)  # fail-closed on dangling/erroring/malformed
@@ -2032,7 +2125,7 @@ def run_check(check_id: str, ctx: dict) -> int:
 def run_unit(unit, target=None, ctx=None):
     """Run ONE check-logic unit against a caller-substituted target and return its
     (passed, findings) exactly as production would — the target-substitution affordance the
-    negative-fixture meta-check (#286) needs to witness that each hard check
+    negative-fixture meta-check (StarshipSuperjam/engine-template#286) needs to witness that each hard check
     actually BITES a seeded bad input. It is NOT a production entry point: run()/run_check()/
     --check never call it, so those paths and every existing finding are byte-unchanged.
 
@@ -2343,7 +2436,7 @@ def _demo(argv: list) -> int:
 
 
 def _demo_kinds(argv: list) -> int:
-    """Operator-runnable, self-checking demo of module check-kind discovery (leg 3 of #405) — a falsification that
+    """Operator-runnable, self-checking demo of module check-kind discovery (leg 3 of StarshipSuperjam/engine-template#405) — a falsification that
     can FAIL. It writes a SYNTHETIC kind into a temp dir (never the real repo) and exercises the REAL resolver:
     a dropped kind is discovered and merged OVER the core, a file named for a core kind CANNOT shadow it, a bad
     file is a loud fault (not a crash), and with no module kind present the registry is exactly the closed core."""
@@ -2399,7 +2492,7 @@ def main(argv: list) -> int:
         return hooks.run_hook("PostToolUse", _accept_handler)
     if argv and argv[0] == "demo":
         return _demo(argv[1:])
-    if argv and argv[0] == "demo-kinds":      # the module check-kind discovery self-check (leg 3 of #405)
+    if argv and argv[0] == "demo-kinds":      # the module check-kind discovery self-check (leg 3 of StarshipSuperjam/engine-template#405)
         return _demo_kinds(argv[1:])
     if argv and argv[0] == "--files":         # the CLI form of the touched-file subset over given paths
         return run_files(argv[1:])

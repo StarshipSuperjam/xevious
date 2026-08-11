@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Read the in-flight git/GitHub work record — the "work in hand" attention ranks at orientation
-(engine-template #37, the work-record-reader slice; PR 1 of the chain to the gitignored knowledge boot-slice
+(StarshipSuperjam/engine-template#37, the work-record-reader slice; PR 1 of the chain to the gitignored knowledge boot-slice
 producer). Builder B, post-M1.
 
 attention's ranking reads the **in-flight** native git/GitHub record. This module supplies the git-owned halves of it:
   - IN-FLIGHT (`read_in_flight`) — open pull requests + the current working branch, as `in_flight` candidates.
-    This is also the "work in hand" the #37 knowledge focus keys on.
+    This is also the "work in hand" the StarshipSuperjam/engine-template#37 knowledge focus keys on.
   - RECENT DECISIONS (`read_recent_decisions`) — recently merged pull requests, as `recent_decisions`
     candidates: the structured PR body is the decision record and there is no changelog.
 
@@ -55,7 +55,7 @@ import moment  # the trailing-Z time seam; a stdlib-only leaf, so importing it k
 # How many open PRs to read before stopping — a bound so a busy public repo never hangs orientation.
 _PR_WINDOW = 20
 # How many merge commits the recent-decisions read scans. A READ bound only: how many recent decisions actually
-# surface is the attention policy's `budget_recent_decisions` slice, never a constant here (#394).
+# surface is the attention policy's `budget_recent_decisions` slice, never a constant here (StarshipSuperjam/engine-template#394).
 _SHIPPED_WINDOW = 20
 # How many in-flight records to surface in all (PRs + the working branch), freshest first.
 _CAP = 12
@@ -229,7 +229,7 @@ def read_recent_decisions(*, run=_run_git, window: int = _SHIPPED_WINDOW) -> lis
 
 def changed_paths(*, run=_run_git, cap: int | None = _PATHS_CAP) -> list[str]:
     """The repo-relative paths the current branch's in-flight work touches — the "work in hand" the focused
-    knowledge read keys on (engine-template #37, PR 2). The union of:
+    knowledge read keys on (StarshipSuperjam/engine-template#37, PR 2). The union of:
       - the COMMITTED diff vs the default branch, but ONLY on a real non-default branch (so the default branch
         itself contributes no committed diff): `git diff --name-only <default>...HEAD` (the three-dot form
         diffs against the merge-base of the two — "what this branch added");
@@ -242,7 +242,7 @@ def changed_paths(*, run=_run_git, cap: int | None = _PATHS_CAP) -> list[str]:
     not this reader's.
 
     `cap` bounds the result for orientation's attention budget (default `_PATHS_CAP`); pass `cap=None` for the
-    UNCAPPED full set — the upstream-clean SAFETY nudge (#416) needs it, since a cap could let an engine
+    UNCAPPED full set — the upstream-clean SAFETY nudge (StarshipSuperjam/engine-template#416) needs it, since a cap could let an engine
     path sort past it and slip the leak intersection (the same reason submit.py's outgoing-diff is uncapped)."""
     paths: set = set()
     if _current_branch(run) is not None:        # a real branch other than the default -> committed leg applies

@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import validate               # noqa: E402
@@ -192,18 +193,48 @@ class TestGitLayer(unittest.TestCase):
         self.assertEqual(rows, [(10, 2, ".engine/tools/x.py"), (0, 0, "logo.png"), (0, 3, "note.txt")])
 
     def test_git_failure_returns_none_not_empty_string(self):
-        self.assertIsNone(scope_profile._git(["diff"], run=_fake_run("", returncode=1)))
-        self.assertIsNone(scope_profile.changed_files("nope", run=_fake_run("", returncode=1)))
+        with mock.patch("time.sleep"):  # #704: a persistent failure still degrades — no real wait in the suite
+            self.assertIsNone(scope_profile._git(["diff"], run=_fake_run("", returncode=1)))
+            self.assertIsNone(scope_profile.changed_files("nope", run=_fake_run("", returncode=1)))
 
     def test_missing_git_binary_degrades_to_none(self):
         def boom(*_a, **_k):
             raise FileNotFoundError("git not on PATH")
-        self.assertIsNone(scope_profile._git(["diff"], run=boom))
+        with mock.patch("time.sleep"):
+            self.assertIsNone(scope_profile._git(["diff"], run=boom))
 
     def test_compute_surfaces_a_note_when_the_diff_cannot_be_read(self):
-        text = scope_profile.compute("nope", run=_fake_run("", returncode=1))
+        with mock.patch("time.sleep"):
+            text = scope_profile.compute("nope", run=_fake_run("", returncode=1))
         self.assertIn("could not read the diff", text)
         self.assertNotIn("0 files changed", text)  # never a fabricated zero for a real change
+
+    def test_a_transient_git_failure_is_retried_and_recovers(self):
+        # #704: a shared-config / missing-origin blip fails the first read, then self-heals. A bounded retry
+        # returns the real diff instead of degrading to the could-not-read note (which forces a manual re-run).
+        seq = [_FakeProc("", 1), _FakeProc("10\t2\t.engine/tools/x.py\n", 0)]  # fail once, then succeed
+        calls = {"n": 0}
+
+        def flaky(*_a, **_k):
+            proc = seq[min(calls["n"], len(seq) - 1)]
+            calls["n"] += 1
+            return proc
+        with mock.patch("time.sleep") as slept:
+            rows = scope_profile.changed_files("origin/main", run=flaky)
+        self.assertEqual(rows, [(10, 2, ".engine/tools/x.py")])  # recovered, not None
+        self.assertEqual(calls["n"], 2)                          # exactly one retry
+        slept.assert_called_once()                               # a bounded wait between attempts
+
+    def test_the_common_path_makes_exactly_one_call_and_never_sleeps(self):
+        calls = {"n": 0}
+
+        def once(*_a, **_k):
+            calls["n"] += 1
+            return _FakeProc("0\t0\tx\n", 0)
+        with mock.patch("time.sleep") as slept:
+            scope_profile._git(["diff"], run=once)
+        self.assertEqual(calls["n"], 1)      # the healthy path pays nothing
+        slept.assert_not_called()
 
 
 class TestBehaviorsSubsectionDoesNotWeakenCompleteness(unittest.TestCase):

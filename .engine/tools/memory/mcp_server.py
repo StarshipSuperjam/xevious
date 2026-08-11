@@ -42,6 +42,10 @@ from __future__ import annotations
 import os
 import sys
 
+# Third-party import first: it needs nothing from the path bootstrap below, and importing it above the
+# sys.path mutation closes the shadowing hazard (a same-named module in tools/ could otherwise win).
+from mcp.server import MCPServer
+
 # Make the package parent (.engine/tools) importable so `from memory import …` resolves both when launched as a
 # script via .mcp.json (`python tools/memory/mcp_server.py`) and when imported as `memory.mcp_server` in a test.
 _PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,11 +54,9 @@ if _PARENT not in sys.path:
 
 from memory import forget, index, ledger, recall, records  # noqa: E402
 
-from mcp.server.fastmcp import FastMCP  # noqa: E402
-
 SERVER_NAME = "engine-memory"
 
-server = FastMCP(SERVER_NAME)
+server = MCPServer(SERVER_NAME)
 
 
 @server.tool(
@@ -389,8 +391,9 @@ def _demo() -> int:
         "pins are the one thing nothing ages out and nothing summarises away, and they are carried into the "
         "start of later sessions, so a generous one costs the operator context in every session that follows. "
         "A conclusion of your own is different in kind and does not belong here: state it plainly in the "
-        "session, where it is captured and a later session can find it by recall — pinning it would force it "
-        "into every future briefing instead. "
+        "session, where the engine can capture it and a later session can find it by recall — pinning it "
+        "would force it into every future briefing instead. An operating note of your own (a tool quirk, a "
+        "workflow trap) belongs in your harness's own memory notebook, not here. "
         "Pass their instruction in their own terms rather than your paraphrase of it. Secret-shaped text is "
         "masked before it is stored. Over-long text is refused rather than shortened. A pin records that it "
         "arrived through you, which is a route and not a claim that the operator typed it — never present a "

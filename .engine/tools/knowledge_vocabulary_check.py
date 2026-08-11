@@ -8,7 +8,7 @@ enum and the entityId `pattern` alternation) and the knowledge-retrieval interfa
 (.engine/interfaces/knowledge-retrieval.json: the `find`-op `type` enum and the entity-id `pattern`s its ops
 accept). The one fingerprint gate over the graph (knowledge-coverage) re-derives entity types from the catalog
 and so is blind to a hard-coded list that drifts from it — exactly how a stray `state` type sat in both files
-unseen (issue #131).
+unseen (issue StarshipSuperjam/engine-template#131).
 
 This check closes that blind spot. It reads the surface catalog as the source of truth, then, for EVERY file
 that encodes the vocabulary, extracts each declared type set (every type `enum` and every entity-id `pattern`
@@ -165,7 +165,7 @@ def main(argv: list) -> int:
     tier = os.environ.get("ENGINE_RULE_TIER", "hard")
     # ENGINE_CATALOG_PATH (unset in production) lets the negative-fixture meta-check point the
     # expected-vocabulary side at a seeded catalog that drifts from the real vocabulary files, so the
-    # gate is witnessed biting a real bad input (#286). The vocabulary sites still read the real files.
+    # gate is witnessed biting a real bad input (StarshipSuperjam/engine-template#286). The vocabulary sites still read the real files.
     catalog = validate.load_json(validate.env_override_path("ENGINE_CATALOG_PATH") or validate.CATALOG_PATH)
     return emit(vocabulary_findings(expected_vocabulary(catalog), collect_sites(), tier))
 

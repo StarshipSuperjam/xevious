@@ -39,4 +39,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: uv run --directory .engine --frozen -- python tools/validate.py --check engine/check/guardrail-weakening
+        # The invocation is the CONDITION of an `if` because GitHub's implicit `bash -e {0}` is active
+        # before our own `set` line runs — a bare invocation would abort the script on a hard finding,
+        # skipping the log echo, the run-summary append, and the annotation on exactly the case they
+        # exist to explain (an `if`-conditioned command is exempt from errexit). The rc capture must
+        # never swallow the validator's exit code — a bare pipe/tee would turn required check #2
+        # permanently green; a drift test (test_seed.py::TestWeakeningTiers) pins this shape.
+        # Both ::warning:: annotations are STATIC text keyed on sentinels containing an em-dash or a
+        # parenthesis — characters the guard's whitelist sanitizer strips from every PR-controlled
+        # value, so PR content cannot forge either sentinel into the report.
+        run: |
+          set -uo pipefail
+          out="$(mktemp)"
+          if uv run --directory .engine --frozen -- python tools/validate.py --check engine/check/guardrail-weakening >"${out}" 2>&1; then
+            rc=0
+          else
+            rc=$?
+          fi
+          cat "${out}"
+          {
+            echo '## engine-guard'
+            echo '```text'
+            cat "${out}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "${rc}" -eq 0 ] && grep -q "GUARDRAIL DISCLOSURE —" "${out}"; then
+            echo "::warning::Guardrail disclosure — this pull request modifies enforcement files. See the engine-guard run summary for the plain-language listing. No action needed; this does not block the merge."
+          fi
+          if [ "${rc}" -eq 0 ] && grep -q "ACKNOWLEDGED (guardrail-ack" "${out}"; then
+            echo "::warning::Acknowledged guardrail change — a killswitch-tier change on this pull request was deliberately approved via the guardrail-ack label. The record is kept in the engine-guard run summary."
+          fi
+          exit "${rc}"

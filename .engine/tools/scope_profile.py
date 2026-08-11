@@ -22,22 +22,39 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 # repo root — three directories up from .engine/tools/scope_profile.py
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GRAPH = os.path.join(ROOT, ".engine", "knowledge", "graph.json")
+
+# Bounded retry through a transient missing-origin / shared-config blip (StarshipSuperjam/engine-template#704): under heavy parallel-worktree
+# use, a concurrent write to the one shared .git/config makes an arbitrary git command fail for a moment, then
+# self-heal. A few fast retries ride out that window; the blip fails FAST, so the common path pays nothing and
+# a genuine failure still degrades honestly. This inline retry is copied — not shared — across the five tools
+# that carry it (scope_profile, close_linkage_preflight, pr_reconcile, module_manager, tune), matching the
+# codebase's per-module retry convention (e.g. memory/capture.py's lock retry); keep the copies identical.
+_ORIGIN_RETRY_ATTEMPTS = 3
+_ORIGIN_RETRY_DELAY = 0.3      # seconds between attempts
 
 
 def _git(args: list, *, run=subprocess.run) -> "str | None":
     """Run a read-only git command from the repo root. Returns stdout on success, or None on ANY
     failure (non-zero exit, missing binary, timeout) — never '' — so a caller can tell a genuine empty
     result from a git that could not run, and never render a fabricated zero. `run` is injectable for
-    tests."""
-    try:
-        proc = run(["git", "-C", ROOT, *args], capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return proc.stdout if proc.returncode == 0 else None
+    tests. A transient missing-origin / shared-config blip (StarshipSuperjam/engine-template#704) is ridden out by a few bounded fast
+    retries — both callers read against `origin/main`; the common (first-try) path makes exactly one call
+    and never sleeps, and a persistent failure still degrades to None."""
+    for attempt in range(_ORIGIN_RETRY_ATTEMPTS):
+        try:
+            proc = run(["git", "-C", ROOT, *args], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            proc = None
+        if proc is not None and proc.returncode == 0:
+            return proc.stdout
+        if attempt < _ORIGIN_RETRY_ATTEMPTS - 1:
+            time.sleep(_ORIGIN_RETRY_DELAY)
+    return None
 
 
 def changed_files(base: str = "origin/main", *, run=subprocess.run) -> "list | None":

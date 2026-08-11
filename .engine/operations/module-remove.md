@@ -29,7 +29,11 @@ reports that there is nothing to remove.
 3. **Remove it.** `module_manager.py remove <module>` reverses the module's shared-file settings (the hooks,
    the dependency-cache ignore lines, an MCP server it registered), deletes the module's own files and its
    folder, drops it from the engine's record, and updates which dependency groups the tool-runtime installs.
-   Identical re-runs change nothing.
+   Identical re-runs change nothing. **If this engine publishes releases**, pass
+   `remove <module> --removal-notice "…what an operator could ask for before and no longer can…"` — that
+   records the plain-language line the engine will show downstream operators when a future release drops the
+   module, and the release cut *refuses to cut* a release that drops a whole module without one (see the Note
+   below). A local operator uninstalling a module in their own deployment omits it — no release is cut there.
 4. **Read what it left in place.** If the module had added a permission, the engine leaves that permission
    alone and says so plainly — it cannot be sure the permission is the engine's alone and not also the
    operator's, so it never removes a shared one. The operator can remove it by hand if it was only for that
@@ -59,3 +63,11 @@ runbooks — see `engine-remove.md` and `module-add.md`.
 **The honest residue.** A bare permission a module added cannot be proven to belong to the engine alone, so
 removal leaves it rather than risk removing one the operator wanted — the accepted cost of never removing
 the wrong thing. It is always disclosed, never silently left.
+
+**Dropping a module from the product needs a removal notice.** When a *release* drops a whole module, a
+downstream engine that still has it reconciles it away on update and shows the operator, in plain language,
+what they can no longer ask for. That line lives in the release's own record (engine.json
+`removed_capabilities`), and `--removal-notice` above is how you author it at removal time; forget it and the
+release cut refuses until you add it to `removed_capabilities` by hand (the module is already gone by then, so
+it is an edit, not another `remove`). This is the whole-module sibling of a module's own in-place
+`retired_capabilities` notice.

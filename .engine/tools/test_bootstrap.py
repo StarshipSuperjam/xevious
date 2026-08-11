@@ -245,6 +245,38 @@ class TestVerifyAndDegrade(unittest.TestCase):
         self.assertEqual(result.cause, "not-admin")
         self.assertIn("administer", bootstrap.render(result))
 
+    def test_plan_limitation_403_routes_to_unsupported_platform_banner(self):
+        # A repo whose PLAN can't host rulesets: the evaluated-rules READ itself returns GitHub's plan-limitation
+        # 403 (not just the write). apply() degrades with the 'unsupported-platform' cause and a banner that
+        # points at accept-unprotected — never the misleading 'you don't administer this repository'.
+        upgrade = {"message": "Upgrade to GitHub Team to enable this feature."}
+
+        def transport(method, path, body=None):
+            headers = {"X-OAuth-Scopes": "repo"}
+            if method == "GET" and path == f"/repos/{REPO}":
+                return 200, {"full_name": REPO}, headers
+            if path == f"/repos/{REPO}/rules/branches/main":
+                return 403, upgrade, headers            # the READ 403s -> the plan can't host rulesets at all
+            if path == f"/repos/{REPO}/rulesets":
+                return 403, upgrade, headers
+            if method in ("POST", "PUT"):
+                return 403, upgrade, headers
+            return 404, None, headers
+
+        result = bootstrap.ControlPlane(
+            REPO, "tok", transport=transport, refresh_fn=lambda s: True,
+            issues=FakeIssues()).apply(branch="main", announce=quiet)
+        self.assertEqual(result.status, "degraded")
+        self.assertEqual(result.cause, "unsupported-platform")
+        self.assertIsNone(result.marker)                # a degraded arrival persists no control_plane marker
+        rendered = bootstrap.render(result)
+        self.assertIn("plan", rendered.lower())
+        # Offers a plain spoken phrase (the engine never asks the operator to type a command), not a raw CLI
+        # invocation, and does not misblame the operator ("you don't administer this repository").
+        self.assertIn("accept that my plan can't protect this branch", rendered)
+        self.assertNotIn("python .engine/tools/bootstrap.py accept-unprotected", rendered)
+        self.assertNotIn("you don't administer", rendered)
+
     def test_fine_grained_403_then_refresh_retries_and_applies(self):
         # A fine-grained token (no scope header): the first write 403s, the refresh "grants" admin, the
         # retry succeeds -> applied, with exactly one engine ruleset created (no duplicate).
@@ -354,6 +386,13 @@ class TestCopySurface(unittest.TestCase):
         # template's line wrapping.
         self.assertEqual(self._norm(bootstrap.load_copy(bootstrap.TEMPLATE_PATH)["before-you-approve"]),
                          self._norm(bootstrap.FALLBACK_COPY["before-you-approve"]))
+
+    def test_template_and_fallback_unsupported_platform_do_not_drift(self):
+        # The same word-for-word guard for the plan-limitation banner (#809), so a future copy fix can't land
+        # in the template and not the built-in fallback (or vice versa). Tolerates only the template's wrapping.
+        self.assertEqual(
+            self._norm(bootstrap.load_copy(bootstrap.TEMPLATE_PATH)["degraded-unsupported-platform"]),
+            self._norm(bootstrap.FALLBACK_COPY["degraded-unsupported-platform"]))
 
     def test_missing_template_falls_back_not_crashes(self):
         copy = bootstrap.load_copy("/no/such/template.md")
@@ -921,13 +960,51 @@ class TestFinalize(unittest.TestCase):
 
     def test_finalize_refuses_on_a_checkless_instance(self):
         # finalize's whole job is to BIND checks; on a checkless instance it would silently no-op them, so it
-        # raises loudly against that documented invariant rather than falsely reading 'already'.
+        # raises loudly against that documented invariant rather than falsely reading 'already'. It raises the
+        # distinct ControlPlaneMisuse (a construction bug), NOT BootstrapError (a transport failure) — so
+        # cmd_finalize's connectivity handler never swallows it and mislabels it as a network problem (#696).
         gh = AugmentGitHub(products=[_engine_ruleset(checkless=True)])
         cp = bootstrap.ControlPlane(REPO, "tok", transport=_with_workflows(gh.transport, present=True),
                                     refresh_fn=lambda s: True, issues=FakeIssues(), tier=bootstrap.SOLO,
                                     checkless=True)
-        with self.assertRaises(bootstrap.BootstrapError):
+        with self.assertRaises(bootstrap.ControlPlaneMisuse):
             cp.finalize(branch="main")
+        # And it is NOT a BootstrapError, so a bare `except BootstrapError` cannot catch it.
+        self.assertNotIsInstance(bootstrap.ControlPlaneMisuse("x"), bootstrap.BootstrapError)
+
+    def test_cmd_finalize_labels_misuse_and_transport_failures_differently(self):
+        # The CLI wrapper must tell a construction bug (ControlPlaneMisuse) apart from a genuine network
+        # failure (BootstrapError): the first is an honest "internal error", never the "back online"
+        # connectivity message the second gets. This is the #696 fix at the surface the operator sees.
+        import argparse
+        import contextlib
+        import io
+        from unittest import mock
+
+        def _run(exc):
+            args = argparse.Namespace(repo=REPO, branch="main")
+
+            class _CP:
+                def finalize(self, branch=None):
+                    raise exc
+
+            buf = io.StringIO()
+            with mock.patch.object(bootstrap, "boot") as mb, \
+                    mock.patch.object(bootstrap, "ControlPlane", lambda repo, token: _CP()), \
+                    contextlib.redirect_stdout(buf):
+                mb.gh_token.return_value = "tok"
+                rc = bootstrap.cmd_finalize(args)
+            return rc, buf.getvalue()
+
+        misuse_rc, misuse_msg = _run(bootstrap.ControlPlaneMisuse("checkless instance"))
+        transport_rc, transport_msg = _run(bootstrap.BootstrapError("GitHub is unreachable"))
+
+        self.assertEqual(misuse_rc, 1)
+        self.assertEqual(transport_rc, 1)
+        self.assertIn("internal error", misuse_msg.lower())
+        self.assertNotIn("back online", misuse_msg)           # never the connectivity framing
+        self.assertIn("back online", transport_msg)            # the genuine transport message is preserved
+        self.assertNotEqual(misuse_msg, transport_msg)
 
     def test_checkless_augment_then_finalize_then_debootstrap_restores_the_product(self):
         # The reversal-integrity round trip: without the union marker, de_bootstrap would leave the
@@ -960,6 +1037,229 @@ class TestFinalize(unittest.TestCase):
         # create/repair shape (added is None) needs no union — cur wins unchanged.
         created = {"ruleset_mode": "created", "augmented_ruleset_id": None, "added": None}
         self.assertEqual(bootstrap._union_added(arrival, created), created)
+
+
+class TestAcceptUnprotected(unittest.TestCase):
+    """The accept-unprotected verb records an operator-consented unsupported-platform posture — but ONLY after
+    it re-verifies live that the branch-rules read genuinely returns GitHub's plan-limitation 403, so it can
+    never mint an exception on a repo whose plan can host protection."""
+
+    def _run(self, *, rules_response, login="octocat", tier="solo"):
+        import argparse
+        import contextlib
+        import io
+        from unittest import mock
+        recorded = {}
+
+        def transport(method, path, body=None):
+            if path == "/user":
+                return 200, {"login": login}, {}
+            return rules_response  # (status, body, headers) for the /rules/branches read
+
+        cp = bootstrap.ControlPlane("o/r", "tok", transport=transport, refresh_fn=lambda s: True,
+                                    issues=FakeIssues())
+        args = argparse.Namespace(repo="o/r", branch="main")
+        buf = io.StringIO()
+        with mock.patch.object(bootstrap, "boot") as mb, \
+                mock.patch.object(bootstrap, "ControlPlane", lambda repo, token: cp), \
+                mock.patch.object(bootstrap, "_persist_protection_posture",
+                                  side_effect=lambda p: recorded.update(p) or True), \
+                mock.patch.object(protection_guard, "resolve_tier", return_value=tier), \
+                contextlib.redirect_stdout(buf):
+            mb.gh_token.return_value = "tok"
+            rc = bootstrap.cmd_accept_unprotected(args)
+        return rc, recorded, buf.getvalue()
+
+    def test_records_on_genuine_plan_limitation_403(self):
+        rc, recorded, out = self._run(
+            rules_response=(403, {"message": "Upgrade to GitHub Team to enable this feature."}, {}))
+        self.assertEqual(rc, 0)
+        self.assertEqual(recorded.get("status"), "unsupported-platform")
+        self.assertEqual(recorded.get("operator_login"), "octocat")
+        self.assertRegex(recorded.get("recorded_on", ""), r"^\d{4}-\d{2}-\d{2}$")
+        self.assertIn("safety gate is OFF", out)         # the security consequence is stated at consent time
+
+    def test_refuses_when_the_read_succeeds(self):
+        # A repo whose plan CAN host rulesets returns 200 on the read — the belt refuses to record.
+        rc, recorded, out = self._run(rules_response=(200, [], {}))
+        self.assertEqual(rc, 1)
+        self.assertEqual(recorded, {})                   # nothing recorded
+        self.assertIn("CAN host", out)
+
+    def test_refuses_on_a_non_plan_limitation_403(self):
+        # An ordinary not-admin 403 is NOT a plan limitation — refuse rather than record on a guess.
+        rc, recorded, out = self._run(
+            rules_response=(403, {"message": "Resource not accessible by personal access token"}, {}))
+        self.assertEqual(rc, 1)
+        self.assertEqual(recorded, {})
+
+    def test_team_mode_states_the_team_implication(self):
+        rc, recorded, out = self._run(
+            rules_response=(403, {"message": "Upgrade to GitHub Team to enable this feature."}, {}), tier="team")
+        self.assertEqual(rc, 0)
+        self.assertIn("TEAM mode", out)
+
+    def test_posture_persist_and_clear_roundtrip(self):
+        import json
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "engine.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({"engine_release": "1.0.0", "packages": {}, "identity": "solo"}, fh)
+            with mock.patch.object(bootstrap, "_engine_json_path", return_value=path):
+                ok = bootstrap._persist_protection_posture(
+                    {"status": "unsupported-platform", "reason": "x", "operator_login": "me",
+                     "recorded_on": "2026-08-08"})
+                self.assertTrue(ok)
+                with open(path, encoding="utf-8") as fh:
+                    self.assertEqual(json.load(fh)["protection_posture"]["operator_login"], "me")
+                bootstrap._clear_protection_posture()     # apply-on-success clears the now-stale record
+                with open(path, encoding="utf-8") as fh:
+                    self.assertNotIn("protection_posture", json.load(fh))
+
+    def test_cmd_status_reports_an_accepted_posture_calmly(self):
+        # cmd_status must recognize a recorded plan-limitation acceptance and report it calmly, not as an
+        # unexplained "Couldn't read... treating it as not on" technical failure.
+        import argparse
+        import contextlib
+        import io
+        from unittest import mock
+        posture = {"status": "unsupported-platform", "recorded_on": "2026-08-08", "operator_login": "me"}
+
+        class _CP:
+            def floor_missing(self, branch):
+                raise bootstrap.BootstrapError("could not read evaluated branch rules (status 403)")
+
+            def _plan_forbids_rulesets(self, branch):
+                return True
+
+        buf = io.StringIO()
+        args = argparse.Namespace(repo="o/r", branch="main")
+        with mock.patch.object(bootstrap, "boot") as mb, \
+                mock.patch.object(bootstrap, "ControlPlane", lambda repo, token: _CP()), \
+                mock.patch.object(bootstrap.protection_guard, "recorded_posture", return_value=posture), \
+                contextlib.redirect_stdout(buf):
+            mb.gh_token.return_value = "tok"
+            rc = bootstrap.cmd_status(args)
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("isn't available on this repository's GitHub plan", out)
+        self.assertIn("2026-08-08", out)
+        self.assertNotIn("Couldn't read", out)       # never the unexplained-failure message
+
+    def test_cmd_finalize_clears_a_stale_posture_on_success(self):
+        # The standing check's stale-record nudge names `finalize` as a way to turn protection on, so finalize
+        # must clear the stale posture on success too (not only cmd_apply).
+        import argparse
+        import contextlib
+        import io
+        from unittest import mock
+        cleared = []
+        protected = bootstrap.Result("applied", "main", [], None,
+                                     marker={"ruleset_mode": "created", "augmented_ruleset_id": None,
+                                             "added": None})
+
+        class _CP:
+            def finalize(self, branch=None):
+                return protected
+
+        args = argparse.Namespace(repo="o/r", branch="main")
+        with mock.patch.object(bootstrap, "boot") as mb, \
+                mock.patch.object(bootstrap, "ControlPlane", lambda repo, token: _CP()), \
+                mock.patch.object(bootstrap, "_persist_finalize_marker", lambda m: None), \
+                mock.patch.object(bootstrap, "_clear_protection_posture",
+                                  side_effect=lambda: cleared.append(True)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            mb.gh_token.return_value = "tok"
+            rc = bootstrap.cmd_finalize(args)
+        self.assertEqual(rc, 0)
+        self.assertEqual(cleared, [True])            # stale posture cleared on a protected finalize
+
+    def test_end_to_end_verb_write_is_read_by_the_guard_and_matches_schema(self):
+        # The SEAM, proven with ONE real manifest carried through: the exact dict the verb persists is what
+        # protection_guard.recorded_posture() reads back AND what the committed schema accepts.
+        import argparse
+        import contextlib
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        def transport(method, path, body=None):
+            if path == "/user":
+                return 200, {"login": "octocat"}, {}
+            return 403, {"message": "Upgrade to GitHub Team to enable this feature."}, {}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "engine.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({"engine_release": "1.0.0", "packages": {}, "identity": "solo"}, fh)
+            cp = bootstrap.ControlPlane("o/r", "tok", transport=transport, refresh_fn=lambda s: True,
+                                        issues=FakeIssues())
+            args = argparse.Namespace(repo="o/r", branch="main")
+            with mock.patch.object(bootstrap, "boot") as mb, \
+                    mock.patch.object(bootstrap, "ControlPlane", lambda repo, token: cp), \
+                    mock.patch.object(bootstrap, "_engine_json_path", return_value=path), \
+                    mock.patch.object(bootstrap.protection_guard, "resolve_tier", return_value="solo"), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                mb.gh_token.return_value = "tok"
+                self.assertEqual(bootstrap.cmd_accept_unprotected(args), 0)
+            # the guard reads back the SAME record the verb wrote
+            posture = protection_guard.recorded_posture(engine_dir=tmp)
+            self.assertIsNotNone(posture)
+            self.assertEqual(posture["status"], "unsupported-platform")
+            self.assertEqual(posture["operator_login"], "octocat")
+            # and the written manifest validates against the committed schema (drift between write and schema fails)
+            import jsonschema
+            with open(path, encoding="utf-8") as fh:
+                manifest = json.load(fh)
+            schema_path = os.path.join(os.path.dirname(os.path.abspath(bootstrap.__file__)),
+                                       "..", "schemas", "engine.v1.json")
+            with open(schema_path, encoding="utf-8") as fh:
+                schema = json.load(fh)
+            jsonschema.validate(manifest, schema)
+
+
+class TestManifestWriteBoundary(unittest.TestCase):
+    """#923: bootstrap's manifest markers (the finalize control-plane marker, the protection-posture
+    record) rewrite .engine/engine.json in place — the same slot the module lifecycle guards. A
+    symlinked destination is skipped best-effort (this module's documented posture for every write
+    failure), never written through, out of the tree."""
+
+    def test_finalize_marker_skips_a_symlinked_manifest(self):
+        import json as _json
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = os.path.join(tmp, "outside-engine.json")
+            with open(outside, "w", encoding="utf-8") as fh:
+                _json.dump({"engine_release": "1.0.0", "packages": {}}, fh)
+            link = os.path.join(tmp, "engine.json")
+            os.symlink(outside, link)
+            with mock.patch.object(bootstrap, "_engine_json_path", return_value=link):
+                bootstrap._persist_finalize_marker({"added": ["x"]})
+            with open(outside, encoding="utf-8") as fh:
+                self.assertNotIn("control_plane", fh.read(),
+                                 "the marker must never be written through the symlink, out of the tree")
+
+    def test_posture_write_refuses_a_symlinked_manifest(self):
+        import json as _json
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = os.path.join(tmp, "outside-engine.json")
+            with open(outside, "w", encoding="utf-8") as fh:
+                _json.dump({"engine_release": "1.0.0", "packages": {}}, fh)
+            link = os.path.join(tmp, "engine.json")
+            os.symlink(outside, link)
+            with mock.patch.object(bootstrap, "_engine_json_path", return_value=link):
+                ok = bootstrap._persist_protection_posture(
+                    {"status": "unsupported-platform", "reason": "x", "operator_login": "me",
+                     "recorded_on": "2026-08-08"})
+            self.assertFalse(ok, "a symlinked manifest is a best-effort False, never a write-through")
+            with open(outside, encoding="utf-8") as fh:
+                self.assertNotIn("protection_posture", fh.read())
 
 
 if __name__ == "__main__":

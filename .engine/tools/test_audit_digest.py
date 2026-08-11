@@ -36,85 +36,484 @@ def _errors(schema, instance):
     return list(validate.Draft202012Validator(schema).iter_errors(instance))
 
 
+_GITHUB_ENV_ISOLATION = None
+
+
+def setUpModule():
+    # seal() reads GITHUB_SHA/GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT from the environment to record run identity.
+    # Under CI those ARE set, which would non-deterministically stamp audited_sha/run_id into digests these
+    # tests build and reason about — e.g. a hand-rebuilt header that omits them then fails its own seal
+    # (a green-locally / red-in-CI trap). Isolate the whole module from them so every test runs as a local
+    # run by default; the tests that exercise env-reading set their own values via mock.patch.dict.
+    global _GITHUB_ENV_ISOLATION
+    _GITHUB_ENV_ISOLATION = mock.patch.dict(os.environ, {}, clear=False)
+    _GITHUB_ENV_ISOLATION.start()
+    for var in ("GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"):
+        os.environ.pop(var, None)
+
+
+def tearDownModule():
+    if _GITHUB_ENV_ISOLATION is not None:
+        _GITHUB_ENV_ISOLATION.stop()
+
+
+def _scratch(d):
+    return os.path.join(d, "audit-digest.md")
+
+
+def _write_v1(p, generated, body=BODY):
+    """Author a valid, correctly-sealed LEGACY v1 digest on disk — the shape a repo carries before it
+    upgrades to the v2 tool. Used to pin that v1 back-compat (read, verify, staleness) still holds."""
+    body = audit_digest._ensure_recall_completeness("\n\n" + body.lstrip("\n"))
+    fp = audit_digest.compute_seal(audit_digest._iso(generated), body)
+    with open(p, "w", encoding="utf-8", newline="") as fh:
+        fh.write(f"---\nschema_version: 1\ngenerated: {audit_digest._iso(generated)}\nfingerprint: {fp}\n---{body}")
+    return p
+
+
 class TestSeal(unittest.TestCase):
     def _scratch(self, d):
-        return os.path.join(d, "audit-digest.md")
+        return _scratch(d)
 
     def test_seal_then_check_is_in_sync(self):
         with tempfile.TemporaryDirectory() as d:
             p = self._scratch(d)
-            audit_digest.seal(p, generated=JUNE, body=BODY)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
             f = audit_digest.check(p)
             self.assertEqual(f["severity"], "note", f["message"])
 
-    def test_stored_fingerprint_is_the_seal_over_date_and_body(self):
+    def test_fresh_seal_writes_schema_version_2(self):
         with tempfile.TemporaryDirectory() as d:
             p = self._scratch(d)
-            audit_digest.seal(p, generated=JUNE, body=BODY)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(audit_digest._schema_version(fm), audit_digest.SCHEMA_VERSION_V2)
+
+    def test_fresh_seal_sets_content_modified_equal_to_reviewed(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-06-01")
+            self.assertEqual(audit_digest._iso(fm["content_modified_at"]), "2026-06-01")
+
+    def test_stored_fingerprint_is_the_seal_over_the_header_and_body(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
             fm, body = audit_digest.split(p)
-            self.assertEqual(fm["fingerprint"], audit_digest.compute_seal("2026-06-01", body))
+            self.assertEqual(fm["fingerprint"],
+                             audit_digest.compute_seal_v2(audit_digest._sealed_fields(fm), body))
 
     def test_hand_edit_to_the_body_breaks_the_seal(self):
         with tempfile.TemporaryDirectory() as d:
             p = self._scratch(d)
-            audit_digest.seal(p, generated=JUNE, body=BODY)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
             with open(p, "a", encoding="utf-8", newline="") as fh:
                 fh.write("a line the audit never wrote\n")
             f = audit_digest.check(p)
             self.assertEqual(f["severity"], "hard", "a hand-edit must be caught")
 
     def test_changing_the_run_date_breaks_the_seal(self):
-        # The seal covers the date too: silently editing the run-date is caught.
+        # The seal covers the run-date too: silently editing reviewed_at is caught. 2026-05-01 stays <=
+        # content_modified_at (2026-06-01), so this reaches the seal-mismatch bite, not the ordering bite.
         with tempfile.TemporaryDirectory() as d:
             p = self._scratch(d)
-            audit_digest.seal(p, generated=JUNE, body=BODY)
-            text = validate.read(p).replace("generated: 2026-06-01", "generated: 2026-05-01")
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            text = validate.read(p).replace("reviewed_at: 2026-06-01", "reviewed_at: 2026-05-01")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(text)
             self.assertEqual(audit_digest.check(p)["severity"], "hard")
 
     def test_seal_is_independent_of_header_serialization(self):
-        # The seal reads the PARSED date + the RAW body, not the header text — so re-quoting the date and
-        # re-ordering the header keys must NOT break verification. This is the plan-gate-hardened invariant.
+        # The v2 seal reads the PARSED, normalized fields + the RAW body, not the header text — so re-quoting
+        # a date and re-ordering the header keys must NOT break verification. The plan-gate-hardened invariant,
+        # now covering the int-typed schema_version alongside the date fields.
         with tempfile.TemporaryDirectory() as d:
             p = self._scratch(d)
-            audit_digest.seal(p, generated=JUNE, body=BODY)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
             fm, body = audit_digest.split(p)
-            reserialized = (f"---\nfingerprint: {fm['fingerprint']}\ngenerated: '2026-06-01'\n"
-                            f"schema_version: 1\n---{body}")
+            reserialized = (f"---\nfingerprint: {fm['fingerprint']}\ncontent_modified_at: '2026-06-01'\n"
+                            f"reviewed_at: 2026-06-01\nschema_version: 2\n---{body}")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(reserialized)
             self.assertEqual(audit_digest.check(p)["severity"], "note",
                              "re-quoting/re-ordering the header must not break the seal")
 
-    def test_reseal_preserves_the_body_verbatim(self):
+
+class TestSealWriteBoundary(unittest.TestCase):
+    """#923: the committed digest is TRACKED, so a symlink at its slot can arrive in a clone or a pull
+    request — the seal must refuse to write THROUGH it, out of the tree. A caller-supplied path (the
+    whole rest of this suite) keeps working: it is guarded against its own parent (the leaf rule)."""
+
+    def test_seal_refuses_a_symlinked_digest_and_writes_nothing_through(self):
         with tempfile.TemporaryDirectory() as d:
-            p = self._scratch(d)
-            audit_digest.seal(p, generated=JUNE, body=BODY)
-            _fm, body_before = audit_digest.split(p)
-            audit_digest.seal(p, generated=datetime.date(2026, 7, 1))  # re-seal, body=None
-            _fm2, body_after = audit_digest.split(p)
-            self.assertEqual(body_before, body_after)
+            outside = os.path.join(d, "outside-digest.md")
+            link = os.path.join(d, "audit-digest.md")
+            os.symlink(outside, link)   # dangling on purpose: exists() would say absent, islink still bites
+            with self.assertRaises(audit_digest.engine_write.EngineWriteRefused):
+                audit_digest.seal(link, reviewed_at=JUNE, body=BODY)
+            self.assertFalse(os.path.exists(outside),
+                             "nothing was written through the symlink, out of the tree")
+
+    def test_the_committed_slot_gets_the_full_root_wall(self):
+        # a symlinked ANCESTOR (.engine/audits -> elsewhere) leaves the leaf a plain name — only the
+        # root-containment wall catches it, and the committed slot is where that wall applies
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "repo")
+            os.makedirs(os.path.join(root, ".engine"))
+            outside_dir = os.path.join(d, "outside-audits")
+            os.makedirs(outside_dir)
+            os.symlink(outside_dir, os.path.join(root, ".engine", "audits"))
+            slot = os.path.join(root, ".engine", "audits", "audit-digest.md")
+            with mock.patch.object(audit_digest, "AUDIT_DIGEST_PATH", slot), \
+                    mock.patch.object(audit_digest.validate, "ROOT", root):
+                with self.assertRaises(audit_digest.engine_write.EngineWriteRefused):
+                    audit_digest.seal(slot, reviewed_at=JUNE, body=BODY)
+            self.assertEqual(os.listdir(outside_dir), [],
+                             "nothing was written through the symlinked audits directory")
+
+    def test_an_aliased_path_to_the_committed_slot_still_gets_the_full_root_wall(self):
+        # the discriminator compares RESOLVED parents, never raw strings: reaching the committed slot
+        # through a differently-spelled path (a symlinked alias of the checkout — a symlinked worktree,
+        # a manual absolute path) must NOT silently downgrade to the leaf-only rule, which is blind to
+        # a symlinked ancestor. This bites: with a string-equality discriminator the write escapes.
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "repo")
+            os.makedirs(os.path.join(root, ".engine"))
+            outside_dir = os.path.join(d, "outside-audits")
+            os.makedirs(outside_dir)
+            os.symlink(outside_dir, os.path.join(root, ".engine", "audits"))   # the planted ancestor
+            alias = os.path.join(d, "alias-of-repo")
+            os.symlink(root, alias)                                            # a second spelling of root
+            slot = os.path.join(root, ".engine", "audits", "audit-digest.md")
+            aliased = os.path.join(alias, ".engine", "audits", "audit-digest.md")
+            with mock.patch.object(audit_digest, "AUDIT_DIGEST_PATH", slot), \
+                    mock.patch.object(audit_digest.validate, "ROOT", root):
+                with self.assertRaises(audit_digest.engine_write.EngineWriteRefused):
+                    audit_digest.seal(aliased, reviewed_at=JUNE, body=BODY)
+            self.assertEqual(os.listdir(outside_dir), [],
+                             "nothing was written through the aliased spelling of the committed slot")
+
+    def test_the_cli_reports_a_seal_refusal_as_a_refusal_not_a_crash(self):
+        # the refusal must read "refused, nothing was written" in a workflow log — never the generic
+        # ERROR channel where it is indistinguishable from a crash with unknown state
+        with tempfile.TemporaryDirectory() as d:
+            link = os.path.join(d, "audit-digest.md")
+            os.symlink(os.path.join(d, "outside-digest.md"), link)
+            body_file = os.path.join(d, "body.md")
+            with open(body_file, "w", encoding="utf-8") as fh:
+                fh.write(BODY)
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                code = audit_digest.main(["seal", link, "--body-file", body_file])
+            self.assertEqual(code, 2)
+            self.assertIn("Nothing was written", buf.getvalue())
+            self.assertNotIn("ERROR:", buf.getvalue(), "a deliberate refusal is not the crash channel")
+
+
+class TestSealRequiresBodyAndRecordsRun(unittest.TestCase):
+    """`seal` is the ONLY writer of the run-date, and it structurally cannot run without fresh prose — the
+    anti-#665 guarantee — and it records the workflow run identity from the environment when present."""
+
+    def test_seal_without_a_body_is_refused_and_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            with self.assertRaises(ValueError):
+                audit_digest.seal(p, reviewed_at=JUNE)   # no body -> the run-date cannot advance
+            self.assertFalse(os.path.exists(p), "a bodyless seal must not write a file")
+
+    def test_seal_records_audited_sha_and_run_id_from_env(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(
+                os.environ, {"GITHUB_SHA": "cafef00d", "GITHUB_RUN_ID": "42", "GITHUB_RUN_ATTEMPT": "2"}):
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(str(fm.get("audited_sha")), "cafef00d")
+            self.assertEqual(str(fm.get("run_id")), "42/2")
+            self.assertEqual(audit_digest.check(p)["severity"], "note", "the recorded run identity is sealed and verifies")
+
+    def test_seal_omits_run_identity_off_a_local_run(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {}, clear=True):
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            fm, _ = audit_digest.split(p)
+            self.assertNotIn("audited_sha", fm)
+            self.assertNotIn("run_id", fm)
             self.assertEqual(audit_digest.check(p)["severity"], "note")
 
-    def test_seal_appends_the_recall_completeness_disclosure_once_idempotently(self):
-        # The committed digest carries the standing recall-completeness line. It used to disclose an EXCLUSION
-        # (recall reached only the curated summaries); it now discloses the opposite, because search reaches the
-        # recorded conversation too — the line survives, its content inverted. Appended on a fresh seal, and
-        # never doubled when an existing digest is re-sealed.
+    def test_a_genuine_second_run_advances_reviewed_at_and_records_fresh_identity(self):
+        # The positive counterpart to the #665 negative case: a real new run (fresh prose) MUST advance the
+        # run-date and record the new run's snapshot/identity — the seal is the honest writer of freshness.
         with tempfile.TemporaryDirectory() as d:
-            p = self._scratch(d)
-            audit_digest.seal(p, generated=JUNE, body=BODY)
+            p = _scratch(d)
+            with mock.patch.dict(os.environ, {"GITHUB_SHA": "sha_one", "GITHUB_RUN_ID": "1"}, clear=True):
+                audit_digest.seal(p, reviewed_at=datetime.date(2026, 6, 1), body="First review.")
+            with mock.patch.dict(os.environ, {"GITHUB_SHA": "sha_two", "GITHUB_RUN_ID": "2"}, clear=True):
+                audit_digest.seal(p, reviewed_at=datetime.date(2026, 7, 1), body="A genuinely new review.")
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-07-01", "a real run advances the run-date")
+            self.assertEqual(str(fm.get("audited_sha")), "sha_two")
+            self.assertEqual(str(fm.get("run_id")), "2")
+            self.assertEqual(audit_digest.check(p)["severity"], "note")
+
+    def test_seal_refuses_an_unparseable_run_date(self):
+        # A mistyped run-date must fail loudly at the write — never silently commit a seal-valid record with
+        # a nonsense date that only a later check() would flag. (Matches correct/migrate's date validation.)
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            with self.assertRaises(ValueError):
+                audit_digest.seal(p, reviewed_at="not-a-date", body=BODY)
+            self.assertFalse(os.path.exists(p), "a bad run-date must not write a file")
+            bf = os.path.join(d, "prose.md")
+            with open(bf, "w", encoding="utf-8", newline="") as fh:
+                fh.write(BODY)
+            self.assertEqual(audit_digest.main(["seal", p, "not-a-date", "--body-file", bf]), 2)
+            self.assertFalse(os.path.exists(p))
+
+    def test_seal_refuses_an_empty_body(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            with self.assertRaises(ValueError):
+                audit_digest.seal(p, reviewed_at=JUNE, body="   \n\n  ")
+            self.assertFalse(os.path.exists(p))
+
+
+class TestSealCanonicalization(unittest.TestCase):
+    """The seal's canonicalization contract — the plan-gate BLOCKING finding. It must round-trip across the
+    write side (argv/env strings) and the check side (validate.frontmatter, which coerces bare numbers to
+    ints and normalizes dates to ISO strings), and it must leave no header field unsealed."""
+
+    def test_round_trips_hazardous_string_ids(self):
+        # audited_sha/run_id are emitted double-quoted (ensure_ascii=False), so YAML gives them back as
+        # STRINGS — a leading-zero id is never re-resolved as octal (0755 -> 493), a `#` never truncated as a
+        # comment, and a non-BMP character (emoji) is emitted literally rather than as a surrogate pair that
+        # would fail to UTF-8-encode. Emitting them unquoted (or ascii-escaped) was a false-hard/crash bug:
+        # a legitimately-sealed digest failing its own seal. Each must round-trip verbatim AND verify.
+        for sha, rid in [("0755", "0042"), ("00ff # not-a-comment", "7/1"), ("123456789", "7777"),
+                         ("🚀deadbeef", "1")]:
+            with tempfile.TemporaryDirectory() as d:
+                p = _scratch(d)
+                audit_digest.seal(p, reviewed_at=JUNE, body=BODY, audited_sha=sha, run_id=rid)
+                fm, _ = audit_digest.split(p)
+                self.assertEqual(str(fm.get("audited_sha")), sha, f"sha {sha!r} must round-trip verbatim")
+                self.assertEqual(str(fm.get("run_id")), rid, f"run_id {rid!r} must round-trip verbatim")
+                self.assertEqual(audit_digest.check(p)["severity"], "note", f"seal must verify for {sha!r}/{rid!r}")
+
+    def test_a_stray_unsealed_header_key_breaks_the_seal(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            text = validate.read(p).replace("schema_version: 2\n", "schema_version: 2\nsneaky: injected\n")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(text)
+            self.assertEqual(audit_digest.check(p)["severity"], "hard",
+                             "the seal covers the whole header minus fingerprint — a stray key must break it")
+
+    def test_body_prose_cannot_forge_or_strip_a_header_field(self):
+        # A field moved into the body (or a field absent vs present-empty) must produce a DISTINCT seal, so
+        # body prose can neither forge nor strip audited_sha.
+        base = {"schema_version": 2, "reviewed_at": "2026-06-01", "content_modified_at": "2026-06-01"}
+        with_sha = dict(base, audited_sha="abc")
+        empty_sha = dict(base, audited_sha="")
+        self.assertNotEqual(
+            audit_digest.compute_seal_v2(base, "abc\nreal body"),
+            audit_digest.compute_seal_v2(with_sha, "real body"))
+        self.assertNotEqual(
+            audit_digest.compute_seal_v2(base, "b"),
+            audit_digest.compute_seal_v2(empty_sha, "b"))
+
+
+class TestCorrectVerb(unittest.TestCase):
+    """`correct` repairs prose WITHOUT a new run: it preserves reviewed_at (and any recorded run identity)
+    and moves only content_modified_at — so a wording fix can never postpone the staleness warning (#665)."""
+
+    def test_correction_does_not_advance_the_freshness_clock(self):
+        # THE #665 headline. Seal on day A; correct (new prose) on a later day B. Freshness must be measured
+        # from A, never B — so a review already past the bound stays flagged despite the recent edit.
+        A = datetime.date(2026, 6, 1)
+        B = datetime.date(2026, 6, 25)
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=A, body=BODY)
+            audit_digest.correct(p, body="A corrected, reworded review.", content_modified_at=B)
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-06-01", "run-date must be immutable")
+            self.assertEqual(audit_digest._iso(fm["content_modified_at"]), "2026-06-25")
+            self.assertEqual(audit_digest.check(p)["severity"], "note", "the correction re-seals cleanly")
+            # Age counted from A (the run), not B (the edit): A + 31 days is stale even though B was recent.
+            past_from_run = A + datetime.timedelta(days=audit_digest.STALENESS_DAYS + 1)
+            self.assertEqual(audit_digest.staleness(p, now=past_from_run)["severity"], "soft")
+            # And the same day measured from the EDIT (B + 7) would be "fresh" if the clock had wrongly moved —
+            # it must still be stale, proving the clock did not move to B.
+            self.assertEqual(audit_digest.staleness(p, now=B + datetime.timedelta(days=7))["severity"], "soft")
+
+    def test_correct_preserves_the_body_verbatim_when_no_new_prose(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            _fm, body_before = audit_digest.split(p)
+            audit_digest.correct(p, content_modified_at=datetime.date(2026, 7, 1))   # body=None -> keep prose
+            fm_after, body_after = audit_digest.split(p)
+            self.assertEqual(body_before, body_after, "a metadata-only correction keeps the prose byte-for-byte")
+            self.assertEqual(audit_digest._iso(fm_after["reviewed_at"]), "2026-06-01")
+            self.assertEqual(audit_digest.check(p)["severity"], "note")
+
+    def test_correct_preserves_recorded_run_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            with mock.patch.dict(os.environ,
+                                 {"GITHUB_SHA": "deadbeef", "GITHUB_RUN_ID": "9", "GITHUB_RUN_ATTEMPT": "1"}):
+                audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            # env cleared now; correct must carry the SEALED sha/run_id forward, not re-read the environment.
+            with mock.patch.dict(os.environ, {}, clear=True):
+                audit_digest.correct(p, body="reworded", content_modified_at=datetime.date(2026, 7, 1))
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(str(fm.get("audited_sha")), "deadbeef")
+            self.assertEqual(str(fm.get("run_id")), "9/1")
+            self.assertEqual(audit_digest.check(p)["severity"], "note")
+
+    def test_correct_appends_recall_completeness_once_idempotently(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
             _fm, body = audit_digest.split(p)
             self.assertIn(audit_digest._RECALL_COMPLETENESS_HEADING, body)
-            low = body.lower()
-            self.assertIn("word-for-word conversation", low)
-            self.assertIn("nothing was forgotten or deleted", low)
             self.assertEqual(body.count(audit_digest._RECALL_COMPLETENESS_HEADING), 1)
-            audit_digest.seal(p, generated=datetime.date(2026, 7, 1))    # re-seal, body=None
+            audit_digest.correct(p, content_modified_at=datetime.date(2026, 7, 1))    # body=None re-seal
             _fm2, body2 = audit_digest.split(p)
-            self.assertEqual(body2.count(audit_digest._RECALL_COMPLETENESS_HEADING), 1)  # not doubled
+            self.assertEqual(body2.count(audit_digest._RECALL_COMPLETENESS_HEADING), 1, "never doubled")
+
+    def test_correct_refuses_a_content_modified_before_the_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=datetime.date(2026, 6, 10), body=BODY)
+            with self.assertRaises(ValueError):
+                audit_digest.correct(p, content_modified_at=datetime.date(2026, 6, 1))
+
+    def test_correct_refuses_a_legacy_v1_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(_scratch(d), "2026-06-01")
+            with self.assertRaises(ValueError):
+                audit_digest.correct(p, body="x")   # must migrate first
+
+    def test_correct_refuses_a_tampered_source(self):
+        # correct must not launder a tamper: if the digest was hand-edited since it was sealed, correcting it
+        # would bake the tamper into a fresh valid seal. Refuse and leave the file untouched (same guard the
+        # migrate fix applies to a v1 source).
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            with open(p, "a", encoding="utf-8", newline="") as fh:
+                fh.write("INSERTED: this project has no known issues.\n")
+            self.assertEqual(audit_digest.check(p)["severity"], "hard", "precondition: the tamper is detectable")
+            before = validate.read(p)
+            with self.assertRaises(ValueError):
+                audit_digest.correct(p, content_modified_at=datetime.date(2026, 7, 1))
+            self.assertEqual(validate.read(p), before, "a refused correction leaves the tampered file untouched")
+
+    def test_correct_refuses_an_empty_replacement_body(self):
+        # An empty --body-file (a broken capture) must NOT silently wipe the real review down to boilerplate;
+        # `correct` refuses it, leaving the committed prose intact. (body=None is the keep-verbatim path.)
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            _fm, body_before = audit_digest.split(p)
+            with self.assertRaises(ValueError):
+                audit_digest.correct(p, body="   \n\n  ")
+            _fm2, body_after = audit_digest.split(p)
+            self.assertEqual(body_before, body_after, "a refused correction leaves the prose untouched")
+
+
+class TestMigrateVerb(unittest.TestCase):
+    """`migrate` is the one-time v1 -> v2 upgrade: the operator supplies the true run-date, the body is kept
+    verbatim, and NO run identity is invented."""
+
+    def test_migrate_v1_to_v2_splits_the_dates_and_keeps_the_body(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(_scratch(d), "2026-07-25", body="The July review body.")
+            _fm0, body_before = audit_digest.split(p)
+            audit_digest.migrate(p, reviewed_at="2026-07-12", content_modified_at="2026-07-25")
+            fm, body_after = audit_digest.split(p)
+            self.assertEqual(audit_digest._schema_version(fm), 2)
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-07-12")
+            self.assertEqual(audit_digest._iso(fm["content_modified_at"]), "2026-07-25")
+            self.assertNotIn("generated", fm)
+            self.assertNotIn("audited_sha", fm, "the historical run recorded no snapshot — none is invented")
+            self.assertNotIn("run_id", fm)
+            self.assertEqual(body_before, body_after, "the prose is preserved byte-for-byte")
             self.assertEqual(audit_digest.check(p)["severity"], "note")
+            # Freshness now reads the honest run-date, not the later correction date.
+            self.assertEqual(audit_digest.staleness(p, now=datetime.date(2026, 8, 1))["severity"], "note")
+            self.assertEqual(audit_digest.staleness(p, now=datetime.date(2026, 8, 20))["severity"], "soft")
+
+    def test_migrate_defaults_content_modified_to_the_run_date(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(_scratch(d), "2026-07-25")
+            audit_digest.migrate(p, reviewed_at="2026-07-12")
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(audit_digest._iso(fm["content_modified_at"]), "2026-07-12")
+
+    def test_migrate_requires_the_true_run_date(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(_scratch(d), "2026-07-25")
+            with self.assertRaises(ValueError):
+                audit_digest.migrate(p, reviewed_at=None)
+
+    def test_migrate_refuses_a_file_that_is_already_v2(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _scratch(d)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
+            with self.assertRaises(ValueError):
+                audit_digest.migrate(p, reviewed_at="2026-06-01")
+
+    def test_migrate_refuses_a_tampered_v1_source(self):
+        # A v1 digest whose body was altered since it was sealed must NOT be laundered into a valid v2 record
+        # with an operator-supplied run-date — that would reopen #665 through migrate. Verify the source seal
+        # first and refuse a tampered source; the file is left untouched.
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(_scratch(d), "2026-06-01", body="The real, sealed review.")
+            with open(p, "a", encoding="utf-8", newline="") as fh:
+                fh.write("FABRICATED: nothing to see here.\n")   # breaks the v1 seal
+            self.assertEqual(audit_digest.check(p)["severity"], "hard", "precondition: the tamper is detectable")
+            before = validate.read(p)
+            with self.assertRaises(ValueError):
+                audit_digest.migrate(p, reviewed_at="2026-08-08")
+            self.assertEqual(validate.read(p), before, "a refused migration leaves the tampered file untouched")
+
+
+class TestV1BackCompat(unittest.TestCase):
+    """A legacy v1 digest (a single `generated:` date) must still be READ, verified, and aged — so an
+    existing repo stays green when it upgrades to the v2 tool, before its next run reseals to v2."""
+
+    def test_valid_v1_digest_verifies(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(_scratch(d), "2026-06-01")
+            self.assertEqual(audit_digest.check(p)["severity"], "note")
+
+    def test_tampered_v1_digest_is_hard(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(_scratch(d), "2026-06-01")
+            with open(p, "a", encoding="utf-8", newline="") as fh:
+                fh.write("a hand-edit the audit never wrote\n")
+            self.assertEqual(audit_digest.check(p)["severity"], "hard")
+
+    def test_v1_staleness_reads_generated(self):
+        now = datetime.date(2026, 6, 20)
+        with tempfile.TemporaryDirectory() as d:
+            fresh = _write_v1(os.path.join(d, "fresh.md"), now - datetime.timedelta(days=1))
+            self.assertEqual(audit_digest.staleness(fresh, now=now)["severity"], "note")
+            aged = _write_v1(os.path.join(d, "aged.md"), now - datetime.timedelta(days=audit_digest.STALENESS_DAYS + 1))
+            self.assertEqual(audit_digest.staleness(aged, now=now)["severity"], "soft")
+
+    def test_generated_of_reads_v2_reviewed_at_then_v1_generated(self):
+        # The prior-digest history feed spans both formats: a v2 prior digest is labeled by its reviewed_at,
+        # a legacy v1 by its generated. (Every seal() writes v2 now, so the v2 branch is the common case.)
+        self.assertEqual(
+            audit_digest._generated_of("schema_version: 2\nreviewed_at: 2026-07-12\ncontent_modified_at: 2026-07-25\n"),
+            "2026-07-12")
+        self.assertEqual(audit_digest._generated_of("schema_version: 1\ngenerated: 2026-06-01\n"), "2026-06-01")
+        self.assertIsNone(audit_digest._generated_of("fingerprint: sha256:x\n"))
 
 
 class TestCheckEdgeCases(unittest.TestCase):
@@ -137,11 +536,59 @@ class TestCheckEdgeCases(unittest.TestCase):
                 fh.write("just some prose, no header at all\n")
             self.assertEqual(audit_digest.check(p)["severity"], "hard")
 
+    def test_v2_missing_a_required_field_is_hard(self):
+        # schema_version: 2 but no content_modified_at -> fail closed, never a silent pass.
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "audit-digest.md")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write("---\nschema_version: 2\nreviewed_at: 2026-06-01\nfingerprint: sha256:x\n---\nbody\n")
+            self.assertEqual(audit_digest.check(p)["severity"], "hard")
+
+    def test_absent_schema_version_is_hard(self):
+        # A header carrying a reviewed_at + fingerprint but NO schema version cannot pick a verifier -> hard.
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "audit-digest.md")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write("---\nreviewed_at: 2026-06-01\ncontent_modified_at: 2026-06-01\nfingerprint: sha256:x\n---\nbody\n")
+            self.assertEqual(audit_digest.check(p)["severity"], "hard")
+
+    def test_unknown_schema_version_is_hard(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "audit-digest.md")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write("---\nschema_version: 3\nreviewed_at: 2026-06-01\ncontent_modified_at: 2026-06-01\nfingerprint: sha256:x\n---\nbody\n")
+            f = audit_digest.check(p)
+            self.assertEqual(f["severity"], "hard")
+            self.assertIn("unrecognized schema version", f["message"])
+
+    def test_non_int_schema_version_is_hard(self):
+        # A schema_version that is present but not an integer (e.g. a bare string) cannot pick a verifier —
+        # it must fail closed exactly like the absent case, never fall through to a pass.
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "audit-digest.md")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write("---\nschema_version: twenty\nreviewed_at: 2026-06-01\ncontent_modified_at: 2026-06-01\nfingerprint: sha256:x\n---\nbody\n")
+            self.assertEqual(audit_digest.check(p)["severity"], "hard")
+
+    def test_content_modified_before_the_run_is_hard(self):
+        # A validly-SEALED v2 file whose prose-modified date precedes its run-date is an impossible order —
+        # caught before the seal even recomputes, so it can never read as a clean digest.
+        fields = {"schema_version": 2, "reviewed_at": "2026-06-10", "content_modified_at": "2026-06-01"}
+        body = "\n\nbody text\n"
+        text = audit_digest._render_v2(fields, audit_digest.compute_seal_v2(fields, body), body)
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "audit-digest.md")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(text)
+            f = audit_digest.check(p)
+            self.assertEqual(f["severity"], "hard")
+            self.assertIn("before the audit ran", f["message"])
+
 
 class TestStaleness(unittest.TestCase):
     def _dated(self, d, days_old, now):
         p = os.path.join(d, "audit-digest.md")
-        audit_digest.seal(p, generated=now - datetime.timedelta(days=days_old), body=BODY)
+        audit_digest.seal(p, reviewed_at=now - datetime.timedelta(days=days_old), body=BODY)
         return p
 
     def test_absent_digest_says_not_run_yet(self):
@@ -200,14 +647,45 @@ class TestSealCLI(unittest.TestCase):
 
     def test_body_file_is_stripped_before_the_positional_file_and_date(self):
         # --body-file (and its value) must never be mis-read as the file path (argv[1]) or the date
-        # (argv[2]) — even when it sits BEFORE the positionals.
+        # (argv[2]) — even when it sits BEFORE the positionals. The positional date fills reviewed_at.
         with tempfile.TemporaryDirectory() as d:
             digest = os.path.join(d, "audit-digest.md")
             rc = quiet_call.run(audit_digest.main, ["seal", "--body-file", self._bodyfile(d), digest, "2026-06-01"])
             self.assertEqual(rc, 0)
             fm, _body = audit_digest.split(digest)
-            self.assertEqual(audit_digest._iso(fm["generated"]), "2026-06-01")
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-06-01")
             self.assertEqual(audit_digest.check(digest)["severity"], "note")
+
+    def test_seal_without_a_body_file_is_refused(self):
+        # `seal` now requires fresh prose — a bare `seal <file>` (no --body-file) must error and write nothing,
+        # so the run-date can never be advanced without a real review. A prose-only repair uses `correct`.
+        with tempfile.TemporaryDirectory() as d:
+            digest = os.path.join(d, "audit-digest.md")
+            self.assertEqual(audit_digest.main(["seal", digest]), 2)
+            self.assertFalse(os.path.exists(digest))
+
+    def test_correct_cli_repairs_prose_without_moving_the_run_date(self):
+        with tempfile.TemporaryDirectory() as d:
+            digest = os.path.join(d, "audit-digest.md")
+            audit_digest.seal(digest, reviewed_at=JUNE, body=BODY)
+            rc = quiet_call.run(audit_digest.main,
+                                ["correct", digest, "--body-file", self._bodyfile(d, "reworded review"),
+                                 "--content-modified-at", "2026-07-01"])
+            self.assertEqual(rc, 0)
+            fm, _ = audit_digest.split(digest)
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-06-01")
+            self.assertEqual(audit_digest._iso(fm["content_modified_at"]), "2026-07-01")
+            self.assertEqual(audit_digest.check(digest)["severity"], "note")
+
+    def test_migrate_cli_needs_reviewed_at(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = _write_v1(os.path.join(d, "audit-digest.md"), "2026-07-25")
+            self.assertEqual(audit_digest.main(["migrate", p]), 2)   # no --reviewed-at
+            rc = quiet_call.run(audit_digest.main, ["migrate", p, "--reviewed-at", "2026-07-12"])
+            self.assertEqual(rc, 0)
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(audit_digest._schema_version(fm), 2)
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-07-12")
 
     def test_take_body_file_removes_the_pair_from_any_position(self):
         with tempfile.TemporaryDirectory() as d:
@@ -236,14 +714,14 @@ class TestBodyCLI(unittest.TestCase):
     def test_body_prints_the_prose_without_frontmatter(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "audit-digest.md")
-            audit_digest.seal(p, generated=JUNE, body=BODY)
+            audit_digest.seal(p, reviewed_at=JUNE, body=BODY)
             with contextlib.redirect_stdout(io.StringIO()) as out:
                 rc = audit_digest.main(["body", p])
             printed = out.getvalue()
             self.assertEqual(rc, 0)
             self.assertIn("here is what I found", printed)    # the review prose is present
             self.assertNotIn("fingerprint:", printed)         # …and the sealed header is gone
-            self.assertNotIn("generated:", printed)
+            self.assertNotIn("reviewed_at:", printed)
             self.assertNotIn("schema_version:", printed)
             self.assertFalse(printed.startswith("---"), "no leading front-matter fence in the body output")
 
@@ -750,16 +1228,30 @@ class TestUtcCalendarDay(unittest.TestCase):
     def _scratch(d):
         return os.path.join(d, "audit-digest.md")
 
-    def test_seal_defaults_generated_to_the_moment_utc_day(self):
-        # Patch the UTC seam to a sentinel; seal() with no `generated` must stamp exactly that day. A revert
+    def test_seal_defaults_reviewed_at_to_the_moment_utc_day(self):
+        # Patch the UTC seam to a sentinel; seal() with no `reviewed_at` must stamp exactly that day. A revert
         # to datetime.date.today() would ignore the patch and stamp the real local day, failing this.
         sentinel = datetime.date(2020, 1, 15)
         with mock.patch.object(moment, "today_utc", return_value=sentinel):
             with tempfile.TemporaryDirectory() as d:
                 p = self._scratch(d)
-                audit_digest.seal(p, body=BODY)  # generated=None -> the default path under test
+                audit_digest.seal(p, body=BODY)  # reviewed_at=None -> the default path under test
                 fm, _ = audit_digest.split(p)
-                self.assertEqual(audit_digest._iso(fm.get("generated")), "2020-01-15")
+                self.assertEqual(audit_digest._iso(fm.get("reviewed_at")), "2020-01-15")
+
+    def test_correct_defaults_content_modified_to_the_moment_utc_day(self):
+        # A prose repair with no explicit date must stamp content_modified_at with the UTC calendar day —
+        # the same seam seal reads — while leaving reviewed_at alone.
+        run = datetime.date(2026, 6, 1)
+        sentinel = datetime.date(2026, 7, 5)
+        with tempfile.TemporaryDirectory() as d:
+            p = self._scratch(d)
+            audit_digest.seal(p, reviewed_at=run, body=BODY)
+            with mock.patch.object(moment, "today_utc", return_value=sentinel):
+                audit_digest.correct(p, body="reworded")
+            fm, _ = audit_digest.split(p)
+            self.assertEqual(audit_digest._iso(fm["reviewed_at"]), "2026-06-01")
+            self.assertEqual(audit_digest._iso(fm["content_modified_at"]), "2026-07-05")
 
     def test_staleness_defaults_today_to_the_moment_utc_day(self):
         # With 'today' patched to equal the run-date, age is 0 -> current -> a note. A revert to a local
@@ -767,7 +1259,7 @@ class TestUtcCalendarDay(unittest.TestCase):
         run = datetime.date(2026, 6, 1)
         with tempfile.TemporaryDirectory() as d:
             p = self._scratch(d)
-            audit_digest.seal(p, generated=run, body=BODY)
+            audit_digest.seal(p, reviewed_at=run, body=BODY)
             with mock.patch.object(moment, "today_utc", return_value=run):
                 self.assertEqual(audit_digest.staleness(p)["severity"], "note")  # now=None -> default
 

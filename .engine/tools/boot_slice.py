@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The gitignored boot-slice cache (#37) — boot's rung-1 fast cache for the orientation knowledge read.
+"""The gitignored boot-slice cache (StarshipSuperjam/engine-template#37) — boot's rung-1 fast cache for the orientation knowledge read.
 
 The committed `.engine/knowledge/graph.json` is the source of truth; the SQLite query index
 (`knowledge_index.py`) is the *query* path's rung-1 fast cache. This module is the index's SIBLING: the

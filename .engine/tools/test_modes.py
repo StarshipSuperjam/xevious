@@ -332,10 +332,11 @@ class TestPlanArtifactCarveOut(unittest.TestCase):
 
 
 class TestMemoryTargetDenial(unittest.TestCase):
-    """#257: a blocked Write/Edit to a MEMORY store keeps the DECISION (deny) but earns a
-    memory-specific RELAY — a competent "noted" with a correlate the operator can exercise, never the
-    build-set "open a pull request" line and never the two-store seam. Message choice only; path
-    recognition is safe here precisely because the write is denied either way."""
+    """#257 made honest by #766: a blocked Write/Edit to a MEMORY store keeps the DECISION (deny) but
+    earns a memory-specific RELAY — one that NEVER claims the content was saved (the write was denied;
+    nothing landed), names the doors that do work (the pin verb for an operator ask; the assistant's own
+    notebook), and never the build-set "open a pull request" line. Message choice only; path recognition
+    is safe here precisely because the message rides only writes the gate has already denied."""
 
     def _payload(self, tool_name, file_path=None):
         # session_id=None -> current_stance is Explore (the gated default); no signal file needed.
@@ -347,16 +348,23 @@ class TestMemoryTargetDenial(unittest.TestCase):
         self.assertTrue(_deny(d))
         self.assertEqual(d["reason"], modes._MEMORY_DENIAL)
 
-    def test_harness_auto_memory_write_is_denied_with_the_memory_relay(self):
-        # the harness notebook default shape: a `memory` dir nested under a `.claude` dir.
+    def test_foreign_notebook_write_is_denied_with_the_memory_relay(self):
+        # memory-shaped but NOT this session's own notebook (no cwd to bind to; a home that isn't this
+        # user's): the #766 allow rejects it, the deny stands, and the honest memory relay rides it.
         d = modes.handler(self._payload("Write", "/Users/x/.claude/projects/slug/memory/MEMORY.md"))
         self.assertTrue(_deny(d))
         self.assertEqual(d["reason"], modes._MEMORY_DENIAL)
 
-    def test_memory_relay_confirms_noted_and_names_a_real_correlate(self):
+    def test_memory_relay_is_honest_about_the_blocked_write(self):
         r = modes._MEMORY_DENIAL.lower()
-        self.assertIn("noted", r)                 # a competent "noted", not a refusal
-        self.assertIn("read it back", r)          # a correlate the operator can exercise (the AI recalls)
+        self.assertIn("nothing was saved", r)     # the truth of a denied write, plainly (#766)
+        self.assertNotIn("i've kept that in mind", r)   # the old false-confirm must not creep back
+        self.assertNotIn("it's saved", r)               # no completed-save claim anywhere
+
+    def test_memory_relay_keeps_only_the_promise_it_can_keep(self):
+        r = modes._MEMORY_DENIAL.lower()
+        self.assertIn("save it", r)               # the one forward promise (the assistant then pins)
+        self.assertIn("read it back", r)          # the correlate, truthfully conditioned on that save
 
     def test_memory_relay_does_not_mishear_remember_as_a_code_change(self):
         r = modes._MEMORY_DENIAL.lower()
@@ -364,9 +372,14 @@ class TestMemoryTargetDenial(unittest.TestCase):
         self.assertNotIn("build it", r)
 
     def test_memory_relay_does_not_leak_the_two_store_seam(self):
+        # the relay is for the PERSON at a remember-me moment: no store names, no paths, no plumbing —
+        # the assistant learns the right doors from the Explore-scope briefing, never from this line.
         r = modes._MEMORY_DENIAL.lower()
         self.assertNotIn("harness", r)            # vocabulary-leak: no "harness vs engine memory" tour
         self.assertNotIn("orientation", r)        # the dropped false correlate must not creep back in
+        self.assertNotIn(".engine/memory", r)     # no raw store path shown to a non-engineer
+        self.assertNotIn("notebook", r)           # no self-classification branch, no assistant plumbing
+        self.assertNotIn("auto-memory", r)
 
     def test_non_memory_engine_source_write_keeps_the_generic_denial(self):
         # the .engine/tools/memory/ SOURCE dir is not the store; it earns the generic build-set denial —
@@ -377,6 +390,15 @@ class TestMemoryTargetDenial(unittest.TestCase):
             d = modes.handler(self._payload("Write", path))
             self.assertTrue(_deny(d))
             self.assertEqual(d["reason"], modes._DENIAL, f"{path} must keep the generic denial")
+
+    def test_is_memory_target_never_decides_the_allow(self):
+        # is_memory_target is message-choice only; the ALLOW is is_harness_memory_write, a stricter,
+        # filesystem-anchored predicate. A loose memory-shaped match must not open the gate by itself.
+        self.assertTrue(modes.is_memory_target("Write",
+                                               {"file_path": "/Users/x/.claude/projects/s/memory/n.md"}))
+        self.assertFalse(modes.is_harness_memory_write("Write",
+                                                       {"file_path": "/Users/x/.claude/projects/s/memory/n.md"},
+                                                       cwd=None))
 
     def test_is_memory_target_predicate(self):
         self.assertTrue(modes.is_memory_target("Write", {"file_path": ".engine/memory/ledger.ndjson"}))
@@ -390,6 +412,147 @@ class TestMemoryTargetDenial(unittest.TestCase):
         self.assertFalse(modes.is_memory_target("Write", {"file_path": ".engine/tools/x.py"}))
         self.assertFalse(modes.is_memory_target("Write", {}))                 # no path -> not classifiable
         self.assertFalse(modes.is_memory_target("Bash", {"command": "x"}))    # not a file-mutating tool
+
+
+class TestHarnessMemoryCarveOut(unittest.TestCase):
+    """#766: in Explore the gate ALLOWS a Write/Edit whose every path resolves inside THIS project's own
+    harness auto-memory notebook (~/.claude/projects/<own slug>/memory/), and nothing looser. The gate's
+    first path-based allow, so these tests are the wall's shape: realpath containment (a `..` or symlink
+    that resolves elsewhere is rejected), home-projects anchoring (worktree checkouts and repo-internal
+    `.claude/**/memory/` never qualify), own-slug binding (another project's notebook never qualifies),
+    all-paths conjunction on a batch, and fail-CLOSED on anything undecidable."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        base = os.path.realpath(self._tmp.name)
+        self.root = os.path.join(base, "projects")                     # stands in for ~/.claude/projects
+        self.cwd = os.path.join(base, "code", "myproj")                # the session's working directory
+        self.slug = modes._project_slug(self.cwd)
+        self.memory = os.path.join(self.root, self.slug, "memory")
+        os.makedirs(self.memory)
+        os.makedirs(self.cwd)
+        self._patch = mock.patch.object(modes, "_harness_projects_root", return_value=self.root)
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        self._tmp.cleanup()
+
+    def _payload(self, file_path, tool_name="Write", cwd=None, **extra):
+        ti = {"file_path": file_path} if file_path else {}
+        ti.update(extra)
+        return {"session_id": None, "tool_name": tool_name, "tool_input": ti,
+                "cwd": self.cwd if cwd is None else cwd}
+
+    def test_own_notebook_write_is_allowed_in_explore(self):
+        for tool in ("Write", "Edit", "MultiEdit"):
+            d = modes.handler(self._payload(os.path.join(self.memory, "MEMORY.md"), tool_name=tool))
+            self.assertTrue(_allow(d), f"{tool} to the own notebook must be allowed in Explore")
+
+    def test_notebook_subdirectory_and_notebookedit_qualify(self):
+        d = modes.handler(self._payload(os.path.join(self.memory, "notes", "n.ipynb"),
+                                        tool_name="NotebookEdit"))
+        # NotebookEdit carries notebook_path, not file_path
+        p = {"session_id": None, "tool_name": "NotebookEdit",
+             "tool_input": {"notebook_path": os.path.join(self.memory, "notes", "n.ipynb")},
+             "cwd": self.cwd}
+        self.assertTrue(_allow(modes.handler(p)))
+        self.assertTrue(_allow(d))
+
+    def test_worktree_session_reaches_the_parent_projects_notebook(self):
+        # a worktree cwd keys the notebook to the PARENT project — an ancestor of cwd — so the ancestor
+        # chain must qualify it.
+        wt_cwd = os.path.join(self.cwd, ".claude", "worktrees", "wt-abc")
+        os.makedirs(wt_cwd)
+        d = modes.handler(self._payload(os.path.join(self.memory, "MEMORY.md"), cwd=wt_cwd))
+        self.assertTrue(_allow(d))
+
+    def test_ancestor_directory_notebooks_are_denied(self):
+        # the wall the security review demanded: NOT an ancestor walk. A parent directory's notebook,
+        # a grandparent's, and the universal root slug are all outside this session's own key set.
+        for owner in (os.path.dirname(self.cwd),                  # parent directory as a "project"
+                      os.path.dirname(os.path.dirname(self.cwd)),  # grandparent
+                      "/"):                                        # the universal root slug ("-")
+            nb = os.path.join(self.root, modes._project_slug(owner), "memory")
+            os.makedirs(nb, exist_ok=True)
+            d = modes.handler(self._payload(os.path.join(nb, "MEMORY.md")))
+            self.assertTrue(_deny(d), f"notebook keyed to ancestor {owner!r} must be denied")
+
+    def test_another_projects_notebook_is_denied(self):
+        other = os.path.join(self.root, modes._project_slug("/somewhere/else"), "memory")
+        os.makedirs(other)
+        d = modes.handler(self._payload(os.path.join(other, "MEMORY.md")))
+        # the DECISION is the point here; which relay rides it is message-choice, keyed on the real
+        # `.claude` shape the patched test root doesn't carry (covered by the foreign-notebook test).
+        self.assertTrue(_deny(d))
+
+    def test_dotdot_traversal_out_of_the_notebook_is_denied(self):
+        sneaky = os.path.join(self.memory, "..", "..", "..", "evil.sh")
+        self.assertTrue(_deny(modes.handler(self._payload(sneaky))))
+
+    def test_symlink_resolving_outside_is_denied(self):
+        # a link INSIDE the notebook pointing OUT: the realpath resolution must judge the target, not
+        # the memory-shaped link path.
+        outside = os.path.join(os.path.realpath(self._tmp.name), "outside.txt")
+        with open(outside, "w", encoding="utf-8") as fh:
+            fh.write("x")
+        link = os.path.join(self.memory, "link.md")
+        os.symlink(outside, link)
+        self.assertTrue(_deny(modes.handler(self._payload(link))))
+
+    def test_repo_internal_claude_memory_shape_is_denied(self):
+        # a `.claude/**/memory/` directory inside a checkout matches the loose message shape but is not
+        # under the projects root -> never allowed.
+        repo_mem = os.path.join(self.cwd, ".claude", "anything", "memory")
+        os.makedirs(repo_mem)
+        d = modes.handler(self._payload(os.path.join(repo_mem, "notes.md")))
+        self.assertTrue(_deny(d))
+
+    def test_engine_store_and_relative_paths_stay_denied(self):
+        self.assertTrue(_deny(modes.handler(self._payload(".engine/memory/ledger.ndjson"))))
+        self.assertTrue(_deny(modes.handler(self._payload("memory/notes.md"))))
+
+    def test_notebook_dir_itself_and_projects_root_are_denied(self):
+        # only files strictly INSIDE <slug>/memory/ qualify — never the notebook dir, the slug dir, or
+        # the root.
+        for target in (self.memory, os.path.dirname(self.memory), self.root):
+            self.assertTrue(_deny(modes.handler(self._payload(target))))
+
+    def test_missing_cwd_or_relative_cwd_fails_closed(self):
+        self.assertTrue(_deny(modes.handler(self._payload(os.path.join(self.memory, "m.md"), cwd=""))))
+        p = self._payload(os.path.join(self.memory, "m.md"))
+        del p["cwd"]
+        self.assertTrue(_deny(modes.handler(p)))
+        self.assertTrue(_deny(modes.handler(self._payload(os.path.join(self.memory, "m.md"),
+                                                          cwd="relative/dir"))))
+
+    def test_batch_edit_requires_every_path_to_qualify(self):
+        good = os.path.join(self.memory, "a.md")
+        bad = os.path.join(self.cwd, "src", "x.py")
+        allow = modes.handler(self._payload(None, tool_name="Edit",
+                                            file_paths=[good, os.path.join(self.memory, "b.md")]))
+        deny = modes.handler(self._payload(None, tool_name="Edit", file_paths=[good, bad]))
+        self.assertTrue(_allow(allow))
+        self.assertTrue(_deny(deny))
+
+    def test_provider_confined_to_claude(self):
+        # auto-memory is Claude Code's feature; another runtime's payload must not open the allow.
+        self.assertFalse(modes.is_harness_memory_write(
+            "Write", {"file_path": os.path.join(self.memory, "m.md")}, self.cwd, provider="codex"))
+
+    def test_build_verbs_never_ride_the_notebook_allow(self):
+        # the carve-out is the file-mutating tools specifically; a commit/branch/PR is never a notebook.
+        p = {"session_id": None, "tool_name": "Bash",
+             "tool_input": {"command": f"git commit -m x {self.memory}/m.md"}, "cwd": self.cwd}
+        self.assertTrue(_deny(modes.handler(p)))
+
+    def test_scope_copy_names_the_notebook_and_the_pin_doctrine(self):
+        # the fidelity companion for the new allow: the assistant-facing copy names the notebook door,
+        # the pins-are-operator-intent doctrine, and the untrusted-content caution — and what it calls
+        # allowed, the gate allows (asserted end-to-end above).
+        scope = modes.describe_explore_scope().lower()
+        for token in ("notebook", "auto-memory", "scratchpad", "operator", "untrusted"):
+            self.assertIn(token, scope, f"Explore-scope copy must carry {token!r}")
 
 
 class TestPlanAcceptanceBuildEntry(unittest.TestCase):

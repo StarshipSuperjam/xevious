@@ -29,11 +29,11 @@ travels with the engine and keeps guarding this forever-relevant upgrade behavio
 from __future__ import annotations
 import json
 import os
-import shutil
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import engine_fixture       # noqa: E402  (the shared tracked-only fixture clone)
 import validate            # noqa: E402
 import module_manager as mm  # noqa: E402  (the real upgrade under test)
 
@@ -76,34 +76,10 @@ def is_applied(directive):
     return _demo_orig_is_applied(directive)
 '''
 
-_COPY_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "worktrees", "node_modules", "*.pyc", ".git")
-# The engine surface a real coherent engine needs on disk for the child to boot and for `check_coherence` to
-# pass: the whole `.engine`, the shared-file wiring targets (`.claude`, `.codex`, `.mcp.json`), and the floor
-# sources. `.venv`/caches/worktrees are excluded (see _COPY_IGNORE).
-_COPY_DIRS = (".engine", ".claude", ".codex", ".agents", ".github")
-_COPY_FILES = (".mcp.json", ".gitignore", "CLAUDE.md", "AGENTS.md")
-
-
-def _clone_engine(real_root: str, dest: str) -> str:
-    """Copy this repo's real (coherent) engine surface into `dest` — a genuine engine the child can boot and
-    coherence can pass, so the falsification isolates the wiring behaviour, not a broken fixture."""
-    os.makedirs(dest, exist_ok=True)
-    for rel in _COPY_DIRS:
-        src = os.path.join(real_root, rel)
-        if os.path.isdir(src):
-            shutil.copytree(src, os.path.join(dest, rel), ignore=_COPY_IGNORE, symlinks=True)
-    for rel in _COPY_FILES:
-        src = os.path.join(real_root, rel)
-        if os.path.isfile(src):
-            os.makedirs(os.path.dirname(os.path.join(dest, rel)) or dest, exist_ok=True)
-            shutil.copy2(src, os.path.join(dest, rel))
-    return dest
-
-
 def _make_release(real_root: str, dest: str) -> str:
     """A throwaway release tree = a clone whose wiring.py learns the `demo-echo` seam and whose `core`
     manifest declares one `demo-echo` wire. That is the whole difference a 'new release' introduces here."""
-    _clone_engine(real_root, dest)
+    engine_fixture.clone_engine(real_root, dest)
     with open(os.path.join(dest, ".engine", "tools", "wiring.py"), "a", encoding="utf-8") as fh:
         fh.write(_WIRING_PATCH)
     core_manifest = os.path.join(dest, ".engine", "modules", "core", "manifest.json")
@@ -132,7 +108,7 @@ def main() -> int:
 
     # ---- POSITIVE: the fix — the tail runs in a child of the overlaid code, so `demo-echo` applies ----
     with tempfile.TemporaryDirectory() as d:
-        live = _clone_engine(real_root, os.path.join(d, "live"))
+        live = engine_fixture.clone_engine(real_root, os.path.join(d, "live"))
         release = _make_release(real_root, os.path.join(d, "release"))
         marker = os.path.join(live, _MARKER_REL)
         with mm._redirect_root(live):
@@ -156,7 +132,7 @@ def main() -> int:
         return {"number": 0, "title": title}
 
     with tempfile.TemporaryDirectory() as d:
-        live = _clone_engine(real_root, os.path.join(d, "live"))
+        live = engine_fixture.clone_engine(real_root, os.path.join(d, "live"))
         release = _make_release(real_root, os.path.join(d, "release"))
         marker = os.path.join(live, _MARKER_REL)
         with mm._redirect_root(live):

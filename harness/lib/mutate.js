@@ -66,6 +66,25 @@ export function changeEqualsOperand(project, spriteName, fromValue, toValue) {
   if (!patched) throw new Error(`mutate: no 'operator_equals == ${fromValue}' on ${spriteName}`);
 }
 
+/**
+ * Reintroduce the mathop field-name bug on a sprite's `operator_mathop` blocks: rename the
+ * OPERATOR field to OPERATION so scratch-vm cannot resolve the function and `floor` returns 0.
+ * Every digit then computes `floor(score / divisor) mod 10 = 0`, collapsing the HUD to all
+ * `digit/0` — the exact class of "structurally present, runtime wrong" bug this scenario guards.
+ */
+export function misnameMathopOperator(project, spriteName) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode === 'operator_mathop' && b.fields && b.fields.OPERATOR) {
+      b.fields = { OPERATION: b.fields.OPERATOR };
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no operator_mathop on ${spriteName}`);
+}
+
 /** Raise an `operator_gt` literal right-hand threshold on a sprite (breaks a > gate). */
 export function raiseGreaterThreshold(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);

@@ -89,7 +89,7 @@
           "maxLength": 160
         },
         "guarded": {
-          "description": "TOOLS ONLY: true iff this tool file is a protected guardrail (the weakening-guard classifier's verdict for the file's path — an enforcement script, a floor member, or a deployment-declared product guard), computed for EVERY tool entity regardless of extension (a guarded .sh launcher carries it too). ABSENCE means the value was not derived (a degraded live-walk rung), NEVER 'not guarded' — a committed graph always carries it on a tool, since a blanket fail-safe in the classifier fails generation loud rather than emitting an all-true value.",
+          "description": "TOOLS ONLY: true iff this tool file is a protected guardrail (the weakening-guard classifier's set-membership verdict for the file's path — an enforcement script, a floor member, or a deployment-declared product guard; guarded at SOME tier, since eADR-0040 splits a match into killswitch-blocking and disclosure), computed for EVERY tool entity regardless of extension (a guarded .sh launcher carries it too). ABSENCE means the value was not derived (a degraded live-walk rung), NEVER 'not guarded' — a committed graph always carries it on a tool, since a blanket fail-safe in the classifier fails generation loud rather than emitting an all-true value.",
           "type": "boolean"
         },
         "entrypoint": {

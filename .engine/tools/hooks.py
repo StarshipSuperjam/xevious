@@ -128,7 +128,7 @@ def interpreter_path(os_name: str | None = None) -> str:
     This is the SINGLE definition of the two per-OS layouts. Committed hook commands are always rendered
     in the POSIX form (`hook_command` below); the actual per-OS choice is made at FIRE TIME by the launcher
     (`hook-runner.sh`), which falls back from bin/python to Scripts/python.exe under the same venv root when
-    the POSIX layout is absent — so one committed repo runs on every OS (#407 per-OS build-spec
+    the POSIX layout is absent — so one committed repo runs on every OS (StarshipSuperjam/engine-template#407 per-OS build-spec
     leaf). A drift test pins the launcher's bin/python + Scripts/python.exe literals back to this function so
     the two homes never diverge."""
     name = os.name if os_name is None else os_name
@@ -137,7 +137,7 @@ def interpreter_path(os_name: str | None = None) -> str:
 
 
 # The hook launcher (.engine/tools/hook-runner.sh) holds the bounded wait that lets a hook survive the
-# fresh-worktree race (issue #83): the gitignored `.engine/.venv` is provisioned a beat AFTER a checkout,
+# fresh-worktree race (issue StarshipSuperjam/engine-template#83): the gitignored `.engine/.venv` is provisioned a beat AFTER a checkout,
 # so a hook that fires in that window finds no interpreter and exits 127 — a SessionStart hook cannot
 # block, so the failure is silent and boot never runs. The launcher polls for either OS's venv layout (the
 # named POSIX bin/python, or the Windows Scripts/python.exe sibling under the same venv root) and runs the
@@ -154,7 +154,7 @@ def hook_command(script_relpath: str, os_name: str | None = None, provider: str 
     """The full hook `command` string a settings.json registration carries: a call to the hook launcher
     (`.engine/tools/hook-runner.sh`) passing the explicit ${CLAUDE_PROJECT_DIR}-rooted venv interpreter and
     the ${CLAUDE_PROJECT_DIR}-rooted script. The launcher does the bounded wait that closes the
-    fresh-worktree race (issue #83) and then `exec`s the interpreter; if the interpreter never appears it
+    fresh-worktree race (issue StarshipSuperjam/engine-template#83) and then `exec`s the interpreter; if the interpreter never appears it
     runs NOTHING and NEVER falls back to the operator's system Python.
     The interpreter is still NAMED EXPLICITLY in the command (the launcher's first
     argument), so the rule that "the hook command names the interpreter explicitly and ${CLAUDE_PROJECT_DIR}-
@@ -165,7 +165,7 @@ def hook_command(script_relpath: str, os_name: str | None = None, provider: str 
     is DOUBLE-QUOTED so a project directory whose path contains a space (a common iCloud/OneDrive/"My Drive"
     layout) resolves as a single token: unquoted, it word-splits under `sh -c`, the launcher forwards a
     truncated path, CPython exits 2, and the platform reads that exit-2 as a BLOCK — fail-CLOSED on every
-    tool call and turn-end, the exact stranding the fail-open law forbids (#390). Any trailing args
+    tool call and turn-end, the exact stranding the fail-open law forbids (StarshipSuperjam/engine-template#390). Any trailing args
     (`accept-hook`, `hook`, `session-start`, ...) stay OUTSIDE the quotes as the bare tail so they still
     word-split into the launcher's positional params. `${CLAUDE_PROJECT_DIR}` expanding to a spaced path
     inside the double quotes does NOT re-split (a parameter expansion in double quotes is field-split-exempt),
@@ -180,7 +180,7 @@ def hook_command(script_relpath: str, os_name: str | None = None, provider: str 
     launcher — the wait/exec mechanics and per-OS fallback are one implementation for both runtimes.
     The same quoting law applies: the path tokens are double-quoted, the args tail stays bare."""
     # `script_relpath` is the script PATH plus any trailing args, space-joined (e.g. "modes.py accept-hook").
-    # Quote ONLY the path token; leave the args as the bare, still-word-splittable tail (see docstring, #390).
+    # Quote ONLY the path token; leave the args as the bare, still-word-splittable tail (see docstring, StarshipSuperjam/engine-template#390).
     script_path, _, script_args = script_relpath.partition(" ")
     args_tail = f" {script_args}" if script_args else ""
     if provider == "codex":
@@ -256,7 +256,7 @@ def cap_shed(blocks: list, cap: "int | None" = None, notice=None,
     text alone still exceeds the cap, because a truncated alarm is worse than an oversize one the
     platform previews); higher priorities shed FIRST, a whole priority class at a time, until the joined
     text fits. When anything is shed and `notice` is given, notice(shed_names) is appended to the kept
-    text and counted against the cap — and CONTENT ALWAYS BEATS THE LABEL (#495 review): a further class
+    text and counted against the cap — and CONTENT ALWAYS BEATS THE LABEL (StarshipSuperjam/engine-template#495 review): a further class
     is never shed just to make room for the notice. When the kept content fits but the full notice tips
     it over, the notice shrinks to `compact_notice(shed_names)`; if even that doesn't fit, the notice is
     dropped (the kept content, grounding marker included, matters more than the sentence about
@@ -301,7 +301,7 @@ def decide(permission: str, reason: str | None = None) -> dict:
 # ---- the fail-open-and-flag harness -----------------------
 
 # The honest tail appended to a fail-open finding's in-session line — STRICTLY conditional on whether the
-# durable promotion actually landed (#391). The old copy asserted "this was recorded as a problem to fix"
+# durable promotion actually landed (StarshipSuperjam/engine-template#391). The old copy asserted "this was recorded as a problem to fix"
 # unconditionally while nothing recorded anything; that was false. These say what is actually true.
 _RECORDED_TAIL = " This was recorded as a tracked item you'll see at your next start."
 _NOT_RECORDED_TAIL = (" I've noted it here, but could not file it as a tracked item yet — it is not durably "
@@ -319,18 +319,18 @@ def _fail_open_source_id(event: str, kind: str) -> str:
 def _promote_fail_open(event: str, kind: str, message: str) -> bool:
     """Best-effort DURABLE promotion of a fail-open finding to a tracked engine-labelled Issue, via
     telemetry's out-of-band `promote_finding` — the same "log it" relay `close.py` uses at cap-exhaustion
-    (detection-vs-relay seam; this is the promotion #391 wires, retiring the old `owes → telemetry`).
+    (detection-vs-relay seam; this is the promotion StarshipSuperjam/engine-template#391 wires, retiring the old `owes → telemetry`).
 
     Two invariants make this safe to reach from the shared harness:
       - LAZY imports: `telemetry`/`boot` (and the network) load ONLY here, on a fail-open branch — never on
         the happy hot path every hook rides (the hot-path latency law).
       - FAIL-SAFE: ANY error is swallowed and returns False. Recording the crash must NEVER re-break the
         fail-open path into a block or an unhandled crash — that would re-create the exact fail-CLOSED
-        stranding of a non-engineer the whole law (and #390) forbids.
+        stranding of a non-engineer the whole law (and StarshipSuperjam/engine-template#390) forbids.
     Returns True when the Issue was opened/updated; False when offline / unreachable / errored — in which
     case the finding was still surfaced in-session and the protected-branch merge is the durable backstop.
     The general triage LOOP that drains and reconciles at scale (auto-close, ambient capture, the refused-
-    cursor and broken-runtime routing) is telemetry's live loop — issues #403 / #412, not here.
+    cursor and broken-runtime routing) is telemetry's live loop — issues StarshipSuperjam/engine-template#403 / StarshipSuperjam/engine-template#412, not here.
 
     The promoter is INJECTABLE into run_hook (default = this), which is how the demo and the promote/copy
     behaviour tests exercise it without a network. As a hard SAFETY BACKSTOP for a safety feature, this also
@@ -350,7 +350,7 @@ def _do_promote_fail_open(event: str, kind: str, message: str) -> bool:
     promoting it. Un-inverts the seam (the producer no longer holds telemetry's acting-mechanism) while
     preserving the exact fail-open behaviour: a trust-critical finding promotes immediately, returns the Issue
     number (truthy) when it lands and False offline / with no token (surfaced-not-durably-recorded, the honest
-    tail #391 depends on)."""
+    tail StarshipSuperjam/engine-template#391 depends on)."""
     try:
         import telemetry  # lazy: keep telemetry's stack + the network off every hook's happy path
         now = moment.utc_now()
@@ -363,7 +363,7 @@ def _do_promote_fail_open(event: str, kind: str, message: str) -> bool:
 
 def _emit_finding(err, severity: str, event: str, kind: str, message: str, promote) -> None:
     """Surface a fail-open finding in plain language on stderr (the channel the platform shows) AND promote
-    it to a durable tracked engine Issue best-effort (#391). `message` is the base statement — what could
+    it to a durable tracked engine Issue best-effort (StarshipSuperjam/engine-template#391). `message` is the base statement — what could
     not run, and that the action was allowed to proceed — carrying NO recording claim; this appends the
     honest tail conditional on `promote(event, kind, message)` actually landing, so the engine never again
     tells the operator something was "recorded" when it was not. `promote` is injected (default
@@ -396,7 +396,7 @@ def _record_crash_debug(event: str, exc: BaseException, path: str | None = None)
         # The hermetic backstop its siblings already carry (telemetry.emit_finding, providers'
         # live-session write): the test suite exercises crashing handlers by the hundred, and without
         # this guard every run appends test-harness noise to the PRODUCTION crash log — the pollution
-        # that made tonight's real-crash archaeology harder (#520/#522 investigation). An explicit
+        # that made tonight's real-crash archaeology harder (StarshipSuperjam/engine-template#520/StarshipSuperjam/engine-template#522 investigation). An explicit
         # `path` (the unit tests' own temp file) still writes.
         return
     if path is None:
@@ -642,7 +642,7 @@ def _demo(_argv: list) -> int:
           "The live triage LOOP that reconciles and auto-closes at scale is telemetry's — #403/#412.)")
     # Self-check (a demo that can FAIL): the eligible block returns exit 2; a crashing handler and a block on
     # a non-eligible event both proceed (not 2); the launcher execs a present interpreter but runs nothing on
-    # an absent one (no fallback); AND #391 — the crash finding was promoted with the honest "recorded" copy,
+    # an absent one (no fallback); AND StarshipSuperjam/engine-template#391 — the crash finding was promoted with the honest "recorded" copy,
     # and the missing-runtime case NAMED its absent runtime on stderr instead of exiting silently.
     ok = (c1 == 2 and c2 != 2 and c2b != 2 and "RAN" in present_out and not never_out.strip()
           and "recorded as a tracked item" in crash_err and "not durably" in offline_err

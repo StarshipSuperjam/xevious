@@ -129,7 +129,7 @@ def check(root: str | None = None) -> list[str]:
     # drift. So run this leg ONLY when the checkout is CONFIDENTLY the home repo: a readable git origin that
     # matches the recorded home. Deliberately fail toward NOT-home when the origin is unreadable — the safe
     # direction here, since running the leg in a possibly-deployed repo (e.g. an arrival before its remote is
-    # set) would re-red the very #646 symptom this closes. The unconditional drift leg above still runs
+    # set) would re-red the very StarshipSuperjam/engine-template#646 symptom this closes. The unconditional drift leg above still runs
     # everywhere, so a persona silently downgraded to a weaker model is still caught in any deployment.
     own = repo_identity.origin_slug(root)
     try:

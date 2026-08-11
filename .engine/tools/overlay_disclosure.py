@@ -4,9 +4,9 @@ the next engine update will OVERWRITE, so a deployed operator learns, at the cha
 survive the next update. It posts one plain-language comment on the pull request (the surface a
 non-engineer actually reads — a soft check would land only in the Actions log). It NEVER blocks a merge.
 
-This is DISTINCT from the guardrail-weakening acknowledgment (`guardrail-ack` / `engine-guard`): that guards
-*weakening a protection* (a deliberate, blocking consent act); this discloses *a change that won't survive
-an update* (a routine heads-up). The two carry different consent weight and stay separate — see eADR-0037.
+This is DISTINCT from the guardrail-weakening guard (`guardrail-ack` / `engine-guard`): that guards
+*weakening a protection* (blocking at its killswitch tier, a plain disclosure otherwise — eADR-0040); this
+discloses *a change that won't survive an update* (a routine heads-up). The two stay separate — see eADR-0037.
 
 Deployed-only. It discloses only when this repo has an update HOME that is a DIFFERENT repo than its own
 origin (an upstream that will overlay it). In the self-hosting engine repo — which IS its own home — there is
@@ -22,8 +22,13 @@ The overwrite set is `module_manager.overlay_replace_paths()` — the SAME enume
 copies (via the shared `_overlay_copy_map`), so the notice cannot drift from the overlay's own LOGIC for what
 it overwrites. It is not, and does not claim to be, a guarantee about a future release's exact file set: the
 live tree stands in for that release (an honest approximation — a path a future release adds or drops is
-inherent slack), and it never warns about a file the update PRESERVES (operator config, the keyed-merge
-fences of CLAUDE.md/AGENTS.md/.gitignore, the per-deployment eADR stream).
+inherent slack). It reads THREE registers off that one source (see `disclosure_registers`): the OVERWRITE
+alarm; a calm line for the engine-internal indexes the update REGENERATES from the reconciled tree
+(`module_manager.REGENERATED_DERIVED` — an edit there is rebuilt, not lost); and a positive confirmation for
+the per-deployment operator DATA the update PRESERVES create-if-absent (`module_coherence.PRESERVE_DATA` — so a
+change to bound data is surfaced as kept, never met with silence). It still never warns about a file the update
+leaves untouched by being outside the overlay entirely (operator config, the keyed-merge fences of
+CLAUDE.md/AGENTS.md/.gitignore, the per-deployment eADR stream).
 
 RENDER SAFETY: a rename can place an attacker-chosen filename into the tree (and so into the overwrite set),
 so every rendered path is passed through `_safe_path`, which drops any character outside a conservative
@@ -50,6 +55,7 @@ import urllib.request
 
 import boot
 import github_client
+import module_coherence
 import module_manager
 import repo_identity
 import validate
@@ -156,47 +162,100 @@ def _safe_path(path: str) -> str:
     return _UNSAFE_PATH_CHAR.sub("?", path)
 
 
-def overwritten_paths(changed: list) -> list:
-    """The engine-canonical paths this pull request changes that the next update would overwrite: the
-    intersection of `module_manager.overlay_replace_paths()` with the pull request's changed files, keeping
-    only changes that REPLACE an existing file — a pure add is not overwritten (mirrors the guardrail guard's
-    status filter). Only paths already in the overwrite set are returned; a rename's crafted new name is
-    still rendered safely by `_safe_path` at compose time (the set is globbed from the tree, so a rename
-    target present in the tree can be a member — the render sanitizer, not this filter, is the injection
-    boundary)."""
-    overwrite = module_manager.overlay_replace_paths()
+def _changed_hits(changed: list, wanted: set) -> list:
+    """The pull request's REPLACE-status changes whose (new or previous) filename is in `wanted`. Shared by
+    every register so all read the same change set and status filter — a pure add is not an overwrite (mirrors
+    the guardrail guard's status filter). A rename's crafted new name is rendered safely by `_safe_path` at
+    compose time; the set is globbed from the tree, so a rename target present in the tree can be a member —
+    the render sanitizer, not this filter, is the injection boundary."""
     hits = set()
     for f in changed:
         if f.get("status") not in weakening_guard.WEAKENING_STATUS:
             continue
         for cand in (f.get("filename"), f.get("previous_filename")):
-            if cand and cand in overwrite:
+            if cand and cand in wanted:
                 hits.add(cand)
     return sorted(hits)
 
 
-def compose_comment(paths: list, home: str | None) -> str:
-    """The plain-language, non-blocking disclosure body. Peer voice: inform + consequence, route to the
-    durable home (named, when known), never forbid. Every path is rendered through `_safe_path`, and a long
-    list is capped so it never becomes a wall."""
+def disclosure_registers(changed: list) -> dict:
+    """Bucket the pull request's engine-file changes into three disclosure registers, all read from the SAME
+    single overlay source so the notice cannot disagree with what the update actually does (eADR-0037):
+
+    - `overwrite` — machinery the update replaces wholesale: the alarm (an edit here won't survive an update).
+    - `derived` — engine-internal indexes the update REGENERATES from the reconciled tree
+      (`module_manager.REGENERATED_DERIVED`): a calm 'rebuilt, not lost' line, split OUT of the overwrite set.
+    - `preserved` — per-deployment operator DATA the update PRESERVES create-if-absent
+      (`module_coherence.PRESERVE_DATA`): a positive 'your value is kept' confirmation, so a change to it is
+      never met with silence.
+
+    `overlay_replace_paths()` already EXCLUDES the preserved set (those files are not overwritten), so
+    `preserved` is read directly from `PRESERVE_DATA`. The three sets are kept DISJOINT explicitly: preserved
+    paths are subtracted from the overwrite hits before the derived split — so a `PRESERVE_DATA` change can
+    never also appear in the alarm even in the edge where the file is absent on disk (a rename/removal, where
+    `overlay_replace_paths()` would not have subtracted it)."""
+    preserved_set = set(module_coherence.PRESERVE_DATA)
+    over_hits = [p for p in _changed_hits(changed, module_manager.overlay_replace_paths())
+                 if p not in preserved_set]                      # preserved is never the alarm — belt over the subtract
+    derived_set = set(module_manager.REGENERATED_DERIVED)
+    return {
+        "overwrite": [p for p in over_hits if p not in derived_set],
+        "derived": [p for p in over_hits if p in derived_set],
+        "preserved": _changed_hits(changed, preserved_set),
+    }
+
+
+def _render_list(paths: list) -> str:
+    """A capped, `_safe_path`-rendered bullet list — a long list never becomes a wall."""
     shown = [f"- `{_safe_path(p)}`" for p in paths[:_MAX_LISTED]]
     if len(paths) > _MAX_LISTED:
         shown.append(f"- …and {len(paths) - _MAX_LISTED} more")
-    listed = "\n".join(shown)
+    return "\n".join(shown)
+
+
+def compose_comment(registers: dict, home: str | None) -> str:
+    """The plain-language, non-blocking disclosure body, in up to three registers (see `disclosure_registers`).
+    Peer voice: inform + consequence, route to the durable home (named, when known), never forbid. Every path
+    is rendered through `_safe_path`, and each list is capped. Only non-empty registers render a section."""
+    overwrite = registers.get("overwrite") or []
+    derived = registers.get("derived") or []
+    preserved = registers.get("preserved") or []
     home_hint = f" (`{_safe_path(home)}`)" if home else ""
-    return (
-        f"{COMMENT_MARKER}\n"
-        "**Heads-up: this pull request changes engine files the next engine update is set to overwrite.**\n\n"
-        "The engine keeps its own machinery current by replacing these files wholesale when you update — so a "
-        "change you make to them here won't survive the next update; it will quietly revert:\n\n"
-        f"{listed}\n\n"
-        "If that was a one-off, this is just so you know. If you want the change to last, the durable home "
-        f"for an edit to engine machinery is upstream in the engine project these files come from{home_hint} "
-        "— a fix there travels to every update. And if what you actually want is to customize how the engine "
-        "behaves, the settings that *do* survive an update are your tunable policy (via `/engine-tune`) and "
-        "your operator notes — those are preserved; these files are not.\n\n"
-        "*This is a heads-up only — it does not block your merge, and your merge is the decision.*"
-    )
+    parts = [COMMENT_MARKER]
+    if [bool(overwrite), bool(derived), bool(preserved)].count(True) > 1:
+        # More than one register fired — a single orienting line so the reader isn't hit by three differently-
+        # toned verdicts with no frame (the sections below say what happens to each kind).
+        parts.append("This pull request touches more than one kind of engine file. Here is what the next "
+                     "update does with each — none of it blocks your merge:")
+    if overwrite:
+        parts.append(
+            "**Heads-up: this pull request changes engine files the next engine update is set to overwrite.**\n\n"
+            "The engine keeps its own machinery current by replacing these files wholesale when you update — so a "
+            "change you make to them here won't survive the next update; it will quietly revert:\n\n"
+            f"{_render_list(overwrite)}\n\n"
+            "If that was a one-off, this is just so you know. If you want the change to last, the durable home "
+            f"for an edit to engine machinery is upstream in the engine project these files come from{home_hint} "
+            "— a fix there travels to every update. And if what you actually want is to customize how the engine "
+            "behaves, the settings that *do* survive an update are your tunable policy (via `/engine-tune`) and "
+            "your operator notes — those are preserved; these files are not.")
+    if derived:
+        parts.append(
+            "**These engine-internal files are regenerated by the update.**\n\n"
+            "The engine rebuilds them from your project's own current state on each update. A change here that "
+            "**reflects a real change in your project** — you edited what the file is generated from and "
+            "regenerated it — is reproduced, not lost. But content typed **directly** into one of these files, "
+            "with no matching change to the source it comes from, will **not** survive: it is rebuilt away on "
+            "the next update. So if you meant to change what one of these records, edit the source it is "
+            "generated from (for the settled-criteria record, your `docs/spec/`), not the file itself:\n\n"
+            f"{_render_list(derived)}")
+    if preserved:
+        parts.append(
+            "**Your data is kept — the next update preserves these files, it does not overwrite them.**\n\n"
+            "These hold values bound to this deployment (not engine machinery), so the update leaves your "
+            "version in place:\n\n"
+            f"{_render_list(preserved)}")
+    parts.append("*This is a heads-up only — it does not block your merge, and your merge is the decision.*")
+    return "\n\n".join(parts)
 
 
 def _resolved_body() -> str:
@@ -207,13 +266,14 @@ def _resolved_body() -> str:
             "overwrite.)*")
 
 
-def reconcile(client: _Comments, number: int, paths: list, home: str | None) -> str:
+def reconcile(client: _Comments, number: int, registers: dict, home: str | None) -> str:
     """Post / update / retract the single BOT-authored marker comment idempotently (and resolve any stray
-    duplicate). Returns a plain status word."""
+    duplicate). Returns a plain status word. Posts when ANY register (overwrite / derived / preserved) has a
+    hit; retracts when none do."""
     mine = [c for c in client.list_comments(number)
             if COMMENT_MARKER in (c.get("body") or "") and _is_bot(c)]
-    if paths:
-        body = compose_comment(paths, home)
+    if any(registers.get(k) for k in ("overwrite", "derived", "preserved")):
+        body = compose_comment(registers, home)
         if not mine:
             client.post_comment(number, body)
             outcome = "posted"
@@ -295,14 +355,14 @@ def main() -> int:
 
     try:
         changed = weakening_guard.fetch_all_changed_files(repo, number, token)
-        paths = overwritten_paths(changed)
-        status = reconcile(_Comments(repo, token), number, paths, repo_identity.home_repository(validate.ROOT))
+        registers = disclosure_registers(changed)
+        status = reconcile(_Comments(repo, token), number, registers, repo_identity.home_repository(validate.ROOT))
     except Exception as exc:  # noqa: BLE001 — a broken disclosure must be VISIBLE (non-blocking), not green
         print(f"overlay-disclosure: could not complete the disclosure ({exc}).", file=sys.stderr)
         return 1
 
-    print(f"overlay-disclosure: {status} "
-          f"({len(paths)} file(s) the next update would overwrite).")
+    total = sum(len(registers.get(k) or []) for k in ("overwrite", "derived", "preserved"))
+    print(f"overlay-disclosure: {status} ({total} engine file(s) this update's overlay touches).")
     return 0
 
 
