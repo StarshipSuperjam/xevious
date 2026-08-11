@@ -47,7 +47,7 @@ jobs:
           python-version: "3.12"
       - name: Build the deterministic .sb3 the harness runs
         run: python tools/scratch_project.py build
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: harness/.nvmrc
       - name: Install harness dependencies (no install scripts)
