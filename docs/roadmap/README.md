@@ -87,5 +87,6 @@ python3 tools/roadmap.py handoff
 ```
 
 Existing Project views and the Engine-owned summary fields are immutable to the
-migration. The only fields it adds are `Roadmap role`, `Delivery slice`, and
-`Proof level`; each is derived from the manifest.
+migration. It adds manifest-owned views for delivery leaves, capability
+parents, and imported history, plus the derived `Roadmap role`, `Delivery
+slice`, and `Proof level` fields.

@@ -1,7 +1,16 @@
 {
   "version": 1,
   "repository": "StarshipSuperjam/xevious",
-  "project": {"owner": "StarshipSuperjam", "number": 4, "node_id": "PVT_kwHOAf1Ylc4BgLx1"},
+  "project": {
+    "owner": "StarshipSuperjam",
+    "number": 4,
+    "node_id": "PVT_kwHOAf1Ylc4BgLx1",
+    "views": [
+      {"name": "Delivery leaves", "layout": "TABLE_LAYOUT", "filter": "is:issue roadmap-role:Leaf"},
+      {"name": "Capability parents", "layout": "TABLE_LAYOUT", "filter": "is:issue roadmap-role:Parent"},
+      {"name": "Imported history", "layout": "TABLE_LAYOUT", "filter": "is:issue roadmap-role:\"Imported history\""}
+    ]
+  },
   "excluded_catalog_prefixes": ["EX-"],
   "parents": [
     {"key": "build", "title": "Capability: reproducible Scratch build and assets", "spec": null, "spec_status": "settled"},

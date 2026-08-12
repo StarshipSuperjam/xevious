@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any
 
 
@@ -437,11 +438,120 @@ def project_edit(url: str, field: str, value: str) -> None:
     gh("project", "item-edit", "4", "--owner", "@me", "--url", url, "--field", field, "--value", value)
 
 
+def graphql_batch(operations: list[str], *, size: int = 20) -> None:
+    """Run small mutation batches so Project reconciliation does not exhaust quota."""
+    for offset in range(0, len(operations), size):
+        query = "mutation {\n" + "\n".join(operations[offset : offset + size]) + "\n}"
+        gh("api", "graphql", "-f", f"query={query}")
+
+
+def project_value(field: dict[str, Any], value: str) -> str:
+    if field["type"] == "ProjectV2SingleSelectField":
+        options = {option["name"]: option["id"] for option in field.get("options", [])}
+        if value not in options:
+            raise RoadmapError(f"Project field {field['name']} has no option {value}")
+        return f'{{singleSelectOptionId:"{options[value]}"}}'
+    return f'{{text:{json.dumps(value)}}}'
+
+
+def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
+    """Add roadmap content once, then set all derived fields in batched mutations."""
+    project_id = journal["project"]["node_id"]
+    current = gh("project", "item-list", "4", "--owner", "@me", "--limit", "500", "--format", "json")
+    by_url = {
+        item.get("content", {}).get("url"): item
+        for item in current.get("items", [])
+        if item.get("content", {}).get("url")
+    }
+    desired = []
+    for parent in manifest["parents"]:
+        record = journal["parents"][parent["key"]]
+        desired.append((parent["key"], record, {"Roadmap role": "Parent", "Work type": "Feature", "Status": "Backlog"}))
+    for leaf in manifest["leaves"]:
+        record = journal["leaves"][leaf["key"]]
+        role = "Imported history" if leaf["status"] == "history" else "Leaf"
+        desired.append((leaf["key"], record, {
+            "Roadmap role": role,
+            "Delivery slice": str(leaf["slice"]),
+            "Proof level": leaf["proof"].title(),
+            "Work type": "Feature",
+            "Status": "Done" if leaf["status"] == "history" else "Backlog",
+        }))
+
+    missing = [(key, record) for key, record, _ in desired if record["url"] not in by_url]
+    add_ops = [
+        f'a{index}:addProjectV2ItemById(input:{{projectId:"{project_id}",contentId:"{record["node_id"]}"}}){{item{{id}}}}'
+        for index, (_, record) in enumerate(missing)
+    ]
+    graphql_batch(add_ops)
+    if missing:
+        # ProjectV2 mutations are occasionally eventually consistent with its
+        # paginated item query. Bound the retry instead of creating again.
+        for attempt in range(3):
+            if attempt:
+                time.sleep(2)
+            current = gh("project", "item-list", "4", "--owner", "@me", "--limit", "500", "--format", "json")
+            by_url = {
+                item.get("content", {}).get("url"): item
+                for item in current.get("items", [])
+                if item.get("content", {}).get("url")
+            }
+            if all(record["url"] in by_url for _, record in missing):
+                break
+
+    update_ops: list[str] = []
+    for index, (key, record, values) in enumerate(desired):
+        item = by_url.get(record["url"])
+        if not item:
+            raise RoadmapError(f"Project item missing after add: {key}")
+        record["project_item_id"] = item["id"]
+        for field_name, value in values.items():
+            field = journal["project_fields"][field_name]
+            encoded = project_value(field, value)
+            alias = f'u{len(update_ops)}'
+            update_ops.append(
+                f'{alias}:updateProjectV2ItemFieldValue(input:{{projectId:"{project_id}",itemId:"{item["id"]}",fieldId:"{field["id"]}",value:{encoded}}}){{projectV2Item{{id}}}}'
+            )
+    graphql_batch(update_ops)
+    journal["project_synced"] = True
+    write_json(MIGRATION_PATH, journal)
+
+
+def ensure_project_views(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
+    query = "query { viewer { projectV2(number:4) { views(first:50) { nodes { id name layout filter } } } } }"
+    current = gh("api", "graphql", "-f", f"query={query}")
+    nodes = current["data"]["viewer"]["projectV2"]["views"]["nodes"]
+    by_name = {node["name"]: node for node in nodes}
+    owned: dict[str, dict[str, Any]] = {}
+    for view in manifest["project"].get("views", []):
+        node = by_name.get(view["name"])
+        if not node:
+            mutation = (
+                "mutation { createProjectV2View(input:{"
+                f'projectId:"{journal["project"]["node_id"]}",'
+                f'name:{json.dumps(view["name"])},layout:{view["layout"]}'
+                "}) { projectV2View { id name layout filter } } }"
+            )
+            created = gh("api", "graphql", "-f", f"query={mutation}")
+            node = created["data"]["createProjectV2View"]["projectV2View"]
+        if node.get("filter") != view["filter"]:
+            mutation = (
+                "mutation { updateProjectV2View(input:{"
+                f'viewId:"{node["id"]}",filter:{json.dumps(view["filter"])}'
+                "}) { projectV2View { id name layout filter } } }"
+            )
+            updated = gh("api", "graphql", "-f", f"query={mutation}")
+            node = updated["data"]["updateProjectV2View"]["projectV2View"]
+        owned[view["name"]] = node
+    journal["project_views"] = owned
+    write_json(MIGRATION_PATH, journal)
+
+
 def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     failures = validate_manifest(manifest)
     if failures:
         raise RoadmapError("manifest invalid:\n- " + "\n- ".join(failures))
-    if journal.get("phase") not in {"snapshotted", "applying", "applied"}:
+    if journal.get("phase") not in {"snapshotted", "applying", "applied", "reconciled"}:
         raise RoadmapError("run snapshot before apply")
     repo = manifest["repository"]
     if api_issue(repo, 34).get("pull_request") is None:
@@ -491,22 +601,8 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         add_sub_issue(repo, parent_number, child_id)
 
     ensure_project_fields(journal)
-    for parent in manifest["parents"]:
-        url = journal["parents"][parent["key"]]["url"]
-        project_item(url)
-        project_edit(url, "Roadmap role", "Parent")
-        project_edit(url, "Work type", "Feature")
-        project_edit(url, "Status", "Backlog")
-    for leaf in manifest["leaves"]:
-        url = journal["leaves"][leaf["key"]]["url"]
-        project_item(url)
-        role = "Imported history" if leaf["status"] == "history" else "Leaf"
-        proof = leaf["proof"].title()
-        project_edit(url, "Roadmap role", role)
-        project_edit(url, "Delivery slice", str(leaf["slice"]))
-        project_edit(url, "Proof level", proof)
-        project_edit(url, "Work type", "Feature")
-        project_edit(url, "Status", "Done" if leaf["status"] == "history" else "Backlog")
+    sync_project(manifest, journal)
+    ensure_project_views(manifest, journal)
 
     # Historical leaves close last, after their parents, milestone, evidence and Project records exist.
     for leaf in manifest["leaves"]:
@@ -542,6 +638,11 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
     if set(live) != expected_keys:
         failures.append(f"live roadmap keys differ: missing {sorted(expected_keys-set(live))}; extra {sorted(set(live)-expected_keys)}")
     milestones = milestone_numbers(journal)
+    child_parents: dict[int, list[int]] = {}
+    for parent in manifest["parents"]:
+        parent_number = journal["parents"][parent["key"]]["number"]
+        for child in gh("api", f"repos/{repo}/issues/{parent_number}/sub_issues") or []:
+            child_parents.setdefault(child["number"], []).append(parent_number)
     for parent in manifest["parents"]:
         issue = live.get(parent["key"])
         if issue and issue.get("milestone") is not None:
@@ -556,10 +657,50 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
         should_close = leaf["status"] == "history"
         if (issue.get("state") == "closed") != should_close:
             failures.append(f"{leaf['key']}: wrong open/closed state")
-        parent_number = journal["parents"][leaf["parent"]]["number"]
-        children = gh("api", f"repos/{repo}/issues/{parent_number}/sub_issues") or []
-        if sum(child.get("number") == issue["number"] for child in children) != 1:
-            failures.append(f"{leaf['key']}: missing or duplicate native parent link")
+        intended_parent = journal["parents"][leaf["parent"]]["number"]
+        if child_parents.get(issue["number"], []) != [intended_parent]:
+            failures.append(f"{leaf['key']}: native parent link differs from #{intended_parent}")
+
+    project = gh("project", "item-list", "4", "--owner", "@me", "--limit", "500", "--format", "json")
+    project_by_url: dict[str, list[dict[str, Any]]] = {}
+    for item in project.get("items", []):
+        url = item.get("content", {}).get("url")
+        if url:
+            project_by_url.setdefault(url, []).append(item)
+    expected_project: list[tuple[str, str, dict[str, str]]] = []
+    for parent in manifest["parents"]:
+        record = journal["parents"][parent["key"]]
+        expected_project.append((parent["key"], record["url"], {
+            "roadmap role": "Parent", "work type": "Feature", "status": "Backlog",
+        }))
+    for leaf in manifest["leaves"]:
+        record = journal["leaves"][leaf["key"]]
+        expected_project.append((leaf["key"], record["url"], {
+            "roadmap role": "Imported history" if leaf["status"] == "history" else "Leaf",
+            "delivery slice": str(leaf["slice"]),
+            "proof level": leaf["proof"].title(),
+            "work type": "Feature",
+            "status": "Done" if leaf["status"] == "history" else "Backlog",
+        }))
+    for key, url, expected in expected_project:
+        items = project_by_url.get(url, [])
+        if len(items) != 1:
+            failures.append(f"{key}: expected exactly one Project item, found {len(items)}")
+            continue
+        item = items[0]
+        for field, value in expected.items():
+            if str(item.get(field, "")) != value:
+                failures.append(f"{key}: Project {field} is {item.get(field)!r}, expected {value!r}")
+    view_query = "query { viewer { projectV2(number:4) { views(first:50) { nodes { id name layout filter } } } } }"
+    view_data = gh("api", "graphql", "-f", f"query={view_query}")
+    view_nodes = view_data["data"]["viewer"]["projectV2"]["views"]["nodes"]
+    views_by_name = {node["name"]: node for node in view_nodes}
+    for expected in manifest["project"].get("views", []):
+        actual = views_by_name.get(expected["name"])
+        if not actual:
+            failures.append(f"Project view {expected['name']!r} is missing")
+        elif actual.get("layout") != expected["layout"] or actual.get("filter") != expected["filter"]:
+            failures.append(f"Project view {expected['name']!r} differs from the manifest")
     failures += compare_pr34(journal)
     if not failures:
         journal["phase"] = "reconciled"
