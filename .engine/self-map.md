@@ -33,12 +33,13 @@ Every kind of file the engine governs — its home and authority, and the schema
 
 ## Modules
 
-The packages your engine is assembled from, and how they wire together (9 installed).
+The packages your engine is assembled from, and how they wire together (10 installed).
 
 The dependency graph — each module is listed after the ones it builds on (`→` means "depends on"):
 
 - `core` (no dependencies)
 - `design-review` → `core`
+- `github-projects-sync` → `core`
 - `memory-substrate-sqlite-fts5` → `core`
 - `memory-semantic-recall` → `core`, `memory-substrate-sqlite-fts5`
 - `product-design` → `core`
@@ -77,6 +78,16 @@ The dependency graph — each module is listed after the ones it builds on (`→
   - agent: `.claude/agents/engine-design-review-architecture.md`, `.claude/agents/engine-design-review-feasibility.md`, `.claude/agents/engine-design-review-product-intent.md`, `.claude/agents/engine-design-review-risk-governance.md`
   - codex-agent: `.codex/agents/engine-design-review-architecture.toml`, `.codex/agents/engine-design-review-feasibility.toml`, `.codex/agents/engine-design-review-product-intent.toml`, `.codex/agents/engine-design-review-risk-governance.toml`
 - wires: none (this module adds no shared-state edits)
+
+### `github-projects-sync` — version `0.2.0` (optional)
+
+- depends on: `core`
+- provides:
+  - codex-skill: `.agents/skills/engine-board-setup/SKILL.md`, `.agents/skills/engine-board-setup/agents/openai.yaml`
+  - operation: `.engine/operations/projects-sync-setup.md`
+  - skill: `.claude/skills/engine-board-setup/SKILL.md`
+  - tool: `.engine/tools/projects_sync/*.py`
+- wires: codex-hook, gitignore, hook
 
 ### `memory-substrate-sqlite-fts5` — version `0.2.0` (required)
 

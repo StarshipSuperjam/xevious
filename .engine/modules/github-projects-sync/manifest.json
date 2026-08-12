@@ -1,0 +1,68 @@
+{
+  "id": "github-projects-sync",
+  "version": "0.2.0",
+  "status": "optional",
+  "provides": {
+    "tool": [
+      ".engine/tools/projects_sync/*.py"
+    ],
+    "operation": [
+      ".engine/operations/projects-sync-setup.md"
+    ],
+    "skill": [
+      ".claude/skills/engine-board-setup/SKILL.md"
+    ],
+    "codex-skill": [
+      ".agents/skills/engine-board-setup/SKILL.md",
+      ".agents/skills/engine-board-setup/agents/openai.yaml"
+    ]
+  },
+  "wires": [
+    {
+      "type": "gitignore",
+      "key": "github-projects-sync-board-config",
+      "lines": [
+        ".engine/projects-sync/"
+      ]
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/projects_sync/projects_sync.py\" session-start"
+      }
+    },
+    {
+      "type": "hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "sh \"${CLAUDE_PROJECT_DIR}/.engine/tools/hook-runner.sh\" \"${CLAUDE_PROJECT_DIR}/.engine/.venv/bin/python\" \"${CLAUDE_PROJECT_DIR}/.engine/tools/projects_sync/projects_sync.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "startup",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/projects_sync/projects_sync.py\" session-start"
+      }
+    },
+    {
+      "type": "codex-hook",
+      "event": "SessionStart",
+      "matcher": "resume",
+      "hook": {
+        "type": "command",
+        "command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && sh \".engine/tools/codex-hook-runner.sh\" \".engine/tools/projects_sync/projects_sync.py\" session-start"
+      }
+    }
+  ],
+  "depends": {
+    "core": ""
+  }
+}

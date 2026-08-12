@@ -681,6 +681,7 @@
           "module:validators-core"
         ],
         "targets": [
+          "codex-skill:engine-board-setup",
           "codex-skill:engine-conduct",
           "codex-skill:engine-design",
           "codex-skill:engine-help",
@@ -718,6 +719,7 @@
           "module:validators-core"
         ],
         "targets": [
+          "codex-skill:engine-board-setup",
           "codex-skill:engine-conduct",
           "codex-skill:engine-design",
           "codex-skill:engine-help",
@@ -1562,6 +1564,7 @@
           "module:audit-library",
           "module:core",
           "module:design-review",
+          "module:github-projects-sync",
           "module:memory-semantic-recall",
           "module:memory-substrate-sqlite-fts5",
           "module:product-design",
@@ -1640,6 +1643,7 @@
           "operation:onboarding-read",
           "operation:operating-modes",
           "operation:product-intake",
+          "operation:projects-sync-setup",
           "operation:routine-entry",
           "operation:tune-policy"
         ]
@@ -1686,6 +1690,7 @@
           "operation:onboarding-read",
           "operation:operating-modes",
           "operation:product-intake",
+          "operation:projects-sync-setup",
           "operation:routine-entry",
           "operation:tune-policy"
         ]
@@ -2323,6 +2328,7 @@
           "module:validators-core"
         ],
         "targets": [
+          "skill:engine-board-setup",
           "skill:engine-conduct",
           "skill:engine-design",
           "skill:engine-help",
@@ -2360,6 +2366,7 @@
           "module:validators-core"
         ],
         "targets": [
+          "skill:engine-board-setup",
           "skill:engine-conduct",
           "skill:engine-design",
           "skill:engine-help",
@@ -2694,6 +2701,46 @@
       },
       "status": "active",
       "type": "codex-agent"
+    },
+    {
+      "id": "codex-skill:engine-board-setup",
+      "name": ".agents/skills/engine-board-setup/SKILL.md",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "governed_by": [
+          "schema:codex-skill.v1"
+        ],
+        "provided_by": [
+          "module:github-projects-sync"
+        ]
+      },
+      "slug": "engine-board-setup",
+      "source": {
+        "fingerprint": "sha256:288d87feff3bda1e8202ea460baa8d61bb067bb7f4f17eb7e151ac7f76cbc1d5",
+        "path": ".agents/skills/engine-board-setup/SKILL.md"
+      },
+      "status": "active",
+      "type": "codex-skill"
+    },
+    {
+      "id": "codex-skill:engine-board-setup.policy",
+      "name": ".agents/skills/engine-board-setup/agents/openai.yaml",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "governed_by": [
+          "schema:codex-skill.v1"
+        ],
+        "provided_by": [
+          "module:github-projects-sync"
+        ]
+      },
+      "slug": "engine-board-setup.policy",
+      "source": {
+        "fingerprint": "sha256:52b4d77fb2942f78768d85805bb8e76de14565be64df26edd1fa612feabb6a31",
+        "path": ".agents/skills/engine-board-setup/agents/openai.yaml"
+      },
+      "status": "active",
+      "type": "codex-skill"
     },
     {
       "id": "codex-skill:engine-conduct",
@@ -4094,6 +4141,27 @@
       "version": "0.2.0"
     },
     {
+      "id": "module:github-projects-sync",
+      "name": "github-projects-sync",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "depends_on": [
+          "module:core"
+        ],
+        "wires_hook": [
+          "tool:projects_sync"
+        ]
+      },
+      "slug": "github-projects-sync",
+      "source": {
+        "fingerprint": "sha256:dc5505a3bbb3e5f6c8d8a786de4a0e364f25cc9e99d7970ee04fcfcffca091fe",
+        "path": ".engine/modules/github-projects-sync/manifest.json"
+      },
+      "status": "optional",
+      "type": "module",
+      "version": "0.2.0"
+    },
+    {
       "id": "module:memory-semantic-recall",
       "name": "memory-semantic-recall",
       "owner": "memory-semantic-recall",
@@ -4546,6 +4614,26 @@
       "source": {
         "fingerprint": "sha256:1d8920f5b56f6dffb414656cfa369eeb29e4edc64f7f178c6d95b4c307777e79",
         "path": ".engine/operations/product-intake.md"
+      },
+      "status": "active",
+      "type": "operation"
+    },
+    {
+      "id": "operation:projects-sync-setup",
+      "name": ".engine/operations/projects-sync-setup.md",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "governed_by": [
+          "schema:operation.v1"
+        ],
+        "provided_by": [
+          "module:github-projects-sync"
+        ]
+      },
+      "slug": "projects-sync-setup",
+      "source": {
+        "fingerprint": "sha256:19acfbfae5df1d14952e32b01c45f71c56d2e5d765a208393b4be5242d24b5f5",
+        "path": ".engine/operations/projects-sync-setup.md"
       },
       "status": "active",
       "type": "operation"
@@ -5430,6 +5518,28 @@
       },
       "status": "active",
       "type": "schema"
+    },
+    {
+      "id": "skill:engine-board-setup",
+      "invocation": "operator-typed",
+      "name": ".claude/skills/engine-board-setup/SKILL.md",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "governed_by": [
+          "schema:skill.v1"
+        ],
+        "provided_by": [
+          "module:github-projects-sync"
+        ]
+      },
+      "slug": "engine-board-setup",
+      "source": {
+        "fingerprint": "sha256:1d26c3a763d7a1c42a494bdf1c8735c820b1c0f38a13c65378b89fffad040799",
+        "path": ".claude/skills/engine-board-setup/SKILL.md"
+      },
+      "status": "active",
+      "title": "engine-board-setup",
+      "type": "skill"
     },
     {
       "id": "skill:engine-conduct",
@@ -8473,6 +8583,53 @@
       },
       "status": "active",
       "summary": "The product-design module's tools — the read-only inspectors that validate the FORM of a project's",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "hook",
+      "guarded": false,
+      "id": "tool:projects_sync",
+      "name": ".engine/tools/projects_sync/projects_sync.py",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "imports": [
+          "tool:boot",
+          "tool:github_client",
+          "tool:hooks",
+          "tool:telemetry",
+          "tool:validate"
+        ],
+        "provided_by": [
+          "module:github-projects-sync"
+        ]
+      },
+      "slug": "projects_sync",
+      "source": {
+        "fingerprint": "sha256:9a9df34726a6082fbc02d90f251e0a8f575b17d3533b86434d124948e9423cfe",
+        "path": ".engine/tools/projects_sync/projects_sync.py"
+      },
+      "status": "active",
+      "summary": "projects_sync.py — the github-projects-sync sync tool (the engine-field projection).",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "library",
+      "guarded": false,
+      "id": "tool:projects_sync.__init__",
+      "name": ".engine/tools/projects_sync/__init__.py",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "provided_by": [
+          "module:github-projects-sync"
+        ]
+      },
+      "slug": "projects_sync.__init__",
+      "source": {
+        "fingerprint": "sha256:13caefff97b48ddf9965778f042b12f24a3b4a2cd09fd8bfa288ff62fdf3da68",
+        "path": ".engine/tools/projects_sync/__init__.py"
+      },
+      "status": "active",
+      "summary": "The github-projects-sync module's tool package (optional, adopter-facing Product Management).",
       "type": "tool"
     },
     {
@@ -11649,6 +11806,31 @@
       },
       "status": "active",
       "summary": "Tests for pr_reconcile — the stranded-PR conflict detector + lossless-or-refuse recovery (#136).",
+      "type": "tool"
+    },
+    {
+      "entrypoint": "test",
+      "guarded": false,
+      "id": "tool:test_projects_sync",
+      "name": ".engine/tools/projects_sync/test_projects_sync.py",
+      "owner": "github-projects-sync",
+      "predicates": {
+        "provided_by": [
+          "module:github-projects-sync"
+        ],
+        "tests": [
+          "tool:projects_sync",
+          "tool:quiet_call",
+          "tool:validate"
+        ]
+      },
+      "slug": "test_projects_sync",
+      "source": {
+        "fingerprint": "sha256:4c29b1ec806b6c5d72d0c440d47d704eb5dbb25261559c6f71ba8d3f5b378058",
+        "path": ".engine/tools/projects_sync/test_projects_sync.py"
+      },
+      "status": "active",
+      "summary": "Unit tests for projects_sync.py — the github-projects-sync projection tool.",
       "type": "tool"
     },
     {
