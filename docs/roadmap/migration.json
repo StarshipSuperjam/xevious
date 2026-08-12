@@ -1,0 +1,1428 @@
+{
+  "claim_pr": 36,
+  "leaves": {
+    "air.bacura": {
+      "id": 5135023740,
+      "node_id": "I_kwDOBueNKs8AAAABMhI-fA",
+      "number": 81,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttc8",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/81"
+    },
+    "air.jara": {
+      "id": 5135023094,
+      "node_id": "I_kwDOBueNKs8AAAABMhI79g",
+      "number": 74,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtcM",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/74"
+    },
+    "air.kapi": {
+      "id": 5135023195,
+      "node_id": "I_kwDOBueNKs8AAAABMhI8Ww",
+      "number": 75,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtcU",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/75"
+    },
+    "air.radiating-bullets": {
+      "id": 5135023920,
+      "node_id": "I_kwDOBueNKs8AAAABMhI_MA",
+      "number": 83,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtdQ",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/83"
+    },
+    "air.sheonite": {
+      "id": 5135023566,
+      "node_id": "I_kwDOBueNKs8AAAABMhI9zg",
+      "number": 79,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttcs",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/79"
+    },
+    "air.spario": {
+      "id": 5135023644,
+      "node_id": "I_kwDOBueNKs8AAAABMhI-HA",
+      "number": 80,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttc0",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/80"
+    },
+    "air.special-pairs": {
+      "id": 5135023817,
+      "node_id": "I_kwDOBueNKs8AAAABMhI-yQ",
+      "number": 82,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtdE",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/82"
+    },
+    "air.standard-bullets": {
+      "id": 5135022305,
+      "node_id": "I_kwDOBueNKs8AAAABMhI44Q",
+      "number": 66,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttbw",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/66"
+    },
+    "air.terrazi": {
+      "id": 5135023295,
+      "node_id": "I_kwDOBueNKs8AAAABMhI8vw",
+      "number": 76,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttcg",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/76"
+    },
+    "air.torkan": {
+      "id": 5135022906,
+      "node_id": "I_kwDOBueNKs8AAAABMhI7Og",
+      "number": 72,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttb0",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/72"
+    },
+    "air.toroid": {
+      "id": 5135022215,
+      "node_id": "I_kwDOBueNKs8AAAABMhI4hw",
+      "number": 65,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttbs",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/65"
+    },
+    "air.zakato": {
+      "id": 5135023490,
+      "node_id": "I_kwDOBueNKs8AAAABMhI9gg",
+      "number": 78,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttco",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/78"
+    },
+    "air.zoshi": {
+      "id": 5135023005,
+      "node_id": "I_kwDOBueNKs8AAAABMhI7nQ",
+      "number": 73,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttb8",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/73"
+    },
+    "andor.core-destruction": {
+      "id": 5135025242,
+      "node_id": "I_kwDOBueNKs8AAAABMhJEWg",
+      "number": 96,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Twas",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/96"
+    },
+    "andor.defenses": {
+      "id": 5135025152,
+      "node_id": "I_kwDOBueNKs8AAAABMhJEAA",
+      "number": 95,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Twak",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/95"
+    },
+    "andor.lifecycle": {
+      "id": 5135025030,
+      "node_id": "I_kwDOBueNKs8AAAABMhJDhg",
+      "number": 94,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Twag",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/94"
+    },
+    "area.air-dispatch": {
+      "id": 5135022116,
+      "node_id": "I_kwDOBueNKs8AAAABMhI4JA",
+      "number": 64,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TsoU",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/64"
+    },
+    "area.clock": {
+      "id": 5135021054,
+      "node_id": "I_kwDOBueNKs8AAAABMhIz_g",
+      "number": 53,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tshc",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/53"
+    },
+    "area.ground-dispatch": {
+      "id": 5135022568,
+      "node_id": "I_kwDOBueNKs8AAAABMhI56A",
+      "number": 69,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsqc",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/69"
+    },
+    "area.scheduler-data": {
+      "id": 5135021144,
+      "node_id": "I_kwDOBueNKs8AAAABMhI0WA",
+      "number": 54,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TsjM",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/54"
+    },
+    "area.schedules-loop": {
+      "id": 5135021233,
+      "node_id": "I_kwDOBueNKs8AAAABMhI0sQ",
+      "number": 55,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsjk",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/55"
+    },
+    "area.visual-terrain": {
+      "id": 5135025830,
+      "node_id": "I_kwDOBueNKs8AAAABMhJGpg",
+      "number": 102,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ts6U",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/102"
+    },
+    "build.sprite-proof": {
+      "id": 5135020110,
+      "node_id": "I_kwDOBueNKs8AAAABMhIwTg",
+      "number": 45,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtA8",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/45"
+    },
+    "cabinet.attract-credits": {
+      "id": 5135025329,
+      "node_id": "I_kwDOBueNKs8AAAABMhJEsQ",
+      "number": 97,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Twaw",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/97"
+    },
+    "cabinet.high-scores": {
+      "id": 5135025611,
+      "node_id": "I_kwDOBueNKs8AAAABMhJFyw",
+      "number": 100,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwbA",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/100"
+    },
+    "cabinet.two-player": {
+      "id": 5135025414,
+      "node_id": "I_kwDOBueNKs8AAAABMhJFBg",
+      "number": 98,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Twa4",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/98"
+    },
+    "core.collision-resolution": {
+      "id": 5135021538,
+      "node_id": "I_kwDOBueNKs8AAAABMhI14g",
+      "number": 58,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtFU",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/58"
+    },
+    "core.director-reset": {
+      "id": 5135020223,
+      "node_id": "I_kwDOBueNKs8AAAABMhIwvw",
+      "number": 46,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtFI",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/46"
+    },
+    "core.entity-foundation": {
+      "id": 5135256753,
+      "node_id": "I_kwDOBueNKs8AAAABMhXMsQ",
+      "number": 107,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2T5Tc",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/107"
+    },
+    "core.entity-lifecycle": {
+      "id": 5135021441,
+      "node_id": "I_kwDOBueNKs8AAAABMhI1gQ",
+      "number": 57,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtFM",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/57"
+    },
+    "core.random-consumer": {
+      "id": 5135021627,
+      "node_id": "I_kwDOBueNKs8AAAABMhI2Ow",
+      "number": 59,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtFc",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/59"
+    },
+    "difficulty.live-pressure": {
+      "id": 5135021710,
+      "node_id": "I_kwDOBueNKs8AAAABMhI2jg",
+      "number": 60,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TsmU",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/60"
+    },
+    "difficulty.models-live-state": {
+      "id": 5135021345,
+      "node_id": "I_kwDOBueNKs8AAAABMhI1IQ",
+      "number": 56,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TsjQ",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/56"
+    },
+    "economy.air-awards": {
+      "id": 5135022000,
+      "node_id": "I_kwDOBueNKs8AAAABMhI3sA",
+      "number": 63,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TsnA",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/63"
+    },
+    "economy.bonus-flag-award": {
+      "id": 5135024866,
+      "node_id": "I_kwDOBueNKs8AAAABMhJC4g",
+      "number": 92,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ts1s",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/92"
+    },
+    "economy.game-over": {
+      "id": 5135020967,
+      "node_id": "I_kwDOBueNKs8AAAABMhIzpw",
+      "number": 52,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TshU",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/52"
+    },
+    "economy.game-over-routing": {
+      "id": 5135025730,
+      "node_id": "I_kwDOBueNKs8AAAABMhJGQg",
+      "number": 101,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ts5g",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/101"
+    },
+    "economy.ground-awards": {
+      "id": 5135022488,
+      "node_id": "I_kwDOBueNKs8AAAABMhI5mA",
+      "number": 68,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwaE",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/68"
+    },
+    "economy.life-tables": {
+      "id": 5135020849,
+      "node_id": "I_kwDOBueNKs8AAAABMhIzMQ",
+      "number": 51,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsg4",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/51"
+    },
+    "economy.score-hud": {
+      "id": 5135020755,
+      "node_id": "I_kwDOBueNKs8AAAABMhIy0w",
+      "number": 50,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsgw",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/50"
+    },
+    "economy.stop-after-two": {
+      "id": 5135026258,
+      "node_id": "I_kwDOBueNKs8AAAABMhJIUg",
+      "number": 103,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ts7g",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/103"
+    },
+    "economy.two-player-hud": {
+      "id": 5135025517,
+      "node_id": "I_kwDOBueNKs8AAAABMhJFbQ",
+      "number": 99,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ts48",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/99"
+    },
+    "ground.barra": {
+      "id": 5135022661,
+      "node_id": "I_kwDOBueNKs8AAAABMhI6RQ",
+      "number": 70,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttio",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/70"
+    },
+    "ground.barra-variants": {
+      "id": 5135024045,
+      "node_id": "I_kwDOBueNKs8AAAABMhI_rQ",
+      "number": 84,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttiw",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/84"
+    },
+    "ground.boza-logram": {
+      "id": 5135024377,
+      "node_id": "I_kwDOBueNKs8AAAABMhJA-Q",
+      "number": 87,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tti8",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/87"
+    },
+    "ground.derota": {
+      "id": 5135024276,
+      "node_id": "I_kwDOBueNKs8AAAABMhJAlA",
+      "number": 86,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tti4",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/86"
+    },
+    "ground.domogram": {
+      "id": 5135024552,
+      "node_id": "I_kwDOBueNKs8AAAABMhJBqA",
+      "number": 89,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtjE",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/89"
+    },
+    "ground.grobda": {
+      "id": 5135024457,
+      "node_id": "I_kwDOBueNKs8AAAABMhJBSQ",
+      "number": 88,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtjA",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/88"
+    },
+    "ground.logram": {
+      "id": 5135022759,
+      "node_id": "I_kwDOBueNKs8AAAABMhI6pw",
+      "number": 71,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ttis",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/71"
+    },
+    "ground.zolbak": {
+      "id": 5135024137,
+      "node_id": "I_kwDOBueNKs8AAAABMhJACQ",
+      "number": 85,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tti0",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/85"
+    },
+    "player.air-collision-death": {
+      "id": 5135021826,
+      "node_id": "I_kwDOBueNKs8AAAABMhI3Ag",
+      "number": 61,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsmg",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/61"
+    },
+    "player.bacura-bounce": {
+      "id": 5135023383,
+      "node_id": "I_kwDOBueNKs8AAAABMhI9Fw",
+      "number": 77,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TsvA",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/77"
+    },
+    "player.blaster-air-hit": {
+      "id": 5135021920,
+      "node_id": "I_kwDOBueNKs8AAAABMhI3YA",
+      "number": 62,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsm4",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/62"
+    },
+    "player.bullet-pool": {
+      "id": 5135020655,
+      "node_id": "I_kwDOBueNKs8AAAABMhIybw",
+      "number": 49,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tseo",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/49"
+    },
+    "player.death-decision": {
+      "id": 5135020563,
+      "node_id": "I_kwDOBueNKs8AAAABMhIyEw",
+      "number": 48,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsf0",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/48"
+    },
+    "player.ground-targeting": {
+      "id": 5135022403,
+      "node_id": "I_kwDOBueNKs8AAAABMhI5Qw",
+      "number": 67,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tspk",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/67"
+    },
+    "player.movement-and-flight": {
+      "id": 5135020478,
+      "node_id": "I_kwDOBueNKs8AAAABMhIxvg",
+      "number": 47,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TseY",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/47"
+    },
+    "player.regression-recovery": {
+      "id": 5104514779,
+      "node_id": "I_kwDOBueNKs8AAAABMEC22w",
+      "number": 13,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Tsdc",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/13"
+    },
+    "presentation.audio-animation": {
+      "id": 5135026346,
+      "node_id": "I_kwDOBueNKs8AAAABMhJIqg",
+      "number": 104,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwbI",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/104"
+    },
+    "presentation.framing": {
+      "id": 5122351345,
+      "node_id": "I_kwDOBueNKs8AAAABMVDg8Q",
+      "number": 30,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGDA",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/30"
+    },
+    "presentation.hud-yellow": {
+      "id": 5122353927,
+      "node_id": "I_kwDOBueNKs8AAAABMVDrBw",
+      "number": 31,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGDI",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/31"
+    },
+    "release.audit": {
+      "id": 5135026532,
+      "node_id": "I_kwDOBueNKs8AAAABMhJJZA",
+      "number": 106,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwbY",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/106"
+    },
+    "release.full-soak": {
+      "id": 5135026437,
+      "node_id": "I_kwDOBueNKs8AAAABMhJJBQ",
+      "number": 105,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwbU",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/105"
+    },
+    "secrets.bonus-flag": {
+      "id": 5135024763,
+      "node_id": "I_kwDOBueNKs8AAAABMhJCew",
+      "number": 91,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwaM",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/91"
+    },
+    "secrets.hidden-credit": {
+      "id": 5135024939,
+      "node_id": "I_kwDOBueNKs8AAAABMhJDKw",
+      "number": 93,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwaU",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/93"
+    },
+    "secrets.sol-tower": {
+      "id": 5135024646,
+      "node_id": "I_kwDOBueNKs8AAAABMhJCBg",
+      "number": 90,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwaI",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/90"
+    }
+  },
+  "parents": {
+    "air": {
+      "id": 5135019709,
+      "node_id": "I_kwDOBueNKs8AAAABMhIuvQ",
+      "number": 38,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtbA",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/38"
+    },
+    "andor": {
+      "id": 5135019888,
+      "node_id": "I_kwDOBueNKs8AAAABMhIvcA",
+      "number": 41,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwZw",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/41"
+    },
+    "area": {
+      "id": 5104653557,
+      "node_id": "I_kwDOBueNKs8AAAABMELU9Q",
+      "number": 17,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGC0",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/17"
+    },
+    "build": {
+      "id": 5135019004,
+      "node_id": "I_kwDOBueNKs8AAAABMhIr_A",
+      "number": 37,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2Ts_o",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/37"
+    },
+    "cabinet": {
+      "id": 5135019950,
+      "node_id": "I_kwDOBueNKs8AAAABMhIvrg",
+      "number": 42,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwZ4",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/42"
+    },
+    "core": {
+      "id": 5104653368,
+      "node_id": "I_kwDOBueNKs8AAAABMELUOA",
+      "number": 14,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TtEQ",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/14"
+    },
+    "difficulty": {
+      "id": 5104653601,
+      "node_id": "I_kwDOBueNKs8AAAABMELVIQ",
+      "number": 18,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCI",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/18"
+    },
+    "economy": {
+      "id": 5104653489,
+      "node_id": "I_kwDOBueNKs8AAAABMELUsQ",
+      "number": 16,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCQ",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/16"
+    },
+    "ground": {
+      "id": 5135019770,
+      "node_id": "I_kwDOBueNKs8AAAABMhIu-g",
+      "number": 39,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TthY",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/39"
+    },
+    "player": {
+      "id": 5104653423,
+      "node_id": "I_kwDOBueNKs8AAAABMELUbw",
+      "number": 15,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGDM",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/15"
+    },
+    "presentation": {
+      "id": 5135020007,
+      "node_id": "I_kwDOBueNKs8AAAABMhIv5w",
+      "number": 43,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwZ8",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/43"
+    },
+    "release": {
+      "id": 5135020059,
+      "node_id": "I_kwDOBueNKs8AAAABMhIwGw",
+      "number": 44,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwaA",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/44"
+    },
+    "secrets": {
+      "id": 5135019818,
+      "node_id": "I_kwDOBueNKs8AAAABMhIvKg",
+      "number": 40,
+      "project_item_id": "PVTI_lAHOAf1Ylc4BgLx1zg2TwZk",
+      "url": "https://github.com/StarshipSuperjam/xevious/issues/40"
+    }
+  },
+  "phase": "reconciled",
+  "project": {
+    "node_id": "PVT_kwHOAf1Ylc4BgLx1",
+    "number": 4,
+    "owner": "StarshipSuperjam"
+  },
+  "project_fields": {
+    "Assignees": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFE",
+      "name": "Assignees",
+      "type": "ProjectV2Field"
+    },
+    "Closed": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFw",
+      "name": "Closed",
+      "type": "ProjectV2Field"
+    },
+    "Created": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFo",
+      "name": "Created",
+      "type": "ProjectV2Field"
+    },
+    "Delivery slice": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZo1M",
+      "name": "Delivery slice",
+      "type": "ProjectV2Field"
+    },
+    "Known issues": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTGA",
+      "name": "Known issues",
+      "type": "ProjectV2Field"
+    },
+    "Labels": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFM",
+      "name": "Labels",
+      "type": "ProjectV2Field"
+    },
+    "Last synced": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTGE",
+      "name": "Last synced",
+      "type": "ProjectV2Field"
+    },
+    "Linked pull requests": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFQ",
+      "name": "Linked pull requests",
+      "type": "ProjectV2Field"
+    },
+    "Milestone": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFU",
+      "name": "Milestone",
+      "type": "ProjectV2Field"
+    },
+    "Needs your review": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTF8",
+      "name": "Needs your review",
+      "type": "ProjectV2Field"
+    },
+    "Parent issue": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFg",
+      "name": "Parent issue",
+      "type": "ProjectV2Field"
+    },
+    "Proof level": {
+      "id": "PVTSSF_lAHOAf1Ylc4BgLx1zhaZo1Q",
+      "name": "Proof level",
+      "options": [
+        {
+          "id": "25ba2bb9",
+          "name": "Playable"
+        },
+        {
+          "id": "41a4b342",
+          "name": "Operator"
+        },
+        {
+          "id": "75e2634e",
+          "name": "Historical"
+        }
+      ],
+      "type": "ProjectV2SingleSelectField"
+    },
+    "Repository": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFY",
+      "name": "Repository",
+      "type": "ProjectV2Field"
+    },
+    "Reviewers": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFc",
+      "name": "Reviewers",
+      "type": "ProjectV2Field"
+    },
+    "Roadmap role": {
+      "id": "PVTSSF_lAHOAf1Ylc4BgLx1zhaZo1I",
+      "name": "Roadmap role",
+      "options": [
+        {
+          "id": "66acf524",
+          "name": "Parent"
+        },
+        {
+          "id": "3644043a",
+          "name": "Leaf"
+        },
+        {
+          "id": "192fbf73",
+          "name": "Imported history"
+        }
+      ],
+      "type": "ProjectV2SingleSelectField"
+    },
+    "Status": {
+      "id": "PVTSSF_lAHOAf1Ylc4BgLx1zhaZTFI",
+      "name": "Status",
+      "options": [
+        {
+          "id": "f75ad846",
+          "name": "Backlog"
+        },
+        {
+          "id": "9e651aa9",
+          "name": "Ready"
+        },
+        {
+          "id": "47fc9ee4",
+          "name": "In progress"
+        },
+        {
+          "id": "98236657",
+          "name": "Done"
+        }
+      ],
+      "type": "ProjectV2SingleSelectField"
+    },
+    "Sub-issues progress": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFk",
+      "name": "Sub-issues progress",
+      "type": "ProjectV2Field"
+    },
+    "Title": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFA",
+      "name": "Title",
+      "type": "ProjectV2Field"
+    },
+    "Updated": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFs",
+      "name": "Updated",
+      "type": "ProjectV2Field"
+    },
+    "What's being built": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTF0",
+      "name": "What's being built",
+      "type": "ProjectV2Field"
+    },
+    "What's next": {
+      "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTF4",
+      "name": "What's next",
+      "type": "ProjectV2Field"
+    },
+    "Work type": {
+      "id": "PVTSSF_lAHOAf1Ylc4BgLx1zhaZTGI",
+      "name": "Work type",
+      "options": [
+        {
+          "id": "9be0a3ca",
+          "name": "Feature"
+        },
+        {
+          "id": "ed320d02",
+          "name": "Bug"
+        },
+        {
+          "id": "8726eac8",
+          "name": "Tech debt"
+        },
+        {
+          "id": "dd8ac791",
+          "name": "Research"
+        }
+      ],
+      "type": "ProjectV2SingleSelectField"
+    }
+  },
+  "project_synced": true,
+  "project_views": {
+    "Capability parents": {
+      "filter": "is:issue roadmap-role:Parent",
+      "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSUEg",
+      "layout": "TABLE_LAYOUT",
+      "name": "Capability parents"
+    },
+    "Delivery leaves": {
+      "filter": "is:issue roadmap-role:Leaf",
+      "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSUEY",
+      "layout": "TABLE_LAYOUT",
+      "name": "Delivery leaves"
+    },
+    "Imported history": {
+      "filter": "is:issue roadmap-role:\"Imported history\"",
+      "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSUEk",
+      "layout": "TABLE_LAYOUT",
+      "name": "Imported history"
+    }
+  },
+  "repository": "StarshipSuperjam/xevious",
+  "snapshot": {
+    "milestones": [
+      {
+        "closed_at": null,
+        "closed_issues": 1,
+        "created_at": "2026-08-09T20:47:19Z",
+        "creator": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/33380501?v=4",
+          "events_url": "https://api.github.com/users/StarshipSuperjam/events{/privacy}",
+          "followers_url": "https://api.github.com/users/StarshipSuperjam/followers",
+          "following_url": "https://api.github.com/users/StarshipSuperjam/following{/other_user}",
+          "gists_url": "https://api.github.com/users/StarshipSuperjam/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/StarshipSuperjam",
+          "id": 33380501,
+          "login": "StarshipSuperjam",
+          "node_id": "MDQ6VXNlcjMzMzgwNTAx",
+          "organizations_url": "https://api.github.com/users/StarshipSuperjam/orgs",
+          "received_events_url": "https://api.github.com/users/StarshipSuperjam/received_events",
+          "repos_url": "https://api.github.com/users/StarshipSuperjam/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/StarshipSuperjam/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/StarshipSuperjam/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/StarshipSuperjam",
+          "user_view_type": "public"
+        },
+        "description": null,
+        "due_on": null,
+        "html_url": "https://github.com/StarshipSuperjam/xevious/milestone/1",
+        "id": 17216774,
+        "labels_url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/1/labels",
+        "node_id": "MI_kwDOBueNKs4BBrUG",
+        "number": 1,
+        "open_issues": 1,
+        "state": "open",
+        "title": "Recovery",
+        "updated_at": "2026-08-10T00:12:27Z",
+        "url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/1"
+      },
+      {
+        "closed_at": null,
+        "closed_issues": 1,
+        "created_at": "2026-08-09T20:47:19Z",
+        "creator": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/33380501?v=4",
+          "events_url": "https://api.github.com/users/StarshipSuperjam/events{/privacy}",
+          "followers_url": "https://api.github.com/users/StarshipSuperjam/followers",
+          "following_url": "https://api.github.com/users/StarshipSuperjam/following{/other_user}",
+          "gists_url": "https://api.github.com/users/StarshipSuperjam/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/StarshipSuperjam",
+          "id": 33380501,
+          "login": "StarshipSuperjam",
+          "node_id": "MDQ6VXNlcjMzMzgwNTAx",
+          "organizations_url": "https://api.github.com/users/StarshipSuperjam/orgs",
+          "received_events_url": "https://api.github.com/users/StarshipSuperjam/received_events",
+          "repos_url": "https://api.github.com/users/StarshipSuperjam/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/StarshipSuperjam/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/StarshipSuperjam/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/StarshipSuperjam",
+          "user_view_type": "public"
+        },
+        "description": null,
+        "due_on": null,
+        "html_url": "https://github.com/StarshipSuperjam/xevious/milestone/2",
+        "id": 17216775,
+        "labels_url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/2/labels",
+        "node_id": "MI_kwDOBueNKs4BBrUH",
+        "number": 2,
+        "open_issues": 1,
+        "state": "open",
+        "title": "Foundation",
+        "updated_at": "2026-08-10T03:53:20Z",
+        "url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/2"
+      },
+      {
+        "closed_at": null,
+        "closed_issues": 0,
+        "created_at": "2026-08-09T20:47:20Z",
+        "creator": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/33380501?v=4",
+          "events_url": "https://api.github.com/users/StarshipSuperjam/events{/privacy}",
+          "followers_url": "https://api.github.com/users/StarshipSuperjam/followers",
+          "following_url": "https://api.github.com/users/StarshipSuperjam/following{/other_user}",
+          "gists_url": "https://api.github.com/users/StarshipSuperjam/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/StarshipSuperjam",
+          "id": 33380501,
+          "login": "StarshipSuperjam",
+          "node_id": "MDQ6VXNlcjMzMzgwNTAx",
+          "organizations_url": "https://api.github.com/users/StarshipSuperjam/orgs",
+          "received_events_url": "https://api.github.com/users/StarshipSuperjam/received_events",
+          "repos_url": "https://api.github.com/users/StarshipSuperjam/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/StarshipSuperjam/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/StarshipSuperjam/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/StarshipSuperjam",
+          "user_view_type": "public"
+        },
+        "description": null,
+        "due_on": null,
+        "html_url": "https://github.com/StarshipSuperjam/xevious/milestone/3",
+        "id": 17216776,
+        "labels_url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/3/labels",
+        "node_id": "MI_kwDOBueNKs4BBrUI",
+        "number": 3,
+        "open_issues": 2,
+        "state": "open",
+        "title": "Campaign",
+        "updated_at": "2026-08-09T20:47:38Z",
+        "url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/3"
+      },
+      {
+        "closed_at": null,
+        "closed_issues": 0,
+        "created_at": "2026-08-09T20:47:20Z",
+        "creator": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/33380501?v=4",
+          "events_url": "https://api.github.com/users/StarshipSuperjam/events{/privacy}",
+          "followers_url": "https://api.github.com/users/StarshipSuperjam/followers",
+          "following_url": "https://api.github.com/users/StarshipSuperjam/following{/other_user}",
+          "gists_url": "https://api.github.com/users/StarshipSuperjam/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/StarshipSuperjam",
+          "id": 33380501,
+          "login": "StarshipSuperjam",
+          "node_id": "MDQ6VXNlcjMzMzgwNTAx",
+          "organizations_url": "https://api.github.com/users/StarshipSuperjam/orgs",
+          "received_events_url": "https://api.github.com/users/StarshipSuperjam/received_events",
+          "repos_url": "https://api.github.com/users/StarshipSuperjam/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/StarshipSuperjam/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/StarshipSuperjam/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/StarshipSuperjam",
+          "user_view_type": "public"
+        },
+        "description": null,
+        "due_on": null,
+        "html_url": "https://github.com/StarshipSuperjam/xevious/milestone/4",
+        "id": 17216777,
+        "labels_url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/4/labels",
+        "node_id": "MI_kwDOBueNKs4BBrUJ",
+        "number": 4,
+        "open_issues": 0,
+        "state": "open",
+        "title": "Enemies",
+        "updated_at": "2026-08-09T20:47:20Z",
+        "url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/4"
+      },
+      {
+        "closed_at": null,
+        "closed_issues": 0,
+        "created_at": "2026-08-09T20:47:20Z",
+        "creator": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/33380501?v=4",
+          "events_url": "https://api.github.com/users/StarshipSuperjam/events{/privacy}",
+          "followers_url": "https://api.github.com/users/StarshipSuperjam/followers",
+          "following_url": "https://api.github.com/users/StarshipSuperjam/following{/other_user}",
+          "gists_url": "https://api.github.com/users/StarshipSuperjam/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/StarshipSuperjam",
+          "id": 33380501,
+          "login": "StarshipSuperjam",
+          "node_id": "MDQ6VXNlcjMzMzgwNTAx",
+          "organizations_url": "https://api.github.com/users/StarshipSuperjam/orgs",
+          "received_events_url": "https://api.github.com/users/StarshipSuperjam/received_events",
+          "repos_url": "https://api.github.com/users/StarshipSuperjam/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/StarshipSuperjam/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/StarshipSuperjam/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/StarshipSuperjam",
+          "user_view_type": "public"
+        },
+        "description": null,
+        "due_on": null,
+        "html_url": "https://github.com/StarshipSuperjam/xevious/milestone/5",
+        "id": 17216778,
+        "labels_url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/5/labels",
+        "node_id": "MI_kwDOBueNKs4BBrUK",
+        "number": 5,
+        "open_issues": 0,
+        "state": "open",
+        "title": "Boss and secrets",
+        "updated_at": "2026-08-09T20:47:20Z",
+        "url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/5"
+      },
+      {
+        "closed_at": null,
+        "closed_issues": 0,
+        "created_at": "2026-08-09T20:47:21Z",
+        "creator": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/33380501?v=4",
+          "events_url": "https://api.github.com/users/StarshipSuperjam/events{/privacy}",
+          "followers_url": "https://api.github.com/users/StarshipSuperjam/followers",
+          "following_url": "https://api.github.com/users/StarshipSuperjam/following{/other_user}",
+          "gists_url": "https://api.github.com/users/StarshipSuperjam/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/StarshipSuperjam",
+          "id": 33380501,
+          "login": "StarshipSuperjam",
+          "node_id": "MDQ6VXNlcjMzMzgwNTAx",
+          "organizations_url": "https://api.github.com/users/StarshipSuperjam/orgs",
+          "received_events_url": "https://api.github.com/users/StarshipSuperjam/received_events",
+          "repos_url": "https://api.github.com/users/StarshipSuperjam/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/StarshipSuperjam/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/StarshipSuperjam/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/StarshipSuperjam",
+          "user_view_type": "public"
+        },
+        "description": null,
+        "due_on": null,
+        "html_url": "https://github.com/StarshipSuperjam/xevious/milestone/6",
+        "id": 17216779,
+        "labels_url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/6/labels",
+        "node_id": "MI_kwDOBueNKs4BBrUL",
+        "number": 6,
+        "open_issues": 0,
+        "state": "open",
+        "title": "Cabinet",
+        "updated_at": "2026-08-09T20:47:21Z",
+        "url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/6"
+      },
+      {
+        "closed_at": null,
+        "closed_issues": 0,
+        "created_at": "2026-08-09T20:47:21Z",
+        "creator": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/33380501?v=4",
+          "events_url": "https://api.github.com/users/StarshipSuperjam/events{/privacy}",
+          "followers_url": "https://api.github.com/users/StarshipSuperjam/followers",
+          "following_url": "https://api.github.com/users/StarshipSuperjam/following{/other_user}",
+          "gists_url": "https://api.github.com/users/StarshipSuperjam/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/StarshipSuperjam",
+          "id": 33380501,
+          "login": "StarshipSuperjam",
+          "node_id": "MDQ6VXNlcjMzMzgwNTAx",
+          "organizations_url": "https://api.github.com/users/StarshipSuperjam/orgs",
+          "received_events_url": "https://api.github.com/users/StarshipSuperjam/received_events",
+          "repos_url": "https://api.github.com/users/StarshipSuperjam/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/StarshipSuperjam/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/StarshipSuperjam/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/StarshipSuperjam",
+          "user_view_type": "public"
+        },
+        "description": null,
+        "due_on": null,
+        "html_url": "https://github.com/StarshipSuperjam/xevious/milestone/7",
+        "id": 17216780,
+        "labels_url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/7/labels",
+        "node_id": "MI_kwDOBueNKs4BBrUM",
+        "number": 7,
+        "open_issues": 0,
+        "state": "open",
+        "title": "Polish",
+        "updated_at": "2026-08-09T20:47:21Z",
+        "url": "https://api.github.com/repos/StarshipSuperjam/xevious/milestones/7"
+      }
+    ],
+    "pr34": {
+      "baseRefName": "main",
+      "body": "Draft claim for slice 7 \u2014 difficulty and formations (DIF-01/02/03 + FORM-01). Plan approved; risk assessment and depth choice in chat; contract filled at submit. Part of #17.",
+      "headRefName": "claude/xevious-difficulty-formations",
+      "headRefOid": "cd68e27ab3dc0cb562d30d22771b2ac8561eaaf9",
+      "isDraft": true,
+      "labels": [],
+      "milestone": null,
+      "number": 34,
+      "projectItems": [
+        {
+          "status": {
+            "name": "In progress",
+            "optionId": "47fc9ee4"
+          },
+          "title": "Xevious Project Board"
+        }
+      ],
+      "state": "OPEN",
+      "title": "Feature: difficulty director and normal flying formations, live",
+      "url": "https://github.com/StarshipSuperjam/xevious/pull/34"
+    },
+    "project_fields": {
+      "fields": [
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFA",
+          "name": "Title",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFE",
+          "name": "Assignees",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTSSF_lAHOAf1Ylc4BgLx1zhaZTFI",
+          "name": "Status",
+          "options": [
+            {
+              "id": "f75ad846",
+              "name": "Backlog"
+            },
+            {
+              "id": "9e651aa9",
+              "name": "Ready"
+            },
+            {
+              "id": "47fc9ee4",
+              "name": "In progress"
+            },
+            {
+              "id": "98236657",
+              "name": "Done"
+            }
+          ],
+          "type": "ProjectV2SingleSelectField"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFM",
+          "name": "Labels",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFQ",
+          "name": "Linked pull requests",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFU",
+          "name": "Milestone",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFY",
+          "name": "Repository",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFc",
+          "name": "Reviewers",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFg",
+          "name": "Parent issue",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFk",
+          "name": "Sub-issues progress",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFo",
+          "name": "Created",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFs",
+          "name": "Updated",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTFw",
+          "name": "Closed",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTF0",
+          "name": "What's being built",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTF4",
+          "name": "What's next",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTF8",
+          "name": "Needs your review",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTGA",
+          "name": "Known issues",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTF_lAHOAf1Ylc4BgLx1zhaZTGE",
+          "name": "Last synced",
+          "type": "ProjectV2Field"
+        },
+        {
+          "id": "PVTSSF_lAHOAf1Ylc4BgLx1zhaZTGI",
+          "name": "Work type",
+          "options": [
+            {
+              "id": "9be0a3ca",
+              "name": "Feature"
+            },
+            {
+              "id": "ed320d02",
+              "name": "Bug"
+            },
+            {
+              "id": "8726eac8",
+              "name": "Tech debt"
+            },
+            {
+              "id": "dd8ac791",
+              "name": "Research"
+            }
+          ],
+          "type": "ProjectV2SingleSelectField"
+        }
+      ],
+      "totalCount": 19
+    },
+    "project_items": {
+      "items": [
+        {
+          "content": {
+            "body": "Builds to: [difficulty and formations](https://github.com/StarshipSuperjam/xevious/blob/main/docs/spec/difficulty-and-formations.md) (settled).\n\nDeliver DIF-01\u201303 and FORM-01 to the document's acceptance criteria: the AI level with fold-back, the score-adaptive re-tune, formation selection over the committed table including negative indices, and the fire-permission mask plumbing. Mechanics-record and playtest-checklist gates apply.",
+            "number": 18,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "Build: difficulty and formations to their settled description",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/18"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCI",
+          "milestone": {
+            "description": "",
+            "dueOn": "",
+            "title": "Campaign"
+          },
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "In progress",
+          "title": "Build: difficulty and formations to their settled description",
+          "work type": "Feature"
+        },
+        {
+          "content": {
+            "body": "> *A green mechanical check below shows this change conforms to the engine's rules \u2014 not that it is correct. What covers correctness is the behavioural steps in **Review** and your own read of the change; a green check is never a substitute for that. **Your merge is the binding gate.***\n>\n> *About those checks: only the one that runs when the change is proposed for merge can stop a risky merge \u2014 a check that ran while the change was still being written is early advice. Each check is itself proven against a deliberately broken example it must catch, so a passing check can't be one that quietly did nothing \u2014 but that proves the check works, not that this change is right. And a check that could not run leaves its area unverified.*\n\n## Purpose\n\n**Give Xevious a durable GitHub Projects roadmap with Engine-owned status summaries.**\n\n- Installs the optional GitHub Projects sync module.\n- Creates and connects a repo-specific board modeled on the useful structure of the Engine Template roadmap.\n\n*Impact: maintainers get one dependency-aware place to see roadmap, active work, maintenance, and unslotted work.*\n\n## Scope\n\n**Install the board integration and wire it into Engine session startup.**\n\n- Adds the `github-projects-sync` module, its setup skill, operation guide, implementation, and tests.\n- Adds startup and resume hooks for Claude Code and Codex.\n- Ignores local board coordinates under `.engine/projects-sync/`.\n- Regenerates `.engine/knowledge/graph.json` and `.engine/self-map.md`; two generated indexes changed and no project work was lost.\n- Creates and links [Xevious Project Board](https://github.com/users/StarshipSuperjam/projects/4), with 11 current issues and pull requests seeded.\n\n**Change profile** \u2014 the shape of this pull request at a glance:\n\n- **Size:** 14 files changed, +1367 / \u22122 lines.\n- **Kinds of thing touched:** 3 tools, 2 codex-skills, 1 module, 1 operation, 1 skill, 6 other files (not in the engine's map).\n- **Where:** .engine/tools, .agents/skills, .engine, .claude, .claude/skills, .codex, .engine/knowledge, .engine/modules, .engine/operations, .gitignore.\n- **Shape:** 2 commits on this branch \u2014 a standalone change unless a `Part of #N` line below says it is one slice of a larger effort.\n\n_This is a description, not a gate \u2014 it never blocks a merge. It is here so you can weigh the change by what it touches, not by its line count._\n\n*Impact: the repo gains a live board plus idempotent Engine summaries without making the board the source of truth.*\n\n### Behaviors\n\n**The board stays useful without replacing repository truth.**\n\n- Engine sync resolves and updates only its five owned fields \u2014 `test_projects_sync.py`.\n- Missing GitHub access or board configuration degrades quietly \u2014 `test_projects_sync.py`.\n- Startup/resume hooks refresh board summaries without blocking the session \u2014 Engine CI and self-tests.\n- Board auto-add captures new repository issues and pull requests; its views separate phase composition, capability roadmap, current work, maintenance/fidelity, and unslotted work \u2014 live board verification.\n\n## Out of scope\n\n**No gameplay scope or unrelated issue/PR metadata is changed.**\n\n- Does not alter Xevious runtime code.\n- Does not retitle or relink the in-flight difficulty/formations PR #34.\n- Does not make GitHub Projects canonical; issues, PRs, milestones, specs, docs, and `BUILD_PLAN.md` remain authoritative.\n\n*Impact: this is reversible project-management infrastructure, isolated from game behavior and concurrent work.*\n\n## Risk\n\n**The main risk is stale or unavailable board metadata when GitHub access is missing.**\n\n- Sync is intentionally best-effort and does not block Engine startup.\n- Local board identifiers are ignored rather than committed.\n- New Codex hooks require operator re-approval through `/hooks` after merge.\n\n*Impact: a sync failure can make summaries stale, but cannot change canonical project state or block development.*\n\n## Validation\n\n**Module behavior and the full Engine installation passed validation.**\n\n- `python -m unittest discover -s tools/projects_sync -p 'test_projects_sync.py' -b`: 27 tests passed.\n- `projects_sync.py demo`: passed idempotency, ownership, degradation, and setup-disclosure checks.\n- `tools/validate.py --suite CI`: passed with no hard findings.\n- `tools/selftest.py`: 4,908 checks passed in 236 seconds.\n- `projects_sync.py check`: board connected and auto-add enabled.\n- Close-linkage preflight found no issues this PR would close.\n\n*Impact: approvers can rely on both focused coverage and the full Engine regression suite.*\n\n## Review\n\n**I made this contained, reversible integration with a quick review; no extra review passes ran.**\n\n- Confirmed the template board's useful fields, statuses, work types, and view purposes before adapting them.\n- Verified the Xevious board is linked to the repository, has five purpose-built views, 19 fields, and 11 seeded items.\n- All findings in scope were handled; the adjacent PR #34 issue-link mismatch was preserved for its owning session.\n- No settled product description applies to this standalone setup change, so there are no spec-derived acceptance steps.\n\n<details>\n<summary>If the merge button is greyed but every check passed, it may be an unresolved review conversation \u2014 here's what that means and what you can do.</summary>\n\nGitHub won't let a pull request merge while a review comment on it is still marked unresolved \u2014 even when all the automated checks are green. The merge button just greys out. This isn't a failure; it's a comment someone left that hasn't been settled yet.\n\nYou can settle it yourself. Read the comment, decide you're genuinely satisfied it's been handled, and then mark it resolved \u2014 resolving it is you accepting the point it raised, so it's worth doing only once you've read it, never as a formality to get past the button. The engine never resolves one of these for you: a comment flagged a concern, and clearing it unread would defeat the reason it's there.\n\nTo find it: open the pull request's **Conversation** tab (or **Files changed**) and look for the comment with a **Resolve conversation** button. If a rebase or a force-push moved the lines the comment was attached to, GitHub marks it **outdated** and hides it \u2014 on the **Conversation** tab, expand the collapsed **outdated** comments to reach it, read it there, and only then resolve it.\n</details>\n\n*Impact: this records the chosen review depth and leaves the final judgment with the maintainer.*\n\n## Demonstration\n\n**Run the live connection check and inspect the board views.**\n\n- Run `uv run --directory .engine --frozen -- python tools/projects_sync/projects_sync.py check`: it reports project 4 connected with auto-add on; a broken configuration reports the missing connection instead.\n- Open [Xevious Project Board](https://github.com/users/StarshipSuperjam/projects/4) and switch among Phase composition, Capability roadmap, Current work, Maintenance and fidelity, and Unslotted; each view applies its stated filter to the seeded repo work.\n\n*Impact: the operator can directly observe both integration health and the roadmap design.*\n\n## Files of interest\n\n**Start with the module implementation, hook wiring, and setup contract.**\n\n- `.engine/tools/projects_sync/projects_sync.py`\n- `.engine/tools/projects_sync/test_projects_sync.py`\n- `.engine/operations/projects-sync-setup.md`\n- `.codex/hooks.json`\n- `.claude/settings.json`\n\n*Impact: these files determine sync behavior, coverage, and when refreshes run.*\n\n## AI involvement\n\n**Codex reviewed the reference board, chose the Xevious-specific view design, installed the module, configured the live board, and authored this PR.**\n\n- Structural module files came from the Engine's module manager.\n- Board classification and view choices were AI-driven, based on current issues, milestones, PRs, and `BUILD_PLAN.md`.\n- All repository edits and live project mutations remain subject to maintainer review and merge.\n\n*Impact: AI judgment is load-bearing in the board information architecture; module installation and validation were mechanical.*\n",
+            "number": 35,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "Feature: Add the Xevious roadmap board",
+            "type": "PullRequest",
+            "url": "https://github.com/StarshipSuperjam/xevious/pull/35"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCM",
+          "labels": [
+            "guardrail-ack"
+          ],
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Done",
+          "title": "Feature: Add the Xevious roadmap board"
+        },
+        {
+          "content": {
+            "body": "Builds to: [scoring, lives, and game over](https://github.com/StarshipSuperjam/xevious/blob/main/docs/spec/scoring-lives-and-game-over.md) (settled).\n\nDeliver ECO-01\u201304 to the document's acceptance criteria: the single scoring path, generated data equal to docs/spec/data/scores.json (master table, lives, bonus tables, high-score defaults with project placeholder initials), the cap and its recorded quirk, HUD, and the game-over flow. Mechanics-record and playtest-checklist gates apply.",
+            "number": 16,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "Build: scoring, lives, and game over to their settled description",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/16"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCQ",
+          "milestone": {
+            "description": "",
+            "dueOn": "",
+            "title": "Foundation"
+          },
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "Build: scoring, lives, and game over to their settled description",
+          "work type": "Feature"
+        },
+        {
+          "content": {
+            "body": "Low-priority cleanup surfaced by the slice-4 (PR #22) pre-submission reviews (technical-integrity + divergence-hunter). None block; grouped here so they aren't lost.\n\n1. **Share helpers instead of copying them.** `tools/hud_glyphs.py` copy-pastes `_require_keys`, `_read_json`, and `_prior_output_records` from `tools/sprite_extractor.py` even though it already `import`s it and reuses its PNG/hash/canvas primitives. The copies have already drifted: `hud_glyphs._prior_output_records` dropped the per-record type validation that `sprite_extractor._prior_output_records` has. Call through `se.*`.\n\n2. **Add a post-downscale \"still has ink\" check in `render_glyphs`.** `_binarize_glyph` asserts the binarized crop is non-blank, but nothing re-checks the final 25\u00d725 costume after `_place_on_canvas` + nearest-neighbor downscale. Today's 23+8 glyphs are safely non-blank (240\u2013420 opaque px each), so this is latent \u2014 but a future manifest edit (thinner threshold, shifted rect, different font) could silently emit an invisible HUD digit with no signal from `check`. Every other numeric fact in the pipeline is defended by an explicit check; this one gap should be too.\n\n3. **HUD clone rebuild frequency.** Each HUD digit clone recomputes floor/mod/join/switch-costume every frame while visible, and the whole ~30-clone HUD is torn down and rebuilt on *every* `director enter` (every state transition), not just score/craft-changing ones. Fine at today's scale (well under Scratch's ~300-clone ceiling); worth watching if HUD-visible transitions become more frequent.\n\n4. **Two ECO-03 contracts are coarser than their docstrings.** `_eco03_failures`'s `cap-quirk` and `bonus-enabled-guard` checks assert the matching reporter (`score == cap`, `next bonus > 0`) exists *somewhere* on the Stage, not that it is wired into the grant branch / guard. The wiring is correct today and the negative fixtures do redden the tests, so this hides no current bug \u2014 but a future regression that left the reporter present while disconnecting it from its `if` could slip past. Tighten if this economy is refactored.\n",
+            "number": 24,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "hud_glyphs.py cleanup: share extractor helpers, add post-downscale ink check, HUD clone frequency",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/24"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCc",
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "hud_glyphs.py cleanup: share extractor helpers, add post-downscale ink check, HUD clone frequency",
+          "work type": "Tech debt"
+        },
+        {
+          "content": {
+            "body": "## What\n`.github/workflows/xevious-project.yml` (the `verify` job, ~lines 29\u201331) runs the mechanics-record check with:\n\n```\nbase = github.event.pull_request.base.sha || github.event.before\n```\n\nOn a branch's **first `push` event**, `github.event.before` is the all-zero SHA (`0000000000000000000000000000000000000000`). `check_mechanics_record.py` then runs `git diff --name-only <zeros>...`, which fails because that ref doesn't exist \u2014 erroring the job rather than checking anything.\n\n## Why it doesn't bite today\nOur draft-PR build flow triggers on `pull_request` events, where `base.sha` is a valid ref, so the fallback is never reached. This is a **dormant** robustness gap, not a live failure \u2014 surfaced by the slice-6 feasibility review as pre-existing and out of scope for that slice.\n\n## Suggested fix\nGuard the empty/zero base: when `github.event.before` is absent or all-zeros (or on the initial push), skip the mechanics-record diff check or fall back to the merge-base against the default branch, rather than diffing against a nonexistent ref.\n\n## Scope\nSmall, isolated CI-workflow change; no gameplay/generator impact. Not blocking any slice.\n",
+            "number": 33,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "CI: mechanics-record check errors on a branch's first raw push (all-zero base SHA)",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/33"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCk",
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "CI: mechanics-record check errors on a branch's first raw push (all-zero base SHA)",
+          "work type": "Bug"
+        },
+        {
+          "content": {
+            "body": "Draft claim for slice 7 \u2014 difficulty and formations (DIF-01/02/03 + FORM-01). Plan approved; risk assessment and depth choice in chat; contract filled at submit. Part of #17.",
+            "number": 34,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "Feature: difficulty director and normal flying formations, live",
+            "type": "PullRequest",
+            "url": "https://github.com/StarshipSuperjam/xevious/pull/34"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGCo",
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "In progress",
+          "title": "Feature: difficulty director and normal flying formations, live"
+        },
+        {
+          "content": {
+            "body": "Builds to: [area progression and terrain](https://github.com/StarshipSuperjam/xevious/blob/main/docs/spec/area-progression-and-terrain.md) (settled).\n\nDeliver AREA-01\u201304 to the document's acceptance criteria: the scroll clock, schedule consumption of the committed data for all 16 areas, the 16\u21927 loop, continuous terrain, and the death-restart rule with its near-end checkpoint (replacing the recorded interim preserve-terrain fixture). Mechanics-record and playtest-checklist gates apply.",
+            "number": 17,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "Build: area progression and terrain to their settled description",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/17"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGC0",
+          "milestone": {
+            "description": "",
+            "dueOn": "",
+            "title": "Campaign"
+          },
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "Build: area progression and terrain to their settled description",
+          "work type": "Feature"
+        },
+        {
+          "content": {
+            "body": "Surfaced by the slice-4 (life economy, PR #22) pre-submission technical-integrity review.\n\n**What.** `tools/sprite_extractor.py`'s `expected_project` reinserts its generated target (`toroid_sprite_proof`) with `layerOrder = max(current targets) + 1`, recomputed from whatever is in `project.json` on every `generate`/`check`. `tools/game_director.py`'s `_ensure_hud_target` assigns the `hud` target's `layerOrder` once, at creation, and never touches it again. Because of that asymmetry the committed `layerOrder` integers depend on the order the generators are run in.\n\n**Evidence.** Regenerating from scratch (strip `hud`, run game_director \u2192 hud_glyphs \u2192 sprite_extractor) yields `hud=18 / toroid_sprite_proof=19`, whereas the committed tip has `hud=16 / toroid_sprite_proof=17`. All three `check`s pass either way (the committed tree IS a simultaneous fixpoint, so this does NOT threaten the current build or its merge), but `toroid_sprite_proof` moved from `15` (origin/main) to `17` in PR #22 even though `sprite_extractor.py` has zero diff there \u2014 it was reshuffled as a side effect of inserting `hud`.\n\n**Why it matters.** A future `sprite_extractor.py generate` (e.g. to add one unrelated sprite frame) will silently renumber other targets' `layerOrder`, producing diff noise unrelated to the change, and is a reconcile hazard if two branches each insert a new target off the same base. No test catches this: `test_two_clean_processes_build_identical_bytes` re-packages the committed `project.json` twice; it never re-derives it from a different generation order.\n\n**Fix options (pick one).** Pin `sprite_extractor`'s inserted target's `layerOrder` deterministically the way `game_director` does (stop recomputing `max+1`); or accept the churn and add a test that re-derives `project.json` from a canonical generation order and asserts stable `layerOrder`. Pre-existing behavior; not blocking slice 4.\n",
+            "number": 23,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "layerOrder is not a stable fixpoint across generator regeneration orders",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/23"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGC4",
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "layerOrder is not a stable fixpoint across generator regeneration orders",
+          "work type": "Tech debt"
+        },
+        {
+          "content": {
+            "body": "## What you see\nThe play area sits in a **landscape letterbox** \u2014 black bands top and bottom, a wide-but-short green field \u2014 rather than the tall field of the arcade cabinet. It reads as \"squished.\"\n\n## What actually produces it (not a Scratch viewport accident)\nThe bands are **deliberately-drawn framing**, not the Scratch player centering the stage. The build carries four full-stage border sprites \u2014 `frame_t`, `frame_b`, `frame_l`, `frame_r` (bitmap-resolution-2 costumes over the whole 480\u00d7360 stage) \u2014 and the craft physically collides with them (`tools/game_director.py`, the `frame_*`/`target_*` correction blocks ~1755). `frame_t` and `frame_b` are the top/bottom black bands; they inset the play area into a landscape strip. `hud` is `layerOrder` 16, **above** the borders (9\u201312), so the borders don't hide the HUD.\n\n## Recorded context\n`docs/spec/core-game-systems.md:139` already records the governing fact: *\"the arcade's portrait playfield does not map onto the 480\u00d7360 landscape stage at any one stage-units-per-pixel factor without either shrinking the play area or pushing the crosshair off screen,\"* so the port uses the landscape stage and tunes spatial constants (movement/shot/lead) independently. **The landscape orientation is a settled port decision; the letterbox band height *inside* it was never pinned.**\n\n## Determination (you asked whether the letterbox is appropriate for best gameplay)\n**The wide letterbox band is the weakest of the options for a vertical shooter.** In Xevious, vertical extent *is* look-ahead \u2014 the room to see aerial enemies and ground targets coming up-screen and to place bombs ahead with the lead crosshair. A short band throws that away and doesn't use the stage's height. Two defensible directions:\n\n- **(A) Portrait pillarbox** \u2014 a tall, narrow play column with black bars on the **sides**. Maximum arcade fidelity and look-ahead. Cost: the column is narrow on a landscape monitor (Scratch can't rotate the stage), so the image is small.\n- **(B) Full-height landscape** \u2014 fill the 480\u00d7360 stage top-to-bottom, borders only as thin frames. Matches the recorded landscape-port decision and uses every pixel, at reduced fidelity to the arcade's tall field.\n\nThe current thin letterbox is **neither**. Recommendation: make this a conscious choice rather than an inherited default. I lean **(B)** for consistency with the already-recorded landscape-port decision and because it maximizes the usable image \u2014 unless you want to prioritize arcade fidelity, in which case **(A)**, accepting the narrow column.\n\n## Where it belongs\nThe presentation-coupling reconciliation (coupling the terrain visual to the area clock, real framing) is **already time-boxed to the presentation slice (20)** per record `015` / the AREA-01 plan. This issue is the placeholder for that framing decision \u2014 a design call for the operator, not a silent change.\n\n## What I could not verify\n- Exact band pixel heights: the `frame_*`/backdrop art is baked from the preserved 2017 baseline into the built `.sb3`, not stored under `src/xevious/assets/`, so I did not measure it here.\n- I cannot render the build headlessly (the `harness/` is rendererless), so the on-screen play-area aspect is an operator-eyes confirmation, not something I measured.\n\nRelates to #17 (area progression and terrain).\n",
+            "number": 30,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "Presentation: play area is a landscape letterbox, not the arcade's portrait field \u2014 decide framing (slice 20)",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/30"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGDA",
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "Presentation: play area is a landscape letterbox, not the arcade's portrait field \u2014 decide framing (slice 20)",
+          "work type": "Research"
+        },
+        {
+          "content": {
+            "body": "## What you see\nAt the top of the screen the **score and high-score render as two identical white 7-digit readouts** (in the screenshot both read `0220000`). With equal values they're impossible to tell apart. You asked to at least make the high score **yellow** to distinguish it. You also noted the arcade's HUD header isn't fully reproduced but are content treating that as a feature given the squished layout.\n\n## What's already built (so we don't rebuild it)\nPer record `012-hud.md` and `tools/hud_glyphs.py`, the HUD **already generates**: a yellow **\"HIGH SCORE\"** label and a flashing white **\"1UP\"** label (the `hs/*` yellow-recolor glyph set), plus 7-digit white value clones for **both** score and high score. `hud` is `layerOrder` 16 \u2014 above the frame borders \u2014 so nothing occludes it. The yellow-ink recolor path exists in `hud_glyphs.py` today, but **only for the HIGH SCORE label letters, not the digits**: value digits are all white `digit/<n>` costumes.\n\nSo the confusion isn't a missing header \u2014 it's that **both numeric values are the same white**.\n\n## The ask (small, low-risk)\nRender the **high-score value digits yellow** so they read distinctly from the white current score. Mechanism already exists: add a yellow digit set (e.g. `digit-y/<n>`) that reuses the same source crops as `digit/<n>` \u2014 a **pure recolor**, exactly like the `hs/*` letters, no new crop \u2014 and switch the high-score digit clones (`HUD_ROLE` high-score group) to it. Structural change to `tools/hud_glyphs.py` (yellow digit costumes) + `tools/game_director.py` (high-score clones select the yellow set). Guardable by the existing `_eco02_failures` contract.\n\n## Deferred / linked (not this issue)\nWhether to build a more arcade-faithful compact **header bar** is tied to the aspect-ratio / framing decision (the letterbox issue, presentation slice 20). You lean \"feature, not bug\" on the full header, so this issue is scoped to the yellow high-score value only.\n\n## Caveat\nI'm reporting what the **generator produces** (record `012` + the layer-order check), not a pixel confirmation of what renders on your screen \u2014 the `harness/` can't render. Your screenshot is the ground truth that both values read white.\n\nRelates to #16 (scoring, lives, and game over \u2014 ECO-02 HUD).\n",
+            "number": 31,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "HUD: score and high-score values are both white and indistinguishable \u2014 make the high-score value yellow",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/31"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGDI",
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "HUD: score and high-score values are both white and indistinguishable \u2014 make the high-score value yellow",
+          "work type": "Bug"
+        },
+        {
+          "content": {
+            "body": "Builds to: [player craft and weapons](https://github.com/StarshipSuperjam/xevious/blob/main/docs/spec/player-craft-and-weapons.md) (settled).\n\nDeliver PLY-01/02 and WPN-01\u201305 plus the enemy-bullet rules to the document's acceptance criteria: movement, blaster cadence and caps, crosshair, one-bomb lockout with the recorded windows, death/respawn with no invulnerability, and the bullet pool. The Recovery phase (issue #13) restores the regressed subset first. Mechanics-record and playtest-checklist gates apply.",
+            "number": 15,
+            "repository": "StarshipSuperjam/xevious",
+            "title": "Build: player craft and weapons to their settled description",
+            "type": "Issue",
+            "url": "https://github.com/StarshipSuperjam/xevious/issues/15"
+          },
+          "id": "PVTI_lAHOAf1Ylc4BgLx1zg2TGDM",
+          "milestone": {
+            "description": "",
+            "dueOn": "",
+            "title": "Recovery"
+          },
+          "repository": "https://github.com/StarshipSuperjam/xevious",
+          "status": "Backlog",
+          "title": "Build: player craft and weapons to their settled description",
+          "work type": "Feature"
+        }
+      ],
+      "totalCount": 11
+    },
+    "project_views": {
+      "data": {
+        "viewer": {
+          "projectV2": {
+            "id": "PVT_kwHOAf1Ylc4BgLx1",
+            "title": "Xevious Project Board",
+            "views": {
+              "nodes": [
+                {
+                  "filter": "is:issue is:open has:milestone",
+                  "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSQz8",
+                  "layout": "TABLE_LAYOUT",
+                  "name": "Phase composition"
+                },
+                {
+                  "filter": "is:issue is:open work-type:Feature",
+                  "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSQ0A",
+                  "layout": "TABLE_LAYOUT",
+                  "name": "Capability roadmap"
+                },
+                {
+                  "filter": "is:open status:Ready,\"In progress\"",
+                  "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSQ0E",
+                  "layout": "BOARD_LAYOUT",
+                  "name": "Current work"
+                },
+                {
+                  "filter": "is:issue is:open work-type:Bug,\"Tech debt\",Research",
+                  "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSQ0I",
+                  "layout": "TABLE_LAYOUT",
+                  "name": "Maintenance and fidelity"
+                },
+                {
+                  "filter": "is:issue is:open no:milestone",
+                  "id": "PVTV_lAHOAf1Ylc4BgLx1zgLSQ0M",
+                  "layout": "TABLE_LAYOUT",
+                  "name": "Unslotted"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

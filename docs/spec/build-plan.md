@@ -6,6 +6,10 @@ its work against. Sequencing detail within phases lives in [the engineering plan
 built, the engineering plan for how it is staged. The regression-recovery work (issue #13) is the first
 item of the Recovery phase.
 
+The [dependency-aware roadmap manifest](../roadmap/manifest.json) is the checked projection from these
+capabilities and the engineering slices to GitHub component leaves. It does not change this order. A
+leaf under a draft capability document is provisional and cannot close until that document is settled.
+
 | Phase | Capability | Doc |
 | --- | --- | --- |
 | Recovery | Player craft and weapons | [Player craft and weapons](player-craft-and-weapons.md) |

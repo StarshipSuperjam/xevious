@@ -2,12 +2,15 @@ name: Xevious project
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
   push:
     branches:
       - main
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
   verify:
@@ -29,6 +32,11 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: python tools/check_mechanics_record.py "$BASE_SHA"
+      - name: Verify roadmap issue closures
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/check_roadmap_closures.py pr
 
   runtime-harness:
     # A pre-playtest regression tripwire, NOT a gameplay gate: it runs the shipped build

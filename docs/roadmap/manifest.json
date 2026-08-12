@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "repository": "StarshipSuperjam/xevious",
+  "project": {
+    "owner": "StarshipSuperjam",
+    "number": 4,
+    "node_id": "PVT_kwHOAf1Ylc4BgLx1",
+    "views": [
+      {"name": "Delivery leaves", "layout": "TABLE_LAYOUT", "filter": "is:issue roadmap-role:Leaf"},
+      {"name": "Capability parents", "layout": "TABLE_LAYOUT", "filter": "is:issue roadmap-role:Parent"},
+      {"name": "Imported history", "layout": "TABLE_LAYOUT", "filter": "is:issue roadmap-role:\"Imported history\""}
+    ]
+  },
+  "excluded_catalog_prefixes": ["EX-"],
+  "slice_dependencies": {
+    "7": ["4", "5", "6"],
+    "8": ["3", "4", "7"],
+    "9": ["3", "4", "5", "6", "7"],
+    "10": ["8"],
+    "11": ["8", "10"],
+    "12": ["9"],
+    "13": ["12"],
+    "14": ["4", "6", "9", "12"],
+    "15": ["3", "6", "7", "11", "12", "13"],
+    "16": ["9", "11", "15"],
+    "17": ["2", "4", "6", "8"],
+    "18": ["4", "6", "17"],
+    "19": ["4", "17", "18"],
+    "20": ["1", "2", "2a", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"],
+    "21": ["1", "2", "2a", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"]
+  },
+  "parents": [
+    {"key": "build", "title": "Capability: reproducible Scratch build and assets", "spec": null, "spec_status": "settled"},
+    {"key": "core", "title": "Build: core game systems to their settled description", "issue": 14, "spec": "docs/spec/core-game-systems.md", "spec_status": "locked"},
+    {"key": "player", "title": "Build: player craft and weapons to their settled description", "issue": 15, "spec": "docs/spec/player-craft-and-weapons.md", "spec_status": "locked"},
+    {"key": "economy", "title": "Build: scoring, lives, and game over to their settled description", "issue": 16, "spec": "docs/spec/scoring-lives-and-game-over.md", "spec_status": "locked"},
+    {"key": "area", "title": "Build: area progression and terrain to their settled description", "issue": 17, "spec": "docs/spec/area-progression-and-terrain.md", "spec_status": "locked"},
+    {"key": "difficulty", "title": "Build: difficulty and formations to their settled description", "issue": 18, "spec": "docs/spec/difficulty-and-formations.md", "spec_status": "locked"},
+    {"key": "air", "title": "Capability: aerial enemies", "spec": "docs/spec/aerial-enemies.md", "spec_status": "draft"},
+    {"key": "ground", "title": "Capability: ground objects", "spec": "docs/spec/ground-objects.md", "spec_status": "draft"},
+    {"key": "secrets", "title": "Capability: secrets", "spec": "docs/spec/secrets.md", "spec_status": "draft"},
+    {"key": "andor", "title": "Capability: Andor Genesis", "spec": "docs/spec/andor-genesis.md", "spec_status": "draft"},
+    {"key": "cabinet", "title": "Capability: cabinet flow", "spec": "docs/spec/cabinet-flow.md", "spec_status": "draft"},
+    {"key": "presentation", "title": "Capability: audio and presentation", "spec": "docs/spec/audio-and-presentation.md", "spec_status": "draft"},
+    {"key": "release", "title": "Capability: full-game release validation", "spec": null, "spec_status": "provisional"}
+  ],
+  "leaves": [
+    {"key":"build.sprite-proof","parent":"build","title":"History: deterministic sprite-extraction proof","slice":"1","milestone":"Recovery","status":"history","delivered_by":8,"criteria":["BUILD-01.sprite-proof"],"proof":"historical"},
+    {"key":"core.director-reset","parent":"core","title":"History: game director and reset lifecycle","slice":"2","milestone":"Foundation","status":"history","delivered_by":9,"criteria":["SYS-01.director-reset"],"proof":"historical"},
+    {"key":"player.regression-recovery","parent":"player","issue":13,"title":"History: regression recovery","slice":"2a","milestone":"Recovery","status":"history","delivered_by":19,"criteria":["PLY-RECOVERY.audit"],"proof":"historical"},
+    {"key":"player.movement-and-flight","parent":"player","title":"History: movement, bounds, blaster flight, and crosshair coupling","slice":"3","milestone":"Recovery","status":"history","delivered_by":21,"criteria":["PLY-01.movement","WPN-01.flight","WPN-03.crosshair"],"proof":"historical"},
+    {"key":"player.death-decision","parent":"player","title":"History: lives-driven death, respawn, and game-over decision","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["PLY-02.decision"],"proof":"historical"},
+    {"key":"player.bullet-pool","parent":"player","title":"History: enemy-bullet pool and collision windows","slice":"3","milestone":"Foundation","status":"history","delivered_by":21,"criteria":["AIR-12.pool"],"proof":"historical"},
+    {"key":"core.entity-foundation","parent":"core","title":"History: entity, collision, and shared-random foundations","slice":"3","milestone":"Foundation","status":"history","delivered_by":20,"criteria":["SYS-02.foundation","SYS-03.foundation","SYS-04.stream"],"proof":"historical","records":["SYS-02","SYS-03","SYS-04"]},
+    {"key":"economy.score-hud","parent":"economy","title":"History: score path and one-player HUD foundation","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["ECO-01.path","ECO-02.one-player"],"proof":"historical"},
+    {"key":"economy.life-tables","parent":"economy","title":"History: starting craft and bonus-life tables","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["ECO-03.tables"],"proof":"historical"},
+    {"key":"economy.game-over","parent":"economy","title":"History: game-over presentation and qualification decision","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["ECO-04.presentation"],"proof":"historical"},
+    {"key":"area.clock","parent":"area","title":"History: area clock, checkpoint, and boundary seam","slice":"5","milestone":"Campaign","status":"history","delivered_by":28,"criteria":["AREA-01.clock"],"proof":"historical"},
+    {"key":"area.scheduler-data","parent":"area","title":"History: ordered scheduler representation","slice":"5","milestone":"Campaign","status":"history","delivered_by":28,"criteria":["AREA-02.data"],"proof":"historical"},
+    {"key":"area.schedules-loop","parent":"area","title":"History: all normal schedules and the 1–16→7 loop","slice":"6","milestone":"Campaign","status":"history","delivered_by":32,"criteria":["AREA-03.tables","AREA-04.loop"],"proof":"historical"},
+
+    {"key":"difficulty.models-live-state","parent":"difficulty","title":"Slice 7: difficulty and formation models plus observable live state","slice":"7","milestone":"Campaign","status":"planned","criteria":["DIF-01.model","DIF-02.model","DIF-03.model","FORM-01.model"],"proof":"playable","records":["DIF-01","DIF-02","DIF-03","FORM-01"]},
+
+    {"key":"core.entity-lifecycle","parent":"core","title":"Complete entity lifecycle with live combat participants","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["air.toroid"],"criteria":["SYS-02.live"],"proof":"playable","records":["SYS-02"]},
+    {"key":"core.collision-resolution","parent":"core","title":"Complete collision groups and single-hit resolution in live combat","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["air.toroid"],"criteria":["SYS-03.live"],"proof":"playable","records":["SYS-03"]},
+    {"key":"core.random-consumer","parent":"core","title":"Prove the shared random stream through a live enemy consumer","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["air.toroid"],"criteria":["SYS-04.consumer"],"proof":"playable","records":["SYS-04"]},
+    {"key":"difficulty.live-pressure","parent":"difficulty","title":"Complete in-game formation selection, adaptive pressure, and fire permission","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["difficulty.models-live-state","air.toroid"],"criteria":["DIF-01.play","DIF-02.play","DIF-03.play","FORM-01.play"],"proof":"playable","records":["DIF-01","DIF-02","DIF-03","FORM-01"]},
+    {"key":"player.air-collision-death","parent":"player","title":"Complete player death through real aerial collision and bullets","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["air.toroid","air.standard-bullets"],"criteria":["PLY-02.air-trigger"],"proof":"playable","records":["PLY-02"]},
+    {"key":"player.blaster-air-hit","parent":"player","title":"Complete blaster-to-air hit behavior","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["air.toroid"],"criteria":["WPN-02.air-hit"],"proof":"playable","records":["WPN-02"]},
+    {"key":"economy.air-awards","parent":"economy","title":"Prove object score awards through live aerial combat","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["air.toroid"],"criteria":["ECO-01.air-awards"],"proof":"playable","records":["ECO-01"]},
+    {"key":"area.air-dispatch","parent":"area","title":"Dispatch scheduled aerial events into live enemies","slice":"8","milestone":"Enemies","status":"planned","blocked_by":["air.toroid"],"criteria":["AREA-02.air-dispatch"],"proof":"playable","records":["AREA-02"]},
+    {"key":"air.toroid","parent":"air","title":"Toroid formation, movement, combat, and cleanup","slice":"8","milestone":"Enemies","status":"provisional","criteria":["AIR-01.toroid"],"proof":"playable","records":["AIR-01"]},
+    {"key":"air.standard-bullets","parent":"air","title":"Standard enemy bullets: aim, movement, pulse, hit, and expiry","slice":"8","milestone":"Enemies","status":"provisional","criteria":["AIR-12.standard"],"proof":"playable","records":["AIR-12"]},
+
+    {"key":"player.ground-targeting","parent":"player","title":"Complete crosshair target lock and bomb-to-ground resolution","slice":"9","milestone":"Enemies","status":"planned","blocked_by":["ground.barra","ground.logram"],"criteria":["WPN-03.target-lock","WPN-04.bomb-flight","WPN-05.ground-hit"],"proof":"playable","records":["WPN-03","WPN-04","WPN-05"]},
+    {"key":"economy.ground-awards","parent":"economy","title":"Prove object score awards through live ground combat","slice":"9","milestone":"Enemies","status":"planned","blocked_by":["ground.barra","ground.logram"],"criteria":["ECO-01.ground-awards"],"proof":"playable","records":["ECO-01"]},
+    {"key":"area.ground-dispatch","parent":"area","title":"Dispatch scheduled ground events into live objects","slice":"9","milestone":"Enemies","status":"planned","blocked_by":["ground.barra","ground.logram"],"criteria":["AREA-02.ground-dispatch"],"proof":"playable","records":["AREA-02"]},
+    {"key":"ground.barra","parent":"ground","title":"Barra placement, fire, bombing, scoring, and cleanup","slice":"9","milestone":"Enemies","status":"provisional","criteria":["GND-01.barra"],"proof":"playable","records":["GND-01"]},
+    {"key":"ground.logram","parent":"ground","title":"Logram open-fire-close cycle and bombing","slice":"9","milestone":"Enemies","status":"provisional","criteria":["GND-03.logram"],"proof":"playable","records":["GND-03"]},
+
+    {"key":"air.torkan","parent":"air","title":"Torkan family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-02.torkan"],"proof":"playable","records":["AIR-02"]},
+    {"key":"air.zoshi","parent":"air","title":"Zoshi variants and distinct behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-03.zoshi"],"proof":"playable","records":["AIR-03"]},
+    {"key":"air.jara","parent":"air","title":"Jara family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-04.jara"],"proof":"playable","records":["AIR-04"]},
+    {"key":"air.kapi","parent":"air","title":"Kapi family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-05.kapi"],"proof":"playable","records":["AIR-05"]},
+    {"key":"air.terrazi","parent":"air","title":"Terazzi family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-06.terrazi"],"proof":"playable","records":["AIR-06"]},
+
+    {"key":"player.bacura-bounce","parent":"player","title":"Complete Bacura blaster bounce behavior","slice":"11","milestone":"Enemies","status":"planned","blocked_by":["air.bacura"],"criteria":["WPN-01.bacura-bounce"],"proof":"playable","records":["WPN-01"]},
+    {"key":"air.zakato","parent":"air","title":"Zakato and Garu Zakato families","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-07.zakato"],"proof":"playable","records":["AIR-07"]},
+    {"key":"air.sheonite","parent":"air","title":"Sheonite pair, pincer, and docking behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-09.sheonite"],"proof":"playable","records":["AIR-09"]},
+    {"key":"air.spario","parent":"air","title":"Giddo and Brag Spario behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.zakato"],"criteria":["AIR-10.spario"],"proof":"playable","records":["AIR-10"]},
+    {"key":"air.bacura","parent":"air","title":"Bacura resistance, collision, and cleanup","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-11.bacura"],"proof":"playable","records":["AIR-11"]},
+    {"key":"air.special-pairs","parent":"air","title":"Brag and Garu Zakato teleport, explosion, and fire behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.zakato"],"criteria":["AIR-08.brag-zakato"],"proof":"playable","records":["AIR-08"]},
+    {"key":"air.radiating-bullets","parent":"air","title":"Radiating bullets and mixed bullet pressure","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.zakato"],"criteria":["AIR-12.radiating"],"proof":"playable","records":["AIR-12"]},
+
+    {"key":"ground.barra-variants","parent":"ground","title":"Garu Barra and Barra family variants","slice":"12","milestone":"Enemies","status":"provisional","blocked_by":["ground.barra"],"criteria":["GND-01.variants"],"proof":"playable","records":["GND-01"]},
+    {"key":"ground.zolbak","parent":"ground","title":"Zolbak destruction and pressure reduction","slice":"12","milestone":"Enemies","status":"provisional","blocked_by":["difficulty.live-pressure"],"criteria":["GND-02.zolbak"],"proof":"playable","records":["GND-02"]},
+    {"key":"ground.derota","parent":"ground","title":"Derota and Garu Derota behavior","slice":"12","milestone":"Enemies","status":"provisional","blocked_by":["ground.logram"],"criteria":["GND-04.derota"],"proof":"playable","records":["GND-04"]},
+    {"key":"ground.boza-logram","parent":"ground","title":"Boza Logram composite hit ordering","slice":"13","milestone":"Enemies","status":"provisional","blocked_by":["ground.logram"],"criteria":["GND-05.boza"],"proof":"playable","records":["GND-05"]},
+    {"key":"ground.grobda","parent":"ground","title":"Grobda variants, reactions, and water cleanup","slice":"13","milestone":"Enemies","status":"provisional","blocked_by":["ground.barra"],"criteria":["GND-06.grobda"],"proof":"playable","records":["GND-06"]},
+    {"key":"ground.domogram","parent":"ground","title":"Domogram patrol paths, fire, and cleanup","slice":"13","milestone":"Enemies","status":"provisional","blocked_by":["ground.barra"],"criteria":["GND-07.domogram"],"proof":"playable","records":["GND-07"]},
+
+    {"key":"secrets.sol-tower","parent":"secrets","title":"Sol Tower reveal, rise, destruction, and rewards","slice":"14","milestone":"Boss and secrets","status":"provisional","criteria":["SEC-01.sol-tower"],"proof":"playable","records":["SEC-01"]},
+    {"key":"secrets.bonus-flag","parent":"secrets","title":"Bonus Flag reveal, random placement, collection, and award","slice":"14","milestone":"Boss and secrets","status":"provisional","criteria":["SEC-02.bonus-flag"],"proof":"playable","records":["SEC-02"]},
+    {"key":"economy.bonus-flag-award","parent":"economy","title":"Complete configured Bonus Flag life award","slice":"14","milestone":"Boss and secrets","status":"planned","blocked_by":["secrets.bonus-flag"],"criteria":["ECO-03.bonus-flag"],"proof":"playable","records":["ECO-03"]},
+    {"key":"secrets.hidden-credit","parent":"secrets","title":"Hidden credit event trigger and presentation","slice":"14","milestone":"Boss and secrets","status":"provisional","criteria":["SEC-03.hidden-credit"],"proof":"playable","records":["SEC-03"]},
+
+    {"key":"andor.lifecycle","parent":"andor","title":"Andor composite lifecycle, alignment, arrival, and departure","slice":"15","milestone":"Boss and secrets","status":"provisional","criteria":["BOSS-01.lifecycle"],"proof":"playable","records":["BOSS-01"]},
+    {"key":"andor.defenses","parent":"andor","title":"Andor ports, armor, Bragza, and fire permissions","slice":"16","milestone":"Boss and secrets","status":"provisional","blocked_by":["andor.lifecycle"],"criteria":["BOSS-02.defenses"],"proof":"playable","records":["BOSS-02"]},
+    {"key":"andor.core-destruction","parent":"andor","title":"Andor core path, scoring, destruction, and cleanup","slice":"16","milestone":"Boss and secrets","status":"provisional","blocked_by":["andor.lifecycle","andor.defenses"],"criteria":["BOSS-03.core"],"proof":"playable","records":["BOSS-03"]},
+
+    {"key":"cabinet.attract-credits","parent":"cabinet","title":"Attract sequence, credits, demo death, and one-player flow","slice":"17","milestone":"Cabinet","status":"provisional","criteria":["CAB-01.attract","CAB-02.one-player"],"proof":"playable","records":["CAB-01","CAB-02"]},
+    {"key":"cabinet.two-player","parent":"cabinet","title":"Two-player alternation and independent player state","slice":"18","milestone":"Cabinet","status":"provisional","blocked_by":["cabinet.attract-credits"],"criteria":["CAB-02.two-player","CAB-03.alternation"],"proof":"playable","records":["CAB-02","CAB-03"]},
+    {"key":"economy.two-player-hud","parent":"economy","title":"Complete two-player HUD state","slice":"18","milestone":"Cabinet","status":"planned","blocked_by":["cabinet.two-player"],"criteria":["ECO-02.two-player"],"proof":"playable","records":["ECO-02"]},
+    {"key":"cabinet.high-scores","parent":"cabinet","title":"High-score ranking, ten-character initials, and return flow","slice":"19","milestone":"Cabinet","status":"provisional","blocked_by":["cabinet.attract-credits","cabinet.two-player"],"criteria":["CAB-04.high-scores"],"proof":"playable","records":["CAB-04"]},
+    {"key":"economy.game-over-routing","parent":"economy","title":"Complete game-over routing through high-score entry","slice":"19","milestone":"Cabinet","status":"planned","blocked_by":["cabinet.high-scores"],"criteria":["ECO-04.high-score-route"],"proof":"playable","records":["ECO-04"]},
+
+    {"key":"area.visual-terrain","parent":"area","title":"Couple visual terrain and framing to the area clock","slice":"20","milestone":"Polish","status":"planned","blocked_by":["presentation.framing"],"criteria":["AREA-01.visual-terrain"],"proof":"playable","records":["AREA-01"]},
+    {"key":"presentation.framing","parent":"presentation","issue":30,"title":"Choose and implement the playfield framing","slice":"20","milestone":"Polish","status":"provisional","criteria":["PRES-01.framing"],"proof":"playable"},
+    {"key":"presentation.hud-yellow","parent":"economy","issue":31,"title":"Render the high-score value in yellow","slice":"20","milestone":"Polish","status":"planned","criteria":["PRES-02.hud-yellow"],"proof":"playable","records":["ECO-02"]},
+    {"key":"economy.stop-after-two","parent":"economy","title":"Resolve and implement the stop-after-two bonus-life setting","slice":"20","milestone":"Polish","status":"planned","criteria":["ECO-03.stop-after-two"],"proof":"playable","records":["ECO-03"]},
+    {"key":"presentation.audio-animation","parent":"presentation","title":"Audio cues, animation timing, and presentation fidelity","slice":"20","milestone":"Polish","status":"provisional","criteria":["CAB-05.presentation"],"proof":"playable","records":["CAB-05"]},
+
+    {"key":"release.full-soak","parent":"release","title":"Full-game area, clone, performance, and cabinet soak","slice":"21","milestone":"Polish","status":"provisional","blocked_by":["andor.core-destruction","cabinet.high-scores","presentation.audio-animation"],"criteria":["RELEASE-01.full-soak"],"proof":"playable"},
+    {"key":"release.audit","parent":"release","title":"Release provenance, license, catalog, and documentation audit","slice":"21","milestone":"Polish","status":"provisional","blocked_by":["release.full-soak"],"criteria":["RELEASE-02.audit"],"proof":"operator"}
+  ]
+}
