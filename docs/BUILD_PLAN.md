@@ -80,6 +80,23 @@ preserving the lifecycle and collision interfaces.
 What must be built is normatively grouped in the spec's [build order](spec/build-plan.md); this table
 stages it.
 
+### GitHub delivery model
+
+The committed [dependency-aware roadmap](roadmap/README.md) projects this plan into GitHub without
+making the Project board a second source of truth. Capability issues are milestone-free parents;
+their native sub-issues are the independently closable component leaves. Cross-capability work is
+composed by one delivery slice and one pull request closing each completed leaf separately.
+
+A leaf cannot close while its specification or another declared blocker is open, while its required
+mechanics evidence is absent, or before the operator approves the playable build at the exact tested
+commit. Work that cannot be exercised until a consumer exists stays open and joins the consumer's
+delivery slice. Draft-spec work is visible but provisional and non-closable. Imported history records
+the original delivering pull request without retroactively certifying it under today's controls.
+
+[`docs/roadmap/manifest.json`](roadmap/manifest.json) is the complete criterion-to-leaf mapping and
+owns the derived milestone, blocker, slice, and proof metadata. The table below remains the readable
+engineering sequence.
+
 Every slice extracts only the costumes it needs and updates its catalog rows
 plus a `docs/mechanics/` record. A slice closes only when its declared
 behavior, provenance, automated validation, deterministic build, and
@@ -91,7 +108,7 @@ operator-runnable Scratch check agree.
 | 2. Game director and state reset — current | Stage-owned title, ready, playing, player-dead, respawning, and game-over states; serialized reset scopes and cancellation. Depends on slice 1 only for the current canonical source. | Only Stage writes director variables; every normal state change uses one transition procedure; cleanup finishes before entry; reset handlers terminate; obsolete `begin`/`death` control is absent. | Exercise the state/input/reset contract recorded in the spec's core game systems document. Record `003-game-director-and-state-reset.md` and mark SYS-01 present. |
 | 2a. Regression recovery — next | Restore the ten regressed behaviors and remove the two invented presentations recorded in the fidelity audit (tracked as issue #13); supersedes the abandoned recovery branch. Depends on slice 2 and the settled spec. | Every audit item B1-B10 restored per its spec section or preserved-baseline marker; A1/A2 removed; the operator playtest gate passes. | Play the playtest checklist end to end. Update affected mechanics records. |
 | 3. Entity pool and collision foundation | Shared clone lifecycle, collision groups, single-hit resolution, off-screen cleanup, and air/ground/bullet/effect fixtures. Depends on SYS-01. | Repeated worst-case spawn/removal leaks no state; groups cannot cross-hit or double-resolve; measured clone load stays responsive. | Run the clone spike and each collision fixture in Scratch 3. Record SYS-02 and SYS-03. |
-| — built as issue #14 | Delivered SYS-02 (64-slot array, reset-clear, player-shot 3-cap), the SYS-04 centralized ordered walk + `tick`, and the SYS-03 single-hit path + five-group vocabulary — with **SYS-04 pulled forward from slice 7** per #14's scope. All but the shot cap are dormant, foundation-only: no enemy participant or stream consumer exists yet, so the clone spike, live collision fixtures, entity-leak, and seeded-determinism playtests run when the first participants land. Records 004–006. | | |
+| — foundation delivered by PR #20; capability parent #14 remains open | Delivered the 64-slot array, reset-clear, player-shot 3-cap, centralized ordered walk + `tick`, and the single-hit path + five-group vocabulary. The live entity-lifecycle, collision-resolution, and shared-random-consumer obligations remain open component leaves in slice 8 because they require an enemy participant. Records 004–006 are prior evidence, not completion of those live criteria. | | |
 | 4. Score, HUD, lives, death, and respawn | Score/high-score cap, object awards, HUD, lives, bonus thresholds, collision death, safe respawn, and game over. Depends on slices 2–3. | Awards occur once; HUD matches state; life loss, bonus awards, respawn, and last-life game over repeat deterministically. | Run score/life fixtures through ordinary and last-life deaths. Record ECO-01–04 and PLY-02. |
 | — built as issue #16 (Part of #15) | Delivered the life economy: ECO-01 (single scoring path, 9,999,990 cap, running high score), ECO-02 (digit + life-icon HUD from the CC BY 3.0 HUD font), ECO-03 (starting craft, per-setting bonus thresholds/increments, the disable sentinel, and the at-cap grant quirk from the committed tables), the ECO-04 GAME OVER presentation (128-frame hold) + best-five verdict, and PLY-02's lives-driven respawn-vs-game-over decision, no-invulnerability respawn, and terrain-restart-on-death. A debug **S** fixture drives scoring and the D/G keys trigger death until a real attacker lands, so in-play object awards and real collision death (slice 8), the stop-after-two DIP setting (index unpinned), the Bonus Flag (a ground secret), and the initials-entry screen (slice 19) are deferred — ECO-01/02 are present (operator-playtest-gated), ECO-03/04 and PLY-02 partial. Both #16 and #15 stay open. Records 009–014. | | |
 | 5. Area clock and scheduler foundation | Monotonic terrain position, table representation, ordered event dispatch, area boundary seam, and one small schedule fixture. Depends on slices 2–3. | Position never rewinds during a life; fixture events fire once in order; transitions leave no old-area work. | Accelerate and pause the fixture around its boundaries. Record AREA-01 and AREA-02 foundation. |

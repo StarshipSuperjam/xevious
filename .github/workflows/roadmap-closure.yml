@@ -1,0 +1,34 @@
+name: Roadmap closure guard
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  verify-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Verify roadmap closure evidence
+        id: verify
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/check_roadmap_closures.py issue-event
+      - name: Reopen an invalid roadmap closure
+        if: steps.verify.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh issue reopen "$ISSUE_URL"
+          gh issue comment "$ISSUE_URL" --body "This roadmap item was reopened automatically because its committed closure evidence contract was not satisfied. See the failed Roadmap closure guard run for the exact missing evidence."
+          exit 1
