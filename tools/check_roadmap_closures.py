@@ -161,8 +161,14 @@ def validate_pr(pr: dict[str, Any], manifest: dict[str, Any], migration: dict[st
             for record in leaf["records"]:
                 if not re.search(rf"(?<![A-Z0-9-]){re.escape(record)}(?![A-Z0-9-])", evidence):
                     failures.append(f"#{number} ({leaf['key']}) requires changed mechanics evidence for {record}")
-        if not any(path.startswith("tests/") for path in files):
-            failures.append(f"#{number} ({leaf['key']}) requires changed automated success/failure evidence")
+        test_files = [path for path in files if path.startswith("tests/") and path.endswith(".py")]
+        test_evidence = "\n".join(file_at_revision(pr["head"]["sha"], path) for path in test_files)
+        for criterion in leaf.get("criteria", []):
+            obligation = criterion.split(".", 1)[0]
+            if not re.search(rf"(?<![A-Z0-9-]){re.escape(obligation)}(?![A-Z0-9-])", test_evidence):
+                failures.append(
+                    f"#{number} ({leaf['key']}) requires changed automated success/failure evidence for {obligation}"
+                )
     return failures
 
 

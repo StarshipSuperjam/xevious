@@ -73,11 +73,27 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("invalid roadmap status" in item for item in failures))
         self.assertTrue(any("globally unique" in item for item in failures))
 
+    def test_missing_title_and_slice_dependency_cycle_are_rejected(self) -> None:
+        changed = copy.deepcopy(self.manifest)
+        changed["parents"][0]["title"] = ""
+        changed["slice_dependencies"]["8"] = ["9"]
+        changed["slice_dependencies"]["9"] = ["8"]
+        failures = roadmap.validate_manifest(changed)
+        self.assertTrue(any("parent title is required" in item for item in failures))
+        self.assertTrue(any("slice dependency cycle" in item for item in failures))
+
     def test_late_slices_declare_the_build_plan_prerequisites(self) -> None:
         dependencies = self.manifest["slice_dependencies"]
         self.assertIn("7", dependencies["8"])
         self.assertIn("10", dependencies["11"])
         self.assertEqual({"1", "2", "2a", *map(str, range(3, 21))}, set(dependencies["21"]))
+
+    def test_fresh_and_version_one_snapshot_view_shapes_are_read(self) -> None:
+        view = {"id": "view", "name": "Existing"}
+        fresh = {"snapshot": {"project_views": {"data": {"node": {"views": {"nodes": [view]}}}}}}
+        old = {"snapshot": {"project_views": {"data": {"viewer": {"projectV2": {"views": {"nodes": [view]}}}}}}}
+        self.assertEqual([view], roadmap.snapshotted_views(fresh))
+        self.assertEqual([view], roadmap.snapshotted_views(old))
 
 
 class ClosureGuardTests(unittest.TestCase):
@@ -87,7 +103,7 @@ class ClosureGuardTests(unittest.TestCase):
             "parents": [{"key": "cap"}],
             "leaves": [
                 {"key": "done", "status": "history", "proof": "historical"},
-                {"key": "ready", "status": "planned", "proof": "playable", "blocked_by": ["done"], "records": ["SYS-01"]},
+                {"key": "ready", "status": "planned", "proof": "playable", "blocked_by": ["done"], "records": ["SYS-01"], "criteria": ["SYS-01.ready"]},
                 {"key": "future", "status": "provisional", "proof": "playable"},
             ],
         }
@@ -154,6 +170,17 @@ class ClosureGuardTests(unittest.TestCase):
     def test_missing_automated_evidence_is_rejected(self, _changed, _content) -> None:
         failures = closures.validate_pr(self.pr, self.manifest, self.migration)
         self.assertTrue(any("automated success/failure" in item for item in failures))
+
+    @mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]", "ROADMAP_ISSUE_STATES_JSON": '{"11":"closed"}', "ROADMAP_COMMENTS_JSON": "[]"}, clear=False)
+    @mock.patch.object(closures, "changed_files", return_value=["docs/mechanics/099-test.md", "tests/test_unrelated.py"])
+    def test_unrelated_automated_evidence_is_rejected(self, _changed) -> None:
+        with mock.patch.object(
+            closures,
+            "file_at_revision",
+            side_effect=lambda _sha, path: "Mechanic: SYS-01\n" if path.startswith("docs/mechanics/") else "test OTHER-99\n",
+        ):
+            failures = closures.validate_pr(self.pr, self.manifest, self.migration)
+        self.assertTrue(any("automated success/failure evidence for SYS-01" in item for item in failures))
 
     @mock.patch.object(closures, "source_pr_for_closed_issue", return_value=20)
     @mock.patch.object(closures, "load_pr")

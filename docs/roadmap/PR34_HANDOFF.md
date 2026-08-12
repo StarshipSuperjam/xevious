@@ -7,7 +7,7 @@ Before that session submits the PR for merge:
 1. Replace the stale `Part of #17` reference with `Closes #56` and `Part of #18`.
 2. Do not close a slice-8 integration leaf. Enemy-dependent gameplay acceptance stays open until enemies exist in the playable build.
 3. Reconcile the branch onto current `main` so the roadmap closure check runs.
-4. After the operator tests the exact head commit, add the required commit-specific playtest record and `playtest-approved` label.
+4. After the operator tests the exact head commit, first add the required commit-specific playtest record, then apply `playtest-approved`. The label event refreshes the required closure check against the current comment and head.
 5. Verify GitHub's computed closing-issue list contains only [#56](https://github.com/StarshipSuperjam/xevious/issues/56).
 
 Issue #56 is the leaf for difficulty models and live state. Parent capability [#18](https://github.com/StarshipSuperjam/xevious/issues/18) remains open until all of its native sub-issues close.

@@ -97,6 +97,16 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             failures.append(f"invalid stable roadmap key {key!r}")
     parent_map = {item.get("key"): item for item in parents if isinstance(item, dict)}
     leaf_map = {item.get("key"): item for item in leaves if isinstance(item, dict)}
+    project = manifest.get("project", {})
+    if not isinstance(project, dict) or not all(project.get(field) for field in ("owner", "number", "node_id")):
+        failures.append("project owner, number, and node_id are required")
+    for parent in parents:
+        if not isinstance(parent, dict):
+            continue
+        if not parent.get("title"):
+            failures.append(f"{parent.get('key', '<missing>')}: parent title is required")
+        if parent.get("spec_status") not in {"settled", "locked", "draft", "provisional"}:
+            failures.append(f"{parent.get('key', '<missing>')}: invalid specification status")
 
     criteria: dict[str, str] = {}
     for leaf in leaves:
@@ -104,6 +114,8 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             failures.append("every leaf must be an object")
             continue
         key = leaf.get("key", "<missing>")
+        if not leaf.get("title"):
+            failures.append(f"{key}: leaf title is required")
         parent = parent_map.get(leaf.get("parent"))
         if parent is None:
             failures.append(f"{key}: unknown parent {leaf.get('parent')!r}")
@@ -191,7 +203,40 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
                 failures.append(f"slice {delivery_slice} has unknown dependency {dependency}")
             if dependency == delivery_slice:
                 failures.append(f"slice {delivery_slice} cannot depend on itself")
+    slice_visiting: set[str] = set()
+    slice_visited: set[str] = set()
+
+    def visit_slice(delivery_slice: str) -> None:
+        if delivery_slice in slice_visiting:
+            failures.append(f"slice dependency cycle includes {delivery_slice}")
+            return
+        if delivery_slice in slice_visited:
+            return
+        slice_visiting.add(delivery_slice)
+        for dependency in slice_dependencies.get(delivery_slice, []):
+            visit_slice(dependency)
+        slice_visiting.remove(delivery_slice)
+        slice_visited.add(delivery_slice)
+
+    for delivery_slice in slice_dependencies:
+        visit_slice(delivery_slice)
     return failures
+
+
+def verify_project_identity(manifest: dict[str, Any]) -> None:
+    project = manifest["project"]
+    query = (
+        "query { viewer { login projectV2(number:"
+        f'{int(project["number"])}' + ") { id } } node(id:"
+        + json.dumps(project["node_id"]) + ") { ... on ProjectV2 { id owner { ... on User { login } ... on Organization { login } } } } }"
+    )
+    data = gh("api", "graphql", "-f", f"query={query}")["data"]
+    selected = data.get("viewer", {}).get("projectV2")
+    node = data.get("node")
+    if not selected or not node or selected.get("id") != project["node_id"] or node.get("id") != project["node_id"]:
+        raise RoadmapError("Project owner, number, and node ID do not resolve to one Project")
+    if node.get("owner", {}).get("login", "").lower() != str(project["owner"]).lower():
+        raise RoadmapError("Project node owner differs from the manifest")
 
 
 def marker(key: str) -> str:
@@ -315,6 +360,7 @@ def migration_template(manifest: dict[str, Any]) -> dict[str, Any]:
 
 def live_plan(manifest: dict[str, Any]) -> dict[str, Any]:
     repo = manifest["repository"]
+    verify_project_identity(manifest)
     keyed = live_key_index(repo)
     explicit_parent_numbers = {int(parent["issue"]) for parent in manifest["parents"] if parent.get("issue")}
     explicit_leaf_numbers = {int(leaf["issue"]) for leaf in manifest["leaves"] if leaf.get("issue")}
@@ -667,6 +713,14 @@ def compare_pr34(journal: dict[str, Any]) -> list[str]:
     return [] if now == before else ["PR #34 changed during the roadmap migration"]
 
 
+def snapshotted_views(journal: dict[str, Any]) -> list[dict[str, Any]]:
+    data = journal.get("snapshot", {}).get("project_views", {}).get("data", {})
+    views = data.get("node", {}).get("views", {}).get("nodes")
+    if views is not None:
+        return views
+    return data.get("viewer", {}).get("projectV2", {}).get("views", {}).get("nodes", [])
+
+
 def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
     failures = validate_manifest(manifest)
     if journal.get("phase") not in {"applied", "reconciled"}:
@@ -687,6 +741,9 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
     for parent in manifest["parents"]:
         issue = live.get(parent["key"])
         if issue:
+            record = journal["parents"][parent["key"]]
+            if issue["number"] != record["number"] or issue["node_id"] != record["node_id"] or issue["html_url"] != record["url"]:
+                failures.append(f"{parent['key']}: live issue identity differs from the journal")
             if issue.get("milestone") is not None:
                 failures.append(f"{parent['key']}: parent must not have a milestone")
             if issue.get("state") != "open":
@@ -699,6 +756,9 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
         issue = live.get(leaf["key"])
         if not issue:
             continue
+        record = journal["leaves"][leaf["key"]]
+        if issue["number"] != record["number"] or issue["node_id"] != record["node_id"] or issue["html_url"] != record["url"]:
+            failures.append(f"{leaf['key']}: live issue identity differs from the journal")
         actual = issue.get("milestone", {}).get("number") if issue.get("milestone") else None
         if actual != milestones.get(leaf["milestone"]):
             failures.append(f"{leaf['key']}: wrong milestone")
@@ -757,7 +817,7 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
             failures.append(f"Project view {expected['name']!r} is missing")
         elif actual.get("layout") != expected["layout"] or actual.get("filter") != expected["filter"]:
             failures.append(f"Project view {expected['name']!r} differs from the manifest")
-    snap_views = journal.get("snapshot", {}).get("project_views", {}).get("data", {}).get("viewer", {}).get("projectV2", {}).get("views", {}).get("nodes", [])
+    snap_views = snapshotted_views(journal)
     live_views_by_id = {node["id"]: node for node in view_nodes}
     for expected in snap_views:
         if live_views_by_id.get(expected["id"]) != expected:
