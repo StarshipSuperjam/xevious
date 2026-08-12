@@ -397,6 +397,7 @@ def live_plan(manifest: dict[str, Any]) -> dict[str, Any]:
 def snapshot(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     if journal.get("phase") != "planned" or journal.get("snapshot"):
         raise RoadmapError("snapshot is immutable once captured; start a new migration journal to replace it")
+    verify_project_identity(manifest)
     repo = manifest["repository"]
     project_number, project_owner = project_coordinates(manifest)
     project = gh("project", "field-list", project_number, "--owner", project_owner, "--format", "json")
@@ -639,6 +640,7 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         raise RoadmapError("manifest invalid:\n- " + "\n- ".join(failures))
     if journal.get("phase") not in {"snapshotted", "applying", "applied", "reconciled"}:
         raise RoadmapError("run snapshot before apply")
+    verify_project_identity(manifest)
     repo = manifest["repository"]
     if api_issue(repo, 34).get("pull_request") is None:
         raise RoadmapError("PR #34 identity check failed")
