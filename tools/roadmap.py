@@ -280,6 +280,40 @@ def migration_template(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def live_plan(manifest: dict[str, Any]) -> dict[str, Any]:
+    repo = manifest["repository"]
+    keyed = live_key_index(repo)
+    explicit_parent_numbers = {int(parent["issue"]) for parent in manifest["parents"] if parent.get("issue")}
+    explicit_leaf_numbers = {int(leaf["issue"]) for leaf in manifest["leaves"] if leaf.get("issue")}
+    if explicit_parent_numbers & explicit_leaf_numbers:
+        raise RoadmapError("one existing issue is assigned as both parent and leaf")
+    for item in [*manifest["parents"], *manifest["leaves"]]:
+        number = item.get("issue")
+        if not number:
+            continue
+        issue = api_issue(repo, int(number))
+        body = issue.get("body") or ""
+        found = re.search(r"<!-- roadmap-key: ([a-z0-9.-]+) -->", body)
+        if found and found.group(1) != item["key"]:
+            raise RoadmapError(f"existing issue #{number} carries conflicting roadmap key {found.group(1)}")
+    fields = gh("project", "field-list", "4", "--owner", "@me", "--format", "json")
+    field_names = {field["name"] for field in fields["fields"]}
+    return {
+        "parents": {
+            "create": sum(not item.get("issue") and item["key"] not in keyed for item in manifest["parents"]),
+            "reuse_or_update": sum(bool(item.get("issue")) or item["key"] in keyed for item in manifest["parents"]),
+        },
+        "leaves": {
+            "create": sum(not item.get("issue") and item["key"] not in keyed for item in manifest["leaves"]),
+            "reuse_or_update": sum(bool(item.get("issue")) or item["key"] in keyed for item in manifest["leaves"]),
+            "close_as_imported_history": sum(item["status"] == "history" for item in manifest["leaves"]),
+        },
+        "project_fields_to_create": sorted({"Roadmap role", "Delivery slice", "Proof level"} - field_names),
+        "protected_pr": 34,
+        "protected_pr_writes": 0,
+    }
+
+
 def snapshot(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     repo = manifest["repository"]
     project = gh("project", "field-list", "4", "--owner", "@me", "--format", "json")
@@ -552,6 +586,7 @@ def render_handoff(manifest: dict[str, Any], journal: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["validate", "snapshot", "plan", "apply", "reconcile", "handoff"])
+    parser.add_argument("--live", action="store_true", help="include a read-only live mutation diff")
     args = parser.parse_args(argv)
     manifest = read_json(MANIFEST_PATH)
     journal = read_json(MIGRATION_PATH) if MIGRATION_PATH.exists() else migration_template(manifest)
@@ -571,7 +606,10 @@ def main(argv: list[str] | None = None) -> int:
         if failures:
             print("\n".join(f"- {failure}" for failure in failures), file=sys.stderr)
             return 1
-        print(json.dumps({"parents": len(manifest["parents"]), "leaves": len(manifest["leaves"]), "history": sum(leaf["status"] == "history" for leaf in manifest["leaves"]), "provisional": sum(leaf["status"] == "provisional" for leaf in manifest["leaves"])}, indent=2))
+        value = {"parents": len(manifest["parents"]), "leaves": len(manifest["leaves"]), "history": sum(leaf["status"] == "history" for leaf in manifest["leaves"]), "provisional": sum(leaf["status"] == "provisional" for leaf in manifest["leaves"])}
+        if args.live:
+            value["live_diff"] = live_plan(manifest)
+        print(json.dumps(value, indent=2))
         return 0
     if args.command == "apply":
         apply(manifest, journal)
