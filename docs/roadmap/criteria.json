@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "criteria": [
+    "AIR-01.toroid", "AIR-02.torkan", "AIR-03.zoshi", "AIR-04.jara", "AIR-05.kapi", "AIR-06.terrazi",
+    "AIR-07.zakato", "AIR-08.brag-zakato", "AIR-09.sheonite", "AIR-10.spario", "AIR-11.bacura",
+    "AIR-12.pool", "AIR-12.radiating", "AIR-12.standard",
+    "AREA-01.clock", "AREA-01.visual-terrain", "AREA-02.air-dispatch", "AREA-02.data", "AREA-02.ground-dispatch", "AREA-03.tables", "AREA-04.loop",
+    "BOSS-01.lifecycle", "BOSS-02.defenses", "BOSS-03.core", "BUILD-01.sprite-proof",
+    "CAB-01.attract", "CAB-02.one-player", "CAB-02.two-player", "CAB-03.alternation", "CAB-04.high-scores", "CAB-05.presentation",
+    "DIF-01.model", "DIF-01.play", "DIF-02.model", "DIF-02.play", "DIF-03.model", "DIF-03.play",
+    "ECO-01.air-awards", "ECO-01.ground-awards", "ECO-01.path", "ECO-02.one-player", "ECO-02.two-player",
+    "ECO-03.bonus-flag", "ECO-03.stop-after-two", "ECO-03.tables", "ECO-04.high-score-route", "ECO-04.presentation",
+    "FORM-01.model", "FORM-01.play",
+    "GND-01.barra", "GND-01.variants", "GND-02.zolbak", "GND-03.logram", "GND-04.derota", "GND-05.boza", "GND-06.grobda", "GND-07.domogram",
+    "PLY-01.movement", "PLY-02.air-trigger", "PLY-02.decision", "PLY-RECOVERY.audit",
+    "PRES-01.framing", "PRES-02.hud-yellow", "RELEASE-01.full-soak", "RELEASE-02.audit",
+    "SEC-01.sol-tower", "SEC-02.bonus-flag", "SEC-03.hidden-credit",
+    "SYS-01.director-reset", "SYS-02.foundation", "SYS-02.live", "SYS-03.foundation", "SYS-03.live", "SYS-04.consumer", "SYS-04.stream",
+    "WPN-01.bacura-bounce", "WPN-01.flight", "WPN-02.air-hit", "WPN-03.crosshair", "WPN-03.target-lock", "WPN-04.bomb-flight", "WPN-05.ground-hit"
+  ]
+}

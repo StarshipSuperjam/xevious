@@ -74,6 +74,19 @@ def changed_files(base: str, head: str) -> list[str]:
     return [line for line in result.stdout.splitlines() if line]
 
 
+def file_at_revision(revision: str, path: str) -> str:
+    result = subprocess.run(
+        ["git", "show", f"{revision}:{path}"], cwd=ROOT, text=True, capture_output=True, check=False
+    )
+    return result.stdout if result.returncode == 0 else ""
+
+
+def paginated(endpoint: str) -> list[dict[str, Any]]:
+    value = gh("api", "--paginate", "--slurp", endpoint)
+    pages = value if not value or isinstance(value[0], list) else [value]
+    return [item for page in pages for item in page]
+
+
 def issue_state(repo: str, number: int) -> str:
     injected = os.environ.get("ROADMAP_ISSUE_STATES_JSON")
     if injected:
@@ -97,7 +110,7 @@ def playtest_recorded(repo: str, pr: dict[str, Any]) -> bool:
     if PLAYTEST_LABEL not in labels:
         return False
     injected = os.environ.get("ROADMAP_COMMENTS_JSON")
-    comments = json.loads(injected) if injected else gh("api", f"repos/{repo}/issues/{pr['number']}/comments?per_page=100")
+    comments = json.loads(injected) if injected else paginated(f"repos/{repo}/issues/{pr['number']}/comments?per_page=100")
     owner = repo.split("/", 1)[0].lower()
     head = pr["head"]["sha"]
     for comment in comments:
@@ -113,6 +126,7 @@ def validate_pr(pr: dict[str, Any], manifest: dict[str, Any], migration: dict[st
     parents_by_number, leaves_by_number, numbers_by_key = indexes(manifest, migration)
     closures = computed_closures(repo, pr)
     failures: list[str] = []
+    files = changed_files(pr["base"]["sha"], pr["head"]["sha"]) if closures else []
     for number in sorted(closures):
         if number in parents_by_number:
             failures.append(f"PR closes capability parent #{number}; close its independently complete leaves instead")
@@ -126,24 +140,34 @@ def validate_pr(pr: dict[str, Any], manifest: dict[str, Any], migration: dict[st
             blocker_number = numbers_by_key[blocker]
             if blocker_number not in closures and issue_state(repo, blocker_number) != "closed":
                 failures.append(f"#{number} ({leaf['key']}) is blocked by open #{blocker_number} ({blocker})")
+        for dependency_slice in manifest.get("slice_dependencies", {}).get(str(leaf.get("slice")), []):
+            for dependency in manifest["leaves"]:
+                if str(dependency["slice"]) != dependency_slice or dependency["status"] == "history":
+                    continue
+                dependency_number = numbers_by_key[dependency["key"]]
+                if dependency_number not in closures and issue_state(repo, dependency_number) != "closed":
+                    failures.append(
+                        f"#{number} ({leaf['key']}) depends on open slice-{dependency_slice} "
+                        f"leaf #{dependency_number} ({dependency['key']})"
+                    )
         if leaf["proof"] in {"playable", "operator"} and not playtest_recorded(repo, pr):
             failures.append(
                 f"#{number} ({leaf['key']}) requires `playtest-approved` plus an owner comment "
                 f"recording the exact tested head commit"
             )
         if leaf.get("records"):
-            files = changed_files(pr["base"]["sha"], pr["head"]["sha"])
-            if not any(path.startswith("docs/mechanics/") for path in files):
-                failures.append(f"#{number} ({leaf['key']}) requires updated mechanics evidence")
+            mechanics_files = [path for path in files if path.startswith("docs/mechanics/") and path.endswith(".md")]
+            evidence = "\n".join(file_at_revision(pr["head"]["sha"], path) for path in mechanics_files)
+            for record in leaf["records"]:
+                if not re.search(rf"(?<![A-Z0-9-]){re.escape(record)}(?![A-Z0-9-])", evidence):
+                    failures.append(f"#{number} ({leaf['key']}) requires changed mechanics evidence for {record}")
+        if not any(path.startswith("tests/") for path in files):
+            failures.append(f"#{number} ({leaf['key']}) requires changed automated success/failure evidence")
     return failures
 
 
 def source_pr_for_closed_issue(repo: str, number: int) -> int | None:
-    timeline = gh(
-        "api",
-        "-H", "Accept: application/vnd.github+json",
-        f"repos/{repo}/issues/{number}/timeline?per_page=100",
-    )
+    timeline = paginated(f"repos/{repo}/issues/{number}/timeline?per_page=100")
     candidates: list[int] = []
     for event in timeline:
         source = event.get("source", {}).get("issue", {})
@@ -171,7 +195,12 @@ def validate_issue_event(event: dict[str, Any], manifest: dict[str, Any], migrat
     pr_number = source_pr_for_closed_issue(manifest["repository"], number)
     if pr_number is None:
         return [f"roadmap leaf #{number} closed without a delivering pull request"]
-    return validate_pr(load_pr(manifest["repository"], pr_number), manifest, migration)
+    pr = load_pr(manifest["repository"], pr_number)
+    if not pr.get("merged_at"):
+        return [f"roadmap leaf #{number} closed without a merged delivering pull request"]
+    if number not in computed_closures(manifest["repository"], pr):
+        return [f"roadmap leaf #{number} is not in PR #{pr_number}'s computed closing list"]
+    return validate_pr(pr, manifest, migration)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -185,7 +214,17 @@ def main(argv: list[str] | None = None) -> int:
         print("roadmap migration is not active; closure projection not enforced yet")
         return 0
     event = read_json(args.event)
-    failures = validate_pr(event["pull_request"], manifest, migration) if args.mode == "pr" else validate_issue_event(event, manifest, migration)
+    if args.mode == "pr":
+        payload_pr = event.get("pull_request")
+        if not payload_pr and event.get("issue", {}).get("pull_request"):
+            payload_pr = load_pr(manifest["repository"], int(event["issue"]["number"]))
+        if not payload_pr:
+            raise ClosureError("event does not identify a pull request")
+        # Always load current labels/body/head instead of trusting a stale rerun payload.
+        current_pr = load_pr(manifest["repository"], int(payload_pr["number"]))
+        failures = validate_pr(current_pr, manifest, migration)
+    else:
+        failures = validate_issue_event(event, manifest, migration)
     if failures:
         print("roadmap closure refused:\n- " + "\n- ".join(failures), file=sys.stderr)
         return 1

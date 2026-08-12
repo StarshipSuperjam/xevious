@@ -11,6 +11,8 @@ links, and the Xevious Project board are projections of that file.
 - `docs/BUILD_PLAN.md` owns the engineering delivery sequence.
 - `manifest.json` decomposes that sequence into capability parents, atomic
   component leaves, blockers, milestones, proof levels, and delivery slices.
+- `criteria.json` is the independent exact obligation roster; validation fails
+  if a criterion is dropped, invented, or assigned twice.
 - GitHub Issues own discussion and delivery evidence for each projected item.
 - Project #4 is a replaceable operational view. Its delivery fields never
   become the only record of scope or dependency.
@@ -30,7 +32,9 @@ pull request may close a roadmap leaf. It rejects:
 - a leaf with an open blocker, unless the same pull request closes it;
 - a gameplay or operator-tested leaf without the `playtest-approved` label
   and a repository-owner comment identifying the exact tested head commit;
-- a mechanics-bearing leaf without updated mechanics evidence.
+- a mechanics-bearing leaf without matching updated mechanics evidence;
+- a leaf without changed automated success and failure evidence;
+- a leaf whose prerequisite delivery slices still contain open work.
 
 The marker recorded after a successful operator test is:
 

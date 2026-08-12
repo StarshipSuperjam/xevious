@@ -12,6 +12,22 @@
     ]
   },
   "excluded_catalog_prefixes": ["EX-"],
+  "slice_dependencies": {
+    "8": ["3", "4", "7"],
+    "9": ["3", "4", "5", "6", "7"],
+    "10": ["8"],
+    "11": ["8", "10"],
+    "12": ["9"],
+    "13": ["12"],
+    "14": ["4", "6", "9", "12"],
+    "15": ["3", "6", "7", "11", "12", "13"],
+    "16": ["9", "11", "15"],
+    "17": ["2", "4", "6", "8"],
+    "18": ["4", "6", "17"],
+    "19": ["4", "17", "18"],
+    "20": ["1", "2", "2a", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"],
+    "21": ["1", "2", "2a", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"]
+  },
   "parents": [
     {"key": "build", "title": "Capability: reproducible Scratch build and assets", "spec": null, "spec_status": "settled"},
     {"key": "core", "title": "Build: core game systems to their settled description", "issue": 14, "spec": "docs/spec/core-game-systems.md", "spec_status": "locked"},
@@ -34,6 +50,7 @@
     {"key":"player.movement-and-flight","parent":"player","title":"History: movement, bounds, blaster flight, and crosshair coupling","slice":"3","milestone":"Recovery","status":"history","delivered_by":21,"criteria":["PLY-01.movement","WPN-01.flight","WPN-03.crosshair"],"proof":"historical"},
     {"key":"player.death-decision","parent":"player","title":"History: lives-driven death, respawn, and game-over decision","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["PLY-02.decision"],"proof":"historical"},
     {"key":"player.bullet-pool","parent":"player","title":"History: enemy-bullet pool and collision windows","slice":"3","milestone":"Foundation","status":"history","delivered_by":21,"criteria":["AIR-12.pool"],"proof":"historical"},
+    {"key":"core.entity-foundation","parent":"core","title":"History: entity, collision, and shared-random foundations","slice":"3","milestone":"Foundation","status":"history","delivered_by":20,"criteria":["SYS-02.foundation","SYS-03.foundation","SYS-04.stream"],"proof":"historical","records":["SYS-02","SYS-03","SYS-04"]},
     {"key":"economy.score-hud","parent":"economy","title":"History: score path and one-player HUD foundation","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["ECO-01.path","ECO-02.one-player"],"proof":"historical"},
     {"key":"economy.life-tables","parent":"economy","title":"History: starting craft and bonus-life tables","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["ECO-03.tables"],"proof":"historical"},
     {"key":"economy.game-over","parent":"economy","title":"History: game-over presentation and qualification decision","slice":"4","milestone":"Foundation","status":"history","delivered_by":22,"criteria":["ECO-04.presentation"],"proof":"historical"},
@@ -68,10 +85,10 @@
 
     {"key":"player.bacura-bounce","parent":"player","title":"Complete Bacura blaster bounce behavior","slice":"11","milestone":"Enemies","status":"planned","blocked_by":["air.bacura"],"criteria":["WPN-01.bacura-bounce"],"proof":"playable","records":["WPN-01"]},
     {"key":"air.zakato","parent":"air","title":"Zakato and Garu Zakato families","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-07.zakato"],"proof":"playable","records":["AIR-07"]},
-    {"key":"air.sheonite","parent":"air","title":"Sheonite pair, pincer, and docking behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-08.sheonite"],"proof":"playable","records":["AIR-08"]},
-    {"key":"air.spario","parent":"air","title":"Giddo and Brag Spario behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.zakato"],"criteria":["AIR-09.spario"],"proof":"playable","records":["AIR-09"]},
-    {"key":"air.bacura","parent":"air","title":"Bacura resistance, collision, and cleanup","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-10.bacura"],"proof":"playable","records":["AIR-10"]},
-    {"key":"air.special-pairs","parent":"air","title":"Special paired and composite flying behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.sheonite","air.spario"],"criteria":["AIR-11.special"],"proof":"playable","records":["AIR-11"]},
+    {"key":"air.sheonite","parent":"air","title":"Sheonite pair, pincer, and docking behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-09.sheonite"],"proof":"playable","records":["AIR-09"]},
+    {"key":"air.spario","parent":"air","title":"Giddo and Brag Spario behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.zakato"],"criteria":["AIR-10.spario"],"proof":"playable","records":["AIR-10"]},
+    {"key":"air.bacura","parent":"air","title":"Bacura resistance, collision, and cleanup","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-11.bacura"],"proof":"playable","records":["AIR-11"]},
+    {"key":"air.special-pairs","parent":"air","title":"Brag and Garu Zakato teleport, explosion, and fire behavior","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.zakato"],"criteria":["AIR-08.brag-zakato"],"proof":"playable","records":["AIR-08"]},
     {"key":"air.radiating-bullets","parent":"air","title":"Radiating bullets and mixed bullet pressure","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.zakato"],"criteria":["AIR-12.radiating"],"proof":"playable","records":["AIR-12"]},
 
     {"key":"ground.barra-variants","parent":"ground","title":"Garu Barra and Barra family variants","slice":"12","milestone":"Enemies","status":"provisional","blocked_by":["ground.barra"],"criteria":["GND-01.variants"],"proof":"playable","records":["GND-01"]},

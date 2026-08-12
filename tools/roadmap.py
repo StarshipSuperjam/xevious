@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -24,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "docs" / "roadmap" / "manifest.json"
 MIGRATION_PATH = ROOT / "docs" / "roadmap" / "migration.json"
 CATALOG_PATH = ROOT / "docs" / "MECHANICS_CATALOG.md"
+CRITERIA_PATH = ROOT / "docs" / "roadmap" / "criteria.json"
 KEY_MARKER = "<!-- roadmap-key: {key} -->"
 PROPOSED_MARKER = "<!-- roadmap-migration: PR #36 -->"
 
@@ -83,12 +83,18 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     if not isinstance(parents, list) or not isinstance(leaves, list):
         return failures + ["parents and leaves must be lists"]
 
+    key_pattern = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*$")
     parent_keys = [item.get("key") for item in parents if isinstance(item, dict)]
     leaf_keys = [item.get("key") for item in leaves if isinstance(item, dict)]
     if len(parent_keys) != len(set(parent_keys)):
         failures.append("parent keys must be unique")
     if len(leaf_keys) != len(set(leaf_keys)):
         failures.append("leaf keys must be unique")
+    if set(parent_keys) & set(leaf_keys):
+        failures.append("parent and leaf keys must be globally unique")
+    for key in [*parent_keys, *leaf_keys]:
+        if not isinstance(key, str) or not key_pattern.fullmatch(key):
+            failures.append(f"invalid stable roadmap key {key!r}")
     parent_map = {item.get("key"): item for item in parents if isinstance(item, dict)}
     leaf_map = {item.get("key"): item for item in leaves if isinstance(item, dict)}
 
@@ -107,6 +113,8 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             failures.append(f"{key}: every leaf needs a delivery slice")
         if leaf.get("proof") not in {"playable", "operator", "historical"}:
             failures.append(f"{key}: invalid proof level")
+        if leaf.get("status") not in {"planned", "provisional", "history"}:
+            failures.append(f"{key}: invalid roadmap status")
         if leaf.get("status") == "history" and not leaf.get("delivered_by"):
             failures.append(f"{key}: history needs a delivering PR")
         if parent and parent.get("spec_status") in {"draft", "provisional"}:
@@ -162,6 +170,27 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             + "; extra "
             + ", ".join(sorted(slices - expected_slices))
         )
+    try:
+        required_criteria = set(read_json(CRITERIA_PATH)["criteria"])
+    except (RoadmapError, KeyError, TypeError) as exc:
+        failures.append(f"cannot load exact criterion roster: {exc}")
+    else:
+        actual_criteria = set(criteria)
+        if actual_criteria != required_criteria:
+            failures.append(
+                f"atomic criterion roster differs: missing {sorted(required_criteria-actual_criteria)}; "
+                f"extra {sorted(actual_criteria-required_criteria)}"
+            )
+
+    slice_dependencies = manifest.get("slice_dependencies", {})
+    for delivery_slice, dependencies in slice_dependencies.items():
+        if delivery_slice not in slices:
+            failures.append(f"slice dependency target {delivery_slice} is unknown")
+        for dependency in dependencies:
+            if dependency not in slices:
+                failures.append(f"slice {delivery_slice} has unknown dependency {dependency}")
+            if dependency == delivery_slice:
+                failures.append(f"slice {delivery_slice} cannot depend on itself")
     return failures
 
 
@@ -188,9 +217,11 @@ def parent_body(parent: dict[str, Any]) -> str:
     )
 
 
-def leaf_body(leaf: dict[str, Any], parent: dict[str, Any]) -> str:
+def leaf_body(leaf: dict[str, Any], parent: dict[str, Any], manifest: dict[str, Any] | None = None) -> str:
     blockers = leaf.get("blocked_by", [])
     blocker_text = ", ".join(f"`{item}`" for item in blockers) if blockers else "None"
+    slice_dependencies = (manifest or {}).get("slice_dependencies", {}).get(str(leaf["slice"]), [])
+    slice_text = ", ".join(f"slice {item}" for item in slice_dependencies) if slice_dependencies else "None"
     records = leaf.get("records", [])
     record_text = ", ".join(f"`{item}`" for item in records) if records else "None declared"
     provisional = parent.get("spec_status") in {"draft", "provisional"}
@@ -210,6 +241,7 @@ def leaf_body(leaf: dict[str, Any], parent: dict[str, Any]) -> str:
         "## Blockers",
         "",
         f"- {blocker_text}",
+        f"- Required delivery slices: {slice_text}",
     ]
     if provisional:
         lines += [
@@ -297,7 +329,8 @@ def live_plan(manifest: dict[str, Any]) -> dict[str, Any]:
         found = re.search(r"<!-- roadmap-key: ([a-z0-9.-]+) -->", body)
         if found and found.group(1) != item["key"]:
             raise RoadmapError(f"existing issue #{number} carries conflicting roadmap key {found.group(1)}")
-    fields = gh("project", "field-list", "4", "--owner", "@me", "--format", "json")
+    project_number, project_owner = project_coordinates(manifest)
+    fields = gh("project", "field-list", project_number, "--owner", project_owner, "--format", "json")
     field_names = {field["name"] for field in fields["fields"]}
     return {
         "parents": {
@@ -316,16 +349,21 @@ def live_plan(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def snapshot(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
+    if journal.get("phase") != "planned" or journal.get("snapshot"):
+        raise RoadmapError("snapshot is immutable once captured; start a new migration journal to replace it")
     repo = manifest["repository"]
-    project = gh("project", "field-list", "4", "--owner", "@me", "--format", "json")
-    items = gh("project", "item-list", "4", "--owner", "@me", "--limit", "500", "--format", "json")
+    project_number, project_owner = project_coordinates(manifest)
+    project = gh("project", "field-list", project_number, "--owner", project_owner, "--format", "json")
+    items = gh("project", "item-list", project_number, "--owner", project_owner, "--limit", "1000", "--format", "json")
+    if items.get("totalCount") != len(items.get("items", [])):
+        raise RoadmapError("Project item snapshot is truncated")
     pr34 = gh(
         "pr", "view", "34", "--repo", repo, "--json",
         "number,title,state,isDraft,body,headRefName,headRefOid,baseRefName,labels,milestone,projectItems,url",
     )
     views = gh(
         "api", "graphql", "-f",
-        "query=query { viewer { projectV2(number:4) { id title views(first:20) { nodes { id name layout filter } } } } }",
+        f'query=query {{ node(id:"{manifest["project"]["node_id"]}") {{ ... on ProjectV2 {{ id title views(first:50) {{ nodes {{ id name layout filter }} }} }} }} }}',
     )
     milestones = gh("api", f"repos/{repo}/milestones?state=all&per_page=100")
     journal["snapshot"] = {
@@ -411,8 +449,13 @@ def add_sub_issue(repo: str, parent_number: int, child_id: int) -> None:
     gh("api", "--method", "POST", f"repos/{repo}/issues/{parent_number}/sub_issues", "-F", f"sub_issue_id={child_id}")
 
 
-def ensure_project_fields(journal: dict[str, Any]) -> None:
-    current = gh("project", "field-list", "4", "--owner", "@me", "--format", "json")
+def project_coordinates(manifest: dict[str, Any]) -> tuple[str, str]:
+    return str(manifest["project"]["number"]), str(manifest["project"]["owner"])
+
+
+def ensure_project_fields(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
+    number, owner = project_coordinates(manifest)
+    current = gh("project", "field-list", number, "--owner", owner, "--format", "json")
     by_name = {field["name"]: field for field in current["fields"]}
     desired = {
         "Roadmap role": ("SINGLE_SELECT", "Parent,Leaf,Imported history"),
@@ -421,21 +464,13 @@ def ensure_project_fields(journal: dict[str, Any]) -> None:
     }
     for name, (kind, options) in desired.items():
         if name not in by_name:
-            args = ["project", "field-create", "4", "--owner", "@me", "--name", name, "--data-type", kind, "--format", "json"]
+            args = ["project", "field-create", number, "--owner", owner, "--name", name, "--data-type", kind, "--format", "json"]
             if options:
                 args += ["--single-select-options", options]
             gh(*args)
-    refreshed = gh("project", "field-list", "4", "--owner", "@me", "--format", "json")
+    refreshed = gh("project", "field-list", number, "--owner", owner, "--format", "json")
     journal["project_fields"] = {field["name"]: field for field in refreshed["fields"]}
     write_json(MIGRATION_PATH, journal)
-
-
-def project_item(url: str) -> None:
-    gh("project", "item-add", "4", "--owner", "@me", "--url", url, "--format", "json")
-
-
-def project_edit(url: str, field: str, value: str) -> None:
-    gh("project", "item-edit", "4", "--owner", "@me", "--url", url, "--field", field, "--value", value)
 
 
 def graphql_batch(operations: list[str], *, size: int = 20) -> None:
@@ -457,7 +492,10 @@ def project_value(field: dict[str, Any], value: str) -> str:
 def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     """Add roadmap content once, then set all derived fields in batched mutations."""
     project_id = journal["project"]["node_id"]
-    current = gh("project", "item-list", "4", "--owner", "@me", "--limit", "500", "--format", "json")
+    number, owner = project_coordinates(manifest)
+    current = gh("project", "item-list", number, "--owner", owner, "--limit", "1000", "--format", "json")
+    if current.get("totalCount") != len(current.get("items", [])):
+        raise RoadmapError("Project item inventory is truncated")
     by_url = {
         item.get("content", {}).get("url"): item
         for item in current.get("items", [])
@@ -490,7 +528,9 @@ def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         for attempt in range(3):
             if attempt:
                 time.sleep(2)
-            current = gh("project", "item-list", "4", "--owner", "@me", "--limit", "500", "--format", "json")
+            current = gh("project", "item-list", number, "--owner", owner, "--limit", "1000", "--format", "json")
+            if current.get("totalCount") != len(current.get("items", [])):
+                raise RoadmapError("Project item inventory is truncated")
             by_url = {
                 item.get("content", {}).get("url"): item
                 for item in current.get("items", [])
@@ -518,9 +558,9 @@ def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
 
 
 def ensure_project_views(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
-    query = "query { viewer { projectV2(number:4) { views(first:50) { nodes { id name layout filter } } } } }"
+    query = f'query {{ node(id:"{journal["project"]["node_id"]}") {{ ... on ProjectV2 {{ views(first:50) {{ nodes {{ id name layout filter }} }} }} }} }}'
     current = gh("api", "graphql", "-f", f"query={query}")
-    nodes = current["data"]["viewer"]["projectV2"]["views"]["nodes"]
+    nodes = current["data"]["node"]["views"]["nodes"]
     by_name = {node["name"]: node for node in nodes}
     owned: dict[str, dict[str, Any]] = {}
     for view in manifest["project"].get("views", []):
@@ -586,10 +626,11 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         milestone = milestones.get(leaf["milestone"])
         if milestone is None:
             raise RoadmapError(f"missing milestone {leaf['milestone']}")
-        body = leaf_body(leaf, parents[leaf["parent"]])
+        body = leaf_body(leaf, parents[leaf["parent"]], manifest)
         labels = issue_labels("leaf", leaf)
         if existing:
-            issue = patch_issue(repo, int(existing), title=leaf["title"], body=body, labels=labels, milestone=milestone, state="open")
+            desired_state = "closed" if leaf["status"] == "history" and issue and issue.get("state") == "closed" else "open"
+            issue = patch_issue(repo, int(existing), title=leaf["title"], body=body, labels=labels, milestone=milestone, state=desired_state)
         else:
             issue = create_issue(repo, title=leaf["title"], body=body, labels=labels, milestone=milestone)
         journal["leaves"][leaf["key"]] = {"number": issue["number"], "id": issue["id"], "node_id": issue["node_id"], "url": issue["html_url"]}
@@ -600,7 +641,7 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         child_id = journal["leaves"][leaf["key"]]["id"]
         add_sub_issue(repo, parent_number, child_id)
 
-    ensure_project_fields(journal)
+    ensure_project_fields(manifest, journal)
     sync_project(manifest, journal)
     ensure_project_views(manifest, journal)
 
@@ -609,7 +650,7 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         if leaf["status"] != "history":
             continue
         number = journal["leaves"][leaf["key"]]["number"]
-        patch_issue(repo, number, title=leaf["title"], body=leaf_body(leaf, parents[leaf["parent"]]), labels=issue_labels("leaf", leaf), milestone=milestones[leaf["milestone"]], state="closed")
+        patch_issue(repo, number, title=leaf["title"], body=leaf_body(leaf, parents[leaf["parent"]], manifest), labels=issue_labels("leaf", leaf), milestone=milestones[leaf["milestone"]], state="closed")
 
     journal["phase"] = "applied"
     write_json(MIGRATION_PATH, journal)
@@ -645,8 +686,15 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
             child_parents.setdefault(child["number"], []).append(parent_number)
     for parent in manifest["parents"]:
         issue = live.get(parent["key"])
-        if issue and issue.get("milestone") is not None:
-            failures.append(f"{parent['key']}: parent must not have a milestone")
+        if issue:
+            if issue.get("milestone") is not None:
+                failures.append(f"{parent['key']}: parent must not have a milestone")
+            if issue.get("state") != "open":
+                failures.append(f"{parent['key']}: parent must remain open")
+            if issue.get("title") != parent["title"] or (issue.get("body") or "") != parent_body(parent):
+                failures.append(f"{parent['key']}: title or generated body drifted")
+            if {label["name"] for label in issue.get("labels", [])} != set(issue_labels("parent")):
+                failures.append(f"{parent['key']}: labels drifted")
     for leaf in manifest["leaves"]:
         issue = live.get(leaf["key"])
         if not issue:
@@ -657,11 +705,19 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
         should_close = leaf["status"] == "history"
         if (issue.get("state") == "closed") != should_close:
             failures.append(f"{leaf['key']}: wrong open/closed state")
+        expected_body = leaf_body(leaf, parents[leaf["parent"]], manifest)
+        if issue.get("title") != leaf["title"] or (issue.get("body") or "") != expected_body:
+            failures.append(f"{leaf['key']}: title or generated body drifted")
+        if {label["name"] for label in issue.get("labels", [])} != set(issue_labels("leaf", leaf)):
+            failures.append(f"{leaf['key']}: labels drifted")
         intended_parent = journal["parents"][leaf["parent"]]["number"]
         if child_parents.get(issue["number"], []) != [intended_parent]:
             failures.append(f"{leaf['key']}: native parent link differs from #{intended_parent}")
 
-    project = gh("project", "item-list", "4", "--owner", "@me", "--limit", "500", "--format", "json")
+    project_number, project_owner = project_coordinates(manifest)
+    project = gh("project", "item-list", project_number, "--owner", project_owner, "--limit", "1000", "--format", "json")
+    if project.get("totalCount") != len(project.get("items", [])):
+        failures.append("Project item inventory is truncated")
     project_by_url: dict[str, list[dict[str, Any]]] = {}
     for item in project.get("items", []):
         url = item.get("content", {}).get("url")
@@ -691,9 +747,9 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
         for field, value in expected.items():
             if str(item.get(field, "")) != value:
                 failures.append(f"{key}: Project {field} is {item.get(field)!r}, expected {value!r}")
-    view_query = "query { viewer { projectV2(number:4) { views(first:50) { nodes { id name layout filter } } } } }"
+    view_query = f'query {{ node(id:"{journal["project"]["node_id"]}") {{ ... on ProjectV2 {{ views(first:50) {{ nodes {{ id name layout filter }} }} }} }} }}'
     view_data = gh("api", "graphql", "-f", f"query={view_query}")
-    view_nodes = view_data["data"]["viewer"]["projectV2"]["views"]["nodes"]
+    view_nodes = view_data["data"]["node"]["views"]["nodes"]
     views_by_name = {node["name"]: node for node in view_nodes}
     for expected in manifest["project"].get("views", []):
         actual = views_by_name.get(expected["name"])
@@ -701,6 +757,16 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
             failures.append(f"Project view {expected['name']!r} is missing")
         elif actual.get("layout") != expected["layout"] or actual.get("filter") != expected["filter"]:
             failures.append(f"Project view {expected['name']!r} differs from the manifest")
+    snap_views = journal.get("snapshot", {}).get("project_views", {}).get("data", {}).get("viewer", {}).get("projectV2", {}).get("views", {}).get("nodes", [])
+    live_views_by_id = {node["id"]: node for node in view_nodes}
+    for expected in snap_views:
+        if live_views_by_id.get(expected["id"]) != expected:
+            failures.append(f"pre-existing Project view {expected['name']!r} changed")
+    current_fields = gh("project", "field-list", project_number, "--owner", project_owner, "--format", "json")["fields"]
+    live_fields_by_id = {field["id"]: field for field in current_fields}
+    for expected in journal.get("snapshot", {}).get("project_fields", {}).get("fields", []):
+        if live_fields_by_id.get(expected["id"]) != expected:
+            failures.append(f"pre-existing Project field {expected['name']!r} changed")
     failures += compare_pr34(journal)
     if not failures:
         journal["phase"] = "reconciled"

@@ -2,6 +2,9 @@ name: Xevious project
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
+  issue_comment:
+    types: [created, edited]
   push:
     branches:
       - main
@@ -14,6 +17,7 @@ permissions:
 jobs:
   verify:
     name: xevious-project
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -28,16 +32,18 @@ jobs:
       - name: Verify the Scratch source and deterministic build
         run: python tools/scratch_project.py verify
       - name: Verify mechanics evidence for behavior changes
+        if: github.event_name != 'issue_comment'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: python tools/check_mechanics_record.py "$BASE_SHA"
       - name: Verify roadmap issue closures
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python tools/check_roadmap_closures.py pr
 
   runtime-harness:
+    if: github.event_name != 'issue_comment'
     # A pre-playtest regression tripwire, NOT a gameplay gate: it runs the shipped build
     # headless and asserts on state variables and clone counts. Kept a SEPARATE job so its
     # result is a distinct, informative check — it must not be added to the required-checks
