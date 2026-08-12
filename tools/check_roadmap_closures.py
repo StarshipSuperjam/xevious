@@ -81,6 +81,21 @@ def file_at_revision(revision: str, path: str) -> str:
     return result.stdout if result.returncode == 0 else ""
 
 
+def added_test_lines(base: str, head: str) -> str:
+    result = subprocess.run(
+        ["git", "diff", "--unified=0", f"{base}...{head}", "--", "tests"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode:
+        raise ClosureError(result.stderr.strip())
+    return "\n".join(
+        line[1:] for line in result.stdout.splitlines() if line.startswith("+") and not line.startswith("+++")
+    )
+
+
 def paginated(endpoint: str) -> list[dict[str, Any]]:
     value = gh("api", "--paginate", "--slurp", endpoint)
     pages = value if not value or isinstance(value[0], list) else [value]
@@ -127,6 +142,7 @@ def validate_pr(pr: dict[str, Any], manifest: dict[str, Any], migration: dict[st
     closures = computed_closures(repo, pr)
     failures: list[str] = []
     files = changed_files(pr["base"]["sha"], pr["head"]["sha"]) if closures else []
+    added_tests = added_test_lines(pr["base"]["sha"], pr["head"]["sha"]) if closures else ""
     for number in sorted(closures):
         if number in parents_by_number:
             failures.append(f"PR closes capability parent #{number}; close its independently complete leaves instead")
@@ -161,13 +177,13 @@ def validate_pr(pr: dict[str, Any], manifest: dict[str, Any], migration: dict[st
             for record in leaf["records"]:
                 if not re.search(rf"(?<![A-Z0-9-]){re.escape(record)}(?![A-Z0-9-])", evidence):
                     failures.append(f"#{number} ({leaf['key']}) requires changed mechanics evidence for {record}")
-        test_files = [path for path in files if path.startswith("tests/") and path.endswith(".py")]
-        test_evidence = "\n".join(file_at_revision(pr["head"]["sha"], path) for path in test_files)
         for criterion in leaf.get("criteria", []):
             obligation = criterion.split(".", 1)[0]
-            if not re.search(rf"(?<![A-Z0-9-]){re.escape(obligation)}(?![A-Z0-9-])", test_evidence):
+            success = re.search(rf"roadmap-evidence:\s*{re.escape(obligation)}\s+success\b", added_tests, re.IGNORECASE)
+            failure = re.search(rf"roadmap-evidence:\s*{re.escape(obligation)}\s+failure\b", added_tests, re.IGNORECASE)
+            if not success or not failure:
                 failures.append(
-                    f"#{number} ({leaf['key']}) requires changed automated success/failure evidence for {obligation}"
+                    f"#{number} ({leaf['key']}) requires newly added success and failure evidence markers for {obligation}"
                 )
     return failures
 

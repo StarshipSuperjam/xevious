@@ -42,6 +42,17 @@ The marker recorded after a successful operator test is:
 <!-- xevious-playtest:v1 commit=<40-character-head-sha> -->
 ```
 
+Automated tests added by a delivering PR identify both sides of every atomic
+obligation with comments such as:
+
+```text
+# roadmap-evidence: SYS-02 success
+# roadmap-evidence: SYS-02 failure
+```
+
+Only markers on lines newly added by that PR count. Existing comments or
+unrelated tests cannot satisfy the closure gate.
+
 The issue-closure workflow applies the same contract to a manually closed
 roadmap item and reopens an invalid closure. The protected-branch merge and the
 operator's review remain the binding gate.
