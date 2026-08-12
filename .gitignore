@@ -32,3 +32,6 @@ __pycache__/
 /assets/background/
 /assets/sounds/
 /assets/hud-art/
+# BEGIN engine-managed block: github-projects-sync-board-config - do not edit inside
+.engine/projects-sync/
+# END engine-managed block: github-projects-sync-board-config

@@ -9,7 +9,8 @@
     "product-design": "0.2.0",
     "qa-review": "0.2.0",
     "routine-mode": "0.1.0",
-    "validators-core": "0.2.0"
+    "validators-core": "0.2.0",
+    "github-projects-sync": "0.2.0"
   },
   "identity": "solo",
   "handle": "StarshipSuperjam",
