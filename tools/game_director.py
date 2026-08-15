@@ -408,6 +408,7 @@ AI_LEVEL_ID = "difficulty-ai-level"
 FORMATION_COUNT_ID = "formation-count"
 FORMATION_TYPE_OFFSET_ID = "formation-type-offset"
 FORMATION_INDEX_ID = "formation-index"  # transient lookup index (machinery)
+AI_ADJUST_ID = "difficulty-ai-adjust"  # DIF-02 transient score re-tune addend (machinery)
 SCHEDULE_ARG_ID = "area-schedule-arg"  # 4th parallel schedule column (runtime scalar)
 DIFFICULTY_INCREMENT_ID = "difficulty-increment"  # baked [2,0,6,16], indexed by DIP
 FORMATION_COUNT_TABLE_ID = "formation-count-table"  # 160 entries, index -32..127
@@ -1478,6 +1479,43 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     raise_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(RAISE_HANDLER)), raise_body
     )
+    # DIF-02 score re-tune: add floor(floor(score / 1000) / craft), capped at 16, to the AI level —
+    # so a player scoring heavily with craft in reserve meets sharper pressure. Guarded on craft > 0
+    # (no divide-by-zero). Unlike the raise, the reference does NOT fold this add back.
+    adjust_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(ADJUST_HANDLER)),
+        [
+            blocks.if_reporter(
+                blocks.op_gt(variable("craft", LIVES_ID), number(0)),
+                [
+                    blocks.set_var_expr(
+                        "ai adjust",
+                        AI_ADJUST_ID,
+                        blocks.op_floor(
+                            blocks.op_div(
+                                blocks.op_floor(
+                                    blocks.op_div(variable("score", SCORE_ID), number(1000))
+                                ),
+                                variable("craft", LIVES_ID),
+                            )
+                        ),
+                    ),
+                    blocks.if_reporter(
+                        blocks.op_gt(variable("ai adjust", AI_ADJUST_ID), number(16)),
+                        [blocks.set_var("ai adjust", AI_ADJUST_ID, number(16))],
+                    ),
+                    blocks.set_var_expr(
+                        "ai level",
+                        AI_LEVEL_ID,
+                        blocks.op_add(
+                            variable("ai level", AI_LEVEL_ID),
+                            variable("ai adjust", AI_ADJUST_ID),
+                        ),
+                    ),
+                ],
+            )
+        ],
+    )
     # FORM-01 set-formation: the record's signed offset IS the table index (no AI level added).
     set_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(SET_FORMATION_HANDLER)),
@@ -1499,6 +1537,7 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         loop,
         [
             raise_branch,
+            adjust_branch,
             set_branch,
             reset_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
@@ -2861,6 +2900,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_COUNT_ID,
         FORMATION_TYPE_OFFSET_ID,
         FORMATION_INDEX_ID,
+        AI_ADJUST_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -2926,6 +2966,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_COUNT_ID: ["formation count", 0],
         FORMATION_TYPE_OFFSET_ID: ["formation type offset", 0],
         FORMATION_INDEX_ID: ["formation index", 0],
+        # DIF-02 transient score re-tune addend (machinery, like `formation index`).
+        AI_ADJUST_ID: ["ai adjust", 0],
     }
     owned_lists = {
         ALLOWED_ID,

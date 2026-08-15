@@ -621,6 +621,22 @@ class DifficultyAndFormations(unittest.TestCase):
         self.assertEqual(65, raise_once(127))  # 129 -> fold -> 65
         self.assertLess(raise_once(127), director.AI_LEVEL_FOLD_THRESHOLD)
 
+    def test_score_retune_rule(self):
+        # DIF-02 score-adaptive re-tune (sub_2_fn_23 / avg_score_per_solvalou): the addend is the
+        # player's score in thousands divided by the craft in reserve, floored, capped at 16, and
+        # only when reserve > 0 (no divide-by-zero). Reserve is the live `craft` count (the reference
+        # divides by solvalou_number with no subtraction).
+        def retune(score, craft):
+            if craft <= 0:
+                return 0
+            return min(16, (score // 1000) // craft)
+
+        self.assertEqual(0, retune(500, 3), "score below 1000 adds nothing")
+        self.assertEqual(1, retune(3000, 3), "3k over 3 craft -> 1")
+        self.assertEqual(5, retune(20000, 4), "20k over 4 craft -> 5")
+        self.assertEqual(16, retune(200000, 3), "66 over 3 = 22, capped at 16")
+        self.assertEqual(0, retune(50000, 0), "zero craft is guarded, adds nothing")
+
     def test_formation_index_in_domain_over_committed_schedules(self):
         # FORM-01 / DIF-01 range proof: walk the committed schedules in the accelerated 1..16 then
         # 7..16 loop order, tracking the AI level through raises (fold-back) and picking the formation

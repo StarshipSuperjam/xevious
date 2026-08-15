@@ -892,6 +892,8 @@ class ScratchProjectTests(unittest.TestCase):
             "qualified",
             # FORM-01 transient formation-lookup register (overwritten on every selection).
             "formation index",
+            # DIF-02 transient score re-tune addend (computed then added to the AI level).
+            "ai adjust",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -2467,12 +2469,22 @@ class ScratchProjectTests(unittest.TestCase):
                     break
 
         def break_decision(p):
-            b = find(
-                lambda b: b["opcode"] == "operator_gt"
-                and isinstance(b["inputs"].get("OPERAND1"), list)
-                and b["inputs"]["OPERAND1"][1][2:3] == [director.LIVES_ID]
-            )(p)
-            b["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
+            # Target the DEATH-decision `craft > threshold` specifically — the operator_gt that is the
+            # CONDITION of the control_if_else (as _ply02_failures identifies it), not any other craft
+            # comparison on the Stage (e.g. DIF-02's `craft > 0` re-tune guard).
+            s = next(t for t in p["targets"] if t["isStage"])
+            blocks = s["blocks"]
+            decision = next(
+                b
+                for b in blocks.values()
+                if b["opcode"] == "control_if_else"
+                and isinstance(b["inputs"].get("CONDITION"), list)
+                and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_gt"
+                and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1", [None, [None]])[1][2:3]
+                == [director.LIVES_ID]
+            )
+            cond = blocks[decision["inputs"]["CONDITION"][1]]
+            cond["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
 
         cases = [
             ("d-decrements-craft", break_d),
@@ -4423,7 +4435,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "89b9b90e8730d0b85a2f83b6fe612a86dc0be2e1ff21184e9ba43909412af57a",
+            "922a237830cbb6042942b24557e6fa6ac9b6920e0fb55f8798586d078d73fdeb",
             build_hash,
         )
 

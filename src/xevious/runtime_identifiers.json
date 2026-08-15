@@ -89,6 +89,11 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "difficulty-ai-adjust": {
+      "kind": "variable",
+      "name": "ai adjust",
+      "scope": "Stage"
+    },
     "difficulty-ai-level": {
       "kind": "variable",
       "name": "ai level",

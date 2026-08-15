@@ -57,7 +57,9 @@ so area position is read from the `area progress`/`area number` variable watcher
    round-trip test, not the eye.) The visual terrain is not yet driven by the clock, so these are
    variable-watcher checks, not on-screen ones. **Also tick `ai level`, `formation count`, and
    `formation type offset`** (DIF-01 / FORM-01): as you fly, `ai level` climbs a little each time a raise
-   record fires and stays below **128** (a raise folds it back — you should never see it reach 128), and
+   record fires and stays below **128** (a raise folds it back — you should never see it reach 128); if you
+   have been scoring (press **S** to raise the score), it can also jump when a score-adjust record fires
+   (DIF-02) — the *amount* is score/craft-dependent and its visible effect on enemies is deferred to slice 8; and
    `formation count` / `formation type offset` change to a new wave (count in **1–6**) when a raise or a
    set-formation record fires, and drop to 0 on a reset-formation. **Read the `ai level` growth *rate* as a
    placeholder, not fidelity:** the cabinet difficulty is a project-chosen default (increment +2), so how
