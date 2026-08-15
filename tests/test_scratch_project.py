@@ -923,6 +923,16 @@ class ScratchProjectTests(unittest.TestCase):
             "ai level",
             "formation count",
             "formation type offset",
+            # DIF-03 per-family fire-permission masks + the ground-stop-firing row.
+            "ground stop firing row",
+            "fire mask derota",
+            "fire mask logram",
+            "fire mask zoshi",
+            "fire mask terrazi",
+            "fire mask kapi",
+            "fire mask boza logram",
+            "fire mask domogram",
+            "fire mask andor genesis",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
@@ -1047,10 +1057,12 @@ class ScratchProjectTests(unittest.TestCase):
             director.TERRAIN_COLUMN_ID,
             director.SCHEDULE_CURSOR_ID,
             director.SCHEDULE_FIRED_ID,
-            # DIF-01/FORM-01 difficulty-director state: Stage-only-written.
+            # DIF-01/FORM-01/DIF-03 difficulty-director state: Stage-only-written.
             director.AI_LEVEL_ID,
             director.FORMATION_COUNT_ID,
             director.FORMATION_TYPE_OFFSET_ID,
+            director.GROUND_STOP_FIRING_ROW_ID,
+            *(mask_id for _suffix, _name, mask_id in director.FIRE_MASK_FAMILIES),
         }
         # Read-only reference tables: ingested, hash-pinned authority data no sprite may
         # mutate (the mutable slot lists are deliberately excluded — allocators write those).
@@ -4435,7 +4447,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "922a237830cbb6042942b24557e6fa6ac9b6920e0fb55f8798586d078d73fdeb",
+            "dfd51edefb985b98550c76b7bc33f62902a3093355dba02684cd873c6ba02db3",
             build_hash,
         )
 

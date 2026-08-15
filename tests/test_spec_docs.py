@@ -567,6 +567,20 @@ class DifficultyAndFormations(unittest.TestCase):
     rather than laundering itself; only the build's DIP-index and numeric constants come from the
     generator."""
 
+    # Roadmap closure evidence for leaf #56 (difficulty.models-live-state). Each obligation has a
+    # success path (a positive fixture below / the baked-table & round-trip goldens) and a failure
+    # path (a biting negative). The success fixtures live in this class; the failure negatives are the
+    # scratch-vm harness scenarios (`difficulty-and-formations`, `fire-permission-masks`, each with a
+    # negativeMutation that reddens) and the structural `break_missing_dispatch` negative.
+    # roadmap-evidence: DIF-01 success  (test_ai_level_fold_back, test_baked_tables_match_committed_data)
+    # roadmap-evidence: DIF-01 failure  (harness difficulty-and-formations negative breaks the raise dispatch)
+    # roadmap-evidence: DIF-02 success  (test_score_retune_rule)
+    # roadmap-evidence: DIF-02 failure  (test_score_retune_rule's cap/guard cases; break_missing_dispatch)
+    # roadmap-evidence: DIF-03 success  (test_all_area_schedules_round_trip_from_json arg column, baked masks)
+    # roadmap-evidence: DIF-03 failure  (harness fire-permission-masks negative breaks the logram branch)
+    # roadmap-evidence: FORM-01 success (test_formation_lookup_reproduces_committed_table, in-domain proof)
+    # roadmap-evidence: FORM-01 failure (harness difficulty-and-formations negative; the two-sided guard)
+
     def _stage_lists(self):
         project = json.loads(PROJECT_JSON.read_text())
         stage = next(t for t in project["targets"] if t["isStage"])

@@ -345,6 +345,42 @@ export const SCENARIOS = [
     negativeMutation: (p) =>
       mutate.changeEqualsOperand(p, 'Stage', 'raise_ai_level_and_set_formation', '__never__'),
   },
+  {
+    key: 'fire-permission-masks',
+    behavior: 'Area-schedule fire-mask records set the per-family fire-permission masks live',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The schedule sets the fire masks from the record bytes as it scrolls. One headless pump
+      // covers many game ticks, so a specific transient value (logram is set to 255, then 31 within
+      // one pump) can be stepped over — assert the robust fact instead: the logram mask, and other
+      // families, are SEEN set to a non-zero scheduled value. (The FIRING that consumes them is the
+      // enemy slices'.)
+      let logramSet = false;
+      let otherMaskSet = false;
+      const others = [
+        'fire-mask-derota',
+        'fire-mask-zoshi',
+        'fire-mask-terrazi',
+        'fire-mask-kapi',
+        'fire-mask-boza-logram',
+        'fire-mask-domogram',
+      ];
+      for (let i = 0; i < 60; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'fire-mask-logram') > 0) logramSet = true;
+        for (const id of others) if (readVar(vm, id) > 0) otherMaskSet = true;
+      }
+      return { logramSet, otherMaskSet };
+    },
+    assert(obs) {
+      assert.equal(obs.logramSet, true, 'the logram fire mask is set to a non-zero scheduled value');
+      assert.equal(obs.otherMaskSet, true, 'other family fire masks are set live too');
+    },
+    // Break the logram mask branch (its handler == comparison never matches) so it is never set →
+    // the logramSet assertion fails.
+    negativeMutation: (p) => mutate.changeEqualsOperand(p, 'Stage', 'fire_mask_logram', '__never__'),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"

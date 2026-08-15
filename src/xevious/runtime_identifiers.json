@@ -169,6 +169,46 @@
       "name": "value table",
       "scope": "Stage"
     },
+    "fire-mask-andor-genesis": {
+      "kind": "variable",
+      "name": "fire mask andor genesis",
+      "scope": "Stage"
+    },
+    "fire-mask-boza-logram": {
+      "kind": "variable",
+      "name": "fire mask boza logram",
+      "scope": "Stage"
+    },
+    "fire-mask-derota": {
+      "kind": "variable",
+      "name": "fire mask derota",
+      "scope": "Stage"
+    },
+    "fire-mask-domogram": {
+      "kind": "variable",
+      "name": "fire mask domogram",
+      "scope": "Stage"
+    },
+    "fire-mask-kapi": {
+      "kind": "variable",
+      "name": "fire mask kapi",
+      "scope": "Stage"
+    },
+    "fire-mask-logram": {
+      "kind": "variable",
+      "name": "fire mask logram",
+      "scope": "Stage"
+    },
+    "fire-mask-terrazi": {
+      "kind": "variable",
+      "name": "fire mask terrazi",
+      "scope": "Stage"
+    },
+    "fire-mask-zoshi": {
+      "kind": "variable",
+      "name": "fire mask zoshi",
+      "scope": "Stage"
+    },
     "formation-count": {
       "kind": "variable",
       "name": "formation count",
@@ -217,6 +257,11 @@
     "game-director-state": {
       "kind": "variable",
       "name": "game state",
+      "scope": "Stage"
+    },
+    "ground-stop-firing-row": {
+      "kind": "variable",
+      "name": "ground stop firing row",
       "scope": "Stage"
     },
     "hit-slot": {

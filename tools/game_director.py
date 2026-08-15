@@ -423,6 +423,22 @@ RESET_FORMATION_HANDLER = "reset_flying_formation"
 FIRE_MASK_PREFIX = "fire_mask_"
 GROUND_STOP_FIRING_HANDLER = "ground_stop_firing_row"
 
+# DIF-03 per-family fire-permission masks. Area schedules set one mask byte per firing family; the
+# byte gates how often that family may fire, and the per-family firing that consumes each mask is the
+# enemy slices' (8+). Each family is (handler suffix, Stage display name, Stage id). The handler is
+# FIRE_MASK_PREFIX + suffix.
+FIRE_MASK_FAMILIES = [
+    ("derota", "fire mask derota", "fire-mask-derota"),
+    ("logram", "fire mask logram", "fire-mask-logram"),
+    ("zoshi", "fire mask zoshi", "fire-mask-zoshi"),
+    ("terrazi", "fire mask terrazi", "fire-mask-terrazi"),
+    ("kapi", "fire mask kapi", "fire-mask-kapi"),
+    ("boza_logram", "fire mask boza logram", "fire-mask-boza-logram"),
+    ("domogram", "fire mask domogram", "fire-mask-domogram"),
+    ("andor_genesis", "fire mask andor genesis", "fire-mask-andor-genesis"),
+]
+GROUND_STOP_FIRING_ROW_ID = "ground-stop-firing-row"
+
 # Project-defined cabinet difficulty DIP index (four-marker placeholder; the spec records
 # no arcade power-on default, like RNG_COLD_START_SEED). Index 0 selects increment +2 —
 # the LOWEST setting that still PROGRESSES (index 1 = +0 would make every raise inert and
@@ -1529,6 +1545,20 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
         ],
     )
+    # DIF-03 fire-permission masks: each family's `fire_mask_<family>` record sets that family's mask
+    # byte from the schedule arg; the `ground_stop_firing_row` record sets the ground-stop row. The
+    # per-family firing that CONSUMES these lands with the enemy slices (8+).
+    mask_branches = [
+        blocks.if_reporter(
+            blocks.op_eq(handler_at_cursor(), text(FIRE_MASK_PREFIX + suffix)),
+            [blocks.set_var_expr(name, mask_id, arg_at_cursor())],
+        )
+        for suffix, name, mask_id in FIRE_MASK_FAMILIES
+    ]
+    ground_stop_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(GROUND_STOP_FIRING_HANDLER)),
+        [blocks.set_var_expr("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, arg_at_cursor())],
+    )
     # ENGINE-TODO: the spawn / boss handler dispatch (add_ground_object, add_domogram_with_path,
     # add_object, *bacura*, andor_genesis_*, sheonite_*) lands with the enemy slices (8+); the
     # score-adaptive AI re-tune and the fire-permission masks arrive in the later commits of this
@@ -1540,6 +1570,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             adjust_branch,
             set_branch,
             reset_branch,
+            *mask_branches,
+            ground_stop_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -1961,6 +1993,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                     blocks.set_var("ai level", AI_LEVEL_ID, number(0)),
                     blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
                     blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
+                    blocks.set_var("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, number(0)),
+                    *(
+                        blocks.set_var(name, mask_id, number(0))
+                        for _suffix, name, mask_id in FIRE_MASK_FAMILIES
+                    ),
                 ],
             )
         ],
@@ -2901,6 +2938,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_TYPE_OFFSET_ID,
         FORMATION_INDEX_ID,
         AI_ADJUST_ID,
+        GROUND_STOP_FIRING_ROW_ID,
+        *(mask_id for _suffix, _name, mask_id in FIRE_MASK_FAMILIES),
     }
     preserved_variables = {
         variable_id: value
@@ -2968,6 +3007,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_INDEX_ID: ["formation index", 0],
         # DIF-02 transient score re-tune addend (machinery, like `formation index`).
         AI_ADJUST_ID: ["ai adjust", 0],
+        # DIF-03 per-family fire-permission masks + the ground-stop-firing row (difficulty-director
+        # state, Stage-written, sprite-read, write-forbidden). Set by the schedule; consumed by the
+        # enemy slices (8+). All reset to 0 on a world reset, alongside the AI level and formation.
+        GROUND_STOP_FIRING_ROW_ID: ["ground stop firing row", 0],
+        **{mask_id: [name, 0] for _suffix, name, mask_id in FIRE_MASK_FAMILIES},
     }
     owned_lists = {
         ALLOWED_ID,
