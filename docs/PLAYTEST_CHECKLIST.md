@@ -65,7 +65,11 @@ so area position is read from the `area progress`/`area number` variable watcher
    placeholder, not fidelity:** the cabinet difficulty is a project-chosen default (increment +2), so how
    *fast* the level climbs is not meaningful yet — only that it climbs, folds, and drives a valid formation
    is. No enemies spawn from the formation this slice, so this is a watcher check, not an on-screen one; the
-   exact table correctness is the build-time model fixture's, not the eye's.
+   exact table correctness is the build-time model fixture's, not the eye's. **You can also tick a
+   `fire mask *` watcher** (e.g. `fire mask logram`) and **`ground stop firing row`** (DIF-03): each takes
+   its scheduled byte value as the area scrolls (logram, for instance, is set near the top of area 1) and
+   resets to 0 on a new game. As with the masks above, no family *fires* from these yet — that is slice 8 —
+   so this only confirms the schedule sets them.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row (today: press D; once
    killers exist, die to a bullet, an enemy, and a Bacura): the full death presentation and sound
    complete uncut, the craft respawns immediately vulnerable, and nothing from the previous life

@@ -1403,8 +1403,9 @@ def _select_formation(blocks: Blocks, index_value: Any) -> list[str]:
     # the assignment is GUARDED on BOTH bounds: an out-of-domain index leaves the prior formation
     # unchanged (no faithful ROM-adjacent value exists to fabricate). The build-time fixture in
     # tests/test_spec_docs.py proves the real committed schedules never leave the domain under this
-    # slice's dynamics, so the guard is defensive; DIF-02's score term (a later commit) is where an
-    # index could in principle exceed it, recorded there.
+    # slice's full dynamics (raises, set-formation, AND DIF-02's un-folded score adjust at its
+    # worst-case cap), so the guard is a defensive dead branch; a future schedule/DIP change that
+    # broke that margin would redden that fixture, not fail silently here.
     if isinstance(index_value, str):
         set_index = blocks.set_var_expr("formation index", FORMATION_INDEX_ID, index_value)
     else:
@@ -1560,9 +1561,9 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         [blocks.set_var_expr("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, arg_at_cursor())],
     )
     # ENGINE-TODO: the spawn / boss handler dispatch (add_ground_object, add_domogram_with_path,
-    # add_object, *bacura*, andor_genesis_*, sheonite_*) lands with the enemy slices (8+); the
-    # score-adaptive AI re-tune and the fire-permission masks arrive in the later commits of this
-    # slice. Unhandled records still advance the cursor and count the fire, with no behaviour.
+    # add_object, *bacura*, andor_genesis_*, sheonite_*) lands with the enemy slices (8+). The
+    # DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks, ground-stop) are all
+    # wired above; the still-unhandled spawn/boss records advance the cursor and count the fire only.
     blocks.substack(
         loop,
         [

@@ -652,22 +652,28 @@ class DifficultyAndFormations(unittest.TestCase):
         self.assertEqual(0, retune(50000, 0), "zero craft is guarded, adds nothing")
 
     def test_formation_index_in_domain_over_committed_schedules(self):
-        # FORM-01 / DIF-01 range proof: walk the committed schedules in the accelerated 1..16 then
-        # 7..16 loop order, tracking the AI level through raises (fold-back) and picking the formation
-        # index exactly as the emitted dispatch does — set-formation: the record offset; raise: the
-        # folded AI level. Assert EVERY index lands in the table's -32..127 domain, so the generator's
-        # two-sided guard is a proven-dead defensive branch under this slice's dynamics, and that BOTH
-        # selection paths are actually exercised. (DIF-02's score term, a later commit, is the only
-        # thing that could push the index out of domain; that is recorded with DIF-02.)
+        # FORM-01 / DIF-01 / DIF-02 range proof: walk the committed schedules in the accelerated
+        # 1..16 then 7..16 loop order, tracking the AI level through EVERY handler that moves it — the
+        # raise (with fold-back) AND DIF-02's score adjust forced to its worst case (+16, un-folded,
+        # per the reference) — and pick the formation index exactly as the emitted dispatch does:
+        # set-formation uses the record offset; the raise uses the folded AI level (adjust selects no
+        # formation). Assert EVERY selection index lands in the table's -32..127 domain, so the
+        # generator's two-sided guard is a proven-dead defensive branch under this slice's FULL live
+        # dynamics (not just raises/sets), and that all three AI-moving/selecting paths are exercised.
+        # The margin is real, not accidental: consecutive adjusts between raises are few, so the raise's
+        # single -0x40 fold always recovers a < 0x80 index; if a future schedule or DIP change broke
+        # that, THIS fixture reddens rather than the guard silently freezing the formation.
+        DIF02_MAX_ADDEND = 16  # the score-per-craft re-tune is capped at 16 (docs/spec)
         areas = {a["area"]: a["records"] for a in json.loads((DATA / "area-schedules.json").read_text())["areas"]}
         inc = json.loads((DATA / "difficulty.json").read_text())["difficulty_tbl"]["values"][
             director.DIFFICULTY_DIP_INDEX
         ]
         lo = director.FORMATION_MIN_INDEX
         hi = director.FORMATION_MIN_INDEX + director.FORMATION_TABLE_LEN - 1
-        order = list(range(1, 17)) + list(range(7, 17)) * 6  # a few loop cycles for steady state
+        # Many loop cycles so any slow AI-level drift (adjust outrunning the folds) would surface.
+        order = list(range(1, 17)) + list(range(7, 17)) * 20
         ai = 0
-        raises = sets = 0
+        raises = sets = adjusts = 0
         for area in order:
             for record in areas[area]:
                 handler = record["handler"]
@@ -677,6 +683,10 @@ class DifficultyAndFormations(unittest.TestCase):
                         ai -= director.AI_LEVEL_FOLD_SUBTRACT
                     index = ai
                     raises += 1
+                elif handler == "adjust_ai_level_from_score":
+                    ai += DIF02_MAX_ADDEND  # worst case; the reference does NOT fold this add
+                    adjusts += 1
+                    continue  # adjust re-tunes the level but selects no formation
                 elif handler == "set_flying_formation":
                     index = record["params"]["formation_offset"]
                     sets += 1
@@ -685,6 +695,7 @@ class DifficultyAndFormations(unittest.TestCase):
                 self.assertTrue(lo <= index <= hi, f"formation index {index} out of domain (area {area})")
         self.assertGreater(raises, 0, "the raise re-select path must be exercised")
         self.assertGreater(sets, 0, "the set-formation path must be exercised")
+        self.assertGreater(adjusts, 0, "the DIF-02 adjust contribution must be exercised")
 
 
 if __name__ == "__main__":

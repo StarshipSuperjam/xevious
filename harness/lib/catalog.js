@@ -353,11 +353,14 @@ export const SCENARIOS = [
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // The schedule sets the fire masks from the record bytes as it scrolls. One headless pump
       // covers many game ticks, so a specific transient value (logram is set to 255, then 31 within
-      // one pump) can be stepped over — assert the robust fact instead: the logram mask, and other
-      // families, are SEEN set to a non-zero scheduled value. (The FIRING that consumes them is the
-      // enemy slices'.)
+      // one pump) can be stepped over — assert the robust fact instead: each family mask, the
+      // ground-stop-firing row, and Andor Genesis (first scheduled in area 4) are SEEN set to a
+      // non-zero scheduled value. (The FIRING that consumes them is the enemy slices'.) The window is
+      // long enough to cross into area 4 so all nine DIF-03 targets are actually exercised.
       let logramSet = false;
       let otherMaskSet = false;
+      let andorSet = false;
+      let groundStopSet = false;
       const others = [
         'fire-mask-derota',
         'fire-mask-zoshi',
@@ -366,16 +369,20 @@ export const SCENARIOS = [
         'fire-mask-boza-logram',
         'fire-mask-domogram',
       ];
-      for (let i = 0; i < 60; i += 1) {
+      for (let i = 0; i < 130; i += 1) {
         step(vm, 1);
         if (readVar(vm, 'fire-mask-logram') > 0) logramSet = true;
+        if (readVar(vm, 'fire-mask-andor-genesis') > 0) andorSet = true;
+        if (readVar(vm, 'ground-stop-firing-row') > 0) groundStopSet = true;
         for (const id of others) if (readVar(vm, id) > 0) otherMaskSet = true;
       }
-      return { logramSet, otherMaskSet };
+      return { logramSet, otherMaskSet, andorSet, groundStopSet };
     },
     assert(obs) {
       assert.equal(obs.logramSet, true, 'the logram fire mask is set to a non-zero scheduled value');
       assert.equal(obs.otherMaskSet, true, 'other family fire masks are set live too');
+      assert.equal(obs.andorSet, true, 'the Andor Genesis fire mask is set live (area 4)');
+      assert.equal(obs.groundStopSet, true, 'the ground-stop-firing row is set live');
     },
     // Break the logram mask branch (its handler == comparison never matches) so it is never set →
     // the logramSet assertion fails.
