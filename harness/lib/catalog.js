@@ -306,6 +306,45 @@ export const SCENARIOS = [
     // in-window advances never happen → the advance assertions fail.
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 13, 999),
   },
+  {
+    key: 'difficulty-and-formations',
+    behavior:
+      'The area schedule raises the AI level (folding back below 0x80) and selects a valid flying formation live',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Live pacing (like area-clock-scheduler): as raise / set-formation records fire, `ai level`
+      // climbs and `formation count` takes a formation-table value. The AI level starts at 0 on a
+      // new game and must never reach 0x80 — a raise folds it back first. The EXACT (count, offset)
+      // table correspondence is the model fixture's job (test_spec_docs); this proves it runs live.
+      let aiRose = false;
+      let maxAi = 0;
+      let formationSelections = 0;
+      let countInRange = true;
+      for (let i = 0; i < 140; i += 1) {
+        step(vm, 1);
+        const ai = readVar(vm, 'difficulty-ai-level');
+        const count = readVar(vm, 'formation-count');
+        if (ai > 0) aiRose = true;
+        maxAi = Math.max(maxAi, ai);
+        if (count > 0) {
+          formationSelections += 1;
+          if (count < 1 || count > 6) countInRange = false;
+        }
+      }
+      return { aiRose, maxAi, formationSelections, countInRange };
+    },
+    assert(obs) {
+      assert.equal(obs.aiRose, true, 'the AI level climbs as raise records fire');
+      assert.ok(obs.maxAi < 128, 'the AI level stays below 0x80 (a raise folds it back)');
+      assert.ok(obs.formationSelections >= 1, 'a flying formation is selected live (count set)');
+      assert.equal(obs.countInRange, true, 'the selected wave size stays in the recorded range 1..6');
+    },
+    // Break the raise dispatch (its handler == comparison never matches) so the AI level never
+    // rises → the aiRose assertion fails.
+    negativeMutation: (p) =>
+      mutate.changeEqualsOperand(p, 'Stage', 'raise_ai_level_and_set_formation', '__never__'),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"

@@ -890,6 +890,8 @@ class ScratchProjectTests(unittest.TestCase):
             # ECO-04 best-five verdict: Stage-computed only (never a sprite write, unlike
             # `award value`) — added to the write-forbid set below too.
             "qualified",
+            # FORM-01 transient formation-lookup register (overwritten on every selection).
+            "formation index",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -911,14 +913,32 @@ class ScratchProjectTests(unittest.TestCase):
             "schedule cursor",
             "schedule fired",
         }
+        # DIF-01/FORM-01 difficulty-director state — Stage-written, sprite-read, write-forbidden
+        # (like area/economy state, NOT machinery): the accumulating AI level and the incoming
+        # wave's size + type-table offset. `formation index` is the transient lookup register and
+        # is machinery, above.
+        difficulty_state_names = {
+            "ai level",
+            "formation count",
+            "formation type offset",
+        }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
         self.assertTrue(
             area_state_names.isdisjoint(machinery_names | director_state_names | economy_names)
         )
+        self.assertTrue(
+            difficulty_state_names.isdisjoint(
+                machinery_names | director_state_names | economy_names | area_state_names
+            )
+        )
         stage_variable_names = {name for name, _value in stage["variables"].values()}
         self.assertEqual(
-            director_state_names | machinery_names | economy_names | area_state_names,
+            director_state_names
+            | machinery_names
+            | economy_names
+            | area_state_names
+            | difficulty_state_names,
             stage_variable_names,
         )
         self.assertEqual(
@@ -954,8 +974,12 @@ class ScratchProjectTests(unittest.TestCase):
                 "schedule handler",
                 "schedule trigger row",
                 "schedule payload",
+                "schedule arg",
                 "area schedule start",
                 "area schedule end",
+                "difficulty increment",
+                "formation count table",
+                "formation type offset table",
             },
             stage_list_names,
         )
@@ -1021,6 +1045,10 @@ class ScratchProjectTests(unittest.TestCase):
             director.TERRAIN_COLUMN_ID,
             director.SCHEDULE_CURSOR_ID,
             director.SCHEDULE_FIRED_ID,
+            # DIF-01/FORM-01 difficulty-director state: Stage-only-written.
+            director.AI_LEVEL_ID,
+            director.FORMATION_COUNT_ID,
+            director.FORMATION_TYPE_OFFSET_ID,
         }
         # Read-only reference tables: ingested, hash-pinned authority data no sprite may
         # mutate (the mutable slot lists are deliberately excluded — allocators write those).
@@ -1036,8 +1064,12 @@ class ScratchProjectTests(unittest.TestCase):
             director.SCHEDULE_HANDLER_ID,
             director.SCHEDULE_TRIGGER_ROW_ID,
             director.SCHEDULE_PAYLOAD_ID,
+            director.SCHEDULE_ARG_ID,
             director.AREA_SCHEDULE_START_ID,
             director.AREA_SCHEDULE_END_ID,
+            director.DIFFICULTY_INCREMENT_ID,
+            director.FORMATION_COUNT_TABLE_ID,
+            director.FORMATION_TYPE_OFFSET_TABLE_ID,
         }
         list_write_opcodes = {
             "data_addtolist",
@@ -2783,13 +2815,14 @@ class ScratchProjectTests(unittest.TestCase):
 
     @staticmethod
     def _area02_failures(project: dict) -> set:
-        """AREA-02/AREA-03 area object scheduler: all 16 normal areas flattened into three parallel
-        columns (each area = its records + one materialized sentinel), partitioned by two 16-entry
-        index lists into contiguous 1-based inclusive per-area spans; an ordered consume loop guarded
-        by `cursor > end` OR `trigger != scroll row`, an EMPTY per-record dispatch seam, and the
-        observable that advances the cursor and counts fires. Structure only; the per-area JSON-faithful
-        content is the round-trip golden's job (test_spec_docs), and the dynamic fire-once/in-order
-        behaviour is exercised by the scratch-vm harness and the operator playtest."""
+        """AREA-02/AREA-03 area object scheduler: all 16 normal areas flattened into four parallel
+        columns (handler, trigger row, payload, and DIF-01/FORM-01's runtime `arg`; each area = its
+        records + one materialized sentinel), partitioned by two 16-entry index lists into contiguous
+        1-based inclusive per-area spans; an ordered consume loop guarded by `cursor > end` OR
+        `trigger != scroll row`, a per-record dispatch that now carries the DIF-01/FORM-01 handler
+        branches, and the observable that advances the cursor and counts fires. Structure only; the
+        per-area JSON-faithful content is the round-trip golden's job (test_spec_docs), and the dynamic
+        fire-once/in-order and dispatch behaviour is the scratch-vm harness and the operator playtest's."""
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         blocks = stage["blocks"]
@@ -2809,6 +2842,7 @@ class ScratchProjectTests(unittest.TestCase):
         handlers = by_name.get("schedule handler", [])
         rows = by_name.get("schedule trigger row", [])
         payloads = by_name.get("schedule payload", [])
+        args = by_name.get("schedule arg", [])
         starts = by_name.get("area schedule start", [])
         ends = by_name.get("area schedule end", [])
         total = len(handlers)
@@ -2820,7 +2854,13 @@ class ScratchProjectTests(unittest.TestCase):
             and all(starts[i] == ends[i - 1] + 1 for i in range(1, director.AREA_MAX))
             and all(starts[i] <= ends[i] for i in range(director.AREA_MAX))
         )
-        if not (total > 0 and len(rows) == total and len(payloads) == total and contiguous):
+        if not (
+            total > 0
+            and len(rows) == total
+            and len(payloads) == total
+            and len(args) == total  # DIF-01/FORM-01: the 4th parallel column stays in lockstep
+            and contiguous
+        ):
             failures.add("schedule-lists-length")
 
         # EVERY area's slice ends in the materialized sentinel (handler 'sentinel', trigger 0x0D) — a
@@ -2878,9 +2918,33 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("consume-counts-fired")
 
-        # the per-record dispatch is an EMPTY seam: the body is only the two counters, no handler.
-        if any(blocks[x]["opcode"] != "data_changevariableby" for x in ids):
-            failures.add("empty-dispatch")
+        # DIF-01 / FORM-01: the per-record dispatch is now WIRED — the loop body carries at least one
+        # handler-keyed branch (a control_if whose condition reads the `schedule handler` column).
+        # The spawn/boss handlers stay unwired (slice 8); the dispatched BEHAVIOUR is the harness and
+        # model fixtures' job, not this structural guard — this only catches the dispatch going missing.
+        def reads_handler_list(bid: str, seen: set) -> bool:
+            if bid in seen or bid not in blocks:
+                return False
+            seen.add(bid)
+            blk = blocks[bid]
+            if (
+                blk["opcode"] == "data_itemoflist"
+                and blk["fields"].get("LIST", [None, None])[1] == director.SCHEDULE_HANDLER_ID
+            ):
+                return True
+            return any(
+                isinstance(v, list) and len(v) > 1 and isinstance(v[1], str) and reads_handler_list(v[1], seen)
+                for v in blk["inputs"].values()
+            )
+
+        if not any(
+            blocks[x]["opcode"] == "control_if"
+            and isinstance(blocks[x]["inputs"].get("CONDITION"), list)
+            and len(blocks[x]["inputs"]["CONDITION"]) > 1
+            and reads_handler_list(blocks[x]["inputs"]["CONDITION"][1], set())
+            for x in ids
+        ):
+            failures.add("dispatch-present")
 
         # stop condition: operator_or( gt(cursor, end), not( eq(trigger, scroll row) ) ).
         def subtree(bid, acc):
@@ -2973,22 +3037,21 @@ class ScratchProjectTests(unittest.TestCase):
             )
             blk["inputs"]["VALUE"] = [1, [4, 0]]
 
-        def break_empty_dispatch(p):
+        def break_missing_dispatch(p):
+            # strip the DIF-01/FORM-01 handler branches from the loop body, leaving only the two
+            # counters — regressing to the old empty seam; the dispatch-present guard must catch it.
             s = stage_of(p)
+            b = s["blocks"]
             loop_id, ids = consume_loop(p)
-            # inject a bogus per-record dispatch block at the head of the loop body.
-            injected = "gd-stage-injected-dispatch"
-            s["blocks"][injected] = {
-                "opcode": "control_if",
-                "next": ids[0],
-                "parent": loop_id,
-                "inputs": {},
-                "fields": {},
-                "shadow": False,
-                "topLevel": False,
-            }
-            s["blocks"][ids[0]]["parent"] = injected
-            s["blocks"][loop_id]["inputs"]["SUBSTACK"] = [2, injected]
+            counters = [
+                x for x in ids if b[x]["opcode"] == "data_changevariableby"
+            ]
+            b[loop_id]["inputs"]["SUBSTACK"] = [2, counters[0]]
+            b[counters[0]]["parent"] = loop_id
+            for left, right in zip(counters, counters[1:]):
+                b[left]["next"] = right
+                b[right]["parent"] = left
+            b[counters[-1]]["next"] = None
 
         def break_stop_condition(p):
             s = stage_of(p)
@@ -3014,7 +3077,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("schedule-sentinel", break_sentinel),
             ("consume-advances-cursor", break_cursor_advance),
             ("consume-counts-fired", break_fired_count),
-            ("empty-dispatch", break_empty_dispatch),
+            ("dispatch-present", break_missing_dispatch),
             ("consume-stop-condition", break_stop_condition),
         ]
         for label, corrupt in cases:
@@ -4360,7 +4423,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "4d7c2dfd15618a5f835bf79fe3592a0719e013f5625cf891f69ce77323ba7394",
+            "89b9b90e8730d0b85a2f83b6fe612a86dc0be2e1ff21184e9ba43909412af57a",
             build_hash,
         )
 

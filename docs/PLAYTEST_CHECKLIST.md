@@ -55,7 +55,15 @@ so area position is read from the `area progress`/`area number` variable watcher
    area runs its own schedule. (Some areas legitimately share a record count, so two areas showing the
    *same* peak is **not** itself a bug; the exact per-area correctness is guaranteed by the build-time
    round-trip test, not the eye.) The visual terrain is not yet driven by the clock, so these are
-   variable-watcher checks, not on-screen ones.
+   variable-watcher checks, not on-screen ones. **Also tick `ai level`, `formation count`, and
+   `formation type offset`** (DIF-01 / FORM-01): as you fly, `ai level` climbs a little each time a raise
+   record fires and stays below **128** (a raise folds it back — you should never see it reach 128), and
+   `formation count` / `formation type offset` change to a new wave (count in **1–6**) when a raise or a
+   set-formation record fires, and drop to 0 on a reset-formation. **Read the `ai level` growth *rate* as a
+   placeholder, not fidelity:** the cabinet difficulty is a project-chosen default (increment +2), so how
+   *fast* the level climbs is not meaningful yet — only that it climbs, folds, and drives a valid formation
+   is. No enemies spawn from the formation this slice, so this is a watcher check, not an on-screen one; the
+   exact table correctness is the build-time model fixture's, not the eye's.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row (today: press D; once
    killers exist, die to a bullet, an enemy, and a Bacura): the full death presentation and sound
    complete uncut, the craft respawns immediately vulnerable, and nothing from the previous life

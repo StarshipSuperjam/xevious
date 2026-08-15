@@ -14,12 +14,16 @@ import importlib.util
 import json
 import math
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = ROOT / "docs" / "spec"
 DATA = SPEC / "data"
+
+sys.path.insert(0, str(ROOT / "tools"))
+import game_director as director  # noqa: E402
 
 
 def load_extractor():
@@ -497,8 +501,22 @@ class GeneratedAreaClock(unittest.TestCase):
         handlers = by_name["schedule handler"]
         rows = by_name["schedule trigger row"]
         payloads = by_name["schedule payload"]
+        args = by_name["schedule arg"]
         gen_start = by_name["area schedule start"]
         gen_end = by_name["area schedule end"]
+
+        # DIF-01/FORM-01: the runtime `arg` scalar, re-decoded INDEPENDENTLY here from each source
+        # record (set-formation offset / fire-mask byte / ground-stop row; 0 otherwise), so a
+        # mis-populated column fails here rather than shipping silently.
+        def expected_arg(record):
+            handler, params = record["handler"], record.get("params", {})
+            if handler == "set_flying_formation":
+                return params["formation_offset"]
+            if handler.startswith("fire_mask_"):
+                return params["mask"]
+            if handler == "ground_stop_firing_row":
+                return params["row"]
+            return 0
 
         areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
         by_area = {a["area"]: a for a in areas}
@@ -514,9 +532,9 @@ class GeneratedAreaClock(unittest.TestCase):
             cursor += stride
         self.assertEqual(expected_start, gen_start, "area schedule start offsets")
         self.assertEqual(expected_end, gen_end, "area schedule end offsets")
-        # the three columns are exactly as long as the last span says.
+        # the four parallel columns are exactly as long as the last span says.
         self.assertEqual(cursor - 1, len(handlers))
-        self.assertEqual({len(handlers), len(rows)}, {len(payloads)})
+        self.assertEqual({len(handlers)}, {len(rows), len(payloads), len(args)})
 
         # each area's flattened window matches its SOURCE records + materialized sentinel.
         for area_number in range(1, 17):
@@ -533,11 +551,110 @@ class GeneratedAreaClock(unittest.TestCase):
                     json.loads(payloads[idx]),
                     f"area {area_number} payload {j}",
                 )
+                self.assertEqual(expected_arg(record), args[idx], f"area {area_number} arg {j}")
             # this area's window terminates in the materialized sentinel (its scalar end_sentinel).
             end = expected_end[area_number - 1]  # 1-based, inclusive
             self.assertEqual("sentinel", handlers[end - 1], f"area {area_number} sentinel handler")
             self.assertEqual(area["end_sentinel"], rows[end - 1], f"area {area_number} sentinel row")
             self.assertEqual("", payloads[end - 1], f"area {area_number} sentinel payload")
+            self.assertEqual(0, args[end - 1], f"area {area_number} sentinel arg")
+
+
+class DifficultyAndFormations(unittest.TestCase):
+    """DIF-01 / FORM-01: the difficulty AI level and normal flying formations, modelled over the
+    COMMITTED data independently of the generator (the engine half of the acceptance criteria). The
+    RULE is re-implemented here, not read back from the dispatch, so a wrong index formula fails
+    rather than laundering itself; only the build's DIP-index and numeric constants come from the
+    generator."""
+
+    def _stage_lists(self):
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        return {value[0]: value[1] for value in stage["lists"].values()}
+
+    def _formation_table(self):
+        entries = json.loads((DATA / "formations.json").read_text())["formation_table"]["entries"]
+        ordered = sorted(entries, key=lambda e: e["index"])
+        counts = [e["enemy_count"] for e in ordered]
+        offsets = [e["type_table_offset"] for e in ordered]
+        return ordered, counts, offsets
+
+    def test_baked_tables_match_committed_data(self):
+        # The generator bakes difficulty.json / formations.json faithfully into the Stage lists.
+        lists = self._stage_lists()
+        diff = json.loads((DATA / "difficulty.json").read_text())["difficulty_tbl"]["values"]
+        self.assertEqual([2, 0, 6, 16], diff)  # arcade increments, sanity-anchored
+        self.assertEqual(diff, lists["difficulty increment"])
+        ordered, counts, offsets = self._formation_table()
+        self.assertEqual(
+            list(range(director.FORMATION_MIN_INDEX, director.FORMATION_MIN_INDEX + director.FORMATION_TABLE_LEN)),
+            [e["index"] for e in ordered],
+            "formation table domain -32..127",
+        )
+        self.assertEqual(counts, lists["formation count table"])
+        self.assertEqual(offsets, lists["formation type offset table"])
+
+    def test_formation_lookup_reproduces_committed_table(self):
+        # FORM-01 selection: slot = index - MIN (0-based into the two ordered lists) reproduces every
+        # committed (count, type-offset) pair across the whole domain.
+        ordered, counts, offsets = self._formation_table()
+        by_index = {e["index"]: (e["enemy_count"], e["type_table_offset"]) for e in ordered}
+        for index in range(director.FORMATION_MIN_INDEX, director.FORMATION_MIN_INDEX + director.FORMATION_TABLE_LEN):
+            slot = index - director.FORMATION_MIN_INDEX
+            self.assertEqual(by_index[index], (counts[slot], offsets[slot]), f"index {index}")
+
+    def test_ai_level_fold_back(self):
+        # DIF-01 raise math: ai += increment; fold ONCE at >= 0x80 by subtracting 0x40, so the level
+        # (which the raise re-select uses as the formation index) stays below 0x80.
+        inc = json.loads((DATA / "difficulty.json").read_text())["difficulty_tbl"]["values"][
+            director.DIFFICULTY_DIP_INDEX
+        ]
+
+        def raise_once(ai):
+            ai += inc
+            if ai >= director.AI_LEVEL_FOLD_THRESHOLD:
+                ai -= director.AI_LEVEL_FOLD_SUBTRACT
+            return ai
+
+        self.assertEqual(inc, raise_once(0))
+        self.assertEqual(64, raise_once(126))  # 128 -> fold -> 64
+        self.assertEqual(65, raise_once(127))  # 129 -> fold -> 65
+        self.assertLess(raise_once(127), director.AI_LEVEL_FOLD_THRESHOLD)
+
+    def test_formation_index_in_domain_over_committed_schedules(self):
+        # FORM-01 / DIF-01 range proof: walk the committed schedules in the accelerated 1..16 then
+        # 7..16 loop order, tracking the AI level through raises (fold-back) and picking the formation
+        # index exactly as the emitted dispatch does — set-formation: the record offset; raise: the
+        # folded AI level. Assert EVERY index lands in the table's -32..127 domain, so the generator's
+        # two-sided guard is a proven-dead defensive branch under this slice's dynamics, and that BOTH
+        # selection paths are actually exercised. (DIF-02's score term, a later commit, is the only
+        # thing that could push the index out of domain; that is recorded with DIF-02.)
+        areas = {a["area"]: a["records"] for a in json.loads((DATA / "area-schedules.json").read_text())["areas"]}
+        inc = json.loads((DATA / "difficulty.json").read_text())["difficulty_tbl"]["values"][
+            director.DIFFICULTY_DIP_INDEX
+        ]
+        lo = director.FORMATION_MIN_INDEX
+        hi = director.FORMATION_MIN_INDEX + director.FORMATION_TABLE_LEN - 1
+        order = list(range(1, 17)) + list(range(7, 17)) * 6  # a few loop cycles for steady state
+        ai = 0
+        raises = sets = 0
+        for area in order:
+            for record in areas[area]:
+                handler = record["handler"]
+                if handler == "raise_ai_level_and_set_formation":
+                    ai += inc
+                    if ai >= director.AI_LEVEL_FOLD_THRESHOLD:
+                        ai -= director.AI_LEVEL_FOLD_SUBTRACT
+                    index = ai
+                    raises += 1
+                elif handler == "set_flying_formation":
+                    index = record["params"]["formation_offset"]
+                    sets += 1
+                else:
+                    continue
+                self.assertTrue(lo <= index <= hi, f"formation index {index} out of domain (area {area})")
+        self.assertGreater(raises, 0, "the raise re-select path must be exercised")
+        self.assertGreater(sets, 0, "the set-formation path must be exercised")
 
 
 if __name__ == "__main__":

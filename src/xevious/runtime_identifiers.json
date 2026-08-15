@@ -19,6 +19,11 @@
       "name": "area progress",
       "scope": "Stage"
     },
+    "area-schedule-arg": {
+      "kind": "list",
+      "name": "schedule arg",
+      "scope": "Stage"
+    },
     "area-schedule-cursor": {
       "kind": "variable",
       "name": "schedule cursor",
@@ -84,6 +89,16 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "difficulty-ai-level": {
+      "kind": "variable",
+      "name": "ai level",
+      "scope": "Stage"
+    },
+    "difficulty-increment": {
+      "kind": "list",
+      "name": "difficulty increment",
+      "scope": "Stage"
+    },
     "eco-award-value": {
       "kind": "variable",
       "name": "award value",
@@ -147,6 +162,31 @@
     "eco-value-table": {
       "kind": "list",
       "name": "value table",
+      "scope": "Stage"
+    },
+    "formation-count": {
+      "kind": "variable",
+      "name": "formation count",
+      "scope": "Stage"
+    },
+    "formation-count-table": {
+      "kind": "list",
+      "name": "formation count table",
+      "scope": "Stage"
+    },
+    "formation-index": {
+      "kind": "variable",
+      "name": "formation index",
+      "scope": "Stage"
+    },
+    "formation-type-offset": {
+      "kind": "variable",
+      "name": "formation type offset",
+      "scope": "Stage"
+    },
+    "formation-type-offset-table": {
+      "kind": "list",
+      "name": "formation type offset table",
       "scope": "Stage"
     },
     "game-director-allowed-transitions": {
