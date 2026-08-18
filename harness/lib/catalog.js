@@ -306,6 +306,88 @@ export const SCENARIOS = [
     // in-window advances never happen → the advance assertions fail.
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 13, 999),
   },
+  {
+    key: 'difficulty-and-formations',
+    behavior:
+      'The area schedule raises the AI level (folding back below 0x80) and selects a valid flying formation live',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Live pacing (like area-clock-scheduler): as raise / set-formation records fire, `ai level`
+      // climbs and `formation count` takes a formation-table value. The AI level starts at 0 on a
+      // new game and must never reach 0x80 — a raise folds it back first. The EXACT (count, offset)
+      // table correspondence is the model fixture's job (test_spec_docs); this proves it runs live.
+      let aiRose = false;
+      let maxAi = 0;
+      let formationSelections = 0;
+      let countInRange = true;
+      for (let i = 0; i < 140; i += 1) {
+        step(vm, 1);
+        const ai = readVar(vm, 'difficulty-ai-level');
+        const count = readVar(vm, 'formation-count');
+        if (ai > 0) aiRose = true;
+        maxAi = Math.max(maxAi, ai);
+        if (count > 0) {
+          formationSelections += 1;
+          if (count < 1 || count > 6) countInRange = false;
+        }
+      }
+      return { aiRose, maxAi, formationSelections, countInRange };
+    },
+    assert(obs) {
+      assert.equal(obs.aiRose, true, 'the AI level climbs as raise records fire');
+      assert.ok(obs.maxAi < 128, 'the AI level stays below 0x80 (a raise folds it back)');
+      assert.ok(obs.formationSelections >= 1, 'a flying formation is selected live (count set)');
+      assert.equal(obs.countInRange, true, 'the selected wave size stays in the recorded range 1..6');
+    },
+    // Break the raise dispatch (its handler == comparison never matches) so the AI level never
+    // rises → the aiRose assertion fails.
+    negativeMutation: (p) =>
+      mutate.changeEqualsOperand(p, 'Stage', 'raise_ai_level_and_set_formation', '__never__'),
+  },
+  {
+    key: 'fire-permission-masks',
+    behavior: 'Area-schedule fire-mask records set the per-family fire-permission masks live',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The schedule sets the fire masks from the record bytes as it scrolls. One headless pump
+      // covers many game ticks, so a specific transient value (logram is set to 255, then 31 within
+      // one pump) can be stepped over — assert the robust fact instead: each family mask, the
+      // ground-stop-firing row, and Andor Genesis (first scheduled in area 4) are SEEN set to a
+      // non-zero scheduled value. (The FIRING that consumes them is the enemy slices'.) The window is
+      // long enough to cross into area 4 so all nine DIF-03 targets are actually exercised.
+      let logramSet = false;
+      let otherMaskSet = false;
+      let andorSet = false;
+      let groundStopSet = false;
+      const others = [
+        'fire-mask-derota',
+        'fire-mask-zoshi',
+        'fire-mask-terrazi',
+        'fire-mask-kapi',
+        'fire-mask-boza-logram',
+        'fire-mask-domogram',
+      ];
+      for (let i = 0; i < 130; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'fire-mask-logram') > 0) logramSet = true;
+        if (readVar(vm, 'fire-mask-andor-genesis') > 0) andorSet = true;
+        if (readVar(vm, 'ground-stop-firing-row') > 0) groundStopSet = true;
+        for (const id of others) if (readVar(vm, id) > 0) otherMaskSet = true;
+      }
+      return { logramSet, otherMaskSet, andorSet, groundStopSet };
+    },
+    assert(obs) {
+      assert.equal(obs.logramSet, true, 'the logram fire mask is set to a non-zero scheduled value');
+      assert.equal(obs.otherMaskSet, true, 'other family fire masks are set live too');
+      assert.equal(obs.andorSet, true, 'the Andor Genesis fire mask is set live (area 4)');
+      assert.equal(obs.groundStopSet, true, 'the ground-stop-firing row is set live');
+    },
+    // Break the logram mask branch (its handler == comparison never matches) so it is never set →
+    // the logramSet assertion fails.
+    negativeMutation: (p) => mutate.changeEqualsOperand(p, 'Stage', 'fire_mask_logram', '__never__'),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"

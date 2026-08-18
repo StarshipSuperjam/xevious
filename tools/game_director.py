@@ -389,20 +389,133 @@ SCHEDULE_CURSOR_ID = "area-schedule-cursor"
 SCHEDULE_FIRED_ID = "area-schedule-fired"
 SCHEDULE_SENTINEL_HANDLER = "sentinel"
 
+# DIF-01 / FORM-01 adaptive difficulty and normal flying formations
+# (docs/spec/difficulty-and-formations.md). One accumulating AI level, raised on a
+# schedule and folded back at 0x80, plus the formation the incoming wave uses. The AI
+# level and the formation are selected from the SAME table by two DIFFERENT indices,
+# matching the reference the spec cites:
+#   * set_flying_formation (sub_2_fn_2): index = the record's signed offset (NOT the AI
+#     level) — sign-extended, addressing the 2-byte entries; the offset is the index.
+#   * raise_ai_level_and_set_formation (sub_2_fn_3): index = the raised, folded AI level
+#     (no record offset).
+# The formation table (formations.json) is decoded to logical entries index -32..127, so
+# the reference's byte "doubling" is already absorbed; we store count and type-offset as
+# two parallel logical lists. `formation index` is a transient working register (the
+# lookup index), machinery like the rng working vars. Fire masks / adjust arrive in the
+# later commits of this slice; their schedule scalars are already decoded into the
+# `schedule arg` column here so the column is complete once and for all.
+AI_LEVEL_ID = "difficulty-ai-level"
+FORMATION_COUNT_ID = "formation-count"
+FORMATION_TYPE_OFFSET_ID = "formation-type-offset"
+FORMATION_INDEX_ID = "formation-index"  # transient lookup index (machinery)
+AI_ADJUST_ID = "difficulty-ai-adjust"  # DIF-02 transient score re-tune addend (machinery)
+SCHEDULE_ARG_ID = "area-schedule-arg"  # 4th parallel schedule column (runtime scalar)
+DIFFICULTY_INCREMENT_ID = "difficulty-increment"  # baked [2,0,6,16], indexed by DIP
+FORMATION_COUNT_TABLE_ID = "formation-count-table"  # 160 entries, index -32..127
+FORMATION_TYPE_OFFSET_TABLE_ID = "formation-type-offset-table"
 
-def _load_area_schedule(area_number: int) -> tuple[list[str], list[int], list[str]]:
-    # AREA-02: ingest one area's schedule from the committed, hash-pinned reference data as three
-    # faithful parallel columns (handler, trigger row, opaque payload). The end sentinel (a scalar
-    # in the JSON) is MATERIALIZED as the terminal row so the table is self-terminating and the
-    # extractor's "every table decodes to its sentinel" invariant is reproduced. object_type +
-    # params are serialized deterministically (sorted keys) into the payload; source_line is
-    # provenance, not runtime data, and is deliberately not ingested. The round-trip golden in
-    # tests/test_spec_docs.py proves nothing is dropped.
+# Schedule handler strings this slice dispatches on (keys into the discriminated schedule
+# records). Spawn/boss handlers stay on the empty seam (slice 8).
+RAISE_HANDLER = "raise_ai_level_and_set_formation"
+ADJUST_HANDLER = "adjust_ai_level_from_score"
+SET_FORMATION_HANDLER = "set_flying_formation"
+RESET_FORMATION_HANDLER = "reset_flying_formation"
+FIRE_MASK_PREFIX = "fire_mask_"
+GROUND_STOP_FIRING_HANDLER = "ground_stop_firing_row"
+
+# DIF-03 per-family fire-permission masks. Area schedules set one mask byte per firing family; the
+# byte gates how often that family may fire, and the per-family firing that consumes each mask is the
+# enemy slices' (8+). Each family is (handler suffix, Stage display name, Stage id). The handler is
+# FIRE_MASK_PREFIX + suffix.
+FIRE_MASK_FAMILIES = [
+    ("derota", "fire mask derota", "fire-mask-derota"),
+    ("logram", "fire mask logram", "fire-mask-logram"),
+    ("zoshi", "fire mask zoshi", "fire-mask-zoshi"),
+    ("terrazi", "fire mask terrazi", "fire-mask-terrazi"),
+    ("kapi", "fire mask kapi", "fire-mask-kapi"),
+    ("boza_logram", "fire mask boza logram", "fire-mask-boza-logram"),
+    ("domogram", "fire mask domogram", "fire-mask-domogram"),
+    ("andor_genesis", "fire mask andor genesis", "fire-mask-andor-genesis"),
+]
+GROUND_STOP_FIRING_ROW_ID = "ground-stop-firing-row"
+
+# Project-defined cabinet difficulty DIP index (four-marker placeholder; the spec records
+# no arcade power-on default, like RNG_COLD_START_SEED). Index 0 selects increment +2 —
+# the LOWEST setting that still PROGRESSES (index 1 = +0 would make every raise inert and
+# the difficulty director look dead on the monitors). An INDEPENDENT cabinet switch from
+# DIP_STARTING_ITEM / DIP_BONUS_ITEM. It is CONSUMED LIVE this slice (it scales the
+# observable AI-level growth), so its growth RATE is placeholder-driven and is NOT a
+# fidelity claim — only the growth MECHANISM is. Recorded in docs/mechanics/019.
+DIFFICULTY_DIP_INDEX = 0
+AI_LEVEL_FOLD_THRESHOLD = 0x80  # a raise reaching >= 128 folds back (never clamps)
+AI_LEVEL_FOLD_SUBTRACT = 0x40  # ... by subtracting 64 once
+FORMATION_MIN_INDEX = -32  # formations.json domain lower bound (bytes before the label)
+FORMATION_TABLE_LEN = 160  # entries, index -32..127 inclusive
+
+
+def _load_difficulty_increments() -> list[int]:
+    # DIF-01: the four cabinet AI-level increments [2,0,6,16] (difficulty.json), ingested
+    # (never authored), verified against the hash manifest at load.
+    return list(_load_spec_data("difficulty.json")["difficulty_tbl"]["values"])
+
+
+def _load_formation_tables() -> tuple[list[int], list[int]]:
+    # FORM-01: the normal flying-formation table (formations.json), decoded to logical
+    # entries index -32..127, split into two parallel lists in list-position order (position
+    # p, 1-based, is index p - 1 + FORMATION_MIN_INDEX). Fail LOUD if the entries are not
+    # exactly that contiguous domain, once each (mirrors the area-set check).
+    entries = _load_spec_data("formations.json")["formation_table"]["entries"]
+    ordered = sorted(entries, key=lambda e: e["index"])
+    expected = list(range(FORMATION_MIN_INDEX, FORMATION_MIN_INDEX + FORMATION_TABLE_LEN))
+    if [e["index"] for e in ordered] != expected:
+        raise SystemExit(
+            "formations.json must define exactly the contiguous indices "
+            f"{FORMATION_MIN_INDEX}..{FORMATION_MIN_INDEX + FORMATION_TABLE_LEN - 1}, once each"
+        )
+    counts = [e["enemy_count"] for e in ordered]
+    offsets = [e["type_table_offset"] for e in ordered]
+    return counts, offsets
+
+
+DIFFICULTY_INCREMENTS = _load_difficulty_increments()
+FORMATION_COUNTS, FORMATION_TYPE_OFFSETS = _load_formation_tables()
+
+
+def _schedule_arg(record: dict) -> int:
+    # DIF-01/03 + FORM-01: the single runtime-readable scalar each dispatched handler needs,
+    # pre-decoded from the opaque JSON payload (Scratch cannot parse JSON at runtime). A
+    # set-formation record carries its signed formation index; a fire-mask its byte; the
+    # ground-stop-firing row its row. Every other handler (raise/adjust/reset, and the
+    # spawn/boss kinds still on the empty dispatch seam) needs no scalar -> 0.
+    handler = record["handler"]
+    params = record.get("params", {})
+    if handler == SET_FORMATION_HANDLER:
+        return params["formation_offset"]
+    if handler.startswith(FIRE_MASK_PREFIX):
+        return params["mask"]
+    if handler == GROUND_STOP_FIRING_HANDLER:
+        return params["row"]
+    return 0
+
+
+def _load_area_schedule(
+    area_number: int,
+) -> tuple[list[str], list[int], list[str], list[int]]:
+    # AREA-02: ingest one area's schedule from the committed, hash-pinned reference data as four
+    # faithful parallel columns (handler, trigger row, opaque payload, and DIF-01/03+FORM-01's
+    # runtime scalar `arg`). The end sentinel (a scalar in the JSON) is MATERIALIZED as the terminal
+    # row so the table is self-terminating and the extractor's "every table decodes to its sentinel"
+    # invariant is reproduced. object_type + params are serialized deterministically (sorted keys)
+    # into the payload; source_line is provenance, not runtime data, and is deliberately not ingested.
+    # The `arg` column carries the one scalar the runtime dispatch reads per record (Scratch cannot
+    # parse the JSON payload) — see _schedule_arg; the sentinel's arg is 0. The round-trip golden in
+    # tests/test_spec_docs.py proves nothing is dropped and all four columns stay the same length.
     data = _load_spec_data("area-schedules.json")
     area = next(a for a in data["areas"] if a["area"] == area_number)
     handlers: list[str] = []
     rows: list[int] = []
     payloads: list[str] = []
+    args: list[int] = []
     for record in area["records"]:
         handlers.append(record["handler"])
         rows.append(record["scroll_row"])
@@ -413,14 +526,16 @@ def _load_area_schedule(area_number: int) -> tuple[list[str], list[int], list[st
                 sort_keys=True,
             )
         )
+        args.append(_schedule_arg(record))
     handlers.append(SCHEDULE_SENTINEL_HANDLER)
     rows.append(area["end_sentinel"])
     payloads.append("")
-    return handlers, rows, payloads
+    args.append(0)
+    return handlers, rows, payloads, args
 
 
 def _load_all_area_schedules() -> tuple[
-    list[str], list[int], list[str], list[int], list[int]
+    list[str], list[int], list[str], list[int], list[int], list[int]
 ]:
     # AREA-03: flatten all 16 normal area schedules into three parallel columns, with two 16-entry
     # index lists giving each area's 1-based INCLUSIVE span [start..end] into those columns. Areas are
@@ -442,24 +557,27 @@ def _load_all_area_schedules() -> tuple[
     handlers: list[str] = []
     rows: list[int] = []
     payloads: list[str] = []
+    args: list[int] = []
     starts: list[int] = []
     ends: list[int] = []
     cursor = 1  # 1-based, matching Scratch list indexing and the runtime `schedule cursor`
     for area_number in range(AREA_FIRST, AREA_MAX + 1):
-        area_handlers, area_rows, area_payloads = _load_area_schedule(area_number)
+        area_handlers, area_rows, area_payloads, area_args = _load_area_schedule(area_number)
         starts.append(cursor)  # this area's first index (before advancing the cursor)
         handlers.extend(area_handlers)
         rows.extend(area_rows)
         payloads.extend(area_payloads)
+        args.extend(area_args)
         cursor += len(area_rows)
         ends.append(cursor - 1)  # this area's last index (after advancing; inclusive)
-    return handlers, rows, payloads, starts, ends
+    return handlers, rows, payloads, args, starts, ends
 
 
 (
     SCHEDULE_HANDLERS,
     SCHEDULE_ROWS,
     SCHEDULE_PAYLOADS,
+    SCHEDULE_ARGS,
     AREA_SCHEDULE_START,
     AREA_SCHEDULE_END,
 ) = _load_all_area_schedules()
@@ -1275,6 +1393,50 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
     ]
 
 
+def _select_formation(blocks: Blocks, index_value: Any) -> list[str]:
+    # FORM-01: set the incoming wave's `formation count` + `formation type offset` from the
+    # formation table, indexed by `index_value` (a reporter block id OR a value-input spec giving
+    # the signed formation index — the record offset for a set-formation record, or the raised,
+    # folded AI level for a raise record). The table is two parallel logical lists over index
+    # FORMATION_MIN_INDEX..MAX, so the 1-based slot is index - FORMATION_MIN_INDEX + 1. Scratch
+    # `item N of list` returns "" (not 0) for N outside 1..len, silently poisoning arithmetic, so
+    # the assignment is GUARDED on BOTH bounds: an out-of-domain index leaves the prior formation
+    # unchanged (no faithful ROM-adjacent value exists to fabricate). The build-time fixture in
+    # tests/test_spec_docs.py proves the real committed schedules never leave the domain under this
+    # slice's full dynamics (raises, set-formation, AND DIF-02's un-folded score adjust at its
+    # worst-case cap), so the guard is a defensive dead branch; a future schedule/DIP change that
+    # broke that margin would redden that fixture, not fail silently here.
+    if isinstance(index_value, str):
+        set_index = blocks.set_var_expr("formation index", FORMATION_INDEX_ID, index_value)
+    else:
+        set_index = blocks.set_var("formation index", FORMATION_INDEX_ID, index_value)
+
+    def idx() -> list[Any]:
+        return variable("formation index", FORMATION_INDEX_ID)
+
+    def slot() -> str:
+        return blocks.op_add(idx(), number(1 - FORMATION_MIN_INDEX))
+
+    in_range = blocks.add("operator_and")
+    lower = blocks.op_gt(idx(), number(FORMATION_MIN_INDEX - 1))  # index >= MIN
+    upper = blocks.op_gt(number(FORMATION_MIN_INDEX + FORMATION_TABLE_LEN), idx())  # index <= MAX
+    blocks.blocks[lower]["parent"] = in_range
+    blocks.blocks[upper]["parent"] = in_range
+    blocks.blocks[in_range]["inputs"] = {"OPERAND1": [2, lower], "OPERAND2": [2, upper]}
+    set_count = blocks.set_var_expr(
+        "formation count",
+        FORMATION_COUNT_ID,
+        blocks.list_item("formation count table", FORMATION_COUNT_TABLE_ID, slot()),
+    )
+    set_type = blocks.set_var_expr(
+        "formation type offset",
+        FORMATION_TYPE_OFFSET_ID,
+        blocks.list_item("formation type offset table", FORMATION_TYPE_OFFSET_TABLE_ID, slot()),
+    )
+    guard = blocks.if_reporter(in_range, [set_count, set_type])
+    return [set_index, guard]
+
+
 def _consume_schedule(blocks: Blocks) -> list[str]:
     # AREA-02 ordered dispatch: consume every record at the cursor whose trigger row equals the
     # current scroll row, in order, advancing the cursor. Fire-once is guaranteed by the monotonic
@@ -1282,12 +1444,18 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # row OR the cursor passes the area's end index (`cursor > end`, the belt-and-suspenders bound
     # slice 6 relies on so one area never bleeds into the next). The sentinel never fires because
     # the dispatch reads the POST-increment row, which is <= 12 until the wrap and never the area-top
-    # row 0x0D. The per-record handler dispatch is an EMPTY seam this slice (like advance-slots);
-    # `schedule fired` is the observable that events fire once, in order.
+    # row 0x0D. The DIF-01/FORM-01 handlers (raise / set-formation / reset-formation) are wired
+    # below; `schedule fired` still counts every record so the fire-once observable is unchanged.
     loop = blocks.add("control_repeat_until")
 
     def cursor() -> list[Any]:
         return variable("schedule cursor", SCHEDULE_CURSOR_ID)
+
+    def handler_at_cursor() -> str:
+        return blocks.list_item("schedule handler", SCHEDULE_HANDLER_ID, cursor())
+
+    def arg_at_cursor() -> str:
+        return blocks.list_item("schedule arg", SCHEDULE_ARG_ID, cursor())
 
     end = blocks.list_item(
         "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
@@ -1303,12 +1471,108 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     blocks.blocks[row_differs]["parent"] = stop
     blocks.blocks[stop]["inputs"] = {"OPERAND1": [2, past_end], "OPERAND2": [2, row_differs]}
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop]
-    # ENGINE-TODO: the per-record handler dispatch (spawn / formation / difficulty / boss, keyed on
-    # `schedule handler` + `schedule payload`) lands with the enemy slices (8+); the consume today
-    # advances the cursor and counts the fire, with no per-handler behaviour.
+
+    # DIF-01 raise: add the cabinet increment to the AI level, fold back once at >= 0x80, then
+    # re-select the formation using the new AI level as the table index (no record offset).
+    raise_body = [
+        blocks.set_var_expr(
+            "ai level",
+            AI_LEVEL_ID,
+            blocks.op_add(
+                variable("ai level", AI_LEVEL_ID),
+                blocks.list_item(
+                    "difficulty increment",
+                    DIFFICULTY_INCREMENT_ID,
+                    number(DIFFICULTY_DIP_INDEX + 1),
+                ),
+            ),
+        ),
+        blocks.if_reporter(
+            blocks.op_gt(variable("ai level", AI_LEVEL_ID), number(AI_LEVEL_FOLD_THRESHOLD - 1)),
+            [blocks.change_var("ai level", AI_LEVEL_ID, -AI_LEVEL_FOLD_SUBTRACT)],
+        ),
+        *_select_formation(blocks, variable("ai level", AI_LEVEL_ID)),
+    ]
+    raise_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(RAISE_HANDLER)), raise_body
+    )
+    # DIF-02 score re-tune: add floor(floor(score / 1000) / craft), capped at 16, to the AI level —
+    # so a player scoring heavily with craft in reserve meets sharper pressure. Guarded on craft > 0
+    # (no divide-by-zero). Unlike the raise, the reference does NOT fold this add back.
+    adjust_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(ADJUST_HANDLER)),
+        [
+            blocks.if_reporter(
+                blocks.op_gt(variable("craft", LIVES_ID), number(0)),
+                [
+                    blocks.set_var_expr(
+                        "ai adjust",
+                        AI_ADJUST_ID,
+                        blocks.op_floor(
+                            blocks.op_div(
+                                blocks.op_floor(
+                                    blocks.op_div(variable("score", SCORE_ID), number(1000))
+                                ),
+                                variable("craft", LIVES_ID),
+                            )
+                        ),
+                    ),
+                    blocks.if_reporter(
+                        blocks.op_gt(variable("ai adjust", AI_ADJUST_ID), number(16)),
+                        [blocks.set_var("ai adjust", AI_ADJUST_ID, number(16))],
+                    ),
+                    blocks.set_var_expr(
+                        "ai level",
+                        AI_LEVEL_ID,
+                        blocks.op_add(
+                            variable("ai level", AI_LEVEL_ID),
+                            variable("ai adjust", AI_ADJUST_ID),
+                        ),
+                    ),
+                ],
+            )
+        ],
+    )
+    # FORM-01 set-formation: the record's signed offset IS the table index (no AI level added).
+    set_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(SET_FORMATION_HANDLER)),
+        _select_formation(blocks, arg_at_cursor()),
+    )
+    # FORM-01 reset-formation: zero the wave between formations.
+    reset_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(RESET_FORMATION_HANDLER)),
+        [
+            blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
+            blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
+        ],
+    )
+    # DIF-03 fire-permission masks: each family's `fire_mask_<family>` record sets that family's mask
+    # byte from the schedule arg; the `ground_stop_firing_row` record sets the ground-stop row. The
+    # per-family firing that CONSUMES these lands with the enemy slices (8+).
+    mask_branches = [
+        blocks.if_reporter(
+            blocks.op_eq(handler_at_cursor(), text(FIRE_MASK_PREFIX + suffix)),
+            [blocks.set_var_expr(name, mask_id, arg_at_cursor())],
+        )
+        for suffix, name, mask_id in FIRE_MASK_FAMILIES
+    ]
+    ground_stop_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(GROUND_STOP_FIRING_HANDLER)),
+        [blocks.set_var_expr("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, arg_at_cursor())],
+    )
+    # ENGINE-TODO: the spawn / boss handler dispatch (add_ground_object, add_domogram_with_path,
+    # add_object, *bacura*, andor_genesis_*, sheonite_*) lands with the enemy slices (8+). The
+    # DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks, ground-stop) are all
+    # wired above; the still-unhandled spawn/boss records advance the cursor and count the fire only.
     blocks.substack(
         loop,
         [
+            raise_branch,
+            adjust_branch,
+            set_branch,
+            reset_branch,
+            *mask_branches,
+            ground_stop_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -1712,6 +1976,33 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     checkpoint = blocks.if_reporter(near_end, [_advance_area_number(blocks)])
     blocks.substack(new_life, [checkpoint, *_enter_area_top(blocks)])
     blocks.chain(area_reset, [world_area, new_life])
+
+    # DIF-01 / FORM-01 difficulty-director reset — its OWN `director reset` receiver (like the eight
+    # existing per-concern receivers, each branching on its own scope). Per the spec, the AI level,
+    # formation, and fire masks are per-player game state: they PERSIST across death/respawn and
+    # reset only for a new game — so this fires on cold-start / new-game only. It touches only the
+    # difficulty vars (disjoint from every other receiver's), so the unordered same-target hat
+    # execution is safe. (`formation index` is a transient lookup register, not reset here.)
+    difficulty_reset = blocks.receive("director reset")
+    blocks.chain(
+        difficulty_reset,
+        [
+            reset_if(
+                blocks,
+                ("cold-start", "new-game"),
+                [
+                    blocks.set_var("ai level", AI_LEVEL_ID, number(0)),
+                    blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
+                    blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
+                    blocks.set_var("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, number(0)),
+                    *(
+                        blocks.set_var(name, mask_id, number(0))
+                        for _suffix, name, mask_id in FIRE_MASK_FAMILIES
+                    ),
+                ],
+            )
+        ],
+    )
 
     return blocks.blocks
 
@@ -2643,6 +2934,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TERRAIN_COLUMN_ID,
         SCHEDULE_CURSOR_ID,
         SCHEDULE_FIRED_ID,
+        AI_LEVEL_ID,
+        FORMATION_COUNT_ID,
+        FORMATION_TYPE_OFFSET_ID,
+        FORMATION_INDEX_ID,
+        AI_ADJUST_ID,
+        GROUND_STOP_FIRING_ROW_ID,
+        *(mask_id for _suffix, _name, mask_id in FIRE_MASK_FAMILIES),
     }
     preserved_variables = {
         variable_id: value
@@ -2700,6 +2998,21 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # flattened schedule lists and the per-area count of records fired (the observable).
         SCHEDULE_CURSOR_ID: ["schedule cursor", 1],
         SCHEDULE_FIRED_ID: ["schedule fired", 0],
+        # DIF-01 / FORM-01 difficulty-director state (Stage-written, sprite-read, write-forbidden,
+        # like the area state): the accumulating AI level, and the incoming wave's size + type-table
+        # offset the slice-8 spawner will read. `formation index` is the transient lookup register
+        # (machinery). All reset to 0 on a world reset; they persist across death/respawn.
+        AI_LEVEL_ID: ["ai level", 0],
+        FORMATION_COUNT_ID: ["formation count", 0],
+        FORMATION_TYPE_OFFSET_ID: ["formation type offset", 0],
+        FORMATION_INDEX_ID: ["formation index", 0],
+        # DIF-02 transient score re-tune addend (machinery, like `formation index`).
+        AI_ADJUST_ID: ["ai adjust", 0],
+        # DIF-03 per-family fire-permission masks + the ground-stop-firing row (difficulty-director
+        # state, Stage-written, sprite-read, write-forbidden). Set by the schedule; consumed by the
+        # enemy slices (8+). All reset to 0 on a world reset, alongside the AI level and formation.
+        GROUND_STOP_FIRING_ROW_ID: ["ground stop firing row", 0],
+        **{mask_id: [name, 0] for _suffix, name, mask_id in FIRE_MASK_FAMILIES},
     }
     owned_lists = {
         ALLOWED_ID,
@@ -2718,6 +3031,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SCHEDULE_PAYLOAD_ID,
         AREA_SCHEDULE_START_ID,
         AREA_SCHEDULE_END_ID,
+        SCHEDULE_ARG_ID,
+        DIFFICULTY_INCREMENT_ID,
+        FORMATION_COUNT_TABLE_ID,
+        FORMATION_TYPE_OFFSET_TABLE_ID,
     }
     preserved_lists = {
         list_id: value
@@ -2768,8 +3085,19 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SCHEDULE_HANDLER_ID: ["schedule handler", list(SCHEDULE_HANDLERS)],
         SCHEDULE_TRIGGER_ROW_ID: ["schedule trigger row", list(SCHEDULE_ROWS)],
         SCHEDULE_PAYLOAD_ID: ["schedule payload", list(SCHEDULE_PAYLOADS)],
+        # DIF-01/03 + FORM-01: the 4th parallel schedule column — the one runtime-readable scalar
+        # each dispatched record needs (set-formation offset / fire-mask byte / ground-stop row; 0
+        # otherwise), pre-decoded from the opaque payload. Same length as the other three columns.
+        SCHEDULE_ARG_ID: ["schedule arg", list(SCHEDULE_ARGS)],
         AREA_SCHEDULE_START_ID: ["area schedule start", list(AREA_SCHEDULE_START)],
         AREA_SCHEDULE_END_ID: ["area schedule end", list(AREA_SCHEDULE_END)],
+        # DIF-01 cabinet AI-level increments [2,0,6,16] (difficulty.json), indexed by the DIP.
+        DIFFICULTY_INCREMENT_ID: ["difficulty increment", list(DIFFICULTY_INCREMENTS)],
+        # FORM-01 normal flying-formation table (formations.json), decoded to logical entries
+        # index -32..127, split into two parallel lists: wave size and type-table offset. Read-only
+        # authority, indexed at runtime by the folded AI level (raise) or the record offset (set).
+        FORMATION_COUNT_TABLE_ID: ["formation count table", list(FORMATION_COUNTS)],
+        FORMATION_TYPE_OFFSET_TABLE_ID: ["formation type offset table", list(FORMATION_TYPE_OFFSETS)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 

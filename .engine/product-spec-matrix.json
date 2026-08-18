@@ -145,8 +145,8 @@
       "who": "engine"
     },
     {
-      "criterion": "A model fixture over the committed data reproduces formation lookups (AI level + offset, fold-back at 0x80); the build's in-game selection is confirmed in play (a runtime-harness candidate once the enemy/formation slice ships)",
-      "digest": "sha256:14db719434b37cf2a448988587ad3c46e62454fed6ec6598e493f08d42ae59a4",
+      "criterion": "A model fixture over the committed data reproduces formation lookups (set-formation indexed by the record offset; raise indexed by the folded AI level; fold-back at 0x80); the build's in-game selection is confirmed in play (a runtime-harness candidate once the enemy/formation slice ships)",
+      "digest": "sha256:2dcfd47438dea90e3bb21b17beb5d5618a8327d46adcd30d79bd8b2ab511b3dc",
       "doc": "docs/spec/difficulty-and-formations.md",
       "how_verified": "Python fixture over the committed tables; operator play for the in-game half",
       "position": 2,

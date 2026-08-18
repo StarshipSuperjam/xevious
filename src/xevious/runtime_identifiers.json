@@ -19,6 +19,11 @@
       "name": "area progress",
       "scope": "Stage"
     },
+    "area-schedule-arg": {
+      "kind": "list",
+      "name": "schedule arg",
+      "scope": "Stage"
+    },
     "area-schedule-cursor": {
       "kind": "variable",
       "name": "schedule cursor",
@@ -82,6 +87,21 @@
     "bullet-cursor": {
       "kind": "variable",
       "name": "bullet cursor",
+      "scope": "Stage"
+    },
+    "difficulty-ai-adjust": {
+      "kind": "variable",
+      "name": "ai adjust",
+      "scope": "Stage"
+    },
+    "difficulty-ai-level": {
+      "kind": "variable",
+      "name": "ai level",
+      "scope": "Stage"
+    },
+    "difficulty-increment": {
+      "kind": "list",
+      "name": "difficulty increment",
       "scope": "Stage"
     },
     "eco-award-value": {
@@ -149,6 +169,71 @@
       "name": "value table",
       "scope": "Stage"
     },
+    "fire-mask-andor-genesis": {
+      "kind": "variable",
+      "name": "fire mask andor genesis",
+      "scope": "Stage"
+    },
+    "fire-mask-boza-logram": {
+      "kind": "variable",
+      "name": "fire mask boza logram",
+      "scope": "Stage"
+    },
+    "fire-mask-derota": {
+      "kind": "variable",
+      "name": "fire mask derota",
+      "scope": "Stage"
+    },
+    "fire-mask-domogram": {
+      "kind": "variable",
+      "name": "fire mask domogram",
+      "scope": "Stage"
+    },
+    "fire-mask-kapi": {
+      "kind": "variable",
+      "name": "fire mask kapi",
+      "scope": "Stage"
+    },
+    "fire-mask-logram": {
+      "kind": "variable",
+      "name": "fire mask logram",
+      "scope": "Stage"
+    },
+    "fire-mask-terrazi": {
+      "kind": "variable",
+      "name": "fire mask terrazi",
+      "scope": "Stage"
+    },
+    "fire-mask-zoshi": {
+      "kind": "variable",
+      "name": "fire mask zoshi",
+      "scope": "Stage"
+    },
+    "formation-count": {
+      "kind": "variable",
+      "name": "formation count",
+      "scope": "Stage"
+    },
+    "formation-count-table": {
+      "kind": "list",
+      "name": "formation count table",
+      "scope": "Stage"
+    },
+    "formation-index": {
+      "kind": "variable",
+      "name": "formation index",
+      "scope": "Stage"
+    },
+    "formation-type-offset": {
+      "kind": "variable",
+      "name": "formation type offset",
+      "scope": "Stage"
+    },
+    "formation-type-offset-table": {
+      "kind": "list",
+      "name": "formation type offset table",
+      "scope": "Stage"
+    },
     "game-director-allowed-transitions": {
       "kind": "list",
       "name": "allowed transitions",
@@ -172,6 +257,11 @@
     "game-director-state": {
       "kind": "variable",
       "name": "game state",
+      "scope": "Stage"
+    },
+    "ground-stop-firing-row": {
+      "kind": "variable",
+      "name": "ground stop firing row",
       "scope": "Stage"
     },
     "hit-slot": {
