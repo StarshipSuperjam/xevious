@@ -24,6 +24,43 @@ import check_mechanics_record as mechanics  # noqa: E402
 import game_director as director  # noqa: E402
 
 
+def _proc_body_blocks(stage: dict, proccode: str) -> list:
+    """Every block reachable from a custom-procedure definition's body (following `next` and
+    every SUBSTACK / reporter input), so a structural check can inspect exactly one proc's stack.
+    Returns the block dicts; empty when the proccode is absent."""
+    blocks = stage["blocks"]
+    proto_ids = {
+        bid
+        for bid, b in blocks.items()
+        if b["opcode"] == "procedures_prototype"
+        and b.get("mutation", {}).get("proccode") == proccode
+    }
+    definition = next(
+        (
+            b
+            for b in blocks.values()
+            if b["opcode"] == "procedures_definition"
+            and b.get("inputs", {}).get("custom_block", [None, None])[1] in proto_ids
+        ),
+        None,
+    )
+    if definition is None:
+        return []
+    seen: set = set()
+    frontier = [definition.get("next")]
+    while frontier:
+        bid = frontier.pop()
+        if not bid or bid in seen or bid not in blocks:
+            continue
+        seen.add(bid)
+        block = blocks[bid]
+        frontier.append(block.get("next"))
+        for value in block.get("inputs", {}).values():
+            if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str):
+                frontier.append(value[1])
+    return [blocks[bid] for bid in seen]
+
+
 ASSET_ONE = (
     b"\x89PNG\r\n\x1a\n"
     b"project-test-asset-one"
@@ -975,6 +1012,21 @@ class ScratchProjectTests(unittest.TestCase):
                 "allowed transitions",
                 "slot type",
                 "slot state",
+                # SYS-02 per-slot position/motion fields (slice 8).
+                "slot x",
+                "slot y",
+                "slot dx",
+                "slot dy",
+                "slot timer",
+                "slot code",
+                "slot pts",
+                "slot flag",
+                # AIR-01/AIR-12 homing-aim tables (slice 8): the octant quantizer + two speed tiers.
+                "octant table",
+                "aim dy 24",
+                "aim dx 24",
+                "aim dy 32",
+                "aim dx 32",
                 "value table",
                 "starting lives",
                 "first bonus 123",
@@ -1123,7 +1175,27 @@ class ScratchProjectTests(unittest.TestCase):
                 failures.add(label)
             elif any(item != 0 for item in entry[1]):
                 failures.add(label)
+        # Every per-slot position/motion field is a length-64 all-zero list at generation (a slot
+        # is initialized on allocation); a stray non-zero or wrong length would poison the walk.
+        for _list_id, name in director.SLOT_FIELD_LISTS:
+            entry = by_name.get(name)
+            if entry is None or len(entry[1]) != director.SLOT_COUNT or any(i != 0 for i in entry[1]):
+                failures.add("slot-field-lists-zero")
         blocks = stage["blocks"]
+        # `clear slots` must zero EVERY registered slot list — not just type/state. A new field added
+        # to the pool but omitted from clear-slots would break the seeded-replay clean slate silently.
+        cleared_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.CLEAR_SLOTS_PROCCODE)
+            if b["opcode"] == "data_replaceitemoflist"
+        }
+        every_slot_list = {
+            director.SLOT_TYPE_ID,
+            director.SLOT_STATE_ID,
+            *(list_id for list_id, _name in director.SLOT_FIELD_LISTS),
+        }
+        if not every_slot_list <= cleared_lists:
+            failures.add("clear-slots-covers-every-slot-list")
         clear_proto = next(
             (
                 b
@@ -1149,6 +1221,11 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("reset-clears-slots")
         return failures
 
+    # Roadmap closure evidence for leaf #57 (core.entity-lifecycle, SYS-02.live): the slice-8 live
+    # entity now owns per-slot position/motion fields and a complete clear. The live-participant proof
+    # (a Toroid occupying a slot through its lifecycle) is the harness scenario added with the walk.
+    # roadmap-evidence: SYS-02 success  (test_entity_slots_present_and_cleared — fields present, clear covers every slot list)
+    # roadmap-evidence: SYS-02 failure  (test_entity_slot_negative_fixtures — slot-field-lists-zero, clear-slots-covers-every-slot-list)
     def test_entity_slots_present_and_cleared(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._sys02_slot_failures(project))
@@ -1183,10 +1260,25 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["mutation"]["proccode"] = "noop"
 
+        def dirty_slot_field(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for value in stage["lists"].values():
+                if value[0] == "slot dx":
+                    value[1][0] = 7  # a non-zero at generation
+
+        def drop_field_clear(p: dict) -> None:
+            # Redirect one field's clear-write off the slot pool so clear-slots no longer covers it.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CLEAR_SLOTS_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DY_ID:
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
         cases = [
             ("slot-type-list-64", shrink_type_list),
             ("clear-slots-warp-defined", unwarp_clear),
             ("reset-clears-slots", drop_clear_call),
+            ("slot-field-lists-zero", dirty_slot_field),
+            ("clear-slots-covers-every-slot-list", drop_field_clear),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -4447,7 +4539,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "dfd51edefb985b98550c76b7bc33f62902a3093355dba02684cd873c6ba02db3",
+            "5638cf82d7d01aeca5528f72f4cd45845815ea2c812495f99b59bff407b2b95a",
             build_hash,
         )
 

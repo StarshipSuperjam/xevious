@@ -95,6 +95,40 @@ SHOT_SLOTS = (37, 39)  # ........ 37-39   0x24-0x26 ........ 3
 BULLET_SLOTS = (40, 58)  # ...... 40-58   0x27-0x39 ........ 19
 FLYING_SLOTS = (59, 64)  # ...... 59-64   0x3A-0x3F ........ 6
 
+# SYS-02 per-slot position/motion fields — the entity slice (8) is the first author of these,
+# so they land here (record 005 deferred them "until a consumer authors positions centrally").
+# Eight parallel 64-entry lists beside `slot type`/`slot state`, all in the reference's own units:
+# `slot x` is the scroll axis and `slot y` the lateral axis, both 16-bit 1/32-px fixed point
+# (256 units = one 8-px row/column, so `row = floor(x/256)`); `slot dx`/`slot dy` are the raw
+# signed velocity deltas (applied doubled per arcade frame); `slot timer` counts arcade frames;
+# `slot code` is the sprite code the renderer maps to a costume; `slot pts` is the 1-based
+# `value table` position of the occupant's score (so `resolve hit` is type-agnostic); `slot flag`
+# is a per-type sub-state (Toroid: 0 pre-trigger / 1 swing-right / 2 swing-left).
+# OWNERSHIP DIFFERS BY SLOT RANGE: for the walk-driven occupants (flying enemies, enemy bullets)
+# these lists are AUTHORITATIVE — the warp walk writes them. For the player shots (37-39) `slot x`/
+# `slot y` are a one-tick-lagged MIRROR the blaster clone writes for collision-read-only (the clone
+# still owns its own motion; slice 8). Reader of a shot's x/y is the walk; writer is the clone.
+SLOT_X_ID = "slot-x"  # scroll axis, 1/32 px
+SLOT_Y_ID = "slot-y"  # lateral axis, 1/32 px
+SLOT_DX_ID = "slot-dx"  # scroll-axis velocity (raw signed delta)
+SLOT_DY_ID = "slot-dy"  # lateral velocity (raw signed delta; first byte of an aim-table entry)
+SLOT_TIMER_ID = "slot-timer"  # arcade-frame animation/phase clock
+SLOT_CODE_ID = "slot-code"  # sprite code (renderer maps to a costume)
+SLOT_PTS_ID = "slot-pts"  # 1-based value-table position of the occupant's score
+SLOT_FLAG_ID = "slot-flag"  # per-type sub-state (Toroid swing: 0 none / 1 right / 2 left)
+# Every position/motion list, paired (id, display name), so clear-slots and the registration
+# stay in lockstep — adding a field here is the single edit that flows to both.
+SLOT_FIELD_LISTS = (
+    (SLOT_X_ID, "slot x"),
+    (SLOT_Y_ID, "slot y"),
+    (SLOT_DX_ID, "slot dx"),
+    (SLOT_DY_ID, "slot dy"),
+    (SLOT_TIMER_ID, "slot timer"),
+    (SLOT_CODE_ID, "slot code"),
+    (SLOT_PTS_ID, "slot pts"),
+    (SLOT_FLAG_ID, "slot flag"),
+)
+
 # SYS-04 centralized ordered update (architecture.md key decision): the Stage walks the
 # slots in index order each tick as one ATOMIC (warp) pass — the shape that preserves
 # the reference's random-stream draw order (free-running per-clone threads are ruled out
@@ -479,6 +513,36 @@ def _load_formation_tables() -> tuple[list[int], list[int]]:
 
 DIFFICULTY_INCREMENTS = _load_difficulty_increments()
 FORMATION_COUNTS, FORMATION_TYPE_OFFSETS = _load_formation_tables()
+
+# AIR-01 / AIR-12 32-direction homing-aim tables (aiming.json), INGESTED (never authored),
+# verified against the hash manifest at load. Each speed tier is two parallel 32-entry lists,
+# `aim dy N` / `aim dx N`, storing the (dy, dx) velocity pair per direction index (dy first, per
+# the reference's cpy_dY_dX_to_obj — the extractor records the byte-order there). This slice bakes
+# only the two tiers Toroid uses: the 24-magnitude table (its 1.5 px/frame approach) and the
+# 32-magnitude generic table (its aimed bullet at 2 px/frame). The 33-entry `octant table` is the
+# quantizer's lookup (get_index_for_angle). Dormant DATA this slice (the aim proc and its callers
+# land in the next commit) — like the hit-window constants, baked now so the consumer just reads it.
+OCTANT_TABLE_ID = "octant-table"
+AIM_DY_24_ID = "aim-dy-24"  # Toroid approach tier (magnitude 24 = 1.5 px/frame)
+AIM_DX_24_ID = "aim-dx-24"
+AIM_DY_32_ID = "aim-dy-32"  # aimed-bullet / generic tier (magnitude 32 = 2 px/frame)
+AIM_DX_32_ID = "aim-dx-32"
+
+
+def _load_aiming_tables() -> dict[str, list[int]]:
+    data = _load_spec_data("aiming.json")["aiming"]
+    tables = {"octant": list(data["octant_table"]["values"])}
+    for tier in ("toroid", "generic"):
+        vectors = data["angle_tables"][tier]["vectors"]
+        tables[f"{tier}_dy"] = [v["dy"] for v in vectors]
+        tables[f"{tier}_dx"] = [v["dx"] for v in vectors]
+    return tables
+
+
+_AIMING = _load_aiming_tables()
+OCTANT_TABLE = _AIMING["octant"]
+AIM_DY_24, AIM_DX_24 = _AIMING["toroid_dy"], _AIMING["toroid_dx"]
+AIM_DY_32, AIM_DX_32 = _AIMING["generic_dy"], _AIMING["generic_dx"]
 
 
 def _schedule_arg(record: dict) -> int:
@@ -1308,14 +1372,19 @@ def install_clear_slots(blocks: Blocks) -> None:
     cursor = lambda: variable("slot index", SLOT_INDEX_ID)
     set_index = blocks.set_var("slot index", SLOT_INDEX_ID, number(1))
     loop = blocks.add("control_repeat", inputs={"TIMES": number(SLOT_COUNT)})
-    blocks.substack(
-        loop,
-        [
-            blocks.list_replace("slot type", SLOT_TYPE_ID, cursor(), number(0)),
-            blocks.list_replace("slot state", SLOT_STATE_ID, cursor(), number(0)),
-            blocks.change_var("slot index", SLOT_INDEX_ID, 1),
-        ],
-    )
+    # Zero every slot list — type/state and all eight position/motion fields — so a reset leaves
+    # an identical clean slate (the seeded-replay determinism leans on this). Every `slot *` list
+    # is cleared here; a structural test asserts the set matches the registered slot lists.
+    clears = [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, cursor(), number(0)),
+        blocks.list_replace("slot state", SLOT_STATE_ID, cursor(), number(0)),
+    ]
+    clears += [
+        blocks.list_replace(name, list_id, cursor(), number(0))
+        for list_id, name in SLOT_FIELD_LISTS
+    ]
+    clears.append(blocks.change_var("slot index", SLOT_INDEX_ID, 1))
+    blocks.substack(loop, clears)
     blocks.chain(definition, [set_index, loop])
 
 
@@ -3018,6 +3087,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ALLOWED_ID,
         SLOT_TYPE_ID,
         SLOT_STATE_ID,
+        *(list_id for list_id, _name in SLOT_FIELD_LISTS),
+        OCTANT_TABLE_ID,
+        AIM_DY_24_ID,
+        AIM_DX_24_ID,
+        AIM_DY_32_ID,
+        AIM_DX_32_ID,
         VALUE_TABLE_ID,
         STARTING_LIVES_ID,
         FIRST_BONUS_123_ID,
@@ -3059,6 +3134,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # state 0 = idle. Fixed length 64; alloc/free change entries, never length.
         SLOT_TYPE_ID: ["slot type", [0] * SLOT_COUNT],
         SLOT_STATE_ID: ["slot state", [0] * SLOT_COUNT],
+        # SYS-02 per-slot position/motion fields, all zeroed at generation (a slot is initialized
+        # on allocation). `clear slots` re-zeroes them on every reset; a structural test pins that.
+        **{list_id: [name, [0] * SLOT_COUNT] for list_id, name in SLOT_FIELD_LISTS},
+        # AIR-01/AIR-12 homing-aim tables (aiming.json), baked as dormant read-only data this slice.
+        # The octant quantizer table and the two speed tiers Toroid uses (24 = approach, 32 = bullet).
+        OCTANT_TABLE_ID: ["octant table", list(OCTANT_TABLE)],
+        AIM_DY_24_ID: ["aim dy 24", list(AIM_DY_24)],
+        AIM_DX_24_ID: ["aim dx 24", list(AIM_DX_24)],
+        AIM_DY_32_ID: ["aim dy 32", list(AIM_DY_32)],
+        AIM_DX_32_ID: ["aim dx 32", list(AIM_DX_32)],
         # ECO-01 object point values (docs/spec/data/scores.json master_value_table), in table
         # order; position i (1-based) = entries[i-1].points. Slice 8 resolves award value here.
         VALUE_TABLE_ID: ["value table", list(VALUE_TABLE_POINTS)],

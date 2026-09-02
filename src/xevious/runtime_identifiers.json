@@ -4,6 +4,26 @@
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {
+    "aim-dx-24": {
+      "kind": "list",
+      "name": "aim dx 24",
+      "scope": "Stage"
+    },
+    "aim-dx-32": {
+      "kind": "list",
+      "name": "aim dx 32",
+      "scope": "Stage"
+    },
+    "aim-dy-24": {
+      "kind": "list",
+      "name": "aim dy 24",
+      "scope": "Stage"
+    },
+    "aim-dy-32": {
+      "kind": "list",
+      "name": "aim dy 32",
+      "scope": "Stage"
+    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",
@@ -299,6 +319,11 @@
       "name": "hud role",
       "scope": "hud"
     },
+    "octant-table": {
+      "kind": "list",
+      "name": "octant table",
+      "scope": "Stage"
+    },
     "rng-extend-flag": {
       "kind": "variable",
       "name": "rng extend",
@@ -329,9 +354,34 @@
       "name": "rng state",
       "scope": "Stage"
     },
+    "slot-code": {
+      "kind": "list",
+      "name": "slot code",
+      "scope": "Stage"
+    },
+    "slot-dx": {
+      "kind": "list",
+      "name": "slot dx",
+      "scope": "Stage"
+    },
+    "slot-dy": {
+      "kind": "list",
+      "name": "slot dy",
+      "scope": "Stage"
+    },
+    "slot-flag": {
+      "kind": "list",
+      "name": "slot flag",
+      "scope": "Stage"
+    },
     "slot-index": {
       "kind": "variable",
       "name": "slot index",
+      "scope": "Stage"
+    },
+    "slot-pts": {
+      "kind": "list",
+      "name": "slot pts",
       "scope": "Stage"
     },
     "slot-state": {
@@ -339,9 +389,24 @@
       "name": "slot state",
       "scope": "Stage"
     },
+    "slot-timer": {
+      "kind": "list",
+      "name": "slot timer",
+      "scope": "Stage"
+    },
     "slot-type": {
       "kind": "list",
       "name": "slot type",
+      "scope": "Stage"
+    },
+    "slot-x": {
+      "kind": "list",
+      "name": "slot x",
+      "scope": "Stage"
+    },
+    "slot-y": {
+      "kind": "list",
+      "name": "slot y",
       "scope": "Stage"
     },
     "solv-death-director-entry-epoch": {

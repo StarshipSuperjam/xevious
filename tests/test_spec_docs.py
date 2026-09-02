@@ -560,6 +560,63 @@ class GeneratedAreaClock(unittest.TestCase):
             self.assertEqual(0, args[end - 1], f"area {area_number} sentinel arg")
 
 
+class AimingTables(unittest.TestCase):
+    """AIR-01 / AIR-12: the 32-direction homing-aim tables, modelled over the COMMITTED aiming.json
+    independently of the generator. The angle tables are cross-checked against the sine/cosine model
+    they encode (a documented confirmation, not the source of truth — the reference table is), and the
+    baked Stage lists are checked to be a faithful copy of that data."""
+
+    def _stage_lists(self):
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        return {value[0]: value[1] for value in stage["lists"].values()}
+
+    def _aiming(self):
+        return json.loads((DATA / "aiming.json").read_text())["aiming"]
+
+    def test_angle_tables_match_sine_model(self):
+        # Each entry k is the aimed velocity toward direction k of 32: dy = round(mag*sin), dx =
+        # round(mag*cos), within +/-1 of the integer table. Covers ALL four tiers, even the two this
+        # slice doesn't bake, so the whole extracted table is proven, not only what is consumed now.
+        aiming = self._aiming()
+        for tier, table in aiming["angle_tables"].items():
+            mag = table["magnitude"]
+            vectors = table["vectors"]
+            self.assertEqual(32, len(vectors), tier)
+            for k, vec in enumerate(vectors):
+                self.assertEqual(k, vec["index"], tier)
+                theta = k * 2 * math.pi / 32
+                self.assertLessEqual(
+                    abs(vec["dy"] - round(mag * math.sin(theta))), 1, f"{tier}[{k}].dy"
+                )
+                self.assertLessEqual(
+                    abs(vec["dx"] - round(mag * math.cos(theta))), 1, f"{tier}[{k}].dx"
+                )
+
+    def test_octant_table_is_monotone_quantizer(self):
+        # The octant table maps floor(32*small/large) in [0,32] to a base angle index in [0,0x40];
+        # it must be 33 entries, non-decreasing, spanning 0..0x40 (the quarter-turn the folding uses).
+        octant = self._aiming()["octant_table"]["values"]
+        self.assertEqual(33, len(octant))
+        self.assertEqual(0, octant[0])
+        self.assertEqual(0x20, octant[-1])
+        self.assertTrue(all(b >= a for a, b in zip(octant, octant[1:])))
+
+    def test_baked_aim_lists_match_committed_data(self):
+        # The generator bakes aiming.json's octant table and the two Toroid tiers (24 approach, 32
+        # bullet) faithfully into the Stage lists, dy/dx split into parallel lists.
+        lists = self._stage_lists()
+        aiming = self._aiming()
+        self.assertEqual(aiming["octant_table"]["values"], lists["octant table"])
+        for tier, dy_name, dx_name in (
+            ("toroid", "aim dy 24", "aim dx 24"),
+            ("generic", "aim dy 32", "aim dx 32"),
+        ):
+            vectors = aiming["angle_tables"][tier]["vectors"]
+            self.assertEqual([v["dy"] for v in vectors], lists[dy_name], dy_name)
+            self.assertEqual([v["dx"] for v in vectors], lists[dx_name], dx_name)
+
+
 class DifficultyAndFormations(unittest.TestCase):
     """DIF-01 / FORM-01: the difficulty AI level and normal flying formations, modelled over the
     COMMITTED data independently of the generator (the engine half of the acceptance criteria). The
