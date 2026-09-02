@@ -1998,21 +1998,25 @@ def install_update_toroid(blocks: Blocks) -> None:
     anim = lambda: blocks.op_mod(
         blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(2))), number(8)
     )
-    # `SWING_RIGHT` is committed when the craft is at a higher column (offset >= 0), so the swing must
-    # accelerate the lateral velocity toward higher columns — `slot dy += accel` — to close on the craft
-    # (the render map makes stage_x increase with `slot y`); `SWING_LEFT` mirrors it. The animation keeps
-    # its per-direction opposite play order (record 024).
+    # The swing REVERSES the Toroid's lateral velocity so it peels away from its approach line — the
+    # reference's `toroid_toggle_dir`/`toroid_swing_right`/`toroid_swing_left` ($204F-$2091). The Toroid
+    # spawns aimed at the craft (`slot dy` points toward it), so nudging `slot dy` AGAINST that heading
+    # each tick decelerates the approach, then curves it away — the arcade "swing," not a homing dive.
+    # `SWING_RIGHT` is committed when the craft is at the higher column (offset >= 0, so the aimed
+    # `slot dy` is positive) and does `slot dy -= accel` (`subq #1,_dY`); `SWING_LEFT` mirrors it with
+    # `slot dy += accel` (`addq #1,_dY`). Per-direction opposite animation order matches the reference
+    # (right = descending F..8, left = ascending 8..F).
     swing_right = blocks.if_reporter(
         blocks.op_eq(flag(), number(TOROID_FLAG_SWING_RIGHT)),
         [
-            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, blocks.op_sub(number(15), anim())),
         ],
     )
     swing_left = blocks.if_reporter(
         blocks.op_eq(flag(), number(TOROID_FLAG_SWING_LEFT)),
         [
-            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, blocks.op_add(number(8), anim())),
         ],
     )

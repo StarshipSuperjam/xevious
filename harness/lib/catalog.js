@@ -525,19 +525,20 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
   },
   {
-    key: 'toroid-swings-toward-craft',
+    key: 'toroid-swing-reverses-away',
     behavior:
-      'A Toroid drawing level with the craft swings its lateral velocity TOWARD the craft, not away from it',
+      'A Toroid drawing level with the craft REVERSES its lateral velocity, swinging away from its approach (the arcade toggle_dir bounce), not homing into the craft',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // Seed one approaching Toroid whose column is one to the LEFT of the craft — so the craft is to
       // its right (offset = player col - slot col = +1, inside the [-2,1] swing-trigger window) and it
-      // is committed to swing right. A correct swing accelerates its lateral velocity toward higher
-      // columns (toward the craft): `slot dy` must go POSITIVE. The earlier defect (dy -= accel on a
-      // right swing) drove it negative — away from the craft — which this asserts against. The slot is
-      // placed several rows ahead so it is level laterally but not overlapping the craft (no death,
-      // and invuln is on anyway from reachPlaying).
+      // commits SWING_RIGHT. The reference (`toroid_toggle_dir` -> `toroid_swing_right`, `subq #1,_dY`)
+      // nudges the lateral velocity AGAINST the craft-ward approach each tick, so it decelerates and
+      // then peels AWAY: `slot dy` must go NEGATIVE (toward lower columns / away from the craft on the
+      // right). The homing regression this session introduced drove it POSITIVE (into the craft); this
+      // asserts the arcade bounce. Placed several rows ahead so it is level laterally but not
+      // overlapping the craft (invuln is on from reachPlaying regardless).
       const pr = readVar(vm, 'player-row');
       const pc = readVar(vm, 'player-col');
       const slot = 63;
@@ -560,11 +561,11 @@ export const SCENARIOS = [
     assert(obs) {
       assert.equal(obs.flag, 1, 'the Toroid committed a right swing (craft on the right)');
       assert.ok(
-        obs.dy > 0,
-        `a right-swinging Toroid accelerates toward the craft (dy > 0); got dy=${obs.dy}`,
+        obs.dy < 0,
+        `a right-swinging Toroid reverses away from the craft (dy < 0, arcade bounce); got dy=${obs.dy}`,
       );
     },
-    // Empty `update toroid` so the swing never accelerates → dy stays 0 → the assertion bites.
+    // Empty `update toroid` so the swing never runs → dy stays 0 (not < 0) → the assertion bites.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
   },
   {

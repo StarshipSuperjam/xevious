@@ -2,7 +2,8 @@
 
 - Mechanic: The Toroid vertical slice (AIR-01.toroid) — the first live flying enemy. The formation
   wave spawns it into a flying slot, it aims at the craft on the 24-magnitude homing tier and
-  approaches, swings laterally toward the craft's side when it draws nearly level, animates its flap,
+  approaches, then when it draws nearly level swings by REVERSING its lateral course (peeling away
+  from the side it was closing on, the arcade `toroid_toggle_dir` bounce — not a homing dive), animates its flap,
   and is culled off the play field with its scroll-axis position kept for the refill. This is the
   first live consumer of the shared RNG (SYS-04 becomes a present consumer) and of the slice-7
   formation state, and the first author of the per-slot position/motion fields laid down dormant in
@@ -13,8 +14,10 @@
   Toroid draws a random lateral spawn column (reject-and-redraw, never within eight columns of the
   craft), inherits the previous occupant's scroll-axis position, aims at the craft, and approaches at
   1.5 px/frame. When the craft's lateral offset falls in [-2, 1] columns it commits — once — to a
-  swing toward the craft's side, accelerating sideways by one unit per frame (unbounded) and cycling
-  its eight flap codes in opposite order per direction. It is culled when it scrolls past the bottom
+  swing that REVERSES its lateral velocity: it nudges the aimed (craft-ward) `slot dy` by one unit per
+  frame against the approach (unbounded), so it decelerates, reverses, and peels away from the side it
+  was closing on — the reference `toroid_toggle_dir` toggle, not a homing dive — while cycling its eight
+  flap codes in opposite order per direction. It is culled when it scrolls past the bottom
   (row ≥ 40), off the top (row ≤ -2), or off the side (col ≥ 31); the cull frees only occupancy, so a
   refilled slot inherits its scroll row (a replacement can enter mid-field, not always from the top).
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. The formation
@@ -45,9 +48,9 @@
   (`test_toroid_slice_authoring_present` / `test_toroid_slice_negative_fixtures`) in
   `tests/test_scratch_project.py`; the spawn-draw model fixture `ToroidSpawnDraw` in
   `tests/test_spec_docs.py`; the live scenarios `toroid-wave-spawns-and-moves`, `rng-draw-order`, and
-  `toroid-swings-toward-craft` (which binds the swing's *direction* — a right-swing accelerates lateral
-  velocity toward the craft, `slot dy > 0` — so the sign cannot silently invert), each with a biting
-  negative, in `harness/lib/catalog.js`.
+  `toroid-swing-reverses-away` (which binds the swing's *direction* — a right-swing reverses the lateral
+  velocity away from the craft, `slot dy < 0`, the arcade `toroid_toggle_dir` bounce — so the sign cannot
+  silently invert into a homing dive), each with a biting negative, in `harness/lib/catalog.js`.
 - Acceptance criteria: A live Toroid occupies a flying slot from the formation wave and advances
   under its own velocity each tick (harness `toroid-wave-spawns-and-moves`, negative: `update toroid`
   neutralized → no movement); the spawner draws the shared RNG in walk order, following the LFSR from

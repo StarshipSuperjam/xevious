@@ -56,10 +56,14 @@ one blaster hit window — vertical ±16, horizontal ±8 in the reference's shad
 **Toroid (AIR-01).** Spawns at a random lateral column, aimed at the craft at 1.5 px/frame (`init_toroid`
 3332–3341); the spawn column is drawn from the shared stream, rejected and redrawn until it is on-screen
 and not within eight columns of the craft (`gen_rnd_spriteY` 5155–5169). When nearly level with the craft
-laterally (a narrow lateral-column window, offset ~[−2, 1], derived), it commits to a swing —
-accelerating sideways by one velocity unit per frame toward the side the craft is on, with an eight-code
-flap animation advancing every other frame (played in opposite order for the two swing directions), while
-its approach along the scroll axis continues (3289–3321); once triggered it never re-tests the window. The
+laterally (a narrow lateral-column window, offset ~[−2, 1], derived), it commits to a swing that
+**reverses** its lateral course: it was spawned aimed at the craft, and the swing nudges that lateral
+velocity by one unit per frame *against* the approach (`toroid_toggle_dir` → `toroid_swing_right`
+`subq #1,_dY` / `toroid_swing_left` `addq #1,_dY`), so it decelerates, stops, and peels away from the
+side it was closing on — the arcade "swing," not a homing dive. An eight-code flap animation advances
+every other frame (played in opposite order for the two swing directions: right descending F..8, left
+ascending 8..F), while its approach along the scroll axis continues (3289–3327); once triggered it never
+re-tests the window. The
 shooting variant fires exactly one aimed bullet at that trigger, never again (3281–3286, 3323–3327).
 
 **Torkan (AIR-02).** Approaches aimed at 2 px/frame with an initial fire delay of 64–127 frames drawn

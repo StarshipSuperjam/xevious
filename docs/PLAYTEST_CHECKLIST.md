@@ -74,8 +74,10 @@ so area position is read from the `area progress`/`area number` variable watcher
 4a. **Toroid combat — the first live enemy.** Fly area 1 until the first formation record fires (watch
    `formation count` climb above 0): **Toroid waves appear** and keep replacing themselves — each slot
    re-spawns a fresh Toroid the moment its occupant leaves or dies — until a reset-formation record
-   zeroes the count. Confirm: they enter aimed toward the craft, then **swing** laterally toward your
-   side as they draw level, flapping as they go; the **shooting variant fires one aimed bullet** at that
+   zeroes the count. Confirm: they enter aimed toward the craft, then as they draw nearly level they
+   **swing** — *reversing* their lateral course and peeling **away** from the side they were closing on
+   (the arcade bounce: a Toroid moving left toward you veers back to the right), flapping as they go —
+   they do **not** home straight into you; the **shooting variant fires one aimed bullet** at that
    moment (a bullet streaks from the enemy toward where you were), never a continuous stream. **Shoot
    one:** it **explodes and the score rises by exactly 30** (watch the HUD digits — the score change is
    the definitive pass signal), and the wreck is gone — no lingering sprite. The enemy **scale and aspect**
