@@ -55,7 +55,11 @@ class TestConsumedParse(unittest.TestCase):
 
 class TestLiveRepository(unittest.TestCase):
     def test_consumed_lenses_reads_the_committed_record(self):
-        self.assertEqual(lc.consumed_lenses(), EXPECTED)
+        # A deployment may add its own review persona and lens, so the stock
+        # lenses are a SUBSET of the consumed set, not an exact match. Local edit
+        # for a deployment with a project persona; overwritten on engine update,
+        # re-apply then. See issue #113.
+        self.assertTrue(EXPECTED.issubset(lc.consumed_lenses()))
 
     def test_check_is_green_on_the_live_roster(self):
         """Every installed review lens is consumed today, so the check emits an empty finding array."""

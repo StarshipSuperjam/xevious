@@ -36,7 +36,12 @@ class TestConductSchema(unittest.TestCase):
             jsonschema.validate(validate.frontmatter(path), schema)  # raises on nonconformance
 
     def test_operator_override_ships_empty(self):
-        self.assertEqual(validate.frontmatter(_OPERATOR).get("codes"), [])
+        # The operator override file is the deployment's own (operator.md invites
+        # codes via /engine-conduct), so assert its codes list is well-formed, not
+        # that it is literally empty. Local edit for a deployment that adds a
+        # conduct code; overwritten on engine update, re-apply then. See issue #113.
+        codes = validate.frontmatter(_OPERATOR).get("codes")
+        self.assertIsInstance(codes, list)
 
 
 class TestShippedDefaults(unittest.TestCase):
