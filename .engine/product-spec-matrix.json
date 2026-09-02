@@ -1,6 +1,62 @@
 {
   "rows": [
     {
+      "criterion": "Every family's speeds, fuses, windows, and per-variant differences in the build's data match this document",
+      "digest": "sha256:81b94d9d12c4639976dc8e00f8ec40ee8e35409e1ce910f98720eb0ba22c5b58",
+      "doc": "docs/spec/aerial-enemies.md",
+      "how_verified": "Data-table comparison fixture over the build's generated family constants",
+      "position": 0,
+      "who": "engine"
+    },
+    {
+      "criterion": "Each family plays its recorded pattern — approach, trigger, fire rule, exit",
+      "digest": "sha256:ef79326f3d7173fe7683ec8f969548a8e02aa61c406f48d98b9463e747d67679",
+      "doc": "docs/spec/aerial-enemies.md",
+      "how_verified": "Play scheduled waves of each family in the built `.sb3` against this document's descriptions",
+      "position": 1,
+      "who": "operator"
+    },
+    {
+      "criterion": "A Zakato that fires its shot self-destructs scoring nothing; one killed first scores",
+      "digest": "sha256:cdfdec29924c868eff5c8783522d9f6e4766e9b518d292265e4abe5b92c6a099",
+      "doc": "docs/spec/aerial-enemies.md",
+      "how_verified": "Play: let one fire, kill one early",
+      "position": 2,
+      "who": "operator"
+    },
+    {
+      "criterion": "A Garu Zakato left alone rings 16 bullets and releases four Brag Sparios",
+      "digest": "sha256:2f2a3f8328fb21ad7ffd9d560cd5b9bfd9d024e3440965a8291aa22af70996e9",
+      "doc": "docs/spec/aerial-enemies.md",
+      "how_verified": "Play (or seeded fixture) the detonation",
+      "position": 3,
+      "who": "operator"
+    },
+    {
+      "criterion": "Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern",
+      "digest": "sha256:8a1731e28a20e35ba929b89dd0295b72a06be7c05ea5fc6d422ccc7e104e5563",
+      "doc": "docs/spec/aerial-enemies.md",
+      "how_verified": "Play the boss approach",
+      "position": 4,
+      "who": "operator"
+    },
+    {
+      "criterion": "All families share one blaster hit window and one explosion; Giddo Spario's short variant excepted",
+      "digest": "sha256:f826bd0b7e427a299f192fa0eb3c7e2d44973b1571e83993208a97b8550dab16",
+      "doc": "docs/spec/aerial-enemies.md",
+      "how_verified": "Structural fixture over the build's collision and animation data",
+      "position": 5,
+      "who": "engine"
+    },
+    {
+      "criterion": "Fire timing draws from the shared stream under the family mask (seeded waves repeat exactly)",
+      "digest": "sha256:3e7c40cb1d8b1302e4717a20b5e79fb2fc7db94145ed4a85f4c8fa46239db9da",
+      "doc": "docs/spec/aerial-enemies.md",
+      "how_verified": "Seeded fixture: identical seeds reproduce identical wave behavior",
+      "position": 6,
+      "who": "engine"
+    },
+    {
       "criterion": "All 16 schedule tables decode exactly, with no Super-table content (the sentinel is recorded as each area's `end_sentinel` field, outside the records list)",
       "digest": "sha256:1c629a9f0c4b701eac8609c1dc3f57656654ed1c071edd5f743336ff420f3ba3",
       "doc": "docs/spec/area-progression-and-terrain.md",

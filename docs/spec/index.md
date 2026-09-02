@@ -49,7 +49,7 @@ bind now; the delegated detail becomes binding when its document settles.
 | Scoring, lives, and game over | settled | [Scoring, lives, and game over](scoring-lives-and-game-over.md) |
 | Area progression and terrain | settled | [Area progression and terrain](area-progression-and-terrain.md) |
 | Difficulty and formations | settled | [Difficulty and formations](difficulty-and-formations.md) |
-| Aerial enemies | in progress | [Aerial enemies](aerial-enemies.md) |
+| Aerial enemies | settled | [Aerial enemies](aerial-enemies.md) |
 | Ground objects | in progress | [Ground objects](ground-objects.md) |
 | Secrets | in progress | [Secrets](secrets.md) |
 | Andor Genesis | in progress | [Andor Genesis](andor-genesis.md) |
