@@ -96,15 +96,22 @@ def clone_at_pin(path: Path) -> None:
     ``git fetch --depth 1 origin <pin>`` brings just that commit. If the pinned
     commit later becomes unreachable upstream (a force-push), this fails loudly.
     """
-    path.mkdir(parents=True, exist_ok=True)
-    if not (path / ".git").exists():
-        _git(path, "init", "-q")
-    # Idempotent remote setup.
-    existing = _git(path, "remote", check=False).stdout.split()
-    if "origin" not in existing:
-        _git(path, "remote", "add", "origin", REMOTE)
-    else:
-        _git(path, "remote", "set-url", "origin", REMOTE)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        if not (path / ".git").exists():
+            _git(path, "init", "-q")
+        # Idempotent remote setup.
+        existing = _git(path, "remote", check=False).stdout.split()
+        if "origin" not in existing:
+            _git(path, "remote", "add", "origin", REMOTE)
+        else:
+            _git(path, "remote", "set-url", "origin", REMOTE)
+    except (subprocess.CalledProcessError, OSError) as exc:
+        detail = (getattr(exc, "stderr", "") or "").strip() or str(exc)
+        raise CheckoutError(
+            f"cannot prepare the reference cache at {path} "
+            f"({detail}); remove it and retry, or point --dir at a clean directory."
+        ) from exc
     try:
         _git(path, "fetch", "--depth", "1", "origin", rx.PINNED_COMMIT)
     except subprocess.CalledProcessError as exc:
@@ -114,7 +121,14 @@ def clone_at_pin(path: Path) -> None:
             f"repository; check your connection, confirm the commit is still "
             f"reachable upstream, or point --dir at an existing clone."
         ) from exc
-    _git(path, "checkout", "--detach", "FETCH_HEAD", "-q")
+    try:
+        _git(path, "checkout", "--detach", "FETCH_HEAD", "-q")
+    except subprocess.CalledProcessError as exc:
+        raise CheckoutError(
+            f"fetched the pin but could not check it out at {path} "
+            f"({exc.stderr.strip() or exc}); the cache may be dirty — remove it "
+            f"and retry."
+        ) from exc
 
 
 def ensure(path: Path, *, allow_network: bool = True) -> Path:

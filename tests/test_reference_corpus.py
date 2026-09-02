@@ -64,19 +64,21 @@ class CorpusGuards(unittest.TestCase):
             "(`citations are `src/...` unless noted`) or name the file inline",
         )
 
-    def test_no_approximate_line_reference_in_a_citation(self):
-        # A file token or a backticked label immediately followed by `~NNN`.
-        approx = re.compile(
-            r"`(?:(?:src/)?(?:" + "|".join(rc._FILE_STEMS) + r")\.(?:68k|inc)"
-            r"|[A-Za-z_][A-Za-z0-9_]*)`\s*\(?~\d{2,5}"
-        )
+    def test_no_approximate_line_reference_survives(self):
+        # A bare `~NNN` that is a line reference — anywhere, not only next to a
+        # label. A decimal (`~12.4 s`) or a number followed by a unit word
+        # (`~56 frames`, `~224 arcade-frame`, `~16 areas`) is a duration or count,
+        # not a line, and is left alone. Whitespace is normalised first so a unit
+        # word wrapped onto the next line (`~744\nframes`) is still recognised.
+        UNIT = r"(?:frame|arcade|area|px|pixel|sec|second|\bs\b|ms|row|tile|hz|byte|entr|%)"
+        approx = re.compile(r"~(\d{2,5})(?!\d)(?!\.\d)(?!\s*-?\s*" + UNIT + ")", re.IGNORECASE)
         offenders = []
         for p in list(_spec_docs()) + list(_mech_docs()):
-            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-                if approx.search(line):
-                    offenders.append(f"{p.name}:{i}")
+            text = re.sub(r"\s+", " ", p.read_text(encoding="utf-8"))
+            for m in approx.finditer(text):
+                offenders.append(f"{p.name}: ~{m.group(1)}")
         self.assertEqual(offenders, [],
-                         "cite an exact line or range, never ~approximate")
+                         "cite an exact line or range, never a bare ~approximate line number")
 
 
 if __name__ == "__main__":

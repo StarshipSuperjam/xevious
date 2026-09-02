@@ -126,6 +126,15 @@ class PositiveShapes(unittest.TestCase):
             md = "citations are `src/xevious_sub.68k` unless noted.\n\nText (`mask_a` 300–350).\n"
             self.assertTrue(_ok(_scan(md, Path(t))))
 
+    def test_file_and_range_without_a_label(self):
+        # The bounds-only shape (the .inc file has no labels; some prose names the
+        # label earlier and cites `` `file` a–b ``).
+        with tempfile.TemporaryDirectory() as t:
+            md = self.DEFAULT + "Constants (`src/xevious.inc` 61–81).\n"
+            results = _scan(md, Path(t))
+            self.assertTrue(_ok(results))
+            self.assertTrue(any(r.citation.label is None for r in results))
+
 
 class NegativeShapes(unittest.TestCase):
     DEFAULT = "citations are `src/xevious_main.68k` unless noted.\n\n"
@@ -164,6 +173,13 @@ class NegativeShapes(unittest.TestCase):
             # bounds but the label is absent from main.
             r = self._reasons(self.DEFAULT + "Text (`mask_a` 300–350).\n", t)
             self.assertTrue(any("is not a label in src/xevious_main.68k" in x for x in r))
+
+    def test_over_wide_range_is_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            # A range starting at the label but spanning far more than any real
+            # routine points at a region, not a place.
+            r = self._reasons(self.DEFAULT + "Text (`handle_x` 1000–4000).\n", t)
+            self.assertTrue(any("too wide to locate" in x for x in r))
 
 
 class MechanicsProvenance(unittest.TestCase):

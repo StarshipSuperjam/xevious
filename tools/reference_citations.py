@@ -51,6 +51,10 @@ INDEX = ROOT / "docs" / "spec" / "index.md"
 # build order, the mechanics template).
 EXCLUDED_NAMES = {"index.md", "build-plan.md", "README.md"}
 
+# The widest real citation in the corpus is ~74 lines; a range wider than this
+# points at a region rather than a place and is rejected.
+MAX_CITATION_SPAN = 256
+
 _FILE_STEMS = ("xevious_main", "xevious_sub", "xevious_ram", "map_rom", "xevious")
 FILE_TOKEN = re.compile(
     r"`(?:src/)?(" + "|".join(_FILE_STEMS) + r")\.(68k|inc)`"
@@ -66,6 +70,15 @@ LABEL_CITATION = re.compile(
     r"(?:\s+through\s+`(?P<label2>[A-Za-z_][A-Za-z0-9_]*)`)?"
     r"[,\s]*\(?"
     r"(?P<approx>~)?(?<![\w.-])(?P<start>\d{2,5})"
+    r"(?:\s*[–—-]\s*(?P<end>\d{2,5}))?(?!\d)"
+)
+
+# A file token immediately followed by a line or range and no label — the
+# bounds-only citation shape (the `.inc` file has no labels, and some prose cites
+# `` `file` 300–311 `` with the label named earlier in the sentence).
+FILE_RANGE = re.compile(
+    r"`(?P<file>(?:src/)?(?:" + "|".join(_FILE_STEMS) + r")\.(?:68k|inc))`"
+    r"[,\s]*\(?(?P<approx>~)?(?<![\w.-])(?P<start>\d{2,5})"
     r"(?:\s*[–—-]\s*(?P<end>\d{2,5}))?(?!\d)"
 )
 
@@ -158,6 +171,14 @@ def resolve(cit: Citation, sources, extents) -> Result:
     nlines = len(src.lines)
     if not (1 <= cit.start <= cit.end <= nlines):
         return Result(cit, False, f"range {cit.start}-{cit.end} is outside {cit.file} (which has {nlines} lines)")
+    # A citation locates a behaviour within a bounded span; a range far wider than
+    # any real routine points at a region, not a place. The widest real citation
+    # is ~74 lines, so 256 is generous headroom while still rejecting a range that
+    # spans a large fraction of a file.
+    if cit.end - cit.start > MAX_CITATION_SPAN:
+        return Result(cit, False,
+                      f"range {cit.start}-{cit.end} spans {cit.end - cit.start} lines, "
+                      f"too wide to locate a behaviour (limit {MAX_CITATION_SPAN})")
     if cit.label is None:
         return Result(cit, True, None)  # file+range, bounds-only (e.g. the .inc file)
     ext = extents[cit.file]
@@ -167,6 +188,9 @@ def resolve(cit: Citation, sources, extents) -> Result:
         hint = f" (it is defined in {elsewhere[0]})" if elsewhere else ""
         return Result(cit, False, f"`{cit.label}` is not a label in {cit.file}{hint}")
     defline, blockend = ext[cit.label]
+    # Either the range contains the label's definition (a routine cited by a range
+    # that brackets it, possibly spanning into the labels that follow), or it sits
+    # entirely inside the label's own block (a sub-range).
     in_range = cit.start <= defline <= cit.end
     in_block = defline <= cit.start and cit.end <= blockend
     if not (in_range or in_block):
@@ -223,9 +247,19 @@ def _line_of(para: str, offset: int, base_line: int) -> int:
 def _scan_segment(segment: str, default: str | None, rel: str, para: str,
                   base_line: int, cits: list[Citation], path: Path) -> None:
     """Scan one group/segment: file tokens (sticky within the segment) then citations."""
-    # Interleave file tokens and citations in document order.
+    # Interleave file tokens, labelled citations, and file+range citations in
+    # document order. A file token sets the current file; a labelled citation
+    # binds to it; a file+range citation carries its own file and no label.
     events = []
+    file_range_spans = []
+    for m in FILE_RANGE.finditer(segment):
+        events.append((m.start(), "filerange", m))
+        file_range_spans.append((m.start(), m.end()))
     for m in FILE_TOKEN.finditer(segment):
+        # Skip a file token that is the head of a file+range citation (it is
+        # handled as that citation, not as a bare set-current token).
+        if any(s <= m.start() < e for s, e in file_range_spans):
+            continue
         events.append((m.start(), "file", m.group(0)))
     for m in LABEL_CITATION.finditer(segment):
         events.append((m.start(), "cite", m))
@@ -235,11 +269,19 @@ def _scan_segment(segment: str, default: str | None, rel: str, para: str,
     for offset, kind, payload in events:
         if kind == "file":
             current = normalise_file(payload)
+            continue
+        m = payload
+        start = int(m.group("start"))
+        end = int(m.group("end")) if m.group("end") else start
+        abs_line = _line_of(para, seg_offset + offset, base_line)
+        if kind == "filerange":
+            current = normalise_file(m.group("file"))
+            cits.append(Citation(
+                doc=rel, line=abs_line, file=current, label=None, label2=None,
+                start=start, end=end, approx=bool(m.group("approx")),
+                raw=m.group(0).strip(),
+            ))
         else:
-            m = payload
-            start = int(m.group("start"))
-            end = int(m.group("end")) if m.group("end") else start
-            abs_line = _line_of(para, seg_offset + offset, base_line)
             cits.append(Citation(
                 doc=rel, line=abs_line, file=current,
                 label=m.group("label"), label2=m.group("label2"),
@@ -289,6 +331,7 @@ def check(checkout: Path, paths: list[Path]) -> tuple[list[Result], list[Citatio
     pin = index_pin()
     results: list[Result] = []
     for base in paths:
+        base = base.resolve()  # so a relative --paths argument still relative_to(ROOT)
         for path in sorted(base.rglob("*.md")):
             if base.name == "spec" and "data" in path.parts:
                 continue

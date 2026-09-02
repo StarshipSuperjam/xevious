@@ -130,6 +130,41 @@ class Ensure(unittest.TestCase):
                     checkout.ensure(root, allow_network=False)
 
 
+class CloneAtPin(unittest.TestCase):
+    def test_clones_and_verifies_from_a_local_origin(self):
+        # Exercise clone_at_pin end to end offline: a local git repo stands in for
+        # the remote, REMOTE is pointed at it, and the pin/hashes are patched to
+        # the fake's.
+        with tempfile.TemporaryDirectory() as tmp:
+            origin = Path(tmp) / "origin"
+            origin.mkdir()
+            digests = _write_fake_sources(origin)
+            _git(origin, "init", "-q")
+            _git(origin, "add", "-A")
+            _git(origin, "commit", "-q", "-m", "pin")
+            sha = subprocess.run(
+                ["git", "-C", str(origin), "rev-parse", "HEAD"],
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+            dest = Path(tmp) / "cache"
+            with mock.patch.object(rx, "EXPECTED_SHA256", digests), \
+                 mock.patch.object(rx, "PINNED_COMMIT", sha), \
+                 mock.patch.object(checkout, "REMOTE", origin.as_uri()):
+                got = checkout.ensure(dest)
+                self.assertEqual(checkout.head_commit(got), sha)
+                checkout.verify_files(got)  # no raise
+
+    def test_prepare_failure_raises_checkout_error(self):
+        # A file where the cache dir should be makes `git init` fail; the tool
+        # must surface a clean CheckoutError, not a raw traceback.
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = Path(tmp) / "cache"
+            blocker.write_text("not a directory-friendly path")
+            with mock.patch.object(rx, "PINNED_COMMIT", "0" * 40):
+                with self.assertRaises(checkout.CheckoutError):
+                    checkout.clone_at_pin(blocker)
+
+
 class PathSubcommand(unittest.TestCase):
     def test_fails_when_absent(self):
         with tempfile.TemporaryDirectory() as tmp:
