@@ -8,6 +8,7 @@
 // replenish, the bomb's flight duration, visuals/audio/feel) are deliberately excluded
 // and listed in EXCLUSIONS — they remain the operator playtest's job.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   step,
   keyDown,
@@ -23,6 +24,14 @@ import {
 } from './harness.js';
 import { reachPlaying, stateOf } from './build.js';
 import * as mutate from './mutate.js';
+
+// The committed RNG fixture (the shared LFSR's byte stream from each seed) — the model the live
+// draw order is checked against, read from the same file the Python model fixtures pin so the two
+// can never drift. Slot 59..64 are the six flying slots (list index 58..63) the Toroid wave fills.
+const RNG_FIXTURES = JSON.parse(
+  readFileSync(new URL('../../docs/spec/data/rng.json', import.meta.url)),
+).generator.fixture_sequences;
+const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
 
 // Every read resolves through a manifest id (hard-errors on a rename), including the
 // scope-duplicated ones: `terrain-scroll-step-a` is area_01a's, distinct from area_01b's.
@@ -387,6 +396,92 @@ export const SCENARIOS = [
     // Break the logram mask branch (its handler == comparison never matches) so it is never set →
     // the logramSet assertion fails.
     negativeMutation: (p) => mutate.changeEqualsOperand(p, 'Stage', 'fire_mask_logram', '__never__'),
+  },
+  {
+    key: 'toroid-wave-spawns-and-moves',
+    behavior:
+      'The formation spawner fills flying slots with live Toroids that then move under their own velocity each tick, drawn by six persistent clones',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Over the window: a flying slot (59..64) is SEEN holding a live Toroid (type 10/11), and a
+      // slot that stays a Toroid across a tick with no intervening empty is SEEN to change position
+      // — that is movement, not a refill (a cull frees the slot first, so prevType would be 0). The
+      // renderer pool is a fixed six clones bound to the six flying slots.
+      let toroidSeen = false;
+      let movedSeen = false;
+      const prevType = {};
+      const prevX = {};
+      const prevY = {};
+      for (let i = 0; i < 60; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        const x = readVar(vm, 'slot-x');
+        const y = readVar(vm, 'slot-y');
+        for (const s of FLYING_SLOT_INDICES) {
+          const t = type[s];
+          if (t === 10 || t === 11) {
+            toroidSeen = true;
+            if (prevType[s] === t && (x[s] !== prevX[s] || y[s] !== prevY[s])) movedSeen = true;
+          }
+          prevType[s] = t;
+          prevX[s] = x[s];
+          prevY[s] = y[s];
+        }
+      }
+      return { toroidSeen, movedSeen, clones: cloneCount(vm, 'toroid') };
+    },
+    assert(obs) {
+      assert.equal(obs.toroidSeen, true, 'a live Toroid occupies a flying slot');
+      assert.equal(obs.movedSeen, true, 'a live Toroid advances its position under its own velocity');
+      assert.equal(obs.clones, 6, 'the Toroid renderer pool is the fixed six flying-slot clones');
+    },
+    // Empty `update toroid` so Toroids still spawn but no occupant ever advances → movedSeen false.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
+  },
+  {
+    key: 'rng-draw-order',
+    behavior:
+      'The Toroid spawner consumes the shared RNG in walk order — the live draw stream follows the LFSR model from a seeded state',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed the shared state to a fixture seed, then let the spawner draw: `rng out` holds the
+      // latest draw, so each tick where it changes is a strictly-later position in the LFSR stream.
+      // The observed values must therefore be an ordered subsequence of the fixture outputs — proof
+      // the RNG is consumed forward from the seed, in order, with no re-seed or divergence. The
+      // window stays short so cumulative draws stay inside the 256-entry fixture (no wrap).
+      const seed = 4660;
+      const fixture = RNG_FIXTURES.find((s) => s.seed === seed).outputs;
+      writeVar(vm, 'rng-state', seed);
+      let prev = readVar(vm, 'rng-out');
+      const observed = [];
+      for (let i = 0; i < 8; i += 1) {
+        step(vm, 1);
+        const out = readVar(vm, 'rng-out');
+        if (out !== prev) {
+          observed.push(out);
+          prev = out;
+        }
+      }
+      let ptr = -1;
+      let ordered = true;
+      for (const v of observed) {
+        const at = fixture.indexOf(v, ptr + 1);
+        if (at < 0) {
+          ordered = false;
+          break;
+        }
+        ptr = at;
+      }
+      return { count: observed.length, ordered };
+    },
+    assert(obs) {
+      assert.ok(obs.count >= 3, 'the spawner draws from the shared RNG while waves fill');
+      assert.equal(obs.ordered, true, 'the live draw stream is an ordered subsequence of the LFSR model');
+    },
+    // Empty `rng step` so `rng out` never advances → no draws are observed → the count assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rng step'),
   },
 ];
 

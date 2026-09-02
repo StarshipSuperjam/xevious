@@ -4,6 +4,11 @@
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {
+    "aim-base": {
+      "kind": "variable",
+      "name": "aim base",
+      "scope": "Stage"
+    },
     "aim-dx-24": {
       "kind": "list",
       "name": "aim dx 24",
@@ -14,6 +19,11 @@
       "name": "aim dx 32",
       "scope": "Stage"
     },
+    "aim-dx-diff": {
+      "kind": "variable",
+      "name": "aim dx diff",
+      "scope": "Stage"
+    },
     "aim-dy-24": {
       "kind": "list",
       "name": "aim dy 24",
@@ -22,6 +32,36 @@
     "aim-dy-32": {
       "kind": "list",
       "name": "aim dy 32",
+      "scope": "Stage"
+    },
+    "aim-dy-diff": {
+      "kind": "variable",
+      "name": "aim dy diff",
+      "scope": "Stage"
+    },
+    "aim-fine": {
+      "kind": "variable",
+      "name": "aim fine",
+      "scope": "Stage"
+    },
+    "aim-index": {
+      "kind": "variable",
+      "name": "aim index",
+      "scope": "Stage"
+    },
+    "aim-large": {
+      "kind": "variable",
+      "name": "aim large",
+      "scope": "Stage"
+    },
+    "aim-small": {
+      "kind": "variable",
+      "name": "aim small",
+      "scope": "Stage"
+    },
+    "aim-swap": {
+      "kind": "variable",
+      "name": "aim swap",
       "scope": "Stage"
     },
     "area-map-column": {
@@ -229,6 +269,11 @@
       "name": "fire mask zoshi",
       "scope": "Stage"
     },
+    "flying-type-table": {
+      "kind": "list",
+      "name": "flying type table",
+      "scope": "Stage"
+    },
     "formation-count": {
       "kind": "variable",
       "name": "formation count",
@@ -322,6 +367,16 @@
     "octant-table": {
       "kind": "list",
       "name": "octant table",
+      "scope": "Stage"
+    },
+    "player-col": {
+      "kind": "variable",
+      "name": "player col",
+      "scope": "Stage"
+    },
+    "player-row": {
+      "kind": "variable",
+      "name": "player row",
       "scope": "Stage"
     },
     "rng-extend-flag": {
@@ -419,6 +474,21 @@
       "name": "entry epoch",
       "scope": "solvalou"
     },
+    "spawn-attempts": {
+      "kind": "variable",
+      "name": "spawn attempts",
+      "scope": "Stage"
+    },
+    "spawn-cursor": {
+      "kind": "variable",
+      "name": "spawn cursor",
+      "scope": "Stage"
+    },
+    "spawn-found": {
+      "kind": "variable",
+      "name": "spawn found",
+      "scope": "Stage"
+    },
     "terrain-scroll-step-a": {
       "kind": "variable",
       "name": "scroll step",
@@ -432,6 +502,21 @@
     "tick": {
       "kind": "variable",
       "name": "tick",
+      "scope": "Stage"
+    },
+    "toroid-clone-slot": {
+      "kind": "variable",
+      "name": "toroid clone slot",
+      "scope": "toroid"
+    },
+    "toroid-frame": {
+      "kind": "list",
+      "name": "toroid frame",
+      "scope": "Stage"
+    },
+    "walk-type": {
+      "kind": "variable",
+      "name": "walk type",
       "scope": "Stage"
     },
     "weapon-blaster-reload": {

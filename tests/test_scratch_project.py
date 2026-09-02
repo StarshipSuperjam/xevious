@@ -207,7 +207,9 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        self.assertEqual(17, len(project["targets"]))
+        # 18: the historical 15 + the generated hud, the sprite-extraction proof, and the slice-8
+        # toroid gameplay renderer (which reuses the proof's costumes by reference).
+        self.assertEqual(18, len(project["targets"]))
         self.assertEqual(98, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
@@ -931,6 +933,23 @@ class ScratchProjectTests(unittest.TestCase):
             "formation index",
             # DIF-02 transient score re-tune addend (computed then added to the AI level).
             "ai adjust",
+            # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
+            # cached craft cell, the per-dispatch type register, and the spawner's cursor/attempt/
+            # found registers — all transient, none Stage-write-protected state.
+            "aim dx diff",
+            "aim dy diff",
+            "aim large",
+            "aim small",
+            "aim swap",
+            "aim base",
+            "aim fine",
+            "aim index",
+            "player row",
+            "player col",
+            "walk type",
+            "spawn cursor",
+            "spawn attempts",
+            "spawn found",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1027,6 +1046,8 @@ class ScratchProjectTests(unittest.TestCase):
                 "aim dx 24",
                 "aim dy 32",
                 "aim dx 32",
+                "flying type table",
+                "toroid frame",
                 "value table",
                 "starting lives",
                 "first bonus 123",
@@ -1083,6 +1104,16 @@ class ScratchProjectTests(unittest.TestCase):
             director.RESOLVE_HIT_PROCCODE,
             director.SCORE_PROCCODE,
             director.CHECK_BONUS_PROCCODE,
+            # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
+            # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
+            # shared RNG step the spawn draw now consumes (its first live consumer).
+            director.RNG_PROCCODE,
+            director.COMPUTE_AIM_PROCCODE,
+            director.READ_PLAYER_PROCCODE,
+            director.SPAWN_FLYING_PROCCODE,
+            director.INIT_TOROID_PROCCODE,
+            director.UPDATE_TOROID_PROCCODE,
+            director.CULL_SLOT_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -1399,6 +1430,170 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._central_walk_failures(project), label)
+
+    @staticmethod
+    def _air01_failures(project: dict) -> set:
+        """AIR-01 Toroid vertical-slice authoring contract — violated labels. Pins the structural
+        facts that make the Toroid a faithful live entity: its lifecycle procedures run atomically,
+        the formation spawner and the ordered walk actually drive it, the cull inherits scroll
+        position (the coded refill), and the spawn-column draw is bounded so no seed can hang it."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        # (1) Every Toroid-lifecycle procedure exists and is warp (atomic) — a non-warp walk sub-proc
+        # would yield mid-slot, letting a half-updated enemy render or be hit.
+        for proccode in (
+            director.INIT_TOROID_PROCCODE,
+            director.UPDATE_TOROID_PROCCODE,
+            director.SPAWN_FLYING_PROCCODE,
+            director.CULL_SLOT_PROCCODE,
+        ):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("toroid-lifecycle-procs-warp")
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        # (2) The spawner is driven, so a formation wave reaches live slots; (3) the ordered walk
+        # dispatches to the updater, so a spawned Toroid actually advances.
+        if not calls(director.SPAWN_FLYING_PROCCODE):
+            failures.add("spawn-driven")
+        if not calls(director.UPDATE_TOROID_PROCCODE):
+            failures.add("dispatch-updates-toroid")
+
+        # (4) The cull frees occupancy (type + state) but leaves the position fields, so a refilled
+        # slot inherits the previous occupant's scroll-axis position — the coded refill deviation.
+        cull_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.CULL_SLOT_PROCCODE)
+            if b["opcode"] == "data_replaceitemoflist"
+        }
+        if not {director.SLOT_TYPE_ID, director.SLOT_STATE_ID} <= cull_lists:
+            failures.add("cull-frees-occupancy")
+        if {director.SLOT_X_ID, director.SLOT_Y_ID} & cull_lists:
+            failures.add("cull-keeps-position")
+
+        # (5) The spawn-column draw is bounded: init toroid draws inside a repeat-until AND increments
+        # an attempt counter, so an unlucky seed cannot spin the warp thread forever (16-attempt cap).
+        init_body = _proc_body_blocks(stage, director.INIT_TOROID_PROCCODE)
+        has_until = any(b["opcode"] == "control_repeat_until" for b in init_body)
+        counts_attempts = any(
+            b["opcode"] == "data_changevariableby"
+            and b["fields"]["VARIABLE"][0] == "spawn attempts"
+            for b in init_body
+        )
+        if not (has_until and counts_attempts):
+            failures.add("spawn-draw-bounded")
+        return failures
+
+    # Roadmap closure evidence for leaf #65 (air.toroid, AIR-01.toroid): the Toroid is a live entity
+    # — spawned from the formation wave, advanced by the ordered walk, culled with inherited scroll
+    # position, its spawn draw bounded. The live proof (spawns, moves, six clones) is the harness
+    # scenario `toroid-wave-spawns-and-moves`; the seeded draw order is `rng-draw-order`.
+    # roadmap-evidence: AIR-01 success  (test_toroid_slice_authoring_present — lifecycle procs, spawn+dispatch driven, cull inherits position, bounded draw)
+    # roadmap-evidence: AIR-01 failure  (test_toroid_slice_negative_fixtures — each contract clause corrupted bites)
+    # This commit also makes SYS-04 a live consumer (the ordered walk now dispatches an occupant to
+    # `update toroid`, and the spawner draws the shared RNG in walk order) and lights the AREA-02 air
+    # path (the formation wave, not add_object, spawns live flying enemies). Both are proven live in
+    # the harness (`toroid-wave-spawns-and-moves`, `rng-draw-order`), each with a biting negative.
+    # roadmap-evidence: SYS-04 success  (test_toroid_slice_authoring_present dispatch/spawn-driven clauses; harness toroid-wave-spawns-and-moves + rng-draw-order run live)
+    # roadmap-evidence: SYS-04 failure  (test_toroid_slice_negative_fixtures dispatch-updates-toroid; harness rng-draw-order neutralizes `rng step`)
+    # roadmap-evidence: AREA-02 success  (test_toroid_slice_authoring_present spawn-driven clause; harness toroid-wave-spawns-and-moves fills flying slots from the formation)
+    # roadmap-evidence: AREA-02 failure  (test_toroid_slice_negative_fixtures spawn-driven; harness toroid-wave-spawns-and-moves neutralizes `update toroid`)
+    def test_toroid_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air01_failures(project))
+
+    def test_toroid_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air01_failures(base))
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.UPDATE_TOROID_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_spawn_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.SPAWN_FLYING_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.UPDATE_TOROID_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def cull_skips_type(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CULL_SLOT_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                ):
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def cull_clears_position(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CULL_SLOT_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                ):
+                    b["fields"]["LIST"] = ["slot x", director.SLOT_X_ID]
+
+        def drop_attempts_count(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.INIT_TOROID_PROCCODE):
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"]["VARIABLE"][0] == "spawn attempts"
+                ):
+                    b["fields"]["VARIABLE"] = ["spawn found", director.SPAWN_FOUND_ID]
+
+        cases = [
+            ("toroid-lifecycle-procs-warp", unwarp_update),
+            ("spawn-driven", drop_spawn_call),
+            ("dispatch-updates-toroid", drop_dispatch_call),
+            ("cull-frees-occupancy", cull_skips_type),
+            ("cull-keeps-position", cull_clears_position),
+            ("spawn-draw-bounded", drop_attempts_count),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air01_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -4539,7 +4734,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "5638cf82d7d01aeca5528f72f4cd45845815ea2c812495f99b59bff407b2b95a",
+            "f928f3f4a148f92985684986407e0ba86d61b03c172f1cf712301c732b99a58d",
             build_hash,
         )
 

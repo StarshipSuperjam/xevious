@@ -617,6 +617,91 @@ class AimingTables(unittest.TestCase):
             self.assertEqual([v["dx"] for v in vectors], lists[dx_name], dx_name)
 
 
+class ToroidSpawnDraw(unittest.TestCase):
+    """AIR-01: the bounded lateral spawn-column draw (init toroid), modelled over the COMMITTED RNG
+    golden byte streams. Proves the RECORDED constants (mask, reject threshold, column offset, craft
+    gap, attempt cap) yield only valid, craft-avoiding spawn columns and always terminate within the
+    cap on real seeds, and quantifies the recorded bounded-draw exhaustion deviation. Every constant
+    is pulled from the generator, so changing any of them re-checks here against the real stream."""
+
+    MASK = director.SPAWN_COL_MASK
+    REJECT_AT = director.SPAWN_COL_REJECT_AT
+    OFFSET = director.SPAWN_COL_OFFSET
+    GAP = director.SPAWN_CRAFT_GAP
+    CAP = director.SPAWN_DRAW_ATTEMPTS
+
+    def _streams(self):
+        fixtures = json.loads((DATA / "rng.json").read_text())["generator"]["fixture_sequences"]
+        return [f["outputs"] for f in fixtures]
+
+    def _spawns(self, stream, player_col, gate=True, reject=True):
+        """Replay init toroid's draw loop over an RNG byte stream: for each spawn draw up to CAP
+        bytes, rejecting a masked candidate >= REJECT_AT (redraw) and, on an in-range candidate,
+        accepting column = candidate + OFFSET only when it clears the craft by GAP. Yields
+        (accepted_column_or_None, attempts) per spawn until the stream runs out. `gate`/`reject`
+        turn the two constraints off, to prove each is load-bearing on the real seeds."""
+        i = 0
+        results = []
+        while i < len(stream):
+            found = None
+            attempts = 0
+            while attempts < self.CAP and found is None and i < len(stream):
+                candidate = stream[i] & self.MASK
+                i += 1
+                attempts += 1
+                if reject and candidate >= self.REJECT_AT:
+                    continue
+                column = candidate + self.OFFSET
+                if (not gate) or abs(player_col - column) >= self.GAP:
+                    found = column
+            results.append((found, attempts))
+        return results
+
+    def test_accepted_columns_are_valid_and_craft_avoiding(self):
+        # Every accepted column lands in the in-range window [OFFSET, OFFSET+REJECT_AT-1] and never
+        # within GAP of the craft, for craft columns spanning the field; no spawn ever exceeds the cap.
+        for player_col in (3, 10, 16, 24, 30):
+            for stream in self._streams():
+                for column, attempts in self._spawns(stream, player_col):
+                    self.assertLessEqual(attempts, self.CAP)
+                    if column is None:
+                        continue
+                    self.assertTrue(self.OFFSET <= column <= self.OFFSET + self.REJECT_AT - 1, column)
+                    self.assertGreaterEqual(abs(player_col - column), self.GAP, (player_col, column))
+
+    def test_draw_terminates_within_cap_and_exhaustion_is_rare(self):
+        # The bound guarantees termination; on the golden seeds exhaustion (all CAP draws rejected)
+        # is a rare tail — the recorded deviation where a spawn is skipped and retried next tick.
+        total = 0
+        exhausted = 0
+        for stream in self._streams():
+            for column, _attempts in self._spawns(stream, 16):
+                total += 1
+                if column is None:
+                    exhausted += 1
+        self.assertGreater(total, 100, "the golden streams drive a meaningful number of spawns")
+        self.assertLess(exhausted / total, 0.05, f"exhaustion rate {exhausted}/{total} stays a rare tail")
+
+    def test_reject_and_craft_gap_are_load_bearing(self):
+        # Prove both constraints actually bite on the real seeds: without the craft gap, columns land
+        # within GAP of the craft; without the reject, masked candidates >= REJECT_AT produce columns
+        # past the in-range window. The real draw (both on) does neither, per the test above.
+        near_craft = [
+            column
+            for stream in self._streams()
+            for column, _ in self._spawns(stream, 16, gate=False)
+            if column is not None and abs(16 - column) < self.GAP
+        ]
+        oversized = [
+            column
+            for stream in self._streams()
+            for column, _ in self._spawns(stream, 16, reject=False)
+            if column is not None and column > self.OFFSET + self.REJECT_AT - 1
+        ]
+        self.assertTrue(near_craft, "dropping the craft gap admits near-craft spawn columns")
+        self.assertTrue(oversized, "dropping the reject admits out-of-range spawn columns")
+
+
 class DifficultyAndFormations(unittest.TestCase):
     """DIF-01 / FORM-01: the difficulty AI level and normal flying formations, modelled over the
     COMMITTED data independently of the generator (the engine half of the acceptance criteria). The

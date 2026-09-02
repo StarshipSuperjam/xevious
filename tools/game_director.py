@@ -544,6 +544,113 @@ OCTANT_TABLE = _AIMING["octant"]
 AIM_DY_24, AIM_DX_24 = _AIMING["toroid_dy"], _AIMING["toroid_dx"]
 AIM_DY_32, AIM_DX_32 = _AIMING["generic_dy"], _AIMING["generic_dx"]
 
+# --- AIR-01 Toroid live-combat machinery (slice 8) ---------------------------------------------
+# The 32-direction aim quantizer's working vars (custom blocks have no locals): the two input diffs
+# (player - slot, in 8-px units), the large/small/swap/base/fine intermediates, and the resolved
+# 1-based direction index. `compute aim index` reads the two diff vars and writes `aim index`.
+AIM_DX_DIFF_ID = "aim-dx-diff"  # scroll-axis diff (player row - slot row)
+AIM_DY_DIFF_ID = "aim-dy-diff"  # lateral diff (player col - slot col)
+AIM_LARGE_ID = "aim-large"
+AIM_SMALL_ID = "aim-small"
+AIM_SWAP_ID = "aim-swap"  # 1 when |dy| > |dx| (the reflect branch)
+AIM_BASE_ID = "aim-base"  # quadrant-folded base index (0..255)
+AIM_FINE_ID = "aim-fine"  # (base + 4) mod 256, before the >>3 & 0x1f
+AIM_INDEX_ID = "aim-index"  # resolved 1-based index into the 32-entry aim lists
+COMPUTE_AIM_PROCCODE = "compute aim index"
+
+# The craft's live position, read once per walk (via sensing_of on the solvalou sprite) and mapped
+# back to arcade 8-px row/column, so every slot's aim/collision test uses one cached pair.
+PLAYER_ROW_ID = "player-row"  # scroll axis
+PLAYER_COL_ID = "player-col"  # lateral axis
+READ_PLAYER_PROCCODE = "read player cell"
+
+# The spawner's own sweep cursor (like the bullet allocator's — never the shared `slot index`); the
+# per-dispatch type register; and the spawn-draw attempt counter.
+SPAWN_CURSOR_ID = "spawn-cursor"
+WALK_TYPE_ID = "walk-type"
+SPAWN_ATTEMPTS_ID = "spawn-attempts"
+SPAWN_FOUND_ID = "spawn-found"  # set when the bounded spawn-column draw accepts a column
+SPAWN_FLYING_PROCCODE = "spawn flying enemies"
+INIT_TOROID_PROCCODE = "init toroid"
+UPDATE_TOROID_PROCCODE = "update toroid"
+CULL_SLOT_PROCCODE = "cull slot"
+
+# Object type codes this slice's flying dispatch handles (object-types.json). Other formation-named
+# families (e.g. Torkan, code 15, which area 1 also names) are SKIPPED by the spawner until their
+# own slice builds them — a recorded deviation (fewer enemies than the arcade pre-slice-10).
+TOROID_TYPE = 10  # 0x0A, non-shooting
+TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
+FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE)
+TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
+TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
+
+# Slot sub-state (`slot flag`) for the Toroid: pre-trigger, then a committed swing side.
+TOROID_FLAG_APPROACH = 0
+TOROID_FLAG_SWING_RIGHT = 1
+TOROID_FLAG_SWING_LEFT = 2
+# Swing trigger: the lateral-column offset (player col - slot col) lies in [LOW, HIGH] (is_close_to
+# _solvalou_Y, 20CB); direction is the sign of that offset.
+TOROID_SWING_LOW = -2
+TOROID_SWING_HIGH = 1
+
+# Motion / cull, in slot units (1/32 px; row = floor(slot x / 256), col = floor(slot y / 256)).
+SLOT_UNITS_PER_CELL = 256
+TICK_VELOCITY_SCALE = 4  # 1 tick = 2 arcade frames; each applies 2*velocity => 4*velocity/tick
+TICK_TIMER_STEP = 2  # the animation clock advances 2 arcade frames per tick
+TOROID_SWING_ACCEL = 2  # lateral velocity change per tick (1 unit/frame * 2 frames)
+CULL_ROW_MAX = 40  # >= 0x28 rows (past the bottom) -> offscreen
+CULL_ROW_MIN = -2  # <= -2 rows (past the top, the reference's byte-wrap) -> offscreen
+CULL_COL_MAX = 31  # >= 0x1F columns -> offscreen (lateral)
+
+# FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
+# => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
+# unbounded; the port bounds it at SPAWN_DRAW_ATTEMPTS and, on exhaustion, skips the spawn this tick
+# (retried next) — a deterministic, seeded-reproducible deviation (~0.5%), recorded in record 024.
+SPAWN_COL_MASK = 31
+SPAWN_COL_REJECT_AT = 25
+SPAWN_COL_OFFSET = 3
+SPAWN_CRAFT_GAP = 8
+SPAWN_DRAW_ATTEMPTS = 16
+
+# FORM-01 flying-enemy type table (object-types.json), baked so the spawner reads the wave's type
+# codes; and the Toroid costume-ordinal map (sprite code 8..15 -> one of the 7 turn frames, the 8th
+# reusing frame 6 — an 8-onto-7 palindrome wrap, the missing 8th phase recorded uncertain).
+FLYING_TYPE_TABLE_ID = "flying-type-table"
+TOROID_FRAME_ID = "toroid-frame"
+TOROID_FRAME_MAP = [1, 2, 3, 4, 5, 6, 7, 6]
+
+
+def _load_flying_type_table() -> list[int]:
+    # AIR-01/FORM-01: the flying-enemy type codes (object-types.json), INGESTED, hash-verified at load.
+    return list(_load_spec_data("object-types.json")["flying_enemy_type_table"]["codes"])
+
+
+FLYING_TYPE_CODES = _load_flying_type_table()
+
+# AIR-01 Toroid renderer target (game_director owns its EXISTENCE + BLOCKS; tools/sprite_extractor.py
+# owns its COSTUMES — the same split as hud / hud_glyphs and solvalou). One persistent clone per
+# flying slot renders that slot's live state; the original stays hidden.
+TOROID_TARGET = "toroid"
+# The gameplay Toroid target reuses the costumes already extracted onto the sprite-extraction proof
+# target (record 002) — the same 7 verified turn frames, by md5 reference. This deliberately keeps a
+# SINGLE owner of the toroid target (existence + blocks + these referenced costumes) rather than the
+# two-generator split hud uses: the extractor's overlap guard forbids duplicate crops, and retiring
+# the proof to re-own the frames would churn record 002; referencing the already-verified assets is
+# the smaller, lower-risk change and removes the cross-generator ordering coupling entirely. Recorded
+# as a deviation in docs/mechanics/024.
+TOROID_PROOF_TARGET = "toroid_sprite_proof"
+TOROID_CLONE_SLOT_ID = "toroid-clone-slot"  # sprite-local: which flying slot this clone renders
+# Port render map (arcade cell -> stage px), applied ONLY here and in the one player read. Independent
+# per-axis (core-game-systems "not one ratified factor"): lateral column c -> x = c*15 - 240 (the
+# 256-col space across the play width); scroll row r -> y = 155 - r*8 (rows down the play height).
+# The craft's port spawn (0, -85) fixes the anchors: col 16 -> x 0, row 30 -> y -85. Operator-tuned,
+# confirmed by eye at playtest; render-only, so it never touches a slot list or the build hash.
+RENDER_COL_STAGE = 15
+RENDER_COL_OFFSET = 240
+RENDER_ROW_TOP = 155
+RENDER_ROW_STAGE = 8
+TOROID_RENDER_SIZE = 225  # 16-px sprite at ~2.25 stage px/px, matching solvalou's on-screen scale
+
 
 def _schedule_arg(record: dict) -> int:
     # DIF-01/03 + FORM-01: the single runtime-readable scalar each dispatched handler needs,
@@ -1114,6 +1221,59 @@ class Blocks:
     def op_gt(self, a: Any, b: Any) -> str:
         return self._reporter("operator_gt", a, b)
 
+    def op_lt(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_lt", a, b)
+
+    def op_and(self, a: Any, b: Any) -> str:
+        # Boolean reporters attach to OPERAND1/OPERAND2 (the non-arithmetic pair).
+        return self._reporter("operator_and", a, b)
+
+    def op_or(self, a: Any, b: Any) -> str:
+        return self._reporter("operator_or", a, b)
+
+    def op_not(self, operand: str) -> str:
+        block_id = self.add("operator_not", inputs={"OPERAND": [2, operand]})
+        self.blocks[operand]["parent"] = block_id
+        return block_id
+
+    def op_abs(self, operand: Any) -> str:
+        # scratch-vm mathop reads OPERATOR (not OPERATION); a wrong key returns 0 for every input.
+        return self._mathop("abs", operand)
+
+    def op_round(self, operand: Any) -> str:
+        # `round` is its OWN block (operator_round), NOT an operator_mathop function — mathop only
+        # knows floor/ceiling/abs/sqrt/trig/log, so "round" there is an unknown op that returns 0.
+        block_id = self.add("operator_round")
+        if isinstance(operand, str):
+            self.blocks[block_id]["inputs"] = {"NUM": [2, operand]}
+            self.blocks[operand]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"NUM": operand}
+        return block_id
+
+    def _mathop(self, fn: str, operand: Any) -> str:
+        block_id = self.add("operator_mathop", fields={"OPERATOR": [fn, None]})
+        if isinstance(operand, str):
+            self.blocks[block_id]["inputs"] = {"NUM": [2, operand]}
+            self.blocks[operand]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"NUM": operand}
+        return block_id
+
+    def sensing_of(self, prop: str, sprite: str) -> str:
+        # Read another sprite's property (e.g. "x position") via sensing_of; the OBJECT operand is a
+        # shadow menu naming the sprite. Used to read the live craft position into the walk.
+        menu = self.add(
+            "sensing_of_object_menu", shadow=True, fields={"OBJECT": [sprite, None]}
+        )
+        block_id = self.add(
+            "sensing_of",
+            fields={"PROPERTY": [prop, None]},
+            inputs={"OBJECT": [1, menu]},
+        )
+        self.blocks[menu]["parent"] = block_id
+        return block_id
+
     def op_join(self, a: Any, b: Any) -> str:
         block_id = self.add("operator_join")
         inputs: dict[str, Any] = {}
@@ -1389,9 +1549,10 @@ def install_clear_slots(blocks: Blocks) -> None:
 
 
 def install_advance_slots(blocks: Blocks) -> None:
-    # SYS-04 centralized ordered update: one atomic (warp) pass over the 64 slots in
-    # ascending index order, advancing the tick clock. Dispatch of each occupied slot's
-    # per-type behavior is deferred — no entity type acts this slice.
+    # SYS-04 centralized ordered update: one atomic (warp) pass over the 64 slots in ascending
+    # index order, advancing the tick clock and dispatching each occupied slot by its type. The
+    # Toroid (types 0x0A / 0x0B) is the first live occupant (slice 8); other occupant types keep
+    # the empty seam their slices fill. Empty slots are skipped first (the cheap fast path).
     definition = _install_warp_proc(blocks, ADVANCE_SLOTS_PROCCODE)
 
     cursor = lambda: variable("slot index", SLOT_INDEX_ID)
@@ -1404,11 +1565,293 @@ def install_advance_slots(blocks: Blocks) -> None:
     occupied = blocks.add("operator_not")
     blocks.blocks[occupied]["inputs"] = {"OPERAND": [2, is_empty]}
     blocks.blocks[is_empty]["parent"] = occupied
-    # ENGINE-TODO: per-type dispatch of each occupied slot lands with the enemy slice;
-    # today the ordered atomic pass visits occupied slots but has no per-type behavior.
-    dispatch = blocks.if_reporter(occupied, [])
+    # Read the occupant's type once, then dispatch. ENGINE-TODO: bullets and the other flying/
+    # ground/boss families append their branches here as their slices build them.
+    read_type = blocks.set_var_expr(
+        "walk type", WALK_TYPE_ID, blocks.list_item("slot type", SLOT_TYPE_ID, cursor())
+    )
+    is_toroid = blocks.op_or(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TOROID_TYPE)),
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TOROID_SHOOTS_TYPE)),
+    )
+    toroid_branch = blocks.if_reporter(
+        is_toroid, [blocks.call_proc(UPDATE_TOROID_PROCCODE, warp=True)]
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
+
+
+def _cur_item(blocks: Blocks, name: str, list_id: str) -> str:
+    """`item (slot index) of <list>` — the field of the slot the walk/spawner is on."""
+    return blocks.list_item(name, list_id, variable("slot index", SLOT_INDEX_ID))
+
+
+def _set_cur_item(blocks: Blocks, name: str, list_id: str, value: Any) -> str:
+    return blocks.list_replace(name, list_id, variable("slot index", SLOT_INDEX_ID), value)
+
+
+def _cur_row(blocks: Blocks) -> str:
+    """floor(slot x / 256) — the current slot's scroll-axis row in 8-px cells."""
+    return blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot x", SLOT_X_ID), number(SLOT_UNITS_PER_CELL)))
+
+
+def _cur_col(blocks: Blocks) -> str:
+    """floor(slot y / 256) — the current slot's lateral column in 8-px cells."""
+    return blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot y", SLOT_Y_ID), number(SLOT_UNITS_PER_CELL)))
+
+
+def install_compute_aim_index(blocks: Blocks) -> None:
+    # AIR-01/AIR-12 aim quantizer (get_index_for_angle 0EB2): turn the vector (aim dx diff, aim dy
+    # diff) — player minus slot, in 8-px cells — into a 1-based index into the 32-entry aim tables.
+    # Exact integer reproduction of the reference: octant lookup on floor(32*small/large), reflected
+    # across 45 deg when |dy|>|dx|, then quadrant-folded by the diff signs, then ((base+4) mod 256)>>3.
+    definition = _install_warp_proc(blocks, COMPUTE_AIM_PROCCODE)
+    dx = lambda: variable("aim dx diff", AIM_DX_DIFF_ID)
+    dy = lambda: variable("aim dy diff", AIM_DY_DIFF_ID)
+    large = lambda: variable("aim large", AIM_LARGE_ID)
+    small = lambda: variable("aim small", AIM_SMALL_ID)
+    base = lambda: variable("aim base", AIM_BASE_ID)
+
+    set_large = blocks.set_var_expr("aim large", AIM_LARGE_ID, blocks.op_abs(dx()))
+    set_small = blocks.set_var_expr("aim small", AIM_SMALL_ID, blocks.op_abs(dy()))
+    # if |dy| > |dx|: swap so large=max, small=min, and remember the swap (reflect branch).
+    swap_if = blocks.add("control_if_else")
+    need_swap = blocks.op_gt(small(), large())
+    blocks.blocks[swap_if]["inputs"]["CONDITION"] = [2, need_swap]
+    blocks.substack(
+        swap_if,
+        [
+            blocks.set_var("aim base", AIM_BASE_ID, large()),  # aim base as a scratch temp
+            blocks.set_var("aim large", AIM_LARGE_ID, small()),
+            blocks.set_var("aim small", AIM_SMALL_ID, base()),
+            blocks.set_var("aim swap", AIM_SWAP_ID, number(1)),
+        ],
+    )
+    blocks.substack(swap_if, [blocks.set_var("aim swap", AIM_SWAP_ID, number(0))], name="SUBSTACK2")
+    # base = large==0 ? 0 : octant[floor(32*small/large)+1], reflected when swapped.
+    zero_if = blocks.add("control_if_else")
+    large_zero = blocks.op_eq(large(), number(0))
+    blocks.blocks[zero_if]["inputs"]["CONDITION"] = [2, large_zero]
+    blocks.substack(zero_if, [blocks.set_var("aim base", AIM_BASE_ID, number(0))])
+    ratio = blocks.op_floor(
+        blocks.op_div(blocks.op_mul(number(32), small()), large())
+    )
+    octant = blocks.list_item("octant table", OCTANT_TABLE_ID, blocks.op_add(ratio, number(1)))
+    set_from_octant = blocks.set_var_expr("aim base", AIM_BASE_ID, octant)
+    reflect_if = blocks.if_reporter(
+        blocks.op_eq(variable("aim swap", AIM_SWAP_ID), number(1)),
+        [blocks.set_var_expr("aim base", AIM_BASE_ID, blocks.op_sub(number(0x40), base()))],
+    )
+    blocks.substack(zero_if, [set_from_octant, reflect_if], name="SUBSTACK2")
+    # quadrant fold by the ORIGINAL diff signs.
+    dx_neg = blocks.if_reporter(
+        blocks.op_lt(dx(), number(0)),
+        [blocks.set_var_expr("aim base", AIM_BASE_ID, blocks.op_sub(number(0x80), base()))],
+    )
+    dy_neg = blocks.if_reporter(
+        blocks.op_lt(dy(), number(0)),
+        [blocks.set_var_expr("aim base", AIM_BASE_ID, blocks.op_mod(blocks.op_sub(number(256), base()), number(256)))],
+    )
+    # aim fine = (base + 4) mod 256; aim index = floor(fine/8) + 1 (1-based into the 32-entry lists).
+    set_fine = blocks.set_var_expr(
+        "aim fine", AIM_FINE_ID, blocks.op_mod(blocks.op_add(base(), number(4)), number(256))
+    )
+    set_index = blocks.set_var_expr(
+        "aim index",
+        AIM_INDEX_ID,
+        blocks.op_add(blocks.op_floor(blocks.op_div(variable("aim fine", AIM_FINE_ID), number(8))), number(1)),
+    )
+    blocks.chain(definition, [set_large, set_small, swap_if, zero_if, dx_neg, dy_neg, set_fine, set_index])
+
+
+def install_read_player_cell(blocks: Blocks) -> None:
+    # Read the craft's live stage position once per walk and map it back to arcade 8-px cells, so
+    # every slot's aim and collision test uses one cached (player row, player col). Inverse of the
+    # render map: col = round((x + 240)/15); row = round((155 - y)/8).
+    definition = _install_warp_proc(blocks, READ_PLAYER_PROCCODE)
+    craft_x = blocks.sensing_of("x position", "solvalou")
+    craft_y = blocks.sensing_of("y position", "solvalou")
+    set_col = blocks.set_var_expr(
+        "player col",
+        PLAYER_COL_ID,
+        blocks.op_round(blocks.op_div(blocks.op_add(craft_x, number(RENDER_COL_OFFSET)), number(RENDER_COL_STAGE))),
+    )
+    set_row = blocks.set_var_expr(
+        "player row",
+        PLAYER_ROW_ID,
+        blocks.op_round(blocks.op_div(blocks.op_sub(number(RENDER_ROW_TOP), craft_y), number(RENDER_ROW_STAGE))),
+    )
+    blocks.chain(definition, [set_col, set_row])
+
+
+def install_init_toroid(blocks: Blocks) -> None:
+    # AIR-01: initialize the flying slot at `slot index` as a Toroid of type `walk type`. Draw a
+    # lateral spawn column from the shared stream (reject-and-redraw, bounded); on a successful draw,
+    # stamp the slot occupied and aim it at the craft on the 24-magnitude tier. On exhaustion, leave
+    # the slot empty (retried next tick) — the recorded bounded-draw deviation. The scroll-axis
+    # position is NOT set: a refill inherits the previous occupant's row (coded), 0 at cold start.
+    definition = _install_warp_proc(blocks, INIT_TOROID_PROCCODE)
+    reset = [
+        blocks.set_var("spawn attempts", SPAWN_ATTEMPTS_ID, number(0)),
+        blocks.set_var("spawn found", SPAWN_FOUND_ID, number(0)),
+    ]
+    draw_loop = blocks.add("control_repeat_until")
+    done = blocks.op_or(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        blocks.op_gt(variable("spawn attempts", SPAWN_ATTEMPTS_ID), number(SPAWN_DRAW_ATTEMPTS - 1)),
+    )
+    blocks.blocks[draw_loop]["inputs"]["CONDITION"] = [2, done]
+    candidate = blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1))
+    in_range = blocks.op_lt(candidate, number(SPAWN_COL_REJECT_AT))
+    col = blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET))
+    far_enough = blocks.op_not(
+        blocks.op_lt(
+            blocks.op_abs(blocks.op_sub(variable("player col", PLAYER_COL_ID), col)),
+            number(SPAWN_CRAFT_GAP),
+        )
+    )
+    accept = blocks.if_reporter(
+        far_enough,
+        [
+            _set_cur_item(
+                blocks,
+                "slot y",
+                SLOT_Y_ID,
+                blocks.op_mul(blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET)), number(SLOT_UNITS_PER_CELL)),
+            ),
+            blocks.set_var("spawn found", SPAWN_FOUND_ID, number(1)),
+        ],
+    )
+    valid = blocks.if_reporter(in_range, [accept])
+    blocks.substack(
+        draw_loop,
+        [
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            valid,
+            blocks.change_var("spawn attempts", SPAWN_ATTEMPTS_ID, 1),
+        ],
+    )
+    # On a successful draw, stamp the slot and aim it at the craft (24-magnitude tier).
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, variable("walk type", WALK_TYPE_ID)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 24", AIM_DX_24_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 24", AIM_DY_24_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TOROID_FLAG_APPROACH)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(TOROID_INIT_CODE)),
+            _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(TOROID_PTS)),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_toroid(blocks: Blocks) -> None:
+    # AIR-01: advance the Toroid at `slot index` by one tick. Before its swing trigger it approaches
+    # on its aimed velocity; when nearly level with the craft laterally (offset in [-2,1]) it commits
+    # to a swing toward the craft's side, accelerating sideways and animating; then it moves, and is
+    # culled off the play field (its scroll-axis position kept for the refill, per the coded refill).
+    definition = _install_warp_proc(blocks, UPDATE_TOROID_PROCCODE)
+    flag = lambda: _cur_item(blocks, "slot flag", SLOT_FLAG_ID)
+    offset = lambda: blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))
+
+    # Swing trigger (only while approaching): LOW <= offset <= HIGH -> commit a swing by the sign.
+    at_or_above_low = blocks.op_not(blocks.op_lt(offset(), number(TOROID_SWING_LOW)))
+    at_or_below_high = blocks.op_not(blocks.op_gt(offset(), number(TOROID_SWING_HIGH)))
+    in_window = blocks.op_and(at_or_above_low, at_or_below_high)
+    side = blocks.add("control_if_else")
+    craft_to_right = blocks.op_not(blocks.op_lt(offset(), number(0)))
+    blocks.blocks[side]["inputs"]["CONDITION"] = [2, craft_to_right]
+    blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TOROID_FLAG_SWING_RIGHT))])
+    blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TOROID_FLAG_SWING_LEFT))], name="SUBSTACK2")
+    trigger = blocks.if_reporter(
+        blocks.op_and(blocks.op_eq(flag(), number(TOROID_FLAG_APPROACH)), in_window),
+        [side],
+    )
+    # animation phase = floor(timer/2) mod 8.
+    anim = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(2))), number(8)
+    )
+    swing_right = blocks.if_reporter(
+        blocks.op_eq(flag(), number(TOROID_FLAG_SWING_RIGHT)),
+        [
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, blocks.op_sub(number(15), anim())),
+        ],
+    )
+    swing_left = blocks.if_reporter(
+        blocks.op_eq(flag(), number(TOROID_FLAG_SWING_LEFT)),
+        [
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, blocks.op_add(number(8), anim())),
+        ],
+    )
+    # Move by 4*velocity per tick (2 arcade frames), advance the animation clock, then cull.
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))  # row <= -2  ==  row < -1
+    off_side = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), off_side)
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.chain(definition, [trigger, swing_right, swing_left, *move, cull])
+
+
+def install_cull_slot(blocks: Blocks) -> None:
+    # Free the slot at `slot index` (type/state to empty). The position fields are deliberately NOT
+    # cleared: a refilled flying slot inherits the previous occupant's scroll-axis position (coded
+    # refill behavior, check_scroll_offscreen 30B4 clears only type/state/extra).
+    definition = _install_warp_proc(blocks, CULL_SLOT_PROCCODE)
+    blocks.chain(
+        definition,
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(0)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(0)),
+        ],
+    )
+
+
+def install_spawn_flying(blocks: Blocks) -> None:
+    # FORM-01 / AREA-02: after the object walk, refill the first `formation count` flying slots from
+    # the wave's type run (flying type table at `formation type offset`). Only the types this slice
+    # handles (Toroid 0x0A/0x0B) are spawned; other formation-named families are skipped until their
+    # slice (recorded deviation). Uses `spawn cursor` as its loop index and `slot index` as the
+    # target slot (free here — the walk that owns `slot index` has finished for this tick).
+    definition = _install_warp_proc(blocks, SPAWN_FLYING_PROCCODE)
+    i = lambda: variable("spawn cursor", SPAWN_CURSOR_ID)
+    set_i = blocks.set_var("spawn cursor", SPAWN_CURSOR_ID, number(1))
+    loop = blocks.add("control_repeat", inputs={"TIMES": variable("formation count", FORMATION_COUNT_ID)})
+    set_slot = blocks.set_var_expr("slot index", SLOT_INDEX_ID, blocks.op_add(number(FLYING_SLOTS[0] - 1), i()))
+    empty = blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0))
+    # type-table position = formation type offset + spawn cursor (1-based); guard the list bounds.
+    pos = blocks.op_add(variable("formation type offset", FORMATION_TYPE_OFFSET_ID), i())
+    in_bounds = blocks.op_and(
+        blocks.op_not(blocks.op_lt(pos, number(1))),
+        blocks.op_not(blocks.op_gt(blocks.op_add(variable("formation type offset", FORMATION_TYPE_OFFSET_ID), i()), number(len(FLYING_TYPE_CODES)))),
+    )
+    set_type = blocks.set_var_expr(
+        "walk type",
+        WALK_TYPE_ID,
+        blocks.list_item("flying type table", FLYING_TYPE_TABLE_ID, blocks.op_add(variable("formation type offset", FORMATION_TYPE_OFFSET_ID), i())),
+    )
+    handled = blocks.op_or(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TOROID_TYPE)),
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TOROID_SHOOTS_TYPE)),
+    )
+    spawn_handled = blocks.if_reporter(handled, [blocks.call_proc(INIT_TOROID_PROCCODE, warp=True)])
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_handled])
+    empty_gate = blocks.if_reporter(empty, [bounds_gate])
+    blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
+    blocks.chain(definition, [set_i, loop])
 
 
 def _advance_area_number(blocks: Blocks) -> str:
@@ -1799,7 +2242,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_transition_procedure(blocks)
     install_rng_step(blocks)
     install_clear_slots(blocks)
+    install_compute_aim_index(blocks)
+    install_read_player_cell(blocks)
+    install_init_toroid(blocks)
+    install_update_toroid(blocks)
+    install_cull_slot(blocks)
     install_advance_slots(blocks)
+    install_spawn_flying(blocks)
     install_advance_area(blocks)
     install_score(blocks)
     install_check_bonus_life(blocks)
@@ -1950,11 +2399,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(loop, [bgm])
     blocks.chain(enter, [blocks.if_state("playing", [start_sound, loop])])
 
-    # SYS-04 / AREA-01 centralized ordered update: a second `director enter` thread (parallel
-    # to the BGM loop above) drives one atomic pass per tick while playing. `advance area`
-    # runs BEFORE `advance slots` (the reference's area/schedule phase precedes the object
-    # walk), fixing the phase order the enemy slices inherit while both dispatch bodies are
-    # still empty.
+    # SYS-04 / AREA-01 centralized ordered update: a second `director enter` thread (parallel to the
+    # BGM loop above) drives one atomic pass per tick while playing, in the reference's frame order —
+    # read the craft's cell (so slots aim/collide against one cached position), advance the area
+    # schedule, walk and dispatch the object slots, then refill flying slots from the formation.
     walk_enter = blocks.receive("director enter")
     walk_loop = blocks.add("control_repeat_until")
     walk_condition = blocks.not_state(walk_loop, "playing")
@@ -1962,8 +2410,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(
         walk_loop,
         [
+            blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
             blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
             blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
+            blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
         ],
     )
     blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
@@ -2970,9 +3420,133 @@ def _ensure_hud_target(project: dict[str, Any]) -> None:
     project["targets"].insert(insertion, hud_target)
 
 
+def toroid_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-01 Toroid renderer (game_director owns these blocks; sprite_extractor owns the costumes).
+    # One persistent clone per flying slot (59..64), spawned on director enter while playing and
+    # cleared on director stop (common_stop clones=True). Each clone is a pure per-tick function of
+    # its slot's live state: shown, positioned (arcade cell -> stage px), and costumed by the sprite
+    # code when the slot holds a Toroid; hidden when the slot is empty. The clone writes no state.
+    blocks = Blocks(TOROID_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("toroid clone slot", TOROID_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("toroid clone slot", TOROID_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_toroid = blocks.op_or(
+        blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(TOROID_TYPE)),
+        blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(TOROID_SHOOTS_TYPE)),
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    ordinal = blocks.list_item(
+        "toroid frame",
+        TOROID_FRAME_ID,
+        blocks.op_sub(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()), number(TOROID_INIT_CODE - 1)),
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_toroid]
+    blocks.blocks[is_toroid]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            blocks.switch_costume_expr(ordinal),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_RENDER_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
+def _ensure_gameplay_target(project: dict[str, Any], name: str) -> None:
+    """Create a gameplay sprite target's EXISTENCE (blocks come from the replacements map) if it is
+    absent, else leave it untouched — the same create-if-absent, costumes-owned-elsewhere split as
+    `_ensure_hud_target`, generalized. Order-independent: whether this module or the costume generator
+    (tools/sprite_extractor.py) runs first, each preserves the other's field (arch review 3a)."""
+    existing = next(
+        (target for target in project["targets"] if target.get("name") == name),
+        None,
+    )
+    if existing is not None:
+        return
+    insertion = next(
+        (
+            index
+            for index, target in enumerate(project["targets"])
+            if target.get("name") in ("toroid_sprite_proof", "sprite_sheets")
+        ),
+        len(project["targets"]),
+    )
+    existing_orders = [
+        target.get("layerOrder")
+        for target in project["targets"]
+        if isinstance(target.get("layerOrder"), int)
+    ]
+    project["targets"].insert(
+        insertion,
+        {
+            "isStage": False,
+            "name": name,
+            "variables": {},
+            "lists": {},
+            "broadcasts": {},
+            "blocks": {},
+            "comments": {},
+            "currentCostume": 0,
+            "costumes": [],
+            "sounds": [],
+            "volume": 100,
+            "layerOrder": max(existing_orders, default=-1) + 1,
+            "visible": False,
+            "x": 0,
+            "y": 0,
+            "size": 100,
+            "direction": 90,
+            "draggable": False,
+            "rotationStyle": "don't rotate",
+        },
+    )
+
+
 def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(project)
     _ensure_hud_target(result)
+    _ensure_gameplay_target(result, TOROID_TARGET)
+    # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
+    # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
+    # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
+    proof = next((t for t in result["targets"] if t.get("name") == TOROID_PROOF_TARGET), None)
+    toroid = next((t for t in result["targets"] if t.get("name") == TOROID_TARGET), None)
+    if proof is not None and toroid is not None:
+        toroid["costumes"] = copy.deepcopy(proof["costumes"])
+        toroid["currentCostume"] = 0
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,
@@ -3010,6 +3584,22 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AI_ADJUST_ID,
         GROUND_STOP_FIRING_ROW_ID,
         *(mask_id for _suffix, _name, mask_id in FIRE_MASK_FAMILIES),
+        # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
+        # cached craft cell, and the spawner's cursor/attempt/found/type registers.
+        AIM_DX_DIFF_ID,
+        AIM_DY_DIFF_ID,
+        AIM_LARGE_ID,
+        AIM_SMALL_ID,
+        AIM_SWAP_ID,
+        AIM_BASE_ID,
+        AIM_FINE_ID,
+        AIM_INDEX_ID,
+        PLAYER_ROW_ID,
+        PLAYER_COL_ID,
+        SPAWN_CURSOR_ID,
+        SPAWN_ATTEMPTS_ID,
+        SPAWN_FOUND_ID,
+        WALK_TYPE_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -3082,6 +3672,22 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # enemy slices (8+). All reset to 0 on a world reset, alongside the AI level and formation.
         GROUND_STOP_FIRING_ROW_ID: ["ground stop firing row", 0],
         **{mask_id: [name, 0] for _suffix, name, mask_id in FIRE_MASK_FAMILIES},
+        # AIR-01 Toroid live-combat machinery (slice 8). The aim quantizer intermediates, the cached
+        # craft cell (player row/col), and the spawner's registers — all transient, all default 0.
+        AIM_DX_DIFF_ID: ["aim dx diff", 0],
+        AIM_DY_DIFF_ID: ["aim dy diff", 0],
+        AIM_LARGE_ID: ["aim large", 0],
+        AIM_SMALL_ID: ["aim small", 0],
+        AIM_SWAP_ID: ["aim swap", 0],
+        AIM_BASE_ID: ["aim base", 0],
+        AIM_FINE_ID: ["aim fine", 0],
+        AIM_INDEX_ID: ["aim index", 0],
+        PLAYER_ROW_ID: ["player row", 0],
+        PLAYER_COL_ID: ["player col", 0],
+        SPAWN_CURSOR_ID: ["spawn cursor", 0],
+        SPAWN_ATTEMPTS_ID: ["spawn attempts", 0],
+        SPAWN_FOUND_ID: ["spawn found", 0],
+        WALK_TYPE_ID: ["walk type", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -3093,6 +3699,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_DX_24_ID,
         AIM_DY_32_ID,
         AIM_DX_32_ID,
+        FLYING_TYPE_TABLE_ID,
+        TOROID_FRAME_ID,
         VALUE_TABLE_ID,
         STARTING_LIVES_ID,
         FIRST_BONUS_123_ID,
@@ -3144,6 +3752,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_DX_24_ID: ["aim dx 24", list(AIM_DX_24)],
         AIM_DY_32_ID: ["aim dy 32", list(AIM_DY_32)],
         AIM_DX_32_ID: ["aim dx 32", list(AIM_DX_32)],
+        # AIR-01/FORM-01 flying-enemy type table (object-types.json): the spawner reads the wave's
+        # type codes at `formation type offset`. And the Toroid costume-ordinal map (sprite code
+        # 8..15 -> costume 1..7, the 8th reusing 6): read-only render data.
+        FLYING_TYPE_TABLE_ID: ["flying type table", list(FLYING_TYPE_CODES)],
+        TOROID_FRAME_ID: ["toroid frame", list(TOROID_FRAME_MAP)],
         # ECO-01 object point values (docs/spec/data/scores.json master_value_table), in table
         # order; position i (1-based) = entries[i-1].points. Slice 8 resolves award value here.
         VALUE_TABLE_ID: ["value table", list(VALUE_TABLE_POINTS)],
@@ -3203,6 +3816,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "target_b": target_blocks("target_b", 2),
         "bomb": bomb_blocks(),
         "hud": hud_blocks(),
+        "toroid": toroid_blocks(),
     }
     for target in result["targets"]:
         if target["name"] in replacements:
@@ -3241,6 +3855,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 HUD_LIFE_INDEX_ID: ["hud life index", 0],
                 HUD_LIFE_COUNT_ID: ["hud life count", 0],
                 HUD_IS_CLONE_ID: ["hud is clone", 0],
+            }
+        elif target["name"] == TOROID_TARGET:
+            # AIR-01: the only toroid state is sprite-local — which flying slot each clone renders,
+            # snapshotted at creation. All entity state lives in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                TOROID_CLONE_SLOT_ID: ["toroid clone slot", 0],
             }
     return result
 
