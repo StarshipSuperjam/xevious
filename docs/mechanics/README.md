@@ -25,11 +25,13 @@ be non-empty and each attestation must remain checked.
 For a repository-derived mechanic, prefer this locator form:
 
 ```text
-jotd666/xevious@FULL_COMMIT; src/xevious_main.68k: label_name;
-src/xevious_sub.68k: related_table_label
+jotd666/xevious@FULL_COMMIT; `src/xevious_main.68k`: `label_name` (NNN-MMM),
+`other_label` (NNN-MMM); `src/xevious_sub.68k`: `related_table_label` (NNN-MMM)
 ```
 
-Record exact constants and structured data actually used. Arcade footage or
+The commit must be the pinned one, and every line range on this line carries the
+label it belongs to (`tools/reference_citations.py` resolves each against the pin;
+an unlabelled or nonexistent citation fails). Record exact constants and structured data actually used. Arcade footage or
 documentation may supplement provenance when it resolves an ambiguity, but it
 is not required for an unambiguous repository-derived mechanic.
 

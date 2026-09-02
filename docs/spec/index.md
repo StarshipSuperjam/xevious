@@ -69,18 +69,26 @@ Every file under [data/](data/) is emitted by `tools/reference_extract.py` from 
 commit (provenance, hashes, and attestations below). **None of these files is ever hand-edited** — to change one, change the extractor and regenerate; to verify them all, run:
 
 ```bash
-python3 tools/reference_extract.py --verify --checkout <path-to-local-clone-at-the-pin>
+REF="$(python3 tools/reference_checkout.py ensure)"
+python3 tools/reference_extract.py --verify --checkout "$REF"
 ```
 
-To make the clone (substitute the pin from this file's frontmatter):
+`tools/reference_checkout.py ensure` clones `jotd666/xevious` at the pin into a
+verified local cache (outside this repository, so nothing is vendored) and prints
+its path; it is a no-op with no network once the cache exists. The
+`reference-fidelity` workflow runs the same `--verify` and the citation resolver
+(`tools/reference_citations.py`) on every pull request, and the checkout-free
+structural guards live in `tests/test_spec_docs.py` and `tests/test_reference_corpus.py`.
 
-```bash
-git clone https://github.com/jotd666/xevious.git /tmp/xevious-reference
-git -C /tmp/xevious-reference checkout 71473685a8c7856c8401c8519276cd97a38d4183
-```
-
-The command needs that local clone, so it is run by a person, not CI; the
-CI-runnable structural guards live in `tests/test_spec_docs.py`.
+**Citation grammar.** A citation names a file, a label, and a line or range:
+`` `label` 3289–3321 ``, a single line `` `label` 3338 ``, a span
+`` `label_a` through `label_b` 375–419 ``, or an explicit file before the label
+`` `src/xevious_sub.68k` `label` 300–311 ``. A document that uses the short
+(file-less) form declares its default once in its intro
+(``citations are `src/xevious_main.68k` unless noted``); within a parenthetical
+group an explicit file token overrides it. `src/xevious.inc` holds only
+constants, so it is cited file+range, never by label. `tools/reference_citations.py`
+checks every citation resolves to that label and range at the pin.
 
 One file per concern:
 

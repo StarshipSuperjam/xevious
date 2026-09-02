@@ -53,12 +53,18 @@ with this project's own placeholder initials. The mechanic is in scope; the
 arcade's strings are not.
 
 Verifiability of every committed derived value rests on the public reference
-remaining reachable at the pinned commit; this project deliberately keeps no
-copy. Accepted risk, recorded: if the upstream repository disappears, the
-committed data freezes as-is (its hashes prove integrity, not
-re-derivability) and arcade observation becomes the only confirmation path.
-The operator may keep a private archival clone outside this repository;
-that is an archive, not a vendored copy, and nothing here depends on it.
+remaining reachable at the pinned commit; this project keeps no copy in the
+repository. A regenerable local clone at the pin, created outside the repository
+by `tools/reference_checkout.py`, is the archive this policy permits — a
+throwaway cache, not a vendored copy. Tooling does depend on *obtaining* that
+clone: `tools/reference_citations.py` resolves each citation against it,
+`tools/playtest_package.py` refuses to produce a playtest build while any
+citation is unresolved, and the reference-fidelity review reads it. This is an
+operational dependency on the reference being obtainable at the pin, not on a
+stored copy. Accepted risk, recorded: if the upstream repository disappears, the
+committed data freezes as-is (its hashes prove integrity, not re-derivability),
+the fidelity tooling can no longer ground a new change, and arcade observation
+becomes the only confirmation path.
 
 Arcade observation is selective fidelity QA, not a prerequisite for each
 repository-derived mechanic. Use it to resolve the reference's acknowledged
