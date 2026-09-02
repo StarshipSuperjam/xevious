@@ -61,7 +61,7 @@ recorded here as a port necessity.
 schedule pointer from the area's table start and resets the scroll counter to 0x0D00 each time a life
 begins (`xevious_main.68k` `main_gameplay_loop` 471–483) — the arcade does not resume mid-area. One
 checkpoint softens this: a death in roughly the final fifth of an area (scroll high byte between 0x0E and
-0x43) advances to the *next* area instead of restarting the current one (`xevious_main.68k` ~514). Only
+0x43) advances to the *next* area instead of restarting the current one (`xevious_main.68k` `main_gameplay_loop` 514–521). Only
 the area number otherwise survives a death (and, in a two-player game, travels with each player's own
 state). Starting a new game resets to area 1. The current build's preserve-terrain-on-death behavior is
 an interim project-defined fixture that diverges from this rule and is recorded for correction with the
