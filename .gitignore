@@ -25,6 +25,11 @@ __pycache__/
 # macOS folder metadata
 .DS_Store
 
+# Local pinned-reference clone when --dir points inside the repo (the default
+# location is outside it). Never committed — a regenerable throwaway; see
+# docs/REFERENCE_POLICY.md.
+/.xevious-reference/
+
 # Local asset staging / reference — NOT committed. The build-ingested copies live
 # under assets/hud-font, assets/hud-sounds, assets/sprite-extraction, and assets/terrain
 # (each with a provenance record). These directories are the operator's local source
