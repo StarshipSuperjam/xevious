@@ -39,7 +39,7 @@ class TestConductSchema(unittest.TestCase):
         # The operator override file is the deployment's own (operator.md invites
         # codes via /engine-conduct), so assert its codes list is well-formed, not
         # that it is literally empty. Local edit for a deployment that adds a
-        # conduct code; overwritten on engine update, re-apply then. See issue #113.
+        # conduct code; overwritten on engine update, re-apply then. See StarshipSuperjam/engine-template#1200.
         codes = validate.frontmatter(_OPERATOR).get("codes")
         self.assertIsInstance(codes, list)
 

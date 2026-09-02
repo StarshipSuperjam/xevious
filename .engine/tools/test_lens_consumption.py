@@ -58,7 +58,7 @@ class TestLiveRepository(unittest.TestCase):
         # A deployment may add its own review persona and lens, so the stock
         # lenses are a SUBSET of the consumed set, not an exact match. Local edit
         # for a deployment with a project persona; overwritten on engine update,
-        # re-apply then. See issue #113.
+        # re-apply then. See StarshipSuperjam/engine-template#1200.
         self.assertTrue(EXPECTED.issubset(lc.consumed_lenses()))
 
     def test_check_is_green_on_the_live_roster(self):

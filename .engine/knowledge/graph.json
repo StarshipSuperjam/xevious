@@ -10114,7 +10114,7 @@
       },
       "slug": "test_conduct",
       "source": {
-        "fingerprint": "sha256:d929fc9bf9be1ab42f76d32f5096feb67ab9137904d2c7f98bb03b3391b1760b",
+        "fingerprint": "sha256:b17cad891ba364e2697f3a5eaf5223c97597cdd20b8b0400c142c1ffe70a9509",
         "path": ".engine/tools/test_conduct.py"
       },
       "status": "active",
@@ -11145,7 +11145,7 @@
       },
       "slug": "test_lens_consumption",
       "source": {
-        "fingerprint": "sha256:8f8cb69042e8da4fdb33e2215e288d42a0e7f40c4bace00b9a28acd62b34a9a8",
+        "fingerprint": "sha256:59add1126efadf5020fe52aa7caa22a8d2239b01206800ce4bac23da3b4cec07",
         "path": ".engine/tools/test_lens_consumption.py"
       },
       "status": "active",
