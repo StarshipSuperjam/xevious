@@ -4369,6 +4369,14 @@ class ScratchProjectTests(unittest.TestCase):
             for b in bullet_body
         ):
             fails.add("bullet-culls")
+        # The bullet update must actually be DISPATCHED from the slot walk (a wrong type constant would
+        # leave a correct body that never runs) — `advance slots` calls `update bullet`.
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.UPDATE_BULLET_PROCCODE
+            for b in _proc_body_blocks(stage, director.ADVANCE_SLOTS_PROCCODE)
+        ):
+            fails.add("bullet-dispatched")
 
         toroid_body = _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE)
         # The fire path resolves an aim (compute aim index) and writes the bullet's velocity from the
@@ -4433,10 +4441,23 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["ITEM"] = [1, [4, 0]]
 
+        def break_dispatch(p):  # the walk no longer dispatches the bullet update (wrong type constant)
+            _stage, body = body_of(p, director.ADVANCE_SLOTS_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.UPDATE_BULLET_PROCCODE
+            )
+            b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+            b["mutation"]["argumentids"] = "[]"
+            b["inputs"] = {}
+
         for label, corrupt in (
             ("bullet-moves-x", break_move_x),
             ("bullet-culls", break_cull),
             ("fire-aims-dx", break_fire_aim),
+            ("bullet-dispatched", break_dispatch),
         ):
             project = copy.deepcopy(base)
             corrupt(project)
@@ -5155,7 +5176,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f2fe851bc73130e944ab3cfe6dcaa69f1466063250f86bcfdea9b3c77941284f",
+            "f09da29579ef12567c56df39e424e6cd35fe92616b22b57b1a3ba2d2deebc38d",
             build_hash,
         )
 

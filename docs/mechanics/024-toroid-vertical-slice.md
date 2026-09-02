@@ -44,8 +44,10 @@
   renderer; the structural contract `_air01_failures` and its per-clause negatives
   (`test_toroid_slice_authoring_present` / `test_toroid_slice_negative_fixtures`) in
   `tests/test_scratch_project.py`; the spawn-draw model fixture `ToroidSpawnDraw` in
-  `tests/test_spec_docs.py`; the live scenarios `toroid-wave-spawns-and-moves` and `rng-draw-order`
-  (each with a biting negative) in `harness/lib/catalog.js`.
+  `tests/test_spec_docs.py`; the live scenarios `toroid-wave-spawns-and-moves`, `rng-draw-order`, and
+  `toroid-swings-toward-craft` (which binds the swing's *direction* — a right-swing accelerates lateral
+  velocity toward the craft, `slot dy > 0` — so the sign cannot silently invert), each with a biting
+  negative, in `harness/lib/catalog.js`.
 - Acceptance criteria: A live Toroid occupies a flying slot from the formation wave and advances
   under its own velocity each tick (harness `toroid-wave-spawns-and-moves`, negative: `update toroid`
   neutralized → no movement); the spawner draws the shared RNG in walk order, following the LFSR from

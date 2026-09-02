@@ -6,8 +6,10 @@ internal state only — never the running game on screen — so it covers **none
 reduces none of them: run the full sweep regardless. This is the short, ordered regression sweep to run on
 **every** pull request that can affect gameplay, before approving it (the playtest gate in
 [the principles](principles.md)). It probes the failure modes that have actually bitten this project;
-expect about fifteen minutes. Deeper per-capability checks live in each spec document's acceptance
-table and are run when their capability changes.
+expect about twenty to twenty-five minutes now that death and scoring are exercised through real combat
+(the instant D/G/S debug keys are gone) — step 5 in particular needs a clean flight to the near-end
+window before an intentional death, with no clock-acceleration key. Deeper per-capability checks live in
+each spec document's acceptance table and are run when their capability changes.
 
 **Before you start.** Build and load the PR's `.sb3`:
 
@@ -75,10 +77,15 @@ so area position is read from the `area progress`/`area number` variable watcher
    zeroes the count. Confirm: they enter aimed toward the craft, then **swing** laterally toward your
    side as they draw level, flapping as they go; the **shooting variant fires one aimed bullet** at that
    moment (a bullet streaks from the enemy toward where you were), never a continuous stream. **Shoot
-   one:** it **explodes and the score rises by exactly 30** (watch the HUD digits), and the wreck is
-   gone — no lingering sprite. The enemy **scale and aspect** should look right against the craft (report
-   if they look stretched or mis-sized). Finally, **stop and green-flag again while a wave is on screen:**
-   no Toroid or bullet sprite should survive the reset (no orphan clones).
+   one:** it **explodes and the score rises by exactly 30** (watch the HUD digits — the score change is
+   the definitive pass signal), and the wreck is gone — no lingering sprite. The enemy **scale and aspect**
+   should look right against the craft (report if they look stretched or mis-sized). Finally, **stop and
+   green-flag again while a wave is on screen:** no Toroid or bullet sprite should survive the reset (no
+   orphan clones). **Two recorded art stand-ins — note, do not fail (they are interim, per records 025/026):**
+   the enemy bullet is not a dedicated bullet sprite yet — it renders as a small stand-in costume (a shrunk
+   Toroid frame), so a small enemy-looking dot flying straight *is* the bullet; and the kill explosion reuses
+   the player craft's own death-burst frames as a placeholder. Both are deliberate deferrals to a later art
+   pass, so judge the *behavior* (fires / flies / kills; explodes / scores / clears), not the placeholder art.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row by letting a Toroid or its
    bullet touch the craft (once ground objects and Bacura exist, exercise those too): the full death
    presentation and sound complete uncut, the craft respawns **immediately vulnerable** (fly into an enemy

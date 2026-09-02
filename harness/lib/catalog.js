@@ -525,6 +525,49 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
   },
   {
+    key: 'toroid-swings-toward-craft',
+    behavior:
+      'A Toroid drawing level with the craft swings its lateral velocity TOWARD the craft, not away from it',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed one approaching Toroid whose column is one to the LEFT of the craft — so the craft is to
+      // its right (offset = player col - slot col = +1, inside the [-2,1] swing-trigger window) and it
+      // is committed to swing right. A correct swing accelerates its lateral velocity toward higher
+      // columns (toward the craft): `slot dy` must go POSITIVE. The earlier defect (dy -= accel on a
+      // right swing) drove it negative — away from the craft — which this asserts against. The slot is
+      // placed several rows ahead so it is level laterally but not overlapping the craft (no death,
+      // and invuln is on anyway from reachPlaying).
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 10); // non-shooting Toroid, so no bullet muddies the trace
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 10) * 256); // 10 rows ahead of the craft
+      put('slot-y', slot, (pc - 1) * 256); // one column left of the craft => offset +1, craft to the right
+      put('slot-dx', slot, 0);
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH — eligible to trigger the swing
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 8);
+      // One pump runs the walk (settles well past the trigger tick); read the resulting lateral velocity.
+      step(vm, 1);
+      return { dy: readVar(vm, 'slot-dy')[slot], flag: readVar(vm, 'slot-flag')[slot] };
+    },
+    assert(obs) {
+      assert.equal(obs.flag, 1, 'the Toroid committed a right swing (craft on the right)');
+      assert.ok(
+        obs.dy > 0,
+        `a right-swinging Toroid accelerates toward the craft (dy > 0); got dy=${obs.dy}`,
+      );
+    },
+    // Empty `update toroid` so the swing never accelerates → dy stays 0 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
+  },
+  {
     key: 'rng-draw-order',
     behavior:
       'The Toroid spawner consumes the shared RNG in walk order — the live draw stream follows the LFSR model from a seeded state',

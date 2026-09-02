@@ -174,9 +174,9 @@ COLLISION_GROUPS = (
     (BACURA_SLOTS, _PLAYER),      # Bacura vs the player
 )
 
-# AIR-12 enemy-bullet pool foundation — DORMANT this slice (no firer). The 19 bullet slots
-# (40-58) already exist as a range and a collision-group member (#14); this slice adds the
-# allocator a firer will call, mirroring `alloc shot slot` but with its OWN result var (never
+# AIR-12 enemy-bullet pool. The 19 bullet slots (40-58) exist as a range and a collision-group
+# member (#14); the allocator (added as foundation, now LIVE — the shooting Toroid calls it to
+# fire) mirrors `alloc shot slot` but with its OWN result var (never
 # the blaster's). The aimed vector, ballistic movement, expiry margins, colour pulse, and the
 # slot x/y authoring are AIR-12's firing behaviour, owned by the air slice (slice 8); this
 # allocator may be REVISED there if aimed bullets seed a position/vector at allocation.
@@ -254,7 +254,7 @@ HUD_LIFE_LEFT_X = -220
 HUD_LIFE_Y = 128
 HUD_LIFE_SPACING = 18
 # Rendered life-icon cap (usability fix): uncapped, the row is one clone per `craft`, and at
-# ~169 craft (reachable by holding the debug S key to the score cap) the icons run off the
+# ~169 craft (reachable by repeated bonus-life awards toward the score cap) the icons run off the
 # right edge of the 480-wide stage. Capping the RENDERED row at 9 ends it at x = HUD_LIFE_LEFT_X
 # + (HUD_LIFE_MAX - 1) * HUD_LIFE_SPACING = -220 + 8*18 = -76, clear of the high-score group at
 # x=-20. The true `craft` count (and the score digits the cap-test actually exercises) is
@@ -527,6 +527,17 @@ def _load_formation_tables() -> tuple[list[int], list[int]]:
 
 DIFFICULTY_INCREMENTS = _load_difficulty_increments()
 FORMATION_COUNTS, FORMATION_TYPE_OFFSETS = _load_formation_tables()
+
+# The spawner refills the first `formation count` flying slots (FLYING_SLOTS), so no formation may
+# ask for more enemies than there are flying slots — otherwise the extra `data_replaceitemoflist`
+# writes would fall out of range and silently under-spawn. Fail LOUD at generation instead, so a
+# future formations.json regeneration that breaches the capacity is caught here, not in play.
+_FLYING_SLOT_CAPACITY = FLYING_SLOTS[1] - FLYING_SLOTS[0] + 1
+if max(FORMATION_COUNTS) > _FLYING_SLOT_CAPACITY:
+    raise SystemExit(
+        f"formations.json max enemy_count {max(FORMATION_COUNTS)} exceeds the "
+        f"{_FLYING_SLOT_CAPACITY} flying slots ({FLYING_SLOTS[0]}-{FLYING_SLOTS[1]})"
+    )
 
 # AIR-01 / AIR-12 32-direction homing-aim tables (aiming.json), INGESTED (never authored),
 # verified against the hash manifest at load. Each speed tier is two parallel 32-entry lists,
@@ -1617,8 +1628,9 @@ def install_advance_slots(blocks: Blocks) -> None:
     occupied = blocks.add("operator_not")
     blocks.blocks[occupied]["inputs"] = {"OPERAND": [2, is_empty]}
     blocks.blocks[is_empty]["parent"] = occupied
-    # Read the occupant's type once, then dispatch. ENGINE-TODO: bullets and the other flying/
-    # ground/boss families append their branches here as their slices build them.
+    # ENGINE-TODO: the other flying/ground/boss families append their per-type branches to this
+    # walk dispatch as their slices build them (the occupant's type is read once into `walk type`
+    # first, then dispatched — Toroid and enemy-bullet branches are wired this slice).
     read_type = blocks.set_var_expr(
         "walk type", WALK_TYPE_ID, blocks.list_item("slot type", SLOT_TYPE_ID, cursor())
     )
@@ -1986,17 +1998,21 @@ def install_update_toroid(blocks: Blocks) -> None:
     anim = lambda: blocks.op_mod(
         blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(2))), number(8)
     )
+    # `SWING_RIGHT` is committed when the craft is at a higher column (offset >= 0), so the swing must
+    # accelerate the lateral velocity toward higher columns — `slot dy += accel` — to close on the craft
+    # (the render map makes stage_x increase with `slot y`); `SWING_LEFT` mirrors it. The animation keeps
+    # its per-direction opposite play order (record 024).
     swing_right = blocks.if_reporter(
         blocks.op_eq(flag(), number(TOROID_FLAG_SWING_RIGHT)),
         [
-            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, blocks.op_sub(number(15), anim())),
         ],
     )
     swing_left = blocks.if_reporter(
         blocks.op_eq(flag(), number(TOROID_FLAG_SWING_LEFT)),
         [
-            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TOROID_SWING_ACCEL))),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, blocks.op_add(number(8), anim())),
         ],
     )
@@ -3012,10 +3028,10 @@ def install_alloc_shot_slot(blocks: Blocks) -> None:
 def install_alloc_bullet_slot(blocks: Blocks) -> None:
     # Allocate the first idle enemy-bullet slot (40-58): `bullet alloc result` becomes that
     # index, or stays 0 when all 19 are live — the 19-bullet cap. Warp (atomic); a cursor
-    # sweep over the dedicated slots (19 of them, vs the shot allocator's 3). DORMANT this
-    # slice: no firer calls it (aimed-vector firing is AIR-12, slice 8). Its result var is
-    # its own, and so is its cursor (`bullet-cursor`, not the shared `slot index`) — so a
-    # firer can call this from inside the `advance slots` sweep without corrupting it.
+    # sweep over the dedicated slots (19 of them, vs the shot allocator's 3). LIVE this slice:
+    # the shooting Toroid (`_fire_toroid_bullet`) calls it. Its result var is its own, and so
+    # is its cursor (`bullet-cursor`, not the shared `slot index`) — so the firer can call this
+    # from inside the `advance slots` sweep without corrupting the outer walk.
     definition = _install_warp_proc(blocks, ALLOC_BULLET_PROCCODE)
     cursor = lambda: variable("bullet cursor", BULLET_CURSOR_ID)
     reset_result = blocks.set_var(
