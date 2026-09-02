@@ -206,6 +206,11 @@ HIT_WINDOW_SHOT_FLYING = (16, 32, 8, 16)
 # byte compare — but on the EXACT half-px delta (no mod-256 wrap), so it never produces the
 # reference's rare wrap-around phantom hit between objects ~128 half-px apart (recorded deviation).
 SLOT_UNITS_PER_SHADOW = 16
+# One 8-px cell in shadow half-pixels (256 slot units / 16 = 16). The craft's live position is read at
+# cell resolution (`read player cell`, for the aim), so its collision box is placed at player_row/col *
+# this — a cell-quantized craft hit box (recorded deviation): the reference tracks the craft's sub-cell
+# shadow, this port rounds it to its cell, the same rounding the aim already uses.
+SHADOW_PER_CELL = 16
 
 # ECO-02 HUD target (docs/mechanics/010, docs/mechanics/012). game_director owns this target's
 # EXISTENCE and BLOCKS — the HUD render itself (hud_blocks(), installed below); its costumes
@@ -576,6 +581,17 @@ READ_PLAYER_PROCCODE = "read player cell"
 # explosion advance for a struck Toroid.
 CHECK_AIR_HIT_PROCCODE = "check air shot hit"
 EXPLODE_TICK_PROCCODE = "explode toroid tick"
+# AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
+# player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
+UPDATE_BULLET_PROCCODE = "update bullet"
+PLAYER_HIT_ID = "player-hit"
+# Debug/test invulnerability flag (default 0). When 1, the walk still RAISES `player hit` on contact
+# but the death is not triggered — a dormant hook the headless harness sets so its agency-less craft
+# survives while it observes the schedule/spawner (a stationary craft with no shooting/dodging is
+# killed by homing enemies within one headless pump). Never set by game logic, so real play is
+# unaffected; it is the seam a future "invulnerability" easter-egg key could toggle.
+INVULN_ID = "invuln"
+BULLET_INIT_CODE = 0  # enemy-bullet sprite code at spawn (renderer stand-in ignores the pulse)
 
 # The spawner's own sweep cursor (like the bullet allocator's — never the shared `slot index`); the
 # per-dispatch type register; and the spawn-draw attempt counter.
@@ -614,6 +630,7 @@ TOROID_SWING_ACCEL = 2  # lateral velocity change per tick (1 unit/frame * 2 fra
 CULL_ROW_MAX = 40  # >= 0x28 rows (past the bottom) -> offscreen
 CULL_ROW_MIN = -2  # <= -2 rows (past the top, the reference's byte-wrap) -> offscreen
 CULL_COL_MAX = 31  # >= 0x1F columns -> offscreen (lateral)
+CULL_COL_MIN = -2  # <= -2 columns -> offscreen (left edge; bullets can fly out any side)
 
 # FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
 # => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
@@ -674,6 +691,11 @@ TOROID_EXPLOSION_PHASES = 5
 TOROID_TURN_FRAME_COUNT = 7  # turn costumes precede the referenced explosion costumes on the target
 TOROID_BIG_PHASE = 2  # the 2x phase (arcade frame 8): size doubles, sprite recentres one cell
 TOROID_EXPLODE_SIZE = 450  # 2x TOROID_RENDER_SIZE for the big phase
+# AIR-12 enemy-bullet renderer: one persistent clone per bullet slot (40-58), a small stand-in sprite
+# (dedicated bullet crops + the reference's 4-colour pulse deferred with the other art, record 026).
+ENEMY_BULLET_TARGET = "enemy_bullet"
+ENEMY_BULLET_CLONE_SLOT_ID = "enemy-bullet-clone-slot"
+ENEMY_BULLET_RENDER_SIZE = 90  # a small dot relative to the 225 enemy scale
 
 
 def _schedule_arg(record: dict) -> int:
@@ -1607,7 +1629,11 @@ def install_advance_slots(blocks: Blocks) -> None:
     toroid_branch = blocks.if_reporter(
         is_toroid, [blocks.call_proc(UPDATE_TOROID_PROCCODE, warp=True)]
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch])
+    bullet_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
+        [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, bullet_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -1629,6 +1655,30 @@ def _cur_row(blocks: Blocks) -> str:
 def _cur_col(blocks: Blocks) -> str:
     """floor(slot y / 256) — the current slot's lateral column in 8-px cells."""
     return blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot y", SLOT_Y_ID), number(SLOT_UNITS_PER_CELL)))
+
+
+def _craft_overlap_reporter(blocks: Blocks) -> str:
+    """PLY-02: boolean — does the current slot (`slot index`) overlap the craft's cell within the shared
+    flying/bullet hit window (HIT_WINDOW_BULLET_FLYING)? The craft is placed at player row/col scaled to
+    shadow half-px (cell-quantized); the object is floored to its shadow MSB. Y is the scroll axis, X the
+    lateral, matching the reference's `check_bullet_or_flying_hit_solvalou` byte compare."""
+    y_bias, y_width, x_bias, x_width = HIT_WINDOW_BULLET_FLYING
+    dy_low, dy_high = -y_bias, y_width - y_bias - 1
+    dx_low, dx_high = -x_bias, x_width - x_bias - 1
+    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
+    craft_y = blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SHADOW_PER_CELL))
+    d_y = blocks.op_sub(craft_y, sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
+    hit_y = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_y, number(dy_low))),
+        blocks.op_not(blocks.op_gt(d_y, number(dy_high))),
+    )
+    craft_x = blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SHADOW_PER_CELL))
+    d_x = blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), craft_x)
+    hit_x = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_x, number(dx_low))),
+        blocks.op_not(blocks.op_gt(d_x, number(dx_high))),
+    )
+    return blocks.op_and(hit_y, hit_x)
 
 
 def install_compute_aim_index(blocks: Blocks) -> None:
@@ -1857,6 +1907,54 @@ def install_explode_toroid_tick(blocks: Blocks) -> None:
     blocks.chain(definition, [*move, free])
 
 
+def install_update_bullet(blocks: Blocks) -> None:
+    # AIR-12: advance the enemy bullet at `slot index` one tick. It was aimed once at the craft when it
+    # was fired (the 32-magnitude tier), so it flies straight: move by velocity, raise `player hit` if it
+    # overlaps the craft (PLY-02), and cull off any screen edge. `slot code` pulses the (deferred) colour
+    # cycle. No re-aim — a fired bullet does not track.
+    definition = _install_warp_proc(blocks, UPDATE_BULLET_PROCCODE)
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+    ]
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.chain(definition, [*move, craft_hit, cull])
+
+
+def _fire_toroid_bullet(blocks: Blocks) -> list[str]:
+    # AIR-12: the shooting Toroid (type 0x0B) fires one aimed bullet at the moment it commits its swing
+    # (once — the reference fires on a timer while level; firing once here is the recorded slice-8
+    # simplification, deferring the fire-rate mask to slice 10, so DIF-03.play is not claimed). Allocate
+    # an idle bullet slot; on success, place the bullet at the Toroid and aim it at the craft's current
+    # cell on the 32-magnitude tier (the reference's generic bullet table). No mask is consulted.
+    bindex = lambda: variable("bullet alloc result", BULLET_ALLOC_RESULT_ID)
+    got = blocks.op_gt(variable("bullet alloc result", BULLET_ALLOC_RESULT_ID), number(0))
+    placed = blocks.if_reporter(
+        got,
+        [
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            blocks.list_replace("slot x", SLOT_X_ID, bindex(), _cur_item(blocks, "slot x", SLOT_X_ID)),
+            blocks.list_replace("slot y", SLOT_Y_ID, bindex(), _cur_item(blocks, "slot y", SLOT_Y_ID)),
+            blocks.list_replace("slot dx", SLOT_DX_ID, bindex(), blocks.list_item("aim dx 32", AIM_DX_32_ID, variable("aim index", AIM_INDEX_ID))),
+            blocks.list_replace("slot dy", SLOT_DY_ID, bindex(), blocks.list_item("aim dy 32", AIM_DY_32_ID, variable("aim index", AIM_INDEX_ID))),
+            blocks.list_replace("slot timer", SLOT_TIMER_ID, bindex(), number(0)),
+            blocks.list_replace("slot code", SLOT_CODE_ID, bindex(), number(BULLET_INIT_CODE)),
+            blocks.list_replace("slot flag", SLOT_FLAG_ID, bindex(), number(0)),
+        ],
+    )
+    return [blocks.call_proc(ALLOC_BULLET_PROCCODE, warp=True), placed]
+
+
 def install_update_toroid(blocks: Blocks) -> None:
     # AIR-01: advance the Toroid at `slot index` by one tick. Before its swing trigger it approaches
     # on its aimed velocity; when nearly level with the craft laterally (offset in [-2,1]) it commits
@@ -1875,9 +1973,14 @@ def install_update_toroid(blocks: Blocks) -> None:
     blocks.blocks[side]["inputs"]["CONDITION"] = [2, craft_to_right]
     blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TOROID_FLAG_SWING_RIGHT))])
     blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TOROID_FLAG_SWING_LEFT))], name="SUBSTACK2")
+    # On the swing commit, a type-0x0B (shooting) Toroid fires one aimed bullet.
+    shoots = blocks.if_reporter(
+        blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(TOROID_SHOOTS_TYPE)),
+        _fire_toroid_bullet(blocks),
+    )
     trigger = blocks.if_reporter(
         blocks.op_and(blocks.op_eq(flag(), number(TOROID_FLAG_APPROACH)), in_window),
-        [side],
+        [side, shoots],
     )
     # animation phase = floor(timer/2) mod 8.
     anim = lambda: blocks.op_mod(
@@ -1912,9 +2015,14 @@ def install_update_toroid(blocks: Blocks) -> None:
     # neither hits nor is hit. Otherwise it first offers itself to the shot detector (which may flip it
     # to HIT this tick); the approach/swing/move/cull then runs only if it is still ACTIVE.
     state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    # PLY-02: an active flying enemy touching the craft's cell kills it (raises `player hit` for the
+    # non-warp walk thread to act on) — checked at the tick-start position, before it moves or culls.
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
     normal = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
-        [trigger, swing_right, swing_left, *move, cull],
+        [craft_hit, trigger, swing_right, swing_left, *move, cull],
     )
     top = blocks.add("control_if_else")
     is_hit = blocks.op_eq(state(), number(SLOT_HIT))
@@ -2370,6 +2478,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_toroid(blocks)
     install_check_air_hit(blocks)
     install_explode_toroid_tick(blocks)
+    install_update_bullet(blocks)
     install_update_toroid(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -2394,42 +2503,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     space = blocks.key("space")
     blocks.chain(space, [blocks.if_state("title", [blocks.call_transition("ready", "new-game")])])
 
-    # Death triggers — stand-ins until a real attacker exists (slice 8), now driving the real
-    # life economy instead of a hardcoded outcome. D takes one hit (lose a craft); G drains to
-    # the terminal life so the game-over path is reachable in one press. The death-complete
-    # handler decides respawn-vs-game-over from the craft counter, not from which key was pressed.
-    d_hat = blocks.key("d")
-    blocks.chain(
-        d_hat,
-        [
-            blocks.if_state(
-                "playing",
-                [
-                    blocks.change_var("craft", LIVES_ID, -1),
-                    blocks.send("craft changed"),
-                    blocks.call_transition("player-dead", "none"),
-                ],
-            )
-        ],
-    )
-    g_hat = blocks.key("g")
-    blocks.chain(
-        g_hat,
-        [
-            blocks.if_state(
-                "playing",
-                [
-                    blocks.set_var("craft", LIVES_ID, number(0)),
-                    blocks.send("craft changed"),
-                    blocks.call_transition("player-dead", "none"),
-                ],
-            )
-        ],
-    )
-
-    # (The debug S scoring fixture is retired in slice 8: the blaster-to-air hit now produces `award
-    # value` from the struck enemy's `slot pts` through `resolve hit`, so a real kill drives the one
-    # `score` path the fixture stood in for.)
+    # (The D/G debug death keys are retired in slice 8: a real attacker now kills the craft — a flying
+    # enemy or an enemy bullet touching the craft's cell raises `player hit`, and the walk thread runs
+    # the player-dead transition, spending a craft. The death-complete handler still decides respawn vs
+    # game-over from the craft counter. The debug S scoring fixture is likewise retired: the
+    # blaster-to-air hit now produces `award value` from the struck enemy's `slot pts`.)
 
     ready = blocks.receive("ready complete")
     blocks.chain(
@@ -2522,6 +2600,22 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     walk_loop = blocks.add("control_repeat_until")
     walk_condition = blocks.not_state(walk_loop, "playing")
     blocks.blocks[walk_loop]["inputs"]["CONDITION"] = [2, walk_condition]
+    # PLY-02: the warp walk only RAISES `player hit` (an enemy or bullet touched the craft's cell); the
+    # death is triggered here, in the non-warp thread, as the loop's terminal statement — clear the flag,
+    # spend a craft, and run the player-dead transition (the exact body the retired D key used). The
+    # death-complete handler still decides respawn vs game-over from the craft counter.
+    death_check = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("player hit", PLAYER_HIT_ID), number(1)),
+            blocks.op_eq(variable("invuln", INVULN_ID), number(0)),
+        ),
+        [
+            blocks.set_var("player hit", PLAYER_HIT_ID, number(0)),
+            blocks.change_var("craft", LIVES_ID, -1),
+            blocks.send("craft changed"),
+            blocks.call_transition("player-dead", "none"),
+        ],
+    )
     blocks.substack(
         walk_loop,
         [
@@ -2529,6 +2623,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
             blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
             blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
+            death_check,
         ],
     )
     blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
@@ -3673,6 +3768,62 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
+    # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
+    # director enter while playing and cleared on stop. Each clone shows a small sprite at its slot's
+    # mapped position when the slot holds a bullet, else hides. Writes no state (the walk owns the slot).
+    blocks = Blocks(ENEMY_BULLET_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("enemy bullet clone slot", ENEMY_BULLET_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(BULLET_SLOTS[0], BULLET_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("enemy bullet clone slot", ENEMY_BULLET_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_bullet = blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(BULLET_TYPE))
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_bullet]
+    blocks.blocks[is_bullet]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            blocks.switch_costume("toroid/turn/01"),  # stand-in: the first mirrored frame, drawn small
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(ENEMY_BULLET_RENDER_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def _ensure_gameplay_target(project: dict[str, Any], name: str) -> None:
     """Create a gameplay sprite target's EXISTENCE (blocks come from the replacements map) if it is
     absent, else leave it untouched — the same create-if-absent, costumes-owned-elsewhere split as
@@ -3727,6 +3878,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(project)
     _ensure_hud_target(result)
     _ensure_gameplay_target(result, TOROID_TARGET)
+    _ensure_gameplay_target(result, ENEMY_BULLET_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -3741,6 +3893,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             toroid["costumes"].extend(copy.deepcopy(death["costumes"]))
         toroid["currentCostume"] = 0
+    # AIR-12: the enemy-bullet renderer uses a small stand-in — the same verified turn frames by
+    # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
+    enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
+    if proof is not None and enemy_bullet is not None:
+        enemy_bullet["costumes"] = copy.deepcopy(proof["costumes"])
+        enemy_bullet["currentCostume"] = 0
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,
@@ -3794,6 +3952,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SPAWN_ATTEMPTS_ID,
         SPAWN_FOUND_ID,
         WALK_TYPE_ID,
+        PLAYER_HIT_ID,
+        INVULN_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -3882,6 +4042,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SPAWN_ATTEMPTS_ID: ["spawn attempts", 0],
         SPAWN_FOUND_ID: ["spawn found", 0],
         WALK_TYPE_ID: ["walk type", 0],
+        # PLY-02 (slice 8): raised by the walk when an enemy/bullet touches the craft's cell, cleared
+        # by the non-warp walk thread that triggers the death.
+        PLAYER_HIT_ID: ["player hit", 0],
+        # Debug/test invulnerability seam (default 0; the harness sets it, never game logic).
+        INVULN_ID: ["invuln", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -4011,6 +4176,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "bomb": bomb_blocks(),
         "hud": hud_blocks(),
         "toroid": toroid_blocks(),
+        "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
         if target["name"] in replacements:
@@ -4055,6 +4221,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # snapshotted at creation. All entity state lives in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 TOROID_CLONE_SLOT_ID: ["toroid clone slot", 0],
+            }
+        elif target["name"] == ENEMY_BULLET_TARGET:
+            # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
+            target["variables"] = target["variables"] | {
+                ENEMY_BULLET_CLONE_SLOT_ID: ["enemy bullet clone slot", 0],
             }
     return result
 

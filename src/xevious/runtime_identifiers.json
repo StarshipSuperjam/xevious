@@ -229,6 +229,11 @@
       "name": "value table",
       "scope": "Stage"
     },
+    "enemy-bullet-clone-slot": {
+      "kind": "variable",
+      "name": "enemy bullet clone slot",
+      "scope": "enemy_bullet"
+    },
     "fire-mask-andor-genesis": {
       "kind": "variable",
       "name": "fire mask andor genesis",
@@ -364,6 +369,11 @@
       "name": "hud role",
       "scope": "hud"
     },
+    "invuln": {
+      "kind": "variable",
+      "name": "invuln",
+      "scope": "Stage"
+    },
     "octant-table": {
       "kind": "list",
       "name": "octant table",
@@ -372,6 +382,11 @@
     "player-col": {
       "kind": "variable",
       "name": "player col",
+      "scope": "Stage"
+    },
+    "player-hit": {
+      "kind": "variable",
+      "name": "player hit",
       "scope": "Stage"
     },
     "player-row": {

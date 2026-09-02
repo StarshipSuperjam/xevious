@@ -207,9 +207,9 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 18: the historical 15 + the generated hud, the sprite-extraction proof, and the slice-8
-        # toroid gameplay renderer (which reuses the proof's costumes by reference).
-        self.assertEqual(18, len(project["targets"]))
+        # 19: the historical 15 + the generated hud, the sprite-extraction proof, and the slice-8
+        # toroid + enemy-bullet gameplay renderers (both reuse the proof's costumes by reference).
+        self.assertEqual(19, len(project["targets"]))
         self.assertEqual(98, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
@@ -950,6 +950,11 @@ class ScratchProjectTests(unittest.TestCase):
             "spawn cursor",
             "spawn attempts",
             "spawn found",
+            # PLY-02 (slice 8): the walk raises `player hit` on craft contact; the non-warp thread
+            # clears it and triggers the death. `invuln` is the dormant debug flag (default 0, set only
+            # by the test harness) that gates that death so the agency-less headless craft can survive.
+            "player hit",
+            "invuln",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1117,6 +1122,10 @@ class ScratchProjectTests(unittest.TestCase):
             # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
             director.CHECK_AIR_HIT_PROCCODE,
             director.EXPLODE_TICK_PROCCODE,
+            # AIR-12 (slice 8): the enemy-bullet per-tick update (move, craft-collision, cull) and
+            # the bullet allocator the shooting Toroid now calls to fire its single aimed bullet.
+            director.UPDATE_BULLET_PROCCODE,
+            director.ALLOC_BULLET_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -2803,64 +2812,96 @@ class ScratchProjectTests(unittest.TestCase):
 
     @staticmethod
     def _ply02_failures(project: dict) -> set:
-        """PLY-02: the death outcome is decided from the craft counter, the D/G triggers drive
-        the counter without hardcoding an outcome, and a new life restarts the terrain."""
+        """PLY-02 walk-driven player death (slice 8, replacing the retired D/G debug keys): contact
+        raises `player hit` in the flying AND bullet updates; the walk's death check, gated on
+        `player hit` = 1 AND `invuln` = 0, spends a craft, clears the flag, and runs the player-dead
+        transition; and the death-complete handler decides respawn vs game over from the craft counter."""
+        # roadmap-evidence: PLY-02 success  (test_death_decision_is_lives_driven — contact raises the hit flag, the invuln-gated death check spends a craft and transitions, the counter decides; harness death-respawn + death-game-over run it live)
+        # roadmap-evidence: PLY-02 failure  (test_death_decision_negative_fixtures — each clause corrupted bites; harness death-respawn/death-game-over negatives remove the death edges)
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         blocks = stage["blocks"]
-
-        def key_hat(key: str):
-            return next(
-                (
-                    bid
-                    for bid, b in blocks.items()
-                    if b["opcode"] == "event_whenkeypressed"
-                    and b["fields"].get("KEY_OPTION", [None])[0] == key
-                ),
-                None,
-            )
 
         def reachable(start: str) -> set:
             seen, stack = set(), [start]
             while stack:
                 bid = stack.pop()
-                if bid in seen or bid not in blocks:
+                if not bid or bid in seen or bid not in blocks:
                     continue
                 seen.add(bid)
                 b = blocks[bid]
-                if b.get("next"):
-                    stack.append(b["next"])
+                stack.append(b.get("next"))
                 for slot in ("SUBSTACK", "SUBSTACK2"):
                     val = b["inputs"].get(slot)
                     if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
                         stack.append(val[1])
             return seen
 
-        d_body = reachable(key_hat("d")) if key_hat("d") else set()
-        g_body = reachable(key_hat("g")) if key_hat("g") else set()
-        # D takes one hit: change craft by -1.
-        if not any(
-            blocks[bid]["opcode"] == "data_changevariableby"
-            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-            and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
-            for bid in d_body
-        ):
-            failures.add("d-decrements-craft")
-        # G drains to terminal: set craft to 0.
-        if not any(
-            blocks[bid]["opcode"] == "data_setvariableto"
-            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-            and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
-            for bid in g_body
-        ):
-            failures.add("g-drains-craft")
-        # neither trigger hardcodes a death outcome any more (the counter decides).
-        if any(
-            blocks[bid]["opcode"] == "data_setvariableto"
-            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.OUTCOME_ID
-            for bid in (d_body | g_body)
-        ):
-            failures.add("trigger-hardcodes-outcome")
+        def raises_player_hit(proccode: str) -> bool:
+            return any(
+                b["opcode"] == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                and b["inputs"].get("VALUE") == [1, [4, 1]]
+                for b in _proc_body_blocks(stage, proccode)
+            )
+
+        # Both live craft-collision participants raise the hit flag.
+        if not raises_player_hit(director.UPDATE_TOROID_PROCCODE):
+            failures.add("flying-raises-player-hit")
+        if not raises_player_hit(director.UPDATE_BULLET_PROCCODE):
+            failures.add("bullet-raises-player-hit")
+
+        # The walk's death gate: a control_if whose CONDITION is an AND of (player hit == 1) and
+        # (invuln == 0) — so contact kills only when not invulnerable.
+        def equals_var(op_spec) -> str | None:
+            if not (isinstance(op_spec, list) and len(op_spec) > 1 and isinstance(op_spec[1], str)):
+                return None
+            eq = blocks.get(op_spec[1])
+            if not eq or eq["opcode"] != "operator_equals":
+                return None
+            lhs = eq["inputs"].get("OPERAND1")
+            if isinstance(lhs, list) and len(lhs) > 1 and isinstance(lhs[1], list) and lhs[1][0] == 12:
+                return lhs[1][2]
+            return None
+
+        death_if = None
+        for bid, b in blocks.items():
+            if b["opcode"] != "control_if":
+                continue
+            cond = b["inputs"].get("CONDITION")
+            if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
+                continue
+            cb = blocks.get(cond[1])
+            if not cb or cb["opcode"] != "operator_and":
+                continue
+            refs = {equals_var(cb["inputs"].get("OPERAND1")), equals_var(cb["inputs"].get("OPERAND2"))}
+            if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
+                death_if = bid
+                break
+        if death_if is None:
+            failures.add("death-gated-on-hit-and-invuln")
+        else:
+            body = reachable(death_if)
+            spends = any(
+                blocks[bid]["opcode"] == "data_changevariableby"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
+                for bid in body
+            )
+            clears = any(
+                blocks[bid]["opcode"] == "data_setvariableto"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
+                for bid in body
+            )
+            transitions = any(
+                blocks[bid]["opcode"] == "procedures_call"
+                and blocks[bid].get("mutation", {}).get("proccode") == director.PROCCODE
+                for bid in body
+            )
+            if not (spends and clears and transitions):
+                failures.add("death-spends-craft-and-transitions")
+
         # the death-complete handler decides from craft > 0: respawn vs game over.
         decision = next(
             (
@@ -2901,38 +2942,114 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(set(), self._ply02_failures(base))
         stage = next(t for t in base["targets"] if t["isStage"])
 
-        def find(pred):
-            def f(p):
-                s = next(t for t in p["targets"] if t["isStage"])
-                return next(b for b in s["blocks"].values() if pred(b))
-            return f
-
-        def break_d(p):
-            b = find(
-                lambda b: b["opcode"] == "data_changevariableby"
-                and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-                and b["inputs"].get("VALUE") == [1, [4, -1]]
-            )(p)
-            b["inputs"]["VALUE"] = [1, [4, 0]]
-
-        def break_g(p):
-            # retarget G's `set craft to 0` to a different variable
+        def break_flying_hit(p):
+            # Neutralise the flying update's `set player hit = 1` (retarget to another flag) so a
+            # Toroid on the craft's cell no longer registers a hit.
             s = next(t for t in p["targets"] if t["isStage"])
-            gid = next(
-                bid
-                for bid, b in s["blocks"].items()
-                if b["opcode"] == "event_whenkeypressed"
-                and b["fields"].get("KEY_OPTION", [None])[0] == "g"
-            )
-            # walk to the set-craft-0 in g's body
-            for b in s["blocks"].values():
+            for b in _proc_body_blocks(s, director.UPDATE_TOROID_PROCCODE):
                 if (
                     b["opcode"] == "data_setvariableto"
-                    and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-                    and b["inputs"].get("VALUE") == [1, [4, 0]]
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 1]]
                 ):
-                    b["fields"]["VARIABLE"] = ["award value", director.AWARD_VALUE_ID]
+                    b["fields"]["VARIABLE"] = ["invuln", director.INVULN_ID]
+                    return
+            raise AssertionError("no `set player hit = 1` in update toroid to break")
+
+        def break_bullet_hit(p):
+            # Same, in the enemy-bullet update: a bullet on the craft's cell no longer registers.
+            s = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(s, director.UPDATE_BULLET_PROCCODE):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 1]]
+                ):
+                    b["fields"]["VARIABLE"] = ["invuln", director.INVULN_ID]
+                    return
+            raise AssertionError("no `set player hit = 1` in update bullet to break")
+
+        def break_death_gate(p):
+            # Drop `invuln` from the death gate's AND so contact would kill even while invulnerable —
+            # retarget the invuln equals-operand to the score, defeating the guard.
+            s = next(t for t in p["targets"] if t["isStage"])
+            blocks = s["blocks"]
+            for b in blocks.values():
+                if b["opcode"] != "operator_and":
+                    continue
+                for slot in ("OPERAND1", "OPERAND2"):
+                    spec = b["inputs"].get(slot)
+                    if not (isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str)):
+                        continue
+                    eq = blocks.get(spec[1])
+                    if not eq or eq["opcode"] != "operator_equals":
+                        continue
+                    lhs = eq["inputs"].get("OPERAND1")
+                    if (
+                        isinstance(lhs, list)
+                        and len(lhs) > 1
+                        and isinstance(lhs[1], list)
+                        and lhs[1][0] == 12
+                        and lhs[1][2] == director.INVULN_ID
+                    ):
+                        lhs[1][1:] = ["score", director.SCORE_ID]
+                        return
+            raise AssertionError("no invuln equals-operand in a death gate to break")
+
+        def break_death_body(p):
+            # Death registers but never spends a craft: neutralise the `change craft by -1` reachable
+            # from the death gate.
+            s = next(t for t in p["targets"] if t["isStage"])
+            blocks = s["blocks"]
+
+            def equals_var(op_spec):
+                if not (isinstance(op_spec, list) and len(op_spec) > 1 and isinstance(op_spec[1], str)):
+                    return None
+                eq = blocks.get(op_spec[1])
+                if not eq or eq["opcode"] != "operator_equals":
+                    return None
+                lhs = eq["inputs"].get("OPERAND1")
+                if isinstance(lhs, list) and len(lhs) > 1 and isinstance(lhs[1], list) and lhs[1][0] == 12:
+                    return lhs[1][2]
+                return None
+
+            death_if = None
+            for bid, b in blocks.items():
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
+                    continue
+                cb = blocks.get(cond[1])
+                if not cb or cb["opcode"] != "operator_and":
+                    continue
+                refs = {equals_var(cb["inputs"].get("OPERAND1")), equals_var(cb["inputs"].get("OPERAND2"))}
+                if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
+                    death_if = bid
                     break
+            assert death_if is not None
+            seen, stack = set(), [death_if]
+            while stack:
+                bid = stack.pop()
+                if not bid or bid in seen or bid not in blocks:
+                    continue
+                seen.add(bid)
+                b = blocks[bid]
+                stack.append(b.get("next"))
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    val = b["inputs"].get(slot)
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            for bid in seen:
+                b = blocks[bid]
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                    and b["inputs"].get("VALUE") == [1, [4, -1]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 0]]
+                    return
+            raise AssertionError("no `change craft by -1` in the death body to break")
 
         def break_decision(p):
             # Target the DEATH-decision `craft > threshold` specifically — the operator_gt that is the
@@ -2953,8 +3070,10 @@ class ScratchProjectTests(unittest.TestCase):
             cond["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
 
         cases = [
-            ("d-decrements-craft", break_d),
-            ("g-drains-craft", break_g),
+            ("flying-raises-player-hit", break_flying_hit),
+            ("bullet-raises-player-hit", break_bullet_hit),
+            ("death-gated-on-hit-and-invuln", break_death_gate),
+            ("death-spends-craft-and-transitions", break_death_body),
             ("lives-driven-decision", break_decision),
         ]
         for label, corrupt in cases:
@@ -4094,8 +4213,9 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_hit_windows_match_spec(self) -> None:
         # PLY-02 collision hit windows (player-craft-and-weapons.md), in the reference's
-        # half-pixel "shadow" units as (y_bias, y_width, x_bias, x_width). Dormant data
-        # this slice; pinned to independent literals so a wrong window reddens here.
+        # half-pixel "shadow" units as (y_bias, y_width, x_bias, x_width). The bullet/flying
+        # window is live this slice (craft-overlap check); Bacura stays dormant until slice 11.
+        # Pinned to independent literals so a wrong window reddens here.
         self.assertEqual(director.HIT_WINDOW_BULLET_FLYING, (8, 16, 4, 8))
         self.assertEqual(director.HIT_WINDOW_BACURA, (28, 40, 8, 16))
         # The bullet allocator's result var is its own, never the blaster's (no coupling).
@@ -4103,9 +4223,10 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(director.BULLET_TYPE, 2)
 
     def _enemy_bullet_pool_failures(self, project: dict) -> set:
-        # AIR-12 dormant allocator: defined on the Stage, sweeps the 19 bullet slots with
-        # its own result var, marks the bullet type — and is NOT called this slice (no
-        # firer). Structural only; the aimed vector/movement/pulse are the air slice.
+        # AIR-12 live allocator: defined on the Stage, sweeps the 19 bullet slots with its own
+        # result var, marks the bullet type — and (this slice) is CALLED from the shooting Toroid's
+        # update to fire a single aimed bullet. Structural only; the aimed vector/movement/pulse are
+        # exercised by their own AIR-12 checks and the harness.
         fails = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         sblocks = stage["blocks"]
@@ -4115,14 +4236,14 @@ class ScratchProjectTests(unittest.TestCase):
             for b in sblocks.values()
         ):
             fails.add("bullet-alloc-defined")
-        called = any(
+        # The shooting Toroid now fires: the allocator is called from `update toroid`.
+        called_in_update = any(
             b.get("opcode") == "procedures_call"
             and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
-            for t in project["targets"]
-            for b in t["blocks"].values()
+            for b in _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE)
         )
-        if called:
-            fails.add("bullet-alloc-dormant")
+        if not called_in_update:
+            fails.add("bullet-alloc-live")
         if not any(
             b.get("opcode") == "data_replaceitemoflist"
             and b["fields"].get("LIST", [None])[0] == "slot type"
@@ -4176,9 +4297,23 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["TIMES"] = [1, [4, span - 1]]
 
+        def break_alloc_live(p):  # the shooting Toroid never fires (allocator call removed)
+            sblocks = stage_blocks_of(p)
+            for b in sblocks.values():
+                if (
+                    b.get("opcode") == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.ALLOC_SHOT_PROCCODE
+                    b["mutation"]["argumentids"] = "[]"
+                    b["inputs"] = {}
+                    return
+            raise AssertionError("no allocator call to break")
+
         for label, corrupt in (
             ("bullet-type", break_bullet_type),
             ("bullet-cap", break_bullet_cap),
+            ("bullet-alloc-live", break_alloc_live),
         ):
             project = copy.deepcopy(base)
             corrupt(project)
@@ -4187,6 +4322,125 @@ class ScratchProjectTests(unittest.TestCase):
                 self._enemy_bullet_pool_failures(project),
                 f"corruption '{label}' was not caught",
             )
+
+    @staticmethod
+    def _air12_failures(project: dict) -> set:
+        # AIR-12 live enemy bullet: once fired it flies straight on its aimed velocity and culls off any
+        # edge (update bullet), and the shooting Toroid aims it at the craft on the 32-magnitude tier at
+        # the moment it fires (update toroid's fire path). Structural; the movement/kill is the harness
+        # (enemy-bullet-fires) and the operator playtest.
+        # roadmap-evidence: AIR-12 success  (test_enemy_bullet_flight_and_fire — move on both axes, edge cull, aimed-32 fire)
+        # roadmap-evidence: AIR-12 failure  (test_enemy_bullet_flight_negative_fixtures — each clause corrupted bites)
+        fails = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def reads_list(item_spec, list_name: str) -> bool:
+            # ITEM input points to a `item N of <list_name>` reporter.
+            if not (isinstance(item_spec, list) and len(item_spec) > 1 and isinstance(item_spec[1], str)):
+                return False
+            b = blocks.get(item_spec[1])
+            return (
+                b is not None
+                and b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == list_name
+            )
+
+        def is_reporter(item_spec, opcode: str) -> bool:
+            if not (isinstance(item_spec, list) and len(item_spec) > 1 and isinstance(item_spec[1], str)):
+                return False
+            b = blocks.get(item_spec[1])
+            return b is not None and b["opcode"] == opcode
+
+        bullet_body = _proc_body_blocks(stage, director.UPDATE_BULLET_PROCCODE)
+        # The bullet moves on both axes each tick (velocity-scaled add into its own slot).
+        for axis, list_name in (("x", "slot x"), ("y", "slot y")):
+            if not any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == list_name
+                and is_reporter(b["inputs"].get("ITEM"), "operator_add")
+                for b in bullet_body
+            ):
+                fails.add(f"bullet-moves-{axis}")
+        # The bullet is culled when it leaves the field (a cull-slot call guarded by an if).
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+            for b in bullet_body
+        ):
+            fails.add("bullet-culls")
+
+        toroid_body = _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE)
+        # The fire path resolves an aim (compute aim index) and writes the bullet's velocity from the
+        # 32-magnitude tables — so the bullet is aimed at the craft, not launched on a fixed vector.
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.COMPUTE_AIM_PROCCODE
+            for b in toroid_body
+        ):
+            fails.add("fire-computes-aim")
+        for axis, list_name in (("dx", "aim dx 32"), ("dy", "aim dy 32")):
+            slot_list = "slot dx" if axis == "dx" else "slot dy"
+            if not any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == slot_list
+                and reads_list(b["inputs"].get("ITEM"), list_name)
+                for b in toroid_body
+            ):
+                fails.add(f"fire-aims-{axis}")
+        return fails
+
+    def test_enemy_bullet_flight_and_fire(self) -> None:
+        self.assertEqual(set(), self._air12_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_enemy_bullet_flight_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air12_failures(base))
+
+        def body_of(project, proccode):
+            stage = next(t for t in project["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, proccode)
+
+        def break_move_x(p):  # bullet stops advancing on the scroll axis
+            _stage, body = body_of(p, director.UPDATE_BULLET_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == "slot x"
+            )
+            b["inputs"]["ITEM"] = [1, [4, 0]]
+
+        def break_cull(p):  # bullet never leaves the pool (retarget its cull call)
+            _stage, body = body_of(p, director.UPDATE_BULLET_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+            )
+            b["mutation"]["proccode"] = director.RESOLVE_HIT_PROCCODE
+            b["mutation"]["argumentids"] = "[]"
+            b["inputs"] = {}
+
+        def break_fire_aim(p):  # the fired bullet is no longer aimed on the 32 tier
+            _stage, body = body_of(p, director.UPDATE_TOROID_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == "slot dx"
+            )
+            b["inputs"]["ITEM"] = [1, [4, 0]]
+
+        for label, corrupt in (
+            ("bullet-moves-x", break_move_x),
+            ("bullet-culls", break_cull),
+            ("fire-aims-dx", break_fire_aim),
+        ):
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air12_failures(project), f"'{label}' not caught")
 
     def test_transition_cleanup_is_serialized_before_state_entry(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -4901,7 +5155,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3779968d0ee46315af9be39579e5a194470a027d0b93b618b770e8eed63f219c",
+            "f2fe851bc73130e944ab3cfe6dcaa69f1466063250f86bcfdea9b3c77941284f",
             build_hash,
         )
 
