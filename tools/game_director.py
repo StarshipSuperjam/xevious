@@ -156,6 +156,10 @@ ALLOC_SHOT_PROCCODE = "alloc shot slot"
 # delegated to the enemy/ground/boss/secrets slices (as the spec's SYS-03 exception
 # table delegates them). This slice lays the single-hit path and the group vocabulary.
 SLOT_HIT = 2
+# A player shot marked spent by the walk's shot-vs-air detector (distinct from SLOT_HIT so the one
+# slot-state->HIT write stays inside `resolve hit`, SYS-03's single-hit invariant). Its clone sees
+# state != ACTIVE next iteration, frees its slot, and deletes.
+SHOT_SPENT = 3
 HIT_SLOT_ID = "hit-slot"
 RESOLVE_HIT_PROCCODE = "resolve hit"
 SCORE_PROCCODE = "score"
@@ -192,6 +196,16 @@ ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 # windows: the shared enemy-bullet/flying-enemy window, and the distinct, larger Bacura one.
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
+# WPN-02 player-shot vs flying-enemy window (`check_shot_hit_flying_enemy` $19A6): the reference's
+# `sub #16; add #32` (Y) and `sub #8; add #16` (X) idiom on the shadow MSBs, i.e. shotY-enemyY in
+# [-16,15] and enemyX-shotX in [-8,7] half-pixel shadow units. Same (bias,width) convention as the
+# windows above; this is the first one with a live detector (the walk's shot-vs-air pass, slice 8).
+HIT_WINDOW_SHOT_FLYING = (16, 32, 8, 16)
+# Shadow (half-pixel) unit expressed in the slot lists' 1/32-px units: 1 half-px = 16 units. The
+# detector floors each slot position to its shadow MSB before differencing, matching the reference's
+# byte compare — but on the EXACT half-px delta (no mod-256 wrap), so it never produces the
+# reference's rare wrap-around phantom hit between objects ~128 half-px apart (recorded deviation).
+SLOT_UNITS_PER_SHADOW = 16
 
 # ECO-02 HUD target (docs/mechanics/010, docs/mechanics/012). game_director owns this target's
 # EXISTENCE and BLOCKS — the HUD render itself (hud_blocks(), installed below); its costumes
@@ -285,13 +299,8 @@ VALUE_TABLE_POINTS = [
     10, 20, 30, 50, 70, 100, 150, 200, 250, 300, 400,
     500, 600, 700, 800, 900, 1000, 1500, 2000, 2500, 4000, 10000,
 ]
-# Debug scoring fixture: while playing, pressing S sets the award-value seam to the top
-# value-table entry (10,000) and runs the one `score` path — exactly as slice 8's collision
-# detector will — so score, cap, high score, the bonus award, and the HUD digits are
-# operator-verifiable before an enemy exists to award points. Holding S accelerates toward
-# the cap. A stand-in producer of `award value`, removed with the D/G death fixtures when the
-# real collision trigger lands (slice 8).
-SCORE_FIXTURE_KEY = "s"
+# (The debug S scoring fixture that stood in for a points producer was retired in slice 8, when the
+# blaster-to-air hit began producing `award value` from the struck enemy's `slot pts`.)
 
 # ECO-03 lives and bonus economy (docs/spec/data/scores.json; docs/spec/scoring-lives-and-game-over.md).
 # Starting craft come from a DIP-indexed table; bonus craft are granted as the score passes a
@@ -563,6 +572,10 @@ COMPUTE_AIM_PROCCODE = "compute aim index"
 PLAYER_ROW_ID = "player-row"  # scroll axis
 PLAYER_COL_ID = "player-col"  # lateral axis
 READ_PLAYER_PROCCODE = "read player cell"
+# WPN-02: the shot-vs-air overlap detector (walk-driven, per active flying slot) and the per-tick
+# explosion advance for a struck Toroid.
+CHECK_AIR_HIT_PROCCODE = "check air shot hit"
+EXPLODE_TICK_PROCCODE = "explode toroid tick"
 
 # The spawner's own sweep cursor (like the bullet allocator's — never the shared `slot index`); the
 # per-dispatch type register; and the spawn-draw attempt counter.
@@ -650,6 +663,17 @@ RENDER_COL_OFFSET = 240
 RENDER_ROW_TOP = 155
 RENDER_ROW_STAGE = 8
 TOROID_RENDER_SIZE = 225  # 16-px sprite at ~2.25 stage px/px, matching solvalou's on-screen scale
+# WPN-02 hit/explosion state (`flying_enemy_hit` 4865–4902): a struck flying enemy explodes over 20
+# arcade frames = 10 ticks, five 4-frame phases, still drifting on its velocity; at arcade frame 8 the
+# sprite doubles (2x) with a one-cell recentre; then the slot is freed. While exploding it neither hits
+# nor is hit. The explosion sprite reuses the verified solv_death frames as a recorded stand-in (record
+# 025) — the mechanic (explode → score → gone) is exact; dedicated Toroid-burst crops are deferred.
+TOROID_HIT_DURATION_FRAMES = 20
+TOROID_EXPLOSION_PHASE_FRAMES = 4  # 20 / 4 = five phases
+TOROID_EXPLOSION_PHASES = 5
+TOROID_TURN_FRAME_COUNT = 7  # turn costumes precede the referenced explosion costumes on the target
+TOROID_BIG_PHASE = 2  # the 2x phase (arcade frame 8): size doubles, sprite recentres one cell
+TOROID_EXPLODE_SIZE = 450  # 2x TOROID_RENDER_SIZE for the big phase
 
 
 def _schedule_arg(record: dict) -> int:
@@ -1297,6 +1321,12 @@ class Blocks:
             self.blocks[block_id]["inputs"] = {"NUM": operand}
         return block_id
 
+    def xposition(self) -> str:
+        return self.add("motion_xposition")
+
+    def yposition(self) -> str:
+        return self.add("motion_yposition")
+
     def set_var_expr(self, name: str, variable_id: str, reporter_id: str) -> str:
         # Set a variable to a reporter expression (the [3, reporter, shadow] input
         # shape, as install_transition_procedure uses for its argument reporters).
@@ -1752,6 +1782,81 @@ def install_init_toroid(blocks: Blocks) -> None:
     blocks.chain(definition, [*reset, draw_loop, stamp])
 
 
+def install_check_air_hit(blocks: Blocks) -> None:
+    # WPN-02: test the active flying enemy at `slot index` against the three player-shot slots (their
+    # live positions mirrored into slot x/y by the blaster clone). On the first overlapping ACTIVE
+    # shot, resolve the hit: mark the enemy struck and score its value type-agnostically (`resolve hit`
+    # reads `slot pts` into the value table), start its explosion clock, and mark the shot spent so its
+    # clone self-destroys and frees its slot. Each later shot check is gated on the enemy still being
+    # ACTIVE, so one enemy resolves at most one hit per tick. The window is the reference's shadow-MSB
+    # compare (`check_shot_hit_flying_enemy`): each position floored to its half-px shadow MSB, then the
+    # (bias,width) window HIT_WINDOW_SHOT_FLYING — on the exact half-px delta (no mod-256 wrap).
+    definition = _install_warp_proc(blocks, CHECK_AIR_HIT_PROCCODE)
+    y_bias, y_width, x_bias, x_width = HIT_WINDOW_SHOT_FLYING
+    dy_low, dy_high = -y_bias, y_width - y_bias - 1
+    dx_low, dx_high = -x_bias, x_width - x_bias - 1
+    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
+    shot_x = lambda s: blocks.list_item("slot x", SLOT_X_ID, number(s))
+    shot_y = lambda s: blocks.list_item("slot y", SLOT_Y_ID, number(s))
+
+    body: list[str] = []
+    for s in range(SHOT_SLOTS[0], SHOT_SLOTS[1] + 1):
+        shot_live = blocks.op_and(
+            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(s)), number(SHOT_TYPE)),
+            blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE)),
+        )
+        enemy_live = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE))
+        d_y = blocks.op_sub(sh(shot_x(s)), sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
+        hit_y = blocks.op_and(
+            blocks.op_not(blocks.op_lt(d_y, number(dy_low))),
+            blocks.op_not(blocks.op_gt(d_y, number(dy_high))),
+        )
+        d_x = blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), sh(shot_y(s)))
+        hit_x = blocks.op_and(
+            blocks.op_not(blocks.op_lt(d_x, number(dx_low))),
+            blocks.op_not(blocks.op_gt(d_x, number(dx_high))),
+        )
+        overlap = blocks.op_and(
+            blocks.op_and(shot_live, enemy_live), blocks.op_and(hit_y, hit_x)
+        )
+        body.append(
+            blocks.if_reporter(
+                overlap,
+                [
+                    blocks.set_var("hit slot", HIT_SLOT_ID, variable("slot index", SLOT_INDEX_ID)),
+                    blocks.set_var_expr(
+                        "award value",
+                        AWARD_VALUE_ID,
+                        blocks.list_item(
+                            "value table", VALUE_TABLE_ID, _cur_item(blocks, "slot pts", SLOT_PTS_ID)
+                        ),
+                    ),
+                    blocks.call_proc(RESOLVE_HIT_PROCCODE, warp=True),
+                    _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+                    blocks.list_replace("slot state", SLOT_STATE_ID, number(s), number(SHOT_SPENT)),
+                ],
+            )
+        )
+    blocks.chain(definition, body)
+
+
+def install_explode_toroid_tick(blocks: Blocks) -> None:
+    # WPN-02: advance a struck Toroid's explosion one tick. It keeps drifting on its velocity while the
+    # burst plays (the renderer maps the clock to a phase), and is freed once the recorded duration
+    # elapses. The clock reuses `slot timer` (reset to 0 by the detector at the hit); movement mirrors
+    # `update toroid`'s move so a mid-approach kill still coasts. No cull-window test here — an exploding
+    # enemy always frees on its own clock, even if it drifts off-field first.
+    definition = _install_warp_proc(blocks, EXPLODE_TICK_PROCCODE)
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    done = blocks.op_not(blocks.op_lt(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TOROID_HIT_DURATION_FRAMES)))
+    free = blocks.if_reporter(done, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.chain(definition, [*move, free])
+
+
 def install_update_toroid(blocks: Blocks) -> None:
     # AIR-01: advance the Toroid at `slot index` by one tick. Before its swing trigger it approaches
     # on its aimed velocity; when nearly level with the craft laterally (offset in [-2,1]) it commits
@@ -1803,7 +1908,25 @@ def install_update_toroid(blocks: Blocks) -> None:
     off_side = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
     offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), off_side)
     cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
-    blocks.chain(definition, [trigger, swing_right, swing_left, *move, cull])
+    # A struck Toroid (state HIT) runs its explosion instead of the normal update — while exploding it
+    # neither hits nor is hit. Otherwise it first offers itself to the shot detector (which may flip it
+    # to HIT this tick); the approach/swing/move/cull then runs only if it is still ACTIVE.
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    normal = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [trigger, swing_right, swing_left, *move, cull],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
 
 
 def install_cull_slot(blocks: Blocks) -> None:
@@ -2245,6 +2368,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_compute_aim_index(blocks)
     install_read_player_cell(blocks)
     install_init_toroid(blocks)
+    install_check_air_hit(blocks)
+    install_explode_toroid_tick(blocks)
     install_update_toroid(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -2302,19 +2427,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
-    # Debug scoring fixture (S): set the award-value seam to the top value-table entry and run
-    # the one `score` path, so the economy is operator-verifiable before an enemy awards points.
-    # Removed with the D/G fixtures when the real collision trigger lands (slice 8).
-    score_key = blocks.key(SCORE_FIXTURE_KEY)
-    set_award = blocks.set_var_expr(
-        "award value",
-        AWARD_VALUE_ID,
-        blocks.list_item("value table", VALUE_TABLE_ID, number(len(VALUE_TABLE_POINTS))),
-    )
-    blocks.chain(
-        score_key,
-        [blocks.if_state("playing", [set_award, blocks.call_proc(SCORE_PROCCODE, warp=True)])],
-    )
+    # (The debug S scoring fixture is retired in slice 8: the blaster-to-air hit now produces `award
+    # value` from the struck enemy's `slot pts` through `resolve hit`, so a real kill drives the one
+    # `score` path the fixture stood in for.)
 
     ready = blocks.receive("ready complete")
     blocks.chain(
@@ -2931,11 +3046,54 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     # unratified until the movement slice).
     clone = blocks.add("control_start_as_clone", top_level=True)
     travel = blocks.add("control_repeat_until")
+    # B8 top-expiry OR the walk marking this shot spent (WPN-02: on a resolved air hit the detector
+    # sets the shot slot's state off ACTIVE; the clone sees it next iteration, frees its slot, and
+    # deletes — so the slot is freed by the clone, never reallocated under a still-live clone).
     at_top = blocks.touching(travel, "frame_t")
-    blocks.blocks[travel]["inputs"]["CONDITION"] = [2, at_top]
+    spent = blocks.op_not(
+        blocks.op_eq(
+            blocks.list_item("slot state", SLOT_STATE_ID, variable("clone slot", CLONE_SLOT_ID)),
+            number(SLOT_ACTIVE),
+        )
+    )
+    blocks.blocks[travel]["inputs"]["CONDITION"] = [2, blocks.op_or(at_top, spent)]
+    # WPN-02 position mirror: each iteration write the shot's live cell (stage px -> slot units, the
+    # render map inverted and floored) into its slot x/y, so the walk's shot-vs-air detector reads the
+    # shot from the slot lists like any entity. One-tick lag vs the clone's pixel position (<=10 arcade
+    # px at 6 px/frame), recorded in docs/mechanics/025.
+    mirror_x = blocks.list_replace(
+        "slot x",
+        SLOT_X_ID,
+        variable("clone slot", CLONE_SLOT_ID),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.op_mul(
+                    blocks.op_sub(number(RENDER_ROW_TOP), blocks.yposition()),
+                    number(SLOT_UNITS_PER_CELL),
+                ),
+                number(RENDER_ROW_STAGE),
+            )
+        ),
+    )
+    mirror_y = blocks.list_replace(
+        "slot y",
+        SLOT_Y_ID,
+        variable("clone slot", CLONE_SLOT_ID),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.op_mul(
+                    blocks.op_add(blocks.xposition(), number(RENDER_COL_OFFSET)),
+                    number(SLOT_UNITS_PER_CELL),
+                ),
+                number(RENDER_COL_STAGE),
+            )
+        ),
+    )
     blocks.substack(
         travel,
         [
+            mirror_x,
+            mirror_y,
             blocks.add("motion_changeyby", inputs={"DY": number(20)}),
             blocks.add("looks_nextcostume"),
         ],
@@ -3461,10 +3619,41 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
             number(RENDER_ROW_STAGE),
         ),
     )
-    ordinal = blocks.list_item(
+    turn_ordinal = blocks.list_item(
         "toroid frame",
         TOROID_FRAME_ID,
         blocks.op_sub(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()), number(TOROID_INIT_CODE - 1)),
+    )
+    # WPN-02 explosion frames: while the slot is HIT, the clock (slot timer) selects an explosion phase,
+    # which maps to the referenced explode costumes appended after the 7 turn frames (ordinal 8..). The
+    # burst doubles size at TOROID_BIG_PHASE (the arcade frame-8 2x). The exact one-cell recentre of the
+    # doubled frame is deferred with dedicated Toroid-burst crops (record 025); the stand-in centres on
+    # the slot.
+    phase_for_costume = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    explode_ordinal = blocks.op_add(number(TOROID_TURN_FRAME_COUNT + 1), phase_for_costume)
+    phase_for_size = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [
+            blocks.switch_costume_expr(turn_ordinal),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
     )
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_toroid]
@@ -3473,8 +3662,7 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
         render,
         [
             blocks.go_expr(stage_x, stage_y),
-            blocks.switch_costume_expr(ordinal),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_RENDER_SIZE)}),
+            state_render,
             blocks.to_front(),
             blocks.show(),
         ],
@@ -3542,10 +3730,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
+    # AIR-01 turn frames first (costume ordinals 1..7), then the WPN-02 explosion frames appended by
+    # reference from solv_death (ordinals 8..15) — the recorded stand-in burst (record 025). Both are
+    # already-verified, provenance-recorded assets; a no-op when either source is absent (fixpoint).
     proof = next((t for t in result["targets"] if t.get("name") == TOROID_PROOF_TARGET), None)
+    death = next((t for t in result["targets"] if t.get("name") == "solv_death"), None)
     toroid = next((t for t in result["targets"] if t.get("name") == TOROID_TARGET), None)
     if proof is not None and toroid is not None:
         toroid["costumes"] = copy.deepcopy(proof["costumes"])
+        if death is not None:
+            toroid["costumes"].extend(copy.deepcopy(death["costumes"]))
         toroid["currentCostume"] = 0
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {

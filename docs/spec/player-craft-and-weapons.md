@@ -34,7 +34,10 @@ reloads every 20 frames while held; releasing resets the reload so a fresh press
 (`process_button_1` 2333–2349, reload constant at 2365 region). One fire event spawns exactly one shot —
 the fire flag is consumed by the first idle slot (`main_fn_30_shot_fn` 2356–2370). Shots fly straight
 forward at 6 pixels per frame with no lateral drift (`move_shot` 2419–2424) and expire off the top of the
-screen (2392–2396). Special case: a shot that hits a Bacura is not destroyed with its target — it bounces,
+screen (2392–2396). A shot destroys a flying enemy it overlaps: the hit test compares the shot's and the
+enemy's shadow MSBs with a vertical window of bias 16 width 32 and a horizontal window of bias 8 width 16 —
+i.e. shot Y − enemy Y in [−16, 15] and enemy X − shot X in [−8, 7], in the same half-pixel "shadow" units as
+the player-death and Bacura windows (`check_shot_hit_flying_enemy` 2565–2577). Special case: a shot that hits a Bacura is not destroyed with its target — it bounces,
 reversing at 1.5 pixels per frame through an 8-frame bounce animation before disappearing
 (`shot_destroyed` 2400–2418).
 

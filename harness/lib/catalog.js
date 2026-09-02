@@ -33,6 +33,33 @@ const RNG_FIXTURES = JSON.parse(
 ).generator.fixture_sequences;
 const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
 
+// Seed a deterministic blaster-to-air kill: place a live Toroid in the last flying slot (index 63,
+// which the walk sweeps last) and an active player shot in a shot slot at the SAME cell, so the walk's
+// shot-vs-air detector resolves the overlap on the first tick — before the spawner refills anything.
+// Returns the Toroid's expected award (its value-table entry). Writes the slot lists directly (the
+// blaster clone normally mirrors the shot's position; here we place it), so no firing/aiming is needed.
+function seedAirKill(vm, { enemySlot = 63, shotSlot = 36, cellX = 5000, cellY = 4000 } = {}) {
+  const put = (id, i, v) => {
+    const a = readVar(vm, id);
+    a[i] = v;
+  };
+  put('slot-type', enemySlot, 10);
+  put('slot-state', enemySlot, 1);
+  put('slot-pts', enemySlot, 3);
+  put('slot-x', enemySlot, cellX);
+  put('slot-y', enemySlot, cellY);
+  put('slot-dx', enemySlot, 0);
+  put('slot-dy', enemySlot, 0);
+  put('slot-timer', enemySlot, 0);
+  put('slot-flag', enemySlot, 0);
+  put('slot-code', enemySlot, 8);
+  put('slot-type', shotSlot, 1);
+  put('slot-state', shotSlot, 1);
+  put('slot-x', shotSlot, cellX);
+  put('slot-y', shotSlot, cellY);
+  return readVar(vm, 'eco-value-table')[2]; // Toroid pts = 3 (1-based) -> value-table index 2
+}
+
 // Every read resolves through a manifest id (hard-errors on a rename), including the
 // scope-duplicated ones: `terrain-scroll-step-a` is area_01a's, distinct from area_01b's.
 const state = stateOf;
@@ -187,8 +214,9 @@ export const SCENARIOS = [
     playtestStep: 6,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // S is the scoring fixture: each press awards a fixed value from the master table.
-      for (let i = 0; i < 3; i += 1) tapKey(vm, 's');
+      // The debug S fixture is gone: the score is earned by a real blaster-to-air kill, then read
+      // back off the HUD digit clones.
+      seedAirKill(vm);
       step(vm, 20);
       const roleName = variable('hud-role').name;
       const placeName = variable('hud-place').name;
@@ -217,7 +245,7 @@ export const SCENARIOS = [
       };
     },
     assert(obs) {
-      assert.ok(obs.score > 0, 'the S fixture raised the score above zero');
+      assert.ok(obs.score > 0, 'a blaster-to-air kill raised the score above zero');
       assert.deepEqual(
         obs.decoded,
         [obs.score, obs.high].sort((a, b) => a - b),
@@ -482,6 +510,31 @@ export const SCENARIOS = [
     },
     // Empty `rng step` so `rng out` never advances → no draws are observed → the count assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rng step'),
+  },
+  {
+    key: 'blaster-kills-toroid-and-scores',
+    behavior:
+      'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const score0 = readVar(vm, 'eco-score');
+      const award = seedAirKill(vm);
+      // One pump runs many game ticks; the walk resolves the seeded overlap on its first tick (before
+      // the spawner refills), marks the shot spent, and scores exactly the Toroid's value once.
+      step(vm, 1);
+      return {
+        delta: readVar(vm, 'eco-score') - score0,
+        award,
+        shotState: readVar(vm, 'slot-state')[36],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.delta, obs.award, 'the kill scores exactly the Toroid value once');
+      assert.notEqual(obs.shotState, 1, 'the shot that resolved the hit is consumed (no longer active)');
+    },
+    // Empty the shot-vs-air detector so no overlap is ever resolved → the score never rises.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
   },
 ];
 

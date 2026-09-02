@@ -1114,6 +1114,9 @@ class ScratchProjectTests(unittest.TestCase):
             director.INIT_TOROID_PROCCODE,
             director.UPDATE_TOROID_PROCCODE,
             director.CULL_SLOT_PROCCODE,
+            # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
+            director.CHECK_AIR_HIT_PROCCODE,
+            director.EXPLODE_TICK_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -1855,6 +1858,158 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._sys03_failures(project), label)
 
     @staticmethod
+    def _wpn02_failures(project: dict) -> set:
+        """WPN-02 blaster-to-air kill contract — violated labels. The detector runs in the walk, the
+        shot mirrors its position for it to read, and a struck enemy explodes then frees."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto_warp(proccode):
+            p = next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+            return p is not None and p["mutation"].get("warp") == "true"
+
+        # (1) The detector and the explosion tick exist and are atomic (warp) — a mid-slot yield could
+        # score a half-resolved hit or render a torn explosion.
+        if not (proto_warp(director.CHECK_AIR_HIT_PROCCODE) and proto_warp(director.EXPLODE_TICK_PROCCODE)):
+            failures.add("air-combat-procs-warp")
+
+        # (2) The detector produces award value from the value table and resolves through the one path.
+        detector = _proc_body_blocks(stage, director.CHECK_AIR_HIT_PROCCODE)
+        sets_award = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AWARD_VALUE_ID
+            for b in detector
+        )
+        reads_table = any(
+            b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == director.VALUE_TABLE_ID
+            for b in detector
+        )
+        resolves = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
+            for b in detector
+        )
+        if not (sets_award and reads_table and resolves):
+            failures.add("air-hit-awards-and-resolves")
+
+        # (3) The struck-enemy branch frees the slot: the explosion tick culls when its clock elapses.
+        explode = _proc_body_blocks(stage, director.EXPLODE_TICK_PROCCODE)
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+            for b in explode
+        ):
+            failures.add("explosion-frees-slot")
+
+        # (4) `update toroid` runs the explosion for a HIT enemy (the HIT branch calls the explode tick).
+        update = _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE)
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+            for b in update
+        ):
+            failures.add("hit-runs-explosion")
+
+        # (5) The blaster shot mirrors its live position into BOTH slot x and slot y (indexed by its
+        # clone slot), so the walk's detector can read the shot from the slot lists.
+        blaster = next(t for t in project["targets"] if t.get("name") == "blaster")
+        mirrored = {
+            b["fields"]["LIST"][1]
+            for b in blaster["blocks"].values()
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["inputs"].get("INDEX", [None, [None, None]])[1] == [12, "clone slot", director.CLONE_SLOT_ID]
+        }
+        if not {director.SLOT_X_ID, director.SLOT_Y_ID} <= mirrored:
+            failures.add("shot-position-mirrored")
+        return failures
+
+    # Roadmap closure evidence for leaves #62 (air.hit, WPN-02.air-hit), #63 (ECO-01 air awards), and
+    # #58 (SYS-03.live): the blaster-to-air hit resolves through the single score path, awards the
+    # enemy's value, and explodes then frees the slot. Live proof (a kill scores 30 and the enemy is
+    # gone) is the harness `blaster-kills-toroid-and-scores`; the S fixture is retired.
+    # roadmap-evidence: WPN-02 success  (test_air_kill_contract_present — detector, award, explosion, mirror)
+    # roadmap-evidence: WPN-02 failure  (test_air_kill_negative_fixtures — each clause corrupted bites)
+    # roadmap-evidence: SYS-03 success  (test_collision_single_hit_path — one HIT write in resolve hit, one score call; now with a live detector driving it)
+    # roadmap-evidence: SYS-03 failure  (test_collision_single_hit_negative_fixtures; harness blaster-kills-toroid-and-scores negative)
+    # roadmap-evidence: ECO-01 success  (test_air_kill_contract_present award-from-value-table clause; harness blaster-kills-toroid-and-scores raises the score by the enemy value)
+    # roadmap-evidence: ECO-01 failure  (test_air_kill_negative_fixtures air-hit-awards-and-resolves; harness negative widens the window so no kill scores)
+    def test_air_kill_contract_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._wpn02_failures(project))
+
+    def test_air_kill_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._wpn02_failures(base))
+
+        def unwarp_detector(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.CHECK_AIR_HIT_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_resolve(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CHECK_AIR_HIT_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_explosion_cull(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.EXPLODE_TICK_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_hit_branch(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_mirror(p: dict) -> None:
+            blaster = next(t for t in p["targets"] if t.get("name") == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                    and b["inputs"].get("INDEX", [None, [None, None]])[1]
+                    == [12, "clone slot", director.CLONE_SLOT_ID]
+                ):
+                    b["fields"]["LIST"] = ["slot timer", director.SLOT_TIMER_ID]
+
+        cases = [
+            ("air-combat-procs-warp", unwarp_detector),
+            ("air-hit-awards-and-resolves", drop_resolve),
+            ("explosion-frees-slot", drop_explosion_cull),
+            ("hit-runs-explosion", drop_hit_branch),
+            ("shot-position-mirrored", drop_mirror),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._wpn02_failures(project), label)
+
+    @staticmethod
     def _eco01_failures(project: dict) -> set:
         """ECO-01 single scoring path — award, 9,999,990 cap, high-score track, bonus tail,
         and no score bypass. Structure only; the arithmetic is the operator's playtest."""
@@ -2057,25 +2212,37 @@ class ScratchProjectTests(unittest.TestCase):
         expected = [e["points"] for e in data["tables"]["master_value_table"]["entries"]]
         self.assertEqual(expected, by_name["value table"])
 
-    def test_scoring_fixture_drives_the_single_path(self) -> None:
-        # The debug S fixture sets the award-value seam from the value table and runs the one
-        # `score` path (the stand-in producer of `award value` until slice 8's detector lands).
+    def test_air_hit_replaces_score_fixture_as_award_producer(self) -> None:
+        # The debug S fixture is retired in slice 8: the real producer of `award value` is now the
+        # blaster-to-air detector, which reads the struck enemy's `slot pts` into the value table and
+        # resolves the hit through the one `score` path. The S key hat must be gone entirely.
         project = load_source(scratch.SOURCE_DIR)
         stage = next(t for t in project["targets"] if t["isStage"])
-        blocks = stage["blocks"]
-        hats = [
+        s_hats = [
             b
-            for b in blocks.values()
+            for b in stage["blocks"].values()
             if b["opcode"] == "event_whenkeypressed"
-            and b["fields"].get("KEY_OPTION", [None])[0] == director.SCORE_FIXTURE_KEY
+            and b["fields"].get("KEY_OPTION", [None])[0] == "s"
         ]
-        self.assertEqual(1, len(hats))
+        self.assertEqual([], s_hats, "the debug S scoring fixture is removed")
+        body = _proc_body_blocks(stage, director.CHECK_AIR_HIT_PROCCODE)
         sets_award = any(
             b["opcode"] == "data_setvariableto"
             and b["fields"].get("VARIABLE", [None, None])[1] == director.AWARD_VALUE_ID
-            for b in blocks.values()
+            for b in body
         )
-        self.assertTrue(sets_award)
+        reads_value_table = any(
+            b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == director.VALUE_TABLE_ID
+            for b in body
+        )
+        calls_resolve = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
+            for b in body
+        )
+        self.assertTrue(sets_award, "the detector produces award value")
+        self.assertTrue(reads_value_table, "award value comes from the value table (slot pts)")
+        self.assertTrue(calls_resolve, "the detector resolves the hit through the one score path")
 
     @staticmethod
     def _eco03_failures(project: dict) -> set:
@@ -4734,7 +4901,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f928f3f4a148f92985684986407e0ba86d61b03c172f1cf712301c732b99a58d",
+            "3779968d0ee46315af9be39579e5a194470a027d0b93b618b770e8eed63f219c",
             build_hash,
         )
 
