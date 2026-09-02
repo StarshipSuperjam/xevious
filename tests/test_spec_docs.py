@@ -560,6 +560,148 @@ class GeneratedAreaClock(unittest.TestCase):
             self.assertEqual(0, args[end - 1], f"area {area_number} sentinel arg")
 
 
+class AimingTables(unittest.TestCase):
+    """AIR-01 / AIR-12: the 32-direction homing-aim tables, modelled over the COMMITTED aiming.json
+    independently of the generator. The angle tables are cross-checked against the sine/cosine model
+    they encode (a documented confirmation, not the source of truth — the reference table is), and the
+    baked Stage lists are checked to be a faithful copy of that data."""
+
+    def _stage_lists(self):
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        return {value[0]: value[1] for value in stage["lists"].values()}
+
+    def _aiming(self):
+        return json.loads((DATA / "aiming.json").read_text())["aiming"]
+
+    def test_angle_tables_match_sine_model(self):
+        # Each entry k is the aimed velocity toward direction k of 32: dy = round(mag*sin), dx =
+        # round(mag*cos), within +/-1 of the integer table. Covers ALL four tiers, even the two this
+        # slice doesn't bake, so the whole extracted table is proven, not only what is consumed now.
+        aiming = self._aiming()
+        for tier, table in aiming["angle_tables"].items():
+            mag = table["magnitude"]
+            vectors = table["vectors"]
+            self.assertEqual(32, len(vectors), tier)
+            for k, vec in enumerate(vectors):
+                self.assertEqual(k, vec["index"], tier)
+                theta = k * 2 * math.pi / 32
+                self.assertLessEqual(
+                    abs(vec["dy"] - round(mag * math.sin(theta))), 1, f"{tier}[{k}].dy"
+                )
+                self.assertLessEqual(
+                    abs(vec["dx"] - round(mag * math.cos(theta))), 1, f"{tier}[{k}].dx"
+                )
+
+    def test_octant_table_is_monotone_quantizer(self):
+        # The octant table maps floor(32*small/large) in [0,32] to a base angle index in [0,0x40];
+        # it must be 33 entries, non-decreasing, spanning 0..0x40 (the quarter-turn the folding uses).
+        octant = self._aiming()["octant_table"]["values"]
+        self.assertEqual(33, len(octant))
+        self.assertEqual(0, octant[0])
+        self.assertEqual(0x20, octant[-1])
+        self.assertTrue(all(b >= a for a, b in zip(octant, octant[1:])))
+
+    def test_baked_aim_lists_match_committed_data(self):
+        # The generator bakes aiming.json's octant table and the two Toroid tiers (24 approach, 32
+        # bullet) faithfully into the Stage lists, dy/dx split into parallel lists.
+        lists = self._stage_lists()
+        aiming = self._aiming()
+        self.assertEqual(aiming["octant_table"]["values"], lists["octant table"])
+        for tier, dy_name, dx_name in (
+            ("toroid", "aim dy 24", "aim dx 24"),
+            ("generic", "aim dy 32", "aim dx 32"),
+        ):
+            vectors = aiming["angle_tables"][tier]["vectors"]
+            self.assertEqual([v["dy"] for v in vectors], lists[dy_name], dy_name)
+            self.assertEqual([v["dx"] for v in vectors], lists[dx_name], dx_name)
+
+
+class ToroidSpawnDraw(unittest.TestCase):
+    """AIR-01: the bounded lateral spawn-column draw (init toroid), modelled over the COMMITTED RNG
+    golden byte streams. Proves the RECORDED constants (mask, reject threshold, column offset, craft
+    gap, attempt cap) yield only valid, craft-avoiding spawn columns and always terminate within the
+    cap on real seeds, and quantifies the recorded bounded-draw exhaustion deviation. Every constant
+    is pulled from the generator, so changing any of them re-checks here against the real stream."""
+
+    MASK = director.SPAWN_COL_MASK
+    REJECT_AT = director.SPAWN_COL_REJECT_AT
+    OFFSET = director.SPAWN_COL_OFFSET
+    GAP = director.SPAWN_CRAFT_GAP
+    CAP = director.SPAWN_DRAW_ATTEMPTS
+
+    def _streams(self):
+        fixtures = json.loads((DATA / "rng.json").read_text())["generator"]["fixture_sequences"]
+        return [f["outputs"] for f in fixtures]
+
+    def _spawns(self, stream, player_col, gate=True, reject=True):
+        """Replay init toroid's draw loop over an RNG byte stream: for each spawn draw up to CAP
+        bytes, rejecting a masked candidate >= REJECT_AT (redraw) and, on an in-range candidate,
+        accepting column = candidate + OFFSET only when it clears the craft by GAP. Yields
+        (accepted_column_or_None, attempts) per spawn until the stream runs out. `gate`/`reject`
+        turn the two constraints off, to prove each is load-bearing on the real seeds."""
+        i = 0
+        results = []
+        while i < len(stream):
+            found = None
+            attempts = 0
+            while attempts < self.CAP and found is None and i < len(stream):
+                candidate = stream[i] & self.MASK
+                i += 1
+                attempts += 1
+                if reject and candidate >= self.REJECT_AT:
+                    continue
+                column = candidate + self.OFFSET
+                if (not gate) or abs(player_col - column) >= self.GAP:
+                    found = column
+            results.append((found, attempts))
+        return results
+
+    def test_accepted_columns_are_valid_and_craft_avoiding(self):
+        # Every accepted column lands in the in-range window [OFFSET, OFFSET+REJECT_AT-1] and never
+        # within GAP of the craft, for craft columns spanning the field; no spawn ever exceeds the cap.
+        for player_col in (3, 10, 16, 24, 30):
+            for stream in self._streams():
+                for column, attempts in self._spawns(stream, player_col):
+                    self.assertLessEqual(attempts, self.CAP)
+                    if column is None:
+                        continue
+                    self.assertTrue(self.OFFSET <= column <= self.OFFSET + self.REJECT_AT - 1, column)
+                    self.assertGreaterEqual(abs(player_col - column), self.GAP, (player_col, column))
+
+    def test_draw_terminates_within_cap_and_exhaustion_is_rare(self):
+        # The bound guarantees termination; on the golden seeds exhaustion (all CAP draws rejected)
+        # is a rare tail — the recorded deviation where a spawn is skipped and retried next tick.
+        total = 0
+        exhausted = 0
+        for stream in self._streams():
+            for column, _attempts in self._spawns(stream, 16):
+                total += 1
+                if column is None:
+                    exhausted += 1
+        self.assertGreater(total, 100, "the golden streams drive a meaningful number of spawns")
+        self.assertLess(exhausted / total, 0.05, f"exhaustion rate {exhausted}/{total} stays a rare tail")
+
+    def test_reject_and_craft_gap_are_load_bearing(self):
+        # Prove both constraints actually bite on the real seeds: without the craft gap, columns land
+        # within GAP of the craft; without the reject, masked candidates >= REJECT_AT produce columns
+        # past the in-range window. The real draw (both on) does neither, per the test above.
+        near_craft = [
+            column
+            for stream in self._streams()
+            for column, _ in self._spawns(stream, 16, gate=False)
+            if column is not None and abs(16 - column) < self.GAP
+        ]
+        oversized = [
+            column
+            for stream in self._streams()
+            for column, _ in self._spawns(stream, 16, reject=False)
+            if column is not None and column > self.OFFSET + self.REJECT_AT - 1
+        ]
+        self.assertTrue(near_craft, "dropping the craft gap admits near-craft spawn columns")
+        self.assertTrue(oversized, "dropping the reject admits out-of-range spawn columns")
+
+
 class DifficultyAndFormations(unittest.TestCase):
     """DIF-01 / FORM-01: the difficulty AI level and normal flying formations, modelled over the
     COMMITTED data independently of the generator (the engine half of the acceptance criteria). The

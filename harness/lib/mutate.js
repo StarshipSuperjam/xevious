@@ -101,3 +101,36 @@ export function raiseGreaterThreshold(project, spriteName, fromValue, toValue) {
   }
   if (!patched) throw new Error(`mutate: no 'operator_gt > ${fromValue}' on ${spriteName}`);
 }
+
+/**
+ * Empty a custom procedure's body on a sprite: find the `procedures_definition` whose prototype
+ * carries `proccode`, and cut its `next` so the definition runs nothing. Callers of the proc still
+ * execute (the call block is untouched) but the proc becomes a no-op — the surgical way to prove a
+ * scenario binds to that proc actually running (e.g. `update toroid` moving a live enemy), without
+ * disturbing anything upstream (the game still reaches playing, enemies are still spawned).
+ */
+export function neutralizeProc(project, spriteName, proccode) {
+  const t = target(project, spriteName);
+  let prototypeId = null;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode === 'procedures_prototype' && b.mutation && b.mutation.proccode === proccode) {
+      prototypeId = id;
+      break;
+    }
+  }
+  if (!prototypeId) throw new Error(`mutate: no procedures_prototype '${proccode}' on ${spriteName}`);
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (
+      b.opcode === 'procedures_definition' &&
+      b.inputs &&
+      b.inputs.custom_block &&
+      b.inputs.custom_block[1] === prototypeId
+    ) {
+      b.next = null;
+      return;
+    }
+  }
+  throw new Error(`mutate: no procedures_definition for '${proccode}' on ${spriteName}`);
+}

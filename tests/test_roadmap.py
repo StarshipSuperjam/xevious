@@ -37,8 +37,10 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("assigned to both" in item for item in roadmap.validate_manifest(changed)))
 
     def test_unsettled_spec_cannot_gain_executable_leaf(self) -> None:
+        # `air` is settled as of slice 8; `ground` is still a draft spec, so a leaf under it
+        # must stay provisional until its own slice settles the description.
         changed = copy.deepcopy(self.manifest)
-        leaf = next(item for item in changed["leaves"] if item["key"] == "air.toroid")
+        leaf = next(item for item in changed["leaves"] if item["key"] == "ground.barra")
         leaf["status"] = "planned"
         self.assertTrue(any("must be provisional" in item for item in roadmap.validate_manifest(changed)))
 
@@ -51,10 +53,12 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("blocker cycle" in item for item in roadmap.validate_manifest(changed)))
 
     def test_issue_body_carries_stable_identity_and_closure_contract(self) -> None:
-        parent = next(item for item in self.manifest["parents"] if item["key"] == "air")
-        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "air.toroid")
+        # `ground` is still a draft spec, so its leaves render "Executable now: no" —
+        # `air.toroid` became executable when slice 8 settled the aerial-enemies description.
+        parent = next(item for item in self.manifest["parents"] if item["key"] == "ground")
+        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "ground.barra")
         body = roadmap.leaf_body(leaf, parent)
-        self.assertIn("<!-- roadmap-key: air.toroid -->", body)
+        self.assertIn("<!-- roadmap-key: ground.barra -->", body)
         self.assertIn("Executable now: **no**", body)
         self.assertIn("## Closure rule", body)
 

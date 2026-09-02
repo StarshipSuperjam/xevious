@@ -770,6 +770,19 @@ def expected_project(
         derivative.frame["name"]
         for derivative in derivatives
     } | (prior_frame_names or set())
+    # Preserve the generated target's existing draw layer if it is already in the project, so a
+    # SIBLING target another generator adds (e.g. game_director's gameplay targets) cannot shift it
+    # — otherwise recomputing max(existing)+1 makes the two generators disagree over this one field
+    # and neither reaches a fixpoint (order-independence, arch review 3a). Only when the target is
+    # absent (a first extraction) is a fresh top layer assigned.
+    prior_layer = next(
+        (
+            target.get("layerOrder")
+            for target in project["targets"]
+            if target.get("name") == GENERATED_TARGET and isinstance(target.get("layerOrder"), int)
+        ),
+        None,
+    )
     project["targets"] = [
         target
         for target in project["targets"]
@@ -799,7 +812,7 @@ def expected_project(
     ]
     generated = _generated_target(
         by_target.get(GENERATED_TARGET, []),
-        max(existing_orders, default=-1) + 1,
+        prior_layer if prior_layer is not None else max(existing_orders, default=-1) + 1,
     )
     insertion = next(
         (

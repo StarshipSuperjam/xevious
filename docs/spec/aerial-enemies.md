@@ -1,5 +1,5 @@
 ---
-status: draft
+status: locked
 reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 ---
 
@@ -26,10 +26,25 @@ once and each family as its differences.
 Excluded here (Super Xevious only, catalog EX-01): the Galaxian bonus enemy is never scheduled or
 built.
 
+**Per-family verification status.** This document is settled so its slice-8 leaves can proceed, but not
+every family below was re-verified against the reference to the same bar when it settled. Verified
+line-by-line against the pinned reference and built: the **Shared rules** and the **Toroid (AIR-01)**
+paragraphs (the slice-8 vertical slice). The other eleven families (Torkan, Zoshi, Jara, Kapi, Terrazi,
+the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are transcribed from the reference as
+the plan of record, but their line-by-line verification lands with their own build slice (10–11); each is
+confirmed against the reference — and this document amended where it diverges, with the operator's
+acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
+verification, not as checked ground.
+
 ## Behavior
 
-**Shared rules.** Air enemies spawn into the six flying slots from the current formation
-(`main_fn_4__spawn_flying_enemies` 5171–5186). Homing aims use the four angle tables (6290–6394; speed
+**Shared rules.** Air enemies fill the six flying slots from the current formation: while the formation
+count is N (1–6), the spawner refills the first N flying slots every frame, so each slot re-spawns a fresh
+enemy the moment its occupant leaves or is destroyed — the continuous wave pressure — until a
+reset-formation record zeroes the count (`main_fn_4__spawn_flying_enemies` 5171–5186). A refilled slot
+re-draws its lateral column but inherits the previous occupant's scroll-axis position, so a replacement
+may enter mid-field rather than from the top — recorded as coded (`add_obj_handler` 4801–4815,
+`check_scroll_offscreen` 4827–4839). Homing aims use the four angle tables (6290–6394; speed
 tiers 1.5 / 2 / 3 / 4 px/frame). Periodic fire is gated to every 8th frame; each reload draws from the
 shared random stream masked by the family's fire-permission byte captured at spawn — the mask caps the
 random reload interval (`chk_timer_fire_bullet_reinit_timer` and inline equivalents). All families share
@@ -38,10 +53,18 @@ one blaster hit window — vertical ±16, horizontal ±8 in the reference's shad
 4865–4902), except where noted. Aimed bullets fly at 2 px/frame, radiating bullets at 3
 ([Player craft and weapons](player-craft-and-weapons.md) owns bullet rules).
 
-**Toroid (AIR-01).** Spawns at a random height aimed at the craft at 1.5 px/frame (`init_toroid`
-3332–3341). When nearly level with the craft (a narrow window, ~[−2, 1] rows, derived), it swings left
-or right by the sign of the offset with an 8-frame flap animation and slow vertical drift (3289–3321);
-the shooting variant fires exactly one aimed bullet at that trigger, never again (3281–3286, 3323–3327).
+**Toroid (AIR-01).** Spawns at a random lateral column, aimed at the craft at 1.5 px/frame (`init_toroid`
+3332–3341); the spawn column is drawn from the shared stream, rejected and redrawn until it is on-screen
+and not within eight columns of the craft (`gen_rnd_spriteY` 5155–5169). When nearly level with the craft
+laterally (a narrow lateral-column window, offset ~[−2, 1], derived), it commits to a swing that
+**reverses** its lateral course: it was spawned aimed at the craft, and the swing nudges that lateral
+velocity by one unit per frame *against* the approach (`toroid_toggle_dir` → `toroid_swing_right`
+`subq #1,_dY` / `toroid_swing_left` `addq #1,_dY`), so it decelerates, stops, and peels away from the
+side it was closing on — the arcade "swing," not a homing dive. An eight-code flap animation advances
+every other frame (played in opposite order for the two swing directions: right descending F..8, left
+ascending 8..F), while its approach along the scroll axis continues (3289–3327); once triggered it never
+re-tests the window. The
+shooting variant fires exactly one aimed bullet at that trigger, never again (3281–3286, 3323–3327).
 
 **Torkan (AIR-02).** Approaches aimed at 2 px/frame with an initial fire delay of 64–127 frames drawn
 from the stream (3357–3369); fires one aimed bullet, then on a ~64-frame cycle recomputes the angle to

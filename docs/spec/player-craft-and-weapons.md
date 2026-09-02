@@ -34,7 +34,20 @@ reloads every 20 frames while held; releasing resets the reload so a fresh press
 (`process_button_1` 2333–2349, reload constant at 2365 region). One fire event spawns exactly one shot —
 the fire flag is consumed by the first idle slot (`main_fn_30_shot_fn` 2356–2370). Shots fly straight
 forward at 6 pixels per frame with no lateral drift (`move_shot` 2419–2424) and expire off the top of the
-screen (2392–2396). Special case: a shot that hits a Bacura is not destroyed with its target — it bounces,
+screen (2392–2396). A shot destroys a flying enemy it overlaps: the hit test compares the shot's and the
+enemy's shadow MSBs. The reference window (`check_shot_hit_flying_enemy` 2565–2577) is a vertical bias 16
+width 32 and horizontal bias 8 width 16 — shot Y − enemy Y in [−16, 15], enemy X − shot X in [−8, 7], in
+half-pixel "shadow" units. **This port doubles that to vertical bias 32 width 64, horizontal bias 16 width
+32** (shot Y − enemy Y in [−32, 31], enemy X − shot X in [−16, 15]) — a deliberate, recorded deviation the
+operator playtest drove, for two reasons the reference did not face: (1) the self-propelled port's blaster
+shot advances 2.5 cells per frame (20 stage-px ÷ an 8-px scroll cell) while the reference window is only 2
+cells tall, so the shot stepped clean over a Toroid between collision samples (a whole held-fire stream,
+sharing the craft-row phase, could miss a Toroid entirely — "many rounds and nothing happens"); the doubled,
+4-cell-tall window exceeds the per-frame step so every crossing is sampled; (2) the Toroid renders as a
+36-px sprite, of which the reference window covered only ~40%, so bullets visibly on the enemy missed — the
+doubled window matches the rendered body (the arcade "mow-down" feel). The tighter craft *hurtbox* (the
+death window below) is intentionally left at reference size: forgiving offence, precise defence. Special
+case: a shot that hits a Bacura is not destroyed with its target — it bounces,
 reversing at 1.5 pixels per frame through an 8-frame bounce animation before disappearing
 (`shot_destroyed` 2400–2418).
 

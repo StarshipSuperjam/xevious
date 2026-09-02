@@ -8,6 +8,7 @@
 // replenish, the bomb's flight duration, visuals/audio/feel) are deliberately excluded
 // and listed in EXCLUSIONS — they remain the operator playtest's job.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   step,
   keyDown,
@@ -23,6 +24,60 @@ import {
 } from './harness.js';
 import { reachPlaying, stateOf } from './build.js';
 import * as mutate from './mutate.js';
+
+// The committed RNG fixture (the shared LFSR's byte stream from each seed) — the model the live
+// draw order is checked against, read from the same file the Python model fixtures pin so the two
+// can never drift. Slot 59..64 are the six flying slots (list index 58..63) the Toroid wave fills.
+const RNG_FIXTURES = JSON.parse(
+  readFileSync(new URL('../../docs/spec/data/rng.json', import.meta.url)),
+).generator.fixture_sequences;
+const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
+
+// Seed a deterministic blaster-to-air kill: place a live Toroid in the last flying slot (index 63,
+// which the walk sweeps last) and an active player shot in a shot slot at the SAME cell, so the walk's
+// shot-vs-air detector resolves the overlap on the first tick — before the spawner refills anything.
+// Returns the Toroid's expected award (its value-table entry). Writes the slot lists directly (the
+// blaster clone normally mirrors the shot's position; here we place it), so no firing/aiming is needed.
+function seedAirKill(vm, { enemySlot = 63, shotSlot = 36, cellX = 5000, cellY = 4000 } = {}) {
+  const put = (id, i, v) => {
+    const a = readVar(vm, id);
+    a[i] = v;
+  };
+  put('slot-type', enemySlot, 10);
+  put('slot-state', enemySlot, 1);
+  put('slot-pts', enemySlot, 3);
+  put('slot-x', enemySlot, cellX);
+  put('slot-y', enemySlot, cellY);
+  put('slot-dx', enemySlot, 0);
+  put('slot-dy', enemySlot, 0);
+  put('slot-timer', enemySlot, 0);
+  put('slot-flag', enemySlot, 0);
+  put('slot-code', enemySlot, 8);
+  put('slot-type', shotSlot, 1);
+  put('slot-state', shotSlot, 1);
+  put('slot-x', shotSlot, cellX);
+  put('slot-y', shotSlot, cellY);
+  return readVar(vm, 'eco-value-table')[2]; // Toroid pts = 3 (1-based) -> value-table index 2
+}
+
+// Place a live Toroid exactly on the craft's current cell so the walk's flying-vs-craft check raises
+// `player hit` and (with invuln cleared) the craft dies — the deterministic PLY-02 trigger that
+// replaces the retired D/G debug death keys.
+function seedCraftHit(vm, enemySlot = 63) {
+  const pr = readVar(vm, 'player-row');
+  const pc = readVar(vm, 'player-col');
+  const put = (id, i, v) => {
+    const a = readVar(vm, id);
+    a[i] = v;
+  };
+  put('slot-type', enemySlot, 10);
+  put('slot-state', enemySlot, 1);
+  put('slot-x', enemySlot, pr * 256);
+  put('slot-y', enemySlot, pc * 256);
+  put('slot-dx', enemySlot, 0);
+  put('slot-dy', enemySlot, 0);
+  put('slot-flag', enemySlot, 0);
+}
 
 // Every read resolves through a manifest id (hard-errors on a rename), including the
 // scope-duplicated ones: `terrain-scroll-step-a` is area_01a's, distinct from area_01b's.
@@ -112,16 +167,19 @@ export const SCENARIOS = [
       step(vm, 1);
       const titleState = state(vm);
       const epochBefore = epoch(vm);
-      tapKey(vm, 'd'); // gameplay keys must do nothing at title
-      tapKey(vm, 'b');
+      tapKey(vm, 'b'); // a gameplay key (bomb) must do nothing at title
       step(vm, 3);
       const gatedHeld = state(vm) === 'title' && epoch(vm) === epochBefore;
-      tapKey(vm, ' ');
+      // Hold start and stop at the first playing tick (a tap overshoots — see reachPlaying); keep the
+      // craft alive so it does not die back to the title before we observe playing.
+      writeVar(vm, 'invuln', 1);
+      keyDown(vm, ' ');
       let reached = false;
       for (let i = 0; i < 120 && !reached; i += 1) {
         step(vm, 1);
         if (state(vm) === 'playing') reached = true;
       }
+      keyUp(vm, ' ');
       return { titleState, gatedHeld, reached };
     },
     assert(obs) {
@@ -134,18 +192,26 @@ export const SCENARIOS = [
   },
   {
     key: 'death-respawn',
-    behavior: 'A death during play runs death -> respawn and returns to playing',
+    behavior: 'A flying enemy touching the craft runs death -> respawn and returns to playing',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Turn off the reach-time invulnerability so contact kills; keep lives high so a death respawns
+      // rather than reaching game-over. A Toroid seeded on the craft's cell each pump forces the hit.
+      writeVar(vm, 'invuln', 0);
       const epoch0 = epoch(vm);
-      tapKey(vm, 'd');
-      for (let i = 0; i < 20; i += 1) step(vm, 1);
-      return { outcome: outcome(vm), finalState: state(vm), epochDelta: epoch(vm) - epoch0 };
+      let returnedToPlaying = false;
+      for (let i = 0; i < 20; i += 1) {
+        writeVar(vm, 'eco-craft', 9999);
+        seedCraftHit(vm);
+        step(vm, 1);
+        if (state(vm) === 'playing' && epoch(vm) > epoch0) returnedToPlaying = true;
+      }
+      return { outcome: outcome(vm), returnedToPlaying, epochDelta: epoch(vm) - epoch0 };
     },
     assert(obs) {
-      assert.equal(obs.outcome, 'respawn', 'a d-death sets the respawn outcome');
-      assert.equal(obs.finalState, 'playing', 'the craft respawns back into play');
+      assert.equal(obs.outcome, 'respawn', 'a non-terminal death sets the respawn outcome');
+      assert.equal(obs.returnedToPlaying, true, 'the craft respawns back into play');
       assert.ok(obs.epochDelta >= 2, 'the death and respawn each advance the state epoch');
     },
     // Remove player-dead -> respawning so the craft cannot return to play → assertion fails.
@@ -153,13 +219,16 @@ export const SCENARIOS = [
   },
   {
     key: 'death-game-over',
-    behavior: 'A terminal death runs death -> game-over and returns to title',
+    behavior: 'A terminal death (last craft) runs death -> game-over and returns to title',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      tapKey(vm, 'g');
+      // Contact kills (invuln off), one craft left: the last death is terminal.
+      writeVar(vm, 'invuln', 0);
+      writeVar(vm, 'eco-craft', 1);
+      seedCraftHit(vm);
       let reachedTitle = false;
-      for (let i = 0; i < 80 && !reachedTitle; i += 1) {
+      for (let i = 0; i < 20 && !reachedTitle; i += 1) {
         step(vm, 1);
         if (state(vm) === 'title') reachedTitle = true;
       }
@@ -172,14 +241,39 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> game-over'),
   },
   {
+    key: 'enemy-bullet-fires',
+    behavior:
+      'A shooting Toroid (type 0x0B) allocates an aimed enemy bullet when it commits its swing',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // As shooting Toroids in the live waves draw level with the craft they fire, allocating an enemy
+      // bullet — `bullet alloc result` becomes that slot and stays non-zero after the first fire. (A
+      // bullet flies and culls within one headless pump, so the allocation result is the stable signal;
+      // the bullet actually killing the craft is a rendered collision, the operator playtest's.)
+      let fired = false;
+      for (let i = 0; i < 30 && !fired; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0) fired = true;
+      }
+      return { fired };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'a shooting Toroid allocated an enemy bullet');
+    },
+    // Empty `update toroid` so no Toroid ever swings or fires → no bullet is allocated.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
+  },
+  {
     key: 'score-digits-render',
     behavior:
       'Score and high-score HUD digit clones display the running values as digit costumes, not a stuck glyph',
     playtestStep: 6,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // S is the scoring fixture: each press awards a fixed value from the master table.
-      for (let i = 0; i < 3; i += 1) tapKey(vm, 's');
+      // The debug S fixture is gone: the score is earned by a real blaster-to-air kill, then read
+      // back off the HUD digit clones.
+      seedAirKill(vm);
       step(vm, 20);
       const roleName = variable('hud-role').name;
       const placeName = variable('hud-place').name;
@@ -208,7 +302,7 @@ export const SCENARIOS = [
       };
     },
     assert(obs) {
-      assert.ok(obs.score > 0, 'the S fixture raised the score above zero');
+      assert.ok(obs.score > 0, 'a blaster-to-air kill raised the score above zero');
       assert.deepEqual(
         obs.decoded,
         [obs.score, obs.high].sort((a, b) => a - b),
@@ -387,6 +481,257 @@ export const SCENARIOS = [
     // Break the logram mask branch (its handler == comparison never matches) so it is never set →
     // the logramSet assertion fails.
     negativeMutation: (p) => mutate.changeEqualsOperand(p, 'Stage', 'fire_mask_logram', '__never__'),
+  },
+  {
+    key: 'toroid-wave-spawns-and-moves',
+    behavior:
+      'The formation spawner fills flying slots with live Toroids that then move under their own velocity each tick, drawn by six persistent clones',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Over the window: a flying slot (59..64) is SEEN holding a live Toroid (type 10/11), and a
+      // slot that stays a Toroid across a tick with no intervening empty is SEEN to change position
+      // — that is movement, not a refill (a cull frees the slot first, so prevType would be 0). The
+      // renderer pool is a fixed six clones bound to the six flying slots.
+      let toroidSeen = false;
+      let movedSeen = false;
+      const prevType = {};
+      const prevX = {};
+      const prevY = {};
+      for (let i = 0; i < 60; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        const x = readVar(vm, 'slot-x');
+        const y = readVar(vm, 'slot-y');
+        for (const s of FLYING_SLOT_INDICES) {
+          const t = type[s];
+          if (t === 10 || t === 11) {
+            toroidSeen = true;
+            if (prevType[s] === t && (x[s] !== prevX[s] || y[s] !== prevY[s])) movedSeen = true;
+          }
+          prevType[s] = t;
+          prevX[s] = x[s];
+          prevY[s] = y[s];
+        }
+      }
+      return { toroidSeen, movedSeen, clones: cloneCount(vm, 'toroid') };
+    },
+    assert(obs) {
+      assert.equal(obs.toroidSeen, true, 'a live Toroid occupies a flying slot');
+      assert.equal(obs.movedSeen, true, 'a live Toroid advances its position under its own velocity');
+      assert.equal(obs.clones, 6, 'the Toroid renderer pool is the fixed six flying-slot clones');
+    },
+    // Empty `update toroid` so Toroids still spawn but no occupant ever advances → movedSeen false.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
+  },
+  {
+    key: 'toroid-swing-reverses-away',
+    behavior:
+      'A Toroid drawing level with the craft REVERSES its lateral velocity, swinging away from its approach (the arcade toggle_dir bounce), not homing into the craft',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed one approaching Toroid whose column is one to the LEFT of the craft — so the craft is to
+      // its right (offset = player col - slot col = +1, inside the [-2,1] swing-trigger window) and it
+      // commits SWING_RIGHT. The reference (`toroid_toggle_dir` -> `toroid_swing_right`, `subq #1,_dY`)
+      // nudges the lateral velocity AGAINST the craft-ward approach each tick, so it decelerates and
+      // then peels AWAY: `slot dy` must go NEGATIVE (toward lower columns / away from the craft on the
+      // right). The homing regression this session introduced drove it POSITIVE (into the craft); this
+      // asserts the arcade bounce. Placed several rows ahead so it is level laterally but not
+      // overlapping the craft (invuln is on from reachPlaying regardless).
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 10); // non-shooting Toroid, so no bullet muddies the trace
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 10) * 256); // 10 rows ahead of the craft
+      put('slot-y', slot, (pc - 1) * 256); // one column left of the craft => offset +1, craft to the right
+      put('slot-dx', slot, 0);
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH — eligible to trigger the swing
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 8);
+      // One pump runs the walk (settles well past the trigger tick); read the resulting lateral velocity.
+      step(vm, 1);
+      return { dy: readVar(vm, 'slot-dy')[slot], flag: readVar(vm, 'slot-flag')[slot] };
+    },
+    assert(obs) {
+      assert.equal(obs.flag, 1, 'the Toroid committed a right swing (craft on the right)');
+      assert.ok(
+        obs.dy < 0,
+        `a right-swinging Toroid reverses away from the craft (dy < 0, arcade bounce); got dy=${obs.dy}`,
+      );
+    },
+    // Empty `update toroid` so the swing never runs → dy stays 0 (not < 0) → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update toroid'),
+  },
+  {
+    key: 'rng-draw-order',
+    behavior:
+      'The Toroid spawner consumes the shared RNG in walk order — the live draw stream follows the LFSR model from a seeded state',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed the shared state to a fixture seed, then let the spawner draw: `rng out` holds the
+      // latest draw, so each tick where it changes is a strictly-later position in the LFSR stream.
+      // The observed values must therefore be an ordered subsequence of the fixture outputs — proof
+      // the RNG is consumed forward from the seed, in order, with no re-seed or divergence. The
+      // window stays short so cumulative draws stay inside the 256-entry fixture (no wrap).
+      const seed = 4660;
+      const fixture = RNG_FIXTURES.find((s) => s.seed === seed).outputs;
+      writeVar(vm, 'rng-state', seed);
+      let prev = readVar(vm, 'rng-out');
+      const observed = [];
+      for (let i = 0; i < 8; i += 1) {
+        step(vm, 1);
+        const out = readVar(vm, 'rng-out');
+        if (out !== prev) {
+          observed.push(out);
+          prev = out;
+        }
+      }
+      let ptr = -1;
+      let ordered = true;
+      for (const v of observed) {
+        const at = fixture.indexOf(v, ptr + 1);
+        if (at < 0) {
+          ordered = false;
+          break;
+        }
+        ptr = at;
+      }
+      return { count: observed.length, ordered };
+    },
+    assert(obs) {
+      assert.ok(obs.count >= 3, 'the spawner draws from the shared RNG while waves fill');
+      assert.equal(obs.ordered, true, 'the live draw stream is an ordered subsequence of the LFSR model');
+    },
+    // Empty `rng step` so `rng out` never advances → no draws are observed → the count assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rng step'),
+  },
+  {
+    key: 'blaster-kills-toroid-and-scores',
+    behavior:
+      'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const score0 = readVar(vm, 'eco-score');
+      const award = seedAirKill(vm);
+      // One pump runs many game ticks; the walk resolves the seeded overlap on its first tick (before
+      // the spawner refills), marks the shot spent, and scores exactly the Toroid's value once.
+      step(vm, 1);
+      return {
+        delta: readVar(vm, 'eco-score') - score0,
+        award,
+        shotState: readVar(vm, 'slot-state')[36],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.delta, obs.award, 'the kill scores exactly the Toroid value once');
+      assert.notEqual(obs.shotState, 1, 'the shot that resolved the hit is consumed (no longer active)');
+    },
+    // Empty the shot-vs-air detector so no overlap is ever resolved → the score never rises.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
+  },
+  {
+    key: 'air-shot-hit-column-bounded',
+    behavior:
+      'The shot-vs-air hit box spans the rendered Toroid width (±1 column) but no further: a controlled shot on-column or one column off scores, two columns off does not',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Park the Toroid 8 columns from the craft so the real tapped shot (craft column) can never reach
+      // it — only the CONTROLLED shot we seed into a real detector slot (37) can score it. `eResult`
+      // maps offset -> score delta; the enemy is re-parked before each probe (a scoring hit frees it).
+      const eResult = (dCol) => {
+        const pr = readVar(vm, 'player-row'),
+          pc = readVar(vm, 'player-col');
+        const eRow = pr - 6,
+          eCol = pc - 8;
+        put('slot-type', 63, 10);
+        put('slot-state', 63, 1);
+        put('slot-pts', 63, 3);
+        put('slot-x', 63, eRow * 256);
+        put('slot-y', 63, eCol * 256);
+        put('slot-dx', 63, 0);
+        put('slot-dy', 63, 0);
+        put('slot-flag', 63, 9);
+        put('slot-timer', 63, 0);
+        put('slot-code', 63, 8);
+        const score0 = readVar(vm, 'eco-score');
+        put('slot-type', 37, 1); // a controlled shot in a real detector slot (SHOT_SLOTS = 37-39)
+        put('slot-state', 37, 1);
+        put('slot-x', 37, eRow * 256);
+        put('slot-y', 37, (eCol + dCol) * 256);
+        step(vm, 1);
+        return readVar(vm, 'eco-score') - score0;
+      };
+      return { onCol: eResult(0), oneOff: eResult(1), twoOff: eResult(2), award: readVar(vm, 'eco-value-table')[2] };
+    },
+    assert(obs) {
+      assert.equal(obs.onCol, obs.award, 'a shot on the Toroid column scores');
+      assert.equal(obs.oneOff, obs.award, 'a shot one column off still scores (within the rendered sprite)');
+      assert.equal(obs.twoOff, 0, 'a shot two columns off does NOT score (past the sprite width)');
+    },
+    // Empty the shot-vs-air detector so no controlled shot ever resolves → the on-column assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
+  },
+  {
+    key: 'craft-collision-is-single-cell',
+    behavior:
+      'A Toroid raises player-hit ONLY on the craft’s exact cell: one column off or one row off does not — the collision box is a single cell, not the quadrant above/beside the craft',
+    playtestStep: 5,
+    async drive(vm) {
+      // invuln stays ON from reachPlaying: the craft cannot die, and `player hit` latches (it is cleared
+      // only in the invuln-off death branch), so each seeded overlap is directly observable.
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const pr = readVar(vm, 'player-row'),
+        pc = readVar(vm, 'player-col');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const seedAt = (dRow, dCol) => {
+        put('slot-type', 63, 10);
+        put('slot-state', 63, 1);
+        put('slot-x', 63, (pr + dRow) * 256);
+        put('slot-y', 63, (pc + dCol) * 256);
+        put('slot-dx', 63, 0);
+        put('slot-dy', 63, 0);
+        put('slot-flag', 63, 9);
+        put('slot-timer', 63, 0);
+        put('slot-code', 63, 8);
+      };
+      // One column beside the craft (same row): must NOT touch. The quadrant bug fired here.
+      writeVar(vm, 'player-hit', 0);
+      seedAt(0, 1);
+      step(vm, 1);
+      const offColumn = readVar(vm, 'player-hit');
+      // One row above the craft (same column): must NOT touch. The quadrant bug fired here too.
+      writeVar(vm, 'player-hit', 0);
+      seedAt(1, 0);
+      step(vm, 1);
+      const offRow = readVar(vm, 'player-hit');
+      // The craft's exact cell: MUST touch.
+      writeVar(vm, 'player-hit', 0);
+      seedAt(0, 0);
+      step(vm, 1);
+      const onCell = readVar(vm, 'player-hit');
+      return { offColumn, offRow, onCell };
+    },
+    assert(obs) {
+      assert.equal(obs.offColumn, 0, 'a Toroid one column beside the craft does NOT touch it');
+      assert.equal(obs.offRow, 0, 'a Toroid one row above the craft does NOT touch it');
+      assert.equal(obs.onCell, 1, 'a Toroid on the craft cell raises player hit');
+    },
+    // Neutralize the walk so the on-cell overlap is never checked → the on-cell assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'advance slots'),
   },
 ];
 

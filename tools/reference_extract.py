@@ -49,6 +49,7 @@ SUB = "src/xevious_sub.68k"
 # CI guards both compare this list against the directory, so a data file with
 # no producer — or a producer with no committed data — fails loudly.
 DATA_FILE_NAMES = (
+    "aiming.json",
     "andor-genesis.json",
     "area-schedules.json",
     "difficulty.json",
@@ -686,6 +687,75 @@ def decode_domogram_vectors(main: SourceFile) -> dict:
     }
 
 
+def decode_aiming(main: SourceFile) -> dict:
+    """The 32-direction homing system: the octant quantization table plus the
+    four (dY, dX) velocity tables, one per speed tier.
+
+    Byte order is the reference's own, and it is NOT what the table labels
+    suggest: the labels read ``angle_dX_dY_*_tbl`` but the consumer
+    ``cpy_dY_dX_to_obj`` (main $3383) copies the FIRST byte of each pair into
+    ``_dY`` (the lateral velocity) and the SECOND into ``_dX`` (the scroll-axis
+    velocity). We record each pair as {index, dy, dx} accordingly, so a reader
+    binds the columns to the axes the reference actually uses, not to the label.
+    ``get_index_for_angle`` takes (scroll-diff, lateral-diff) and the entry at
+    the resulting index gives (dy, dx); index 0 is pure scroll-axis motion.
+    """
+    octant, _, oct_first, oct_last = main.bytes_under_label("octant_angle_tbl")
+    if len(octant) != 33:
+        raise ExtractionError(
+            f"octant_angle_tbl: expected 33 bytes, got {len(octant)}"
+        )
+    # (label, name, magnitude in 1/32-px units → px/frame after the ×2 apply).
+    specs = [
+        ("angle_dX_dY_sheonite_tbl", "sheonite", 64),        # 4 px/frame
+        ("angle_dX_dY_terrazi_torkan_tbl", "terrazi_torkan", 48),  # 3 px/frame
+        ("angle_dX_dY_tbl", "generic", 32),                  # 2 px/frame (aimed bullets)
+        ("angle_dX_dY_toroid_tbl", "toroid", 24),            # 1.5 px/frame (Toroid approach)
+    ]
+    tables = {}
+    for label, name, magnitude in specs:
+        values, _, first_line, last_line = main.bytes_under_label(label)
+        if len(values) != 64:
+            raise ExtractionError(
+                f"{label}: expected 64 bytes (32 dY/dX pairs), got {len(values)}"
+            )
+        tables[name] = {
+            "source": {"file": MAIN, "label": label, "lines": [first_line, last_line]},
+            "magnitude": magnitude,
+            "vectors": [
+                {
+                    "index": i // 2,
+                    "dy": signed_byte(values[i]),
+                    "dx": signed_byte(values[i + 1]),
+                }
+                for i in range(0, 64, 2)
+            ],
+        }
+    return {
+        "octant_table": {
+            "source": {
+                "file": MAIN,
+                "label": "octant_angle_tbl",
+                "lines": [oct_first, oct_last],
+            },
+            "note": (
+                "get_index_for_angle's octant lookup: index = octant_table["
+                "floor(32*min/max)] then quadrant-folded by the diff signs "
+                "(main get_index_for_angle 0EB2, get_index_for_abs_angle 0ECD)"
+            ),
+            "values": octant,
+        },
+        "angle_tables": tables,
+        "note": (
+            "raw signed fixed-point deltas, doubled before applying (like all "
+            "object velocities); each pair is (dy, dx) per cpy_dY_dX_to_obj — "
+            "see the byte-order note in the extractor. One table per speed tier; "
+            "Toroid approaches on the 24-magnitude (1.5 px/frame) table, aimed "
+            "enemy bullets fly on the 32-magnitude (2 px/frame) generic table."
+        ),
+    }
+
+
 def rng_step(seed: int) -> tuple[int, int]:
     """One step of the reference's generator; returns (new_seed, output).
 
@@ -781,6 +851,10 @@ def build_payloads(checkout: Path) -> dict[str, dict]:
         ),
     }
     return {
+        "aiming.json": {
+            "provenance": provenance,
+            "aiming": decode_aiming(main),
+        },
         "area-schedules.json": {
             "provenance": provenance,
             "dispatch": {

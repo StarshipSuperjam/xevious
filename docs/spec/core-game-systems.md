@@ -34,7 +34,7 @@ cabinet extension (whose behaviors are specified in [Cabinet flow](cabinet-flow.
 | attract-scores | attract-demo | scores stage completes (cycle continues to attract-title) |
 | any attract state | ready | a paid start (coin-up resets the attract cycle first) |
 | ready | playing | READY presentation completes |
-| playing | player-dead | any lethal contact (or a recorded fixture key) |
+| playing | player-dead | any lethal contact |
 | player-dead | respawning | craft remain (and, two-player, after player-change) |
 | player-dead | game-over | no craft remain (after the high-score check routes entry if earned) |
 | respawning | playing | respawn READY completes |
@@ -74,9 +74,10 @@ normative home):
 
 Per-state input rules (project-defined for the current slice, pending cabinet work): title accepts only
 the start key; READY, player-dead, respawning, and game-over accept no gameplay input; playing accepts
-movement, fire, and bomb — plus, until the life economy lands, the two recorded temporary fixtures `D`
-(request respawn) and `G` (request terminal death), which exist only to exercise the death paths and are
-removed by the life-economy work. Repeated keys can never duplicate transitions, loops, shots, or bombs; the
+movement, fire, and bomb. (Earlier slices carried two temporary keyboard fixtures — `D` to request
+respawn and `G` to request terminal death — solely to exercise the death paths before any enemy could
+kill the craft; now that live flying enemies and their bullets deal real lethal contact, those fixtures
+are removed.) Repeated keys can never duplicate transitions, loops, shots, or bombs; the
 green flag from any state performs the cold-start reset; stop halts the project.
 
 **Entity lifecycle and capacities (SYS-02).** The reference runs 64 fixed object slots, each a small
@@ -147,8 +148,7 @@ reticle reads the same movement input as the craft, and when it reaches the top 
 and backs the craft down with it — so the reticle can never leave the top of the screen and the craft stops
 with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
-port's own: arrow keys move, Space fires, B bombs, plus
-the temporary D/G fixtures above; a rebinding is a spec amendment.
+port's own: arrow keys move, Space fires, B bombs; a rebinding is a spec amendment.
 
 ## Acceptance criteria
 

@@ -24,6 +24,43 @@ import check_mechanics_record as mechanics  # noqa: E402
 import game_director as director  # noqa: E402
 
 
+def _proc_body_blocks(stage: dict, proccode: str) -> list:
+    """Every block reachable from a custom-procedure definition's body (following `next` and
+    every SUBSTACK / reporter input), so a structural check can inspect exactly one proc's stack.
+    Returns the block dicts; empty when the proccode is absent."""
+    blocks = stage["blocks"]
+    proto_ids = {
+        bid
+        for bid, b in blocks.items()
+        if b["opcode"] == "procedures_prototype"
+        and b.get("mutation", {}).get("proccode") == proccode
+    }
+    definition = next(
+        (
+            b
+            for b in blocks.values()
+            if b["opcode"] == "procedures_definition"
+            and b.get("inputs", {}).get("custom_block", [None, None])[1] in proto_ids
+        ),
+        None,
+    )
+    if definition is None:
+        return []
+    seen: set = set()
+    frontier = [definition.get("next")]
+    while frontier:
+        bid = frontier.pop()
+        if not bid or bid in seen or bid not in blocks:
+            continue
+        seen.add(bid)
+        block = blocks[bid]
+        frontier.append(block.get("next"))
+        for value in block.get("inputs", {}).values():
+            if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str):
+                frontier.append(value[1])
+    return [blocks[bid] for bid in seen]
+
+
 ASSET_ONE = (
     b"\x89PNG\r\n\x1a\n"
     b"project-test-asset-one"
@@ -170,7 +207,9 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        self.assertEqual(17, len(project["targets"]))
+        # 19: the historical 15 + the generated hud, the sprite-extraction proof, and the slice-8
+        # toroid + enemy-bullet gameplay renderers (both reuse the proof's costumes by reference).
+        self.assertEqual(19, len(project["targets"]))
         self.assertEqual(98, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
@@ -894,6 +933,28 @@ class ScratchProjectTests(unittest.TestCase):
             "formation index",
             # DIF-02 transient score re-tune addend (computed then added to the AI level).
             "ai adjust",
+            # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
+            # cached craft cell, the per-dispatch type register, and the spawner's cursor/attempt/
+            # found registers — all transient, none Stage-write-protected state.
+            "aim dx diff",
+            "aim dy diff",
+            "aim large",
+            "aim small",
+            "aim swap",
+            "aim base",
+            "aim fine",
+            "aim index",
+            "player row",
+            "player col",
+            "walk type",
+            "spawn cursor",
+            "spawn attempts",
+            "spawn found",
+            # PLY-02 (slice 8): the walk raises `player hit` on craft contact; the non-warp thread
+            # clears it and triggers the death. `invuln` is the dormant debug flag (default 0, set only
+            # by the test harness) that gates that death so the agency-less headless craft can survive.
+            "player hit",
+            "invuln",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -975,6 +1036,23 @@ class ScratchProjectTests(unittest.TestCase):
                 "allowed transitions",
                 "slot type",
                 "slot state",
+                # SYS-02 per-slot position/motion fields (slice 8).
+                "slot x",
+                "slot y",
+                "slot dx",
+                "slot dy",
+                "slot timer",
+                "slot code",
+                "slot pts",
+                "slot flag",
+                # AIR-01/AIR-12 homing-aim tables (slice 8): the octant quantizer + two speed tiers.
+                "octant table",
+                "aim dy 24",
+                "aim dx 24",
+                "aim dy 32",
+                "aim dx 32",
+                "flying type table",
+                "toroid frame",
                 "value table",
                 "starting lives",
                 "first bonus 123",
@@ -1031,6 +1109,23 @@ class ScratchProjectTests(unittest.TestCase):
             director.RESOLVE_HIT_PROCCODE,
             director.SCORE_PROCCODE,
             director.CHECK_BONUS_PROCCODE,
+            # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
+            # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
+            # shared RNG step the spawn draw now consumes (its first live consumer).
+            director.RNG_PROCCODE,
+            director.COMPUTE_AIM_PROCCODE,
+            director.READ_PLAYER_PROCCODE,
+            director.SPAWN_FLYING_PROCCODE,
+            director.INIT_TOROID_PROCCODE,
+            director.UPDATE_TOROID_PROCCODE,
+            director.CULL_SLOT_PROCCODE,
+            # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
+            director.CHECK_AIR_HIT_PROCCODE,
+            director.EXPLODE_TICK_PROCCODE,
+            # AIR-12 (slice 8): the enemy-bullet per-tick update (move, craft-collision, cull) and
+            # the bullet allocator the shooting Toroid now calls to fire its single aimed bullet.
+            director.UPDATE_BULLET_PROCCODE,
+            director.ALLOC_BULLET_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -1123,7 +1218,27 @@ class ScratchProjectTests(unittest.TestCase):
                 failures.add(label)
             elif any(item != 0 for item in entry[1]):
                 failures.add(label)
+        # Every per-slot position/motion field is a length-64 all-zero list at generation (a slot
+        # is initialized on allocation); a stray non-zero or wrong length would poison the walk.
+        for _list_id, name in director.SLOT_FIELD_LISTS:
+            entry = by_name.get(name)
+            if entry is None or len(entry[1]) != director.SLOT_COUNT or any(i != 0 for i in entry[1]):
+                failures.add("slot-field-lists-zero")
         blocks = stage["blocks"]
+        # `clear slots` must zero EVERY registered slot list — not just type/state. A new field added
+        # to the pool but omitted from clear-slots would break the seeded-replay clean slate silently.
+        cleared_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.CLEAR_SLOTS_PROCCODE)
+            if b["opcode"] == "data_replaceitemoflist"
+        }
+        every_slot_list = {
+            director.SLOT_TYPE_ID,
+            director.SLOT_STATE_ID,
+            *(list_id for list_id, _name in director.SLOT_FIELD_LISTS),
+        }
+        if not every_slot_list <= cleared_lists:
+            failures.add("clear-slots-covers-every-slot-list")
         clear_proto = next(
             (
                 b
@@ -1149,6 +1264,11 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("reset-clears-slots")
         return failures
 
+    # Roadmap closure evidence for leaf #57 (core.entity-lifecycle, SYS-02.live): the slice-8 live
+    # entity now owns per-slot position/motion fields and a complete clear. The live-participant proof
+    # (a Toroid occupying a slot through its lifecycle) is the harness scenario added with the walk.
+    # roadmap-evidence: SYS-02 success  (test_entity_slots_present_and_cleared — fields present, clear covers every slot list)
+    # roadmap-evidence: SYS-02 failure  (test_entity_slot_negative_fixtures — slot-field-lists-zero, clear-slots-covers-every-slot-list)
     def test_entity_slots_present_and_cleared(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._sys02_slot_failures(project))
@@ -1183,10 +1303,25 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["mutation"]["proccode"] = "noop"
 
+        def dirty_slot_field(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for value in stage["lists"].values():
+                if value[0] == "slot dx":
+                    value[1][0] = 7  # a non-zero at generation
+
+        def drop_field_clear(p: dict) -> None:
+            # Redirect one field's clear-write off the slot pool so clear-slots no longer covers it.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CLEAR_SLOTS_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DY_ID:
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
         cases = [
             ("slot-type-list-64", shrink_type_list),
             ("clear-slots-warp-defined", unwarp_clear),
             ("reset-clears-slots", drop_clear_call),
+            ("slot-field-lists-zero", dirty_slot_field),
+            ("clear-slots-covers-every-slot-list", drop_field_clear),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -1307,6 +1442,170 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._central_walk_failures(project), label)
+
+    @staticmethod
+    def _air01_failures(project: dict) -> set:
+        """AIR-01 Toroid vertical-slice authoring contract — violated labels. Pins the structural
+        facts that make the Toroid a faithful live entity: its lifecycle procedures run atomically,
+        the formation spawner and the ordered walk actually drive it, the cull inherits scroll
+        position (the coded refill), and the spawn-column draw is bounded so no seed can hang it."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        # (1) Every Toroid-lifecycle procedure exists and is warp (atomic) — a non-warp walk sub-proc
+        # would yield mid-slot, letting a half-updated enemy render or be hit.
+        for proccode in (
+            director.INIT_TOROID_PROCCODE,
+            director.UPDATE_TOROID_PROCCODE,
+            director.SPAWN_FLYING_PROCCODE,
+            director.CULL_SLOT_PROCCODE,
+        ):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("toroid-lifecycle-procs-warp")
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        # (2) The spawner is driven, so a formation wave reaches live slots; (3) the ordered walk
+        # dispatches to the updater, so a spawned Toroid actually advances.
+        if not calls(director.SPAWN_FLYING_PROCCODE):
+            failures.add("spawn-driven")
+        if not calls(director.UPDATE_TOROID_PROCCODE):
+            failures.add("dispatch-updates-toroid")
+
+        # (4) The cull frees occupancy (type + state) but leaves the position fields, so a refilled
+        # slot inherits the previous occupant's scroll-axis position — the coded refill deviation.
+        cull_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.CULL_SLOT_PROCCODE)
+            if b["opcode"] == "data_replaceitemoflist"
+        }
+        if not {director.SLOT_TYPE_ID, director.SLOT_STATE_ID} <= cull_lists:
+            failures.add("cull-frees-occupancy")
+        if {director.SLOT_X_ID, director.SLOT_Y_ID} & cull_lists:
+            failures.add("cull-keeps-position")
+
+        # (5) The spawn-column draw is bounded: init toroid draws inside a repeat-until AND increments
+        # an attempt counter, so an unlucky seed cannot spin the warp thread forever (16-attempt cap).
+        init_body = _proc_body_blocks(stage, director.INIT_TOROID_PROCCODE)
+        has_until = any(b["opcode"] == "control_repeat_until" for b in init_body)
+        counts_attempts = any(
+            b["opcode"] == "data_changevariableby"
+            and b["fields"]["VARIABLE"][0] == "spawn attempts"
+            for b in init_body
+        )
+        if not (has_until and counts_attempts):
+            failures.add("spawn-draw-bounded")
+        return failures
+
+    # Roadmap closure evidence for leaf #65 (air.toroid, AIR-01.toroid): the Toroid is a live entity
+    # — spawned from the formation wave, advanced by the ordered walk, culled with inherited scroll
+    # position, its spawn draw bounded. The live proof (spawns, moves, six clones) is the harness
+    # scenario `toroid-wave-spawns-and-moves`; the seeded draw order is `rng-draw-order`.
+    # roadmap-evidence: AIR-01 success  (test_toroid_slice_authoring_present — lifecycle procs, spawn+dispatch driven, cull inherits position, bounded draw)
+    # roadmap-evidence: AIR-01 failure  (test_toroid_slice_negative_fixtures — each contract clause corrupted bites)
+    # This commit also makes SYS-04 a live consumer (the ordered walk now dispatches an occupant to
+    # `update toroid`, and the spawner draws the shared RNG in walk order) and lights the AREA-02 air
+    # path (the formation wave, not add_object, spawns live flying enemies). Both are proven live in
+    # the harness (`toroid-wave-spawns-and-moves`, `rng-draw-order`), each with a biting negative.
+    # roadmap-evidence: SYS-04 success  (test_toroid_slice_authoring_present dispatch/spawn-driven clauses; harness toroid-wave-spawns-and-moves + rng-draw-order run live)
+    # roadmap-evidence: SYS-04 failure  (test_toroid_slice_negative_fixtures dispatch-updates-toroid; harness rng-draw-order neutralizes `rng step`)
+    # roadmap-evidence: AREA-02 success  (test_toroid_slice_authoring_present spawn-driven clause; harness toroid-wave-spawns-and-moves fills flying slots from the formation)
+    # roadmap-evidence: AREA-02 failure  (test_toroid_slice_negative_fixtures spawn-driven; harness toroid-wave-spawns-and-moves neutralizes `update toroid`)
+    def test_toroid_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air01_failures(project))
+
+    def test_toroid_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air01_failures(base))
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.UPDATE_TOROID_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_spawn_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.SPAWN_FLYING_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode")
+                    == director.UPDATE_TOROID_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def cull_skips_type(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CULL_SLOT_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                ):
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def cull_clears_position(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CULL_SLOT_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                ):
+                    b["fields"]["LIST"] = ["slot x", director.SLOT_X_ID]
+
+        def drop_attempts_count(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.INIT_TOROID_PROCCODE):
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"]["VARIABLE"][0] == "spawn attempts"
+                ):
+                    b["fields"]["VARIABLE"] = ["spawn found", director.SPAWN_FOUND_ID]
+
+        cases = [
+            ("toroid-lifecycle-procs-warp", unwarp_update),
+            ("spawn-driven", drop_spawn_call),
+            ("dispatch-updates-toroid", drop_dispatch_call),
+            ("cull-frees-occupancy", cull_skips_type),
+            ("cull-keeps-position", cull_clears_position),
+            ("spawn-draw-bounded", drop_attempts_count),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air01_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -1568,6 +1867,158 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._sys03_failures(project), label)
 
     @staticmethod
+    def _wpn02_failures(project: dict) -> set:
+        """WPN-02 blaster-to-air kill contract — violated labels. The detector runs in the walk, the
+        shot mirrors its position for it to read, and a struck enemy explodes then frees."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto_warp(proccode):
+            p = next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+            return p is not None and p["mutation"].get("warp") == "true"
+
+        # (1) The detector and the explosion tick exist and are atomic (warp) — a mid-slot yield could
+        # score a half-resolved hit or render a torn explosion.
+        if not (proto_warp(director.CHECK_AIR_HIT_PROCCODE) and proto_warp(director.EXPLODE_TICK_PROCCODE)):
+            failures.add("air-combat-procs-warp")
+
+        # (2) The detector produces award value from the value table and resolves through the one path.
+        detector = _proc_body_blocks(stage, director.CHECK_AIR_HIT_PROCCODE)
+        sets_award = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AWARD_VALUE_ID
+            for b in detector
+        )
+        reads_table = any(
+            b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == director.VALUE_TABLE_ID
+            for b in detector
+        )
+        resolves = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
+            for b in detector
+        )
+        if not (sets_award and reads_table and resolves):
+            failures.add("air-hit-awards-and-resolves")
+
+        # (3) The struck-enemy branch frees the slot: the explosion tick culls when its clock elapses.
+        explode = _proc_body_blocks(stage, director.EXPLODE_TICK_PROCCODE)
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+            for b in explode
+        ):
+            failures.add("explosion-frees-slot")
+
+        # (4) `update toroid` runs the explosion for a HIT enemy (the HIT branch calls the explode tick).
+        update = _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE)
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+            for b in update
+        ):
+            failures.add("hit-runs-explosion")
+
+        # (5) The blaster shot mirrors its live position into BOTH slot x and slot y (indexed by its
+        # clone slot), so the walk's detector can read the shot from the slot lists.
+        blaster = next(t for t in project["targets"] if t.get("name") == "blaster")
+        mirrored = {
+            b["fields"]["LIST"][1]
+            for b in blaster["blocks"].values()
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["inputs"].get("INDEX", [None, [None, None]])[1] == [12, "clone slot", director.CLONE_SLOT_ID]
+        }
+        if not {director.SLOT_X_ID, director.SLOT_Y_ID} <= mirrored:
+            failures.add("shot-position-mirrored")
+        return failures
+
+    # Roadmap closure evidence for leaves #62 (air.hit, WPN-02.air-hit), #63 (ECO-01 air awards), and
+    # #58 (SYS-03.live): the blaster-to-air hit resolves through the single score path, awards the
+    # enemy's value, and explodes then frees the slot. Live proof (a kill scores 30 and the enemy is
+    # gone) is the harness `blaster-kills-toroid-and-scores`; the S fixture is retired.
+    # roadmap-evidence: WPN-02 success  (test_air_kill_contract_present — detector, award, explosion, mirror)
+    # roadmap-evidence: WPN-02 failure  (test_air_kill_negative_fixtures — each clause corrupted bites)
+    # roadmap-evidence: SYS-03 success  (test_collision_single_hit_path — one HIT write in resolve hit, one score call; now with a live detector driving it)
+    # roadmap-evidence: SYS-03 failure  (test_collision_single_hit_negative_fixtures; harness blaster-kills-toroid-and-scores negative)
+    # roadmap-evidence: ECO-01 success  (test_air_kill_contract_present award-from-value-table clause; harness blaster-kills-toroid-and-scores raises the score by the enemy value)
+    # roadmap-evidence: ECO-01 failure  (test_air_kill_negative_fixtures air-hit-awards-and-resolves; harness negative widens the window so no kill scores)
+    def test_air_kill_contract_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._wpn02_failures(project))
+
+    def test_air_kill_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._wpn02_failures(base))
+
+        def unwarp_detector(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.CHECK_AIR_HIT_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_resolve(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.CHECK_AIR_HIT_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_explosion_cull(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.EXPLODE_TICK_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_hit_branch(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_mirror(p: dict) -> None:
+            blaster = next(t for t in p["targets"] if t.get("name") == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                    and b["inputs"].get("INDEX", [None, [None, None]])[1]
+                    == [12, "clone slot", director.CLONE_SLOT_ID]
+                ):
+                    b["fields"]["LIST"] = ["slot timer", director.SLOT_TIMER_ID]
+
+        cases = [
+            ("air-combat-procs-warp", unwarp_detector),
+            ("air-hit-awards-and-resolves", drop_resolve),
+            ("explosion-frees-slot", drop_explosion_cull),
+            ("hit-runs-explosion", drop_hit_branch),
+            ("shot-position-mirrored", drop_mirror),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._wpn02_failures(project), label)
+
+    @staticmethod
     def _eco01_failures(project: dict) -> set:
         """ECO-01 single scoring path — award, 9,999,990 cap, high-score track, bonus tail,
         and no score bypass. Structure only; the arithmetic is the operator's playtest."""
@@ -1770,25 +2221,37 @@ class ScratchProjectTests(unittest.TestCase):
         expected = [e["points"] for e in data["tables"]["master_value_table"]["entries"]]
         self.assertEqual(expected, by_name["value table"])
 
-    def test_scoring_fixture_drives_the_single_path(self) -> None:
-        # The debug S fixture sets the award-value seam from the value table and runs the one
-        # `score` path (the stand-in producer of `award value` until slice 8's detector lands).
+    def test_air_hit_replaces_score_fixture_as_award_producer(self) -> None:
+        # The debug S fixture is retired in slice 8: the real producer of `award value` is now the
+        # blaster-to-air detector, which reads the struck enemy's `slot pts` into the value table and
+        # resolves the hit through the one `score` path. The S key hat must be gone entirely.
         project = load_source(scratch.SOURCE_DIR)
         stage = next(t for t in project["targets"] if t["isStage"])
-        blocks = stage["blocks"]
-        hats = [
+        s_hats = [
             b
-            for b in blocks.values()
+            for b in stage["blocks"].values()
             if b["opcode"] == "event_whenkeypressed"
-            and b["fields"].get("KEY_OPTION", [None])[0] == director.SCORE_FIXTURE_KEY
+            and b["fields"].get("KEY_OPTION", [None])[0] == "s"
         ]
-        self.assertEqual(1, len(hats))
+        self.assertEqual([], s_hats, "the debug S scoring fixture is removed")
+        body = _proc_body_blocks(stage, director.CHECK_AIR_HIT_PROCCODE)
         sets_award = any(
             b["opcode"] == "data_setvariableto"
             and b["fields"].get("VARIABLE", [None, None])[1] == director.AWARD_VALUE_ID
-            for b in blocks.values()
+            for b in body
         )
-        self.assertTrue(sets_award)
+        reads_value_table = any(
+            b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == director.VALUE_TABLE_ID
+            for b in body
+        )
+        calls_resolve = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.RESOLVE_HIT_PROCCODE
+            for b in body
+        )
+        self.assertTrue(sets_award, "the detector produces award value")
+        self.assertTrue(reads_value_table, "award value comes from the value table (slot pts)")
+        self.assertTrue(calls_resolve, "the detector resolves the hit through the one score path")
 
     @staticmethod
     def _eco03_failures(project: dict) -> set:
@@ -2349,64 +2812,96 @@ class ScratchProjectTests(unittest.TestCase):
 
     @staticmethod
     def _ply02_failures(project: dict) -> set:
-        """PLY-02: the death outcome is decided from the craft counter, the D/G triggers drive
-        the counter without hardcoding an outcome, and a new life restarts the terrain."""
+        """PLY-02 walk-driven player death (slice 8, replacing the retired D/G debug keys): contact
+        raises `player hit` in the flying AND bullet updates; the walk's death check, gated on
+        `player hit` = 1 AND `invuln` = 0, spends a craft, clears the flag, and runs the player-dead
+        transition; and the death-complete handler decides respawn vs game over from the craft counter."""
+        # roadmap-evidence: PLY-02 success  (test_death_decision_is_lives_driven — contact raises the hit flag, the invuln-gated death check spends a craft and transitions, the counter decides; harness death-respawn + death-game-over run it live)
+        # roadmap-evidence: PLY-02 failure  (test_death_decision_negative_fixtures — each clause corrupted bites; harness death-respawn/death-game-over negatives remove the death edges)
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         blocks = stage["blocks"]
-
-        def key_hat(key: str):
-            return next(
-                (
-                    bid
-                    for bid, b in blocks.items()
-                    if b["opcode"] == "event_whenkeypressed"
-                    and b["fields"].get("KEY_OPTION", [None])[0] == key
-                ),
-                None,
-            )
 
         def reachable(start: str) -> set:
             seen, stack = set(), [start]
             while stack:
                 bid = stack.pop()
-                if bid in seen or bid not in blocks:
+                if not bid or bid in seen or bid not in blocks:
                     continue
                 seen.add(bid)
                 b = blocks[bid]
-                if b.get("next"):
-                    stack.append(b["next"])
+                stack.append(b.get("next"))
                 for slot in ("SUBSTACK", "SUBSTACK2"):
                     val = b["inputs"].get(slot)
                     if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
                         stack.append(val[1])
             return seen
 
-        d_body = reachable(key_hat("d")) if key_hat("d") else set()
-        g_body = reachable(key_hat("g")) if key_hat("g") else set()
-        # D takes one hit: change craft by -1.
-        if not any(
-            blocks[bid]["opcode"] == "data_changevariableby"
-            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-            and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
-            for bid in d_body
-        ):
-            failures.add("d-decrements-craft")
-        # G drains to terminal: set craft to 0.
-        if not any(
-            blocks[bid]["opcode"] == "data_setvariableto"
-            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-            and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
-            for bid in g_body
-        ):
-            failures.add("g-drains-craft")
-        # neither trigger hardcodes a death outcome any more (the counter decides).
-        if any(
-            blocks[bid]["opcode"] == "data_setvariableto"
-            and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.OUTCOME_ID
-            for bid in (d_body | g_body)
-        ):
-            failures.add("trigger-hardcodes-outcome")
+        def raises_player_hit(proccode: str) -> bool:
+            return any(
+                b["opcode"] == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                and b["inputs"].get("VALUE") == [1, [4, 1]]
+                for b in _proc_body_blocks(stage, proccode)
+            )
+
+        # Both live craft-collision participants raise the hit flag.
+        if not raises_player_hit(director.UPDATE_TOROID_PROCCODE):
+            failures.add("flying-raises-player-hit")
+        if not raises_player_hit(director.UPDATE_BULLET_PROCCODE):
+            failures.add("bullet-raises-player-hit")
+
+        # The walk's death gate: a control_if whose CONDITION is an AND of (player hit == 1) and
+        # (invuln == 0) — so contact kills only when not invulnerable.
+        def equals_var(op_spec) -> str | None:
+            if not (isinstance(op_spec, list) and len(op_spec) > 1 and isinstance(op_spec[1], str)):
+                return None
+            eq = blocks.get(op_spec[1])
+            if not eq or eq["opcode"] != "operator_equals":
+                return None
+            lhs = eq["inputs"].get("OPERAND1")
+            if isinstance(lhs, list) and len(lhs) > 1 and isinstance(lhs[1], list) and lhs[1][0] == 12:
+                return lhs[1][2]
+            return None
+
+        death_if = None
+        for bid, b in blocks.items():
+            if b["opcode"] != "control_if":
+                continue
+            cond = b["inputs"].get("CONDITION")
+            if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
+                continue
+            cb = blocks.get(cond[1])
+            if not cb or cb["opcode"] != "operator_and":
+                continue
+            refs = {equals_var(cb["inputs"].get("OPERAND1")), equals_var(cb["inputs"].get("OPERAND2"))}
+            if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
+                death_if = bid
+                break
+        if death_if is None:
+            failures.add("death-gated-on-hit-and-invuln")
+        else:
+            body = reachable(death_if)
+            spends = any(
+                blocks[bid]["opcode"] == "data_changevariableby"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
+                for bid in body
+            )
+            clears = any(
+                blocks[bid]["opcode"] == "data_setvariableto"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
+                for bid in body
+            )
+            transitions = any(
+                blocks[bid]["opcode"] == "procedures_call"
+                and blocks[bid].get("mutation", {}).get("proccode") == director.PROCCODE
+                for bid in body
+            )
+            if not (spends and clears and transitions):
+                failures.add("death-spends-craft-and-transitions")
+
         # the death-complete handler decides from craft > 0: respawn vs game over.
         decision = next(
             (
@@ -2447,38 +2942,114 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(set(), self._ply02_failures(base))
         stage = next(t for t in base["targets"] if t["isStage"])
 
-        def find(pred):
-            def f(p):
-                s = next(t for t in p["targets"] if t["isStage"])
-                return next(b for b in s["blocks"].values() if pred(b))
-            return f
-
-        def break_d(p):
-            b = find(
-                lambda b: b["opcode"] == "data_changevariableby"
-                and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-                and b["inputs"].get("VALUE") == [1, [4, -1]]
-            )(p)
-            b["inputs"]["VALUE"] = [1, [4, 0]]
-
-        def break_g(p):
-            # retarget G's `set craft to 0` to a different variable
+        def break_flying_hit(p):
+            # Neutralise the flying update's `set player hit = 1` (retarget to another flag) so a
+            # Toroid on the craft's cell no longer registers a hit.
             s = next(t for t in p["targets"] if t["isStage"])
-            gid = next(
-                bid
-                for bid, b in s["blocks"].items()
-                if b["opcode"] == "event_whenkeypressed"
-                and b["fields"].get("KEY_OPTION", [None])[0] == "g"
-            )
-            # walk to the set-craft-0 in g's body
-            for b in s["blocks"].values():
+            for b in _proc_body_blocks(s, director.UPDATE_TOROID_PROCCODE):
                 if (
                     b["opcode"] == "data_setvariableto"
-                    and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
-                    and b["inputs"].get("VALUE") == [1, [4, 0]]
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 1]]
                 ):
-                    b["fields"]["VARIABLE"] = ["award value", director.AWARD_VALUE_ID]
+                    b["fields"]["VARIABLE"] = ["invuln", director.INVULN_ID]
+                    return
+            raise AssertionError("no `set player hit = 1` in update toroid to break")
+
+        def break_bullet_hit(p):
+            # Same, in the enemy-bullet update: a bullet on the craft's cell no longer registers.
+            s = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(s, director.UPDATE_BULLET_PROCCODE):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 1]]
+                ):
+                    b["fields"]["VARIABLE"] = ["invuln", director.INVULN_ID]
+                    return
+            raise AssertionError("no `set player hit = 1` in update bullet to break")
+
+        def break_death_gate(p):
+            # Drop `invuln` from the death gate's AND so contact would kill even while invulnerable —
+            # retarget the invuln equals-operand to the score, defeating the guard.
+            s = next(t for t in p["targets"] if t["isStage"])
+            blocks = s["blocks"]
+            for b in blocks.values():
+                if b["opcode"] != "operator_and":
+                    continue
+                for slot in ("OPERAND1", "OPERAND2"):
+                    spec = b["inputs"].get(slot)
+                    if not (isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str)):
+                        continue
+                    eq = blocks.get(spec[1])
+                    if not eq or eq["opcode"] != "operator_equals":
+                        continue
+                    lhs = eq["inputs"].get("OPERAND1")
+                    if (
+                        isinstance(lhs, list)
+                        and len(lhs) > 1
+                        and isinstance(lhs[1], list)
+                        and lhs[1][0] == 12
+                        and lhs[1][2] == director.INVULN_ID
+                    ):
+                        lhs[1][1:] = ["score", director.SCORE_ID]
+                        return
+            raise AssertionError("no invuln equals-operand in a death gate to break")
+
+        def break_death_body(p):
+            # Death registers but never spends a craft: neutralise the `change craft by -1` reachable
+            # from the death gate.
+            s = next(t for t in p["targets"] if t["isStage"])
+            blocks = s["blocks"]
+
+            def equals_var(op_spec):
+                if not (isinstance(op_spec, list) and len(op_spec) > 1 and isinstance(op_spec[1], str)):
+                    return None
+                eq = blocks.get(op_spec[1])
+                if not eq or eq["opcode"] != "operator_equals":
+                    return None
+                lhs = eq["inputs"].get("OPERAND1")
+                if isinstance(lhs, list) and len(lhs) > 1 and isinstance(lhs[1], list) and lhs[1][0] == 12:
+                    return lhs[1][2]
+                return None
+
+            death_if = None
+            for bid, b in blocks.items():
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
+                    continue
+                cb = blocks.get(cond[1])
+                if not cb or cb["opcode"] != "operator_and":
+                    continue
+                refs = {equals_var(cb["inputs"].get("OPERAND1")), equals_var(cb["inputs"].get("OPERAND2"))}
+                if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
+                    death_if = bid
                     break
+            assert death_if is not None
+            seen, stack = set(), [death_if]
+            while stack:
+                bid = stack.pop()
+                if not bid or bid in seen or bid not in blocks:
+                    continue
+                seen.add(bid)
+                b = blocks[bid]
+                stack.append(b.get("next"))
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    val = b["inputs"].get(slot)
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            for bid in seen:
+                b = blocks[bid]
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
+                    and b["inputs"].get("VALUE") == [1, [4, -1]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 0]]
+                    return
+            raise AssertionError("no `change craft by -1` in the death body to break")
 
         def break_decision(p):
             # Target the DEATH-decision `craft > threshold` specifically — the operator_gt that is the
@@ -2499,8 +3070,10 @@ class ScratchProjectTests(unittest.TestCase):
             cond["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
 
         cases = [
-            ("d-decrements-craft", break_d),
-            ("g-drains-craft", break_g),
+            ("flying-raises-player-hit", break_flying_hit),
+            ("bullet-raises-player-hit", break_bullet_hit),
+            ("death-gated-on-hit-and-invuln", break_death_gate),
+            ("death-spends-craft-and-transitions", break_death_body),
             ("lives-driven-decision", break_decision),
         ]
         for label, corrupt in cases:
@@ -3640,18 +4213,25 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_hit_windows_match_spec(self) -> None:
         # PLY-02 collision hit windows (player-craft-and-weapons.md), in the reference's
-        # half-pixel "shadow" units as (y_bias, y_width, x_bias, x_width). Dormant data
-        # this slice; pinned to independent literals so a wrong window reddens here.
+        # half-pixel "shadow" units as (y_bias, y_width, x_bias, x_width). The bullet/flying
+        # window is live this slice (craft-overlap check); Bacura stays dormant until slice 11.
+        # Pinned to independent literals so a wrong window reddens here.
         self.assertEqual(director.HIT_WINDOW_BULLET_FLYING, (8, 16, 4, 8))
         self.assertEqual(director.HIT_WINDOW_BACURA, (28, 40, 8, 16))
+        # WPN-02 shot-vs-flying window: DOUBLED from the reference (16,32,8,16) as a recorded,
+        # playtest-driven deviation — the reference height (2 cells) is under the shot's 2.5-cell/frame
+        # step (tunneling) and covers only ~40% of our 36-px rendered Toroid. See B8-no-tunnel and the
+        # HIT_WINDOW_SHOT_FLYING comment in game_director.py.
+        self.assertEqual(director.HIT_WINDOW_SHOT_FLYING, (32, 64, 16, 32))
         # The bullet allocator's result var is its own, never the blaster's (no coupling).
         self.assertNotEqual(director.BULLET_ALLOC_RESULT_ID, director.ALLOC_RESULT_ID)
         self.assertEqual(director.BULLET_TYPE, 2)
 
     def _enemy_bullet_pool_failures(self, project: dict) -> set:
-        # AIR-12 dormant allocator: defined on the Stage, sweeps the 19 bullet slots with
-        # its own result var, marks the bullet type — and is NOT called this slice (no
-        # firer). Structural only; the aimed vector/movement/pulse are the air slice.
+        # AIR-12 live allocator: defined on the Stage, sweeps the 19 bullet slots with its own
+        # result var, marks the bullet type — and (this slice) is CALLED from the shooting Toroid's
+        # update to fire a single aimed bullet. Structural only; the aimed vector/movement/pulse are
+        # exercised by their own AIR-12 checks and the harness.
         fails = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         sblocks = stage["blocks"]
@@ -3661,14 +4241,14 @@ class ScratchProjectTests(unittest.TestCase):
             for b in sblocks.values()
         ):
             fails.add("bullet-alloc-defined")
-        called = any(
+        # The shooting Toroid now fires: the allocator is called from `update toroid`.
+        called_in_update = any(
             b.get("opcode") == "procedures_call"
             and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
-            for t in project["targets"]
-            for b in t["blocks"].values()
+            for b in _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE)
         )
-        if called:
-            fails.add("bullet-alloc-dormant")
+        if not called_in_update:
+            fails.add("bullet-alloc-live")
         if not any(
             b.get("opcode") == "data_replaceitemoflist"
             and b["fields"].get("LIST", [None])[0] == "slot type"
@@ -3722,9 +4302,23 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["TIMES"] = [1, [4, span - 1]]
 
+        def break_alloc_live(p):  # the shooting Toroid never fires (allocator call removed)
+            sblocks = stage_blocks_of(p)
+            for b in sblocks.values():
+                if (
+                    b.get("opcode") == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.ALLOC_SHOT_PROCCODE
+                    b["mutation"]["argumentids"] = "[]"
+                    b["inputs"] = {}
+                    return
+            raise AssertionError("no allocator call to break")
+
         for label, corrupt in (
             ("bullet-type", break_bullet_type),
             ("bullet-cap", break_bullet_cap),
+            ("bullet-alloc-live", break_alloc_live),
         ):
             project = copy.deepcopy(base)
             corrupt(project)
@@ -3733,6 +4327,146 @@ class ScratchProjectTests(unittest.TestCase):
                 self._enemy_bullet_pool_failures(project),
                 f"corruption '{label}' was not caught",
             )
+
+    @staticmethod
+    def _air12_failures(project: dict) -> set:
+        # AIR-12 live enemy bullet: once fired it flies straight on its aimed velocity and culls off any
+        # edge (update bullet), and the shooting Toroid aims it at the craft on the 32-magnitude tier at
+        # the moment it fires (update toroid's fire path). Structural; the movement/kill is the harness
+        # (enemy-bullet-fires) and the operator playtest.
+        # roadmap-evidence: AIR-12 success  (test_enemy_bullet_flight_and_fire — move on both axes, edge cull, aimed-32 fire)
+        # roadmap-evidence: AIR-12 failure  (test_enemy_bullet_flight_negative_fixtures — each clause corrupted bites)
+        fails = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def reads_list(item_spec, list_name: str) -> bool:
+            # ITEM input points to a `item N of <list_name>` reporter.
+            if not (isinstance(item_spec, list) and len(item_spec) > 1 and isinstance(item_spec[1], str)):
+                return False
+            b = blocks.get(item_spec[1])
+            return (
+                b is not None
+                and b["opcode"] == "data_itemoflist"
+                and b["fields"].get("LIST", [None])[0] == list_name
+            )
+
+        def is_reporter(item_spec, opcode: str) -> bool:
+            if not (isinstance(item_spec, list) and len(item_spec) > 1 and isinstance(item_spec[1], str)):
+                return False
+            b = blocks.get(item_spec[1])
+            return b is not None and b["opcode"] == opcode
+
+        bullet_body = _proc_body_blocks(stage, director.UPDATE_BULLET_PROCCODE)
+        # The bullet moves on both axes each tick (velocity-scaled add into its own slot).
+        for axis, list_name in (("x", "slot x"), ("y", "slot y")):
+            if not any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == list_name
+                and is_reporter(b["inputs"].get("ITEM"), "operator_add")
+                for b in bullet_body
+            ):
+                fails.add(f"bullet-moves-{axis}")
+        # The bullet is culled when it leaves the field (a cull-slot call guarded by an if).
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+            for b in bullet_body
+        ):
+            fails.add("bullet-culls")
+        # The bullet update must actually be DISPATCHED from the slot walk (a wrong type constant would
+        # leave a correct body that never runs) — `advance slots` calls `update bullet`.
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.UPDATE_BULLET_PROCCODE
+            for b in _proc_body_blocks(stage, director.ADVANCE_SLOTS_PROCCODE)
+        ):
+            fails.add("bullet-dispatched")
+
+        toroid_body = _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE)
+        # The fire path resolves an aim (compute aim index) and writes the bullet's velocity from the
+        # 32-magnitude tables — so the bullet is aimed at the craft, not launched on a fixed vector.
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.COMPUTE_AIM_PROCCODE
+            for b in toroid_body
+        ):
+            fails.add("fire-computes-aim")
+        for axis, list_name in (("dx", "aim dx 32"), ("dy", "aim dy 32")):
+            slot_list = "slot dx" if axis == "dx" else "slot dy"
+            if not any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == slot_list
+                and reads_list(b["inputs"].get("ITEM"), list_name)
+                for b in toroid_body
+            ):
+                fails.add(f"fire-aims-{axis}")
+        return fails
+
+    def test_enemy_bullet_flight_and_fire(self) -> None:
+        self.assertEqual(set(), self._air12_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_enemy_bullet_flight_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air12_failures(base))
+
+        def body_of(project, proccode):
+            stage = next(t for t in project["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, proccode)
+
+        def break_move_x(p):  # bullet stops advancing on the scroll axis
+            _stage, body = body_of(p, director.UPDATE_BULLET_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == "slot x"
+            )
+            b["inputs"]["ITEM"] = [1, [4, 0]]
+
+        def break_cull(p):  # bullet never leaves the pool (retarget its cull call)
+            _stage, body = body_of(p, director.UPDATE_BULLET_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+            )
+            b["mutation"]["proccode"] = director.RESOLVE_HIT_PROCCODE
+            b["mutation"]["argumentids"] = "[]"
+            b["inputs"] = {}
+
+        def break_fire_aim(p):  # the fired bullet is no longer aimed on the 32 tier
+            _stage, body = body_of(p, director.UPDATE_TOROID_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"].get("LIST", [None])[0] == "slot dx"
+            )
+            b["inputs"]["ITEM"] = [1, [4, 0]]
+
+        def break_dispatch(p):  # the walk no longer dispatches the bullet update (wrong type constant)
+            _stage, body = body_of(p, director.ADVANCE_SLOTS_PROCCODE)
+            b = next(
+                b
+                for b in body
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.UPDATE_BULLET_PROCCODE
+            )
+            b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+            b["mutation"]["argumentids"] = "[]"
+            b["inputs"] = {}
+
+        for label, corrupt in (
+            ("bullet-moves-x", break_move_x),
+            ("bullet-culls", break_cull),
+            ("fire-aims-dx", break_fire_aim),
+            ("bullet-dispatched", break_dispatch),
+        ):
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air12_failures(project), f"'{label}' not caught")
 
     def test_transition_cleanup_is_serialized_before_state_entry(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -3867,6 +4601,23 @@ class ScratchProjectTests(unittest.TestCase):
             fails.add("B8-speed")
         if count("blaster", "control_wait") != 0:
             fails.add("B8-wall-clock")
+        # B8-no-tunnel: the shot's per-frame vertical advance must not exceed the shot-vs-air hit
+        # window's height, or a real fired shot steps clean OVER a Toroid between collision samples
+        # (every shot in a held stream shares the craft-row phase, so a Toroid in a gap is immune to
+        # the whole stream — the operator saw "multiple rounds and nothing happens"). The headless
+        # harness cannot reproduce per-frame timing (it runs threads to settling), so this numeric
+        # invariant is the guard. shot step = DY / RENDER_ROW_STAGE cells; window height = y_width /
+        # SHADOW_PER_CELL cells. Require ~1 cell of margin for the enemy's own closing motion.
+        dy_blocks = [
+            num(b["inputs"].get("DY"))
+            for b in blocks["blaster"].values()
+            if b["opcode"] == "motion_changeyby"
+        ]
+        shot_dy = max(dy_blocks) if dy_blocks else 0
+        shot_step_cells = shot_dy / director.RENDER_ROW_STAGE
+        window_height_cells = director.HIT_WINDOW_SHOT_FLYING[1] / director.SHADOW_PER_CELL
+        if window_height_cells < shot_step_cells + 1.0:
+            fails.add("B8-no-tunnel")
 
         # B2 — single bomb: no clone, a guard armed and re-armed, the bomb broadcast.
         if count("bomb", "control_start_as_clone") != 0:
@@ -4447,7 +5198,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "dfd51edefb985b98550c76b7bc33f62902a3093355dba02684cd873c6ba02db3",
+            "0c7c82db73b670f15695af5e9b6a7568506b4a42cb19e58bdaa8f13f6bf8f519",
             build_hash,
         )
 
