@@ -80,7 +80,14 @@
   alive; it is never set by game logic, so live play is unaffected (an operator-approved fixture). (4)
   **One-tick craft-position lag.** The craft's live position is read once per walk into `player row`/`col`,
   so a collision test can see the craft up to one tick behind its drawn position, the same bounded lag the
-  shot mirror carries.
+  shot mirror carries. (5) **Single-cell collision box (post-playtest fix).** The craft-overlap window is
+  an AND of two two-sided bounds per axis, and each axis delta is rebuilt as its own reporter subtree for
+  the `<` and the `>` compare. Sharing one delta block across both compares let the `>` steal it from the
+  `<` (a reporter attaches to only one parent), so the lower bound read an empty operand and always passed —
+  the box degraded to the quadrant above-and-beside the craft, killing it whenever it crossed the row or
+  column of a not-yet-fleeing Toroid (the operator playtest caught it). The fresh-per-compare build restores
+  the single-cell box; `craft-collision-is-single-cell` asserts a Toroid one column or one row off does NOT
+  touch the craft so the regression cannot return.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

@@ -65,7 +65,14 @@
   20 frames, size-doubling phase) is exact, but the frame-8 one-cell recentre and dedicated Toroid-burst
   crops are deferred to a later art pass (operator pixel-verifies any new crop rects). (4) **Award is
   type-agnostic.** `resolve hit` scores from the struck slot's `slot pts`, so every future family scores
-  through this one path with no per-type branch.
+  through this one path with no per-type branch. (5) **Single-column hit box (post-playtest fix).** The
+  window is built as an AND of two two-sided bounds per axis. Each axis delta must be rebuilt as its own
+  reporter subtree for the `<` and the `>` compare: a reporter block attaches to only one parent, so sharing
+  one delta block across both compares let the `>` steal it from the `<`, leaving the lower bound reading an
+  empty operand (always in range) — the box degraded to a whole row, and a held shot destroyed any Toroid in
+  its row regardless of column (the operator playtest caught it). The fresh-per-compare build restores the
+  single-column box; `air-shot-hit-is-single-column` asserts an off-column shot does NOT score so the
+  regression cannot return.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

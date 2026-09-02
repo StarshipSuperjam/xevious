@@ -1679,17 +1679,25 @@ def _craft_overlap_reporter(blocks: Blocks) -> str:
     dy_low, dy_high = -y_bias, y_width - y_bias - 1
     dx_low, dx_high = -x_bias, x_width - x_bias - 1
     sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
-    craft_y = blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SHADOW_PER_CELL))
-    d_y = blocks.op_sub(craft_y, sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
-    hit_y = blocks.op_and(
-        blocks.op_not(blocks.op_lt(d_y, number(dy_low))),
-        blocks.op_not(blocks.op_gt(d_y, number(dy_high))),
+    # Each delta is rebuilt FRESH for every comparison: a reporter block can attach to only one
+    # parent, so reusing one `d_y`/`d_x` block across the `<` and `>` checks would let the second
+    # steal it from the first, leaving the lower-bound compare with an empty operand (a dead bound
+    # that widened the hit box to a quadrant). Lambdas keep every operand its own subtree.
+    d_y = lambda: blocks.op_sub(
+        blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SHADOW_PER_CELL)),
+        sh(_cur_item(blocks, "slot x", SLOT_X_ID)),
     )
-    craft_x = blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SHADOW_PER_CELL))
-    d_x = blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), craft_x)
+    d_x = lambda: blocks.op_sub(
+        sh(_cur_item(blocks, "slot y", SLOT_Y_ID)),
+        blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SHADOW_PER_CELL)),
+    )
+    hit_y = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
+        blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
+    )
     hit_x = blocks.op_and(
-        blocks.op_not(blocks.op_lt(d_x, number(dx_low))),
-        blocks.op_not(blocks.op_gt(d_x, number(dx_high))),
+        blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
+        blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
     )
     return blocks.op_and(hit_y, hit_x)
 
@@ -1875,15 +1883,19 @@ def install_check_air_hit(blocks: Blocks) -> None:
             blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE)),
         )
         enemy_live = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE))
-        d_y = blocks.op_sub(sh(shot_x(s)), sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
+        # Rebuild each delta FRESH per comparison — a reporter block attaches to only one parent, so
+        # sharing one `d_y`/`d_x` block across `<` and `>` lets the second steal it from the first,
+        # leaving the lower bound with an empty operand (a dead bound that made a shot hit any enemy
+        # in its row/column regardless of the other axis). Lambdas give every compare its own subtree.
+        d_y = lambda: blocks.op_sub(sh(shot_x(s)), sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
+        d_x = lambda: blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), sh(shot_y(s)))
         hit_y = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_y, number(dy_low))),
-            blocks.op_not(blocks.op_gt(d_y, number(dy_high))),
+            blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
+            blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
         )
-        d_x = blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), sh(shot_y(s)))
         hit_x = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_x, number(dx_low))),
-            blocks.op_not(blocks.op_gt(d_x, number(dx_high))),
+            blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
+            blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
         )
         overlap = blocks.op_and(
             blocks.op_and(shot_live, enemy_live), blocks.op_and(hit_y, hit_x)

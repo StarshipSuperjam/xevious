@@ -637,6 +637,109 @@ export const SCENARIOS = [
     // Empty the shot-vs-air detector so no overlap is ever resolved → the score never rises.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
   },
+  {
+    key: 'air-shot-hit-is-single-column',
+    behavior:
+      'A player shot resolves a Toroid ONLY in its own column: a shot one column off does not score, a shot on the column does — the hit box is a single column, not the whole row',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const enemy = 63,
+        shot = 36,
+        cellX = 5000,
+        cellY = 4000;
+      // A stationary Toroid parked mid-field (flag 9 = already-swung sentinel: it never moves or swings).
+      const seedEnemy = () => {
+        put('slot-type', enemy, 10);
+        put('slot-state', enemy, 1);
+        put('slot-pts', enemy, 3);
+        put('slot-x', enemy, cellX);
+        put('slot-y', enemy, cellY);
+        put('slot-dx', enemy, 0);
+        put('slot-dy', enemy, 0);
+        put('slot-flag', enemy, 9);
+        put('slot-timer', enemy, 0);
+        put('slot-code', enemy, 8);
+      };
+      seedEnemy();
+      const score0 = readVar(vm, 'eco-score');
+      // A live shot one column to the side of the Toroid (same row): must MISS. Before the single-column
+      // fix a dead lower bound made the hit box a whole row, so this off-column shot wrongly scored.
+      put('slot-type', shot, 1);
+      put('slot-state', shot, 1);
+      put('slot-x', shot, cellX);
+      put('slot-y', shot, cellY + 256);
+      step(vm, 1);
+      const offColumnDelta = readVar(vm, 'eco-score') - score0;
+      // The Toroid is untouched by the miss; a shot moved onto its column resolves the hit and scores.
+      put('slot-type', shot, 1);
+      put('slot-state', shot, 1);
+      put('slot-x', shot, cellX);
+      put('slot-y', shot, cellY);
+      step(vm, 1);
+      const onColumnDelta = readVar(vm, 'eco-score') - score0 - offColumnDelta;
+      return { offColumnDelta, onColumnDelta, award: readVar(vm, 'eco-value-table')[2] };
+    },
+    assert(obs) {
+      assert.equal(obs.offColumnDelta, 0, 'a shot one column off the Toroid does NOT score');
+      assert.equal(obs.onColumnDelta, obs.award, 'a shot on the Toroid column scores its value');
+    },
+    // Empty the shot-vs-air detector so the on-column hit never resolves → the on-column assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
+  },
+  {
+    key: 'craft-collision-is-single-cell',
+    behavior:
+      'A Toroid raises player-hit ONLY on the craft’s exact cell: one column off or one row off does not — the collision box is a single cell, not the quadrant above/beside the craft',
+    playtestStep: 5,
+    async drive(vm) {
+      // invuln stays ON from reachPlaying: the craft cannot die, and `player hit` latches (it is cleared
+      // only in the invuln-off death branch), so each seeded overlap is directly observable.
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const pr = readVar(vm, 'player-row'),
+        pc = readVar(vm, 'player-col');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const seedAt = (dRow, dCol) => {
+        put('slot-type', 63, 10);
+        put('slot-state', 63, 1);
+        put('slot-x', 63, (pr + dRow) * 256);
+        put('slot-y', 63, (pc + dCol) * 256);
+        put('slot-dx', 63, 0);
+        put('slot-dy', 63, 0);
+        put('slot-flag', 63, 9);
+        put('slot-timer', 63, 0);
+        put('slot-code', 63, 8);
+      };
+      // One column beside the craft (same row): must NOT touch. The quadrant bug fired here.
+      writeVar(vm, 'player-hit', 0);
+      seedAt(0, 1);
+      step(vm, 1);
+      const offColumn = readVar(vm, 'player-hit');
+      // One row above the craft (same column): must NOT touch. The quadrant bug fired here too.
+      writeVar(vm, 'player-hit', 0);
+      seedAt(1, 0);
+      step(vm, 1);
+      const offRow = readVar(vm, 'player-hit');
+      // The craft's exact cell: MUST touch.
+      writeVar(vm, 'player-hit', 0);
+      seedAt(0, 0);
+      step(vm, 1);
+      const onCell = readVar(vm, 'player-hit');
+      return { offColumn, offRow, onCell };
+    },
+    assert(obs) {
+      assert.equal(obs.offColumn, 0, 'a Toroid one column beside the craft does NOT touch it');
+      assert.equal(obs.offRow, 0, 'a Toroid one row above the craft does NOT touch it');
+      assert.equal(obs.onCell, 1, 'a Toroid on the craft cell raises player hit');
+    },
+    // Neutralize the walk so the on-cell overlap is never checked → the on-cell assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'advance slots'),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"
