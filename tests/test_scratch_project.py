@@ -4218,6 +4218,11 @@ class ScratchProjectTests(unittest.TestCase):
         # Pinned to independent literals so a wrong window reddens here.
         self.assertEqual(director.HIT_WINDOW_BULLET_FLYING, (8, 16, 4, 8))
         self.assertEqual(director.HIT_WINDOW_BACURA, (28, 40, 8, 16))
+        # WPN-02 shot-vs-flying window: DOUBLED from the reference (16,32,8,16) as a recorded,
+        # playtest-driven deviation — the reference height (2 cells) is under the shot's 2.5-cell/frame
+        # step (tunneling) and covers only ~40% of our 36-px rendered Toroid. See B8-no-tunnel and the
+        # HIT_WINDOW_SHOT_FLYING comment in game_director.py.
+        self.assertEqual(director.HIT_WINDOW_SHOT_FLYING, (32, 64, 16, 32))
         # The bullet allocator's result var is its own, never the blaster's (no coupling).
         self.assertNotEqual(director.BULLET_ALLOC_RESULT_ID, director.ALLOC_RESULT_ID)
         self.assertEqual(director.BULLET_TYPE, 2)
@@ -4596,6 +4601,23 @@ class ScratchProjectTests(unittest.TestCase):
             fails.add("B8-speed")
         if count("blaster", "control_wait") != 0:
             fails.add("B8-wall-clock")
+        # B8-no-tunnel: the shot's per-frame vertical advance must not exceed the shot-vs-air hit
+        # window's height, or a real fired shot steps clean OVER a Toroid between collision samples
+        # (every shot in a held stream shares the craft-row phase, so a Toroid in a gap is immune to
+        # the whole stream — the operator saw "multiple rounds and nothing happens"). The headless
+        # harness cannot reproduce per-frame timing (it runs threads to settling), so this numeric
+        # invariant is the guard. shot step = DY / RENDER_ROW_STAGE cells; window height = y_width /
+        # SHADOW_PER_CELL cells. Require ~1 cell of margin for the enemy's own closing motion.
+        dy_blocks = [
+            num(b["inputs"].get("DY"))
+            for b in blocks["blaster"].values()
+            if b["opcode"] == "motion_changeyby"
+        ]
+        shot_dy = max(dy_blocks) if dy_blocks else 0
+        shot_step_cells = shot_dy / director.RENDER_ROW_STAGE
+        window_height_cells = director.HIT_WINDOW_SHOT_FLYING[1] / director.SHADOW_PER_CELL
+        if window_height_cells < shot_step_cells + 1.0:
+            fails.add("B8-no-tunnel")
 
         # B2 — single bomb: no clone, a guard armed and re-armed, the bomb broadcast.
         if count("bomb", "control_start_as_clone") != 0:
@@ -5176,7 +5198,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3e5d6cc9b006d5edb00122b1388af8a8da792f87d4cbe751550d0922674f2994",
+            "0c7c82db73b670f15695af5e9b6a7568506b4a42cb19e58bdaa8f13f6bf8f519",
             build_hash,
         )
 

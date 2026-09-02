@@ -5,8 +5,9 @@
   the enemy's point value (ECO-01, 30 for a Toroid), and the struck enemy explodes and is freed. This
   retires the debug **S** scoring fixture: the real producer of `award value` is now a kill.
 - Derived behavior: Each frame, every active flying enemy is tested against the three player-shot slots.
-  A shot overlaps when, in the reference's half-pixel "shadow" units, shot Y − enemy Y ∈ [−16, 15] and
-  enemy X − shot X ∈ [−8, 7]. On the first overlapping shot the enemy is marked struck and its value is
+  A shot overlaps when, in the reference's half-pixel "shadow" units, shot Y − enemy Y ∈ [−32, 31] and
+  enemy X − shot X ∈ [−16, 15] — the reference window (bias 16/8) DOUBLED, a playtest-driven deviation
+  recorded below (deviation 5). On the first overlapping shot the enemy is marked struck and its value is
   added to the score once; the shot is consumed (it cannot hit a second enemy that frame). A struck enemy
   plays a 20-arcade-frame explosion (five 4-frame phases, doubling in size at frame 8) while still
   drifting on its velocity, then its slot is freed. While exploding it neither hits nor is hit.
@@ -71,8 +72,21 @@
   one delta block across both compares let the `>` steal it from the `<`, leaving the lower bound reading an
   empty operand (always in range) — the box degraded to a whole row, and a held shot destroyed any Toroid in
   its row regardless of column (the operator playtest caught it). The fresh-per-compare build restores the
-  single-column box; `air-shot-hit-is-single-column` asserts an off-column shot does NOT score so the
-  regression cannot return.
+  bounded box; `air-shot-hit-column-bounded` asserts a shot two columns off does NOT score so the
+  regression cannot return. (6) **Window doubled to (32,64,16,32) — anti-tunneling + sprite match
+  (post-playtest).** The reference window (16,32,8,16) is 2 cells tall, but the self-propelled port's
+  blaster shot advances `changeyby 20` = 2.5 cells per frame (20 stage-px ÷ the 8-px scroll cell), so a
+  fired shot stepped clean OVER a Toroid between per-frame collision samples; because every shot in a held
+  stream starts at the craft's row they share one sampling phase, so a Toroid in a gap was immune to the
+  whole stream — the operator saw "many rounds into a group and nothing happens." Doubling the window to a
+  4-cell height makes it exceed the per-frame step (with margin for the enemy's own closing motion) so every
+  crossing is sampled, and the ±1-cell width now matches the 36-px rendered Toroid so a visible overlap
+  kills — the arcade mow-down feel. The headless harness cannot reproduce per-frame timing (it runs threads
+  to settling), so the numeric invariant `B8-no-tunnel` (shot cell-step ≤ window height − 1 cell margin) is
+  the automated guard; on-screen feel remains the operator playtest's. The craft hurtbox
+  (`HIT_WINDOW_BULLET_FLYING`) is deliberately NOT widened — forgiving offence, precise defence. A more
+  faithful alternative (swept collision keeping the tight window) was set aside as the larger change; the
+  doubled window also serves the sprite-match, so it is the smaller fix that solves both.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

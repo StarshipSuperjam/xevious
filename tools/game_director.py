@@ -196,11 +196,25 @@ ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 # windows: the shared enemy-bullet/flying-enemy window, and the distinct, larger Bacura one.
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
-# WPN-02 player-shot vs flying-enemy window (`check_shot_hit_flying_enemy` $19A6): the reference's
-# `sub #16; add #32` (Y) and `sub #8; add #16` (X) idiom on the shadow MSBs, i.e. shotY-enemyY in
-# [-16,15] and enemyX-shotX in [-8,7] half-pixel shadow units. Same (bias,width) convention as the
-# windows above; this is the first one with a live detector (the walk's shot-vs-air pass, slice 8).
-HIT_WINDOW_SHOT_FLYING = (16, 32, 8, 16)
+# WPN-02 player-shot vs flying-enemy window. The reference's `check_shot_hit_flying_enemy` ($19A6)
+# uses `sub #16; add #32` (Y) and `sub #8; add #16` (X) → shotY-enemyY in [-16,15], enemyX-shotX in
+# [-8,7] half-pixel shadow units. This port DOUBLES that to (32,64,16,32) — a deliberate, recorded
+# deviation (playtest-driven) for two reasons the reference didn't face:
+#   1. TUNNELING. The blaster shot travels `changeyby 20` = 20 stage-px/frame ÷ RENDER_ROW_STAGE(8) =
+#      2.5 cells/frame, while the reference window is only 2 cells tall — so the per-frame step
+#      overshoots the window and shots skip clean over a Toroid (every shot in a held stream shares
+#      the craft-row sampling phase, so a Toroid in a gap is immune to the whole stream: the operator
+#      saw "multiple rounds into a group and nothing happens"). The reference never tunnels because
+#      its shot speed and window are balanced at the arcade's finer step; our DY was a preserved-
+#      baseline the movement slice never reconciled. A 4-cell-tall window (64 shadow) exceeds the
+#      2.5-cell step (with margin for the enemy's own closing motion), so every crossing is sampled.
+#   2. SPRITE MATCH. The Toroid renders as a 36-px sprite (16-px costume at size 225); the reference
+#      window covered ~the central 40% of that, so bullets visibly overlapping the sprite missed.
+#      The doubled window (±2 cells Y ≈ 32 px, ±1 cell X ≈ 30 px) matches the rendered body, so a
+#      shot touching the Toroid kills it — the arcade "mow-down" feel. The tight craft HURTBOX
+#      (HIT_WINDOW_BULLET_FLYING, single cell) is intentionally NOT widened: forgiving offence,
+#      precise defence.
+HIT_WINDOW_SHOT_FLYING = (32, 64, 16, 32)
 # Shadow (half-pixel) unit expressed in the slot lists' 1/32-px units: 1 half-px = 16 units. The
 # detector floors each slot position to its shadow MSB before differencing, matching the reference's
 # byte compare — but on the EXACT half-px delta (no mod-256 wrap), so it never produces the

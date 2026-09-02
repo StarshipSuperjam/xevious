@@ -638,56 +638,49 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
   },
   {
-    key: 'air-shot-hit-is-single-column',
+    key: 'air-shot-hit-column-bounded',
     behavior:
-      'A player shot resolves a Toroid ONLY in its own column: a shot one column off does not score, a shot on the column does — the hit box is a single column, not the whole row',
+      'The shot-vs-air hit box spans the rendered Toroid width (±1 column) but no further: a controlled shot on-column or one column off scores, two columns off does not',
     playtestStep: 6,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
-      const enemy = 63,
-        shot = 36,
-        cellX = 5000,
-        cellY = 4000;
-      // A stationary Toroid parked mid-field (flag 9 = already-swung sentinel: it never moves or swings).
-      const seedEnemy = () => {
-        put('slot-type', enemy, 10);
-        put('slot-state', enemy, 1);
-        put('slot-pts', enemy, 3);
-        put('slot-x', enemy, cellX);
-        put('slot-y', enemy, cellY);
-        put('slot-dx', enemy, 0);
-        put('slot-dy', enemy, 0);
-        put('slot-flag', enemy, 9);
-        put('slot-timer', enemy, 0);
-        put('slot-code', enemy, 8);
+      // Park the Toroid 8 columns from the craft so the real tapped shot (craft column) can never reach
+      // it — only the CONTROLLED shot we seed into a real detector slot (37) can score it. `eResult`
+      // maps offset -> score delta; the enemy is re-parked before each probe (a scoring hit frees it).
+      const eResult = (dCol) => {
+        const pr = readVar(vm, 'player-row'),
+          pc = readVar(vm, 'player-col');
+        const eRow = pr - 6,
+          eCol = pc - 8;
+        put('slot-type', 63, 10);
+        put('slot-state', 63, 1);
+        put('slot-pts', 63, 3);
+        put('slot-x', 63, eRow * 256);
+        put('slot-y', 63, eCol * 256);
+        put('slot-dx', 63, 0);
+        put('slot-dy', 63, 0);
+        put('slot-flag', 63, 9);
+        put('slot-timer', 63, 0);
+        put('slot-code', 63, 8);
+        const score0 = readVar(vm, 'eco-score');
+        put('slot-type', 37, 1); // a controlled shot in a real detector slot (SHOT_SLOTS = 37-39)
+        put('slot-state', 37, 1);
+        put('slot-x', 37, eRow * 256);
+        put('slot-y', 37, (eCol + dCol) * 256);
+        step(vm, 1);
+        return readVar(vm, 'eco-score') - score0;
       };
-      seedEnemy();
-      const score0 = readVar(vm, 'eco-score');
-      // A live shot one column to the side of the Toroid (same row): must MISS. Before the single-column
-      // fix a dead lower bound made the hit box a whole row, so this off-column shot wrongly scored.
-      put('slot-type', shot, 1);
-      put('slot-state', shot, 1);
-      put('slot-x', shot, cellX);
-      put('slot-y', shot, cellY + 256);
-      step(vm, 1);
-      const offColumnDelta = readVar(vm, 'eco-score') - score0;
-      // The Toroid is untouched by the miss; a shot moved onto its column resolves the hit and scores.
-      put('slot-type', shot, 1);
-      put('slot-state', shot, 1);
-      put('slot-x', shot, cellX);
-      put('slot-y', shot, cellY);
-      step(vm, 1);
-      const onColumnDelta = readVar(vm, 'eco-score') - score0 - offColumnDelta;
-      return { offColumnDelta, onColumnDelta, award: readVar(vm, 'eco-value-table')[2] };
+      return { onCol: eResult(0), oneOff: eResult(1), twoOff: eResult(2), award: readVar(vm, 'eco-value-table')[2] };
     },
     assert(obs) {
-      assert.equal(obs.offColumnDelta, 0, 'a shot one column off the Toroid does NOT score');
-      assert.equal(obs.onColumnDelta, obs.award, 'a shot on the Toroid column scores its value');
+      assert.equal(obs.onCol, obs.award, 'a shot on the Toroid column scores');
+      assert.equal(obs.oneOff, obs.award, 'a shot one column off still scores (within the rendered sprite)');
+      assert.equal(obs.twoOff, 0, 'a shot two columns off does NOT score (past the sprite width)');
     },
-    // Empty the shot-vs-air detector so the on-column hit never resolves → the on-column assertion fails.
+    // Empty the shot-vs-air detector so no controlled shot ever resolves → the on-column assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
   },
   {
