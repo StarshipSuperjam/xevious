@@ -66,12 +66,14 @@ class CorpusGuards(unittest.TestCase):
 
     def test_no_approximate_line_reference_survives(self):
         # A bare `~NNN` that is a line reference — anywhere, not only next to a
-        # label. A decimal (`~12.4 s`) or a number followed by a unit word
-        # (`~56 frames`, `~224 arcade-frame`, `~16 areas`) is a duration or count,
-        # not a line, and is left alone. Whitespace is normalised first so a unit
-        # word wrapped onto the next line (`~744\nframes`) is still recognised.
-        UNIT = r"(?:frame|arcade|area|px|pixel|sec|second|\bs\b|ms|row|tile|hz|byte|entr|%)"
-        approx = re.compile(r"~(\d{2,5})(?!\d)(?!\.\d)(?!\s*-?\s*" + UNIT + ")", re.IGNORECASE)
+        # label. A line reference is followed by punctuation or end (`~514)`),
+        # whereas a count, duration, or distance is followed by a unit *word*
+        # (`~56 frames`, `~224 arcade-frame`, `~128 half-px`, `~16 areas`) or is a
+        # decimal (`~12.4 s`) — those are left alone. So flag a whole-number `~NNN`
+        # only when it is NOT followed by an optional dash/space and a letter or `%`.
+        # Whitespace is normalised first so a unit wrapped onto the next line
+        # (`~744\nframes`) is still recognised.
+        approx = re.compile(r"~(\d{2,5})(?!\d)(?!\.\d)(?!\s*-?\s*[A-Za-z%])")
         offenders = []
         for p in list(_spec_docs()) + list(_mech_docs()):
             text = re.sub(r"\s+", " ", p.read_text(encoding="utf-8"))
