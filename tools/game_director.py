@@ -642,6 +642,7 @@ CULL_ROW_MAX = 40  # >= 0x28 rows (past the bottom) -> offscreen
 CULL_ROW_MIN = -2  # <= -2 rows (past the top, the reference's byte-wrap) -> offscreen
 CULL_COL_MAX = 31  # >= 0x1F columns -> offscreen (lateral)
 CULL_COL_MIN = -2  # <= -2 columns -> offscreen (left edge; bullets can fly out any side)
+TOROID_SPAWN_ROW = 0  # new/refilled flying enemies enter from the top row (see install_init_toroid)
 
 # FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
 # => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
@@ -1830,6 +1831,12 @@ def install_init_toroid(blocks: Blocks) -> None:
         [
             _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, variable("walk type", WALK_TYPE_ID)),
             _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            # Enter from the TOP row. The reference's world-scroll carries flying enemies down from the
+            # top; this self-propelled port has no enemy scroll, so a refilled slot would otherwise
+            # inherit the previous occupant's (mid-field) scroll position and aim a steep short-range
+            # dive that clips the craft before its swing can divert. Set the scroll row to the top BEFORE
+            # aiming so every wave streams in from the top and has room to swing (recorded deviation).
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
             blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
             blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
             blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
@@ -2028,8 +2035,12 @@ def install_update_toroid(blocks: Blocks) -> None:
     ]
     off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
     off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))  # row <= -2  ==  row < -1
-    off_side = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
-    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), off_side)
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))  # col <= -2 (left edge)
+    # The swing sends a Toroid off EITHER lateral edge. The reference culls a left exit via its 8-bit
+    # column wrapping past the right threshold; this port uses signed columns, so it needs an explicit
+    # left-edge cull too — without it a left-fleeing Toroid never frees its slot and slides off-screen.
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
     cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     # A struck Toroid (state HIT) runs its explosion instead of the normal update — while exploding it
     # neither hits nor is hit. Otherwise it first offers itself to the shot detector (which may flip it
@@ -2058,9 +2069,10 @@ def install_update_toroid(blocks: Blocks) -> None:
 
 
 def install_cull_slot(blocks: Blocks) -> None:
-    # Free the slot at `slot index` (type/state to empty). The position fields are deliberately NOT
-    # cleared: a refilled flying slot inherits the previous occupant's scroll-axis position (coded
-    # refill behavior, check_scroll_offscreen 30B4 clears only type/state/extra).
+    # Free the slot at `slot index` (type/state to empty). The position fields are left as-is (like the
+    # reference's check_scroll_offscreen 30B4, which clears only type/state/extra); a refilled flying
+    # slot no longer inherits that stale position — `init toroid` resets the scroll row to the top and
+    # re-draws the lateral column, so every spawn enters cleanly from the top.
     definition = _install_warp_proc(blocks, CULL_SLOT_PROCCODE)
     blocks.chain(
         definition,

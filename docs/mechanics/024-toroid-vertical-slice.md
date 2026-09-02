@@ -4,7 +4,7 @@
   wave spawns it into a flying slot, it aims at the craft on the 24-magnitude homing tier and
   approaches, then when it draws nearly level swings by REVERSING its lateral course (peeling away
   from the side it was closing on, the arcade `toroid_toggle_dir` bounce — not a homing dive), animates its flap,
-  and is culled off the play field with its scroll-axis position kept for the refill. This is the
+  and is culled off any play-field edge; a new or refilled slot re-enters from the top. This is the
   first live consumer of the shared RNG (SYS-04 becomes a present consumer) and of the slice-7
   formation state, and the first author of the per-slot position/motion fields laid down dormant in
   [record 023](023-aiming-and-slot-positions.md).
@@ -12,14 +12,15 @@
   N flying slots (0x3A–0x3F) each frame from the wave's type run; a slot re-spawns the moment its
   occupant leaves, so the wave is continuous pressure until a reset-formation record zeroes N. A
   Toroid draws a random lateral spawn column (reject-and-redraw, never within eight columns of the
-  craft), inherits the previous occupant's scroll-axis position, aims at the craft, and approaches at
-  1.5 px/frame. When the craft's lateral offset falls in [-2, 1] columns it commits — once — to a
-  swing that REVERSES its lateral velocity: it nudges the aimed (craft-ward) `slot dy` by one unit per
-  frame against the approach (unbounded), so it decelerates, reverses, and peels away from the side it
-  was closing on — the reference `toroid_toggle_dir` toggle, not a homing dive — while cycling its eight
-  flap codes in opposite order per direction. It is culled when it scrolls past the bottom
-  (row ≥ 40), off the top (row ≤ -2), or off the side (col ≥ 31); the cull frees only occupancy, so a
-  refilled slot inherits its scroll row (a replacement can enter mid-field, not always from the top).
+  craft), enters from the top row (`init toroid` resets the scroll row so every spawn/refill streams
+  in from the top), aims at the craft, and approaches at 1.5 px/frame. When the craft's lateral offset
+  falls in [-2, 1] columns it commits — once — to a swing that REVERSES its lateral velocity: it nudges
+  the aimed (craft-ward) `slot dy` by one unit per frame against the approach (unbounded), so it
+  decelerates, reverses, and peels away from the side it was closing on — the reference
+  `toroid_toggle_dir` toggle, not a homing dive — while cycling its eight flap codes in opposite order
+  per direction. It is culled when it leaves the play field on ANY edge — past the bottom (row ≥ 40),
+  off the top (row ≤ -2), or off either side (col ≥ 31 or col ≤ -2); the left-edge cull matters now that
+  the swing regularly sends Toroids off the left.
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. The formation
   spawner is `main_fn_4__spawn_flying_enemies` (`src/xevious_main.68k` 5171–5186); the Toroid init and
   update are `init_toroid` / the object handler around 3289–3321 (flap) and the lateral-swing trigger;
@@ -72,10 +73,13 @@
 - Known deviations or uncertainty: (1) **Costume by reference.** `game_director` binds the `toroid`
   target's costumes to the seven verified `toroid_sprite_proof` crops by reference rather than
   `sprite_extractor` re-cropping them (the overlap guard blocks a duplicate crop of the same rects);
-  the proof target is retained as the crop's provenance home. (2) **Inherited-scroll refill.** The
-  cull keeps `slot x`/`slot y`, so a refilled slot re-enters at the previous occupant's scroll row —
-  faithful to `check_scroll_offscreen`, but a replacement can appear mid-field rather than from the
-  top. (3) **Spawner culls unhandled types.** Area 1's formations name other families (e.g. Torkan)
+  the proof target is retained as the crop's provenance home. (2) **Top-entry spawn (port deviation).**
+  The reference sets only the object TYPE on spawn and never resets the scroll position (its world-scroll
+  carries flying enemies down from the top); this self-propelled port has no enemy world-scroll, so
+  `init toroid` resets the scroll row to the top on every spawn/refill. Without it a refilled slot would
+  inherit the previous occupant's mid-field scroll row (the swing now culls Toroids at the sides,
+  mid-field) and aim a steep, short-range dive that clips a stationary craft — the operator playtest
+  caught exactly this. Top-entry restores the arcade's "stream in from the top." (3) **Spawner culls unhandled types.** Area 1's formations name other families (e.g. Torkan)
   too; this slice spawns only the handled Toroid types {0x0A, 0x0B} and skips the rest until their
   slice, so area 1 shows fewer enemies than the arcade until slice 10. (4) **Bounded spawn draw.**
   The reference redraws until it finds a valid column; this port caps the draw at 16 attempts and
