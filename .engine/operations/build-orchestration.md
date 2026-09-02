@@ -201,9 +201,9 @@ where nothing is `locked` to check against, both are the same disclosed no-op.
 
 ```text
 consumed-review-lenses:
-  plan-review gate: product-intent, architecture, feasibility, risk-governance
+  plan-review gate: product-intent, architecture, feasibility, risk-governance, reference-fidelity
   product-design spec-lock ceremony: product-intent, architecture, feasibility, risk-governance
-  pre-submission gate: spec-conformance, divergence-hunter, usability, technical-integrity, security-governance
+  pre-submission gate: spec-conformance, divergence-hunter, usability, technical-integrity, security-governance, reference-fidelity
 ```
 
 **The stranded-conflict case is not yet self-healing.** A sibling pull request can merge mid-flight after

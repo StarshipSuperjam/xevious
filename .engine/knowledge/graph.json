@@ -4312,7 +4312,7 @@
       },
       "slug": "build-orchestration",
       "source": {
-        "fingerprint": "sha256:baa8c6abc655dd1e5245dd9178bd2080782db08048956f841c86a92501a843c2",
+        "fingerprint": "sha256:d1927642bfa447cb503ab5253fca8215cf22dc59c6fd72030b91d4e9f5c18754",
         "path": ".engine/operations/build-orchestration.md"
       },
       "status": "active",
