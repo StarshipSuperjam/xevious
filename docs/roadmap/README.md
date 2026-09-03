@@ -68,6 +68,34 @@ pull request. They are not retroactively certified under today's evidence
 contract. Incomplete foundations—including the live entity, collision, random,
 and dispatch paths formerly hidden by closed issue #14—remain open leaves.
 
+## Recording delivery after a slice merges
+
+Merging a slice's pull request closes its leaf issues on GitHub, but nothing
+back-propagates into the manifest — the manifest is the source of truth, and a
+merge never edits it. Until you record the delivery, those leaves still read
+`status: "planned"`, so `reconcile` reports drift (a closed issue whose manifest
+status is not `history`) and — critically — the next `apply` would force those
+merged issues **back open** and reset their board cards to Backlog.
+
+After a slice PR merges, record it and re-project:
+
+```bash
+python3 tools/roadmap.py deliver --pr <PR#>   # manifest: its leaves → history + delivered_by
+python3 tools/roadmap.py apply                 # GitHub: keep issues closed, board Status → Done
+python3 tools/roadmap.py reconcile             # verify live state matches the manifest
+```
+
+Then commit the changed `manifest.json` and `migration.json`.
+
+`deliver` reads the pull request's computed closing issues, maps each to a leaf
+through the journal, and sets that leaf `status: "history"` with
+`delivered_by: <PR#>` — a minimal per-line edit that preserves the manifest's
+style. It refuses a pull request that is not merged, skips leaves already
+recorded, and re-validates before writing.
+
+**Order matters: record delivery first.** Running `apply` while a merged leaf is
+still `planned` reopens its issue. Always `deliver` before `apply`.
+
 ## Migration and recovery
 
 [`migration.json`](migration.json) is the resumable journal. The migration:
@@ -98,6 +126,7 @@ python3 tools/roadmap.py plan
 python3 tools/roadmap.py snapshot
 python3 tools/roadmap.py apply
 python3 tools/roadmap.py reconcile
+python3 tools/roadmap.py deliver --pr <PR#>
 python3 tools/roadmap.py handoff
 ```
 

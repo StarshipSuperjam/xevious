@@ -852,10 +852,107 @@ def render_handoff(manifest: dict[str, Any], journal: dict[str, Any]) -> str:
     )
 
 
+def deliver(journal: dict[str, Any], pr: int, manifest_path: Path = MANIFEST_PATH) -> list[str]:
+    """Record the leaves a merged PR closed as delivered, in the manifest only.
+
+    Reads the PR's computed closing issues, maps each to a leaf via the journal
+    (manifest leaves carry no issue number; the journal holds the mapping), and
+    sets that leaf ``status: "history"`` with ``delivered_by: <pr>`` — the manifest's
+    representation of a delivered leaf, which ``apply`` then projects to a closed
+    issue and a Done board card. Returns the leaf keys flipped.
+
+    The edit is a targeted, per-line text substitution so it preserves the manifest's
+    hand-authored one-line-per-leaf style (a JSON round-trip would reorder and reflow
+    the whole file). It re-parses and re-validates the result before writing, and
+    performs no GitHub or journal mutation. Refuses unless the PR is merged, so it
+    cannot mark work delivered before it lands.
+    """
+    detail = gh("pr", "view", str(pr), "--json", "state,closingIssuesReferences")
+    if not isinstance(detail, dict):
+        raise RoadmapError(f"could not read PR #{pr}")
+    if detail.get("state") != "MERGED":
+        raise RoadmapError(
+            f"PR #{pr} is {detail.get('state', 'unknown')}, not MERGED — "
+            "deliver records delivery only after a PR merges"
+        )
+    closed_numbers = {
+        ref.get("number")
+        for ref in detail.get("closingIssuesReferences", [])
+        if isinstance(ref, dict) and ref.get("number")
+    }
+    if not closed_numbers:
+        raise RoadmapError(f"PR #{pr} closes no issues; nothing to record as delivered")
+
+    text = manifest_path.read_text(encoding="utf-8")
+    manifest = json.loads(text)
+    leaf_by_number = {
+        entry.get("number"): key
+        for key, entry in journal.get("leaves", {}).items()
+        if isinstance(entry, dict) and entry.get("number")
+    }
+    parent_numbers = {
+        entry.get("number")
+        for entry in journal.get("parents", {}).values()
+        if isinstance(entry, dict) and entry.get("number")
+    }
+    status_by_key = {
+        leaf.get("key"): leaf.get("status")
+        for leaf in manifest.get("leaves", [])
+        if isinstance(leaf, dict)
+    }
+
+    targets: list[str] = []
+    for number in sorted(closed_numbers):
+        key = leaf_by_number.get(number)
+        if key is None:
+            reason = "maps to a parent, which has no delivery status" if number in parent_numbers else "not a roadmap leaf in the journal"
+            print(f"skip #{number}: {reason}", file=sys.stderr)
+            continue
+        if key not in status_by_key:
+            print(f"skip #{number} ({key}): key not found in the manifest", file=sys.stderr)
+            continue
+        if status_by_key[key] == "history":
+            print(f"skip {key} (#{number}): already recorded delivered", file=sys.stderr)
+            continue
+        targets.append(key)
+
+    if not targets:
+        raise RoadmapError(f"PR #{pr}: no planned leaves to record; manifest unchanged")
+
+    # Per-line text edit: on each target leaf's own line, turn `"status":"planned"` into
+    # `"status":"history","delivered_by":<pr>` (matching the field order of existing history leaves).
+    lines = text.split("\n")
+    needle = '"status":"planned"'
+    for key in targets:
+        marker = f'"key":"{key}"'
+        matched = [i for i, line in enumerate(lines) if marker in line]
+        if len(matched) != 1:
+            raise RoadmapError(f"expected exactly one manifest line for {key}, found {len(matched)}")
+        i = matched[0]
+        if lines[i].count(needle) != 1:
+            raise RoadmapError(f"{key}: could not locate a single planned status on its line")
+        lines[i] = lines[i].replace(needle, f'"status":"history","delivered_by":{pr}')
+    new_text = "\n".join(lines)
+
+    try:
+        new_manifest = json.loads(new_text)
+    except json.JSONDecodeError as exc:
+        raise RoadmapError(f"recording delivery produced invalid JSON (not written): {exc}") from exc
+    failures = validate_manifest(new_manifest)
+    if failures:
+        raise RoadmapError(
+            "manifest would be invalid after recording delivery (not written):\n"
+            + "\n".join(f"- {failure}" for failure in failures)
+        )
+    manifest_path.write_text(new_text, encoding="utf-8")
+    return targets
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["validate", "snapshot", "plan", "apply", "reconcile", "handoff"])
+    parser.add_argument("command", choices=["validate", "snapshot", "plan", "apply", "reconcile", "handoff", "deliver"])
     parser.add_argument("--live", action="store_true", help="include a read-only live mutation diff")
+    parser.add_argument("--pr", type=int, help="for deliver: the merged pull request whose leaves to record delivered")
     args = parser.parse_args(argv)
     manifest = read_json(MANIFEST_PATH)
     journal = read_json(MIGRATION_PATH) if MIGRATION_PATH.exists() else migration_template(manifest)
@@ -893,6 +990,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "handoff":
         print(render_handoff(manifest, journal))
+        return 0
+    if args.command == "deliver":
+        if not args.pr:
+            print("deliver requires --pr <merged PR number>", file=sys.stderr)
+            return 1
+        flipped = deliver(journal, args.pr)
+        print(f"marked delivered (status=history, delivered_by={args.pr}):")
+        for key in flipped:
+            number = journal.get("leaves", {}).get(key, {}).get("number", "?")
+            print(f"  {key} (#{number})")
+        print("next: run `roadmap.py apply` then `roadmap.py reconcile` to project this to GitHub")
         return 0
     raise AssertionError(args.command)
 

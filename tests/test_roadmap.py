@@ -4,7 +4,9 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -201,6 +203,84 @@ class ClosureGuardTests(unittest.TestCase):
         event = {"issue": {"number": 12}}
         failures = closures.validate_issue_event(event, self.manifest, self.migration)
         self.assertTrue(any("merged delivering" in item for item in failures))
+
+
+class DeliverTests(unittest.TestCase):
+    """`roadmap deliver --pr N` records a merged PR's leaves as delivered in the manifest."""
+
+    # A tiny manifest in the real hand-authored one-line-per-leaf style; validation is mocked so it
+    # need not carry the full schema, only be valid JSON with locatable leaf lines.
+    MANIFEST_TEXT = (
+        "{\n"
+        '  "version": 1,\n'
+        '  "leaves": [\n'
+        '    {"key":"done","status":"history","proof":"historical","delivered_by":8},\n'
+        '    {"key":"ready","status":"planned","proof":"playable"},\n'
+        '    {"key":"other","status":"planned","proof":"playable"}\n'
+        "  ]\n"
+        "}\n"
+    )
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp()
+        self.manifest_path = Path(self.tmp) / "manifest.json"
+        self.manifest_path.write_text(self.MANIFEST_TEXT, encoding="utf-8")
+        # The journal holds the issue-number mapping; manifest leaves carry no issue number.
+        self.journal = {
+            "parents": {"cap": {"number": 10}},
+            "leaves": {"done": {"number": 11}, "ready": {"number": 12}, "other": {"number": 14}},
+        }
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _merged(self, *numbers: int) -> dict:
+        return {"state": "MERGED", "closingIssuesReferences": [{"number": n} for n in numbers]}
+
+    def _leaves(self) -> dict:
+        return {l["key"]: l for l in json.loads(self.manifest_path.read_text())["leaves"]}
+
+    def test_flips_only_the_prs_planned_leaves(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=self._merged(12)), \
+             mock.patch.object(roadmap, "validate_manifest", return_value=[]):
+            flipped = roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(["ready"], flipped)
+        leaves = self._leaves()
+        self.assertEqual("history", leaves["ready"]["status"])
+        self.assertEqual(20, leaves["ready"]["delivered_by"])
+        # An unrelated leaf the PR did not close stays planned and untouched.
+        self.assertEqual("planned", leaves["other"]["status"])
+        self.assertNotIn("delivered_by", leaves["other"])
+        # The edit stays a minimal, per-line change — `other` and `done` lines are byte-identical.
+        text = self.manifest_path.read_text()
+        self.assertIn('{"key":"other","status":"planned","proof":"playable"}', text)
+        self.assertIn('{"key":"ready","status":"history","delivered_by":20,"proof":"playable"}', text)
+
+    def test_skips_parents_and_already_delivered(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=self._merged(10, 11, 12)), \
+             mock.patch.object(roadmap, "validate_manifest", return_value=[]):
+            flipped = roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(["ready"], flipped)  # #10 is a parent, #11 already history
+        self.assertEqual(8, self._leaves()["done"]["delivered_by"])  # untouched
+
+    def test_refuses_a_pr_that_is_not_merged(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value={"state": "OPEN", "closingIssuesReferences": [{"number": 12}]}):
+            with self.assertRaises(roadmap.RoadmapError):
+                roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(self.MANIFEST_TEXT, self.manifest_path.read_text())  # unchanged
+
+    def test_refuses_when_nothing_planned_to_record(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=self._merged(11)):
+            with self.assertRaises(roadmap.RoadmapError):
+                roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(self.MANIFEST_TEXT, self.manifest_path.read_text())  # unchanged
+
+    def test_an_invalid_result_aborts_the_write(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=self._merged(12)), \
+             mock.patch.object(roadmap, "validate_manifest", return_value=["boom"]):
+            with self.assertRaises(roadmap.RoadmapError):
+                roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(self.MANIFEST_TEXT, self.manifest_path.read_text())  # unchanged
 
 
 if __name__ == "__main__":
