@@ -11,13 +11,18 @@ expect about twenty to twenty-five minutes now that death and scoring are exerci
 window before an intentional death, with no clock-acceleration key. Deeper per-capability checks live in
 each spec document's acceptance table and are run when their capability changes.
 
-**Before you start.** Build and load the PR's `.sb3`:
+**Before you start.** Build and load the PR's `.sb3` through the handover tool,
+which verifies the build is faithful to the pinned reference (it re-derives the
+generated data and resolves every citation) and refuses to build while any
+citation is unresolved:
 
 ```bash
-python3 tools/scratch_project.py build
+python3 tools/playtest_package.py
 ```
 
-then open `dist/Xevious.sb3` in Scratch 3. Controls today: **arrow keys** move, **Space** fires (and
+then open `dist/Xevious.sb3` in Scratch 3. (The raw `python3 tools/scratch_project.py build`
+still exists for a non-gameplay build, but a playtest build goes through the tool
+above so a build that adapted to a wrong spec never reaches the playtest.) Controls today: **arrow keys** move, **Space** fires (and
 also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
 (there is no separate crosshair control). The temporary **D**, **G**, and **S** debug keys are **gone** —
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to

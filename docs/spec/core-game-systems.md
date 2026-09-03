@@ -93,7 +93,7 @@ ground slots; and during a boss encounter Andor Genesis's fifteen parts occupy g
 traffic — the schedule data respects this. Explosion and bounce presentations animate within their
 owner's slot. Scrolling
 carries map-anchored entities; an entity leaving the play area is culled at the recorded screen-edge margins
-(values in [Player craft and weapons](player-craft-and-weapons.md); `check_scroll_offscreen` 4826–4839) and its slot freed with no leaked state. The complete object-type
+(values in [Player craft and weapons](player-craft-and-weapons.md); `src/xevious_main.68k` `check_scroll_offscreen` 4826–4839) and its slot freed with no leaked state. The complete object-type
 vocabulary — all 93 codes — is the generated registry in
 [data/object-types.json](data/object-types.json): sprite-bearing object types carry their handler and
 name; the 25 pure schedule-control codes carry no sprite handler and are named by their

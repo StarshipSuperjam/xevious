@@ -6,7 +6,8 @@ reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 # Player craft and weapons
 
 Covers mechanics catalog rows PLY-01, PLY-02, and WPN-01 through WPN-05. Values cite the pinned reference
-(`reference_pin` in [the index](index.md)) as `file label lines`. Position units: the reference stores
+(`reference_pin` in [the index](index.md)) as `file label lines`. Citations are
+`src/xevious_main.68k` unless noted. Position units: the reference stores
 positions in 1/32-pixel fixed point and applies velocities doubled, so pixel speeds below are stated after
 conversion; timings are arcade frames at 60 per second.
 

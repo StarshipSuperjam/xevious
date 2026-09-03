@@ -1,0 +1,42 @@
+# reference-fidelity — the pinned arcade reference, checked mechanically on every pull request.
+#
+# Clones jotd666/xevious at the pinned commit, re-verifies the five source hashes, re-derives every
+# generated data file, and resolves every citation in docs/spec/ and docs/mechanics/ to a real label and
+# line range at that commit.
+#
+# ADVISORY, never a merge gate: reference-fidelity is deliberately NOT in the branch ruleset's required
+# checks (engine-ci, engine-guard), so a finding here is visible but can never block a merge a non-engineer
+# cannot clear. It is a BACKSTOP, not the fix: the real in-session guard is the build session running these
+# same checks through tools/playtest_package.py before it hands over the .sb3, and the reference-fidelity
+# review reading the cited source at both gates.
+#
+# It fails LOUDLY if the upstream reference is unreachable rather than skipping: an unverifiable reference is
+# the state docs/REFERENCE_POLICY.md records as an accepted risk, and a silent green would hide it.
+name: reference fidelity
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  reference-fidelity:
+    name: reference-fidelity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Clone the pinned reference and verify its hashes
+        run: python tools/reference_checkout.py ensure --dir "$RUNNER_TEMP/xevious-reference"
+      - name: Re-derive the generated data files from the pin
+        run: python tools/reference_extract.py --verify --checkout "$RUNNER_TEMP/xevious-reference"
+      - name: Resolve every citation against the pin
+        run: python tools/reference_citations.py --checkout "$RUNNER_TEMP/xevious-reference"

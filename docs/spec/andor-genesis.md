@@ -46,7 +46,7 @@ scoring bug is arcade behavior, preserved and flagged
 ([Scoring, lives, and game over](scoring-lives-and-game-over.md)). If the core is never destroyed, the
 boss leaves when the schedule's *andor-genesis-end* record fires at its scripted scroll row — a
 map-scripted exit, not a countdown timer (`src/xevious_sub.68k` `sub_2_fn_21__andor_genesis_end`
-569–572; `andor_genesis_leave` 5426–5443) — and the encounter ends unrewarded.
+569–572; `src/xevious_main.68k` `andor_genesis_leave` 5426–5443) — and the encounter ends unrewarded.
 
 ## Acceptance criteria
 

@@ -64,6 +64,23 @@ python3 tools/scratch_project.py verify
 python3 tools/scratch_project.py build
 ```
 
+The pinned arcade reference is verified against a local clone (fetched once,
+outside the repository):
+
+```sh
+REF="$(python3 tools/reference_checkout.py ensure)"
+python3 tools/reference_extract.py --verify --checkout "$REF"
+python3 tools/reference_citations.py --checkout "$REF"
+```
+
+A build for the operator's playtest is produced only through the handover tool,
+which runs those reference checks first and refuses to emit a build while any
+citation fails to resolve:
+
+```sh
+python3 tools/playtest_package.py
+```
+
 The build uses stored ZIP entries with fixed metadata, so identical source
 produces identical output across supported systems.
 

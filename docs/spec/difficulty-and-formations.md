@@ -6,7 +6,8 @@ reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 # Difficulty and formations
 
 Covers mechanics catalog rows DIF-01 through DIF-03 and FORM-01. Values cite the pinned reference
-(`reference_pin` in [the index](index.md)) as `file label lines`.
+(`reference_pin` in [the index](index.md)) as `file label lines`. Citations are
+`src/xevious_sub.68k` unless noted.
 
 License status of extracted values: the reference states no reusable license (recorded in [the index](index.md) and every data file).
 
@@ -54,7 +55,7 @@ waves (`sub_2_fn_5__reset_flying_enemies` 331–335).
 
 **Fire-permission masks.** Area schedules set one mask byte per firing family — Derota, Logram, Zoshi,
 Terrazi, Kapi, Boza Logram, Domogram, Andor Genesis — plus a ground-stop-firing row
-(`xevious_sub.68k` `sub_2_fn_8` through `sub_2_fn_22`, 375–419; every mask value each area sets, with its
+(`xevious_sub.68k` `sub_2_fn_8__fire_freq_mask_derota` through `sub_2_fn_22__fire_freq_mask_andor_genesis` 375–419; every mask value each area sets, with its
 trigger row, is in [data/area-schedules.json](data/area-schedules.json)). A family's mask gates how often
 its members may fire; the per-family firing behavior that consumes each mask is specified in that family's
 document ([Aerial enemies](aerial-enemies.md), [Ground objects](ground-objects.md),

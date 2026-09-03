@@ -55,7 +55,11 @@ departure is recorded rather than improvised. Every principle below serves that 
   (`harness/`) runs the game and reads internal state variables, a proxy for the logic layer. Its results
   may never be reported as engine-checked gameplay, nor satisfy an on-screen acceptance row, nor advance a
   pull request out of draft. Observable gameplay is always the owner's to confirm on screen, and the split
-  is reported plainly before anything is settled.
+  is reported plainly before anything is settled. Separately, a reference *citation* is
+  engine-checked — `tools/reference_citations.py` decides mechanically whether it resolves to a real label
+  and line range at the pinned commit — but whether the prose faithfully describes what those source lines
+  *do* is not engine-checkable; that is the reference-fidelity review's judgment, and where the reference
+  and the spec disagree the reference wins and the spec is corrected.
 - **Provenance discipline, no rights claimed.** The reference states no reusable license; this project
   records that honestly, claims no rights in Namco's trademarks, artwork, or audio, copies no assembly or
   other source text, and never acquires or opens arcade ROM files. A rights review is required before any
