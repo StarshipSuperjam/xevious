@@ -864,16 +864,23 @@ def deliver(journal: dict[str, Any], pr: int, manifest_path: Path = MANIFEST_PAT
     The edit is a targeted, per-line text substitution so it preserves the manifest's
     hand-authored one-line-per-leaf style (a JSON round-trip would reorder and reflow
     the whole file). It re-parses and re-validates the result before writing, and
-    performs no GitHub or journal mutation. Refuses unless the PR is merged, so it
-    cannot mark work delivered before it lands.
+    performs no GitHub or journal mutation.
+
+    Accepts an OPEN or a MERGED PR — the author runs it on their own open PR so the
+    manifest edit rides the same PR that closes the issues, and the closure check then
+    proves that edit is present before the PR may merge. It refuses only a CLOSED
+    (closed-unmerged) PR, whose "delivery" never happened. The manifest edit is inert
+    until the PR merges, so recording it early on an open PR marks nothing delivered on
+    main or the board.
     """
     detail = gh("pr", "view", str(pr), "--json", "state,closingIssuesReferences")
     if not isinstance(detail, dict):
         raise RoadmapError(f"could not read PR #{pr}")
-    if detail.get("state") != "MERGED":
+    state = detail.get("state")
+    if state not in {"OPEN", "MERGED"}:
         raise RoadmapError(
-            f"PR #{pr} is {detail.get('state', 'unknown')}, not MERGED — "
-            "deliver records delivery only after a PR merges"
+            f"PR #{pr} is {state or 'unknown'} — deliver records delivery for an open PR "
+            "(so its manifest edit rides the same PR) or a merged one, never a closed-unmerged PR"
         )
     closed_numbers = {
         ref.get("number")
@@ -952,7 +959,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["validate", "snapshot", "plan", "apply", "reconcile", "handoff", "deliver"])
     parser.add_argument("--live", action="store_true", help="include a read-only live mutation diff")
-    parser.add_argument("--pr", type=int, help="for deliver: the merged pull request whose leaves to record delivered")
+    parser.add_argument("--pr", type=int, help="for deliver: the open or merged pull request whose leaves to record delivered")
     args = parser.parse_args(argv)
     manifest = read_json(MANIFEST_PATH)
     journal = read_json(MIGRATION_PATH) if MIGRATION_PATH.exists() else migration_template(manifest)
@@ -993,14 +1000,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "deliver":
         if not args.pr:
-            print("deliver requires --pr <merged PR number>", file=sys.stderr)
+            print("deliver requires --pr <open or merged PR number>", file=sys.stderr)
             return 1
         flipped = deliver(journal, args.pr)
         print(f"marked delivered (status=history, delivered_by={args.pr}):")
         for key in flipped:
             number = journal.get("leaves", {}).get(key, {}).get("number", "?")
             print(f"  {key} (#{number})")
-        print("next: run `roadmap.py apply` then `roadmap.py reconcile` to project this to GitHub")
+        print(f"next: commit this manifest edit into PR #{args.pr} (the closure check requires it before merge);")
+        print("after it merges, run `roadmap.py apply` then `roadmap.py reconcile` from main to project it to GitHub")
         return 0
     raise AssertionError(args.command)
 

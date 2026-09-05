@@ -282,8 +282,20 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual(["ready"], flipped)  # #10 is a parent, #11 already history
         self.assertEqual(8, self._leaves()["done"]["delivered_by"])  # untouched
 
-    def test_refuses_a_pr_that_is_not_merged(self) -> None:
-        with mock.patch.object(roadmap, "gh", return_value={"state": "OPEN", "closingIssuesReferences": [{"number": 12}]}):
+    def _open(self, *numbers: int) -> dict:
+        return {"state": "OPEN", "closingIssuesReferences": [{"number": n} for n in numbers]}
+
+    def test_records_delivery_on_an_open_pr(self) -> None:
+        # The author runs deliver on their own open PR so the manifest edit rides the same PR;
+        # the closure check then proves it is present before the PR may merge.
+        with mock.patch.object(roadmap, "gh", return_value=self._open(12)), \
+             mock.patch.object(roadmap, "validate_manifest", return_value=[]):
+            flipped = roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(["ready"], flipped)
+        self.assertEqual("history", self._leaves()["ready"]["status"])
+
+    def test_refuses_a_closed_unmerged_pr(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value={"state": "CLOSED", "closingIssuesReferences": [{"number": 12}]}):
             with self.assertRaises(roadmap.RoadmapError):
                 roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
         self.assertEqual(self.MANIFEST_TEXT, self.manifest_path.read_text())  # unchanged
