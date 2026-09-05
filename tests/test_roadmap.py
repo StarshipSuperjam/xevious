@@ -94,12 +94,12 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertIn("10", dependencies["11"])
         self.assertEqual({"1", "2", "2a", *map(str, range(3, 21))}, set(dependencies["21"]))
 
-    def test_fresh_and_version_one_snapshot_view_shapes_are_read(self) -> None:
-        view = {"id": "view", "name": "Existing"}
-        fresh = {"snapshot": {"project_views": {"data": {"node": {"views": {"nodes": [view]}}}}}}
-        old = {"snapshot": {"project_views": {"data": {"viewer": {"projectV2": {"views": {"nodes": [view]}}}}}}}
-        self.assertEqual([view], roadmap.snapshotted_views(fresh))
-        self.assertEqual([view], roadmap.snapshotted_views(old))
+    def test_journal_template_carries_no_migration_state(self) -> None:
+        template = roadmap.journal_template({"repository": "o/r", "project": {"node_id": "P"}})
+        self.assertEqual(2, template["version"])
+        for retired in ("phase", "claim_pr", "snapshot", "project_synced"):
+            self.assertNotIn(retired, template)
+        self.assertEqual({"version", "repository", "project", "parents", "leaves", "project_fields"}, set(template))
 
 
 class ClosureGuardTests(unittest.TestCase):

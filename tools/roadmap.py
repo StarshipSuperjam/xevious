@@ -25,7 +25,6 @@ MIGRATION_PATH = ROOT / "docs" / "roadmap" / "migration.json"
 CATALOG_PATH = ROOT / "docs" / "MECHANICS_CATALOG.md"
 CRITERIA_PATH = ROOT / "docs" / "roadmap" / "criteria.json"
 KEY_MARKER = "<!-- roadmap-key: {key} -->"
-PROPOSED_MARKER = "<!-- roadmap-migration: PR #36 -->"
 
 
 class RoadmapError(RuntimeError):
@@ -249,7 +248,6 @@ def parent_body(parent: dict[str, Any]) -> str:
     return "\n".join(
         [
             marker(parent["key"]),
-            PROPOSED_MARKER,
             "",
             spec_line,
             "",
@@ -273,7 +271,6 @@ def leaf_body(leaf: dict[str, Any], parent: dict[str, Any], manifest: dict[str, 
     executable = not provisional and leaf.get("status") != "history"
     lines = [
         marker(leaf["key"]),
-        PROPOSED_MARKER,
         "",
         f"Parent capability: `{leaf['parent']}`.",
         f"Delivery slice: **{leaf['slice']}**. Milestone: **{leaf['milestone']}**.",
@@ -344,17 +341,20 @@ def live_key_index(repo: str) -> dict[str, dict[str, Any]]:
     return found
 
 
-def migration_template(manifest: dict[str, Any]) -> dict[str, Any]:
+def journal_template(manifest: dict[str, Any]) -> dict[str, Any]:
+    """A fresh identity journal: the header apply bootstraps from, plus empty id caches.
+
+    The journal caches the GitHub identities apply discovers (issue and card ids per
+    stable key) and the header it bootstraps from (repository, project, and the project
+    field ids). It carries no migration state — the one-time PR #36 migration is retired.
+    """
     return {
-        "version": 1,
-        "phase": "planned",
-        "claim_pr": 36,
+        "version": 2,
         "repository": manifest["repository"],
         "project": manifest["project"],
         "parents": {},
         "leaves": {},
         "project_fields": {},
-        "snapshot": {},
     }
 
 
@@ -389,39 +389,7 @@ def live_plan(manifest: dict[str, Any]) -> dict[str, Any]:
             "close_as_imported_history": sum(item["status"] == "history" for item in manifest["leaves"]),
         },
         "project_fields_to_create": sorted({"Roadmap role", "Delivery slice", "Proof level"} - field_names),
-        "protected_pr": 34,
-        "protected_pr_writes": 0,
     }
-
-
-def snapshot(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
-    if journal.get("phase") != "planned" or journal.get("snapshot"):
-        raise RoadmapError("snapshot is immutable once captured; start a new migration journal to replace it")
-    verify_project_identity(manifest)
-    repo = manifest["repository"]
-    project_number, project_owner = project_coordinates(manifest)
-    project = gh("project", "field-list", project_number, "--owner", project_owner, "--format", "json")
-    items = gh("project", "item-list", project_number, "--owner", project_owner, "--limit", "1000", "--format", "json")
-    if items.get("totalCount") != len(items.get("items", [])):
-        raise RoadmapError("Project item snapshot is truncated")
-    pr34 = gh(
-        "pr", "view", "34", "--repo", repo, "--json",
-        "number,title,state,isDraft,body,headRefName,headRefOid,baseRefName,labels,milestone,projectItems,url",
-    )
-    views = gh(
-        "api", "graphql", "-f",
-        f'query=query {{ node(id:"{manifest["project"]["node_id"]}") {{ ... on ProjectV2 {{ id title views(first:50) {{ nodes {{ id name layout filter }} }} }} }} }}',
-    )
-    milestones = gh("api", f"repos/{repo}/milestones?state=all&per_page=100")
-    journal["snapshot"] = {
-        "project_fields": project,
-        "project_items": items,
-        "project_views": views,
-        "milestones": milestones,
-        "pr34": pr34,
-    }
-    journal["phase"] = "snapshotted"
-    write_json(MIGRATION_PATH, journal)
 
 
 def milestone_numbers(repo: str) -> dict[str, int]:
@@ -685,7 +653,6 @@ def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> int:
             )
     graphql_batch(unarchive_ops)  # separate request first so the unarchive lands before its updates
     graphql_batch(update_ops)
-    journal["project_synced"] = True
     write_json(MIGRATION_PATH, journal)
     return len(update_ops)
 
@@ -742,14 +709,8 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     failures = validate_manifest(manifest)
     if failures:
         raise RoadmapError("manifest invalid:\n- " + "\n- ".join(failures))
-    if journal.get("phase") not in {"snapshotted", "applying", "applied", "reconciled"}:
-        raise RoadmapError("run snapshot before apply")
     verify_project_identity(manifest)
     repo = manifest["repository"]
-    if api_issue(repo, 34).get("pull_request") is None:
-        raise RoadmapError("PR #34 identity check failed")
-    journal["phase"] = "applying"
-    write_json(MIGRATION_PATH, journal)
 
     for name, (description, color) in LABELS.items():
         ensure_label(repo, name, description, color)
@@ -820,35 +781,12 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         patch_issue(repo, number, title=title, body=body, labels=labels, milestone=milestones[leaf["milestone"]], state="closed")
         patched += 1
 
-    journal["phase"] = "applied"
     write_json(MIGRATION_PATH, journal)
     print(f"applied: patched {patched} issues, {board_updates} board fields")
 
 
-def compare_pr34(journal: dict[str, Any]) -> list[str]:
-    before = journal.get("snapshot", {}).get("pr34")
-    if not before:
-        return ["PR #34 snapshot is absent"]
-    now = gh(
-        "pr", "view", "34", "--repo", journal["repository"], "--json",
-        "number,title,state,isDraft,body,headRefName,headRefOid,baseRefName,labels,milestone,projectItems,url",
-    )
-    return [] if now == before else ["PR #34 changed during the roadmap migration"]
-
-
-def snapshotted_views(journal: dict[str, Any]) -> list[dict[str, Any]]:
-    data = journal.get("snapshot", {}).get("project_views", {}).get("data", {})
-    views = data.get("node", {}).get("views", {}).get("nodes")
-    if views is not None:
-        return views
-    return data.get("viewer", {}).get("projectV2", {}).get("views", {}).get("nodes", [])
-
-
 def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
     failures = validate_manifest(manifest)
-    if journal.get("phase") not in {"applied", "reconciled"}:
-        failures.append("migration is not applied")
-        return failures
     repo = manifest["repository"]
     parents = {parent["key"]: parent for parent in manifest["parents"]}
     live = live_key_index(repo)
@@ -925,37 +863,7 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
             failures.append(f"Project view {expected['name']!r} is missing")
         elif actual.get("layout") != expected["layout"] or actual.get("filter") != expected["filter"]:
             failures.append(f"Project view {expected['name']!r} differs from the manifest")
-    snap_views = snapshotted_views(journal)
-    live_views_by_id = {node["id"]: node for node in view_nodes}
-    for expected in snap_views:
-        if live_views_by_id.get(expected["id"]) != expected:
-            failures.append(f"pre-existing Project view {expected['name']!r} changed")
-    current_fields = gh("project", "field-list", project_number, "--owner", project_owner, "--format", "json")["fields"]
-    live_fields_by_id = {field["id"]: field for field in current_fields}
-    for expected in journal.get("snapshot", {}).get("project_fields", {}).get("fields", []):
-        if live_fields_by_id.get(expected["id"]) != expected:
-            failures.append(f"pre-existing Project field {expected['name']!r} changed")
-    failures += compare_pr34(journal)
-    if not failures:
-        journal["phase"] = "reconciled"
-        write_json(MIGRATION_PATH, journal)
     return failures
-
-
-def render_handoff(manifest: dict[str, Any], journal: dict[str, Any]) -> str:
-    number = journal.get("leaves", {}).get("difficulty.models-live-state", {}).get("number")
-    if not number:
-        raise RoadmapError("slice-7 issue has not been created")
-    return "\n".join(
-        [
-            "PR #34 remains the active slice-7 build. Before submission:",
-            f"1. Replace the stale `Part of #17` with `Closes #{number}` and `Part of #18`.",
-            "2. Do not close any slice-8 integration leaf; enemy-dependent play criteria remain open.",
-            "3. Reconcile onto current main so the roadmap closure check runs.",
-            "4. After the operator tests the exact head commit, record the playtest marker and apply `playtest-approved`.",
-            f"5. Verify GitHub's computed closing-issue list contains only #{number}.",
-        ]
-    )
 
 
 def deliver(journal: dict[str, Any], pr: int, manifest_path: Path = MANIFEST_PATH) -> list[str]:
@@ -1063,22 +971,22 @@ def deliver(journal: dict[str, Any], pr: int, manifest_path: Path = MANIFEST_PAT
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["validate", "snapshot", "plan", "apply", "reconcile", "handoff", "deliver"])
+    parser.add_argument("command", choices=["validate", "plan", "apply", "reconcile", "deliver"])
     parser.add_argument("--live", action="store_true", help="include a read-only live mutation diff")
     parser.add_argument("--pr", type=int, help="for deliver: the open or merged pull request whose leaves to record delivered")
     args = parser.parse_args(argv)
     manifest = read_json(MANIFEST_PATH)
-    journal = read_json(MIGRATION_PATH) if MIGRATION_PATH.exists() else migration_template(manifest)
+    journal = read_json(MIGRATION_PATH) if MIGRATION_PATH.exists() else journal_template(manifest)
+    # An older journal may still carry retired migration state; drop it on load so it
+    # cannot resurrect (nothing writes these keys any more).
+    for legacy in ("phase", "claim_pr", "snapshot", "project_synced"):
+        journal.pop(legacy, None)
     if args.command == "validate":
         failures = validate_manifest(manifest)
         if failures:
             print("\n".join(f"- {failure}" for failure in failures), file=sys.stderr)
             return 1
         print(f"roadmap manifest valid: {len(manifest['parents'])} parents, {len(manifest['leaves'])} leaves")
-        return 0
-    if args.command == "snapshot":
-        snapshot(manifest, journal)
-        print("live roadmap, Project #4, milestones, and PR #34 snapshotted")
         return 0
     if args.command == "plan":
         failures = validate_manifest(manifest)
@@ -1099,10 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
         if failures:
             print("\n".join(f"- {failure}" for failure in failures), file=sys.stderr)
             return 1
-        print("roadmap live state matches the committed manifest; PR #34 is unchanged")
-        return 0
-    if args.command == "handoff":
-        print(render_handoff(manifest, journal))
+        print("roadmap live state matches the committed manifest")
         return 0
     if args.command == "deliver":
         if not args.pr:
