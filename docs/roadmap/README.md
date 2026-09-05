@@ -68,69 +68,66 @@ pull request. They are not retroactively certified under today's evidence
 contract. Incomplete foundations—including the live entity, collision, random,
 and dispatch paths formerly hidden by closed issue #14—remain open leaves.
 
-## Recording delivery after a slice merges
+## Recording delivery: the slice PR carries it
 
-Merging a slice's pull request closes its leaf issues on GitHub, but nothing
-back-propagates into the manifest — the manifest is the source of truth, and a
-merge never edits it. Until you record the delivery, those leaves still read
-`status: "planned"`, so `reconcile` reports drift (a closed issue whose manifest
-status is not `history`) and — critically — the next `apply` would force those
-merged issues **back open** and reset their board cards to Backlog.
+`manifest.json` is the source of truth and GitHub is a projection, so a slice's
+delivery is recorded **in the same pull request that delivers it** — the manifest
+can never lag `main`.
 
-After a slice PR merges, record it and re-project:
+1. In the slice PR, once it closes its leaf issues (one `Closes #N` per delivered
+   leaf), record the delivery and commit the edit into the PR:
 
-```bash
-python3 tools/roadmap.py deliver --pr <PR#>   # manifest: its leaves → history + delivered_by
-python3 tools/roadmap.py apply                 # GitHub: keep issues closed, board Status → Done
-python3 tools/roadmap.py reconcile             # verify live state matches the manifest
-```
+   ```bash
+   python3 tools/roadmap.py deliver --pr <this PR#>
+   ```
 
-Then commit the changed `manifest.json` and `migration.json`.
+   This flips each closed leaf from `status: "planned"` to `"history"` with
+   `delivered_by: <PR#>` — a minimal per-line manifest edit. `deliver` accepts an
+   **open** PR precisely so this rides the same PR; the required closure check then
+   refuses the merge unless the manifest at the PR head records every leaf the PR
+   closes. At merge, GitHub closes the issues and the same merge lands the manifest
+   that records them, so the two always agree.
 
-`deliver` reads the pull request's computed closing issues, maps each to a leaf
-through the journal, and sets that leaf `status: "history"` with
-`delivered_by: <PR#>` — a minimal per-line edit that preserves the manifest's
-style. It refuses a pull request that is not merged, skips leaves already
-recorded, and re-validates before writing.
+2. After it merges, project the manifest onto GitHub from an updated `main`:
 
-**Order matters: record delivery first.** Running `apply` while a merged leaf is
-still `planned` reopens its issue. Always `deliver` before `apply`.
+   ```bash
+   python3 tools/roadmap.py apply       # keep the delivered issues closed, board Status → Done
+   python3 tools/roadmap.py reconcile   # verify the live projection matches the manifest
+   ```
 
-## Migration and recovery
+   This second step is **manual by design**: GitHub Actions' own token cannot read
+   or write the org Project board and no personal-access token is provisioned, so
+   nothing pushes the board automatically. If you forget it nothing breaks and no
+   issue reopens — the next `reconcile` simply reports the drift and names the leaf,
+   and running `apply` fixes it. A converged `apply` writes nothing
+   (`patched 0 issues, 0 board fields`). If `apply` changes the `migration.json`
+   journal, land that change on `main` through a small pull request, like any other
+   change (nothing reaches `main` except by pull request).
 
-[`migration.json`](migration.json) is the resumable journal. The migration:
+**Dropping a leaf.** There is no `dropped` status yet. If a `planned` leaf must be
+cancelled before one exists, leave its issue open and edit the manifest by hand
+under review — do **not** hand-close the issue, which the closure guard reopens.
 
-1. validates the manifest and stops before writes on any mismatch;
-2. snapshots milestones, Project fields/items/views, and every protected field
-   of active PR #34;
-3. creates or converts parents and leaves by stable `roadmap-key`, journaling
-   each returned issue and Project identity;
-4. attaches native parent relationships, milestones, and derived Project
-   fields in separate passes;
-5. closes imported-history leaves only after their evidence and relationships
-   exist;
-6. reads the complete live state back and proves exact parentage, milestones,
-   state, uniqueness, and that PR #34 did not change.
+## Archived board cards
 
-An interrupted migration is resumed by rerunning `apply`; it rolls forward from
-stable keys and journaled IDs. Issue deletion or silent closure is never used as
-rollback because GitHub history and notifications cannot be undone. If PR #36
-is abandoned, the journal and `roadmap-migration: PR #36` markers identify the
-incomplete projection to resume or explicitly supersede.
+GitHub auto-archives a card about two weeks after its issue closes, so most
+delivered leaves' cards are archived. The tooling is archive-aware: `apply` and
+`reconcile` read archived cards too and accept an archived Done card as correct, so
+a delivered leaf never reads as a missing or drifted card.
 
-Useful commands:
+## Commands
 
 ```bash
-python3 tools/roadmap.py validate
-python3 tools/roadmap.py plan
-python3 tools/roadmap.py snapshot
-python3 tools/roadmap.py apply
-python3 tools/roadmap.py reconcile
-python3 tools/roadmap.py deliver --pr <PR#>
-python3 tools/roadmap.py handoff
+python3 tools/roadmap.py validate         # the manifest is internally consistent
+python3 tools/roadmap.py plan [--live]     # counts; --live adds a read-only GitHub diff
+python3 tools/roadmap.py deliver --pr N    # record a PR's leaves delivered (run in the slice PR)
+python3 tools/roadmap.py apply             # project the manifest onto Issues + the board
+python3 tools/roadmap.py reconcile         # verify the live projection matches the manifest
 ```
 
-Existing Project views and the Engine-owned summary fields are immutable to the
-migration. It adds manifest-owned views for delivery leaves, capability
-parents, and imported history, plus the derived `Roadmap role`, `Delivery
-slice`, and `Proof level` fields.
+[`migration.json`](migration.json) is the identity journal: it caches the GitHub
+issue and card ids for each stable `roadmap-key` plus the project header `apply`
+bootstraps from. Existing Project views and the engine-owned summary fields are the
+operator's, not the manifest's; the tool owns only the delivery-leaf,
+capability-parent, and imported-history views and the derived `Roadmap role`,
+`Delivery slice`, and `Proof level` fields.
