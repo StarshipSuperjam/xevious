@@ -424,9 +424,18 @@ def snapshot(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     write_json(MIGRATION_PATH, journal)
 
 
-def milestone_numbers(journal: dict[str, Any]) -> dict[str, int]:
-    rows = journal.get("snapshot", {}).get("milestones", [])
-    return {row["title"]: row["number"] for row in rows}
+def milestone_numbers(repo: str) -> dict[str, int]:
+    """Live milestone title -> number, read from GitHub each run.
+
+    Replaces the frozen migration snapshot table (which drifted the moment a milestone
+    was added or renamed). Flattens the ``--paginate --slurp`` page-of-pages the same
+    way ``all_issues`` does, so more than one page of milestones is handled.
+    """
+    value = gh("api", "--paginate", "--slurp", f"repos/{repo}/milestones?state=all&per_page=100")
+    if not value:
+        return {}
+    pages = value if isinstance(value[0], list) else [value]
+    return {row["title"]: row["number"] for page in pages for row in page}
 
 
 def issue_labels(role: str, leaf: dict[str, Any] | None = None) -> list[str]:
@@ -746,7 +755,7 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         ensure_label(repo, name, description, color)
 
     live = live_key_index(repo)
-    milestones = milestone_numbers(journal)
+    milestones = milestone_numbers(repo)
     parents = {parent["key"]: parent for parent in manifest["parents"]}
     patched = 0
 
@@ -846,7 +855,7 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
     expected_keys = set(parents) | {leaf["key"] for leaf in manifest["leaves"]}
     if set(live) != expected_keys:
         failures.append(f"live roadmap keys differ: missing {sorted(expected_keys-set(live))}; extra {sorted(set(live)-expected_keys)}")
-    milestones = milestone_numbers(journal)
+    milestones = milestone_numbers(repo)
     child_parents: dict[int, list[int]] = {}
     for parent in manifest["parents"]:
         parent_number = journal["parents"][parent["key"]]["number"]

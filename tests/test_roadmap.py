@@ -345,6 +345,21 @@ class BoardArchiveTests(unittest.TestCase):
         self.assertTrue(any("Project status is" in f for f in fails))
 
 
+class MilestoneTests(unittest.TestCase):
+    def test_flattens_paginated_pages(self) -> None:
+        pages = [[{"title": "Recovery", "number": 1}], [{"title": "Foundation", "number": 2}]]
+        with mock.patch.object(roadmap, "gh", return_value=pages):
+            self.assertEqual({"Recovery": 1, "Foundation": 2}, roadmap.milestone_numbers("o/r"))
+
+    def test_reads_a_single_page(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=[{"title": "Recovery", "number": 1}]):
+            self.assertEqual({"Recovery": 1}, roadmap.milestone_numbers("o/r"))
+
+    def test_empty_is_no_milestones(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=None):
+            self.assertEqual({}, roadmap.milestone_numbers("o/r"))
+
+
 class ApplyConvergenceTests(unittest.TestCase):
     """A converged apply writes nothing: issue skips match reconcile, board fields diff."""
 
