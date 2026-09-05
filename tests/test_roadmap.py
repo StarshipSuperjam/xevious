@@ -204,6 +204,25 @@ class ClosureGuardTests(unittest.TestCase):
         failures = closures.validate_issue_event(event, self.manifest, self.migration)
         self.assertTrue(any("merged delivering" in item for item in failures))
 
+    def test_main_enforces_even_when_the_journal_has_no_phase(self) -> None:
+        # The old phase gate returned 0 (a silent pass) whenever the journal `phase`
+        # was not applied/reconciled. With it removed the check always enforces, so a
+        # journal with no `phase` at all still reaches validate_pr and returns its verdict.
+        event = {"pull_request": {"number": 20}}
+
+        def fake_read_json(path):
+            if path == closures.MANIFEST:
+                return {"repository": "StarshipSuperjam/xevious"}
+            if path == closures.MIGRATION:
+                return {}  # no `phase` key
+            return event
+
+        with mock.patch.object(closures, "read_json", side_effect=fake_read_json), \
+             mock.patch.object(closures, "load_pr", return_value={"number": 20}), \
+             mock.patch.object(closures, "validate_pr", return_value=["boom"]) as validate:
+            self.assertEqual(1, closures.main(["pr"]))
+            validate.assert_called_once()
+
 
 class DeliverTests(unittest.TestCase):
     """`roadmap deliver --pr N` records a merged PR's leaves as delivered in the manifest."""

@@ -232,9 +232,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     manifest = read_json(MANIFEST)
     migration = read_json(MIGRATION)
-    if migration.get("phase") not in {"applied", "reconciled"}:
-        print("roadmap migration is not active; closure projection not enforced yet")
-        return 0
     event = read_json(args.event)
     if args.mode == "pr":
         payload_pr = event.get("pull_request")
