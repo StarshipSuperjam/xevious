@@ -94,12 +94,12 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertIn("10", dependencies["11"])
         self.assertEqual({"1", "2", "2a", *map(str, range(3, 21))}, set(dependencies["21"]))
 
-    def test_fresh_and_version_one_snapshot_view_shapes_are_read(self) -> None:
-        view = {"id": "view", "name": "Existing"}
-        fresh = {"snapshot": {"project_views": {"data": {"node": {"views": {"nodes": [view]}}}}}}
-        old = {"snapshot": {"project_views": {"data": {"viewer": {"projectV2": {"views": {"nodes": [view]}}}}}}}
-        self.assertEqual([view], roadmap.snapshotted_views(fresh))
-        self.assertEqual([view], roadmap.snapshotted_views(old))
+    def test_journal_template_carries_no_migration_state(self) -> None:
+        template = roadmap.journal_template({"repository": "o/r", "project": {"node_id": "P"}})
+        self.assertEqual(2, template["version"])
+        for retired in ("phase", "claim_pr", "snapshot", "project_synced"):
+            self.assertNotIn(retired, template)
+        self.assertEqual({"version", "repository", "project", "parents", "leaves", "project_fields"}, set(template))
 
 
 class ClosureGuardTests(unittest.TestCase):
@@ -204,6 +204,249 @@ class ClosureGuardTests(unittest.TestCase):
         failures = closures.validate_issue_event(event, self.manifest, self.migration)
         self.assertTrue(any("merged delivering" in item for item in failures))
 
+    def test_main_enforces_even_when_the_journal_has_no_phase(self) -> None:
+        # The old phase gate returned 0 (a silent pass) whenever the journal `phase`
+        # was not applied/reconciled. With it removed the check always enforces, so a
+        # journal with no `phase` at all still reaches validate_pr and returns its verdict.
+        event = {"pull_request": {"number": 20}}
+
+        def fake_read_json(path):
+            if path == closures.MANIFEST:
+                return {"repository": "StarshipSuperjam/xevious", "parents": [], "leaves": []}
+            if path == closures.MIGRATION:
+                return {"parents": {}, "leaves": {}}  # no `phase` key
+            return event
+
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[]"}, clear=False), \
+             mock.patch.object(closures, "read_json", side_effect=fake_read_json), \
+             mock.patch.object(closures, "load_pr", return_value={"number": 20}), \
+             mock.patch.object(closures, "validate_pr", return_value=["boom"]) as validate:
+            self.assertEqual(1, closures.main(["pr"]))
+            validate.assert_called_once()
+
+
+class DeliveryRecordingTests(unittest.TestCase):
+    """The closure check requires a PR to record its own delivery in the manifest."""
+
+    def setUp(self) -> None:
+        self.repo = "StarshipSuperjam/xevious"
+        self.pr = {"number": 20, "base": {"sha": "a" * 40}, "head": {"sha": "b" * 40}}
+        self.leaves_by_number = {12: {"key": "ready"}}
+
+    def _revisions(self, base_leaf: dict | None, head_leaf: dict | None):
+        """A manifest_at_revision side effect: base sha → base manifest, head sha → head manifest."""
+        base = {"leaves": [base_leaf] if base_leaf else []}
+        head = {"leaves": [head_leaf] if head_leaf else []}
+        return lambda sha: base if sha == self.pr["base"]["sha"] else head
+
+    def _run(self, base_leaf, head_leaf):
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "manifest_at_revision", side_effect=self._revisions(base_leaf, head_leaf)):
+            return closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number)
+
+    def test_planned_to_history_with_this_pr_is_allowed(self) -> None:
+        failures = self._run(
+            {"key": "ready", "status": "planned"},
+            {"key": "ready", "status": "history", "delivered_by": 20},
+        )
+        self.assertEqual([], failures)
+
+    def test_head_still_planned_is_refused(self) -> None:
+        failures = self._run({"key": "ready", "status": "planned"}, {"key": "ready", "status": "planned"})
+        self.assertTrue(any("does not record it delivered" in item for item in failures))
+
+    def test_delivered_by_another_pr_is_refused(self) -> None:
+        failures = self._run(
+            {"key": "ready", "status": "planned"},
+            {"key": "ready", "status": "history", "delivered_by": 19},
+        )
+        self.assertTrue(any("does not record it delivered" in item for item in failures))
+
+    def test_provisional_at_base_cannot_be_promoted(self) -> None:
+        failures = self._run(
+            {"key": "ready", "status": "provisional"},
+            {"key": "ready", "status": "history", "delivered_by": 20},
+        )
+        self.assertTrue(any("not planned" in item for item in failures))
+
+    def test_already_history_at_base_is_skipped(self) -> None:
+        # A later PR that merely lists an already-delivered leaf must not be blocked.
+        failures = self._run(
+            {"key": "ready", "status": "history", "delivered_by": 8},
+            {"key": "ready", "status": "history", "delivered_by": 8},
+        )
+        self.assertEqual([], failures)
+
+    def test_leaf_absent_at_base_is_named_not_a_crash(self) -> None:
+        failures = self._run(None, {"key": "ready", "status": "history", "delivered_by": 20})
+        self.assertTrue(any("not a leaf in the manifest at its base" in item for item in failures))
+
+    def test_unreadable_head_manifest_fails_closed(self) -> None:
+        def side_effect(sha):
+            if sha == self.pr["base"]["sha"]:
+                return {"leaves": [{"key": "ready", "status": "planned"}]}
+            raise closures.ClosureError("could not read manifest at head")
+
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "manifest_at_revision", side_effect=side_effect):
+            with self.assertRaises(closures.ClosureError):
+                closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number)
+
+    def test_pr_closing_no_leaf_is_vacuous(self) -> None:
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[]"}, clear=False), \
+             mock.patch.object(closures, "manifest_at_revision", side_effect=AssertionError("must not read a revision")):
+            self.assertEqual([], closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number))
+
+    # The two halves (validate_pr, delivery_recording_failures) are unit-tested apart; these
+    # drive the actual join in main() and validate_issue_event so a wiring slip is caught.
+    _MANIFEST = {"repository": "o/r", "parents": [{"key": "cap"}], "leaves": [{"key": "ready", "status": "planned"}]}
+    _MIGRATION = {"parents": {"cap": {"number": 10}}, "leaves": {"ready": {"number": 12}}}
+    _PLANNED = {"leaves": [{"key": "ready", "status": "planned"}]}  # head not recorded -> delivery failure
+
+    def test_pr_mode_appends_the_delivery_recording_failure(self) -> None:
+        pr = {"number": 20, "base": {"sha": "a" * 40}, "head": {"sha": "b" * 40}}
+
+        def fake_read_json(path):
+            if path == closures.MANIFEST:
+                return self._MANIFEST
+            if path == closures.MIGRATION:
+                return self._MIGRATION
+            return {"pull_request": {"number": 20}}
+
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "read_json", side_effect=fake_read_json), \
+             mock.patch.object(closures, "load_pr", return_value=pr), \
+             mock.patch.object(closures, "validate_pr", return_value=[]), \
+             mock.patch.object(closures, "manifest_at_revision", return_value=self._PLANNED):
+            # validate_pr returns [] here, so a non-zero exit can only come from the delivery join.
+            self.assertEqual(1, closures.main(["pr"]))
+
+    def test_issue_event_reopen_appends_the_delivery_recording_failure(self) -> None:
+        pr = {"number": 20, "merged_at": "2026-01-01T00:00:00Z", "base": {"sha": "a" * 40}, "head": {"sha": "b" * 40}}
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "source_pr_for_closed_issue", return_value=20), \
+             mock.patch.object(closures, "load_pr", return_value=pr), \
+             mock.patch.object(closures, "validate_pr", return_value=[]), \
+             mock.patch.object(closures, "manifest_at_revision", return_value=self._PLANNED):
+            failures = closures.validate_issue_event({"issue": {"number": 12}}, self._MANIFEST, self._MIGRATION)
+        self.assertTrue(any("does not record it delivered" in f for f in failures))
+
+
+class BoardArchiveTests(unittest.TestCase):
+    """board_items sees archived cards; project_card_failures tolerates archived Done cards only."""
+
+    def _page(self, nodes, has_next=False, cursor=None):
+        return {"data": {"node": {"items": {"pageInfo": {"hasNextPage": has_next, "endCursor": cursor}, "nodes": nodes}}}}
+
+    def _node(self, url, archived=False, fields=None):
+        values = [{"name": val, "field": {"name": name}} for name, val in (fields or {}).items()]
+        return {"id": f"card-{url}", "isArchived": archived, "content": {"url": url}, "fieldValues": {"nodes": values}}
+
+    def test_board_items_paginates_and_flattens_including_archived(self) -> None:
+        journal = {"project": {"node_id": "P"}}
+        page1 = self._page([self._node("u1", fields={"Status": "Done", "Roadmap role": "Imported history"})], has_next=True, cursor="C")
+        page2 = self._page([self._node("u2", archived=True, fields={"Status": "Backlog"})])
+        with mock.patch.object(roadmap, "gh", side_effect=[page1, page2]):
+            items = roadmap.board_items(journal)
+        self.assertEqual(["u1", "u2"], sorted(items))
+        self.assertEqual("Done", items["u1"][0]["status"])
+        self.assertEqual("Imported history", items["u1"][0]["roadmap role"])
+        self.assertFalse(items["u1"][0]["isArchived"])
+        self.assertTrue(items["u2"][0]["isArchived"])
+
+    def test_board_items_keeps_duplicate_cards_as_a_list(self) -> None:
+        with mock.patch.object(roadmap, "gh", side_effect=[self._page([self._node("u1"), self._node("u1")])]):
+            items = roadmap.board_items({"project": {"node_id": "P"}})
+        self.assertEqual(2, len(items["u1"]))
+
+    def test_archived_done_card_is_accepted(self) -> None:
+        by_url = {"u": [{"id": "c", "isArchived": True, "status": "Done", "roadmap role": "Imported history"}]}
+        self.assertEqual([], roadmap.project_card_failures("k", "u", {"status": "Done", "roadmap role": "Imported history"}, by_url))
+
+    def test_archived_planned_card_is_a_failure(self) -> None:
+        by_url = {"u": [{"id": "c", "isArchived": True, "status": "Backlog"}]}
+        fails = roadmap.project_card_failures("k", "u", {"status": "Backlog"}, by_url)
+        self.assertTrue(any("archived but the leaf is not delivered" in f for f in fails))
+
+    def test_missing_and_duplicate_cards_fail(self) -> None:
+        self.assertTrue(any("found 0" in f for f in roadmap.project_card_failures("k", "u", {"status": "Done"}, {})))
+        by_url = {"u": [{"isArchived": False}, {"isArchived": False}]}
+        self.assertTrue(any("found 2" in f for f in roadmap.project_card_failures("k", "u", {"status": "Done"}, by_url)))
+
+    def test_field_mismatch_fails(self) -> None:
+        by_url = {"u": [{"isArchived": False, "status": "Backlog"}]}
+        fails = roadmap.project_card_failures("k", "u", {"status": "Done"}, by_url)
+        self.assertTrue(any("Project status is" in f for f in fails))
+
+
+class MilestoneTests(unittest.TestCase):
+    def test_flattens_paginated_pages(self) -> None:
+        pages = [[{"title": "Recovery", "number": 1}], [{"title": "Foundation", "number": 2}]]
+        with mock.patch.object(roadmap, "gh", return_value=pages):
+            self.assertEqual({"Recovery": 1, "Foundation": 2}, roadmap.milestone_numbers("o/r"))
+
+    def test_reads_a_single_page(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=[{"title": "Recovery", "number": 1}]):
+            self.assertEqual({"Recovery": 1}, roadmap.milestone_numbers("o/r"))
+
+    def test_empty_is_no_milestones(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value=None):
+            self.assertEqual({}, roadmap.milestone_numbers("o/r"))
+
+
+class ApplyConvergenceTests(unittest.TestCase):
+    """A converged apply writes nothing: issue skips match reconcile, board fields diff."""
+
+    def test_issue_up_to_date_matches_reconcile_comparisons(self) -> None:
+        issue = {"state": "open", "title": "T", "body": "B", "labels": [{"name": "x"}, {"name": "y"}], "milestone": {"number": 3}}
+        self.assertTrue(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y", "x"], milestone=3, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="DIFF", labels=["y", "x"], milestone=3, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y", "x"], milestone=3, state="closed"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y", "x"], milestone=9, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y"], milestone=3, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(None, title="T", body="B", labels=[], milestone=None, state="open"))
+
+    def _journal(self):
+        select = lambda fid, opts: {"id": fid, "type": "ProjectV2SingleSelectField", "options": [{"name": n, "id": i} for n, i in opts]}
+        return {
+            "project": {"node_id": "P"},
+            "project_fields": {
+                "Roadmap role": select("f1", [("Leaf", "o1"), ("Imported history", "o2"), ("Parent", "o3")]),
+                "Delivery slice": select("f2", [("8", "s8")]),
+                "Proof level": select("f3", [("Playable", "p1")]),
+                "Work type": select("f4", [("Feature", "w1")]),
+                "Status": select("f5", [("Backlog", "b1"), ("Done", "d1")]),
+            },
+            "parents": {},
+            "leaves": {"air.toroid": {"url": "u1", "node_id": "N1"}},
+        }
+
+    _MANIFEST = {"parents": [], "leaves": [{"key": "air.toroid", "slice": "8", "proof": "playable", "status": "planned"}]}
+
+    def _sync(self, cards):
+        calls: list[list] = []
+        with mock.patch.object(roadmap, "board_items", return_value=cards), \
+             mock.patch.object(roadmap, "graphql_batch", side_effect=lambda ops, **k: calls.append(ops)), \
+             mock.patch.object(roadmap, "write_json"):
+            written = roadmap.sync_project(self._MANIFEST, self._journal())
+        return written, [op for ops in calls for op in ops]
+
+    def test_sync_writes_nothing_when_the_card_already_matches(self) -> None:
+        cards = {"u1": [{"id": "c1", "isArchived": False, "roadmap role": "Leaf", "delivery slice": "8",
+                         "proof level": "Playable", "work type": "Feature", "status": "Backlog"}]}
+        written, ops = self._sync(cards)
+        self.assertEqual(0, written)
+        self.assertEqual([], ops)
+
+    def test_sync_unarchives_then_updates_only_the_differing_field(self) -> None:
+        # Archived card whose Status is wrong (Done, should be Backlog for a planned leaf).
+        cards = {"u1": [{"id": "c1", "isArchived": True, "roadmap role": "Leaf", "delivery slice": "8",
+                         "proof level": "Playable", "work type": "Feature", "status": "Done"}]}
+        written, ops = self._sync(cards)
+        self.assertEqual(1, written)  # only Status differs
+        self.assertTrue(any("unarchiveProjectV2Item" in op for op in ops))
+        self.assertEqual(1, sum("updateProjectV2ItemFieldValue" in op for op in ops))
+
 
 class DeliverTests(unittest.TestCase):
     """`roadmap deliver --pr N` records a merged PR's leaves as delivered in the manifest."""
@@ -263,8 +506,20 @@ class DeliverTests(unittest.TestCase):
         self.assertEqual(["ready"], flipped)  # #10 is a parent, #11 already history
         self.assertEqual(8, self._leaves()["done"]["delivered_by"])  # untouched
 
-    def test_refuses_a_pr_that_is_not_merged(self) -> None:
-        with mock.patch.object(roadmap, "gh", return_value={"state": "OPEN", "closingIssuesReferences": [{"number": 12}]}):
+    def _open(self, *numbers: int) -> dict:
+        return {"state": "OPEN", "closingIssuesReferences": [{"number": n} for n in numbers]}
+
+    def test_records_delivery_on_an_open_pr(self) -> None:
+        # The author runs deliver on their own open PR so the manifest edit rides the same PR;
+        # the closure check then proves it is present before the PR may merge.
+        with mock.patch.object(roadmap, "gh", return_value=self._open(12)), \
+             mock.patch.object(roadmap, "validate_manifest", return_value=[]):
+            flipped = roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(["ready"], flipped)
+        self.assertEqual("history", self._leaves()["ready"]["status"])
+
+    def test_refuses_a_closed_unmerged_pr(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value={"state": "CLOSED", "closingIssuesReferences": [{"number": 12}]}):
             with self.assertRaises(roadmap.RoadmapError):
                 roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
         self.assertEqual(self.MANIFEST_TEXT, self.manifest_path.read_text())  # unchanged
