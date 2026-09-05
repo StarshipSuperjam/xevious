@@ -252,8 +252,8 @@ def delivery_recording_failures(repo: str, pr: dict[str, Any], leaves_by_number:
             continue
         if base_leaf.get("status") != "planned":
             failures.append(
-                f"#{closed} ({key}) is {base_leaf.get('status')} at this PR's base, not planned — "
-                "settle its status before a PR may record it delivered"
+                f"#{closed} ({key}) is {base_leaf.get('status')} at this PR's base, not planned — a leaf can "
+                "only record delivery from planned; settle its parent specification so it becomes planned first"
             )
             continue
         head_leaf = _manifest_leaf(head, key)

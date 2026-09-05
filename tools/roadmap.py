@@ -580,9 +580,11 @@ def project_card_failures(key: str, url: str, expected: dict[str, str], project_
     failures: list[str] = []
     if item.get("isArchived") and expected.get("status") != "Done":
         failures.append(f"{key}: Project card is archived but the leaf is not delivered; it should be visible with Status Backlog")
+    # board_items lower-cases every field key; lower-case here too so this is robust to a
+    # caller passing the capitalized field names (the shape sync_project's `desired` uses).
     for field, value in expected.items():
-        if str(item.get(field, "")) != value:
-            failures.append(f"{key}: Project {field} is {item.get(field)!r}, expected {value!r}")
+        if str(item.get(field.lower(), "")) != value:
+            failures.append(f"{key}: Project {field} is {item.get(field.lower())!r}, expected {value!r}")
     return failures
 
 
@@ -632,9 +634,15 @@ def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> int:
     for key, record, values in desired:
         items = by_url.get(record["url"], [])
         if not items:
-            raise RoadmapError(f"Project item missing after add: {key}")
+            raise RoadmapError(
+                f"Project item missing after add: {key}; re-run apply (ProjectV2 adds are eventually "
+                f"consistent), or confirm the issue exists and was added to the Project"
+            )
         if len(items) > 1:
-            raise RoadmapError(f"Project has {len(items)} cards for {key}; expected exactly one")
+            raise RoadmapError(
+                f"Project has {len(items)} cards for {key}; expected exactly one — remove the extra card "
+                f"on the board, then re-run apply"
+            )
         item = items[0]
         record["project_item_id"] = item["id"]
         differing = {name: value for name, value in values.items() if str(item.get(name.lower(), "")) != str(value)}
@@ -782,7 +790,7 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         patched += 1
 
     write_json(MIGRATION_PATH, journal)
-    print(f"applied: patched {patched} issues, {board_updates} board fields")
+    print(f"applied: patched {patched} issues, {board_updates} board field updates")
 
 
 def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
@@ -867,7 +875,7 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
 
 
 def deliver(journal: dict[str, Any], pr: int, manifest_path: Path = MANIFEST_PATH) -> list[str]:
-    """Record the leaves a merged PR closed as delivered, in the manifest only.
+    """Record the leaves an open or merged PR closes as delivered, in the manifest only.
 
     Reads the PR's computed closing issues, maps each to a leaf via the journal
     (manifest leaves carry no issue number; the journal holds the mapping), and

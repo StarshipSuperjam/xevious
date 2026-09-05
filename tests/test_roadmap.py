@@ -297,6 +297,40 @@ class DeliveryRecordingTests(unittest.TestCase):
              mock.patch.object(closures, "manifest_at_revision", side_effect=AssertionError("must not read a revision")):
             self.assertEqual([], closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number))
 
+    # The two halves (validate_pr, delivery_recording_failures) are unit-tested apart; these
+    # drive the actual join in main() and validate_issue_event so a wiring slip is caught.
+    _MANIFEST = {"repository": "o/r", "parents": [{"key": "cap"}], "leaves": [{"key": "ready", "status": "planned"}]}
+    _MIGRATION = {"parents": {"cap": {"number": 10}}, "leaves": {"ready": {"number": 12}}}
+    _PLANNED = {"leaves": [{"key": "ready", "status": "planned"}]}  # head not recorded -> delivery failure
+
+    def test_pr_mode_appends_the_delivery_recording_failure(self) -> None:
+        pr = {"number": 20, "base": {"sha": "a" * 40}, "head": {"sha": "b" * 40}}
+
+        def fake_read_json(path):
+            if path == closures.MANIFEST:
+                return self._MANIFEST
+            if path == closures.MIGRATION:
+                return self._MIGRATION
+            return {"pull_request": {"number": 20}}
+
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "read_json", side_effect=fake_read_json), \
+             mock.patch.object(closures, "load_pr", return_value=pr), \
+             mock.patch.object(closures, "validate_pr", return_value=[]), \
+             mock.patch.object(closures, "manifest_at_revision", return_value=self._PLANNED):
+            # validate_pr returns [] here, so a non-zero exit can only come from the delivery join.
+            self.assertEqual(1, closures.main(["pr"]))
+
+    def test_issue_event_reopen_appends_the_delivery_recording_failure(self) -> None:
+        pr = {"number": 20, "merged_at": "2026-01-01T00:00:00Z", "base": {"sha": "a" * 40}, "head": {"sha": "b" * 40}}
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "source_pr_for_closed_issue", return_value=20), \
+             mock.patch.object(closures, "load_pr", return_value=pr), \
+             mock.patch.object(closures, "validate_pr", return_value=[]), \
+             mock.patch.object(closures, "manifest_at_revision", return_value=self._PLANNED):
+            failures = closures.validate_issue_event({"issue": {"number": 12}}, self._MANIFEST, self._MIGRATION)
+        self.assertTrue(any("does not record it delivered" in f for f in failures))
+
 
 class BoardArchiveTests(unittest.TestCase):
     """board_items sees archived cards; project_card_failures tolerates archived Done cards only."""

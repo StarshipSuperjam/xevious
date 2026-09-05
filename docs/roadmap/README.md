@@ -104,9 +104,14 @@ can never lag `main`.
    journal, land that change on `main` through a small pull request, like any other
    change (nothing reaches `main` except by pull request).
 
-**Dropping a leaf.** There is no `dropped` status yet. If a `planned` leaf must be
-cancelled before one exists, leave its issue open and edit the manifest by hand
-under review — do **not** hand-close the issue, which the closure guard reopens.
+**Dropping a leaf.** There is no `dropped` status yet, and the manifest has no field
+that expresses a cancelled leaf, so there is no clean edit to make one stick. Until the
+`dropped` status is added (tracked as its own roadmap issue), **leave the leaf's issue
+open** — the closure guard reopens a hand-closed `planned` leaf — and record the
+cancellation as a comment on that issue. Do not delete the leaf's manifest line either:
+its criteria are part of the exact criterion roster `validate` enforces, so removing it
+would need the roster updated in the same edit and is a change to make deliberately under
+review, not a quick cancellation.
 
 ## Archived board cards
 
@@ -124,6 +129,11 @@ python3 tools/roadmap.py deliver --pr N    # record a PR's leaves delivered (run
 python3 tools/roadmap.py apply             # project the manifest onto Issues + the board
 python3 tools/roadmap.py reconcile         # verify the live projection matches the manifest
 ```
+
+`apply` is safe to re-run: it writes the journal incrementally and skips any issue or
+board field already correct, so if a run dies partway (a network blip or a rate limit)
+just run it again — it rolls forward from the journal and the stable `roadmap-key`s
+rather than duplicating issues or cards.
 
 [`migration.json`](migration.json) is the identity journal: it caches the GitHub
 issue and card ids for each stable `roadmap-key` plus the project header `apply`
