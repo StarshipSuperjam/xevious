@@ -212,16 +212,90 @@ class ClosureGuardTests(unittest.TestCase):
 
         def fake_read_json(path):
             if path == closures.MANIFEST:
-                return {"repository": "StarshipSuperjam/xevious"}
+                return {"repository": "StarshipSuperjam/xevious", "parents": [], "leaves": []}
             if path == closures.MIGRATION:
-                return {}  # no `phase` key
+                return {"parents": {}, "leaves": {}}  # no `phase` key
             return event
 
-        with mock.patch.object(closures, "read_json", side_effect=fake_read_json), \
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[]"}, clear=False), \
+             mock.patch.object(closures, "read_json", side_effect=fake_read_json), \
              mock.patch.object(closures, "load_pr", return_value={"number": 20}), \
              mock.patch.object(closures, "validate_pr", return_value=["boom"]) as validate:
             self.assertEqual(1, closures.main(["pr"]))
             validate.assert_called_once()
+
+
+class DeliveryRecordingTests(unittest.TestCase):
+    """The closure check requires a PR to record its own delivery in the manifest."""
+
+    def setUp(self) -> None:
+        self.repo = "StarshipSuperjam/xevious"
+        self.pr = {"number": 20, "base": {"sha": "a" * 40}, "head": {"sha": "b" * 40}}
+        self.leaves_by_number = {12: {"key": "ready"}}
+
+    def _revisions(self, base_leaf: dict | None, head_leaf: dict | None):
+        """A manifest_at_revision side effect: base sha → base manifest, head sha → head manifest."""
+        base = {"leaves": [base_leaf] if base_leaf else []}
+        head = {"leaves": [head_leaf] if head_leaf else []}
+        return lambda sha: base if sha == self.pr["base"]["sha"] else head
+
+    def _run(self, base_leaf, head_leaf):
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "manifest_at_revision", side_effect=self._revisions(base_leaf, head_leaf)):
+            return closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number)
+
+    def test_planned_to_history_with_this_pr_is_allowed(self) -> None:
+        failures = self._run(
+            {"key": "ready", "status": "planned"},
+            {"key": "ready", "status": "history", "delivered_by": 20},
+        )
+        self.assertEqual([], failures)
+
+    def test_head_still_planned_is_refused(self) -> None:
+        failures = self._run({"key": "ready", "status": "planned"}, {"key": "ready", "status": "planned"})
+        self.assertTrue(any("does not record it delivered" in item for item in failures))
+
+    def test_delivered_by_another_pr_is_refused(self) -> None:
+        failures = self._run(
+            {"key": "ready", "status": "planned"},
+            {"key": "ready", "status": "history", "delivered_by": 19},
+        )
+        self.assertTrue(any("does not record it delivered" in item for item in failures))
+
+    def test_provisional_at_base_cannot_be_promoted(self) -> None:
+        failures = self._run(
+            {"key": "ready", "status": "provisional"},
+            {"key": "ready", "status": "history", "delivered_by": 20},
+        )
+        self.assertTrue(any("not planned" in item for item in failures))
+
+    def test_already_history_at_base_is_skipped(self) -> None:
+        # A later PR that merely lists an already-delivered leaf must not be blocked.
+        failures = self._run(
+            {"key": "ready", "status": "history", "delivered_by": 8},
+            {"key": "ready", "status": "history", "delivered_by": 8},
+        )
+        self.assertEqual([], failures)
+
+    def test_leaf_absent_at_base_is_named_not_a_crash(self) -> None:
+        failures = self._run(None, {"key": "ready", "status": "history", "delivered_by": 20})
+        self.assertTrue(any("not a leaf in the manifest at its base" in item for item in failures))
+
+    def test_unreadable_head_manifest_fails_closed(self) -> None:
+        def side_effect(sha):
+            if sha == self.pr["base"]["sha"]:
+                return {"leaves": [{"key": "ready", "status": "planned"}]}
+            raise closures.ClosureError("could not read manifest at head")
+
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]"}, clear=False), \
+             mock.patch.object(closures, "manifest_at_revision", side_effect=side_effect):
+            with self.assertRaises(closures.ClosureError):
+                closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number)
+
+    def test_pr_closing_no_leaf_is_vacuous(self) -> None:
+        with mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[]"}, clear=False), \
+             mock.patch.object(closures, "manifest_at_revision", side_effect=AssertionError("must not read a revision")):
+            self.assertEqual([], closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number))
 
 
 class DeliverTests(unittest.TestCase):
