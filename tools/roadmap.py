@@ -536,6 +536,79 @@ def project_value(field: dict[str, Any], value: str) -> str:
     return f'{{text:{json.dumps(value)}}}'
 
 
+def board_items(journal: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Every Project card keyed by content URL, INCLUDING archived ones.
+
+    ``gh project item-list`` silently omits archived cards, so a Done card GitHub
+    auto-archived (closed and untouched for two weeks) reads as a missing card and
+    breaks ``apply``/``reconcile`` on a rolling schedule. This queries GraphQL with
+    ``archivedStates:[ARCHIVED, NOT_ARCHIVED]`` and normalizes each card to the same
+    lower-cased, flattened field shape ``item-list`` produced — an ``id``, an
+    ``isArchived`` flag, a ``content.url``, and one lower-cased key per single-select /
+    text / number field — so the comparison code that consumes it is unchanged. It
+    returns a list per URL (not a single item) so a duplicate card for one issue stays
+    detectable, and it pages through ``pageInfo`` rather than trusting a total count.
+    """
+    node_id = journal["project"]["node_id"]
+    items: dict[str, list[dict[str, Any]]] = {}
+    cursor: str | None = None
+    while True:
+        after = f', after:"{cursor}"' if cursor else ""
+        query = (
+            f'query {{ node(id:"{node_id}") {{ ... on ProjectV2 {{ '
+            f'items(first:100{after}, archivedStates:[ARCHIVED, NOT_ARCHIVED]) {{ '
+            "pageInfo { hasNextPage endCursor } "
+            "nodes { id isArchived content { ... on Issue { url } ... on PullRequest { url } } "
+            "fieldValues(first:50) { nodes { "
+            "... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2FieldCommon { name } } } "
+            "... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { name } } } "
+            "... on ProjectV2ItemFieldNumberValue { number field { ... on ProjectV2FieldCommon { name } } } "
+            "} } } } } } }"
+        )
+        block = gh("api", "graphql", "-f", f"query={query}")["data"]["node"]["items"]
+        for node in block["nodes"]:
+            url = (node.get("content") or {}).get("url")
+            if not url:
+                continue
+            item: dict[str, Any] = {"id": node["id"], "isArchived": bool(node.get("isArchived")), "content": {"url": url}}
+            for value_node in node.get("fieldValues", {}).get("nodes", []):
+                name = (value_node.get("field") or {}).get("name")
+                if not name:
+                    continue
+                if "name" in value_node:
+                    item[name.lower()] = value_node["name"]
+                elif "text" in value_node:
+                    item[name.lower()] = value_node["text"]
+                elif "number" in value_node:
+                    item[name.lower()] = value_node["number"]
+            items.setdefault(url, []).append(item)
+        page = block["pageInfo"]
+        if not page["hasNextPage"]:
+            return items
+        cursor = page["endCursor"]
+
+
+def project_card_failures(key: str, url: str, expected: dict[str, str], project_by_url: dict[str, list[dict[str, Any]]]) -> list[str]:
+    """Verify the one Project card for ``url`` against its expected fields, archive-aware.
+
+    Exactly one card must exist (a duplicate is still a failure). An archived card is
+    acceptable only for a delivered leaf — its Status is Done, which is what GitHub's
+    auto-archive acts on; a still-planned leaf whose card is archived is wrong (it
+    should be visible in Backlog).
+    """
+    items = project_by_url.get(url, [])
+    if len(items) != 1:
+        return [f"{key}: expected exactly one Project item, found {len(items)}"]
+    item = items[0]
+    failures: list[str] = []
+    if item.get("isArchived") and expected.get("status") != "Done":
+        failures.append(f"{key}: Project card is archived but the leaf is not delivered; it should be visible with Status Backlog")
+    for field, value in expected.items():
+        if str(item.get(field, "")) != value:
+            failures.append(f"{key}: Project {field} is {item.get(field)!r}, expected {value!r}")
+    return failures
+
+
 def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     """Add roadmap content once, then set all derived fields in batched mutations."""
     project_id = journal["project"]["node_id"]
@@ -776,15 +849,7 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
         if child_parents.get(issue["number"], []) != [intended_parent]:
             failures.append(f"{leaf['key']}: native parent link differs from #{intended_parent}")
 
-    project_number, project_owner = project_coordinates(manifest)
-    project = gh("project", "item-list", project_number, "--owner", project_owner, "--limit", "1000", "--format", "json")
-    if project.get("totalCount") != len(project.get("items", [])):
-        failures.append("Project item inventory is truncated")
-    project_by_url: dict[str, list[dict[str, Any]]] = {}
-    for item in project.get("items", []):
-        url = item.get("content", {}).get("url")
-        if url:
-            project_by_url.setdefault(url, []).append(item)
+    project_by_url = board_items(journal)  # includes archived cards, keyed url -> list
     expected_project: list[tuple[str, str, dict[str, str]]] = []
     for parent in manifest["parents"]:
         record = journal["parents"][parent["key"]]
@@ -801,14 +866,7 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
             "status": "Done" if leaf["status"] == "history" else "Backlog",
         }))
     for key, url, expected in expected_project:
-        items = project_by_url.get(url, [])
-        if len(items) != 1:
-            failures.append(f"{key}: expected exactly one Project item, found {len(items)}")
-            continue
-        item = items[0]
-        for field, value in expected.items():
-            if str(item.get(field, "")) != value:
-                failures.append(f"{key}: Project {field} is {item.get(field)!r}, expected {value!r}")
+        failures += project_card_failures(key, url, expected, project_by_url)
     view_query = f'query {{ node(id:"{journal["project"]["node_id"]}") {{ ... on ProjectV2 {{ views(first:50) {{ nodes {{ id name layout filter }} }} }} }} }}'
     view_data = gh("api", "graphql", "-f", f"query={view_query}")
     view_nodes = view_data["data"]["node"]["views"]["nodes"]

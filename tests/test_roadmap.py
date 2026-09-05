@@ -298,6 +298,53 @@ class DeliveryRecordingTests(unittest.TestCase):
             self.assertEqual([], closures.delivery_recording_failures(self.repo, self.pr, self.leaves_by_number))
 
 
+class BoardArchiveTests(unittest.TestCase):
+    """board_items sees archived cards; project_card_failures tolerates archived Done cards only."""
+
+    def _page(self, nodes, has_next=False, cursor=None):
+        return {"data": {"node": {"items": {"pageInfo": {"hasNextPage": has_next, "endCursor": cursor}, "nodes": nodes}}}}
+
+    def _node(self, url, archived=False, fields=None):
+        values = [{"name": val, "field": {"name": name}} for name, val in (fields or {}).items()]
+        return {"id": f"card-{url}", "isArchived": archived, "content": {"url": url}, "fieldValues": {"nodes": values}}
+
+    def test_board_items_paginates_and_flattens_including_archived(self) -> None:
+        journal = {"project": {"node_id": "P"}}
+        page1 = self._page([self._node("u1", fields={"Status": "Done", "Roadmap role": "Imported history"})], has_next=True, cursor="C")
+        page2 = self._page([self._node("u2", archived=True, fields={"Status": "Backlog"})])
+        with mock.patch.object(roadmap, "gh", side_effect=[page1, page2]):
+            items = roadmap.board_items(journal)
+        self.assertEqual(["u1", "u2"], sorted(items))
+        self.assertEqual("Done", items["u1"][0]["status"])
+        self.assertEqual("Imported history", items["u1"][0]["roadmap role"])
+        self.assertFalse(items["u1"][0]["isArchived"])
+        self.assertTrue(items["u2"][0]["isArchived"])
+
+    def test_board_items_keeps_duplicate_cards_as_a_list(self) -> None:
+        with mock.patch.object(roadmap, "gh", side_effect=[self._page([self._node("u1"), self._node("u1")])]):
+            items = roadmap.board_items({"project": {"node_id": "P"}})
+        self.assertEqual(2, len(items["u1"]))
+
+    def test_archived_done_card_is_accepted(self) -> None:
+        by_url = {"u": [{"id": "c", "isArchived": True, "status": "Done", "roadmap role": "Imported history"}]}
+        self.assertEqual([], roadmap.project_card_failures("k", "u", {"status": "Done", "roadmap role": "Imported history"}, by_url))
+
+    def test_archived_planned_card_is_a_failure(self) -> None:
+        by_url = {"u": [{"id": "c", "isArchived": True, "status": "Backlog"}]}
+        fails = roadmap.project_card_failures("k", "u", {"status": "Backlog"}, by_url)
+        self.assertTrue(any("archived but the leaf is not delivered" in f for f in fails))
+
+    def test_missing_and_duplicate_cards_fail(self) -> None:
+        self.assertTrue(any("found 0" in f for f in roadmap.project_card_failures("k", "u", {"status": "Done"}, {})))
+        by_url = {"u": [{"isArchived": False}, {"isArchived": False}]}
+        self.assertTrue(any("found 2" in f for f in roadmap.project_card_failures("k", "u", {"status": "Done"}, by_url)))
+
+    def test_field_mismatch_fails(self) -> None:
+        by_url = {"u": [{"isArchived": False, "status": "Backlog"}]}
+        fails = roadmap.project_card_failures("k", "u", {"status": "Done"}, by_url)
+        self.assertTrue(any("Project status is" in f for f in fails))
+
+
 class DeliverTests(unittest.TestCase):
     """`roadmap deliver --pr N` records a merged PR's leaves as delivered in the manifest."""
 
