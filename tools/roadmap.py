@@ -609,18 +609,13 @@ def project_card_failures(key: str, url: str, expected: dict[str, str], project_
     return failures
 
 
-def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
-    """Add roadmap content once, then set all derived fields in batched mutations."""
+def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> int:
+    """Add roadmap content once, then set only the derived fields that differ.
+
+    Returns the number of board field updates written, so a converged run reports zero.
+    """
     project_id = journal["project"]["node_id"]
-    number, owner = project_coordinates(manifest)
-    current = gh("project", "item-list", number, "--owner", owner, "--limit", "1000", "--format", "json")
-    if current.get("totalCount") != len(current.get("items", [])):
-        raise RoadmapError("Project item inventory is truncated")
-    by_url = {
-        item.get("content", {}).get("url"): item
-        for item in current.get("items", [])
-        if item.get("content", {}).get("url")
-    }
+    by_url = board_items(journal)  # includes archived cards, keyed url -> list
     desired = []
     for parent in manifest["parents"]:
         record = journal["parents"][parent["key"]]
@@ -648,33 +643,42 @@ def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         for attempt in range(3):
             if attempt:
                 time.sleep(2)
-            current = gh("project", "item-list", number, "--owner", owner, "--limit", "1000", "--format", "json")
-            if current.get("totalCount") != len(current.get("items", [])):
-                raise RoadmapError("Project item inventory is truncated")
-            by_url = {
-                item.get("content", {}).get("url"): item
-                for item in current.get("items", [])
-                if item.get("content", {}).get("url")
-            }
+            by_url = board_items(journal)
             if all(record["url"] in by_url for _, record in missing):
                 break
 
+    # Emit a field update only where the card's value actually differs, so a converged
+    # apply writes nothing. An archived card (auto-archived once its issue closed) rejects
+    # field writes, so unarchive it FIRST in its own request before the dependent updates.
+    unarchive_ops: list[str] = []
     update_ops: list[str] = []
-    for index, (key, record, values) in enumerate(desired):
-        item = by_url.get(record["url"])
-        if not item:
+    for key, record, values in desired:
+        items = by_url.get(record["url"], [])
+        if not items:
             raise RoadmapError(f"Project item missing after add: {key}")
+        if len(items) > 1:
+            raise RoadmapError(f"Project has {len(items)} cards for {key}; expected exactly one")
+        item = items[0]
         record["project_item_id"] = item["id"]
-        for field_name, value in values.items():
+        differing = {name: value for name, value in values.items() if str(item.get(name.lower(), "")) != str(value)}
+        if not differing:
+            continue
+        if item.get("isArchived"):
+            unarchive_ops.append(
+                f'r{len(unarchive_ops)}:unarchiveProjectV2Item(input:{{projectId:"{project_id}",itemId:"{item["id"]}"}}){{item{{id}}}}'
+            )
+        for field_name, value in differing.items():
             field = journal["project_fields"][field_name]
             encoded = project_value(field, value)
             alias = f'u{len(update_ops)}'
             update_ops.append(
                 f'{alias}:updateProjectV2ItemFieldValue(input:{{projectId:"{project_id}",itemId:"{item["id"]}",fieldId:"{field["id"]}",value:{encoded}}}){{projectV2Item{{id}}}}'
             )
+    graphql_batch(unarchive_ops)  # separate request first so the unarchive lands before its updates
     graphql_batch(update_ops)
     journal["project_synced"] = True
     write_json(MIGRATION_PATH, journal)
+    return len(update_ops)
 
 
 def ensure_project_views(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
@@ -707,6 +711,24 @@ def ensure_project_views(manifest: dict[str, Any], journal: dict[str, Any]) -> N
     write_json(MIGRATION_PATH, journal)
 
 
+def issue_up_to_date(issue: dict[str, Any] | None, *, title: str, body: str, labels: list[str], milestone: int | None, state: str) -> bool:
+    """Whether a live issue already matches the desired projection, so apply can skip it.
+
+    Uses the same comparisons reconcile makes (nested milestone number, set of label
+    names, exact title/body/state) so a converged apply writes nothing.
+    """
+    if issue is None:
+        return False
+    if issue.get("state") != state:
+        return False
+    if issue.get("title") != title or (issue.get("body") or "") != body:
+        return False
+    if {label["name"] for label in issue.get("labels", [])} != set(labels):
+        return False
+    actual_milestone = issue.get("milestone", {}).get("number") if issue.get("milestone") else None
+    return actual_milestone == milestone
+
+
 def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     failures = validate_manifest(manifest)
     if failures:
@@ -726,17 +748,23 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     live = live_key_index(repo)
     milestones = milestone_numbers(journal)
     parents = {parent["key"]: parent for parent in manifest["parents"]}
+    patched = 0
 
     for parent in manifest["parents"]:
         existing = parent.get("issue") or journal["parents"].get(parent["key"], {}).get("number")
         issue = live.get(parent["key"])
         if issue:
             existing = issue["number"]
-        if existing:
-            issue = patch_issue(repo, int(existing), title=parent["title"], body=parent_body(parent), labels=issue_labels("parent"), milestone=None, state="open")
+        title, body, labels = parent["title"], parent_body(parent), issue_labels("parent")
+        if existing and issue_up_to_date(issue, title=title, body=body, labels=labels, milestone=None, state="open"):
+            result = issue
+        elif existing:
+            result = patch_issue(repo, int(existing), title=title, body=body, labels=labels, milestone=None, state="open")
+            patched += 1
         else:
-            issue = create_issue(repo, title=parent["title"], body=parent_body(parent), labels=issue_labels("parent"), milestone=None)
-        journal["parents"][parent["key"]] = {"number": issue["number"], "id": issue["id"], "node_id": issue["node_id"], "url": issue["html_url"]}
+            result = create_issue(repo, title=title, body=body, labels=labels, milestone=None)
+            patched += 1
+        journal["parents"][parent["key"]] = {"number": result["number"], "id": result["id"], "node_id": result["node_id"], "url": result["html_url"]}
         write_json(MIGRATION_PATH, journal)
 
     for leaf in manifest["leaves"]:
@@ -747,14 +775,18 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         milestone = milestones.get(leaf["milestone"])
         if milestone is None:
             raise RoadmapError(f"missing milestone {leaf['milestone']}")
-        body = leaf_body(leaf, parents[leaf["parent"]], manifest)
-        labels = issue_labels("leaf", leaf)
+        title, body, labels = leaf["title"], leaf_body(leaf, parents[leaf["parent"]], manifest), issue_labels("leaf", leaf)
         if existing:
             desired_state = "closed" if leaf["status"] == "history" and issue and issue.get("state") == "closed" else "open"
-            issue = patch_issue(repo, int(existing), title=leaf["title"], body=body, labels=labels, milestone=milestone, state=desired_state)
+            if issue_up_to_date(issue, title=title, body=body, labels=labels, milestone=milestone, state=desired_state):
+                result = issue
+            else:
+                result = patch_issue(repo, int(existing), title=title, body=body, labels=labels, milestone=milestone, state=desired_state)
+                patched += 1
         else:
-            issue = create_issue(repo, title=leaf["title"], body=body, labels=labels, milestone=milestone)
-        journal["leaves"][leaf["key"]] = {"number": issue["number"], "id": issue["id"], "node_id": issue["node_id"], "url": issue["html_url"]}
+            result = create_issue(repo, title=title, body=body, labels=labels, milestone=milestone)
+            patched += 1
+        journal["leaves"][leaf["key"]] = {"number": result["number"], "id": result["id"], "node_id": result["node_id"], "url": result["html_url"]}
         write_json(MIGRATION_PATH, journal)
 
     for leaf in manifest["leaves"]:
@@ -763,18 +795,25 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
         add_sub_issue(repo, parent_number, child_id)
 
     ensure_project_fields(manifest, journal)
-    sync_project(manifest, journal)
+    board_updates = sync_project(manifest, journal)
     ensure_project_views(manifest, journal)
 
-    # Historical leaves close last, after their parents, milestone, evidence and Project records exist.
+    # Historical leaves close last, after their parents, milestone, evidence and Project
+    # records exist — and only when the live issue is not already in the closed projection.
     for leaf in manifest["leaves"]:
         if leaf["status"] != "history":
             continue
         number = journal["leaves"][leaf["key"]]["number"]
-        patch_issue(repo, number, title=leaf["title"], body=leaf_body(leaf, parents[leaf["parent"]], manifest), labels=issue_labels("leaf", leaf), milestone=milestones[leaf["milestone"]], state="closed")
+        issue = live.get(leaf["key"])
+        title, body, labels = leaf["title"], leaf_body(leaf, parents[leaf["parent"]], manifest), issue_labels("leaf", leaf)
+        if issue_up_to_date(issue, title=title, body=body, labels=labels, milestone=milestones[leaf["milestone"]], state="closed"):
+            continue
+        patch_issue(repo, number, title=title, body=body, labels=labels, milestone=milestones[leaf["milestone"]], state="closed")
+        patched += 1
 
     journal["phase"] = "applied"
     write_json(MIGRATION_PATH, journal)
+    print(f"applied: patched {patched} issues, {board_updates} board fields")
 
 
 def compare_pr34(journal: dict[str, Any]) -> list[str]:

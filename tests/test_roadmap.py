@@ -345,6 +345,60 @@ class BoardArchiveTests(unittest.TestCase):
         self.assertTrue(any("Project status is" in f for f in fails))
 
 
+class ApplyConvergenceTests(unittest.TestCase):
+    """A converged apply writes nothing: issue skips match reconcile, board fields diff."""
+
+    def test_issue_up_to_date_matches_reconcile_comparisons(self) -> None:
+        issue = {"state": "open", "title": "T", "body": "B", "labels": [{"name": "x"}, {"name": "y"}], "milestone": {"number": 3}}
+        self.assertTrue(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y", "x"], milestone=3, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="DIFF", labels=["y", "x"], milestone=3, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y", "x"], milestone=3, state="closed"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y", "x"], milestone=9, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y"], milestone=3, state="open"))
+        self.assertFalse(roadmap.issue_up_to_date(None, title="T", body="B", labels=[], milestone=None, state="open"))
+
+    def _journal(self):
+        select = lambda fid, opts: {"id": fid, "type": "ProjectV2SingleSelectField", "options": [{"name": n, "id": i} for n, i in opts]}
+        return {
+            "project": {"node_id": "P"},
+            "project_fields": {
+                "Roadmap role": select("f1", [("Leaf", "o1"), ("Imported history", "o2"), ("Parent", "o3")]),
+                "Delivery slice": select("f2", [("8", "s8")]),
+                "Proof level": select("f3", [("Playable", "p1")]),
+                "Work type": select("f4", [("Feature", "w1")]),
+                "Status": select("f5", [("Backlog", "b1"), ("Done", "d1")]),
+            },
+            "parents": {},
+            "leaves": {"air.toroid": {"url": "u1", "node_id": "N1"}},
+        }
+
+    _MANIFEST = {"parents": [], "leaves": [{"key": "air.toroid", "slice": "8", "proof": "playable", "status": "planned"}]}
+
+    def _sync(self, cards):
+        calls: list[list] = []
+        with mock.patch.object(roadmap, "board_items", return_value=cards), \
+             mock.patch.object(roadmap, "graphql_batch", side_effect=lambda ops, **k: calls.append(ops)), \
+             mock.patch.object(roadmap, "write_json"):
+            written = roadmap.sync_project(self._MANIFEST, self._journal())
+        return written, [op for ops in calls for op in ops]
+
+    def test_sync_writes_nothing_when_the_card_already_matches(self) -> None:
+        cards = {"u1": [{"id": "c1", "isArchived": False, "roadmap role": "Leaf", "delivery slice": "8",
+                         "proof level": "Playable", "work type": "Feature", "status": "Backlog"}]}
+        written, ops = self._sync(cards)
+        self.assertEqual(0, written)
+        self.assertEqual([], ops)
+
+    def test_sync_unarchives_then_updates_only_the_differing_field(self) -> None:
+        # Archived card whose Status is wrong (Done, should be Backlog for a planned leaf).
+        cards = {"u1": [{"id": "c1", "isArchived": True, "roadmap role": "Leaf", "delivery slice": "8",
+                         "proof level": "Playable", "work type": "Feature", "status": "Done"}]}
+        written, ops = self._sync(cards)
+        self.assertEqual(1, written)  # only Status differs
+        self.assertTrue(any("unarchiveProjectV2Item" in op for op in ops))
+        self.assertEqual(1, sum("updateProjectV2ItemFieldValue" in op for op in ops))
+
+
 class DeliverTests(unittest.TestCase):
     """`roadmap deliver --pr N` records a merged PR's leaves as delivered in the manifest."""
 
