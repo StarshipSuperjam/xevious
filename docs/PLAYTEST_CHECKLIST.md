@@ -26,7 +26,9 @@ above so a build that adapted to a wrong spec never reaches the playtest.) Contr
 also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
 (there is no separate crosshair control). The temporary **D**, **G**, and **S** debug keys are **gone** —
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to
-score, let one (or its bullet) touch you to die.
+score, let one (or its bullet) touch you to die. One new **temporary** key is present: holding **T**
+during play brings in **Terrazis one at a time** (step 4b) so a family unreachable in early play can be
+tested — a dev tool tracked for removal (issue #119), not part of the finished game.
 
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a
@@ -93,6 +95,20 @@ so area position is read from the `area progress`/`area number` variable watcher
    Toroid frame), so a small enemy-looking dot flying straight *is* the bullet; and the kill explosion reuses
    the player craft's own death-burst frames as a placeholder. Both are deliberate deferrals to a later art
    pass, so judge the *behavior* (fires / flies / kills; explodes / scores / clears), not the placeholder art.
+4b. **Terrazi combat — the first firing family (temporary debug spawn).** Terrazi only spawns at very high
+   AI levels, unreachable in a normal area-1 flight, so this build carries a **temporary playtest key**:
+   while playing, **hold `T`** to bring in Terrazis **one at a time** — a single Terrazi enters, and the
+   next appears only after it leaves or dies, so you can watch each one's full lifecycle without a crowded
+   wave. This key is a dev tool tracked for removal (issue #119) — it is not part of the finished game.
+   Hold `T` and watch a single Terrazi through, confirming: it **enters aimed toward the craft** at a
+   faster clip than Toroids (the 3 px/frame tier), **rolling** through its frames; while still distant it
+   **fires aimed bullets on a timer** (a steady drip, not one-and-done like the Toroid — the rate tracks
+   the scheduled mask); and as it draws **nearly level with you in the scroll direction** it **stops firing
+   and glides** — decelerating and **reversing its sideways course** to peel away, rather than diving into
+   you. **Shoot one:** it explodes and the score rises by **700** (the HUD digits are the definitive
+   signal), the wreck clears. Check the **roll sprite** reads right (the small green banking-light on two
+   of the frames is correct, not an artifact); the shared explosion is the same placeholder burst as the
+   Toroid (note, do not fail). Release `T` and confirm normal Toroid waves resume.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row by letting a Toroid or its
    bullet touch the craft (once ground objects and Bacura exist, exercise those too): the full death
    presentation and sound complete uncut, the craft respawns **immediately vulnerable** (fly into an enemy

@@ -644,6 +644,15 @@ INIT_TERRAZI_PROCCODE = "init terrazi"
 UPDATE_TERRAZI_PROCCODE = "update terrazi"
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
+# DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
+# formation to a Terrazi wave so a family that only spawns at high AI levels is reachable for a
+# playtest. Amends the locked control mapping (needs guardrail-ack). See docs/spec/core-game-systems.md
+# and the removal issue #119 (remove once all aerial families are built and playtested).
+DEBUG_SPAWN_PROCCODE = "debug spawn wave"
+DEBUG_SPAWN_KEY = "t"  # T = spawn a Terrazi wave
+# The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
+# formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
+TERRAZI_FORMATION_OFFSET = 78
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
@@ -2441,6 +2450,55 @@ def install_spawn_flying(blocks: Blocks) -> None:
     blocks.chain(definition, [set_i, loop])
 
 
+def install_debug_spawn_wave(blocks: Blocks) -> None:
+    # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, spawn Terrazis ONE AT A
+    # TIME so the operator can watch a single enemy's full lifecycle (approach, timed fire, glide-and-
+    # reverse, exit) instead of a confusing six-at-once wave. Each tick: point the formation at the
+    # Terrazi offset; if a Terrazi is already on the field, set the spawn count to 0 (let that one live
+    # out its life alone); otherwise clear the flying slots and set the count to 1, so the shared spawner
+    # (which runs right after this in the walk) brings in exactly one fresh Terrazi from the top. It
+    # self-gates on the key, so normal play is untouched when the key is not held. This makes a family
+    # that only spawns at high AI levels reachable for playtest; reachability recurs for every future
+    # aerial family, so this stays a dev tool until they are all built and playtested, then it is removed
+    # (it amends the locked control mapping — see core-game-systems.md and issue #119).
+    definition = _install_warp_proc(blocks, DEBUG_SPAWN_PROCCODE)
+    gate = blocks.add("control_if")
+    pressed = blocks.key_pressed(gate, DEBUG_SPAWN_KEY)
+    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
+
+    # A Terrazi already occupies some flying slot?  (OR over the six flying slots.)
+    present = None
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        is_terrazi = blocks.op_eq(
+            blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(TERRAZI_TYPE)
+        )
+        present = is_terrazi if present is None else blocks.op_or(present, is_terrazi)
+
+    branch = blocks.add("control_if_else")
+    blocks.blocks[branch]["inputs"]["CONDITION"] = [2, present]
+    blocks.blocks[present]["parent"] = branch
+    # A Terrazi is alive: spawn nothing more this tick (keep it a solo).
+    blocks.substack(branch, [blocks.set_var("formation count", FORMATION_COUNT_ID, number(0))])
+    # No Terrazi: clear the flying slots and bring in exactly one from the top.
+    clear = [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0))
+        for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
+    ]
+    blocks.substack(
+        branch,
+        [*clear, blocks.set_var("formation count", FORMATION_COUNT_ID, number(1))],
+        name="SUBSTACK2",
+    )
+    blocks.substack(
+        gate,
+        [
+            blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(TERRAZI_FORMATION_OFFSET)),
+            branch,
+        ],
+    )
+    blocks.chain(definition, [gate])
+
+
 def _advance_area_number(blocks: Blocks) -> str:
     # AREA-01 area increment with the 16 -> 7 loop (completing area 16 continues at area 7).
     # One source, called from both the completion branch and the near-end checkpoint. Returns
@@ -2842,6 +2900,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_cull_slot(blocks)
     install_advance_slots(blocks)
     install_spawn_flying(blocks)
+    install_debug_spawn_wave(blocks)  # DEBUG / temporary (tracked for removal)
     install_advance_area(blocks)
     install_score(blocks)
     install_check_bonus_life(blocks)
@@ -2981,6 +3040,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
             blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
             blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
+            # DEBUG (temporary, tracked for removal): overrides the scheduled formation to a Terrazi
+            # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
+            blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
             blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
             death_check,
         ],

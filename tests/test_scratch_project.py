@@ -1131,6 +1131,8 @@ class ScratchProjectTests(unittest.TestCase):
             director.INIT_TERRAZI_PROCCODE,
             director.UPDATE_TERRAZI_PROCCODE,
             director.FIRE_GATE_PROCCODE,
+            # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
+            director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
             # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
             director.CHECK_AIR_HIT_PROCCODE,
@@ -5488,7 +5490,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "56c911b08c13681dbcfa0b3e7d5dd20ff46fa1730b105e9eb0f7dc3edddef826",
+            "a2db25660e88287087ebb8513ea72d6fe7f7ba5cee71d16e6e39244d11f52457",
             build_hash,
         )
 

@@ -752,6 +752,33 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'fire permission gate'),
   },
   {
+    key: 'debug-key-spawns-terrazi-wave',
+    behavior:
+      'The temporary debug key (T) brings in Terrazis one at a time, so a family unreachable in early play can be playtested (tracked for removal)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Hold the debug key: the walk overrides the scheduled formation to the Terrazi offset and clears
+      // non-Terrazi flying slots, so the shared spawner fills them with Terrazis (type 17) through the
+      // real spawn path — no direct slot seeding here.
+      keyDown(vm, 't');
+      let terraziSeen = false;
+      for (let i = 0; i < 30 && !terraziSeen; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        if (FLYING_SLOT_INDICES.some((s) => type[s] === 17)) terraziSeen = true;
+      }
+      keyUp(vm, 't');
+      return { terraziSeen };
+    },
+    assert(obs) {
+      assert.equal(obs.terraziSeen, true, 'holding the debug key fills a flying slot with a Terrazi');
+    },
+    // Empty `debug spawn wave` so the key does nothing → the scheduled (non-Terrazi) formation stands
+    // → no Terrazi ever occupies a flying slot → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
+  },
+  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',
