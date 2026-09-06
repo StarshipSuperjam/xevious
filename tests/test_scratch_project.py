@@ -207,10 +207,11 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 19: the historical 15 + the generated hud, the sprite-extraction proof, and the slice-8
-        # toroid + enemy-bullet gameplay renderers (both reuse the proof's costumes by reference).
-        self.assertEqual(19, len(project["targets"]))
-        self.assertEqual(98, len(assets))
+        # 20: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, and the slice-10 terrazi renderer (all reuse proof costumes by ref).
+        self.assertEqual(20, len(project["targets"]))
+        # 105: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06).
+        self.assertEqual(105, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1045,12 +1046,18 @@ class ScratchProjectTests(unittest.TestCase):
                 "slot code",
                 "slot pts",
                 "slot flag",
-                # AIR-01/AIR-12 homing-aim tables (slice 8): the octant quantizer + two speed tiers.
+                # AIR-06 fire-permission per-slot fields (the shared gate): captured mask + countdown.
+                "slot fire mask",
+                "slot fire timer",
+                # AIR-01/AIR-12 homing-aim tables: the octant quantizer + the speed tiers (24 Toroid,
+                # 32 generic bullets; 48 terrazi/torkan — AIR-06, baked ahead of its consumer).
                 "octant table",
                 "aim dy 24",
                 "aim dx 24",
                 "aim dy 32",
                 "aim dx 32",
+                "aim dy 48",
+                "aim dx 48",
                 "flying type table",
                 "toroid frame",
                 "value table",
@@ -1118,6 +1125,14 @@ class ScratchProjectTests(unittest.TestCase):
             director.SPAWN_FLYING_PROCCODE,
             director.INIT_TOROID_PROCCODE,
             director.UPDATE_TOROID_PROCCODE,
+            # AIR-06 Terrazi family (slice 10): its spawn init and per-tick update, both warp, no
+            # state write — dispatched from the same spawner / walk as the Toroid; plus the shared,
+            # family-agnostic fire-permission gate it calls to fire under its captured mask.
+            director.INIT_TERRAZI_PROCCODE,
+            director.UPDATE_TERRAZI_PROCCODE,
+            director.FIRE_GATE_PROCCODE,
+            # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
+            director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
             # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
             director.CHECK_AIR_HIT_PROCCODE,
@@ -1606,6 +1621,322 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air01_failures(project), label)
+
+    @staticmethod
+    def _air06_failures(project: dict) -> set:
+        """AIR-06 Terrazi authoring contract — violated labels. Pins the structural facts that make
+        Terrazi a faithful live family: its init/update run atomically, the spawner and the ordered walk
+        drive it by its own type, it aims on the fast (48-magnitude, 3 px/frame) tier, its update commits
+        a glide that reverses its forward/scroll course (the decelerate-and-reverse of `terrazi_main_cont`),
+        and it fires periodically through the shared, global-phase fire-permission gate under its captured
+        mask."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        # (1) Both Terrazi lifecycle procedures exist and are warp (atomic) — a non-warp walk sub-proc
+        # would yield mid-slot, letting a half-moved enemy render or be hit.
+        for proccode in (director.INIT_TERRAZI_PROCCODE, director.UPDATE_TERRAZI_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("terrazi-lifecycle-procs-warp")
+
+        # (2) The spawner inits Terrazi by type, so a Terrazi-typed formation slot becomes live; (3) the
+        # ordered walk dispatches to its updater, so a spawned Terrazi actually advances.
+        if not calls(director.INIT_TERRAZI_PROCCODE):
+            failures.add("spawn-inits-terrazi")
+        if not calls(director.UPDATE_TERRAZI_PROCCODE):
+            failures.add("dispatch-updates-terrazi")
+
+        # (4) The spawn init aims on the FAST tier — it reads both the 48-magnitude aim tables (3
+        # px/frame), not the Toroid's 24-magnitude (1.5 px/frame) tables.
+        init_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.INIT_TERRAZI_PROCCODE)
+            if b["opcode"] == "data_itemoflist"
+        }
+        if not {director.AIM_DX_48_ID, director.AIM_DY_48_ID} <= init_lists:
+            failures.add("terrazi-aims-fast-tier")
+
+        # (5) The update commits a glide that REVERSES the forward/scroll course: it latches the slot flag
+        # to GLIDE and decelerates the forward velocity (`slot dx`, the `_dX`/scroll axis the arcade
+        # `subq #2,_dX` reverses — dir_delta_tbl 2172 fixes `_X` as the scroll axis) — the decelerate-and-
+        # reverse. Without the `slot dx` change the enemy would only dive; without the flag latch it would
+        # never commit.
+        update_body = _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE)
+        writes_slot_dx = any(
+            b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+            for b in update_body
+        )
+        latches_glide = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            for b in update_body
+        )
+        if not (writes_slot_dx and latches_glide):
+            failures.add("terrazi-glide-reverses")
+
+        # ---- Fire-permission gate (the shared, family-agnostic periodic-fire machinery) ----
+        # (6) The gate procedure exists and is warp (atomic in the walk).
+        gate = proto(director.FIRE_GATE_PROCCODE)
+        if gate is None or gate["mutation"].get("warp") != "true":
+            failures.add("fire-gate-warp")
+
+        # (7) The spawn init captures the family's fire mask AND seeds the per-slot fire countdown, so a
+        # freshly spawned Terrazi carries its own periodic-fire state.
+        init_writes = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.INIT_TERRAZI_PROCCODE)
+            if b["opcode"] == "data_replaceitemoflist"
+        }
+        if not {director.SLOT_FIRE_MASK_ID, director.SLOT_FIRE_TIMER_ID} <= init_writes:
+            failures.add("terrazi-captures-fire-state")
+
+        # (8) The Terrazi update drives the gate, so a live Terrazi actually fires under it.
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+            for b in _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE)
+        ):
+            failures.add("terrazi-update-drives-gate")
+
+        # Numeric-shape invariants on the gate body (the harness is frame-blind to cadence, so the
+        # every-8th-frame phase and the reload cap are proven statically here).
+        gate_blocks = _proc_body_blocks(stage, director.FIRE_GATE_PROCCODE)
+
+        def num_operand(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], list) and len(inp[1]) >= 2 and inp[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                try:
+                    return int(inp[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def var_id(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], list) and len(inp[1]) >= 3 and inp[1][0] in (12, 13):
+                return inp[1][2]
+            return None
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        # (9) GLOBAL 8-arcade-frame phase: `tick mod FIRE_GATE_PHASE_TICKS` — the tick variable modulo
+        # the phase constant. Without the right modulus the every-8th-frame cadence is wrong.
+        phased = any(
+            b["opcode"] == "operator_mod"
+            and var_id(b["inputs"].get("NUM1")) == director.TICK_ID
+            and num_operand(b["inputs"].get("NUM2")) == director.FIRE_GATE_PHASE_TICKS
+            for b in gate_blocks
+        )
+        if not phased:
+            failures.add("fire-gate-global-phase")
+
+        # (10) Reload = (rng & mask) + 1: an `operator_add` of exactly 1 onto an `operator_mod` that
+        # reads the shared stream — the +1 is the spawn/reload asymmetry and the reason there is NO
+        # zero-suppression (mask 0 -> reload 1 -> fastest). Dropping the +1 is the zero-suppression bug.
+        reload_plus_one = False
+        for b in gate_blocks:
+            if b["opcode"] != "operator_add" or num_operand(b["inputs"].get("NUM2")) != 1:
+                continue
+            inner = blocks.get(ref(b["inputs"].get("NUM1")))
+            if inner and inner["opcode"] == "operator_mod" and var_id(inner["inputs"].get("NUM1")) == director.RNG_OUT_ID:
+                reload_plus_one = True
+        if not reload_plus_one:
+            failures.add("fire-gate-reload-plus-one")
+
+        # (11) BYTE-underflow decrement: the per-slot countdown is decremented AS A BYTE —
+        # `((slot fire timer - 1) + FIRE_TIMER_BYTE_MOD) mod FIRE_TIMER_BYTE_MOD` — so a countdown of 0
+        # wraps to 255 and keeps counting down (the reference's `subq.b #1,(_TIMER)` underflow: `0-1`
+        # is 255, nonzero, so it does not fire), never going negative and never sticking. Without the
+        # mod-256 wrap a 0 draw would decrement to -1 and the `== 0` fire test could never come back
+        # around. The decrement's mod is the only `operator_mod` whose divisor is the bare byte modulus
+        # (the phase divides by FIRE_GATE_PHASE_TICKS, the reload by an `operator_add` of mask+1).
+        byte_wrap = False
+        for b in gate_blocks:
+            if b["opcode"] != "operator_mod" or num_operand(b["inputs"].get("NUM2")) != director.FIRE_TIMER_BYTE_MOD:
+                continue
+            add = blocks.get(ref(b["inputs"].get("NUM1")))
+            if not (add and add["opcode"] == "operator_add" and num_operand(add["inputs"].get("NUM2")) == director.FIRE_TIMER_BYTE_MOD):
+                continue
+            sub = blocks.get(ref(add["inputs"].get("NUM1")))
+            if not (sub and sub["opcode"] == "operator_subtract" and num_operand(sub["inputs"].get("NUM2")) == 1):
+                continue
+            item = blocks.get(ref(sub["inputs"].get("NUM1")))
+            if item and item["opcode"] == "data_itemoflist" and item["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID:
+                byte_wrap = True
+        if not byte_wrap:
+            failures.add("fire-gate-byte-underflow")
+        return failures
+
+    # Roadmap closure evidence for leaf `air.terrazi` (AIR-06.terrazi): Terrazi is a live family —
+    # spawned by type from the formation wave, advanced by the ordered walk, aimed on the 3 px/frame
+    # tier, committing a glide that reverses its forward/scroll course when it draws level laterally with
+    # the craft. The live proof (spawns, moves, glide reverses `slot dx`) is the harness
+    # `terrazi-wave-spawns-and-moves` / `terrazi-glides-and-reverses`. The masked periodic fire (the
+    # shared fire-permission gate) carries the firing half of AIR-06.
+    # roadmap-evidence: AIR-06 success  (test_terrazi_slice_authoring_present — lifecycle procs warp, spawn+dispatch driven by type, fast-tier aim, glide reverses lateral course)
+    # roadmap-evidence: AIR-06 failure  (test_terrazi_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_terrazi_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air06_failures(project))
+
+    def test_terrazi_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air06_failures(base))
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAZI_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_init_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_TERRAZI_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAZI_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def aim_slow_tier(p: dict) -> None:
+            # Repoint the fast-tier aim reads to the Toroid's 24-magnitude tables → the fast-tier
+            # clause no longer holds.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            swap = {director.AIM_DX_48_ID: ("aim dx 24", director.AIM_DX_24_ID), director.AIM_DY_48_ID: ("aim dy 24", director.AIM_DY_24_ID)}
+            for b in _proc_body_blocks(stage, director.INIT_TERRAZI_PROCCODE):
+                if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
+                    b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
+
+        def drop_forward_reverse(p: dict) -> None:
+            # Repoint the glide's `slot dx` decel write to a scratch list → the forward reverse never
+            # happens (the enemy keeps its approach velocity instead of decelerating and peeling away).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+                ):
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def unwarp_gate(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_fire_state_capture(p: dict) -> None:
+            # Repoint the spawn's `slot fire timer` seed to a scratch list → the capture clause fails.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.INIT_TERRAZI_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+                ):
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def drop_gate_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def break_phase_modulus(p: dict) -> None:
+            # Phase every tick (mod 1) instead of every 4th → the every-8th-frame cadence is lost.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.FIRE_GATE_PROCCODE):
+                if (
+                    b["opcode"] == "operator_mod"
+                    and isinstance(b["inputs"].get("NUM1"), list)
+                    and isinstance(b["inputs"]["NUM1"][1], list)
+                    and b["inputs"]["NUM1"][1][0] == 12
+                    and b["inputs"]["NUM1"][1][2] == director.TICK_ID
+                ):
+                    b["inputs"]["NUM2"] = [1, [4, 1]]
+
+        def drop_reload_plus_one(p: dict) -> None:
+            # Reload with + 0 instead of + 1 → the zero-suppression bug (a 0 draw sticks at 0).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            body = _proc_body_blocks(stage, director.FIRE_GATE_PROCCODE)
+            for b in body:
+                if b["opcode"] != "operator_add":
+                    continue
+                num2 = b["inputs"].get("NUM2")
+                num1 = b["inputs"].get("NUM1")
+                if not (isinstance(num2, list) and isinstance(num2[1], list) and num2[1][0] == 4 and int(num2[1][1]) == 1):
+                    continue
+                inner = stage["blocks"].get(num1[1]) if isinstance(num1, list) and isinstance(num1[1], str) else None
+                if inner and inner["opcode"] == "operator_mod":
+                    n1 = inner["inputs"].get("NUM1")
+                    if isinstance(n1, list) and isinstance(n1[1], list) and n1[1][0] == 12 and n1[1][2] == director.RNG_OUT_ID:
+                        b["inputs"]["NUM2"] = [1, [4, 0]]
+
+        def break_byte_wrap(p: dict) -> None:
+            # Widen the decrement's byte modulus off 256 (the only bare-literal 256 mod in the gate) →
+            # a 0 countdown decrements to -1 instead of wrapping to 255, so the underflow is gone.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.FIRE_GATE_PROCCODE):
+                if b["opcode"] != "operator_mod":
+                    continue
+                num2 = b["inputs"].get("NUM2")
+                if isinstance(num2, list) and isinstance(num2[1], list) and num2[1][0] == 4 and int(num2[1][1]) == director.FIRE_TIMER_BYTE_MOD:
+                    b["inputs"]["NUM2"] = [1, [4, str(director.FIRE_TIMER_BYTE_MOD * 2)]]
+
+        cases = [
+            ("terrazi-lifecycle-procs-warp", unwarp_update),
+            ("spawn-inits-terrazi", drop_init_call),
+            ("dispatch-updates-terrazi", drop_dispatch_call),
+            ("terrazi-aims-fast-tier", aim_slow_tier),
+            ("terrazi-glide-reverses", drop_forward_reverse),
+            ("fire-gate-warp", unwarp_gate),
+            ("terrazi-captures-fire-state", drop_fire_state_capture),
+            ("terrazi-update-drives-gate", drop_gate_call),
+            ("fire-gate-global-phase", break_phase_modulus),
+            ("fire-gate-reload-plus-one", drop_reload_plus_one),
+            ("fire-gate-byte-underflow", break_byte_wrap),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air06_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -5198,7 +5529,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "0c7c82db73b670f15695af5e9b6a7568506b4a42cb19e58bdaa8f13f6bf8f519",
+            "054487f33e72c75516e344aae7e20e5be77b5cb13465de7c3cf9b5fa7d18b880",
             build_hash,
         )
 

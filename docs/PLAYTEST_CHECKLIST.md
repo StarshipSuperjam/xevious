@@ -26,7 +26,9 @@ above so a build that adapted to a wrong spec never reaches the playtest.) Contr
 also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
 (there is no separate crosshair control). The temporary **D**, **G**, and **S** debug keys are **gone** —
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to
-score, let one (or its bullet) touch you to die.
+score, let one (or its bullet) touch you to die. One new **temporary** key is present: holding **T**
+during play brings in **Terrazis one at a time** (step 4b) so a family unreachable in early play can be
+tested — a dev tool tracked for removal (issue #119), not part of the finished game.
 
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a
@@ -73,9 +75,10 @@ so area position is read from the `area progress`/`area number` variable watcher
    screen should agree; the exact table correctness is still the build-time model fixture's, not the eye's.
    **You can also tick a `fire mask *` watcher** (e.g. `fire mask logram`) and **`ground stop firing row`**
    (DIF-03): each takes its scheduled byte value as the area scrolls (logram, for instance, is set near the top
-   of area 1) and resets to 0 on a new game. No family's fire *rate* is gated by these yet — the shooting
-   Toroid fires once without consuming any mask (slice 10 wires mask-gated firing) — so this only confirms the
-   schedule sets them.
+   of area 1) and resets to 0 on a new game. The shooting Toroid still fires once without consuming any mask
+   (its single swing-commit shot is event-driven, not gated); the first mask-*rate*-gated family is the
+   Terrazi (step 4b), whose fire timer reloads from its captured mask — so for these ground/Logram watchers
+   this still only confirms the schedule sets them.
 4a. **Toroid combat — the first live enemy.** Fly area 1 until the first formation record fires (watch
    `formation count` climb above 0): **Toroid waves appear** and keep replacing themselves — each slot
    re-spawns a fresh Toroid the moment its occupant leaves or dies — until a reset-formation record
@@ -93,6 +96,24 @@ so area position is read from the `area progress`/`area number` variable watcher
    Toroid frame), so a small enemy-looking dot flying straight *is* the bullet; and the kill explosion reuses
    the player craft's own death-burst frames as a placeholder. Both are deliberate deferrals to a later art
    pass, so judge the *behavior* (fires / flies / kills; explodes / scores / clears), not the placeholder art.
+4b. **Terrazi combat — the first firing family (temporary debug spawn).** Terrazi only spawns at very high
+   AI levels, unreachable in a normal area-1 flight, so this build carries a **temporary playtest key**:
+   while playing, **hold `T`** to bring in Terrazis **one at a time** — a single Terrazi enters, and the
+   next appears only after it leaves or dies, so you can watch each one's full lifecycle without a crowded
+   wave. This key is a dev tool tracked for removal (issue #119) — it is not part of the finished game.
+   **Note:** to isolate a single Terrazi, engaging `T` **clears the whole flying field first** — any live
+   Toroid wave on screen simply vanishes (no explosion, no score) as the lone Terrazi comes in. That is the
+   tool doing its job, **not** a bug; normal Toroid waves resume once you release `T` (checked at the end).
+   Hold `T` and watch a single Terrazi through, confirming: it **enters aimed toward the craft** at a
+   faster clip than Toroids (the 3 px/frame tier), **rolling** through its frames; while still distant it
+   **fires aimed bullets on a timer** (a steady drip, not one-and-done like the Toroid — the rate tracks
+   the scheduled mask); and as it draws **nearly level with you laterally** (lining up in your column, the
+   same trigger as the Toroid swing) it **stops firing and glides** — decelerating and **backing off its
+   forward approach** (reversing its onward motion) while drifting slightly to one side, rather than diving
+   into you. **Shoot one:** it explodes and the score rises by **700** (the HUD digits are the definitive
+   signal), the wreck clears. Check the **roll sprite** reads right (the small green banking-light on two
+   of the frames is correct, not an artifact); the shared explosion is the same placeholder burst as the
+   Toroid (note, do not fail). Release `T` and confirm normal Toroid waves resume.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row by letting a Toroid or its
    bullet touch the craft (once ground objects and Bacura exist, exercise those too): the full death
    presentation and sound complete uncut, the craft respawns **immediately vulnerable** (fly into an enemy

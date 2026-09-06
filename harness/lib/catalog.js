@@ -613,6 +613,175 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rng step'),
   },
   {
+    key: 'terrazi-wave-spawns-and-moves',
+    behavior:
+      'The formation spawner inits Terrazi-typed slots by type and the ordered walk advances them under their own aimed velocity each tick',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Terrazi (type 17) is not in area 1's baseline formation, so force a Terrazi wave through the
+      // REAL spawner path: clear the flying slots, make every flying-type-table entry Terrazi, and set
+      // a full formation count. The spawner then inits each empty flying slot as a Terrazi (proving the
+      // spawn-by-type dispatch); the walk advances them (proving update). A slot that stays Terrazi
+      // across a tick with no intervening empty is SEEN to change position — movement, not a refill.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 17;
+      writeVar(vm, 'formation-count', 6);
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      let terraziSeen = false;
+      let movedSeen = false;
+      const prevType = {};
+      const prevX = {};
+      const prevY = {};
+      for (let i = 0; i < 60; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        const x = readVar(vm, 'slot-x');
+        const y = readVar(vm, 'slot-y');
+        for (const s of FLYING_SLOT_INDICES) {
+          const t = type[s];
+          if (t === 17) {
+            terraziSeen = true;
+            if (prevType[s] === 17 && (x[s] !== prevX[s] || y[s] !== prevY[s])) movedSeen = true;
+          }
+          prevType[s] = t;
+          prevX[s] = x[s];
+          prevY[s] = y[s];
+        }
+      }
+      return { terraziSeen, movedSeen };
+    },
+    assert(obs) {
+      assert.equal(obs.terraziSeen, true, 'the spawner inits a Terrazi-typed slot by type');
+      assert.equal(obs.movedSeen, true, 'a live Terrazi advances its position under its own velocity');
+    },
+    // Empty `update terrazi` so Terrazis still spawn but no occupant ever advances → movedSeen false.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrazi'),
+  },
+  {
+    key: 'terrazi-glides-and-reverses',
+    behavior:
+      'A Terrazi drawing level with the craft LATERALLY commits a GLIDE that decelerates and REVERSES its forward/scroll velocity (the arcade terrazi_main_cont peel-away), not a straight homing dive',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed one Terrazi LATERALLY level with the craft (col offset 0, inside the [-4,3] glide window —
+      // the arcade triggers the glide on `_Y`, the lateral axis) with a forward/scroll approach velocity.
+      // On the trigger tick it latches GLIDE and, while gliding, decrements the SCROLL velocity by DECEL
+      // each tick (`subq #2,_dX`), so `slot dx` crosses zero and goes NEGATIVE — the decelerate-and-
+      // reverse of its forward approach. Placed several rows ahead so it is level laterally but not
+      // overlapping the craft's cell (invuln is on from reachPlaying regardless).
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 17);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 8) * 256); // eight rows ahead in scroll, not overlapping the craft cell
+      put('slot-y', slot, pc * 256); // same lateral column as the craft => col offset 0, inside the window
+      put('slot-dx', slot, 8); // a forward/scroll approach the glide must decelerate and reverse
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH — eligible to trigger the glide
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 1);
+      // One pump settles well past the trigger: the glide latches (flag = GLIDE) and the forward velocity
+      // decelerates below zero. The enemy naturally backs off-field and is culled within the settle (a
+      // pump is many ticks, not one — see step()), but cull keeps `slot flag`/`slot dx`, so the
+      // committed-glide and reversed-forward evidence survives to read (the same reason the Toroid swing
+      // scenario reads its post-cull `slot dy`). Magnitude is not asserted, only the sign flip.
+      step(vm, 1);
+      return { dx: readVar(vm, 'slot-dx')[slot], flag: readVar(vm, 'slot-flag')[slot] };
+    },
+    assert(obs) {
+      assert.equal(obs.flag, 1, 'the Terrazi committed its glide (flag = GLIDE)');
+      assert.ok(
+        obs.dx < 0,
+        `a gliding Terrazi decelerates and reverses its forward approach (dx < 0); got dx=${obs.dx}`,
+      );
+    },
+    // Empty `update terrazi` so the glide never runs → flag stays 0 and dx stays 8 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrazi'),
+  },
+  {
+    key: 'terrazi-fires-under-mask',
+    behavior:
+      'A distant Terrazi fires aimed bullets through the shared fire-permission gate under its captured mask (the periodic-fire path, not the Toroid one-shot)',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Isolate the Terrazi fire from live shooting Toroids: make every spawnable flying type the
+      // NON-shooting Toroid (type 10, never fires) and clear the flying slots, so `bullet alloc result`
+      // can only move if the Terrazi's gate fires. Seed one Terrazi LATERALLY off the craft's line (col
+      // offset 12, well outside the [-4,3] glide window on `_Y`, so it stays in the firing approach state
+      // and never commits the fire-suppressing glide) with mask 0 (reload 1 => fires on every 8-frame
+      // phase, the fastest cap) and a countdown of 1 (fires on the first phase). It is stationary
+      // (dx=dy=0) so it never drifts into the window. Reset the shared alloc signal, then pump until a
+      // bullet allocates.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 17);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 20) * 256); // 20 rows ahead in scroll — no longer what gates the glide
+      put('slot-y', slot, (pc - 12) * 256); // 12 columns aside => col offset 12, outside the [-4,3] window
+      put('slot-dx', slot, 0); // stationary and laterally distant: it stays in the firing approach state
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH
+      put('slot-fire-mask', slot, 0); // mask 0 => reload 1 => fires every phase (fastest cap)
+      put('slot-fire-timer', slot, 1); // fires on the first phase tick
+      writeVar(vm, 'bullet-alloc-result', 0);
+      let fired = false;
+      for (let i = 0; i < 12 && !fired; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0) fired = true;
+      }
+      return { fired };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'the distant Terrazi allocated an aimed bullet through the fire gate');
+    },
+    // Empty the shared `fire permission gate` so the Terrazi never fires and no other firing path exists
+    // (all spawnable types are non-shooting) → `bullet alloc result` stays 0 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'fire permission gate'),
+  },
+  {
+    key: 'debug-key-spawns-terrazi-wave',
+    behavior:
+      'The temporary debug key (T) brings in Terrazis one at a time, so a family unreachable in early play can be playtested (tracked for removal)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Hold the debug key: the walk overrides the scheduled formation to the Terrazi offset and clears
+      // non-Terrazi flying slots, so the shared spawner fills them with Terrazis (type 17) through the
+      // real spawn path — no direct slot seeding here.
+      keyDown(vm, 't');
+      let terraziSeen = false;
+      for (let i = 0; i < 30 && !terraziSeen; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        if (FLYING_SLOT_INDICES.some((s) => type[s] === 17)) terraziSeen = true;
+      }
+      keyUp(vm, 't');
+      return { terraziSeen };
+    },
+    assert(obs) {
+      assert.equal(obs.terraziSeen, true, 'holding the debug key fills a flying slot with a Terrazi');
+    },
+    // Empty `debug spawn wave` so the key does nothing → the scheduled (non-Terrazi) formation stands
+    // → no Terrazi ever occupies a flying slot → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
+  },
+  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',

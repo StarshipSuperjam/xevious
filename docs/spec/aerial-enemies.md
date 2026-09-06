@@ -29,11 +29,12 @@ built.
 **Per-family verification status.** This document is settled so its slice-8 leaves can proceed, but not
 every family below was re-verified against the reference to the same bar when it settled. Verified
 line-by-line against the pinned reference and built: the **Shared rules** and the **Toroid (AIR-01)**
-paragraphs (the slice-8 vertical slice). The other eleven families (Torkan, Zoshi, Jara, Kapi, Terrazi,
-the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are transcribed from the reference as
-the plan of record, but their line-by-line verification lands with their own build slice (10–11); each is
-confirmed against the reference — and this document amended where it diverges, with the operator's
-acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
+paragraphs (the slice-8 vertical slice), and the **Terrazi (AIR-06)** paragraph together with the shared
+**fire-permission gate** (its own family slice — the first firing aerial family). The other ten families
+(Torkan, Zoshi, Jara, Kapi, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
+transcribed from the reference as the plan of record, but their line-by-line verification lands with their
+own build slice (10–11); each is confirmed against the reference — and this document amended where it
+diverges, with the operator's acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
 verification, not as checked ground.
 
 ## Behavior
@@ -87,10 +88,15 @@ recorded uncertainty: the reference's code and its own comment disagree (an unma
 the commented 48–111 range), noted as a probable transcription slip in the reference; the build follows
 the commented range and records the deviation.
 
-**Terrazi (AIR-06).** Aimed approach at 3 px/frame, firing under the Terrazi mask while distant; inside
-a narrow window (~[−4, 3], derived) it stops firing and glides — decelerating and reversing over roughly
-24 frames (3667–3729). The catalog's older description of a distinctive "expand" attack is unsupported
-by the reference and is recorded as ruled out.
+**Terrazi (AIR-06).** Aimed approach at 3 px/frame, firing under the Terrazi mask while distant; when it
+draws nearly level with the craft **laterally** (a narrow window on `_Y`, offset ~[−4, 3], derived — the
+same lateral axis the Toroid swing triggers on, `solvalou._Y − self._Y` 3681–3687), it stops firing and
+glides: it sets a slow ±2 lateral drift by side (`_dY` in `terrazi_main_cont` 3694–3699) and, unlike the
+Toroid's swing which reverses the *lateral* course, decelerates and **reverses its forward/scroll
+velocity** (`subq #2,_dX`, 3715) over roughly 24 frames — backing off the craft's line rather than diving
+in (3667–3729). The
+catalog's older description of a distinctive "expand" attack is unsupported by the reference and is
+recorded as ruled out.
 
 **Zakato line (AIR-07).** All Zakatos teleport in with a ~20-frame sparkle during which they cannot be
 hit (`init_teleport` 3961–4006), then live briefly and fire **exactly once**: firing is terminal — the
