@@ -48453,6 +48453,1461 @@
     },
     {
       "isStage": false,
+      "name": "terrazi",
+      "variables": {
+        "terrazi-clone-slot": [
+          "terrazi clone slot",
+          0
+        ]
+      },
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {
+        "gd-terrazi-001": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-terrazi-002",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director stop",
+              "broadcastMsgId-director-stop"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 20
+        },
+        "gd-terrazi-002": {
+          "opcode": "control_stop",
+          "next": "gd-terrazi-003",
+          "parent": "gd-terrazi-001",
+          "inputs": {},
+          "fields": {
+            "STOP_OPTION": [
+              "other scripts in sprite",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "hasnext": "true"
+          }
+        },
+        "gd-terrazi-003": {
+          "opcode": "sound_stopallsounds",
+          "next": "gd-terrazi-004",
+          "parent": "gd-terrazi-002",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-004": {
+          "opcode": "control_delete_this_clone",
+          "next": "gd-terrazi-005",
+          "parent": "gd-terrazi-003",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-005": {
+          "opcode": "looks_hide",
+          "next": null,
+          "parent": "gd-terrazi-004",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-006": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-terrazi-025",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director enter",
+              "broadcastMsgId-director-enter"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 170
+        },
+        "gd-terrazi-007": {
+          "opcode": "data_setvariableto",
+          "next": "gd-terrazi-009",
+          "parent": "gd-terrazi-025",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                59
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrazi clone slot",
+              "terrazi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-008": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-terrazi-009",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-009": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-terrazi-010",
+          "parent": "gd-terrazi-007",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-terrazi-008"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-010": {
+          "opcode": "data_setvariableto",
+          "next": "gd-terrazi-012",
+          "parent": "gd-terrazi-009",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                60
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrazi clone slot",
+              "terrazi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-011": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-terrazi-012",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-012": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-terrazi-013",
+          "parent": "gd-terrazi-010",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-terrazi-011"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-013": {
+          "opcode": "data_setvariableto",
+          "next": "gd-terrazi-015",
+          "parent": "gd-terrazi-012",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                61
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrazi clone slot",
+              "terrazi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-014": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-terrazi-015",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-015": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-terrazi-016",
+          "parent": "gd-terrazi-013",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-terrazi-014"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-016": {
+          "opcode": "data_setvariableto",
+          "next": "gd-terrazi-018",
+          "parent": "gd-terrazi-015",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                62
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrazi clone slot",
+              "terrazi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-017": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-terrazi-018",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-018": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-terrazi-019",
+          "parent": "gd-terrazi-016",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-terrazi-017"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-019": {
+          "opcode": "data_setvariableto",
+          "next": "gd-terrazi-021",
+          "parent": "gd-terrazi-018",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                63
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrazi clone slot",
+              "terrazi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-020": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-terrazi-021",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-021": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-terrazi-022",
+          "parent": "gd-terrazi-019",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-terrazi-020"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-022": {
+          "opcode": "data_setvariableto",
+          "next": "gd-terrazi-024",
+          "parent": "gd-terrazi-021",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                64
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrazi clone slot",
+              "terrazi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-023": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-terrazi-024",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-024": {
+          "opcode": "control_create_clone_of",
+          "next": null,
+          "parent": "gd-terrazi-022",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-terrazi-023"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-025": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-terrazi-006",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-terrazi-026"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-terrazi-007"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-026": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-terrazi-025",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "playing"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-027": {
+          "opcode": "control_start_as_clone",
+          "next": "gd-terrazi-070",
+          "parent": null,
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 320
+        },
+        "gd-terrazi-028": {
+          "opcode": "control_repeat_until",
+          "next": null,
+          "parent": "gd-terrazi-070",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-terrazi-029"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-terrazi-065"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-029": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-terrazi-028",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-terrazi-030"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-030": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-terrazi-029",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "playing"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-031": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-terrazi-032",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "terrazi clone slot",
+                "terrazi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot type",
+              "slot-type"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-032": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-terrazi-065",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-terrazi-031"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                17
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-033": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-terrazi-034",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "terrazi clone slot",
+                "terrazi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot y",
+              "slot-y"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-034": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-terrazi-035",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-033"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                256
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-035": {
+          "opcode": "operator_multiply",
+          "next": null,
+          "parent": "gd-terrazi-036",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-034"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                15
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-036": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-terrazi-066",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-035"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                240
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-037": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-terrazi-038",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "terrazi clone slot",
+                "terrazi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot x",
+              "slot-x"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-038": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-terrazi-039",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-037"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                256
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-039": {
+          "opcode": "operator_multiply",
+          "next": null,
+          "parent": "gd-terrazi-040",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-038"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-040": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-terrazi-066",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                155
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-terrazi-039"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-041": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-terrazi-042",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "terrazi clone slot",
+                "terrazi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot timer",
+              "slot-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-042": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-terrazi-043",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-041"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-043": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-terrazi-044",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-terrazi-042"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-044": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-terrazi-045",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-043"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                7
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-045": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-terrazi-063",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-044"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-046": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-terrazi-047",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "terrazi clone slot",
+                "terrazi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot timer",
+              "slot-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-047": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-terrazi-048",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-046"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-048": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-terrazi-049",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-terrazi-047"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-049": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-terrazi-061",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                8
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-terrazi-048"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-050": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-terrazi-051",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "terrazi clone slot",
+                "terrazi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot timer",
+              "slot-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-051": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-terrazi-052",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-terrazi-050"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-052": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-terrazi-054",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-terrazi-051"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-053": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-terrazi-061",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-terrazi-054"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-terrazi-055"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-terrazi-056"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-054": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-terrazi-053",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-terrazi-052"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-055": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-terrazi-053",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                450
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-056": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-terrazi-053",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                225
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-057": {
+          "opcode": "control_if_else",
+          "next": "gd-terrazi-067",
+          "parent": "gd-terrazi-066",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-terrazi-059"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-terrazi-061"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-terrazi-063"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-058": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-terrazi-059",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "terrazi clone slot",
+                "terrazi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot state",
+              "slot-state"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-059": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-terrazi-057",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-terrazi-058"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-060": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-terrazi-061",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-061": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-terrazi-053",
+          "parent": "gd-terrazi-057",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-terrazi-049",
+              "gd-terrazi-060"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-062": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-terrazi-063",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-terrazi-063": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-terrazi-064",
+          "parent": "gd-terrazi-057",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-terrazi-045",
+              "gd-terrazi-062"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-064": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-terrazi-063",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                225
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-065": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-terrazi-028",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-terrazi-032"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-terrazi-066"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-terrazi-069"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-066": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-terrazi-057",
+          "parent": "gd-terrazi-065",
+          "inputs": {
+            "X": [
+              2,
+              "gd-terrazi-036"
+            ],
+            "Y": [
+              2,
+              "gd-terrazi-040"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-067": {
+          "opcode": "looks_gotofrontback",
+          "next": "gd-terrazi-068",
+          "parent": "gd-terrazi-057",
+          "inputs": {},
+          "fields": {
+            "FRONT_BACK": [
+              "front",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-068": {
+          "opcode": "looks_show",
+          "next": null,
+          "parent": "gd-terrazi-067",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-069": {
+          "opcode": "looks_hide",
+          "next": null,
+          "parent": "gd-terrazi-065",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-070": {
+          "opcode": "looks_hide",
+          "next": "gd-terrazi-028",
+          "parent": "gd-terrazi-027",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        }
+      },
+      "comments": {},
+      "currentCostume": 0,
+      "costumes": [
+        {
+          "name": "terrazi/roll/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f1ed0ee697cbeb97dad954f7f977c1b7",
+          "md5ext": "f1ed0ee697cbeb97dad954f7f977c1b7.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ec916185062ee3899a1a6874acd6f907",
+          "md5ext": "ec916185062ee3899a1a6874acd6f907.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "a2440e6d06b65128886c03a2813b8fd9",
+          "md5ext": "a2440e6d06b65128886c03a2813b8fd9.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e797b7999ddc307f9192ae96433983fd",
+          "md5ext": "e797b7999ddc307f9192ae96433983fd.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "bb319bdaa0c9490b1f4a4c8ed0095632",
+          "md5ext": "bb319bdaa0c9490b1f4a4c8ed0095632.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5612d409be83f68e2532958104318534",
+          "md5ext": "5612d409be83f68e2532958104318534.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "536b856bdca03d19ae0245d5e1cccfee",
+          "md5ext": "536b856bdca03d19ae0245d5e1cccfee.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "explode_01",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "b4f8079b46da300713058d31147e2645",
+          "md5ext": "b4f8079b46da300713058d31147e2645.png",
+          "rotationCenterX": 14,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_02",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "3d4e3586bbf52ec29de75f76104b4a29",
+          "md5ext": "3d4e3586bbf52ec29de75f76104b4a29.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_03",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "7efa6e85d32fdd9c02ccca82f379de2f",
+          "md5ext": "7efa6e85d32fdd9c02ccca82f379de2f.png",
+          "rotationCenterX": 28,
+          "rotationCenterY": 28
+        },
+        {
+          "name": "explode_04",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "46bdb47661d78203a224e4cfed0642ec",
+          "md5ext": "46bdb47661d78203a224e4cfed0642ec.png",
+          "rotationCenterX": 28,
+          "rotationCenterY": 26
+        },
+        {
+          "name": "explode_05",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "9b3ae51a677eaf8e310bd287e33afcee",
+          "md5ext": "9b3ae51a677eaf8e310bd287e33afcee.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_06",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "a812dfa21afcc7f0dd22f1137068ca1d",
+          "md5ext": "a812dfa21afcc7f0dd22f1137068ca1d.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_07",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "740aa8bfb859420880ceb3685faa9016",
+          "md5ext": "740aa8bfb859420880ceb3685faa9016.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_08",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "08fd056e1ce61c7af62e19587ca35b7b",
+          "md5ext": "08fd056e1ce61c7af62e19587ca35b7b.png",
+          "rotationCenterX": 30,
+          "rotationCenterY": 26
+        }
+      ],
+      "sounds": [],
+      "volume": 100,
+      "layerOrder": 20,
+      "visible": false,
+      "x": 0,
+      "y": 0,
+      "size": 100,
+      "direction": 90,
+      "draggable": false,
+      "rotationStyle": "don't rotate"
+    },
+    {
+      "isStage": false,
       "name": "toroid_sprite_proof",
       "variables": {},
       "lists": {},
@@ -48521,6 +49976,69 @@
           "dataFormat": "png",
           "assetId": "80df5268ad39408371fa1be1fcbf8116",
           "md5ext": "80df5268ad39408371fa1be1fcbf8116.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f1ed0ee697cbeb97dad954f7f977c1b7",
+          "md5ext": "f1ed0ee697cbeb97dad954f7f977c1b7.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ec916185062ee3899a1a6874acd6f907",
+          "md5ext": "ec916185062ee3899a1a6874acd6f907.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "a2440e6d06b65128886c03a2813b8fd9",
+          "md5ext": "a2440e6d06b65128886c03a2813b8fd9.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e797b7999ddc307f9192ae96433983fd",
+          "md5ext": "e797b7999ddc307f9192ae96433983fd.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "bb319bdaa0c9490b1f4a4c8ed0095632",
+          "md5ext": "bb319bdaa0c9490b1f4a4c8ed0095632.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5612d409be83f68e2532958104318534",
+          "md5ext": "5612d409be83f68e2532958104318534.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "terrazi/roll/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "536b856bdca03d19ae0245d5e1cccfee",
+          "md5ext": "536b856bdca03d19ae0245d5e1cccfee.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         }

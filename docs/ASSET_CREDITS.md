@@ -28,8 +28,10 @@ backgrounds and embedded credit panels. They remain available on the hidden
 ## Gameplay-ready derivatives
 
 The versioned manifest in `assets/sprite-extraction/manifest.json` measures
-three Solvalou frames and seven Toroid frames from the credited sheets. The
-standard-library generator removes only edge-connected `(0, 128, 0)` matte,
+three Solvalou frames, seven Toroid frames, and seven Terrazi roll frames from
+the credited sheets (the Terrazi frames from the same Aerial Enemies sheet as
+the Toroid). The standard-library generator removes only edge-connected
+`(0, 128, 0)` matte,
 places every frame on a native 16×16 RGBA canvas, and records the exact source
 hash, rectangle, canvas, anchor, credit, and license status in
 `assets/sprite-extraction/provenance.json`. Scratch copies of the same records

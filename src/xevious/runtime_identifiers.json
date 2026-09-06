@@ -534,6 +534,11 @@
       "name": "scroll step",
       "scope": "area_01b"
     },
+    "terrazi-clone-slot": {
+      "kind": "variable",
+      "name": "terrazi clone slot",
+      "scope": "terrazi"
+    },
     "tick": {
       "kind": "variable",
       "name": "tick",

@@ -776,6 +776,18 @@ ENEMY_BULLET_TARGET = "enemy_bullet"
 ENEMY_BULLET_CLONE_SLOT_ID = "enemy-bullet-clone-slot"
 ENEMY_BULLET_RENDER_SIZE = 90  # a small dot relative to the 225 enemy scale
 
+# AIR-06 Terrazi renderer: one persistent clone per flying slot (59-64), gated on the Terrazi type,
+# costumed by the 7-frame roll cycle extracted onto the shared sprite-extraction proof (record 002's
+# pen). game_director owns the target's existence + render blocks; sprite_extractor owns the costumes.
+# The roll frame is derived render-only from the slot's animation clock (`slot timer`), so the craft
+# visibly rolls without the walk writing `slot code` — the reference's `_ddX` sprite-code advance,
+# reproduced on the render side (every ~8 arcade frames through the 7 frames).
+TERRAZI_TARGET = "terrazi"
+TERRAZI_CLONE_SLOT_ID = "terrazi-clone-slot"  # sprite-local: which flying slot this clone renders
+TERRAZI_RENDER_SIZE = 225  # match the Toroid's on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+TERRAZI_ROLL_FRAMES = 7  # terrazi/roll/01..07
+TERRAZI_ROLL_PERIOD = 8  # advance the roll every ~8 arcade frames (`_ddX >> 3`); slot timer ~= frames
+
 
 def _schedule_arg(record: dict) -> int:
     # DIF-01/03 + FORM-01: the single runtime-readable scalar each dispatched handler needs,
@@ -4115,6 +4127,102 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def terrazi_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-06 Terrazi renderer (game_director owns these blocks; sprite_extractor owns the costumes).
+    # One persistent clone per flying slot (59..64), the same pool pattern as the Toroid: shown and
+    # positioned when its slot holds a Terrazi, hidden otherwise. The clone writes no state. The roll
+    # frame is a render-only function of the slot's animation clock (`slot timer`), so the craft rolls
+    # through its 7 frames every ~8 arcade frames (the reference's `_ddX` sprite-code advance) without
+    # the walk writing `slot code`. On a hit it plays the shared explosion (the solv_death frames
+    # appended after the 7 roll frames, ordinals 8..), exactly like the Toroid.
+    blocks = Blocks(TERRAZI_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("terrazi clone slot", TERRAZI_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("terrazi clone slot", TERRAZI_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_terrazi = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(TERRAZI_TYPE)
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Roll frame (render-only): (floor(timer / PERIOD) mod FRAMES) + 1 -> costume ordinal 1..7.
+    roll_ordinal = blocks.op_add(
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TERRAZI_ROLL_PERIOD))),
+            number(TERRAZI_ROLL_FRAMES),
+        ),
+        number(1),
+    )
+    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
+    # appended after the 7 roll frames (ordinal 8..); the burst doubles at the 2x phase (record 025).
+    phase_for_costume = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    explode_ordinal = blocks.op_add(number(TERRAZI_ROLL_FRAMES + 1), phase_for_costume)
+    phase_for_size = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TERRAZI_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [
+            blocks.switch_costume_expr(roll_ordinal),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(TERRAZI_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_terrazi]
+    blocks.blocks[is_terrazi]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -4226,25 +4334,42 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_hud_target(result)
     _ensure_gameplay_target(result, TOROID_TARGET)
     _ensure_gameplay_target(result, ENEMY_BULLET_TARGET)
+    _ensure_gameplay_target(result, TERRAZI_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
     # AIR-01 turn frames first (costume ordinals 1..7), then the WPN-02 explosion frames appended by
     # reference from solv_death (ordinals 8..15) — the recorded stand-in burst (record 025). Both are
     # already-verified, provenance-recorded assets; a no-op when either source is absent (fixpoint).
+    # The shared sprite-extraction proof (record 002's pen) now holds more than one family's crops, so
+    # each gameplay renderer mirrors ONLY its own family's frames, keyed by the `<family>/` name prefix
+    # the extraction manifest assigns. Order within a family is preserved (costume ordinals 1..N).
     proof = next((t for t in result["targets"] if t.get("name") == TOROID_PROOF_TARGET), None)
     death = next((t for t in result["targets"] if t.get("name") == "solv_death"), None)
+    proof_by_family = lambda prefix: (
+        [c for c in copy.deepcopy(proof["costumes"]) if str(c.get("name", "")).startswith(prefix)]
+        if proof is not None
+        else []
+    )
     toroid = next((t for t in result["targets"] if t.get("name") == TOROID_TARGET), None)
     if proof is not None and toroid is not None:
-        toroid["costumes"] = copy.deepcopy(proof["costumes"])
+        toroid["costumes"] = proof_by_family("toroid/")
         if death is not None:
             toroid["costumes"].extend(copy.deepcopy(death["costumes"]))
         toroid["currentCostume"] = 0
-    # AIR-12: the enemy-bullet renderer uses a small stand-in — the same verified turn frames by
+    # AIR-06: the Terrazi renderer mirrors its 7 roll frames, then the shared explosion frames (the
+    # same solv_death burst appended after them, ordinals 8.., exactly like the Toroid).
+    terrazi = next((t for t in result["targets"] if t.get("name") == TERRAZI_TARGET), None)
+    if proof is not None and terrazi is not None:
+        terrazi["costumes"] = proof_by_family("terrazi/")
+        if death is not None:
+            terrazi["costumes"].extend(copy.deepcopy(death["costumes"]))
+        terrazi["currentCostume"] = 0
+    # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
     if proof is not None and enemy_bullet is not None:
-        enemy_bullet["costumes"] = copy.deepcopy(proof["costumes"])
+        enemy_bullet["costumes"] = proof_by_family("toroid/")
         enemy_bullet["currentCostume"] = 0
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
@@ -4527,6 +4652,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "bomb": bomb_blocks(),
         "hud": hud_blocks(),
         "toroid": toroid_blocks(),
+        "terrazi": terrazi_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -4572,6 +4698,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # snapshotted at creation. All entity state lives in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 TOROID_CLONE_SLOT_ID: ["toroid clone slot", 0],
+            }
+        elif target["name"] == TERRAZI_TARGET:
+            # AIR-06: likewise, the only Terrazi render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                TERRAZI_CLONE_SLOT_ID: ["terrazi clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.

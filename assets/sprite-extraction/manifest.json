@@ -138,6 +138,83 @@
       "family": "toroid",
       "animation": "turn",
       "duration_frames": 1
+    },
+    {
+      "name": "terrazi/roll/01",
+      "sheet": "aerial_enemies",
+      "rect": [2, 145, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "terrazi",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "terrazi/roll/02",
+      "sheet": "aerial_enemies",
+      "rect": [21, 145, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "terrazi",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "terrazi/roll/03",
+      "sheet": "aerial_enemies",
+      "rect": [40, 145, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "terrazi",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "terrazi/roll/04",
+      "sheet": "aerial_enemies",
+      "rect": [59, 145, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "terrazi",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "terrazi/roll/05",
+      "sheet": "aerial_enemies",
+      "rect": [78, 145, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "terrazi",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "terrazi/roll/06",
+      "sheet": "aerial_enemies",
+      "rect": [97, 145, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "terrazi",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "terrazi/roll/07",
+      "sheet": "aerial_enemies",
+      "rect": [116, 145, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "terrazi",
+      "animation": "roll",
+      "duration_frames": 1
     }
   ]
 }

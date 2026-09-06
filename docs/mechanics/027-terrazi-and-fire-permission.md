@@ -98,12 +98,17 @@
   window, the port reads it as a cell offset — a modeling choice consistent across the two families.
   (5) **Toroid one-shot is an exception to the gate.** The shooting Toroid (0x0B) fires a single
   event-driven bullet at its swing commit — a distinct, non-periodic firing model that does NOT run
-  through this gate; it shares only the aim/alloc body. (6) **Render deferred.** A live Terrazi slot is
-  logically complete but not yet drawn — the render clone gates on the Toroid type, so a Terrazi slot
-  is cleanly hidden until its sprite is staged (the operator's logic-first sequencing); the
-  sprite-code flap animation (`_ddX`) is deferred with that render target. (7) **Not in area 1's
-  baseline waves.** Type 0x11 appears only at higher-AI-level formations, so the family is proven
-  through seeded harness scenarios rather than area-1 live density.
+  through this gate; it shares only the aim/alloc body. (6) **Roll animation is render-derived.** The
+  reference advances the Terrazi sprite code from a per-object counter (`_ddX >> 3`); the port does not
+  write `slot code` in the walk but derives the roll frame render-only from the slot's animation clock
+  (`slot timer`), cycling the 7 frames every ~8 arcade frames — the same visible cadence with no
+  build-logic change. The 7 frames are extracted from the same Aerial Enemies sheet as the Toroid, onto
+  the shared sprite-extraction proof; the render clone mirrors them and plays the shared explosion on a
+  hit. Two of the banking frames keep a small enclosed `(0,128,0)` region as opaque artwork — the same
+  edge-connected-only matte rule the Toroid already relies on (`test_flood_fill_preserves_enclosed_green
+  _artwork`), applied consistently. (7) **Not in area 1's baseline waves.** Type 0x11 appears only at
+  higher-AI-level formations, so the family is proven through seeded harness scenarios rather than
+  area-1 live density.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
