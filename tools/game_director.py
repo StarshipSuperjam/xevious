@@ -556,22 +556,25 @@ if max(FORMATION_COUNTS) > _FLYING_SLOT_CAPACITY:
 # AIR-01 / AIR-12 32-direction homing-aim tables (aiming.json), INGESTED (never authored),
 # verified against the hash manifest at load. Each speed tier is two parallel 32-entry lists,
 # `aim dy N` / `aim dx N`, storing the (dy, dx) velocity pair per direction index (dy first, per
-# the reference's cpy_dY_dX_to_obj — the extractor records the byte-order there). This slice bakes
-# only the two tiers Toroid uses: the 24-magnitude table (its 1.5 px/frame approach) and the
-# 32-magnitude generic table (its aimed bullet at 2 px/frame). The 33-entry `octant table` is the
-# quantizer's lookup (get_index_for_angle). Dormant DATA this slice (the aim proc and its callers
-# land in the next commit) — like the hit-window constants, baked now so the consumer just reads it.
+# the reference's cpy_dY_dX_to_obj — the extractor records the byte-order there). The baked tiers:
+# the 24-magnitude table (the Toroid's 1.5 px/frame approach), the 32-magnitude generic table (aimed
+# bullets at 2 px/frame), and the 48-magnitude terrazi/torkan table (Terrazi's 3 px/frame approach,
+# `angle_dX_dY_terrazi_torkan_tbl` 6325-6357). The 33-entry `octant table` is the quantizer's lookup
+# (get_index_for_angle). The 48 tier is dormant DATA until install_update_terrazi reads it (this slice's
+# next commit) — like the hit-window constants, baked so the consumer just reads it.
 OCTANT_TABLE_ID = "octant-table"
 AIM_DY_24_ID = "aim-dy-24"  # Toroid approach tier (magnitude 24 = 1.5 px/frame)
 AIM_DX_24_ID = "aim-dx-24"
 AIM_DY_32_ID = "aim-dy-32"  # aimed-bullet / generic tier (magnitude 32 = 2 px/frame)
 AIM_DX_32_ID = "aim-dx-32"
+AIM_DY_48_ID = "aim-dy-48"  # Terrazi/Torkan approach tier (magnitude 48 = 3 px/frame)
+AIM_DX_48_ID = "aim-dx-48"
 
 
 def _load_aiming_tables() -> dict[str, list[int]]:
     data = _load_spec_data("aiming.json")["aiming"]
     tables = {"octant": list(data["octant_table"]["values"])}
-    for tier in ("toroid", "generic"):
+    for tier in ("toroid", "generic", "terrazi_torkan"):
         vectors = data["angle_tables"][tier]["vectors"]
         tables[f"{tier}_dy"] = [v["dy"] for v in vectors]
         tables[f"{tier}_dx"] = [v["dx"] for v in vectors]
@@ -582,6 +585,7 @@ _AIMING = _load_aiming_tables()
 OCTANT_TABLE = _AIMING["octant"]
 AIM_DY_24, AIM_DX_24 = _AIMING["toroid_dy"], _AIMING["toroid_dx"]
 AIM_DY_32, AIM_DX_32 = _AIMING["generic_dy"], _AIMING["generic_dx"]
+AIM_DY_48, AIM_DX_48 = _AIMING["terrazi_torkan_dy"], _AIMING["terrazi_torkan_dx"]
 
 # --- AIR-01 Toroid live-combat machinery (slice 8) ---------------------------------------------
 # The 32-direction aim quantizer's working vars (custom blocks have no locals): the two input diffs
@@ -4116,6 +4120,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_DX_24_ID,
         AIM_DY_32_ID,
         AIM_DX_32_ID,
+        AIM_DY_48_ID,
+        AIM_DX_48_ID,
         FLYING_TYPE_TABLE_ID,
         TOROID_FRAME_ID,
         VALUE_TABLE_ID,
@@ -4169,6 +4175,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_DX_24_ID: ["aim dx 24", list(AIM_DX_24)],
         AIM_DY_32_ID: ["aim dy 32", list(AIM_DY_32)],
         AIM_DX_32_ID: ["aim dx 32", list(AIM_DX_32)],
+        AIM_DY_48_ID: ["aim dy 48", list(AIM_DY_48)],
+        AIM_DX_48_ID: ["aim dx 48", list(AIM_DX_48)],
         # AIR-01/FORM-01 flying-enemy type table (object-types.json): the spawner reads the wave's
         # type codes at `formation type offset`. And the Toroid costume-ordinal map (sprite code
         # 8..15 -> costume 1..7, the 8th reusing 6): read-only render data.

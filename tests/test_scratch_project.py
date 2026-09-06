@@ -1045,12 +1045,15 @@ class ScratchProjectTests(unittest.TestCase):
                 "slot code",
                 "slot pts",
                 "slot flag",
-                # AIR-01/AIR-12 homing-aim tables (slice 8): the octant quantizer + two speed tiers.
+                # AIR-01/AIR-12 homing-aim tables: the octant quantizer + the speed tiers (24 Toroid,
+                # 32 generic bullets; 48 terrazi/torkan — AIR-06, baked ahead of its consumer).
                 "octant table",
                 "aim dy 24",
                 "aim dx 24",
                 "aim dy 32",
                 "aim dx 32",
+                "aim dy 48",
+                "aim dx 48",
                 "flying type table",
                 "toroid frame",
                 "value table",
@@ -5198,7 +5201,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "0c7c82db73b670f15695af5e9b6a7568506b4a42cb19e58bdaa8f13f6bf8f519",
+            "ecae59ffaa5a625be30b7e05486d79a02ff0401abcde6f9df64ea4b4216a1059",
             build_hash,
         )
 

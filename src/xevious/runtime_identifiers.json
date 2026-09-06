@@ -19,6 +19,11 @@
       "name": "aim dx 32",
       "scope": "Stage"
     },
+    "aim-dx-48": {
+      "kind": "list",
+      "name": "aim dx 48",
+      "scope": "Stage"
+    },
     "aim-dx-diff": {
       "kind": "variable",
       "name": "aim dx diff",
@@ -32,6 +37,11 @@
     "aim-dy-32": {
       "kind": "list",
       "name": "aim dy 32",
+      "scope": "Stage"
+    },
+    "aim-dy-48": {
+      "kind": "list",
+      "name": "aim dy 48",
       "scope": "Stage"
     },
     "aim-dy-diff": {
