@@ -613,6 +613,98 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rng step'),
   },
   {
+    key: 'terrazi-wave-spawns-and-moves',
+    behavior:
+      'The formation spawner inits Terrazi-typed slots by type and the ordered walk advances them under their own aimed velocity each tick',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Terrazi (type 17) is not in area 1's baseline formation, so force a Terrazi wave through the
+      // REAL spawner path: clear the flying slots, make every flying-type-table entry Terrazi, and set
+      // a full formation count. The spawner then inits each empty flying slot as a Terrazi (proving the
+      // spawn-by-type dispatch); the walk advances them (proving update). A slot that stays Terrazi
+      // across a tick with no intervening empty is SEEN to change position — movement, not a refill.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 17;
+      writeVar(vm, 'formation-count', 6);
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      let terraziSeen = false;
+      let movedSeen = false;
+      const prevType = {};
+      const prevX = {};
+      const prevY = {};
+      for (let i = 0; i < 60; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        const x = readVar(vm, 'slot-x');
+        const y = readVar(vm, 'slot-y');
+        for (const s of FLYING_SLOT_INDICES) {
+          const t = type[s];
+          if (t === 17) {
+            terraziSeen = true;
+            if (prevType[s] === 17 && (x[s] !== prevX[s] || y[s] !== prevY[s])) movedSeen = true;
+          }
+          prevType[s] = t;
+          prevX[s] = x[s];
+          prevY[s] = y[s];
+        }
+      }
+      return { terraziSeen, movedSeen };
+    },
+    assert(obs) {
+      assert.equal(obs.terraziSeen, true, 'the spawner inits a Terrazi-typed slot by type');
+      assert.equal(obs.movedSeen, true, 'a live Terrazi advances its position under its own velocity');
+    },
+    // Empty `update terrazi` so Terrazis still spawn but no occupant ever advances → movedSeen false.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrazi'),
+  },
+  {
+    key: 'terrazi-glides-and-reverses',
+    behavior:
+      'A Terrazi drawing level with the craft in scroll commits a GLIDE that decelerates and REVERSES its lateral velocity (the arcade terrazi_main_cont peel-away), not a straight homing dive',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed one Terrazi level with the craft in the SCROLL axis (row offset 0, inside the [-4,3] glide
+      // window) with a craft-ward lateral velocity. On the trigger tick it latches GLIDE and, while
+      // gliding, decrements the lateral velocity by DECEL each tick (`subq #2,_dX`), so `slot dy` crosses
+      // zero and goes NEGATIVE — the decelerate-and-reverse. Placed several columns to the side so it is
+      // level in scroll but not overlapping the craft's cell (invuln is on from reachPlaying regardless).
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 17);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, pr * 256); // same scroll row as the craft => row offset 0, inside the window
+      put('slot-y', slot, (pc + 5) * 256); // five columns aside, not overlapping the craft cell
+      put('slot-dx', slot, 0);
+      put('slot-dy', slot, 8); // a craft-ward lateral approach the glide must decelerate and reverse
+      put('slot-flag', slot, 0); // APPROACH — eligible to trigger the glide
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 1);
+      // One pump settles well past the trigger: the glide latches (flag = GLIDE) and the lateral
+      // velocity decelerates below zero. The enemy naturally glides off-field and is culled within the
+      // settle (a pump is many ticks, not one — see step()), but cull keeps `slot flag`/`slot dy`, so
+      // the committed-glide and reversed-lateral evidence survives to read (the same reason the Toroid
+      // swing scenario reads its post-cull `slot dy`). Magnitude is not asserted, only the sign flip.
+      step(vm, 1);
+      return { dy: readVar(vm, 'slot-dy')[slot], flag: readVar(vm, 'slot-flag')[slot] };
+    },
+    assert(obs) {
+      assert.equal(obs.flag, 1, 'the Terrazi committed its glide (flag = GLIDE)');
+      assert.ok(
+        obs.dy < 0,
+        `a gliding Terrazi decelerates and reverses its lateral course (dy < 0); got dy=${obs.dy}`,
+      );
+    },
+    // Empty `update terrazi` so the glide never runs → flag stays 0 and dy stays 8 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrazi'),
+  },
+  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',

@@ -1121,6 +1121,10 @@ class ScratchProjectTests(unittest.TestCase):
             director.SPAWN_FLYING_PROCCODE,
             director.INIT_TOROID_PROCCODE,
             director.UPDATE_TOROID_PROCCODE,
+            # AIR-06 Terrazi family (slice 10): its spawn init and per-tick update, both warp, no
+            # state write — dispatched from the same spawner / walk as the Toroid.
+            director.INIT_TERRAZI_PROCCODE,
+            director.UPDATE_TERRAZI_PROCCODE,
             director.CULL_SLOT_PROCCODE,
             # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
             director.CHECK_AIR_HIT_PROCCODE,
@@ -1609,6 +1613,150 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air01_failures(project), label)
+
+    @staticmethod
+    def _air06_failures(project: dict) -> set:
+        """AIR-06 Terrazi authoring contract — violated labels. Pins the structural facts that make
+        Terrazi a faithful live family for this movement commit: its init/update run atomically, the
+        spawner and the ordered walk drive it by its own type, it aims on the fast (48-magnitude,
+        3 px/frame) tier, and its update commits a glide that reverses its lateral course (the
+        decelerate-and-reverse of `terrazi_main_cont`). The masked periodic fire lands next commit."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        # (1) Both Terrazi lifecycle procedures exist and are warp (atomic) — a non-warp walk sub-proc
+        # would yield mid-slot, letting a half-moved enemy render or be hit.
+        for proccode in (director.INIT_TERRAZI_PROCCODE, director.UPDATE_TERRAZI_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("terrazi-lifecycle-procs-warp")
+
+        # (2) The spawner inits Terrazi by type, so a Terrazi-typed formation slot becomes live; (3) the
+        # ordered walk dispatches to its updater, so a spawned Terrazi actually advances.
+        if not calls(director.INIT_TERRAZI_PROCCODE):
+            failures.add("spawn-inits-terrazi")
+        if not calls(director.UPDATE_TERRAZI_PROCCODE):
+            failures.add("dispatch-updates-terrazi")
+
+        # (4) The spawn init aims on the FAST tier — it reads both the 48-magnitude aim tables (3
+        # px/frame), not the Toroid's 24-magnitude (1.5 px/frame) tables.
+        init_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.INIT_TERRAZI_PROCCODE)
+            if b["opcode"] == "data_itemoflist"
+        }
+        if not {director.AIM_DX_48_ID, director.AIM_DY_48_ID} <= init_lists:
+            failures.add("terrazi-aims-fast-tier")
+
+        # (5) The update commits a glide that REVERSES the lateral course: it latches the slot flag to
+        # GLIDE and changes the lateral velocity (`slot dy`) — the decelerate-and-reverse. Without the
+        # `slot dy` change the enemy would only dive; without the flag latch it would never commit.
+        update_body = _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE)
+        writes_slot_dy = any(
+            b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+            for b in update_body
+        )
+        latches_glide = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            for b in update_body
+        )
+        if not (writes_slot_dy and latches_glide):
+            failures.add("terrazi-glide-reverses")
+        return failures
+
+    # Roadmap closure evidence for leaf `air.terrazi` (AIR-06.terrazi): Terrazi is a live family —
+    # spawned by type from the formation wave, advanced by the ordered walk, aimed on the 3 px/frame
+    # tier, committing a glide that reverses its lateral course near the craft. The live proof (spawns,
+    # moves, glide reverses `slot dy`) is the harness `terrazi-wave-spawns-and-moves` /
+    # `terrazi-glides-and-reverses`. The masked periodic fire (the shared fire-permission gate) lands
+    # in this slice's next commit and carries the firing half of AIR-06.
+    # roadmap-evidence: AIR-06 success  (test_terrazi_slice_authoring_present — lifecycle procs warp, spawn+dispatch driven by type, fast-tier aim, glide reverses lateral course)
+    # roadmap-evidence: AIR-06 failure  (test_terrazi_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_terrazi_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air06_failures(project))
+
+    def test_terrazi_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air06_failures(base))
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAZI_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_init_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_TERRAZI_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAZI_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def aim_slow_tier(p: dict) -> None:
+            # Repoint the fast-tier aim reads to the Toroid's 24-magnitude tables → the fast-tier
+            # clause no longer holds.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            swap = {director.AIM_DX_48_ID: ("aim dx 24", director.AIM_DX_24_ID), director.AIM_DY_48_ID: ("aim dy 24", director.AIM_DY_24_ID)}
+            for b in _proc_body_blocks(stage, director.INIT_TERRAZI_PROCCODE):
+                if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
+                    b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
+
+        def drop_lateral_change(p: dict) -> None:
+            # Repoint the glide's `slot dy` decel write to a scratch list → the reverse never happens.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+                ):
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        cases = [
+            ("terrazi-lifecycle-procs-warp", unwarp_update),
+            ("spawn-inits-terrazi", drop_init_call),
+            ("dispatch-updates-terrazi", drop_dispatch_call),
+            ("terrazi-aims-fast-tier", aim_slow_tier),
+            ("terrazi-glide-reverses", drop_lateral_change),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air06_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -5201,7 +5349,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "ecae59ffaa5a625be30b7e05486d79a02ff0401abcde6f9df64ea4b4216a1059",
+            "6ee49ec7025581b193ab58f1a067a18d26d5c423c2ff438ac706b3cda3b0baeb",
             build_hash,
         )
 
