@@ -449,6 +449,16 @@
       "name": "slot dy",
       "scope": "Stage"
     },
+    "slot-fire-mask": {
+      "kind": "list",
+      "name": "slot fire mask",
+      "scope": "Stage"
+    },
+    "slot-fire-timer": {
+      "kind": "list",
+      "name": "slot fire timer",
+      "scope": "Stage"
+    },
     "slot-flag": {
       "kind": "list",
       "name": "slot flag",

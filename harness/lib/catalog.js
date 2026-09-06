@@ -705,6 +705,53 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrazi'),
   },
   {
+    key: 'terrazi-fires-under-mask',
+    behavior:
+      'A distant Terrazi fires aimed bullets through the shared fire-permission gate under its captured mask (the periodic-fire path, not the Toroid one-shot)',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Isolate the Terrazi fire from live shooting Toroids: make every spawnable flying type the
+      // NON-shooting Toroid (type 10, never fires) and clear the flying slots, so `bullet alloc result`
+      // can only move if the Terrazi's gate fires. Seed one Terrazi far above the craft (row offset well
+      // outside the [-4,3] glide window, so it stays in the firing approach state) with mask 0 (reload
+      // 1 => fires on every 8-frame phase, the fastest cap) and a countdown of 1 (fires on the first
+      // phase). Reset the shared alloc signal, then pump until a bullet allocates.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 17);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 20) * 256); // 20 rows above the craft => offset 20, outside the window
+      put('slot-y', slot, pc * 256);
+      put('slot-dx', slot, 0); // stationary and distant: it stays in the firing state across the window
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH
+      put('slot-fire-mask', slot, 0); // mask 0 => reload 1 => fires every phase (fastest cap)
+      put('slot-fire-timer', slot, 1); // fires on the first phase tick
+      writeVar(vm, 'bullet-alloc-result', 0);
+      let fired = false;
+      for (let i = 0; i < 12 && !fired; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0) fired = true;
+      }
+      return { fired };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'the distant Terrazi allocated an aimed bullet through the fire gate');
+    },
+    // Empty the shared `fire permission gate` so the Terrazi never fires and no other firing path exists
+    // (all spawnable types are non-shooting) → `bullet alloc result` stays 0 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'fire permission gate'),
+  },
+  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',

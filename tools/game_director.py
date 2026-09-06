@@ -116,6 +116,13 @@ SLOT_TIMER_ID = "slot-timer"  # arcade-frame animation/phase clock
 SLOT_CODE_ID = "slot-code"  # sprite code (renderer maps to a costume)
 SLOT_PTS_ID = "slot-pts"  # 1-based value-table position of the occupant's score
 SLOT_FLAG_ID = "slot-flag"  # per-type sub-state (Toroid swing: 0 none / 1 right / 2 left)
+# AIR-06 fire-permission per-slot fields (the reference's per-object `_FFREQ`/`_TIMER`), shared
+# infrastructure for every firing family: `slot fire mask` is the family's fire-permission mask
+# captured at spawn; `slot fire timer` is the per-slot fire countdown the shared gate decrements.
+# Both stay 0 for non-firing occupants (clear-slots zeroes them), so they are inert unless a family
+# writes them at spawn.
+SLOT_FIRE_MASK_ID = "slot-fire-mask"  # captured fire-permission mask (_FFREQ)
+SLOT_FIRE_TIMER_ID = "slot-fire-timer"  # per-slot fire countdown byte (_TIMER)
 # Every position/motion list, paired (id, display name), so clear-slots and the registration
 # stay in lockstep — adding a field here is the single edit that flows to both.
 SLOT_FIELD_LISTS = (
@@ -127,6 +134,8 @@ SLOT_FIELD_LISTS = (
     (SLOT_CODE_ID, "slot code"),
     (SLOT_PTS_ID, "slot pts"),
     (SLOT_FLAG_ID, "slot flag"),
+    (SLOT_FIRE_MASK_ID, "slot fire mask"),
+    (SLOT_FIRE_TIMER_ID, "slot fire timer"),
 )
 
 # SYS-04 centralized ordered update (architecture.md key decision): the Stage walks the
@@ -633,7 +642,11 @@ INIT_TOROID_PROCCODE = "init toroid"
 UPDATE_TOROID_PROCCODE = "update toroid"
 INIT_TERRAZI_PROCCODE = "init terrazi"
 UPDATE_TERRAZI_PROCCODE = "update terrazi"
+FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
+# The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
+# `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
+FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
 
 # Object type codes this slice's flying dispatch handles (object-types.json). Other formation-named
 # families (e.g. Torkan, code 15, which area 1 also names) are SKIPPED by the spawner until their
@@ -685,6 +698,18 @@ TERRAZI_GLIDE_DRIFT = 2  # scroll velocity SET at glide entry (_dY=+/-2, 3696-36
 # 3717); a tick is 2 arcade frames, so the per-tick delta is 4 — the same frame->tick doubling as the
 # Toroid swing accel (1/frame -> 2/tick).
 TERRAZI_GLIDE_DECEL = 4
+
+# AIR-06 fire-permission gate (chk_timer_fire_bullet_reinit_timer 4999-5010). The reference gates fire
+# on a GLOBAL 8-arcade-frame phase (`countup_timer_1 & 7 == 0`); a tick is 2 arcade frames, so the port
+# phase is every 4th tick. On a phase tick it decrements the per-slot fire countdown as a BYTE (with
+# 256-wrap, so a spawn draw of 0 wraps to 255 then counts down — the reference's byte underflow) and,
+# at zero, fires one aimed bullet and reloads the countdown to (rng & mask) + 1. The mask is a contiguous
+# low-bit fire-frequency byte, so `rng & mask` is reproduced as `rng mod (mask+1)` — exact for every
+# flying family's scheduled masks (Terrazi 3/7, Zoshi 15/31, Kapi 3/7); the boss `andor_genesis` mask 47
+# is the one non-contiguous byte and is flagged for its own leaf. Recorded in record 027.
+FIRE_GATE_PHASE_TICKS = 4  # 8 arcade frames / 2 frames-per-tick
+FIRE_TIMER_BYTE_MOD = 256  # the countdown is a byte; decrement wraps mod 256 (reference underflow)
+TERRAZI_FIRE_SUPPRESS = 255  # glide sets the fire countdown to 0xff to suppress fire (3699)
 
 # FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
 # => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
@@ -2006,12 +2031,15 @@ def install_update_bullet(blocks: Blocks) -> None:
     blocks.chain(definition, [*move, craft_hit, cull])
 
 
-def _fire_toroid_bullet(blocks: Blocks) -> list[str]:
-    # AIR-12: the shooting Toroid (type 0x0B) fires one aimed bullet at the moment it commits its swing
-    # (once — the reference fires on a timer while level; firing once here is the recorded slice-8
-    # simplification, deferring the fire-rate mask to slice 10, so DIF-03.play is not claimed). Allocate
-    # an idle bullet slot; on success, place the bullet at the Toroid and aim it at the craft's current
-    # cell on the 32-magnitude tier (the reference's generic bullet table). No mask is consulted.
+def _fire_aimed_bullet(blocks: Blocks) -> list[str]:
+    # AIR-12: fire ONE aimed generic bullet from the current slot — the shared aim+alloc body reused by
+    # every firing path. Allocate an idle bullet slot; on success, place the bullet at the slot's cell
+    # and aim it at the craft's current cell on the 32-magnitude tier (the reference's generic 2 px/frame
+    # bullet table, `init_new_bullet`). This is only the WHAT-to-fire; the WHEN is the caller's:
+    #  - the shooting Toroid (type 0x0B) fires this once, event-driven, at its swing commit (a distinct,
+    #    non-periodic firing model — a documented exception to the fire-permission gate, recorded in 027);
+    #  - the fire-permission gate (`install_fire_permission_gate`) fires this periodically under the
+    #    family mask. Neither consults a mask HERE; the gate owns the rate.
     bindex = lambda: variable("bullet alloc result", BULLET_ALLOC_RESULT_ID)
     got = blocks.op_gt(variable("bullet alloc result", BULLET_ALLOC_RESULT_ID), number(0))
     placed = blocks.if_reporter(
@@ -2053,7 +2081,7 @@ def install_update_toroid(blocks: Blocks) -> None:
     # On the swing commit, a type-0x0B (shooting) Toroid fires one aimed bullet.
     shoots = blocks.if_reporter(
         blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(TOROID_SHOOTS_TYPE)),
-        _fire_toroid_bullet(blocks),
+        _fire_aimed_bullet(blocks),
     )
     trigger = blocks.if_reporter(
         blocks.op_and(blocks.op_eq(flag(), number(TOROID_FLAG_APPROACH)), in_window),
@@ -2193,6 +2221,21 @@ def install_init_terrazi(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TERRAZI_FLAG_APPROACH)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(TERRAZI_INIT_CODE)),
             _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(TERRAZI_PTS)),
+            # Fire-permission capture-at-spawn (3674-3678): snapshot the family mask into the per-slot
+            # field, then seed the fire countdown to `rng & mask` (NO +1 at spawn — the spawn/reload
+            # asymmetry; the reload adds 1). A fresh RNG draw, after the spawn-column draws, in walk
+            # order. `rng & mask` is `rng mod (mask+1)` for the contiguous fire-frequency mask.
+            _set_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID, variable("fire mask terrazi", FIRE_MASK_TERRAZI_ID)),
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(
+                blocks,
+                "slot fire timer",
+                SLOT_FIRE_TIMER_ID,
+                blocks.op_mod(
+                    variable("rng out", RNG_OUT_ID),
+                    blocks.op_add(_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)),
+                ),
+            ),
         ],
     )
     blocks.chain(definition, [*reset, draw_loop, stamp])
@@ -2226,7 +2269,13 @@ def install_update_terrazi(blocks: Blocks) -> None:
     blocks.substack(drift, [_set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(TERRAZI_GLIDE_DRIFT))], name="SUBSTACK2")
     trigger = blocks.if_reporter(
         blocks.op_and(blocks.op_eq(flag(), number(TERRAZI_FLAG_APPROACH)), in_window),
-        [drift, _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TERRAZI_FLAG_GLIDE))],
+        [
+            drift,
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TERRAZI_FLAG_GLIDE)),
+            # Suppress fire during the glide (the reference sets `_TIMER = 0xff` at 3699): the gate,
+            # still called each tick, counts down from 255 and won't reach 0 in the enemy's short life.
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, number(TERRAZI_FIRE_SUPPRESS)),
+        ],
     )
     # While gliding, decelerate and reverse the LATERAL velocity; the scroll drift set at the trigger
     # holds (the reference's `_dY += _ddY` with _ddY = 0). Runs on the trigger tick too, matching the
@@ -2256,9 +2305,13 @@ def install_update_terrazi(blocks: Blocks) -> None:
     craft_hit = blocks.if_reporter(
         _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
     )
+    # Periodic masked fire (the reference calls `chk_timer_fire_bullet_reinit_timer` on both the distant
+    # and glide paths): the shared gate is called each active tick. While distant it fires under the
+    # captured mask; during the glide the fire countdown is pinned to 255, so it stays silent.
+    fire = blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)
     normal = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
-        [craft_hit, trigger, glide, *move, cull],
+        [craft_hit, trigger, glide, fire, *move, cull],
     )
     top = blocks.add("control_if_else")
     is_hit = blocks.op_eq(state(), number(SLOT_HIT))
@@ -2271,6 +2324,54 @@ def install_update_terrazi(blocks: Blocks) -> None:
         name="SUBSTACK2",
     )
     blocks.chain(definition, [top])
+
+
+def install_fire_permission_gate(blocks: Blocks) -> None:
+    # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
+    # Operates on the current slot (`slot index`): every firing family calls this each active tick after
+    # capturing its mask into `slot fire mask` at spawn. Faithful reproduction of the reference:
+    #  1. GLOBAL phase — only proceed on the 8-arcade-frame boundary (every 4th tick).
+    #  2. BYTE decrement of the per-slot fire countdown (`--_TIMER`), wrapping mod 256 so a spawn draw of
+    #     0 wraps to 255 and counts down (the reference's underflow), never a permanent no-fire.
+    #  3. At zero, FIRE one aimed bullet (the shared aim/alloc body) and RELOAD the countdown to
+    #     (rng & mask) + 1 — no zero-suppression branch: the mask CAPS the reload interval (mask 0 =>
+    #     reload 1 => fastest, larger mask => rarer). `rng & mask` is `rng mod (mask+1)` for the
+    #     contiguous fire-frequency masks the schedule uses (recorded in 027).
+    definition = _install_warp_proc(blocks, FIRE_GATE_PROCCODE)
+    timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+    on_phase = blocks.op_eq(
+        blocks.op_mod(variable("tick", TICK_ID), number(FIRE_GATE_PHASE_TICKS)), number(0)
+    )
+    dec = _set_cur_item(
+        blocks,
+        "slot fire timer",
+        SLOT_FIRE_TIMER_ID,
+        blocks.op_mod(
+            blocks.op_add(blocks.op_sub(timer(), number(1)), number(FIRE_TIMER_BYTE_MOD)),
+            number(FIRE_TIMER_BYTE_MOD),
+        ),
+    )
+    reload = [
+        blocks.call_proc(RNG_PROCCODE, warp=True),
+        _set_cur_item(
+            blocks,
+            "slot fire timer",
+            SLOT_FIRE_TIMER_ID,
+            blocks.op_add(
+                blocks.op_mod(
+                    variable("rng out", RNG_OUT_ID),
+                    blocks.op_add(_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)),
+                ),
+                number(1),
+            ),
+        ),
+    ]
+    fired = blocks.if_reporter(
+        blocks.op_eq(timer(), number(0)),
+        [*_fire_aimed_bullet(blocks), *reload],
+    )
+    phase = blocks.if_reporter(on_phase, [dec, fired])
+    blocks.chain(definition, [phase])
 
 
 def install_cull_slot(blocks: Blocks) -> None:
@@ -2725,6 +2826,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_bullet(blocks)
     install_update_toroid(blocks)
     install_update_terrazi(blocks)
+    install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
     install_spawn_flying(blocks)
