@@ -82,7 +82,7 @@
     {"key":"air.zoshi","parent":"air","title":"Zoshi variants and distinct behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-03.zoshi"],"proof":"playable","records":["AIR-03"]},
     {"key":"air.jara","parent":"air","title":"Jara family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-04.jara"],"proof":"playable","records":["AIR-04"]},
     {"key":"air.kapi","parent":"air","title":"Kapi family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-05.kapi"],"proof":"playable","records":["AIR-05"]},
-    {"key":"air.terrazi","parent":"air","title":"Terazzi family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-06.terrazi"],"proof":"playable","records":["AIR-06"]},
+    {"key":"air.terrazi","parent":"air","title":"Terazzi family behavior","slice":"10","milestone":"Enemies","status":"planned","blocked_by":["air.toroid"],"criteria":["AIR-06.terrazi"],"proof":"playable","records":["AIR-06"]},
 
     {"key":"player.bacura-bounce","parent":"player","title":"Complete Bacura blaster bounce behavior","slice":"11","milestone":"Enemies","status":"planned","blocked_by":["air.bacura"],"criteria":["WPN-01.bacura-bounce"],"proof":"playable","records":["WPN-01"]},
     {"key":"air.zakato","parent":"air","title":"Zakato and Garu Zakato families","slice":"11","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-07.zakato"],"proof":"playable","records":["AIR-07"]},

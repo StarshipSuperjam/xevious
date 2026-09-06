@@ -29,11 +29,12 @@ built.
 **Per-family verification status.** This document is settled so its slice-8 leaves can proceed, but not
 every family below was re-verified against the reference to the same bar when it settled. Verified
 line-by-line against the pinned reference and built: the **Shared rules** and the **Toroid (AIR-01)**
-paragraphs (the slice-8 vertical slice). The other eleven families (Torkan, Zoshi, Jara, Kapi, Terrazi,
-the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are transcribed from the reference as
-the plan of record, but their line-by-line verification lands with their own build slice (10–11); each is
-confirmed against the reference — and this document amended where it diverges, with the operator's
-acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
+paragraphs (the slice-8 vertical slice), and the **Terrazi (AIR-06)** paragraph together with the shared
+**fire-permission gate** (its own family slice — the first firing aerial family). The other ten families
+(Torkan, Zoshi, Jara, Kapi, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
+transcribed from the reference as the plan of record, but their line-by-line verification lands with their
+own build slice (10–11); each is confirmed against the reference — and this document amended where it
+diverges, with the operator's acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
 verification, not as checked ground.
 
 ## Behavior
