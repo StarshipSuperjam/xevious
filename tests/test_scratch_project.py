@@ -1625,10 +1625,11 @@ class ScratchProjectTests(unittest.TestCase):
     @staticmethod
     def _air06_failures(project: dict) -> set:
         """AIR-06 Terrazi authoring contract — violated labels. Pins the structural facts that make
-        Terrazi a faithful live family for this movement commit: its init/update run atomically, the
-        spawner and the ordered walk drive it by its own type, it aims on the fast (48-magnitude,
-        3 px/frame) tier, and its update commits a glide that reverses its lateral course (the
-        decelerate-and-reverse of `terrazi_main_cont`). The masked periodic fire lands next commit."""
+        Terrazi a faithful live family: its init/update run atomically, the spawner and the ordered walk
+        drive it by its own type, it aims on the fast (48-magnitude, 3 px/frame) tier, its update commits
+        a glide that reverses its forward/scroll course (the decelerate-and-reverse of `terrazi_main_cont`),
+        and it fires periodically through the shared, global-phase fire-permission gate under its captured
+        mask."""
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         blocks = stage["blocks"]
@@ -1675,12 +1676,14 @@ class ScratchProjectTests(unittest.TestCase):
         if not {director.AIM_DX_48_ID, director.AIM_DY_48_ID} <= init_lists:
             failures.add("terrazi-aims-fast-tier")
 
-        # (5) The update commits a glide that REVERSES the lateral course: it latches the slot flag to
-        # GLIDE and changes the lateral velocity (`slot dy`) — the decelerate-and-reverse. Without the
-        # `slot dy` change the enemy would only dive; without the flag latch it would never commit.
+        # (5) The update commits a glide that REVERSES the forward/scroll course: it latches the slot flag
+        # to GLIDE and decelerates the forward velocity (`slot dx`, the `_dX`/scroll axis the arcade
+        # `subq #2,_dX` reverses — dir_delta_tbl 2172 fixes `_X` as the scroll axis) — the decelerate-and-
+        # reverse. Without the `slot dx` change the enemy would only dive; without the flag latch it would
+        # never commit.
         update_body = _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE)
-        writes_slot_dy = any(
-            b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+        writes_slot_dx = any(
+            b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DX_ID
             for b in update_body
         )
         latches_glide = any(
@@ -1688,7 +1691,7 @@ class ScratchProjectTests(unittest.TestCase):
             and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
             for b in update_body
         )
-        if not (writes_slot_dy and latches_glide):
+        if not (writes_slot_dx and latches_glide):
             failures.add("terrazi-glide-reverses")
 
         # ---- Fire-permission gate (the shared, family-agnostic periodic-fire machinery) ----
@@ -1760,14 +1763,37 @@ class ScratchProjectTests(unittest.TestCase):
                 reload_plus_one = True
         if not reload_plus_one:
             failures.add("fire-gate-reload-plus-one")
+
+        # (11) BYTE-underflow decrement: the per-slot countdown is decremented AS A BYTE —
+        # `((slot fire timer - 1) + FIRE_TIMER_BYTE_MOD) mod FIRE_TIMER_BYTE_MOD` — so a countdown of 0
+        # wraps to 255 and keeps counting down (the reference's `subq.b #1,(_TIMER)` underflow: `0-1`
+        # is 255, nonzero, so it does not fire), never going negative and never sticking. Without the
+        # mod-256 wrap a 0 draw would decrement to -1 and the `== 0` fire test could never come back
+        # around. The decrement's mod is the only `operator_mod` whose divisor is the bare byte modulus
+        # (the phase divides by FIRE_GATE_PHASE_TICKS, the reload by an `operator_add` of mask+1).
+        byte_wrap = False
+        for b in gate_blocks:
+            if b["opcode"] != "operator_mod" or num_operand(b["inputs"].get("NUM2")) != director.FIRE_TIMER_BYTE_MOD:
+                continue
+            add = blocks.get(ref(b["inputs"].get("NUM1")))
+            if not (add and add["opcode"] == "operator_add" and num_operand(add["inputs"].get("NUM2")) == director.FIRE_TIMER_BYTE_MOD):
+                continue
+            sub = blocks.get(ref(add["inputs"].get("NUM1")))
+            if not (sub and sub["opcode"] == "operator_subtract" and num_operand(sub["inputs"].get("NUM2")) == 1):
+                continue
+            item = blocks.get(ref(sub["inputs"].get("NUM1")))
+            if item and item["opcode"] == "data_itemoflist" and item["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID:
+                byte_wrap = True
+        if not byte_wrap:
+            failures.add("fire-gate-byte-underflow")
         return failures
 
     # Roadmap closure evidence for leaf `air.terrazi` (AIR-06.terrazi): Terrazi is a live family —
     # spawned by type from the formation wave, advanced by the ordered walk, aimed on the 3 px/frame
-    # tier, committing a glide that reverses its lateral course near the craft. The live proof (spawns,
-    # moves, glide reverses `slot dy`) is the harness `terrazi-wave-spawns-and-moves` /
-    # `terrazi-glides-and-reverses`. The masked periodic fire (the shared fire-permission gate) lands
-    # in this slice's next commit and carries the firing half of AIR-06.
+    # tier, committing a glide that reverses its forward/scroll course when it draws level laterally with
+    # the craft. The live proof (spawns, moves, glide reverses `slot dx`) is the harness
+    # `terrazi-wave-spawns-and-moves` / `terrazi-glides-and-reverses`. The masked periodic fire (the
+    # shared fire-permission gate) carries the firing half of AIR-06.
     # roadmap-evidence: AIR-06 success  (test_terrazi_slice_authoring_present — lifecycle procs warp, spawn+dispatch driven by type, fast-tier aim, glide reverses lateral course)
     # roadmap-evidence: AIR-06 failure  (test_terrazi_slice_negative_fixtures — each contract clause corrupted bites)
     def test_terrazi_slice_authoring_present(self) -> None:
@@ -1814,13 +1840,14 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
                     b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
 
-        def drop_lateral_change(p: dict) -> None:
-            # Repoint the glide's `slot dy` decel write to a scratch list → the reverse never happens.
+        def drop_forward_reverse(p: dict) -> None:
+            # Repoint the glide's `slot dx` decel write to a scratch list → the forward reverse never
+            # happens (the enemy keeps its approach velocity instead of decelerating and peeling away).
             stage = next(t for t in p["targets"] if t["isStage"])
             for b in _proc_body_blocks(stage, director.UPDATE_TERRAZI_PROCCODE):
                 if (
                     b["opcode"] == "data_replaceitemoflist"
-                    and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+                    and b["fields"]["LIST"][1] == director.SLOT_DX_ID
                 ):
                     b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
 
@@ -1882,17 +1909,29 @@ class ScratchProjectTests(unittest.TestCase):
                     if isinstance(n1, list) and isinstance(n1[1], list) and n1[1][0] == 12 and n1[1][2] == director.RNG_OUT_ID:
                         b["inputs"]["NUM2"] = [1, [4, 0]]
 
+        def break_byte_wrap(p: dict) -> None:
+            # Widen the decrement's byte modulus off 256 (the only bare-literal 256 mod in the gate) →
+            # a 0 countdown decrements to -1 instead of wrapping to 255, so the underflow is gone.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.FIRE_GATE_PROCCODE):
+                if b["opcode"] != "operator_mod":
+                    continue
+                num2 = b["inputs"].get("NUM2")
+                if isinstance(num2, list) and isinstance(num2[1], list) and num2[1][0] == 4 and int(num2[1][1]) == director.FIRE_TIMER_BYTE_MOD:
+                    b["inputs"]["NUM2"] = [1, [4, str(director.FIRE_TIMER_BYTE_MOD * 2)]]
+
         cases = [
             ("terrazi-lifecycle-procs-warp", unwarp_update),
             ("spawn-inits-terrazi", drop_init_call),
             ("dispatch-updates-terrazi", drop_dispatch_call),
             ("terrazi-aims-fast-tier", aim_slow_tier),
-            ("terrazi-glide-reverses", drop_lateral_change),
+            ("terrazi-glide-reverses", drop_forward_reverse),
             ("fire-gate-warp", unwarp_gate),
             ("terrazi-captures-fire-state", drop_fire_state_capture),
             ("terrazi-update-drives-gate", drop_gate_call),
             ("fire-gate-global-phase", break_phase_modulus),
             ("fire-gate-reload-plus-one", drop_reload_plus_one),
+            ("fire-gate-byte-underflow", break_byte_wrap),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -5490,7 +5529,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "a2db25660e88287087ebb8513ea72d6fe7f7ba5cee71d16e6e39244d11f52457",
+            "054487f33e72c75516e344aae7e20e5be77b5cb13465de7c3cf9b5fa7d18b880",
             build_hash,
         )
 

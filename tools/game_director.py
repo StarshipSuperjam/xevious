@@ -569,8 +569,8 @@ if max(FORMATION_COUNTS) > _FLYING_SLOT_CAPACITY:
 # the 24-magnitude table (the Toroid's 1.5 px/frame approach), the 32-magnitude generic table (aimed
 # bullets at 2 px/frame), and the 48-magnitude terrazi/torkan table (Terrazi's 3 px/frame approach,
 # `angle_dX_dY_terrazi_torkan_tbl` 6325-6357). The 33-entry `octant table` is the quantizer's lookup
-# (get_index_for_angle). The 48 tier is dormant DATA until install_update_terrazi reads it (this slice's
-# next commit) — like the hit-window constants, baked so the consumer just reads it.
+# (get_index_for_angle). The 48 tier is read by install_init_terrazi to aim the Terrazi — like the
+# hit-window constants, baked so the consumer just reads it.
 OCTANT_TABLE_ID = "octant-table"
 AIM_DY_24_ID = "aim-dy-24"  # Toroid approach tier (magnitude 24 = 1.5 px/frame)
 AIM_DX_24_ID = "aim-dx-24"
@@ -689,22 +689,23 @@ TOROID_SPAWN_ROW = 0  # new/refilled flying enemies enter from the top row (see 
 
 # AIR-06 Terrazi (handle_11_Terrazi 3667-3729): the first periodically-firing aerial family. Aimed
 # approach on the 48-magnitude (3 px/frame) tier; while distant it fires under its mask (the shared
-# fire-permission gate, added in slice 10's next commit). Inside a narrow SCROLL-axis window it stops
-# firing and GLIDES: the scroll velocity is set to a slow +/-2 drift by side while the lateral velocity
-# decelerates and reverses, peeling the craft's approach line away over ~24 frames. Type 0x11, 700 pts.
+# fire-permission gate). Inside a narrow LATERAL window (the same axis the Toroid swing uses) it stops
+# firing and GLIDES: the LATERAL velocity is set to a slow +/-2 drift by side while the SCROLL/forward
+# velocity decelerates and reverses, peeling its forward approach away over ~24 frames. Type 0x11, 700 pts.
 TERRAZI_PTS = 14  # 1-based value-table position of 700 points (handle_11 PTS byte 39)
-TERRAZI_INIT_CODE = 1  # spawn sprite code (_CODE=0x01); frame animation deferred with the render target
+TERRAZI_INIT_CODE = 1  # spawn sprite code (_CODE=0x01); the roll animation is derived render-only
 TERRAZI_FLAG_APPROACH = 0
 TERRAZI_FLAG_GLIDE = 1
-# Glide window: the scroll-axis offset (player row - slot row) lies in [LOW, HIGH] — the reference's
-# `subq #4 / addq #8` carry test on solvalou._Y - self._Y (3689-3692), which is true exactly on
-# ydiff in [-4, 3]. Mirrors the Toroid window convention (the arcade byte compare read as a port cell
-# offset), so the derived cell window is recorded alongside the Toroid's.
+# Glide window: the LATERAL offset (player col - slot col) lies in [LOW, HIGH] — the reference's
+# `subq #4 / addq #8` carry test on solvalou._Y - self._Y (3683-3692), where `_Y` is the lateral axis
+# (`dir_delta_tbl` 2172: Up/Down move `_dX`, Left/Right move `_dY`). True exactly on the offset in
+# [-4, 3]. Mirrors the Toroid window convention (the arcade byte compare read as a port cell offset).
 TERRAZI_GLIDE_LOW = -4
 TERRAZI_GLIDE_HIGH = 3
-TERRAZI_GLIDE_DRIFT = 2  # scroll velocity SET at glide entry (_dY=+/-2, 3696-3699); sign by side
-# Lateral decel per TICK. The reference decrements the lateral velocity by 2 PER FRAME (`subq #2,_dX`
-# 3717); a tick is 2 arcade frames, so the per-tick delta is 4 — the same frame->tick doubling as the
+TERRAZI_GLIDE_DRIFT = 2  # LATERAL velocity SET at glide entry (_dY=+/-2, 3694-3699); sign by side
+# Forward/scroll decel per TICK. The reference decrements the SCROLL velocity by 2 PER FRAME
+# (`subq #2,_dX` 3715); a tick is 2 arcade frames, so the per-tick delta is 4 — the same frame->tick
+# doubling as the
 # Toroid swing accel (1/frame -> 2/tick).
 TERRAZI_GLIDE_DECEL = 4
 
@@ -1878,13 +1879,15 @@ def install_read_player_cell(blocks: Blocks) -> None:
     blocks.chain(definition, [set_col, set_row])
 
 
-def install_init_toroid(blocks: Blocks) -> None:
-    # AIR-01: initialize the flying slot at `slot index` as a Toroid of type `walk type`. Draw a
-    # lateral spawn column from the shared stream (reject-and-redraw, bounded); on a successful draw,
-    # stamp the slot occupied and aim it at the craft on the 24-magnitude tier. On exhaustion, leave
-    # the slot empty (retried next tick) — the recorded bounded-draw deviation. The scroll-axis
-    # position is NOT set: a refill inherits the previous occupant's row (coded), 0 at cold start.
-    definition = _install_warp_proc(blocks, INIT_TOROID_PROCCODE)
+def _draw_spawn_column(blocks: Blocks) -> tuple[list, str]:
+    # Shared bounded spawn-column draw for the flying families (init_toroid / init_terrazi): draw a
+    # lateral column from the shared stream, reject-and-redraw until it is on-screen and not within
+    # SPAWN_CRAFT_GAP columns of the craft, or give up after SPAWN_DRAW_ATTEMPTS tries (the recorded
+    # bounded-draw deviation — `gen_rnd_spriteY` 5155-5169). On success it sets `slot y` and `spawn
+    # found`; on exhaustion the slot is left empty (the caller's stamp is gated on `spawn found`, so the
+    # slot is retried next tick). Returns the `spawn attempts`/`spawn found` reset blocks and the draw
+    # loop for the caller to chain ahead of its own family-specific stamp/aim. Three separate `rng mod
+    # (mask+1)` reads because a reporter cannot be shared across parents (it is stolen from the first).
     reset = [
         blocks.set_var("spawn attempts", SPAWN_ATTEMPTS_ID, number(0)),
         blocks.set_var("spawn found", SPAWN_FOUND_ID, number(0)),
@@ -1925,6 +1928,18 @@ def install_init_toroid(blocks: Blocks) -> None:
             blocks.change_var("spawn attempts", SPAWN_ATTEMPTS_ID, 1),
         ],
     )
+    return reset, draw_loop
+
+
+def install_init_toroid(blocks: Blocks) -> None:
+    # AIR-01: initialize the flying slot at `slot index` as a Toroid of type `walk type`. Draw a
+    # lateral spawn column from the shared stream (reject-and-redraw, bounded, `_draw_spawn_column`);
+    # on a successful draw, stamp the slot occupied and aim it at the craft on the 24-magnitude tier. On
+    # exhaustion, leave the slot empty (retried next tick) — the recorded bounded-draw deviation. The
+    # scroll-axis position is NOT set: a refill inherits the previous occupant's row (coded), 0 at cold
+    # start.
+    definition = _install_warp_proc(blocks, INIT_TOROID_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks)
     # On a successful draw, stamp the slot and aim it at the craft (24-magnitude tier).
     stamp = blocks.if_reporter(
         blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
@@ -2180,49 +2195,10 @@ def install_init_terrazi(blocks: Blocks) -> None:
     # (handle_11_Terrazi 3667-3679). Same bounded lateral spawn-column draw and top-row entry as the
     # Toroid (init_toroid's recorded deviations apply unchanged), but aimed on the 48-magnitude tier
     # (3 px/frame, `angle_dX_dY_terrazi_torkan_tbl`) and stamped with the Terrazi's points/flag/code.
-    # The fire-permission mask capture (`_FFREQ`/`_TIMER` at 3674-3678) lands with the shared gate in
-    # the next commit; this commit builds the family's spawn and movement only.
+    # It also captures the fire-permission state (`_FFREQ`/`_TIMER` at 3674-3678) into the two shared
+    # per-slot fire fields, so a freshly spawned Terrazi carries its own countdown for the shared gate.
     definition = _install_warp_proc(blocks, INIT_TERRAZI_PROCCODE)
-    reset = [
-        blocks.set_var("spawn attempts", SPAWN_ATTEMPTS_ID, number(0)),
-        blocks.set_var("spawn found", SPAWN_FOUND_ID, number(0)),
-    ]
-    draw_loop = blocks.add("control_repeat_until")
-    done = blocks.op_or(
-        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
-        blocks.op_gt(variable("spawn attempts", SPAWN_ATTEMPTS_ID), number(SPAWN_DRAW_ATTEMPTS - 1)),
-    )
-    blocks.blocks[draw_loop]["inputs"]["CONDITION"] = [2, done]
-    candidate = blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1))
-    in_range = blocks.op_lt(candidate, number(SPAWN_COL_REJECT_AT))
-    col = blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET))
-    far_enough = blocks.op_not(
-        blocks.op_lt(
-            blocks.op_abs(blocks.op_sub(variable("player col", PLAYER_COL_ID), col)),
-            number(SPAWN_CRAFT_GAP),
-        )
-    )
-    accept = blocks.if_reporter(
-        far_enough,
-        [
-            _set_cur_item(
-                blocks,
-                "slot y",
-                SLOT_Y_ID,
-                blocks.op_mul(blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET)), number(SLOT_UNITS_PER_CELL)),
-            ),
-            blocks.set_var("spawn found", SPAWN_FOUND_ID, number(1)),
-        ],
-    )
-    valid = blocks.if_reporter(in_range, [accept])
-    blocks.substack(
-        draw_loop,
-        [
-            blocks.call_proc(RNG_PROCCODE, warp=True),
-            valid,
-            blocks.change_var("spawn attempts", SPAWN_ATTEMPTS_ID, 1),
-        ],
-    )
+    reset, draw_loop = _draw_spawn_column(blocks)
     # On a successful draw, stamp the slot and aim it at the craft (48-magnitude tier, 3 px/frame).
     stamp = blocks.if_reporter(
         blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
@@ -2264,30 +2240,31 @@ def install_init_terrazi(blocks: Blocks) -> None:
 
 def install_update_terrazi(blocks: Blocks) -> None:
     # AIR-06: advance the Terrazi at `slot index` by one tick (handle_11_Terrazi 3680-3729). While
-    # APPROACHING it flies on its aimed 3 px/frame velocity; each tick it tests the scroll-axis window
-    # (player row - slot row in [LOW, HIGH], the reference's carry test at 3689-3692). Outside the
-    # window it keeps approaching — and, once the shared fire gate lands next commit, fires under its
-    # mask. Inside the window it commits to a GLIDE (`terrazi_main_cont`): the scroll velocity is SET to
-    # a slow +/-2 drift by side (3695-3699) and, while gliding, the lateral velocity decelerates by
-    # DECEL each tick (`subq #2,_dX` 3717), crossing zero and reversing over ~24 frames so it peels the
-    # approach line away. Once committed it never re-tests. Shares the flying hit window / explosion
-    # with the Toroid. Sprite-code animation (`_ddX` at 3705-3711) is deferred with the render target.
+    # APPROACHING it flies on its aimed 3 px/frame velocity; each tick it tests the LATERAL window
+    # (player col - slot col in [LOW, HIGH], the reference's carry test on `_Y` at 3683-3692 — `_Y` is
+    # the lateral axis, `dir_delta_tbl` 2172; the same axis the Toroid swing triggers on). Outside the
+    # window it keeps approaching and fires under its mask. Inside the window it commits to a GLIDE
+    # (`terrazi_main_cont`): the LATERAL velocity is SET to a slow +/-2 drift by side (`_dY` 3694-3699)
+    # and, while gliding, the SCROLL/forward velocity decelerates by DECEL each tick (`subq #2,_dX`
+    # 3715), crossing zero and reversing over ~24 frames so it peels its forward approach away. Once
+    # committed it never re-tests. Shares the flying hit window / explosion with the Toroid. Sprite-code
+    # animation (`_ddX` at 3705-3711) is derived render-only from the slot clock.
     definition = _install_warp_proc(blocks, UPDATE_TERRAZI_PROCCODE)
     flag = lambda: _cur_item(blocks, "slot flag", SLOT_FLAG_ID)
-    row_offset = lambda: blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))
+    col_offset = lambda: blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))
 
-    # Glide trigger (only while approaching): LOW <= row offset <= HIGH -> commit the glide. The scroll
-    # drift sign mirrors the reference (3695-3699): craft at/below in scroll (offset >= 0) drifts UP
-    # (-DRIFT, reversing the descent); craft above (offset < 0) drifts DOWN (+DRIFT, continuing).
-    at_or_above_low = blocks.op_not(blocks.op_lt(row_offset(), number(TERRAZI_GLIDE_LOW)))
-    at_or_below_high = blocks.op_not(blocks.op_gt(row_offset(), number(TERRAZI_GLIDE_HIGH)))
+    # Glide trigger (only while approaching): LOW <= lateral offset <= HIGH -> commit the glide. The
+    # lateral drift sign mirrors the reference (3694-3699): craft at/right laterally (offset >= 0) drifts
+    # one way (-DRIFT); craft left (offset < 0) drifts the other (+DRIFT).
+    at_or_above_low = blocks.op_not(blocks.op_lt(col_offset(), number(TERRAZI_GLIDE_LOW)))
+    at_or_below_high = blocks.op_not(blocks.op_gt(col_offset(), number(TERRAZI_GLIDE_HIGH)))
     in_window = blocks.op_and(at_or_above_low, at_or_below_high)
     drift = blocks.add("control_if_else")
-    craft_at_or_below = blocks.op_not(blocks.op_lt(row_offset(), number(0)))  # offset >= 0
-    blocks.blocks[drift]["inputs"]["CONDITION"] = [2, craft_at_or_below]
-    blocks.blocks[craft_at_or_below]["parent"] = drift
-    blocks.substack(drift, [_set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(-TERRAZI_GLIDE_DRIFT))])
-    blocks.substack(drift, [_set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(TERRAZI_GLIDE_DRIFT))], name="SUBSTACK2")
+    craft_at_or_right = blocks.op_not(blocks.op_lt(col_offset(), number(0)))  # offset >= 0
+    blocks.blocks[drift]["inputs"]["CONDITION"] = [2, craft_at_or_right]
+    blocks.blocks[craft_at_or_right]["parent"] = drift
+    blocks.substack(drift, [_set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(-TERRAZI_GLIDE_DRIFT))])
+    blocks.substack(drift, [_set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(TERRAZI_GLIDE_DRIFT))], name="SUBSTACK2")
     trigger = blocks.if_reporter(
         blocks.op_and(blocks.op_eq(flag(), number(TERRAZI_FLAG_APPROACH)), in_window),
         [
@@ -2298,12 +2275,12 @@ def install_update_terrazi(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, number(TERRAZI_FIRE_SUPPRESS)),
         ],
     )
-    # While gliding, decelerate and reverse the LATERAL velocity; the scroll drift set at the trigger
-    # holds (the reference's `_dY += _ddY` with _ddY = 0). Runs on the trigger tick too, matching the
-    # reference's fall-through from the glide entry into the same-frame decel/move.
+    # While gliding, decelerate and reverse the SCROLL/forward velocity (`subq #2,_dX`); the lateral
+    # drift set at the trigger holds (the reference's `_dY += _ddY` with _ddY = 0). Runs on the trigger
+    # tick too, matching the reference's fall-through from the glide entry into the same-frame decel/move.
     glide = blocks.if_reporter(
         blocks.op_eq(flag(), number(TERRAZI_FLAG_GLIDE)),
-        [_set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(TERRAZI_GLIDE_DECEL)))],
+        [_set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.op_sub(_cur_item(blocks, "slot dx", SLOT_DX_ID), number(TERRAZI_GLIDE_DECEL)))],
     )
     # Move by 4*velocity per tick (2 arcade frames), advance the animation clock, then cull.
     move = [
@@ -2315,9 +2292,9 @@ def install_update_terrazi(blocks: Blocks) -> None:
     off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))  # row <= -2  ==  row < -1
     off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
     off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))  # col <= -2 (left edge)
-    # The glide reverses the Terrazi off EITHER lateral edge and its scroll drift can peel it off the
-    # top; the same explicit four-edge cull as the Toroid (this port's signed columns need the left
-    # edge that the reference's byte-wrap handles implicitly).
+    # The glide reverses the Terrazi's forward motion (it can back off the TOP) and its lateral drift can
+    # carry it off a side; the same explicit four-edge cull as the Toroid (this port's signed columns
+    # need the left edge that the reference's byte-wrap handles implicitly).
     offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
     cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
@@ -2451,6 +2428,8 @@ def install_spawn_flying(blocks: Blocks) -> None:
 
 
 def install_debug_spawn_wave(blocks: Blocks) -> None:
+    # ENGINE-TODO(#119): remove this temporary debug spawn key (and its locked-spec control-mapping
+    # amendment) once every aerial family is built and playtested, so reachability no longer needs it.
     # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, spawn Terrazis ONE AT A
     # TIME so the operator can watch a single enemy's full lifecycle (approach, timed fire, glide-and-
     # reverse, exit) instead of a confusing six-at-once wave. Each tick: point the formation at the
@@ -2479,10 +2458,18 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
     blocks.blocks[present]["parent"] = branch
     # A Terrazi is alive: spawn nothing more this tick (keep it a solo).
     blocks.substack(branch, [blocks.set_var("formation count", FORMATION_COUNT_ID, number(0))])
-    # No Terrazi: clear the flying slots and bring in exactly one from the top.
+    # No Terrazi: clear the flying slots and bring in exactly one from the top. Free each slot the same
+    # way `cull slot` does — BOTH `slot type` and `slot state` to 0 — so no slot is left type-empty but
+    # state-stale (a half-freed slot the walk could misread). This wipes any live flying enemy on the
+    # field with no explosion or score, which is the intended cost of the one-at-a-time isolation (the
+    # operator sees a clean single Terrazi); the playtest checklist notes it so it does not read as a bug.
     clear = [
-        blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0))
+        block
         for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
+        for block in (
+            blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
+            blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
+        )
     ]
     blocks.substack(
         branch,

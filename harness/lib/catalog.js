@@ -662,15 +662,16 @@ export const SCENARIOS = [
   {
     key: 'terrazi-glides-and-reverses',
     behavior:
-      'A Terrazi drawing level with the craft in scroll commits a GLIDE that decelerates and REVERSES its lateral velocity (the arcade terrazi_main_cont peel-away), not a straight homing dive',
+      'A Terrazi drawing level with the craft LATERALLY commits a GLIDE that decelerates and REVERSES its forward/scroll velocity (the arcade terrazi_main_cont peel-away), not a straight homing dive',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Seed one Terrazi level with the craft in the SCROLL axis (row offset 0, inside the [-4,3] glide
-      // window) with a craft-ward lateral velocity. On the trigger tick it latches GLIDE and, while
-      // gliding, decrements the lateral velocity by DECEL each tick (`subq #2,_dX`), so `slot dy` crosses
-      // zero and goes NEGATIVE — the decelerate-and-reverse. Placed several columns to the side so it is
-      // level in scroll but not overlapping the craft's cell (invuln is on from reachPlaying regardless).
+      // Seed one Terrazi LATERALLY level with the craft (col offset 0, inside the [-4,3] glide window —
+      // the arcade triggers the glide on `_Y`, the lateral axis) with a forward/scroll approach velocity.
+      // On the trigger tick it latches GLIDE and, while gliding, decrements the SCROLL velocity by DECEL
+      // each tick (`subq #2,_dX`), so `slot dx` crosses zero and goes NEGATIVE — the decelerate-and-
+      // reverse of its forward approach. Placed several rows ahead so it is level laterally but not
+      // overlapping the craft's cell (invuln is on from reachPlaying regardless).
       const pr = readVar(vm, 'player-row');
       const pc = readVar(vm, 'player-col');
       const slot = 63;
@@ -679,29 +680,29 @@ export const SCENARIOS = [
       };
       put('slot-type', slot, 17);
       put('slot-state', slot, 1);
-      put('slot-x', slot, pr * 256); // same scroll row as the craft => row offset 0, inside the window
-      put('slot-y', slot, (pc + 5) * 256); // five columns aside, not overlapping the craft cell
-      put('slot-dx', slot, 0);
-      put('slot-dy', slot, 8); // a craft-ward lateral approach the glide must decelerate and reverse
+      put('slot-x', slot, (pr - 8) * 256); // eight rows ahead in scroll, not overlapping the craft cell
+      put('slot-y', slot, pc * 256); // same lateral column as the craft => col offset 0, inside the window
+      put('slot-dx', slot, 8); // a forward/scroll approach the glide must decelerate and reverse
+      put('slot-dy', slot, 0);
       put('slot-flag', slot, 0); // APPROACH — eligible to trigger the glide
       put('slot-timer', slot, 0);
       put('slot-code', slot, 1);
-      // One pump settles well past the trigger: the glide latches (flag = GLIDE) and the lateral
-      // velocity decelerates below zero. The enemy naturally glides off-field and is culled within the
-      // settle (a pump is many ticks, not one — see step()), but cull keeps `slot flag`/`slot dy`, so
-      // the committed-glide and reversed-lateral evidence survives to read (the same reason the Toroid
-      // swing scenario reads its post-cull `slot dy`). Magnitude is not asserted, only the sign flip.
+      // One pump settles well past the trigger: the glide latches (flag = GLIDE) and the forward velocity
+      // decelerates below zero. The enemy naturally backs off-field and is culled within the settle (a
+      // pump is many ticks, not one — see step()), but cull keeps `slot flag`/`slot dx`, so the
+      // committed-glide and reversed-forward evidence survives to read (the same reason the Toroid swing
+      // scenario reads its post-cull `slot dy`). Magnitude is not asserted, only the sign flip.
       step(vm, 1);
-      return { dy: readVar(vm, 'slot-dy')[slot], flag: readVar(vm, 'slot-flag')[slot] };
+      return { dx: readVar(vm, 'slot-dx')[slot], flag: readVar(vm, 'slot-flag')[slot] };
     },
     assert(obs) {
       assert.equal(obs.flag, 1, 'the Terrazi committed its glide (flag = GLIDE)');
       assert.ok(
-        obs.dy < 0,
-        `a gliding Terrazi decelerates and reverses its lateral course (dy < 0); got dy=${obs.dy}`,
+        obs.dx < 0,
+        `a gliding Terrazi decelerates and reverses its forward approach (dx < 0); got dx=${obs.dx}`,
       );
     },
-    // Empty `update terrazi` so the glide never runs → flag stays 0 and dy stays 8 → the assertion bites.
+    // Empty `update terrazi` so the glide never runs → flag stays 0 and dx stays 8 → the assertion bites.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrazi'),
   },
   {
@@ -713,10 +714,12 @@ export const SCENARIOS = [
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // Isolate the Terrazi fire from live shooting Toroids: make every spawnable flying type the
       // NON-shooting Toroid (type 10, never fires) and clear the flying slots, so `bullet alloc result`
-      // can only move if the Terrazi's gate fires. Seed one Terrazi far above the craft (row offset well
-      // outside the [-4,3] glide window, so it stays in the firing approach state) with mask 0 (reload
-      // 1 => fires on every 8-frame phase, the fastest cap) and a countdown of 1 (fires on the first
-      // phase). Reset the shared alloc signal, then pump until a bullet allocates.
+      // can only move if the Terrazi's gate fires. Seed one Terrazi LATERALLY off the craft's line (col
+      // offset 12, well outside the [-4,3] glide window on `_Y`, so it stays in the firing approach state
+      // and never commits the fire-suppressing glide) with mask 0 (reload 1 => fires on every 8-frame
+      // phase, the fastest cap) and a countdown of 1 (fires on the first phase). It is stationary
+      // (dx=dy=0) so it never drifts into the window. Reset the shared alloc signal, then pump until a
+      // bullet allocates.
       const typeTable = readVar(vm, 'flying-type-table');
       for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
       const slotType = readVar(vm, 'slot-type');
@@ -729,9 +732,9 @@ export const SCENARIOS = [
       };
       put('slot-type', slot, 17);
       put('slot-state', slot, 1);
-      put('slot-x', slot, (pr - 20) * 256); // 20 rows above the craft => offset 20, outside the window
-      put('slot-y', slot, pc * 256);
-      put('slot-dx', slot, 0); // stationary and distant: it stays in the firing state across the window
+      put('slot-x', slot, (pr - 20) * 256); // 20 rows ahead in scroll — no longer what gates the glide
+      put('slot-y', slot, (pc - 12) * 256); // 12 columns aside => col offset 12, outside the [-4,3] window
+      put('slot-dx', slot, 0); // stationary and laterally distant: it stays in the firing approach state
       put('slot-dy', slot, 0);
       put('slot-flag', slot, 0); // APPROACH
       put('slot-fire-mask', slot, 0); // mask 0 => reload 1 => fires every phase (fastest cap)

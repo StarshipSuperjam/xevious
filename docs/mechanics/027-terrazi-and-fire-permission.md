@@ -4,8 +4,9 @@
   the reusable, family-agnostic **fire-permission gate** every future firing family will share. A
   Terrazi spawns from the formation wave, aims at the craft on the 48-magnitude (3 px/frame) homing
   tier and approaches while firing aimed bullets under its fire-permission mask; when it draws nearly
-  level with the craft along the scroll axis it stops firing and **glides** — decelerating and reversing
-  its lateral course, peeling the craft's approach line away — then leaves and is culled. It shares the
+  level with the craft **laterally** (lined up in the craft's column) it stops firing and **glides** —
+  decelerating and reversing its **forward/scroll** course while drifting slowly to one side, backing off
+  the craft's line rather than diving in — then leaves and is culled. It shares the
   blaster hit window and the hit explosion with the Toroid. This is the first consumer of the
   per-family fire-permission masks laid down in [record 022](022-fire-permission-masks.md), and the
   first author of the two per-slot fire fields added to the pool of
@@ -18,17 +19,20 @@
   1 (fire on every 8-frame phase, the fastest), a larger mask draws a longer random reload. The mask is
   captured from the family's fire-permission byte at spawn, and the countdown is seeded to `random &
   mask` at spawn — **without** the reload's `+ 1` (the spawn/reload asymmetry). While it is more than a
-  few rows from the craft along the scroll axis it fires this way; when the scroll-axis offset falls in
-  the window `[-4, 3]` it commits — once — to a glide: it sets a slow ±2 scroll drift toward or away by
-  side, pins its fire countdown to 255 so it stops firing, and each frame decelerates its lateral
-  velocity by a fixed step, so that velocity crosses zero and reverses — the enemy peels away from the
-  side it was closing on over roughly 24 frames (a derived span; the reference has no literal count).
+  few columns off the craft's line it fires this way; when the lateral offset (`solvalou._Y − self._Y`,
+  the same `_Y` axis the Toroid swing triggers on) falls in the window `[-4, 3]` it commits — once — to a
+  glide: it sets a slow ±2 lateral drift toward or away by side, sets its fire countdown to 255 once at
+  glide entry (so the still-running gate can no longer reach zero in its short remaining life), and each
+  frame decelerates its **forward/scroll** velocity by a fixed step, so that velocity crosses zero and
+  reverses — the enemy backs off the line it was closing along over roughly 24 frames (a derived span;
+  the reference has no literal count).
   It is culled when it leaves the play field on any edge, and it dies to a blaster shot or kills the
   craft on contact through the shared windows. The catalog's older "expand attack" description has no
   support in the reference and is ruled out.
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. The Terrazi handler
   is `handle_11_Terrazi` (`src/xevious_main.68k` 3667–3692, the aimed-approach and fire-while-distant
-  path) and `terrazi_main_cont` (3693–3718, the glide with the lateral decelerate-and-reverse); its
+  path) and `terrazi_main_cont` (3693–3718, the glide with the `_dX` forward/scroll decelerate-and-
+  reverse and the `_dY` lateral drift); its
   aim uses `angle_dX_dY_terrazi_torkan_tbl` (6325). The fire-permission gate is
   `chk_timer_fire_bullet_reinit_timer` (4999–5010) and its bullet allocation `init_new_bullet`
   (5012–5020). The spawn column is `gen_rnd_spriteY` (5156–5169) driven by
@@ -51,23 +55,24 @@
   it fires the shared aim/alloc body `_fire_aimed_bullet` (an aimed generic 2 px/frame bullet) and
   reloads the countdown to `(rng mod (mask+1)) + 1`. `rng mod (mask+1)` reproduces the reference's
   `random & mask` because every flying family's scheduled mask is a contiguous low-bit byte. `update
-  terrazi` tests the scroll-axis window each active tick, commits the glide (setting the drift, the
-  glide flag, and the 255 fire-suppression), decelerates and reverses the lateral velocity while
-  gliding, calls the gate, moves by `4·velocity` per tick, and culls. Gameplay math is exact integer
+  terrazi` tests the lateral window each active tick, commits the glide (setting the ±2 lateral drift,
+  the glide flag, and the 255 fire-suppression), decelerates and reverses the forward/scroll velocity
+  while gliding, calls the gate, moves by `4·velocity` per tick, and culls. Gameplay math is exact integer
   arithmetic in arcade units.
 - Scratch evidence: `install_init_terrazi`, `install_update_terrazi`, `install_fire_permission_gate`,
   `_fire_aimed_bullet` (the shared aim/alloc, reused by the Toroid's one-shot and by the gate), the
   Terrazi branch in `install_advance_slots`, the per-type init dispatch in `install_spawn_flying`, and
   the two `SLOT_FIELD_LISTS` fire fields in `tools/game_director.py`; the structural contract
   `_air06_failures` and its per-clause negatives (`test_terrazi_slice_authoring_present` /
-  `test_terrazi_slice_negative_fixtures`) in `tests/test_scratch_project.py`, whose ten clauses pin the
+  `test_terrazi_slice_negative_fixtures`) in `tests/test_scratch_project.py`, whose eleven clauses pin the
   lifecycle procs, the by-type spawn/dispatch, the fast-tier aim, the glide-and-reverse, and — statically,
-  since the harness cannot see per-frame cadence — the gate's global-phase modulus and the reload `+ 1`
-  (proving there is no zero-suppression); the live scenarios `terrazi-wave-spawns-and-moves`,
+  since the harness cannot see per-frame cadence — the gate's global-phase modulus, the reload `+ 1`
+  (proving there is no zero-suppression), and the byte-underflow decrement (`mod 256`, so a 0 countdown
+  wraps to 255 rather than going negative or sticking); the live scenarios `terrazi-wave-spawns-and-moves`,
   `terrazi-glides-and-reverses`, and `terrazi-fires-under-mask` (isolated from live shooting Toroids),
   each with a biting negative, in `harness/lib/catalog.js`.
 - Acceptance criteria: A Terrazi spawns by type from the formation wave and advances under its own
-  aimed velocity, commits its glide-and-reverse in the scroll-axis window, and fires aimed bullets
+  aimed velocity, commits its glide-and-reverse in the lateral window, and fires aimed bullets
   through the shared gate under its captured mask (harness `terrazi-wave-spawns-and-moves`,
   `terrazi-glides-and-reverses`, `terrazi-fires-under-mask`, each with a biting negative); the gate
   phases on the global 8-frame boundary and reloads `(random & mask) + 1` with no zero-suppression, and
@@ -94,8 +99,9 @@
   exact (the reference's per-frame `−2`, doubled to `−4` per two-frame tick); the "~24 frames" total to
   cross zero and reverse depends on the aimed lateral magnitude at the trigger and is a derived
   estimate, with no literal source constant. (4) **Glide window in port cells.** The reference's
-  scroll-axis window test is a byte compare (true on offset `[-4, 3]`); like the Toroid's lateral
-  window, the port reads it as a cell offset — a modeling choice consistent across the two families.
+  lateral (`_Y`) window test is a byte compare (true on offset `[-4, 3]`); like the Toroid's swing
+  window (the same `_Y` axis), the port reads it as a cell offset — a modeling choice consistent across
+  the two families.
   (5) **Toroid one-shot is an exception to the gate.** The shooting Toroid (0x0B) fires a single
   event-driven bullet at its swing commit — a distinct, non-periodic firing model that does NOT run
   through this gate; it shares only the aim/alloc body. (6) **Roll animation is render-derived.** The
