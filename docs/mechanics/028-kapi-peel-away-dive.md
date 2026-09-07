@@ -64,15 +64,18 @@
   `test_kapi_slice_negative_fixtures`) in `tests/test_scratch_project.py`, whose clauses pin the lifecycle
   procs, the by-type spawn/dispatch, the 32-tier aim, the dive's lateral-accelerate (`slot dy` carries the
   `±2` step) and scroll-decelerate (`slot dx` carries the `−4` step) — a biting pair that fails if the axes
-  are swapped — the once-latched side, the fire capture, that the gate is driven during the dive, and —
-  statically — that the update body contains **no** `slot fire timer = 255` suppression; the live scenarios
+  are swapped — the once-latched side and — structurally — that the side latch stays nested inside the
+  `slot flag == approach` gate (the "latched once, never recomputed" guard: a re-homing latch moved outside
+  that gate bites, since the settling harness cannot observe a single re-latched frame), the fire capture,
+  that the gate is driven during the dive, and — statically — that the update body contains **no**
+  `slot fire timer = 255` suppression; the live scenarios
   in `harness/lib/catalog.js` (Kapi spawns-and-dives asserting `slot dy` grows away and `slot dx` decreases,
   fires-while-diving, and the debug-key cycle), each with a biting negative.
 - Acceptance criteria: A Kapi spawns by type from the formation wave from a plain random column, approaches
   silently at 2 px/frame, latches its peel-away dive at countdown expiry (lateral velocity accelerates
   **away** from the craft's column while forward velocity decelerates), and fires aimed bullets through the
   shared gate every tick from the dive with no suppression (harness `kapi-spawns-and-dives`,
-  `kapi-fires-while-diving`, `kapi-debug-cycle`, each with a biting negative); the family's aim/latch/capture
+  `kapi-fires-while-diving`, `debug-key-cycles-families`, each with a biting negative); the family's aim/latch/capture
   wiring and the axis directions hold (`_air05_failures`, each clause corrupted bites); the operator playtest
   confirms the felt behavior — the silent aimed approach, then a dive that **peels away** from the craft's
   column (not a homing dive, and not a swing on the forward axis) while the forward run slows, with firing

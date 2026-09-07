@@ -2098,6 +2098,45 @@ class ScratchProjectTests(unittest.TestCase):
             for b in update_body
         ):
             failures.add("kapi-no-fire-suppression")
+
+        # (11) ONCE-ONLY latch (the re-home guard). Each write that latches a DIVE side into
+        # `slot flag` must sit INSIDE an enclosing `if slot flag == APPROACH`, so the instant it
+        # flips the flag off APPROACH the whole latch is unreachable — the "latched once, never
+        # recomputed" guarantee of kapi_10_fire (3626-3633). If the latch could run outside that
+        # gate it would recompute the peel side every tick and re-home once the lateral velocity
+        # crossed zero: the exact latched-swing direction bug this project has hit before. Clause
+        # (7) only pins that a latch write EXISTS; this pins that it stays gated. Purely structural
+        # — the settling harness advances whole ticks and cannot observe a single re-latched frame.
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def approach_gated(write_id: str) -> bool:
+            cur = blocks.get(write_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = blocks.get(ref(parent["inputs"].get("CONDITION")))
+                    lhs = blocks.get(ref(cond["inputs"].get("OPERAND1"))) if cond else None
+                    if (
+                        cond is not None
+                        and cond["opcode"] == "operator_equals"
+                        and lhs is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                        and num_operand(cond["inputs"].get("OPERAND2")) == director.KAPI_FLAG_APPROACH
+                    ):
+                        return True
+                cur = parent
+            return False
+
+        dive_latch_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and const_item(b) in (director.KAPI_FLAG_DIVE_MINUS, director.KAPI_FLAG_DIVE_PLUS)
+        ]
+        if not dive_latch_ids or not all(approach_gated(wid) for wid in dive_latch_ids):
+            failures.add("kapi-dive-latch-approach-gated")
         return failures
 
     # Roadmap closure evidence for leaf `air.kapi` (AIR-05.kapi): Kapi is a live family — spawned by
@@ -2199,6 +2238,43 @@ class ScratchProjectTests(unittest.TestCase):
                     if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], list) and it[1][0] in (4, 5, 6, 7, 8, 9, 10):
                         b["inputs"]["ITEM"] = [1, [4, str(director.TERRAZI_FIRE_SUPPRESS)]]
 
+        def ungate_latch(p: dict) -> None:
+            # Break the approach gate enclosing the side latch (retarget its `flag == APPROACH`
+            # test to a value the flag never holds) → the latch would recompute the peel side every
+            # tick (a re-homing dive). The once-only structural guard bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            b = stage["blocks"]
+            id_map = {id(v): k for k, v in b.items()}
+
+            def cref(inp):
+                return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+            for x in _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE):
+                it = x["inputs"].get("ITEM") if x["opcode"] == "data_replaceitemoflist" else None
+                if not (
+                    x["opcode"] == "data_replaceitemoflist"
+                    and x["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and isinstance(it, list)
+                    and isinstance(it[1], list)
+                    and int(it[1][1]) in (director.KAPI_FLAG_DIVE_MINUS, director.KAPI_FLAG_DIVE_PLUS)
+                ):
+                    continue
+                cur = b.get(id_map[id(x)])
+                while cur is not None:
+                    parent = b.get(cur.get("parent")) if cur.get("parent") else None
+                    if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                        cond = b.get(cref(parent["inputs"].get("CONDITION")))
+                        lhs = b.get(cref(cond["inputs"].get("OPERAND1"))) if cond else None
+                        if (
+                            cond is not None
+                            and cond["opcode"] == "operator_equals"
+                            and lhs is not None
+                            and lhs["opcode"] == "data_itemoflist"
+                            and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                        ):
+                            cond["inputs"]["OPERAND2"] = [1, [4, 77]]
+                    cur = parent
+
         cases = [
             ("kapi-lifecycle-procs-warp", unwarp_update),
             ("spawn-inits-kapi", drop_init_call),
@@ -2207,6 +2283,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("kapi-dive-accel-lateral", drop_lateral_accel),
             ("kapi-dive-decel-scroll", drop_scroll_decel),
             ("kapi-dive-latches-side", drop_side_latch),
+            ("kapi-dive-latch-approach-gated", ungate_latch),
             ("kapi-captures-fire-state", drop_fire_state_capture),
             ("kapi-update-drives-gate", drop_gate_call),
             ("kapi-no-fire-suppression", add_fire_suppression),

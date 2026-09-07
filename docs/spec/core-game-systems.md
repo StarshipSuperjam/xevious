@@ -77,8 +77,9 @@ the start key; READY, player-dead, respawning, and game-over accept no gameplay 
 movement, fire, and bomb. (Earlier slices carried two temporary keyboard fixtures — `D` to request
 respawn and `G` to request terminal death — solely to exercise the death paths before any enemy could
 kill the craft; now that live flying enemies and their bullets deal real lethal contact, those fixtures
-are removed.) One temporary keyboard fixture is present again: while playing, holding `T` brings in
-Terrazis one at a time (the next only after the current one leaves or dies), so an aerial family that
+are removed.) One temporary keyboard fixture is present again: while playing, holding `T` brings in a
+single debug enemy at a time (the next only after the current one leaves or dies), cycling through the
+built aerial families as the field clears (Terrazi → Kapi → wrap), so an aerial family that
 only spawns at high AI levels is reachable for the operator playtest; it is inert when the key is not
 held, and is tracked for removal once every aerial family is built and playtested (issue #119). Repeated keys can never duplicate transitions,
 loops, shots, or bombs; the green flag from any state performs the cold-start reset; stop halts the
