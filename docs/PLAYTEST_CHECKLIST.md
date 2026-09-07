@@ -27,8 +27,10 @@ also starts from the title), **B** bombs; the crosshair leads the ship and track
 (there is no separate crosshair control). The temporary **D**, **G**, and **S** debug keys are **gone** —
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to
 score, let one (or its bullet) touch you to die. One new **temporary** key is present: holding **T**
-during play brings in **Terrazis one at a time** (step 4b) so a family unreachable in early play can be
-tested — a dev tool tracked for removal (issue #119), not part of the finished game.
+during play brings in one debug enemy at a time and **cycles through the built firing families** as the
+field clears — **Terrazi** first (step 4b), then **Kapi** (step 4c), then wrapping — so families
+unreachable in early play can be tested. A dev tool tracked for removal (issue #119), not part of the
+finished game.
 
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a
@@ -98,11 +100,12 @@ so area position is read from the `area progress`/`area number` variable watcher
    pass, so judge the *behavior* (fires / flies / kills; explodes / scores / clears), not the placeholder art.
 4b. **Terrazi combat — the first firing family (temporary debug spawn).** Terrazi only spawns at very high
    AI levels, unreachable in a normal area-1 flight, so this build carries a **temporary playtest key**:
-   while playing, **hold `T`** to bring in Terrazis **one at a time** — a single Terrazi enters, and the
-   next appears only after it leaves or dies, so you can watch each one's full lifecycle without a crowded
-   wave. This key is a dev tool tracked for removal (issue #119) — it is not part of the finished game.
-   **Note:** to isolate a single Terrazi, engaging `T` **clears the whole flying field first** — any live
-   Toroid wave on screen simply vanishes (no explosion, no score) as the lone Terrazi comes in. That is the
+   while playing, **hold `T`** to bring in one debug enemy at a time. The tool **cycles through the built
+   firing families** — the first enemy is a **Terrazi**; each time the field clears while you keep holding
+   `T`, it advances to the next family (**Kapi**, step 4c), then wraps. This key is a dev tool tracked for
+   removal (issue #119) — it is not part of the finished game.
+   **Note:** to isolate a single debug enemy, engaging `T` **clears the whole flying field first** — any live
+   Toroid wave on screen simply vanishes (no explosion, no score) as the lone enemy comes in. That is the
    tool doing its job, **not** a bug; normal Toroid waves resume once you release `T` (checked at the end).
    Hold `T` and watch a single Terrazi through, confirming: it **enters aimed toward the craft** at a
    faster clip than Toroids (the 3 px/frame tier), **rolling** through its frames; while still distant it
@@ -113,7 +116,24 @@ so area position is read from the `area progress`/`area number` variable watcher
    into you. **Shoot one:** it explodes and the score rises by **700** (the HUD digits are the definitive
    signal), the wreck clears. Check the **roll sprite** reads right (the small green banking-light on two
    of the frames is correct, not an artifact); the shared explosion is the same placeholder burst as the
-   Toroid (note, do not fail). Release `T` and confirm normal Toroid waves resume.
+   Toroid (note, do not fail). Then **keep holding `T`**: once the Terrazi is gone the tool advances to the
+   next family — go to step 4c. (Release `T` at any point and normal Toroid waves resume.)
+4c. **Kapi combat — the peel-away diving family (temporary debug spawn, next in the `T` cycle).** With the
+   Terrazi gone and `T` still held, the next debug enemy is a **Kapi**. Kapi, like Terrazi, only spawns at
+   high AI levels, so the `T` key is the only way to see it. Watch one through, confirming:
+   - it **approaches silently** — aimed toward the craft, a touch slower than the Terrazi (the 2 px/frame
+     tier), and it does **not** fire during this approach (no bullets yet);
+   - after a short delay it **commits a dive**, and this is the behavior to watch most closely: the Kapi
+     **peels AWAY from your column sideways** — it curves off to the side away from where you are, **not**
+     homing in toward you, and **not** sliding along the up-the-screen (scroll) direction — while its forward
+     advance toward the bottom **slows**. A dive that curves *toward* your column, or that speeds/veers along
+     the scroll axis instead of sideways, is the failure to flag (this direction was a corrected spec error,
+     so it is the key thing your eyes confirm here);
+   - **from the dive it fires continuously** — a bullet on (nearly) every tick, unlike the Terrazi which goes
+     *silent* when it glides. Silent on the way in, firing once it dives.
+   **Shoot one:** it explodes and the score rises by **300** (the HUD digits are the definitive signal), the
+   wreck clears. Check the **dive sprite** cycles through its frames; the shared explosion is the same
+   placeholder burst as the Toroid (note, do not fail). Release `T` and confirm normal Toroid waves resume.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row by letting a Toroid or its
    bullet touch the craft (once ground objects and Bacura exist, exercise those too): the full death
    presentation and sound complete uncut, the craft respawns **immediately vulnerable** (fly into an enemy

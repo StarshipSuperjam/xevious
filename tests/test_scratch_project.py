@@ -207,11 +207,11 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 20: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
-        # enemy-bullet renderers, and the slice-10 terrazi renderer (all reuse proof costumes by ref).
-        self.assertEqual(20, len(project["targets"]))
-        # 105: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06).
-        self.assertEqual(105, len(assets))
+        # 21: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, and the slice-10 terrazi + kapi renderers (all reuse proof costumes by ref).
+        self.assertEqual(21, len(project["targets"]))
+        # 112: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs (AIR-05).
+        self.assertEqual(112, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -956,6 +956,9 @@ class ScratchProjectTests(unittest.TestCase):
             # by the test harness) that gates that death so the agency-less headless craft can survive.
             "player hit",
             "invuln",
+            # DEBUG (tracked for removal, #119): the T-key family-cycle cursor — a transient dev-tool
+            # register, not Stage-write-protected state.
+            "debug spawn index",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1131,6 +1134,10 @@ class ScratchProjectTests(unittest.TestCase):
             director.INIT_TERRAZI_PROCCODE,
             director.UPDATE_TERRAZI_PROCCODE,
             director.FIRE_GATE_PROCCODE,
+            # AIR-05 Kapi family (slice 10): its spawn init and per-tick peel-away dive update, both
+            # warp, no state write — dispatched from the same spawner / walk, calling the shared gate.
+            director.INIT_KAPI_PROCCODE,
+            director.UPDATE_KAPI_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -1937,6 +1944,354 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air06_failures(project), label)
+
+    @staticmethod
+    def _air05_failures(project: dict) -> set:
+        """AIR-05 Kapi authoring contract — violated labels. Pins the structural facts that make Kapi a
+        faithful live PEEL-AWAY DIVING family: its init/update run atomically, the spawner and the
+        ordered walk drive it by its own type, it aims on the generic (32-magnitude, 2 px/frame) tier,
+        it spawns via the NO-exclusion draw (can appear over the craft's column), its update commits a
+        dive that latches a side then ACCELERATES the lateral axis (`slot dy`, +/-2) AWAY while
+        DECELERATING the scroll axis (`slot dx`, -4) — the F1 axis+direction trap — and it fires EVERY
+        dive tick through the shared gate with NO suppression (unlike Terrazi's glide)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def num_operand(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], list) and len(inp[1]) >= 2 and inp[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                try:
+                    return int(inp[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def const_item(b):
+            # Integer constant value of a replace's ITEM (an inline shadow), or None if it is an expression.
+            it = b["inputs"].get("ITEM")
+            if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], list) and len(it[1]) >= 2 and it[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                try:
+                    return int(it[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def item_op(b):
+            # The operator block driving a replace's ITEM value, or None if the ITEM is a constant.
+            it = b["inputs"].get("ITEM")
+            return blocks.get(it[1]) if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], str) else None
+
+        def reads_list(op_block, list_id):
+            inner = blocks.get(ref(op_block["inputs"].get("NUM1"))) if op_block else None
+            return bool(inner and inner["opcode"] == "data_itemoflist" and inner["fields"]["LIST"][1] == list_id)
+
+        # (1) Both Kapi lifecycle procedures exist and are warp (atomic) — a non-warp walk sub-proc
+        # would yield mid-slot, letting a half-moved diver render or be hit.
+        for proccode in (director.INIT_KAPI_PROCCODE, director.UPDATE_KAPI_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("kapi-lifecycle-procs-warp")
+
+        # (2) The spawner inits Kapi by type; (3) the ordered walk dispatches to its updater.
+        if not calls(director.INIT_KAPI_PROCCODE):
+            failures.add("spawn-inits-kapi")
+        if not calls(director.UPDATE_KAPI_PROCCODE):
+            failures.add("dispatch-updates-kapi")
+
+        # (4) The spawn init aims on the GENERIC 32-magnitude tier (2 px/frame) — it reads both the
+        # 32-magnitude aim tables, not the Terrazi's 48-magnitude (3 px/frame) tables.
+        init_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.INIT_KAPI_PROCCODE)
+            if b["opcode"] == "data_itemoflist"
+        }
+        if not {director.AIM_DX_32_ID, director.AIM_DY_32_ID} <= init_lists:
+            failures.add("kapi-aims-generic-tier")
+
+        update_body = _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE)
+
+        # (5) F1 (direction): the dive ACCELERATES the LATERAL axis — a `slot dy` write of `slot dy` +/-
+        # KAPI_DIVE_LATERAL_ACCEL (the peel-away swing kinematics). The operand magnitude (2) is what
+        # separates it from the scroll decel (4), so an axis swap (dy carrying the 4) fails this clause.
+        accel_lateral = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+            and (op := item_op(b)) is not None
+            and op["opcode"] in ("operator_add", "operator_subtract")
+            and num_operand(op["inputs"].get("NUM2")) == director.KAPI_DIVE_LATERAL_ACCEL
+            and reads_list(op, director.SLOT_DY_ID)
+            for b in update_body
+        )
+        if not accel_lateral:
+            failures.add("kapi-dive-accel-lateral")
+
+        # (6) F1 (axis): the dive DECELERATES the SCROLL axis — a `slot dx` write of `slot dx` -
+        # KAPI_DIVE_SCROLL_DECEL (`subq #2,_dX`). The magnitude (4) again pins the axis: a swap (dx
+        # carrying the 2) fails here.
+        decel_scroll = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+            and (op := item_op(b)) is not None
+            and op["opcode"] == "operator_subtract"
+            and num_operand(op["inputs"].get("NUM2")) == director.KAPI_DIVE_SCROLL_DECEL
+            and reads_list(op, director.SLOT_DX_ID)
+            for b in update_body
+        )
+        if not decel_scroll:
+            failures.add("kapi-dive-decel-scroll")
+
+        # (7) The dive latches a side into `slot flag` (like the Toroid swing) — without the latch it
+        # would never commit to a dive.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            for b in update_body
+        ):
+            failures.add("kapi-dive-latches-side")
+
+        # (8) The spawn init captures the family's fire mask AND seeds the per-slot fire field (here the
+        # initial approach delay), so a freshly spawned Kapi carries its own dive-fire state.
+        init_writes = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.INIT_KAPI_PROCCODE)
+            if b["opcode"] == "data_replaceitemoflist"
+        }
+        if not {director.SLOT_FIRE_MASK_ID, director.SLOT_FIRE_TIMER_ID} <= init_writes:
+            failures.add("kapi-captures-fire-state")
+
+        # (9) The Kapi update drives the shared gate, so a diving Kapi actually fires under it.
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+            for b in update_body
+        ):
+            failures.add("kapi-update-drives-gate")
+
+        # (10) NO fire suppression: unlike Terrazi's glide (which pins `slot fire timer` to 255), Kapi
+        # never suppresses — the update must not write the byte-max suppress constant to the fire timer.
+        if any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+            and const_item(b) == director.TERRAZI_FIRE_SUPPRESS
+            for b in update_body
+        ):
+            failures.add("kapi-no-fire-suppression")
+
+        # (11) ONCE-ONLY latch (the re-home guard). Each write that latches a DIVE side into
+        # `slot flag` must sit INSIDE an enclosing `if slot flag == APPROACH`, so the instant it
+        # flips the flag off APPROACH the whole latch is unreachable — the "latched once, never
+        # recomputed" guarantee of kapi_10_fire (3626-3633). If the latch could run outside that
+        # gate it would recompute the peel side every tick and re-home once the lateral velocity
+        # crossed zero: the exact latched-swing direction bug this project has hit before. Clause
+        # (7) only pins that a latch write EXISTS; this pins that it stays gated. Purely structural
+        # — the settling harness advances whole ticks and cannot observe a single re-latched frame.
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def approach_gated(write_id: str) -> bool:
+            cur = blocks.get(write_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = blocks.get(ref(parent["inputs"].get("CONDITION")))
+                    lhs = blocks.get(ref(cond["inputs"].get("OPERAND1"))) if cond else None
+                    if (
+                        cond is not None
+                        and cond["opcode"] == "operator_equals"
+                        and lhs is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                        and num_operand(cond["inputs"].get("OPERAND2")) == director.KAPI_FLAG_APPROACH
+                    ):
+                        return True
+                cur = parent
+            return False
+
+        dive_latch_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and const_item(b) in (director.KAPI_FLAG_DIVE_MINUS, director.KAPI_FLAG_DIVE_PLUS)
+        ]
+        if not dive_latch_ids or not all(approach_gated(wid) for wid in dive_latch_ids):
+            failures.add("kapi-dive-latch-approach-gated")
+        return failures
+
+    # Roadmap closure evidence for leaf `air.kapi` (AIR-05.kapi): Kapi is a live family — spawned by
+    # type from the formation wave (via the no-exclusion draw), advanced by the ordered walk, aimed on
+    # the 2 px/frame generic tier, committing a peel-away dive that ACCELERATES its lateral course away
+    # from the craft while DECELERATING its scroll course, and firing every dive tick under the shared
+    # gate with no suppression. The live proof (spawns, dives away, fires while diving) is the harness
+    # `kapi-wave-spawns-and-dives` / `kapi-fires-while-diving`.
+    # roadmap-evidence: AIR-05 success  (test_kapi_slice_authoring_present — lifecycle procs warp, spawn+dispatch by type, generic-tier aim, dive accelerates lateral + decelerates scroll, fires without suppression)
+    # roadmap-evidence: AIR-05 failure  (test_kapi_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_kapi_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air05_failures(project))
+
+    def test_kapi_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air05_failures(base))
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_KAPI_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_init_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_KAPI_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_KAPI_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def aim_wrong_tier(p: dict) -> None:
+            # Repoint the generic-tier aim reads to the Terrazi's 48-magnitude tables → the generic-tier
+            # clause no longer holds.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            swap = {director.AIM_DX_32_ID: ("aim dx 48", director.AIM_DX_48_ID), director.AIM_DY_32_ID: ("aim dy 48", director.AIM_DY_48_ID)}
+            for b in _proc_body_blocks(stage, director.INIT_KAPI_PROCCODE):
+                if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
+                    b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
+
+        def drop_lateral_accel(p: dict) -> None:
+            # Repoint the dive's `slot dy` accel writes to a scratch list → the lateral peel-away never
+            # happens (the F1 direction clause bites).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DY_ID:
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def drop_scroll_decel(p: dict) -> None:
+            # Repoint the dive's `slot dx` decel writes to a scratch list → the forward course never
+            # decelerates (the F1 axis clause bites).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DX_ID:
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def drop_side_latch(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID:
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def drop_fire_state_capture(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.INIT_KAPI_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FIRE_MASK_ID:
+                    b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def drop_gate_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def add_fire_suppression(p: dict) -> None:
+            # Turn the dive's arm-to-1 fire-timer write into a Terrazi-style suppress-to-255 → the
+            # no-suppression clause bites (a Kapi that stopped firing mid-dive).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID:
+                    it = b["inputs"].get("ITEM")
+                    if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], list) and it[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                        b["inputs"]["ITEM"] = [1, [4, str(director.TERRAZI_FIRE_SUPPRESS)]]
+
+        def ungate_latch(p: dict) -> None:
+            # Break the approach gate enclosing the side latch (retarget its `flag == APPROACH`
+            # test to a value the flag never holds) → the latch would recompute the peel side every
+            # tick (a re-homing dive). The once-only structural guard bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            b = stage["blocks"]
+            id_map = {id(v): k for k, v in b.items()}
+
+            def cref(inp):
+                return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+            for x in _proc_body_blocks(stage, director.UPDATE_KAPI_PROCCODE):
+                it = x["inputs"].get("ITEM") if x["opcode"] == "data_replaceitemoflist" else None
+                if not (
+                    x["opcode"] == "data_replaceitemoflist"
+                    and x["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and isinstance(it, list)
+                    and isinstance(it[1], list)
+                    and int(it[1][1]) in (director.KAPI_FLAG_DIVE_MINUS, director.KAPI_FLAG_DIVE_PLUS)
+                ):
+                    continue
+                cur = b.get(id_map[id(x)])
+                while cur is not None:
+                    parent = b.get(cur.get("parent")) if cur.get("parent") else None
+                    if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                        cond = b.get(cref(parent["inputs"].get("CONDITION")))
+                        lhs = b.get(cref(cond["inputs"].get("OPERAND1"))) if cond else None
+                        if (
+                            cond is not None
+                            and cond["opcode"] == "operator_equals"
+                            and lhs is not None
+                            and lhs["opcode"] == "data_itemoflist"
+                            and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                        ):
+                            cond["inputs"]["OPERAND2"] = [1, [4, 77]]
+                    cur = parent
+
+        cases = [
+            ("kapi-lifecycle-procs-warp", unwarp_update),
+            ("spawn-inits-kapi", drop_init_call),
+            ("dispatch-updates-kapi", drop_dispatch_call),
+            ("kapi-aims-generic-tier", aim_wrong_tier),
+            ("kapi-dive-accel-lateral", drop_lateral_accel),
+            ("kapi-dive-decel-scroll", drop_scroll_decel),
+            ("kapi-dive-latches-side", drop_side_latch),
+            ("kapi-dive-latch-approach-gated", ungate_latch),
+            ("kapi-captures-fire-state", drop_fire_state_capture),
+            ("kapi-update-drives-gate", drop_gate_call),
+            ("kapi-no-fire-suppression", add_fire_suppression),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air05_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -5529,7 +5884,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "054487f33e72c75516e344aae7e20e5be77b5cb13465de7c3cf9b5fa7d18b880",
+            "8d5309e5a7c12d88df3fb3f14cb7931680794b5436b9a80706305546334741c3",
             build_hash,
         )
 

@@ -29,9 +29,10 @@ built.
 **Per-family verification status.** This document is settled so its slice-8 leaves can proceed, but not
 every family below was re-verified against the reference to the same bar when it settled. Verified
 line-by-line against the pinned reference and built: the **Shared rules** and the **Toroid (AIR-01)**
-paragraphs (the slice-8 vertical slice), and the **Terrazi (AIR-06)** paragraph together with the shared
-**fire-permission gate** (its own family slice — the first firing aerial family). The other ten families
-(Torkan, Zoshi, Jara, Kapi, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
+paragraphs (the slice-8 vertical slice), the **Terrazi (AIR-06)** paragraph together with the shared
+**fire-permission gate** (its own family slice — the first firing aerial family), and the **Kapi
+(AIR-05)** paragraph (its own family slice — the first peel-away *diving* family, reusing the gate). The other nine families
+(Torkan, Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
 transcribed from the reference as the plan of record, but their line-by-line verification lands with their
 own build slice (10–11); each is confirmed against the reference — and this document amended where it
 diverges, with the operator's acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
@@ -81,9 +82,23 @@ fire periodically under the Zoshi mask.
 banks into a left/right spin with a 6-frame sprite cycle (3502–3595); the shooting variant fires exactly
 one aimed bullet at the trigger. Scores per the scoring table.
 
-**Kapi (AIR-05).** Aimed approach at 2 px/frame; on its fire trigger it picks the craft's side and
-power-dives — vertical acceleration toward the craft with steady horizontal deceleration — firing
-repeatedly under the Kapi mask while diving (3602–3664). Its initial fire-delay constant carries a
+**Kapi (AIR-05).** A **silent** aimed approach at 2 px/frame (the generic `angle_dX_dY_tbl` 6360),
+then, on a timer, a **peel-away dive** — the Toroid/Terrazi swing kinematics, not a homing dive.
+Kapi spawns at a **plain random** lateral column with **no** craft-proximity exclusion
+(`gen_random_Y_store_obj` 5147–5154 — the same `(rnd & 31)`, reject ≥ 25, `+3` in-range clamp as the
+others, but **without** the reject-if-near-craft redraw the Toroid/Terrazi draw adds). It approaches
+straight on its aimed velocity and does **not** fire; each frame it counts down an initial delay and,
+at zero, triggers the dive (`handle_10_Kapi` 3602–3623). At the trigger it latches its dive side
+**once**: `ddY = +1` if `solvalou._Y < self._Y` else `−1` — the sign of `self._Y − solvalou._Y`, i.e.
+**away** from the craft (`kapi_10_fire` 3624–3653). Then each frame it **accelerates the lateral axis
+`_Y` velocity by that latched `ddY` (±1/frame)** — since the approach aimed `_dY` toward the craft, the
+opposing `ddY` decelerates it, crosses zero, and curves Kapi *away* from the craft's column — while it
+**decelerates the scroll/forward velocity `_dX` by 2/frame** (`subq #2,_dX`) and **fires every frame**
+under the Kapi mask (**no** fire suppression, unlike Terrazi's glide). `_dX`/`_Y` are the scroll and
+lateral axes (`dir_delta_tbl` 2172, `set_solvalou_dXdY` 2147); the older "vertical acceleration toward
+the craft / horizontal deceleration" reading inverted **both** axes and the direction. A seven-code
+animation (0x20–0x26) advances every eight frames in forward order regardless of side, the eighth
+animation slot holding the last frame (`loc_2455` 3654–3665). Its initial fire-delay constant carries a
 recorded uncertainty: the reference's code and its own comment disagree (an unmasked double-add versus
 the commented 48–111 range), noted as a probable transcription slip in the reference; the build follows
 the commented range and records the deviation.

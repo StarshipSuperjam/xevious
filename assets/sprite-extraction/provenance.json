@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "1d6e5c2f0d88599122d133ea982146f4205b64ba8e568d542145f3f415e4defa",
+  "manifest_sha256": "d883f041e16080dcfe2fa2727f597ae6d9367999e8d244f32079b5dd8e18b9bc",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -410,11 +410,179 @@
         8
       ],
       "generator_version": 1
+    },
+    "831fca4c790ed36ab2f47a66cec381d2.png": {
+      "frame": "kapi/dive/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        2,
+        116,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "9fcf8086029a1e2b2877defc45b96b94.png": {
+      "frame": "kapi/dive/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        21,
+        116,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "7ccb0584728661523990c0f8c893cb54.png": {
+      "frame": "kapi/dive/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        40,
+        116,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "8fa4aade53793809d37049afb745d9a2.png": {
+      "frame": "kapi/dive/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        59,
+        116,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "af20db4c5cd67fa2324244c6ed92bc69.png": {
+      "frame": "kapi/dive/05",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        78,
+        116,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "b9116ec51c0269b68f8cce43da7f6f4e.png": {
+      "frame": "kapi/dive/06",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        97,
+        116,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "081c83a5729a17691f20facf64f019f1.png": {
+      "frame": "kapi/dive/07",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        116,
+        116,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "bd28156f85e2e8aa5dcc59f929d2802552c4bbd3a34709d843d451189e4f3127",
+    "sha256": "34cfe00c3d82f73816223dfe0b1dae44ea08928314e2119b8e0d0e4c6fa47051",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -432,7 +600,14 @@
       "terrazi/roll/04",
       "terrazi/roll/05",
       "terrazi/roll/06",
-      "terrazi/roll/07"
+      "terrazi/roll/07",
+      "kapi/dive/01",
+      "kapi/dive/02",
+      "kapi/dive/03",
+      "kapi/dive/04",
+      "kapi/dive/05",
+      "kapi/dive/06",
+      "kapi/dive/07"
     ]
   }
 }

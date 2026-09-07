@@ -77,8 +77,9 @@ the start key; READY, player-dead, respawning, and game-over accept no gameplay 
 movement, fire, and bomb. (Earlier slices carried two temporary keyboard fixtures — `D` to request
 respawn and `G` to request terminal death — solely to exercise the death paths before any enemy could
 kill the craft; now that live flying enemies and their bullets deal real lethal contact, those fixtures
-are removed.) One temporary keyboard fixture is present again: while playing, holding `T` brings in
-Terrazis one at a time (the next only after the current one leaves or dies), so an aerial family that
+are removed.) One temporary keyboard fixture is present again: while playing, holding `T` brings in a
+single debug enemy at a time (the next only after the current one leaves or dies), cycling through the
+built aerial families as the field clears (Terrazi → Kapi → wrap), so an aerial family that
 only spawns at high AI levels is reachable for the operator playtest; it is inert when the key is not
 held, and is tracked for removal once every aerial family is built and playtested (issue #119). Repeated keys can never duplicate transitions,
 loops, shots, or bombs; the green flag from any state performs the cold-start reset; stop halts the
@@ -153,7 +154,9 @@ and backs the craft down with it — so the reticle can never leave the top of t
 with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
 port's own: arrow keys move, Space fires, B bombs, and a temporary `T` (playtest-only, issue #119)
-spawns a Terrazi wave; a rebinding is a spec amendment.
+cycles a single debug enemy through the built aerial families one at a time — holding it brings in one
+enemy, and each time the field clears it advances to the next family (Terrazi → Kapi → wrap); a
+rebinding is a spec amendment.
 
 ## Acceptance criteria
 

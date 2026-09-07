@@ -159,6 +159,11 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "debug-spawn-index": {
+      "kind": "variable",
+      "name": "debug spawn index",
+      "scope": "Stage"
+    },
     "difficulty-ai-adjust": {
       "kind": "variable",
       "name": "ai adjust",
@@ -383,6 +388,11 @@
       "kind": "variable",
       "name": "invuln",
       "scope": "Stage"
+    },
+    "kapi-clone-slot": {
+      "kind": "variable",
+      "name": "kapi clone slot",
+      "scope": "kapi"
     },
     "octant-table": {
       "kind": "list",

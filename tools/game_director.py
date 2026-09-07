@@ -642,6 +642,8 @@ INIT_TOROID_PROCCODE = "init toroid"
 UPDATE_TOROID_PROCCODE = "update toroid"
 INIT_TERRAZI_PROCCODE = "init terrazi"
 UPDATE_TERRAZI_PROCCODE = "update terrazi"
+INIT_KAPI_PROCCODE = "init kapi"
+UPDATE_KAPI_PROCCODE = "update kapi"
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
 # DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
@@ -649,21 +651,39 @@ CULL_SLOT_PROCCODE = "cull slot"
 # playtest. Amends the locked control mapping (needs guardrail-ack). See docs/spec/core-game-systems.md
 # and the removal issue #119 (remove once all aerial families are built and playtested).
 DEBUG_SPAWN_PROCCODE = "debug spawn wave"
-DEBUG_SPAWN_KEY = "t"  # T = spawn a Terrazi wave
+DEBUG_SPAWN_KEY = "t"  # T = cycle a single debug enemy through the buildable families
+DEBUG_SPAWN_INDEX_ID = "debug-spawn-index"  # which DEBUG_SPAWN_FAMILIES entry T brings in next
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
+# The flying-type-table offset whose 6-slot run is all Kapi (0x10) — code 16 sits at 0-based positions
+# 69-74 (object-types.json), the same six-wide derivation as the Terrazi offset. Used by the debug
+# spawner to force a Kapi wave.
+KAPI_FORMATION_OFFSET = 69
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
+# The Kapi family's fire-permission mask Stage var (set live by the area schedule's `fire_mask_kapi`
+# record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn, consumed by the dive.
+FIRE_MASK_KAPI_ID = "fire-mask-kapi"
 
 # Object type codes this slice's flying dispatch handles (object-types.json). Other formation-named
 # families (e.g. Torkan, code 15, which area 1 also names) are SKIPPED by the spawner until their
 # own slice builds them — a recorded deviation (fewer enemies than the arcade pre-slice-10).
 TOROID_TYPE = 10  # 0x0A, non-shooting
 TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
+KAPI_TYPE = 16  # 0x10, the first peel-away DIVING aerial family (handle_10_Kapi)
 TERRAZI_TYPE = 17  # 0x11, the first periodically-firing aerial family (handle_11_Terrazi)
-FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE, TERRAZI_TYPE)
+FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE, KAPI_TYPE, TERRAZI_TYPE)
+# DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
+# (type, formation offset) whose offset points the spawner at a six-slot run of that family. T brings
+# in the family at `debug spawn index`, then advances the index (mod len). Append one entry per future
+# aerial family; no new key. The type element documents which family the offset selects (the present
+# check that keeps a spawned enemy solo is family-agnostic).
+DEBUG_SPAWN_FAMILIES = (
+    (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET),
+    (KAPI_TYPE, KAPI_FORMATION_OFFSET),
+)
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
 
@@ -720,6 +740,33 @@ TERRAZI_GLIDE_DECEL = 4
 FIRE_GATE_PHASE_TICKS = 4  # 8 arcade frames / 2 frames-per-tick
 FIRE_TIMER_BYTE_MOD = 256  # the countdown is a byte; decrement wraps mod 256 (reference underflow)
 TERRAZI_FIRE_SUPPRESS = 255  # glide sets the fire countdown to 0xff to suppress fire (3699)
+
+# AIR-05 Kapi (handle_10_Kapi 3602-3623, kapi_10_fire 3624-3665): the first peel-away DIVING aerial
+# family. It approaches SILENTLY on its aimed 2 px/frame velocity (the 32-magnitude generic tier,
+# angle_dX_dY_tbl 6360) and does NOT fire while approaching. Each tick it counts an initial delay
+# down; at zero it latches a dive side ONCE and commits: the LATERAL velocity accelerates AWAY from
+# the craft's column (`ddY` = sign of self._Y - solvalou._Y, latched at kapi_10_fire 3626-3633 and
+# never recomputed — the Toroid swing kinematics, so it decelerates, crosses zero, and peels away),
+# the SCROLL/forward velocity decelerates by 2 px/frame (`subq #2,_dX` 3651), and it fires EVERY tick
+# under the Kapi mask (no suppression, unlike Terrazi's glide). Type 0x10, 300 pts.
+KAPI_PTS = 10  # 1-based value-table position of 300 points (handle_10_Kapi PTS byte 27 -> table 10)
+KAPI_INIT_CODE = 0x20  # spawn/approach sprite code (_CODE=0x20); the dive animates 0x20..0x26
+KAPI_FLAG_APPROACH = 0
+# Two latched dive sides, mirroring the Toroid's SWING_* exactly: the peel-away lateral-accel sign,
+# fixed at the dive trigger and never recomputed (recomputing would re-home after the velocity crosses
+# zero). offset = player col - self col; higher col = higher x = right, so a NEGATIVE lateral accel
+# peels toward lower columns. Source ddY = +1 iff solvalou._Y < self._Y (i.e. offset < 0), else -1.
+KAPI_FLAG_DIVE_MINUS = 1  # _dY -= accel: craft at/right laterally (offset >= 0) — peel toward low col
+KAPI_FLAG_DIVE_PLUS = 2  # _dY += accel: craft left laterally (offset < 0) — peel toward high col
+# Dive tuning, in slot units, scaled per tick (1 tick = 2 arcade frames):
+KAPI_DIVE_LATERAL_ACCEL = 2  # lateral velocity change per tick (ddY = +/-1/frame * 2 frames)
+KAPI_DIVE_SCROLL_DECEL = 4  # forward/scroll decel per tick (`subq #2,_dX` = 2/frame * 2 frames)
+# Initial approach delay before the dive, in ARCADE FRAMES. The reference's code adds 63 then 48 (an
+# unmasked +111) but its own comment reads "48-111" (3616-3618) — a probable transcription slip; the
+# locked spec follows the commented range and records the deviation (F4, carried forward from #117's
+# fire-delay decision). So (rng mod 64) + 48 => 48-111, consumed 2 frames/tick during the approach.
+KAPI_APPROACH_DELAY_BASE = 48
+KAPI_APPROACH_DELAY_SPAN = 64
 
 # FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
 # => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
@@ -797,6 +844,17 @@ TERRAZI_CLONE_SLOT_ID = "terrazi-clone-slot"  # sprite-local: which flying slot 
 TERRAZI_RENDER_SIZE = 225  # match the Toroid's on-screen scale (a 16-px sprite at ~2.25 stage px/px)
 TERRAZI_ROLL_FRAMES = 7  # terrazi/roll/01..07
 TERRAZI_ROLL_PERIOD = 8  # advance the roll every ~8 arcade frames (`_ddX >> 3`); slot timer ~= frames
+
+# AIR-05 Kapi renderer: one persistent clone per flying slot, same pool pattern as the Terrazi/Toroid.
+# While approaching it holds the static entry frame; while diving the 7-frame dive animation is derived
+# render-only from the slot's animation clock — an 8-phase cycle whose 8th phase HOLDS the last frame
+# (the reference's `d0 = (TIMER1>>3) & 7`, hold at d0 == 7 -> loc_2455 3654), then loops.
+KAPI_TARGET = "kapi"
+KAPI_CLONE_SLOT_ID = "kapi-clone-slot"  # sprite-local: which flying slot this clone renders
+KAPI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+KAPI_DIVE_FRAMES = 7  # kapi/dive/01..07 (sprite codes 0x20..0x26)
+KAPI_DIVE_PERIOD = 8  # advance the dive frame every ~8 arcade frames (`TIMER1>>3`); slot timer ~= frames
+KAPI_DIVE_PHASES = 8  # the animation clock cycles 0..7; phase 7 holds the last frame (loc_2455)
 
 
 def _schedule_arg(record: dict) -> int:
@@ -1731,6 +1789,10 @@ def install_advance_slots(blocks: Blocks) -> None:
     toroid_branch = blocks.if_reporter(
         is_toroid, [blocks.call_proc(UPDATE_TOROID_PROCCODE, warp=True)]
     )
+    kapi_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(KAPI_TYPE)),
+        [blocks.call_proc(UPDATE_KAPI_PROCCODE, warp=True)],
+    )
     terrazi_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TERRAZI_TYPE)),
         [blocks.call_proc(UPDATE_TERRAZI_PROCCODE, warp=True)],
@@ -1739,7 +1801,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, terrazi_branch, bullet_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, terrazi_branch, bullet_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -1879,15 +1941,20 @@ def install_read_player_cell(blocks: Blocks) -> None:
     blocks.chain(definition, [set_col, set_row])
 
 
-def _draw_spawn_column(blocks: Blocks) -> tuple[list, str]:
-    # Shared bounded spawn-column draw for the flying families (init_toroid / init_terrazi): draw a
-    # lateral column from the shared stream, reject-and-redraw until it is on-screen and not within
-    # SPAWN_CRAFT_GAP columns of the craft, or give up after SPAWN_DRAW_ATTEMPTS tries (the recorded
-    # bounded-draw deviation — `gen_rnd_spriteY` 5155-5169). On success it sets `slot y` and `spawn
-    # found`; on exhaustion the slot is left empty (the caller's stamp is gated on `spawn found`, so the
-    # slot is retried next tick). Returns the `spawn attempts`/`spawn found` reset blocks and the draw
-    # loop for the caller to chain ahead of its own family-specific stamp/aim. Three separate `rng mod
-    # (mask+1)` reads because a reporter cannot be shared across parents (it is stolen from the first).
+def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True) -> tuple[list, str]:
+    # Shared bounded spawn-column draw for the flying families: draw a lateral column from the shared
+    # stream, reject-and-redraw until it is on-screen (`rnd & 31`, reject >= 25, + 3 => column 3..27),
+    # or give up after SPAWN_DRAW_ATTEMPTS tries (the recorded bounded-draw deviation). On success it
+    # sets `slot y` and `spawn found`; on exhaustion the slot is left empty (the caller's stamp is gated
+    # on `spawn found`, so the slot is retried next tick). Returns the `spawn attempts`/`spawn found`
+    # reset blocks and the draw loop for the caller to chain ahead of its own family-specific stamp/aim.
+    # Separate `rng mod (mask+1)` reads because a reporter cannot be shared across parents (it is stolen
+    # from the first).
+    #
+    # `exclude_craft` selects the two arcade draw routines: the DEFAULT (`gen_rnd_spriteY` 5155-5169,
+    # Toroid/Terrazi) ALSO rejects any column within SPAWN_CRAFT_GAP of the craft; `exclude_craft=False`
+    # is the Kapi draw (`gen_random_Y_store_obj` 5147-5154) — the SAME in-range clamp with NO
+    # craft-proximity reject, so a Kapi can spawn directly over the craft's column.
     reset = [
         blocks.set_var("spawn attempts", SPAWN_ATTEMPTS_ID, number(0)),
         blocks.set_var("spawn found", SPAWN_FOUND_ID, number(0)),
@@ -1900,26 +1967,27 @@ def _draw_spawn_column(blocks: Blocks) -> tuple[list, str]:
     blocks.blocks[draw_loop]["inputs"]["CONDITION"] = [2, done]
     candidate = blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1))
     in_range = blocks.op_lt(candidate, number(SPAWN_COL_REJECT_AT))
-    col = blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET))
-    far_enough = blocks.op_not(
-        blocks.op_lt(
-            blocks.op_abs(blocks.op_sub(variable("player col", PLAYER_COL_ID), col)),
-            number(SPAWN_CRAFT_GAP),
+    accept_body = [
+        _set_cur_item(
+            blocks,
+            "slot y",
+            SLOT_Y_ID,
+            blocks.op_mul(blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET)), number(SLOT_UNITS_PER_CELL)),
+        ),
+        blocks.set_var("spawn found", SPAWN_FOUND_ID, number(1)),
+    ]
+    if exclude_craft:
+        col = blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET))
+        far_enough = blocks.op_not(
+            blocks.op_lt(
+                blocks.op_abs(blocks.op_sub(variable("player col", PLAYER_COL_ID), col)),
+                number(SPAWN_CRAFT_GAP),
+            )
         )
-    )
-    accept = blocks.if_reporter(
-        far_enough,
-        [
-            _set_cur_item(
-                blocks,
-                "slot y",
-                SLOT_Y_ID,
-                blocks.op_mul(blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET)), number(SLOT_UNITS_PER_CELL)),
-            ),
-            blocks.set_var("spawn found", SPAWN_FOUND_ID, number(1)),
-        ],
-    )
-    valid = blocks.if_reporter(in_range, [accept])
+        inner = [blocks.if_reporter(far_enough, accept_body)]
+    else:
+        inner = accept_body
+    valid = blocks.if_reporter(in_range, inner)
     blocks.substack(
         draw_loop,
         [
@@ -2324,6 +2392,168 @@ def install_update_terrazi(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def install_init_kapi(blocks: Blocks) -> None:
+    # AIR-05: initialize the flying slot at `slot index` as a Kapi of type `walk type` (handle_10_Kapi
+    # 3602-3618). Same top-row entry as the other flying families, but with a PLAIN spawn-column draw —
+    # NO craft-proximity exclusion (`gen_random_Y_store_obj` 3605 / 5147-5154, so a Kapi can spawn
+    # directly over the craft's column, unlike the Toroid/Terrazi) — and aimed on the 32-magnitude
+    # generic tier (2 px/frame, `angle_dX_dY_tbl` 6360). Stamps the Kapi's points/flag/code, captures
+    # the Kapi fire mask for the dive's gate, and seeds the initial approach delay (48-111 frames, the
+    # recorded fire-delay deviation) into `slot fire timer` — the reference reuses `_TIMER` for the
+    # approach delay (3616-3618) and Kapi never calls the gate while approaching, so the field is free.
+    definition = _install_warp_proc(blocks, INIT_KAPI_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False)
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, variable("walk type", WALK_TYPE_ID)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            # Enter from the TOP row, like the Toroid/Terrazi (the same self-propelled-port deviation:
+            # no enemy scroll, so every wave streams in from the top with room to aim and dive).
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 32", AIM_DX_32_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 32", AIM_DY_32_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(KAPI_FLAG_APPROACH)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(KAPI_INIT_CODE)),
+            _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(KAPI_PTS)),
+            # Capture the Kapi fire mask for the dive's gate (the reference snapshots `_FFREQ` at spawn,
+            # 3612). The dive consumes it; the approach never fires.
+            _set_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID, variable("fire mask kapi", FIRE_MASK_KAPI_ID)),
+            # Approach delay 48-111 frames = (rng mod 64) + 48 (the F4 fire-delay deviation, carried
+            # forward). A fresh RNG draw after the spawn-column draws, in walk order. Stored in `slot
+            # fire timer` (the reference's `_TIMER` reuse) and counted down 2/tick during the approach.
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(
+                blocks,
+                "slot fire timer",
+                SLOT_FIRE_TIMER_ID,
+                blocks.op_add(
+                    blocks.op_mod(variable("rng out", RNG_OUT_ID), number(KAPI_APPROACH_DELAY_SPAN)),
+                    number(KAPI_APPROACH_DELAY_BASE),
+                ),
+            ),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_kapi(blocks: Blocks) -> None:
+    # AIR-05: advance the Kapi at `slot index` by one tick (handle_10_Kapi 3602-3623, kapi_10_fire
+    # 3624-3665). While APPROACHING it flies straight on its aimed 2 px/frame velocity and does NOT
+    # fire; each tick it counts the initial delay (held in `slot fire timer`) down by 2 (2 arcade
+    # frames/tick), and at <= 0 commits the dive: it latches the peel-away side ONCE (kapi_10_fire
+    # 3626-3633), arms the fire gate, and resets the animation clock. While DIVING it accelerates the
+    # LATERAL velocity by the latched +/-accel (peeling AWAY from the craft's column — the Toroid swing
+    # kinematics, so it decelerates, crosses zero and reverses), decelerates the SCROLL velocity by
+    # DECEL (`subq #2,_dX` 3651), and fires EVERY tick under the mask (no suppression, unlike Terrazi's
+    # glide). Shares the flying hit window / explosion; the 7-code dive animation is derived render-only
+    # from the slot clock.
+    definition = _install_warp_proc(blocks, UPDATE_KAPI_PROCCODE)
+    flag = lambda: _cur_item(blocks, "slot flag", SLOT_FLAG_ID)
+    col_offset = lambda: blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))
+    fire_timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+
+    # Latch the peel-away side (kapi_10_fire 3626-3633): `ddY` = sign of self._Y - solvalou._Y, i.e.
+    # AWAY from the craft. In port terms craft at/right laterally (offset = player col - self col >= 0)
+    # -> the aimed lateral velocity is positive, so DIVE_MINUS peels it back toward lower columns;
+    # craft left (offset < 0) -> DIVE_PLUS. Identical side mapping to the Toroid swing. Latched once at
+    # dive entry and NEVER recomputed (recomputing would re-home after the velocity crosses zero).
+    side = blocks.add("control_if_else")
+    craft_at_or_right = blocks.op_not(blocks.op_lt(col_offset(), number(0)))  # offset >= 0
+    blocks.blocks[side]["inputs"]["CONDITION"] = [2, craft_at_or_right]
+    blocks.blocks[craft_at_or_right]["parent"] = side
+    blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(KAPI_FLAG_DIVE_MINUS))])
+    blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(KAPI_FLAG_DIVE_PLUS))], name="SUBSTACK2")
+    # Approach: count the initial delay down 2/tick; when it reaches <= 0, commit the dive. The delay
+    # lives in `slot fire timer` (the reference's `_TIMER` reuse); `fire_timer()` re-reads the list, so
+    # the trigger sees the just-decremented value.
+    trigger = blocks.if_reporter(
+        blocks.op_not(blocks.op_gt(fire_timer(), number(0))),  # slot fire timer <= 0
+        [
+            side,
+            # Arm the fire gate for the dive (`move.b #1,_TIMER` 3634 -> fires on the next phase tick)
+            # and reset the dive animation clock (`clr TIMER1` 3625).
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, number(1)),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        ],
+    )
+    approach = blocks.if_reporter(
+        blocks.op_eq(flag(), number(KAPI_FLAG_APPROACH)),
+        [
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_sub(fire_timer(), number(TICK_TIMER_STEP))),
+            trigger,
+        ],
+    )
+    # Dive fire: the reference calls `chk_timer_fire_bullet_reinit_timer` every dive frame (3634/3638/
+    # 3651/3663) and never suppresses. Gated to the dive so the approach stays silent; runs on the
+    # trigger tick too (the flag was just flipped to a dive side), matching the reference's fall-through
+    # from the dive entry into the same-frame fire.
+    fire = blocks.if_reporter(
+        blocks.op_not(blocks.op_eq(flag(), number(KAPI_FLAG_APPROACH))),
+        [blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)],
+    )
+    # Dive kinematics, by latched side: accelerate the LATERAL velocity away from the craft AND
+    # decelerate the SCROLL/forward velocity (both `_dY += ddY` 3650 and `subq #2,_dX` 3651 run every
+    # dive frame). Runs on the trigger tick too (fall-through).
+    dive_minus = blocks.if_reporter(
+        blocks.op_eq(flag(), number(KAPI_FLAG_DIVE_MINUS)),
+        [
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(KAPI_DIVE_LATERAL_ACCEL))),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.op_sub(_cur_item(blocks, "slot dx", SLOT_DX_ID), number(KAPI_DIVE_SCROLL_DECEL))),
+        ],
+    )
+    dive_plus = blocks.if_reporter(
+        blocks.op_eq(flag(), number(KAPI_FLAG_DIVE_PLUS)),
+        [
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(KAPI_DIVE_LATERAL_ACCEL))),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.op_sub(_cur_item(blocks, "slot dx", SLOT_DX_ID), number(KAPI_DIVE_SCROLL_DECEL))),
+        ],
+    )
+    # Move by 4*velocity per tick (2 arcade frames), advance the animation clock, then cull.
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))  # row <= -2  ==  row < -1
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))  # col <= -2 (left edge)
+    # The dive peels off a side and its scroll decel can carry it back off the TOP; the same explicit
+    # four-edge cull as the Toroid/Terrazi (this port's signed columns need the left edge the
+    # reference's byte-wrap handles implicitly).
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    # PLY-02: an active Kapi touching the craft's cell kills it (raises `player hit`), checked at the
+    # tick-start position before it moves or culls — the shared flying-vs-craft window.
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    # Ordered body: offer to the shot detector (via the wrapper below), then approach-countdown/trigger,
+    # fire (dive only), the latched dive kinematics, move, cull. Fire precedes the kinematics so the
+    # aimed bullet leaves from the slot's pre-move position, matching kapi_10_fire's order.
+    normal = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, approach, fire, dive_minus, dive_plus, *move, cull],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
 def install_fire_permission_gate(blocks: Blocks) -> None:
     # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
     # Operates on the current slot (`slot index`): every firing family calls this each active tick after
@@ -2417,11 +2647,15 @@ def install_spawn_flying(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TOROID_SHOOTS_TYPE)),
     )
     spawn_toroid = blocks.if_reporter(is_toroid_spawn, [blocks.call_proc(INIT_TOROID_PROCCODE, warp=True)])
+    spawn_kapi = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(KAPI_TYPE)),
+        [blocks.call_proc(INIT_KAPI_PROCCODE, warp=True)],
+    )
     spawn_terrazi = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TERRAZI_TYPE)),
         [blocks.call_proc(INIT_TERRAZI_PROCCODE, warp=True)],
     )
-    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_terrazi])
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_terrazi])
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
@@ -2430,39 +2664,54 @@ def install_spawn_flying(blocks: Blocks) -> None:
 def install_debug_spawn_wave(blocks: Blocks) -> None:
     # ENGINE-TODO(#119): remove this temporary debug spawn key (and its locked-spec control-mapping
     # amendment) once every aerial family is built and playtested, so reachability no longer needs it.
-    # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, spawn Terrazis ONE AT A
-    # TIME so the operator can watch a single enemy's full lifecycle (approach, timed fire, glide-and-
-    # reverse, exit) instead of a confusing six-at-once wave. Each tick: point the formation at the
-    # Terrazi offset; if a Terrazi is already on the field, set the spawn count to 0 (let that one live
-    # out its life alone); otherwise clear the flying slots and set the count to 1, so the shared spawner
-    # (which runs right after this in the walk) brings in exactly one fresh Terrazi from the top. It
-    # self-gates on the key, so normal play is untouched when the key is not held. This makes a family
-    # that only spawns at high AI levels reachable for playtest; reachability recurs for every future
-    # aerial family, so this stays a dev tool until they are all built and playtested, then it is removed
-    # (it amends the locked control mapping — see core-game-systems.md and issue #119).
+    # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, CYCLE through the
+    # buildable enemy families ONE AT A TIME so the operator can watch each enemy's full lifecycle
+    # (approach, fire, its family's manoeuvre, exit) instead of a confusing six-at-once wave. Each tick:
+    # point the formation at the CURRENT family's offset (`debug spawn index` selects the DEBUG_SPAWN_
+    # FAMILIES entry); if any flying enemy is already on the field, set the spawn count to 0 (let that
+    # one live out its life alone); otherwise clear the flying slots, set the count to 1 so the shared
+    # spawner (which runs right after this in the walk) brings in exactly one fresh enemy from the top,
+    # and ADVANCE the index (mod len) so the next fresh spawn is the next family — holding T walks
+    # Terrazi -> Kapi -> (wrap). It self-gates on the key, so normal play is untouched when the key is
+    # not held. Reachability recurs for every future aerial family (each just appends one DEBUG_SPAWN_
+    # FAMILIES entry, no new key), so this stays a dev tool until they are all built and playtested, then
+    # it is removed (it amends the locked control mapping — see core-game-systems.md and issue #119).
     definition = _install_warp_proc(blocks, DEBUG_SPAWN_PROCCODE)
     gate = blocks.add("control_if")
     pressed = blocks.key_pressed(gate, DEBUG_SPAWN_KEY)
     blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
 
-    # A Terrazi already occupies some flying slot?  (OR over the six flying slots.)
+    # Point the formation at the current family's offset (an if-chain over DEBUG_SPAWN_FAMILIES keyed by
+    # `debug spawn index`). Set every tick, before the spawner runs; the fresh-spawn branch below then
+    # advances the index for next time.
+    set_offset = [
+        blocks.if_reporter(
+            blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
+            [blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(offset))],
+        )
+        for index, (_family_type, offset) in enumerate(DEBUG_SPAWN_FAMILIES)
+    ]
+
+    # Any flying enemy already on the field?  (OR over the six flying slots — family-agnostic, so the
+    # spawned enemy, whatever family, lives out its life before the next one arrives.)
     present = None
     for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
-        is_terrazi = blocks.op_eq(
-            blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(TERRAZI_TYPE)
+        occupied = blocks.op_not(
+            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
         )
-        present = is_terrazi if present is None else blocks.op_or(present, is_terrazi)
+        present = occupied if present is None else blocks.op_or(present, occupied)
 
     branch = blocks.add("control_if_else")
     blocks.blocks[branch]["inputs"]["CONDITION"] = [2, present]
     blocks.blocks[present]["parent"] = branch
-    # A Terrazi is alive: spawn nothing more this tick (keep it a solo).
+    # An enemy is alive: spawn nothing more this tick (keep it a solo).
     blocks.substack(branch, [blocks.set_var("formation count", FORMATION_COUNT_ID, number(0))])
-    # No Terrazi: clear the flying slots and bring in exactly one from the top. Free each slot the same
-    # way `cull slot` does — BOTH `slot type` and `slot state` to 0 — so no slot is left type-empty but
-    # state-stale (a half-freed slot the walk could misread). This wipes any live flying enemy on the
-    # field with no explosion or score, which is the intended cost of the one-at-a-time isolation (the
-    # operator sees a clean single Terrazi); the playtest checklist notes it so it does not read as a bug.
+    # Field empty: clear the flying slots and bring in exactly one from the top, then advance the family
+    # index. Free each slot the same way `cull slot` does — BOTH `slot type` and `slot state` to 0 — so
+    # no slot is left type-empty but state-stale (a half-freed slot the walk could misread). This wipes
+    # any live flying enemy on the field with no explosion or score, which is the intended cost of the
+    # one-at-a-time isolation (the operator sees a clean single enemy); the playtest checklist notes it
+    # so it does not read as a bug.
     clear = [
         block
         for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
@@ -2471,18 +2720,20 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
             blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
         )
     ]
+    advance_index = blocks.set_var_expr(
+        "debug spawn index",
+        DEBUG_SPAWN_INDEX_ID,
+        blocks.op_mod(
+            blocks.op_add(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(1)),
+            number(len(DEBUG_SPAWN_FAMILIES)),
+        ),
+    )
     blocks.substack(
         branch,
-        [*clear, blocks.set_var("formation count", FORMATION_COUNT_ID, number(1))],
+        [*clear, blocks.set_var("formation count", FORMATION_COUNT_ID, number(1)), advance_index],
         name="SUBSTACK2",
     )
-    blocks.substack(
-        gate,
-        [
-            blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(TERRAZI_FORMATION_OFFSET)),
-            branch,
-        ],
-    )
+    blocks.substack(gate, [*set_offset, branch])
     blocks.chain(definition, [gate])
 
 
@@ -2878,11 +3129,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_read_player_cell(blocks)
     install_init_toroid(blocks)
     install_init_terrazi(blocks)
+    install_init_kapi(blocks)
     install_check_air_hit(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)
     install_update_terrazi(blocks)
+    install_update_kapi(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -4272,6 +4525,115 @@ def terrazi_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def kapi_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-05 Kapi renderer (game_director owns these blocks; sprite_extractor owns the costumes). One
+    # persistent clone per flying slot (59..64), the same pool pattern as the Terrazi/Toroid: shown and
+    # positioned when its slot holds a Kapi, hidden otherwise. The clone writes no state. While the slot
+    # is APPROACHING it holds the static entry frame (silent approach); while DIVING the 7-frame dive
+    # animation is derived render-only from the slot's animation clock — an 8-phase cycle whose 8th
+    # phase HOLDS the last frame (the reference's `d0 = (TIMER1>>3) & 7`, held at 7 -> loc_2455 3654),
+    # then loops. On a hit it plays the shared explosion (the solv_death frames appended after the 7
+    # dive frames, ordinals 8..), exactly like the Toroid/Terrazi.
+    blocks = Blocks(KAPI_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("kapi clone slot", KAPI_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("kapi clone slot", KAPI_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_kapi = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(KAPI_TYPE)
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Dive animation clock (render-only): phase = floor(timer / PERIOD) mod 8. A fresh reporter per read
+    # (a reporter cannot be shared across parents — it is stolen by the first).
+    phase = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(KAPI_DIVE_PERIOD))),
+        number(KAPI_DIVE_PHASES),
+    )
+    # Dive costume: phase 0..6 -> frame ordinal 1..7; phase 7 HOLDS the last frame (loc_2455).
+    dive_costume = blocks.add("control_if_else")
+    holds = blocks.op_gt(phase(), number(KAPI_DIVE_FRAMES - 1))  # phase > 6  ==  phase == 7
+    blocks.blocks[dive_costume]["inputs"]["CONDITION"] = [2, holds]
+    blocks.blocks[holds]["parent"] = dive_costume
+    blocks.substack(dive_costume, [blocks.switch_costume("kapi/dive/07")])
+    blocks.substack(dive_costume, [blocks.switch_costume_expr(blocks.op_add(phase(), number(1)))], name="SUBSTACK2")
+    # Active costume: hold the static entry frame while approaching (silent approach), else the dive.
+    active_costume = blocks.add("control_if_else")
+    is_approach = blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(KAPI_FLAG_APPROACH))
+    blocks.blocks[active_costume]["inputs"]["CONDITION"] = [2, is_approach]
+    blocks.blocks[is_approach]["parent"] = active_costume
+    blocks.substack(active_costume, [blocks.switch_costume("kapi/dive/01")])
+    blocks.substack(active_costume, [dive_costume], name="SUBSTACK2")
+    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
+    # appended after the 7 dive frames (ordinal 8..); the burst doubles at the 2x phase (record 025).
+    phase_for_costume = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    explode_ordinal = blocks.op_add(number(KAPI_DIVE_FRAMES + 1), phase_for_costume)
+    phase_for_size = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(KAPI_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [
+            active_costume,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(KAPI_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_kapi]
+    blocks.blocks[is_kapi]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -4384,6 +4746,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, TOROID_TARGET)
     _ensure_gameplay_target(result, ENEMY_BULLET_TARGET)
     _ensure_gameplay_target(result, TERRAZI_TARGET)
+    _ensure_gameplay_target(result, KAPI_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -4414,6 +4777,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             terrazi["costumes"].extend(copy.deepcopy(death["costumes"]))
         terrazi["currentCostume"] = 0
+    # AIR-05: the Kapi renderer mirrors its 7 dive frames, then the shared explosion frames (the same
+    # solv_death burst appended after them, ordinals 8.., exactly like the Toroid/Terrazi).
+    kapi = next((t for t in result["targets"] if t.get("name") == KAPI_TARGET), None)
+    if proof is not None and kapi is not None:
+        kapi["costumes"] = proof_by_family("kapi/")
+        if death is not None:
+            kapi["costumes"].extend(copy.deepcopy(death["costumes"]))
+        kapi["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -4475,6 +4846,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         WALK_TYPE_ID,
         PLAYER_HIT_ID,
         INVULN_ID,
+        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
+        DEBUG_SPAWN_INDEX_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -4568,6 +4941,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         PLAYER_HIT_ID: ["player hit", 0],
         # Debug/test invulnerability seam (default 0; the harness sets it, never game logic).
         INVULN_ID: ["invuln", 0],
+        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor (0-based into
+        # DEBUG_SPAWN_FAMILIES); starts at the first family.
+        DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -4702,6 +5078,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "hud": hud_blocks(),
         "toroid": toroid_blocks(),
         "terrazi": terrazi_blocks(),
+        "kapi": kapi_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -4752,6 +5129,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-06: likewise, the only Terrazi render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 TERRAZI_CLONE_SLOT_ID: ["terrazi clone slot", 0],
+            }
+        elif target["name"] == KAPI_TARGET:
+            # AIR-05: likewise, the only Kapi render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                KAPI_CLONE_SLOT_ID: ["kapi clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
