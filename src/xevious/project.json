@@ -57033,6 +57033,60 @@
           "md5ext": "081c83a5729a17691f20facf64f019f1.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
+        },
+        {
+          "name": "torkan/roll/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "eaff201620c1012130785b9cfe72858b",
+          "md5ext": "eaff201620c1012130785b9cfe72858b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "torkan/roll/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5cde634fc49d1006f27a204d9c6c1a63",
+          "md5ext": "5cde634fc49d1006f27a204d9c6c1a63.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "torkan/roll/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "8edcf85961ce78383747a670f35ad45f",
+          "md5ext": "8edcf85961ce78383747a670f35ad45f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "torkan/roll/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "4b4b1342d15f318c37df5f259c984022",
+          "md5ext": "4b4b1342d15f318c37df5f259c984022.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "torkan/roll/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3f6abea744ab4a0089c104fd49457376",
+          "md5ext": "3f6abea744ab4a0089c104fd49457376.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "torkan/roll/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "49a9b3c49974b48b29e568151259c610",
+          "md5ext": "49a9b3c49974b48b29e568151259c610.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         }
       ],
       "sounds": [],
