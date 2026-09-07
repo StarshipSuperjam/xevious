@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "38dce6d6a306f58dba5d292f272048caa06dff18db741f390a550ceb27f5e8f7",
+  "manifest_sha256": "d883f041e16080dcfe2fa2727f597ae6d9367999e8d244f32079b5dd8e18b9bc",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -411,7 +411,7 @@
       ],
       "generator_version": 1
     },
-    "922c15de31e2fdf3f503edb9168cd76f.png": {
+    "831fca4c790ed36ab2f47a66cec381d2.png": {
       "frame": "kapi/dive/01",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -423,11 +423,11 @@
         2,
         116,
         16,
-        17
+        16
       ],
       "canvas": [
         16,
-        17
+        16
       ],
       "anchor": [
         8,
@@ -435,7 +435,7 @@
       ],
       "generator_version": 1
     },
-    "ee81f69b34122f02ade38fe22e51a3e8.png": {
+    "9fcf8086029a1e2b2877defc45b96b94.png": {
       "frame": "kapi/dive/02",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -447,11 +447,11 @@
         21,
         116,
         16,
-        17
+        16
       ],
       "canvas": [
         16,
-        17
+        16
       ],
       "anchor": [
         8,
@@ -459,7 +459,7 @@
       ],
       "generator_version": 1
     },
-    "a82f5849ba396ac7c6a14312e4d2c42d.png": {
+    "7ccb0584728661523990c0f8c893cb54.png": {
       "frame": "kapi/dive/03",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -471,11 +471,11 @@
         40,
         116,
         16,
-        17
+        16
       ],
       "canvas": [
         16,
-        17
+        16
       ],
       "anchor": [
         8,
@@ -483,7 +483,7 @@
       ],
       "generator_version": 1
     },
-    "c90dafcabb3976c4c26f4e164c46bca0.png": {
+    "8fa4aade53793809d37049afb745d9a2.png": {
       "frame": "kapi/dive/04",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -495,11 +495,11 @@
         59,
         116,
         16,
-        17
+        16
       ],
       "canvas": [
         16,
-        17
+        16
       ],
       "anchor": [
         8,
@@ -507,7 +507,7 @@
       ],
       "generator_version": 1
     },
-    "c124f7d4d539735f1894e2aec968e628.png": {
+    "af20db4c5cd67fa2324244c6ed92bc69.png": {
       "frame": "kapi/dive/05",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -519,11 +519,11 @@
         78,
         116,
         16,
-        17
+        16
       ],
       "canvas": [
         16,
-        17
+        16
       ],
       "anchor": [
         8,
@@ -531,7 +531,7 @@
       ],
       "generator_version": 1
     },
-    "f79e3e3895f33b856e03536adefa2660.png": {
+    "b9116ec51c0269b68f8cce43da7f6f4e.png": {
       "frame": "kapi/dive/06",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -543,11 +543,11 @@
         97,
         116,
         16,
-        17
+        16
       ],
       "canvas": [
         16,
-        17
+        16
       ],
       "anchor": [
         8,
@@ -555,7 +555,7 @@
       ],
       "generator_version": 1
     },
-    "f9fc9caa880193d4e4783bbf5343e8d2.png": {
+    "081c83a5729a17691f20facf64f019f1.png": {
       "frame": "kapi/dive/07",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -567,11 +567,11 @@
         116,
         116,
         16,
-        17
+        16
       ],
       "canvas": [
         16,
-        17
+        16
       ],
       "anchor": [
         8,
@@ -582,7 +582,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "bb66aeaa428b233b91634dd5e9f4d415133bf660bbafe1078eb5493e1fefe2b0",
+    "sha256": "34cfe00c3d82f73816223dfe0b1dae44ea08928314e2119b8e0d0e4c6fa47051",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
