@@ -153,7 +153,9 @@ and backs the craft down with it — so the reticle can never leave the top of t
 with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
 port's own: arrow keys move, Space fires, B bombs, and a temporary `T` (playtest-only, issue #119)
-spawns a Terrazi wave; a rebinding is a spec amendment.
+cycles a single debug enemy through the built aerial families one at a time — holding it brings in one
+enemy, and each time the field clears it advances to the next family (Terrazi → Kapi → wrap); a
+rebinding is a spec amendment.
 
 ## Acceptance criteria
 

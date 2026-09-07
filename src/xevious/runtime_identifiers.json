@@ -159,6 +159,11 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "debug-spawn-index": {
+      "kind": "variable",
+      "name": "debug spawn index",
+      "scope": "Stage"
+    },
     "difficulty-ai-adjust": {
       "kind": "variable",
       "name": "ai adjust",

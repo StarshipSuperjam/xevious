@@ -651,7 +651,8 @@ CULL_SLOT_PROCCODE = "cull slot"
 # playtest. Amends the locked control mapping (needs guardrail-ack). See docs/spec/core-game-systems.md
 # and the removal issue #119 (remove once all aerial families are built and playtested).
 DEBUG_SPAWN_PROCCODE = "debug spawn wave"
-DEBUG_SPAWN_KEY = "t"  # T = spawn a Terrazi wave
+DEBUG_SPAWN_KEY = "t"  # T = cycle a single debug enemy through the buildable families
+DEBUG_SPAWN_INDEX_ID = "debug-spawn-index"  # which DEBUG_SPAWN_FAMILIES entry T brings in next
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -674,6 +675,15 @@ TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
 KAPI_TYPE = 16  # 0x10, the first peel-away DIVING aerial family (handle_10_Kapi)
 TERRAZI_TYPE = 17  # 0x11, the first periodically-firing aerial family (handle_11_Terrazi)
 FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE, KAPI_TYPE, TERRAZI_TYPE)
+# DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
+# (type, formation offset) whose offset points the spawner at a six-slot run of that family. T brings
+# in the family at `debug spawn index`, then advances the index (mod len). Append one entry per future
+# aerial family; no new key. The type element documents which family the offset selects (the present
+# check that keeps a spawned enemy solo is family-agnostic).
+DEBUG_SPAWN_FAMILIES = (
+    (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET),
+    (KAPI_TYPE, KAPI_FORMATION_OFFSET),
+)
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
 
@@ -2654,39 +2664,54 @@ def install_spawn_flying(blocks: Blocks) -> None:
 def install_debug_spawn_wave(blocks: Blocks) -> None:
     # ENGINE-TODO(#119): remove this temporary debug spawn key (and its locked-spec control-mapping
     # amendment) once every aerial family is built and playtested, so reachability no longer needs it.
-    # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, spawn Terrazis ONE AT A
-    # TIME so the operator can watch a single enemy's full lifecycle (approach, timed fire, glide-and-
-    # reverse, exit) instead of a confusing six-at-once wave. Each tick: point the formation at the
-    # Terrazi offset; if a Terrazi is already on the field, set the spawn count to 0 (let that one live
-    # out its life alone); otherwise clear the flying slots and set the count to 1, so the shared spawner
-    # (which runs right after this in the walk) brings in exactly one fresh Terrazi from the top. It
-    # self-gates on the key, so normal play is untouched when the key is not held. This makes a family
-    # that only spawns at high AI levels reachable for playtest; reachability recurs for every future
-    # aerial family, so this stays a dev tool until they are all built and playtested, then it is removed
-    # (it amends the locked control mapping — see core-game-systems.md and issue #119).
+    # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, CYCLE through the
+    # buildable enemy families ONE AT A TIME so the operator can watch each enemy's full lifecycle
+    # (approach, fire, its family's manoeuvre, exit) instead of a confusing six-at-once wave. Each tick:
+    # point the formation at the CURRENT family's offset (`debug spawn index` selects the DEBUG_SPAWN_
+    # FAMILIES entry); if any flying enemy is already on the field, set the spawn count to 0 (let that
+    # one live out its life alone); otherwise clear the flying slots, set the count to 1 so the shared
+    # spawner (which runs right after this in the walk) brings in exactly one fresh enemy from the top,
+    # and ADVANCE the index (mod len) so the next fresh spawn is the next family — holding T walks
+    # Terrazi -> Kapi -> (wrap). It self-gates on the key, so normal play is untouched when the key is
+    # not held. Reachability recurs for every future aerial family (each just appends one DEBUG_SPAWN_
+    # FAMILIES entry, no new key), so this stays a dev tool until they are all built and playtested, then
+    # it is removed (it amends the locked control mapping — see core-game-systems.md and issue #119).
     definition = _install_warp_proc(blocks, DEBUG_SPAWN_PROCCODE)
     gate = blocks.add("control_if")
     pressed = blocks.key_pressed(gate, DEBUG_SPAWN_KEY)
     blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
 
-    # A Terrazi already occupies some flying slot?  (OR over the six flying slots.)
+    # Point the formation at the current family's offset (an if-chain over DEBUG_SPAWN_FAMILIES keyed by
+    # `debug spawn index`). Set every tick, before the spawner runs; the fresh-spawn branch below then
+    # advances the index for next time.
+    set_offset = [
+        blocks.if_reporter(
+            blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
+            [blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(offset))],
+        )
+        for index, (_family_type, offset) in enumerate(DEBUG_SPAWN_FAMILIES)
+    ]
+
+    # Any flying enemy already on the field?  (OR over the six flying slots — family-agnostic, so the
+    # spawned enemy, whatever family, lives out its life before the next one arrives.)
     present = None
     for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
-        is_terrazi = blocks.op_eq(
-            blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(TERRAZI_TYPE)
+        occupied = blocks.op_not(
+            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
         )
-        present = is_terrazi if present is None else blocks.op_or(present, is_terrazi)
+        present = occupied if present is None else blocks.op_or(present, occupied)
 
     branch = blocks.add("control_if_else")
     blocks.blocks[branch]["inputs"]["CONDITION"] = [2, present]
     blocks.blocks[present]["parent"] = branch
-    # A Terrazi is alive: spawn nothing more this tick (keep it a solo).
+    # An enemy is alive: spawn nothing more this tick (keep it a solo).
     blocks.substack(branch, [blocks.set_var("formation count", FORMATION_COUNT_ID, number(0))])
-    # No Terrazi: clear the flying slots and bring in exactly one from the top. Free each slot the same
-    # way `cull slot` does — BOTH `slot type` and `slot state` to 0 — so no slot is left type-empty but
-    # state-stale (a half-freed slot the walk could misread). This wipes any live flying enemy on the
-    # field with no explosion or score, which is the intended cost of the one-at-a-time isolation (the
-    # operator sees a clean single Terrazi); the playtest checklist notes it so it does not read as a bug.
+    # Field empty: clear the flying slots and bring in exactly one from the top, then advance the family
+    # index. Free each slot the same way `cull slot` does — BOTH `slot type` and `slot state` to 0 — so
+    # no slot is left type-empty but state-stale (a half-freed slot the walk could misread). This wipes
+    # any live flying enemy on the field with no explosion or score, which is the intended cost of the
+    # one-at-a-time isolation (the operator sees a clean single enemy); the playtest checklist notes it
+    # so it does not read as a bug.
     clear = [
         block
         for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
@@ -2695,18 +2720,20 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
             blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
         )
     ]
+    advance_index = blocks.set_var_expr(
+        "debug spawn index",
+        DEBUG_SPAWN_INDEX_ID,
+        blocks.op_mod(
+            blocks.op_add(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(1)),
+            number(len(DEBUG_SPAWN_FAMILIES)),
+        ),
+    )
     blocks.substack(
         branch,
-        [*clear, blocks.set_var("formation count", FORMATION_COUNT_ID, number(1))],
+        [*clear, blocks.set_var("formation count", FORMATION_COUNT_ID, number(1)), advance_index],
         name="SUBSTACK2",
     )
-    blocks.substack(
-        gate,
-        [
-            blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(TERRAZI_FORMATION_OFFSET)),
-            branch,
-        ],
-    )
+    blocks.substack(gate, [*set_offset, branch])
     blocks.chain(definition, [gate])
 
 
@@ -4819,6 +4846,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         WALK_TYPE_ID,
         PLAYER_HIT_ID,
         INVULN_ID,
+        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
+        DEBUG_SPAWN_INDEX_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -4912,6 +4941,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         PLAYER_HIT_ID: ["player hit", 0],
         # Debug/test invulnerability seam (default 0; the harness sets it, never game logic).
         INVULN_ID: ["invuln", 0],
+        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor (0-based into
+        # DEBUG_SPAWN_FAMILIES); starts at the first family.
+        DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
     }
     owned_lists = {
         ALLOWED_ID,

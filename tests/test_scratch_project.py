@@ -956,6 +956,9 @@ class ScratchProjectTests(unittest.TestCase):
             # by the test harness) that gates that death so the agency-less headless craft can survive.
             "player hit",
             "invuln",
+            # DEBUG (tracked for removal, #119): the T-key family-cycle cursor — a transient dev-tool
+            # register, not Stage-write-protected state.
+            "debug spawn index",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
