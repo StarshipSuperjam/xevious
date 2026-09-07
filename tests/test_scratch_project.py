@@ -207,11 +207,11 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 20: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
-        # enemy-bullet renderers, and the slice-10 terrazi renderer (all reuse proof costumes by ref).
-        self.assertEqual(20, len(project["targets"]))
-        # 105: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06).
-        self.assertEqual(105, len(assets))
+        # 21: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, and the slice-10 terrazi + kapi renderers (all reuse proof costumes by ref).
+        self.assertEqual(21, len(project["targets"]))
+        # 112: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs (AIR-05).
+        self.assertEqual(112, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(

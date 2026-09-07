@@ -215,6 +215,83 @@
       "family": "terrazi",
       "animation": "roll",
       "duration_frames": 1
+    },
+    {
+      "name": "kapi/dive/01",
+      "sheet": "aerial_enemies",
+      "rect": [2, 116, 16, 17],
+      "canvas": [16, 17],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "kapi",
+      "animation": "dive",
+      "duration_frames": 1
+    },
+    {
+      "name": "kapi/dive/02",
+      "sheet": "aerial_enemies",
+      "rect": [21, 116, 16, 17],
+      "canvas": [16, 17],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "kapi",
+      "animation": "dive",
+      "duration_frames": 1
+    },
+    {
+      "name": "kapi/dive/03",
+      "sheet": "aerial_enemies",
+      "rect": [40, 116, 16, 17],
+      "canvas": [16, 17],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "kapi",
+      "animation": "dive",
+      "duration_frames": 1
+    },
+    {
+      "name": "kapi/dive/04",
+      "sheet": "aerial_enemies",
+      "rect": [59, 116, 16, 17],
+      "canvas": [16, 17],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "kapi",
+      "animation": "dive",
+      "duration_frames": 1
+    },
+    {
+      "name": "kapi/dive/05",
+      "sheet": "aerial_enemies",
+      "rect": [78, 116, 16, 17],
+      "canvas": [16, 17],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "kapi",
+      "animation": "dive",
+      "duration_frames": 1
+    },
+    {
+      "name": "kapi/dive/06",
+      "sheet": "aerial_enemies",
+      "rect": [97, 116, 16, 17],
+      "canvas": [16, 17],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "kapi",
+      "animation": "dive",
+      "duration_frames": 1
+    },
+    {
+      "name": "kapi/dive/07",
+      "sheet": "aerial_enemies",
+      "rect": [116, 116, 16, 17],
+      "canvas": [16, 17],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "kapi",
+      "animation": "dive",
+      "duration_frames": 1
     }
   ]
 }

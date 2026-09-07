@@ -384,6 +384,11 @@
       "name": "invuln",
       "scope": "Stage"
     },
+    "kapi-clone-slot": {
+      "kind": "variable",
+      "name": "kapi clone slot",
+      "scope": "kapi"
+    },
     "octant-table": {
       "kind": "list",
       "name": "octant table",

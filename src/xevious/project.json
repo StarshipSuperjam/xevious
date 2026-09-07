@@ -54848,6 +54848,1718 @@
     },
     {
       "isStage": false,
+      "name": "kapi",
+      "variables": {
+        "kapi-clone-slot": [
+          "kapi clone slot",
+          0
+        ]
+      },
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {
+        "gd-kapi-001": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-kapi-002",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director stop",
+              "broadcastMsgId-director-stop"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 20
+        },
+        "gd-kapi-002": {
+          "opcode": "control_stop",
+          "next": "gd-kapi-003",
+          "parent": "gd-kapi-001",
+          "inputs": {},
+          "fields": {
+            "STOP_OPTION": [
+              "other scripts in sprite",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "hasnext": "true"
+          }
+        },
+        "gd-kapi-003": {
+          "opcode": "sound_stopallsounds",
+          "next": "gd-kapi-004",
+          "parent": "gd-kapi-002",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-004": {
+          "opcode": "control_delete_this_clone",
+          "next": "gd-kapi-005",
+          "parent": "gd-kapi-003",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-005": {
+          "opcode": "looks_hide",
+          "next": null,
+          "parent": "gd-kapi-004",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-006": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-kapi-025",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director enter",
+              "broadcastMsgId-director-enter"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 170
+        },
+        "gd-kapi-007": {
+          "opcode": "data_setvariableto",
+          "next": "gd-kapi-009",
+          "parent": "gd-kapi-025",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                59
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "kapi clone slot",
+              "kapi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-008": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-kapi-009",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-009": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-kapi-010",
+          "parent": "gd-kapi-007",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-kapi-008"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-010": {
+          "opcode": "data_setvariableto",
+          "next": "gd-kapi-012",
+          "parent": "gd-kapi-009",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                60
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "kapi clone slot",
+              "kapi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-011": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-kapi-012",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-012": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-kapi-013",
+          "parent": "gd-kapi-010",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-kapi-011"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-013": {
+          "opcode": "data_setvariableto",
+          "next": "gd-kapi-015",
+          "parent": "gd-kapi-012",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                61
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "kapi clone slot",
+              "kapi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-014": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-kapi-015",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-015": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-kapi-016",
+          "parent": "gd-kapi-013",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-kapi-014"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-016": {
+          "opcode": "data_setvariableto",
+          "next": "gd-kapi-018",
+          "parent": "gd-kapi-015",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                62
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "kapi clone slot",
+              "kapi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-017": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-kapi-018",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-018": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-kapi-019",
+          "parent": "gd-kapi-016",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-kapi-017"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-019": {
+          "opcode": "data_setvariableto",
+          "next": "gd-kapi-021",
+          "parent": "gd-kapi-018",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                63
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "kapi clone slot",
+              "kapi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-020": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-kapi-021",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-021": {
+          "opcode": "control_create_clone_of",
+          "next": "gd-kapi-022",
+          "parent": "gd-kapi-019",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-kapi-020"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-022": {
+          "opcode": "data_setvariableto",
+          "next": "gd-kapi-024",
+          "parent": "gd-kapi-021",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                64
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "kapi clone slot",
+              "kapi-clone-slot"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-023": {
+          "opcode": "control_create_clone_of_menu",
+          "next": null,
+          "parent": "gd-kapi-024",
+          "inputs": {},
+          "fields": {
+            "CLONE_OPTION": [
+              "_myself_",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-024": {
+          "opcode": "control_create_clone_of",
+          "next": null,
+          "parent": "gd-kapi-022",
+          "inputs": {
+            "CLONE_OPTION": [
+              1,
+              "gd-kapi-023"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-025": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-kapi-006",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-026"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-007"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-026": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-kapi-025",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "playing"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-027": {
+          "opcode": "control_start_as_clone",
+          "next": "gd-kapi-083",
+          "parent": null,
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 320
+        },
+        "gd-kapi-028": {
+          "opcode": "control_repeat_until",
+          "next": null,
+          "parent": "gd-kapi-083",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-029"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-078"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-029": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-kapi-028",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-kapi-030"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-030": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-kapi-029",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "playing"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-031": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-032",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot type",
+              "slot-type"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-032": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-kapi-078",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-kapi-031"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                16
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-033": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-034",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot y",
+              "slot-y"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-034": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-kapi-035",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-033"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                256
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-035": {
+          "opcode": "operator_multiply",
+          "next": null,
+          "parent": "gd-kapi-036",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-034"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                15
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-036": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-kapi-079",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-035"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                240
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-037": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-038",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot x",
+              "slot-x"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-038": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-kapi-039",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-037"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                256
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-039": {
+          "opcode": "operator_multiply",
+          "next": null,
+          "parent": "gd-kapi-040",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-038"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-040": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-kapi-079",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                155
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-kapi-039"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-041": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-kapi-056",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-046"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-048"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-kapi-055"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-042": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-043",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot timer",
+              "slot-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-043": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-kapi-044",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-042"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-044": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-kapi-045",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-kapi-043"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-045": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-kapi-046",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-044"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-046": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-kapi-041",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-kapi-045"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                6
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-047": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-kapi-048",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "kapi/dive/07",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-048": {
+          "opcode": "looks_switchcostumeto",
+          "next": null,
+          "parent": "gd-kapi-041",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-kapi-047"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-049": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-050",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot timer",
+              "slot-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-050": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-kapi-051",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-049"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-051": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-kapi-052",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-kapi-050"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-052": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-kapi-053",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-051"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-053": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-kapi-055",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-052"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-054": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-kapi-055",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-055": {
+          "opcode": "looks_switchcostumeto",
+          "next": null,
+          "parent": "gd-kapi-041",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-kapi-053",
+              "gd-kapi-054"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-056": {
+          "opcode": "control_if_else",
+          "next": "gd-kapi-077",
+          "parent": "gd-kapi-072",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-058"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-060"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-kapi-041"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-057": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-058",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot flag",
+              "slot-flag"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-058": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-kapi-056",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-kapi-057"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-059": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-kapi-060",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "kapi/dive/01",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-060": {
+          "opcode": "looks_switchcostumeto",
+          "next": null,
+          "parent": "gd-kapi-056",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-kapi-059"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-061": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-062",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot timer",
+              "slot-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-062": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-kapi-063",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-061"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-063": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-kapi-064",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-kapi-062"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-064": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-kapi-076",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                8
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-kapi-063"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-065": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-066",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot timer",
+              "slot-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-066": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-kapi-067",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-kapi-065"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-067": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-kapi-069",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-kapi-066"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-068": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-kapi-076",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-069"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-070"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-kapi-071"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-069": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-kapi-068",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-kapi-067"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-070": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-kapi-068",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                450
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-071": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-kapi-068",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                225
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-072": {
+          "opcode": "control_if_else",
+          "next": "gd-kapi-080",
+          "parent": "gd-kapi-079",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-074"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-076"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-kapi-056"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-073": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-kapi-074",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "kapi clone slot",
+                "kapi-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot state",
+              "slot-state"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-074": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-kapi-072",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-kapi-073"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-075": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-kapi-076",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-kapi-076": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-kapi-068",
+          "parent": "gd-kapi-072",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-kapi-064",
+              "gd-kapi-075"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-077": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-kapi-056",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                225
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-078": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-kapi-028",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-032"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-079"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-kapi-082"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-079": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-kapi-072",
+          "parent": "gd-kapi-078",
+          "inputs": {
+            "X": [
+              2,
+              "gd-kapi-036"
+            ],
+            "Y": [
+              2,
+              "gd-kapi-040"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-080": {
+          "opcode": "looks_gotofrontback",
+          "next": "gd-kapi-081",
+          "parent": "gd-kapi-072",
+          "inputs": {},
+          "fields": {
+            "FRONT_BACK": [
+              "front",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-081": {
+          "opcode": "looks_show",
+          "next": null,
+          "parent": "gd-kapi-080",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-082": {
+          "opcode": "looks_hide",
+          "next": null,
+          "parent": "gd-kapi-078",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-083": {
+          "opcode": "looks_hide",
+          "next": "gd-kapi-028",
+          "parent": "gd-kapi-027",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        }
+      },
+      "comments": {},
+      "currentCostume": 0,
+      "costumes": [
+        {
+          "name": "kapi/dive/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "922c15de31e2fdf3f503edb9168cd76f",
+          "md5ext": "922c15de31e2fdf3f503edb9168cd76f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ee81f69b34122f02ade38fe22e51a3e8",
+          "md5ext": "ee81f69b34122f02ade38fe22e51a3e8.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "a82f5849ba396ac7c6a14312e4d2c42d",
+          "md5ext": "a82f5849ba396ac7c6a14312e4d2c42d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "c90dafcabb3976c4c26f4e164c46bca0",
+          "md5ext": "c90dafcabb3976c4c26f4e164c46bca0.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "c124f7d4d539735f1894e2aec968e628",
+          "md5ext": "c124f7d4d539735f1894e2aec968e628.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f79e3e3895f33b856e03536adefa2660",
+          "md5ext": "f79e3e3895f33b856e03536adefa2660.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f9fc9caa880193d4e4783bbf5343e8d2",
+          "md5ext": "f9fc9caa880193d4e4783bbf5343e8d2.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "explode_01",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "b4f8079b46da300713058d31147e2645",
+          "md5ext": "b4f8079b46da300713058d31147e2645.png",
+          "rotationCenterX": 14,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_02",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "3d4e3586bbf52ec29de75f76104b4a29",
+          "md5ext": "3d4e3586bbf52ec29de75f76104b4a29.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_03",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "7efa6e85d32fdd9c02ccca82f379de2f",
+          "md5ext": "7efa6e85d32fdd9c02ccca82f379de2f.png",
+          "rotationCenterX": 28,
+          "rotationCenterY": 28
+        },
+        {
+          "name": "explode_04",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "46bdb47661d78203a224e4cfed0642ec",
+          "md5ext": "46bdb47661d78203a224e4cfed0642ec.png",
+          "rotationCenterX": 28,
+          "rotationCenterY": 26
+        },
+        {
+          "name": "explode_05",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "9b3ae51a677eaf8e310bd287e33afcee",
+          "md5ext": "9b3ae51a677eaf8e310bd287e33afcee.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_06",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "a812dfa21afcc7f0dd22f1137068ca1d",
+          "md5ext": "a812dfa21afcc7f0dd22f1137068ca1d.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_07",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "740aa8bfb859420880ceb3685faa9016",
+          "md5ext": "740aa8bfb859420880ceb3685faa9016.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "explode_08",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "08fd056e1ce61c7af62e19587ca35b7b",
+          "md5ext": "08fd056e1ce61c7af62e19587ca35b7b.png",
+          "rotationCenterX": 30,
+          "rotationCenterY": 26
+        }
+      ],
+      "sounds": [],
+      "volume": 100,
+      "layerOrder": 21,
+      "visible": false,
+      "x": 0,
+      "y": 0,
+      "size": 100,
+      "direction": 90,
+      "draggable": false,
+      "rotationStyle": "don't rotate"
+    },
+    {
+      "isStage": false,
       "name": "toroid_sprite_proof",
       "variables": {},
       "lists": {},
@@ -54979,6 +56691,69 @@
           "dataFormat": "png",
           "assetId": "536b856bdca03d19ae0245d5e1cccfee",
           "md5ext": "536b856bdca03d19ae0245d5e1cccfee.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "922c15de31e2fdf3f503edb9168cd76f",
+          "md5ext": "922c15de31e2fdf3f503edb9168cd76f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ee81f69b34122f02ade38fe22e51a3e8",
+          "md5ext": "ee81f69b34122f02ade38fe22e51a3e8.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "a82f5849ba396ac7c6a14312e4d2c42d",
+          "md5ext": "a82f5849ba396ac7c6a14312e4d2c42d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "c90dafcabb3976c4c26f4e164c46bca0",
+          "md5ext": "c90dafcabb3976c4c26f4e164c46bca0.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "c124f7d4d539735f1894e2aec968e628",
+          "md5ext": "c124f7d4d539735f1894e2aec968e628.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f79e3e3895f33b856e03536adefa2660",
+          "md5ext": "f79e3e3895f33b856e03536adefa2660.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "kapi/dive/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f9fc9caa880193d4e4783bbf5343e8d2",
+          "md5ext": "f9fc9caa880193d4e4783bbf5343e8d2.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         }

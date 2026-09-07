@@ -835,6 +835,17 @@ TERRAZI_RENDER_SIZE = 225  # match the Toroid's on-screen scale (a 16-px sprite 
 TERRAZI_ROLL_FRAMES = 7  # terrazi/roll/01..07
 TERRAZI_ROLL_PERIOD = 8  # advance the roll every ~8 arcade frames (`_ddX >> 3`); slot timer ~= frames
 
+# AIR-05 Kapi renderer: one persistent clone per flying slot, same pool pattern as the Terrazi/Toroid.
+# While approaching it holds the static entry frame; while diving the 7-frame dive animation is derived
+# render-only from the slot's animation clock — an 8-phase cycle whose 8th phase HOLDS the last frame
+# (the reference's `d0 = (TIMER1>>3) & 7`, hold at d0 == 7 -> loc_2455 3654), then loops.
+KAPI_TARGET = "kapi"
+KAPI_CLONE_SLOT_ID = "kapi-clone-slot"  # sprite-local: which flying slot this clone renders
+KAPI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+KAPI_DIVE_FRAMES = 7  # kapi/dive/01..07 (sprite codes 0x20..0x26)
+KAPI_DIVE_PERIOD = 8  # advance the dive frame every ~8 arcade frames (`TIMER1>>3`); slot timer ~= frames
+KAPI_DIVE_PHASES = 8  # the animation clock cycles 0..7; phase 7 holds the last frame (loc_2455)
+
 
 def _schedule_arg(record: dict) -> int:
     # DIF-01/03 + FORM-01: the single runtime-readable scalar each dispatched handler needs,
@@ -4487,6 +4498,115 @@ def terrazi_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def kapi_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-05 Kapi renderer (game_director owns these blocks; sprite_extractor owns the costumes). One
+    # persistent clone per flying slot (59..64), the same pool pattern as the Terrazi/Toroid: shown and
+    # positioned when its slot holds a Kapi, hidden otherwise. The clone writes no state. While the slot
+    # is APPROACHING it holds the static entry frame (silent approach); while DIVING the 7-frame dive
+    # animation is derived render-only from the slot's animation clock — an 8-phase cycle whose 8th
+    # phase HOLDS the last frame (the reference's `d0 = (TIMER1>>3) & 7`, held at 7 -> loc_2455 3654),
+    # then loops. On a hit it plays the shared explosion (the solv_death frames appended after the 7
+    # dive frames, ordinals 8..), exactly like the Toroid/Terrazi.
+    blocks = Blocks(KAPI_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("kapi clone slot", KAPI_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("kapi clone slot", KAPI_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_kapi = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(KAPI_TYPE)
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Dive animation clock (render-only): phase = floor(timer / PERIOD) mod 8. A fresh reporter per read
+    # (a reporter cannot be shared across parents — it is stolen by the first).
+    phase = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(KAPI_DIVE_PERIOD))),
+        number(KAPI_DIVE_PHASES),
+    )
+    # Dive costume: phase 0..6 -> frame ordinal 1..7; phase 7 HOLDS the last frame (loc_2455).
+    dive_costume = blocks.add("control_if_else")
+    holds = blocks.op_gt(phase(), number(KAPI_DIVE_FRAMES - 1))  # phase > 6  ==  phase == 7
+    blocks.blocks[dive_costume]["inputs"]["CONDITION"] = [2, holds]
+    blocks.blocks[holds]["parent"] = dive_costume
+    blocks.substack(dive_costume, [blocks.switch_costume("kapi/dive/07")])
+    blocks.substack(dive_costume, [blocks.switch_costume_expr(blocks.op_add(phase(), number(1)))], name="SUBSTACK2")
+    # Active costume: hold the static entry frame while approaching (silent approach), else the dive.
+    active_costume = blocks.add("control_if_else")
+    is_approach = blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(KAPI_FLAG_APPROACH))
+    blocks.blocks[active_costume]["inputs"]["CONDITION"] = [2, is_approach]
+    blocks.blocks[is_approach]["parent"] = active_costume
+    blocks.substack(active_costume, [blocks.switch_costume("kapi/dive/01")])
+    blocks.substack(active_costume, [dive_costume], name="SUBSTACK2")
+    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
+    # appended after the 7 dive frames (ordinal 8..); the burst doubles at the 2x phase (record 025).
+    phase_for_costume = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    explode_ordinal = blocks.op_add(number(KAPI_DIVE_FRAMES + 1), phase_for_costume)
+    phase_for_size = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(KAPI_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [
+            active_costume,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(KAPI_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_kapi]
+    blocks.blocks[is_kapi]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -4599,6 +4719,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, TOROID_TARGET)
     _ensure_gameplay_target(result, ENEMY_BULLET_TARGET)
     _ensure_gameplay_target(result, TERRAZI_TARGET)
+    _ensure_gameplay_target(result, KAPI_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -4629,6 +4750,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             terrazi["costumes"].extend(copy.deepcopy(death["costumes"]))
         terrazi["currentCostume"] = 0
+    # AIR-05: the Kapi renderer mirrors its 7 dive frames, then the shared explosion frames (the same
+    # solv_death burst appended after them, ordinals 8.., exactly like the Toroid/Terrazi).
+    kapi = next((t for t in result["targets"] if t.get("name") == KAPI_TARGET), None)
+    if proof is not None and kapi is not None:
+        kapi["costumes"] = proof_by_family("kapi/")
+        if death is not None:
+            kapi["costumes"].extend(copy.deepcopy(death["costumes"]))
+        kapi["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -4917,6 +5046,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "hud": hud_blocks(),
         "toroid": toroid_blocks(),
         "terrazi": terrazi_blocks(),
+        "kapi": kapi_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -4967,6 +5097,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-06: likewise, the only Terrazi render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 TERRAZI_CLONE_SLOT_ID: ["terrazi clone slot", 0],
+            }
+        elif target["name"] == KAPI_TARGET:
+            # AIR-05: likewise, the only Kapi render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                KAPI_CLONE_SLOT_ID: ["kapi clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
