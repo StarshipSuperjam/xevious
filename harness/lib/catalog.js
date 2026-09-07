@@ -755,15 +755,118 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'fire permission gate'),
   },
   {
-    key: 'debug-key-spawns-terrazi-wave',
+    key: 'kapi-spawns-and-dives',
     behavior:
-      'The temporary debug key (T) brings in Terrazis one at a time, so a family unreachable in early play can be playtested (tracked for removal)',
+      'A Kapi approaches silently, then at its countdown expiry latches a PEEL-AWAY dive that ACCELERATES its lateral velocity away from the craft column while DECELERATING its forward/scroll velocity (the arcade kapi_10_fire), not a homing dive or a swing on the scroll axis',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Hold the debug key: the walk overrides the scheduled formation to the Terrazi offset and clears
-      // non-Terrazi flying slots, so the shared spawner fills them with Terrazis (type 17) through the
-      // real spawn path — no direct slot seeding here.
+      // Seed one Kapi in APPROACH, laterally aside from the craft on the LARGER-column side
+      // (self col = craft col + 12), with a forward/scroll approach velocity and an approach countdown
+      // about to expire. On the trigger tick `update kapi` latches the dive ONCE: because the craft is at
+      // a SMALLER lateral coordinate (offset = craft − self < 0) it takes the DIVE_PLUS branch (flag 2),
+      // and thereafter each tick ACCELERATES `slot dy` upward (dy += ACCEL) so the enemy peels AWAY to an
+      // even larger column, and DECELERATES `slot dx` (dx -= DECEL) so its forward run crosses toward/below
+      // its start. A single pump settles past the trigger; cull keeps `slot flag`/`slot dx`/`slot dy`, so
+      // the committed-dive evidence survives to read (the same post-cull read the Terrazi glide uses).
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 16);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 8) * 256); // eight rows ahead in scroll, not overlapping the craft cell
+      put('slot-y', slot, (pc + 12) * 256); // 12 columns aside on the larger-column side => offset < 0
+      put('slot-dx', slot, 8); // a forward/scroll approach the dive must decelerate
+      put('slot-dy', slot, 0); // no lateral drift until the dive accelerates it
+      put('slot-flag', slot, 0); // APPROACH — eligible to trigger the dive
+      put('slot-fire-timer', slot, 1); // approach countdown about to expire => dive triggers this pump
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 32); // 0x20, the approach/first dive sprite code
+      step(vm, 1);
+      return {
+        flag: readVar(vm, 'slot-flag')[slot],
+        dy: readVar(vm, 'slot-dy')[slot],
+        dx: readVar(vm, 'slot-dx')[slot],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.flag, 2, 'the Kapi latched its peel-away dive on the craft-is-smaller side (DIVE_PLUS)');
+      assert.ok(
+        obs.dy > 0,
+        `a diving Kapi accelerates its LATERAL velocity away from the craft column (dy > 0); got dy=${obs.dy}`,
+      );
+      assert.ok(
+        obs.dx < 8,
+        `a diving Kapi decelerates its FORWARD/scroll velocity (dx < 8); got dx=${obs.dx}`,
+      );
+    },
+    // Empty `update kapi` so the dive never runs → flag stays 0, dy stays 0, dx stays 8 → every clause bites
+    // (and an axis swap — accelerating dx / decelerating dy — would fail the dy>0 and dx<8 pair).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update kapi'),
+  },
+  {
+    key: 'kapi-fires-while-diving',
+    behavior:
+      'A Kapi is SILENT during its approach and fires aimed bullets through the shared gate every tick once it is diving — no fire-suppression on the dive (unlike the Terrazi glide)',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Isolate the Kapi fire from live shooting Toroids: make every spawnable flying type the
+      // NON-shooting Toroid (type 10) and clear the flying slots, so `bullet alloc result` can only move
+      // if the Kapi's gate fires. Seed one Kapi in APPROACH, stationary (dx=dy=0) and near the craft's
+      // column, with mask 0 (reload 1 => fires on every phase) and an approach countdown of 1 so the dive
+      // triggers on the first active tick; the trigger arms the fire countdown to 1 and the gate then fires
+      // every dive tick with no suppression. Reset the shared alloc signal, then pump until a bullet
+      // allocates.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 16);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 10) * 256); // ten rows ahead in scroll
+      put('slot-y', slot, pc * 256); // near the craft's column so it stays on-field through the dive
+      put('slot-dx', slot, 0); // stationary: no reliance on drift
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH — silent until the dive triggers
+      put('slot-fire-mask', slot, 0); // mask 0 => reload 1 => fires every phase
+      put('slot-fire-timer', slot, 1); // approach countdown expires on the first active tick
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 32);
+      writeVar(vm, 'bullet-alloc-result', 0);
+      let fired = false;
+      for (let i = 0; i < 12 && !fired; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0) fired = true;
+      }
+      return { fired };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'a diving Kapi allocated an aimed bullet through the fire gate');
+    },
+    // Empty the shared `fire permission gate` so the Kapi never fires and no other firing path exists
+    // (all spawnable types are non-shooting) → `bullet alloc result` stays 0 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'fire permission gate'),
+  },
+  {
+    key: 'debug-key-cycles-families',
+    behavior:
+      'The temporary debug key (T) brings in one debug enemy at a time and, each time the field clears, advances to the next built family (Terrazi then Kapi), so families unreachable in early play can be playtested (tracked for removal)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Hold the debug key: with the field empty the walk brings in the first family (Terrazi, type 17)
+      // through the real spawn path and advances its cursor. Clearing the flying field makes the next
+      // fresh spawn advance to the second family (Kapi, type 16) — proving the cycle, not a fixed family.
       keyDown(vm, 't');
       let terraziSeen = false;
       for (let i = 0; i < 30 && !terraziSeen; i += 1) {
@@ -771,14 +874,24 @@ export const SCENARIOS = [
         const type = readVar(vm, 'slot-type');
         if (FLYING_SLOT_INDICES.some((s) => type[s] === 17)) terraziSeen = true;
       }
+      // Clear the flying field so the next fresh spawn advances the cursor to the next family.
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      let kapiSeen = false;
+      for (let i = 0; i < 30 && !kapiSeen; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        if (FLYING_SLOT_INDICES.some((s) => type[s] === 16)) kapiSeen = true;
+      }
       keyUp(vm, 't');
-      return { terraziSeen };
+      return { terraziSeen, kapiSeen };
     },
     assert(obs) {
-      assert.equal(obs.terraziSeen, true, 'holding the debug key fills a flying slot with a Terrazi');
+      assert.equal(obs.terraziSeen, true, 'holding the debug key brings in the first family (Terrazi)');
+      assert.equal(obs.kapiSeen, true, 'after the field clears, the cursor advances to the next family (Kapi)');
     },
-    // Empty `debug spawn wave` so the key does nothing → the scheduled (non-Terrazi) formation stands
-    // → no Terrazi ever occupies a flying slot → the assertion bites.
+    // Empty `debug spawn wave` so the key does nothing → no debug family ever occupies a flying slot
+    // → neither family is seen → the assertion bites.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
   },
   {
