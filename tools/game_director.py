@@ -644,6 +644,8 @@ INIT_TERRAZI_PROCCODE = "init terrazi"
 UPDATE_TERRAZI_PROCCODE = "update terrazi"
 INIT_KAPI_PROCCODE = "init kapi"
 UPDATE_KAPI_PROCCODE = "update kapi"
+INIT_TORKAN_PROCCODE = "init torkan"
+UPDATE_TORKAN_PROCCODE = "update torkan"
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
 # DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
@@ -660,6 +662,10 @@ TERRAZI_FORMATION_OFFSET = 78
 # 69-74 (object-types.json), the same six-wide derivation as the Terrazi offset. Used by the debug
 # spawner to force a Kapi wave.
 KAPI_FORMATION_OFFSET = 69
+# The flying-type-table offset whose 6-slot run is all Torkan (0x0F) — code 15 sits at 0-based positions
+# 25-30 (object-types.json), the same six-wide derivation as the Kapi/Terrazi offsets. Area 1 names this
+# run in its formation, so a built Torkan appears in natural area-1 waves (not only via the debug key).
+TORKAN_FORMATION_OFFSET = 25
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
@@ -668,13 +674,14 @@ FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
 FIRE_MASK_KAPI_ID = "fire-mask-kapi"
 
 # Object type codes this slice's flying dispatch handles (object-types.json). Other formation-named
-# families (e.g. Torkan, code 15, which area 1 also names) are SKIPPED by the spawner until their
+# families (e.g. Zoshi/Jara, the remaining slice-10 aerials) are SKIPPED by the spawner until their
 # own slice builds them — a recorded deviation (fewer enemies than the arcade pre-slice-10).
 TOROID_TYPE = 10  # 0x0A, non-shooting
 TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
+TORKAN_TYPE = 15  # 0x0F, attack-and-retreat: one aimed shot, hover/animate, then flee AWAY at speed
 KAPI_TYPE = 16  # 0x10, the first peel-away DIVING aerial family (handle_10_Kapi)
 TERRAZI_TYPE = 17  # 0x11, the first periodically-firing aerial family (handle_11_Terrazi)
-FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE, KAPI_TYPE, TERRAZI_TYPE)
+FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE, TORKAN_TYPE, KAPI_TYPE, TERRAZI_TYPE)
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
 # (type, formation offset) whose offset points the spawner at a six-slot run of that family. T brings
 # in the family at `debug spawn index`, then advances the index (mod len). Append one entry per future
@@ -683,6 +690,7 @@ FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE, KAPI_TYPE, TERRAZI_TYPE
 DEBUG_SPAWN_FAMILIES = (
     (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET),
     (KAPI_TYPE, KAPI_FORMATION_OFFSET),
+    (TORKAN_TYPE, TORKAN_FORMATION_OFFSET),
 )
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
@@ -767,6 +775,34 @@ KAPI_DIVE_SCROLL_DECEL = 4  # forward/scroll decel per tick (`subq #2,_dX` = 2/f
 # fire-delay decision). So (rng mod 64) + 48 => 48-111, consumed 2 frames/tick during the approach.
 KAPI_APPROACH_DELAY_BASE = 48
 KAPI_APPROACH_DELAY_SPAN = 64
+
+# AIR-02 Torkan (handle_0F_Torkan 3357-3377, torkan_shoot 3378-3394, torkan_update_dir 3395-3411): the
+# attack-and-retreat aerial family. It spawns aimed TOWARD the craft on the 32-magnitude generic tier
+# (2 px/frame, angle_dX_dY_tbl 6360) with a plain spawn-column draw (NO craft exclusion, like the Kapi),
+# approaches while counting a shot delay down, then at zero fires EXACTLY ONE aimed bullet directly
+# (init_new_bullet 5012 — NOT the fire-permission gate, no mask, never repeats). It then HOVERS in place
+# animating a 7-frame roll for ~28 frames, then re-aims ONCE 180 degrees AWAY from the craft on the fast
+# 48-magnitude tier (3 px/frame, angle_dX_dY_terrazi_torkan_tbl 6325) and flees straight until culled.
+# Type 0x0F, 50 pts.
+TORKAN_PTS = 4  # 1-based value-table position of 50 points (handle_0F PTS byte 9 -> value 50)
+TORKAN_INIT_CODE = 0x10  # spawn/approach sprite code (_CODE=0x10); the hover animates 0x10..0x16
+TORKAN_FLAG_APPROACH = 0  # aimed toward the craft, counting the shot delay down
+TORKAN_FLAG_HOVER = 1  # fired; holding position, animating the roll until the hover window ends
+TORKAN_FLAG_FLEE = 2  # re-aimed 180 deg away; fleeing straight at 3 px/frame until culled
+# Shot delay before the single fire, in ARCADE FRAMES: (rnd & 0x3f) + 0x40 = 64-127 (handle_0F 3366-3367),
+# consumed 2 frames/tick during the approach. A clean masked draw (no transcription quirk, unlike Kapi's).
+TORKAN_SHOT_DELAY_BASE = 64
+TORKAN_SHOT_DELAY_SPAN = 64
+# Hover window end, in ARCADE FRAMES: the arcade ends the hover when (timer>>2)&0xf == 7, first true at
+# timer == 28 (torkan_shoot 3384-3391). `slot timer` counts arcade frames (advances 2/tick, 2 frames/tick).
+TORKAN_HOVER_END = 28
+# The retreat's 180-degree flip. The arcade retreat (torkan_update_dir 3399-3404) takes the raw angle of
+# the vector TOWARD the craft via get_index_for_angle, adds 0x80 to that byte, then falls into
+# get_dX_dY_and_cpy_to_obj (`lsr.b #3`) — which, UNLIKE the toward/spawn path
+# (calc_dX_dY_for_vector_to_solvalou 3365, the `addq #4` "black magic"), applies NO +4 rounding. So the
+# port derives the away index from the UN-rounded folded angle the shared quantizer leaves in `aim base`
+# (0..255): (aim base >> 3 + 16) mod 32, 1-based. 0x80 >> 3 = 16 = half of the 32-entry circle.
+TORKAN_REAIM_HALF_TURN = 16
 
 # FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
 # => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
@@ -855,6 +891,21 @@ KAPI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2
 KAPI_DIVE_FRAMES = 7  # kapi/dive/01..07 (sprite codes 0x20..0x26)
 KAPI_DIVE_PERIOD = 8  # advance the dive frame every ~8 arcade frames (`TIMER1>>3`); slot timer ~= frames
 KAPI_DIVE_PHASES = 8  # the animation clock cycles 0..7; phase 7 holds the last frame (loc_2455)
+
+# AIR-02 Torkan renderer: one persistent clone per flying slot, same pool pattern as the others. While
+# approaching it holds the static entry frame (0x10); during the hover it sweeps a 7-frame roll
+# (0x10..0x16), one frame per 4 arcade frames (`timer>>2`), a single 0..6 sweep (the hover ends at phase
+# 7, so no wrap); while fleeing it holds the last frame (0x16).
+TORKAN_TARGET = "torkan"
+TORKAN_CLONE_SLOT_ID = "torkan-clone-slot"  # sprite-local: which flying slot this clone renders
+TORKAN_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+TORKAN_ANIM_FRAMES = 6  # torkan/roll/01..06 — see below. The arcade cycles SEVEN sprite codes
+# (0x10..0x16) during the hover (torkan_shoot 3383-3390: `d0 = (TIMER>>2)&0xf`, running 0..6 before it
+# exits at 7, so codes 0x10+0..0x10+6). CrazyCarl's aerial-enemies rip provides only SIX distinct Torkan
+# rotation frames, so the 7th code-step (d0=6) HOLDS the last available frame — the same "hold the last
+# frame" idiom the Kapi uses for its 8th dive phase. The hover-window length (28 frames) and the re-aim
+# boundary are driven by the timer, not the art, so they stay exactly faithful (deviation recorded 029).
+TORKAN_ANIM_PERIOD = 4  # advance the hover frame every 4 arcade frames (`timer>>2`); slot timer ~= frames
 
 
 def _schedule_arg(record: dict) -> int:
@@ -1793,6 +1844,10 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(KAPI_TYPE)),
         [blocks.call_proc(UPDATE_KAPI_PROCCODE, warp=True)],
     )
+    torkan_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TORKAN_TYPE)),
+        [blocks.call_proc(UPDATE_TORKAN_PROCCODE, warp=True)],
+    )
     terrazi_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TERRAZI_TYPE)),
         [blocks.call_proc(UPDATE_TERRAZI_PROCCODE, warp=True)],
@@ -1801,7 +1856,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, terrazi_branch, bullet_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, bullet_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2554,6 +2609,165 @@ def install_update_kapi(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def install_init_torkan(blocks: Blocks) -> None:
+    # AIR-02: initialize the flying slot at `slot index` as a Torkan of type `walk type` (handle_0F_Torkan
+    # 3357-3377). Plain spawn-column draw with NO craft-proximity exclusion (gen_random_Y_store_obj 3360 /
+    # 5147-5154, like the Kapi), top-row entry, aimed TOWARD the craft on the 32-magnitude generic tier
+    # (2 px/frame, angle_dX_dY_tbl 6360 via the `+4`-rounded toward path). Stamps the Torkan's
+    # points/flag/code and seeds the single-shot delay (64-127 frames) into `slot fire timer`, counted
+    # down 2/tick during the approach. Torkan fires ONCE directly at expiry, so — unlike the Terrazi/Kapi
+    # — it captures NO fire mask (it never calls the shared fire-permission gate).
+    definition = _install_warp_proc(blocks, INIT_TORKAN_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False)
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, variable("walk type", WALK_TYPE_ID)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            # Enter from the TOP row, like the other flying families (the same self-propelled-port
+            # deviation: no enemy scroll, so every wave streams in from the top with room to aim/fire).
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 32", AIM_DX_32_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 32", AIM_DY_32_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TORKAN_FLAG_APPROACH)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(TORKAN_INIT_CODE)),
+            _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(TORKAN_PTS)),
+            # Single-shot delay 64-127 frames = (rng mod 64) + 64 (handle_0F 3366-3367). A fresh RNG draw
+            # after the spawn-column draws, in walk order. Stored in `slot fire timer` and counted down
+            # 2/tick during the approach; at <= 0 the Torkan fires ONCE and enters the hover.
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(
+                blocks,
+                "slot fire timer",
+                SLOT_FIRE_TIMER_ID,
+                blocks.op_add(
+                    blocks.op_mod(variable("rng out", RNG_OUT_ID), number(TORKAN_SHOT_DELAY_SPAN)),
+                    number(TORKAN_SHOT_DELAY_BASE),
+                ),
+            ),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_torkan(blocks: Blocks) -> None:
+    # AIR-02: advance the Torkan at `slot index` by one tick (handle_0F_Torkan 3357-3377, torkan_shoot
+    # 3378-3394, torkan_update_dir 3395-3411). Three phases on `slot flag`:
+    #  - APPROACH: fly on the aimed 2 px/frame velocity and count the shot delay (held in `slot fire
+    #    timer`) down 2/tick; at <= 0 fire EXACTLY ONE aimed bullet DIRECTLY (no gate, no mask), reset the
+    #    animation clock, and enter HOVER. The fire and the flag flip are nested in the SAME expiry gate,
+    #    so the shot cannot repeat on a later tick.
+    #  - HOVER: hold position (`slot dx/dy = 0`) while the animation clock runs. The port has no enemy
+    #    scroll to carry the arcade's `scroll_sprite_X` hover drift (3392), so the hold is screen-static
+    #    where the arcade drifts down with the terrain — a recorded deviation (record 029). When the clock
+    #    reaches TORKAN_HOVER_END, re-aim ONCE and enter FLEE.
+    #  - FLEE: fly straight on the away vector until culled (no per-tick work beyond the shared move).
+    # The re-aim reproduces torkan_update_dir (get_index_for_angle -> +0x80 -> get_dX_dY_and_cpy_to_obj),
+    # which applies NO +4 rounding (unlike the toward/spawn aim): set the TOWARD diffs, run the shared
+    # quantizer for its UN-rounded folded angle (`aim base`), then take (aim base >> 3 + half-turn) mod 32
+    # as the away index into the fast 48-tier (3 px/frame). Nested in the window gate, so it happens once.
+    # Shares the flying hit window / explosion; the 7-frame roll is derived render-only from the slot clock.
+    definition = _install_warp_proc(blocks, UPDATE_TORKAN_PROCCODE)
+    flag = lambda: _cur_item(blocks, "slot flag", SLOT_FLAG_ID)
+    fire_timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+    slot_timer = lambda: _cur_item(blocks, "slot timer", SLOT_TIMER_ID)
+
+    # APPROACH -> HOVER: count the shot delay down; at <= 0 fire ONCE and enter the hover. `fire_timer()`
+    # re-reads the list, so the trigger sees the just-decremented value.
+    fire_and_hover = blocks.if_reporter(
+        blocks.op_not(blocks.op_gt(fire_timer(), number(0))),  # slot fire timer <= 0
+        [
+            *_fire_aimed_bullet(blocks),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),  # start the hover clock clean
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TORKAN_FLAG_HOVER)),
+        ],
+    )
+    approach = blocks.if_reporter(
+        blocks.op_eq(flag(), number(TORKAN_FLAG_APPROACH)),
+        [
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_sub(fire_timer(), number(TICK_TIMER_STEP))),
+            fire_and_hover,
+        ],
+    )
+    # HOVER -> FLEE: hold position; when the clock reaches the window end, re-aim ONCE away and flee.
+    reaim_and_flee = blocks.if_reporter(
+        blocks.op_not(blocks.op_lt(slot_timer(), number(TORKAN_HOVER_END))),  # slot timer >= HOVER_END
+        [
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            # Away index from the UN-rounded folded angle: (aim base >> 3 + 16) mod 32, 1-based. This is
+            # the arcade's `add.b #0x80` on the raw angle byte carried through the shared `lsr.b #3`, with
+            # NO +4 (that rounding lives only on the toward/spawn path, calc_dX_dY_for_vector_to_solvalou).
+            blocks.set_var_expr(
+                "aim index",
+                AIM_INDEX_ID,
+                blocks.op_add(
+                    blocks.op_mod(
+                        blocks.op_add(
+                            blocks.op_floor(blocks.op_div(variable("aim base", AIM_BASE_ID), number(8))),
+                            number(TORKAN_REAIM_HALF_TURN),
+                        ),
+                        number(32),
+                    ),
+                    number(1),
+                ),
+            ),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 48", AIM_DX_48_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 48", AIM_DY_48_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(TORKAN_FLAG_FLEE)),
+        ],
+    )
+    hover = blocks.if_reporter(
+        blocks.op_eq(flag(), number(TORKAN_FLAG_HOVER)),
+        [
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+            reaim_and_flee,
+        ],
+    )
+    # Move by 4*velocity per tick (2 arcade frames), advance the animation clock, then cull. During HOVER
+    # the velocity is zeroed so only the clock advances (the hold); APPROACH/FLEE move on their vector.
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))  # row <= -2  ==  row < -1
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))  # col <= -2 (left edge)
+    # The flee peels off any edge (its away vector points off-screen), and the shared signed-column cull
+    # needs the explicit left edge the reference's byte-wrap handles implicitly (as Toroid/Terrazi/Kapi).
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    # PLY-02: an active Torkan touching the craft's cell kills it (raises `player hit`), checked at the
+    # tick-start position before it moves or culls — the shared flying-vs-craft window.
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    normal = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, approach, hover, *move, cull],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
 def install_fire_permission_gate(blocks: Blocks) -> None:
     # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
     # Operates on the current slot (`slot index`): every firing family calls this each active tick after
@@ -2651,11 +2865,15 @@ def install_spawn_flying(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(KAPI_TYPE)),
         [blocks.call_proc(INIT_KAPI_PROCCODE, warp=True)],
     )
+    spawn_torkan = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TORKAN_TYPE)),
+        [blocks.call_proc(INIT_TORKAN_PROCCODE, warp=True)],
+    )
     spawn_terrazi = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TERRAZI_TYPE)),
         [blocks.call_proc(INIT_TERRAZI_PROCCODE, warp=True)],
     )
-    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_terrazi])
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi])
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
@@ -3130,12 +3348,14 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_toroid(blocks)
     install_init_terrazi(blocks)
     install_init_kapi(blocks)
+    install_init_torkan(blocks)
     install_check_air_hit(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)
     install_update_terrazi(blocks)
     install_update_kapi(blocks)
+    install_update_torkan(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -4634,6 +4854,124 @@ def kapi_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def torkan_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-02 Torkan renderer (game_director owns the blocks; sprite_extractor owns the costumes). One
+    # persistent clone per flying slot (59..64), the same pool pattern as the Kapi/Terrazi: shown and
+    # positioned when its slot holds a Torkan, hidden otherwise. The clone writes no state. The roll is
+    # derived render-only from the slot's flag and animation clock: while APPROACHING it holds the static
+    # entry frame (01); while HOVERING it sweeps the 6 available frames once (one per TORKAN_ANIM_PERIOD
+    # ticks-of-frames — the arcade's `(TIMER>>2)&0xf` frame select, torkan_shoot 3383-3390, which steps
+    # SEVEN codes 0x10..0x16; the 6-frame rip has no distinct art for the 7th, so it holds frame 06);
+    # while FLEEING it holds the last frame (06). On a hit it plays the shared explosion (the solv_death
+    # frames appended after the roll frames, ordinals 7..), exactly like the Kapi/Terrazi.
+    blocks = Blocks(TORKAN_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("torkan clone slot", TORKAN_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("torkan clone slot", TORKAN_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_torkan = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(TORKAN_TYPE)
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Hover animation clock (render-only): phase = floor(timer / PERIOD). A fresh reporter per read
+    # (a reporter cannot be shared across parents — it is stolen by the first). No mod: the sweep runs
+    # once over the ~28-frame hover window, and the clamp below holds the last frame at the boundary.
+    phase = lambda: blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TORKAN_ANIM_PERIOD))
+    )
+    # Hover costume: phase 0..5 -> frame ordinal 1..6; phase >= 6 HOLDS the last available frame (06),
+    # covering the arcade's 7th code-step (0x16) that the 6-frame rip has no distinct art for.
+    hover_costume = blocks.add("control_if_else")
+    holds = blocks.op_gt(phase(), number(TORKAN_ANIM_FRAMES - 1))  # phase > 5
+    blocks.blocks[hover_costume]["inputs"]["CONDITION"] = [2, holds]
+    blocks.blocks[holds]["parent"] = hover_costume
+    blocks.substack(hover_costume, [blocks.switch_costume("torkan/roll/06")])
+    blocks.substack(hover_costume, [blocks.switch_costume_expr(blocks.op_add(phase(), number(1)))], name="SUBSTACK2")
+    # Flee vs hover: while fleeing hold the last frame (06); otherwise (hovering) run the sweep.
+    moving_costume = blocks.add("control_if_else")
+    is_flee = blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(TORKAN_FLAG_FLEE))
+    blocks.blocks[moving_costume]["inputs"]["CONDITION"] = [2, is_flee]
+    blocks.blocks[is_flee]["parent"] = moving_costume
+    blocks.substack(moving_costume, [blocks.switch_costume("torkan/roll/06")])
+    blocks.substack(moving_costume, [hover_costume], name="SUBSTACK2")
+    # Active costume: hold the static entry frame while approaching (silent approach), else hover/flee.
+    active_costume = blocks.add("control_if_else")
+    is_approach = blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(TORKAN_FLAG_APPROACH))
+    blocks.blocks[active_costume]["inputs"]["CONDITION"] = [2, is_approach]
+    blocks.blocks[is_approach]["parent"] = active_costume
+    blocks.substack(active_costume, [blocks.switch_costume("torkan/roll/01")])
+    blocks.substack(active_costume, [moving_costume], name="SUBSTACK2")
+    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
+    # appended after the 7 roll frames (ordinal 8..); the burst doubles at the 2x phase (record 025).
+    phase_for_costume = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    explode_ordinal = blocks.op_add(number(TORKAN_ANIM_FRAMES + 1), phase_for_costume)
+    phase_for_size = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TORKAN_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [
+            active_costume,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(TORKAN_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_torkan]
+    blocks.blocks[is_torkan]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -4747,6 +5085,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, ENEMY_BULLET_TARGET)
     _ensure_gameplay_target(result, TERRAZI_TARGET)
     _ensure_gameplay_target(result, KAPI_TARGET)
+    _ensure_gameplay_target(result, TORKAN_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -4785,6 +5124,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             kapi["costumes"].extend(copy.deepcopy(death["costumes"]))
         kapi["currentCostume"] = 0
+    # AIR-02: the Torkan renderer mirrors its 7 roll frames, then the shared explosion frames (the same
+    # solv_death burst appended after them, ordinals 8.., exactly like the Toroid/Terrazi/Kapi).
+    torkan = next((t for t in result["targets"] if t.get("name") == TORKAN_TARGET), None)
+    if proof is not None and torkan is not None:
+        torkan["costumes"] = proof_by_family("torkan/")
+        if death is not None:
+            torkan["costumes"].extend(copy.deepcopy(death["costumes"]))
+        torkan["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -5079,6 +5426,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "toroid": toroid_blocks(),
         "terrazi": terrazi_blocks(),
         "kapi": kapi_blocks(),
+        "torkan": torkan_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -5134,6 +5482,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-05: likewise, the only Kapi render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 KAPI_CLONE_SLOT_ID: ["kapi clone slot", 0],
+            }
+        elif target["name"] == TORKAN_TARGET:
+            # AIR-02: likewise, the only Torkan render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                TORKAN_CLONE_SLOT_ID: ["torkan clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.

@@ -207,11 +207,14 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 21: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
-        # enemy-bullet renderers, and the slice-10 terrazi + kapi renderers (all reuse proof costumes by ref).
-        self.assertEqual(21, len(project["targets"]))
-        # 112: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs (AIR-05).
-        self.assertEqual(112, len(assets))
+        # 22: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, and the slice-10 terrazi + kapi + torkan renderers (all reuse proof
+        # costumes by ref).
+        self.assertEqual(22, len(project["targets"]))
+        # 118: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
+        # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director).
+        self.assertEqual(118, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1138,6 +1141,11 @@ class ScratchProjectTests(unittest.TestCase):
             # warp, no state write — dispatched from the same spawner / walk, calling the shared gate.
             director.INIT_KAPI_PROCCODE,
             director.UPDATE_KAPI_PROCCODE,
+            # AIR-02 Torkan family (slice 10): its spawn init and per-tick attack-and-retreat update,
+            # both warp, no state write — dispatched from the same spawner / walk. It fires ONE bullet
+            # directly (via the allocator, not the fire gate), so it takes no mask and no gate call.
+            director.INIT_TORKAN_PROCCODE,
+            director.UPDATE_TORKAN_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -2292,6 +2300,386 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air05_failures(project), label)
+
+    @staticmethod
+    def _air02_failures(project: dict) -> set:
+        """AIR-02 Torkan authoring contract — violated labels. Pins the structural facts that make Torkan
+        a faithful live ATTACK-AND-RETREAT family: its init/update run atomically, the spawner and the
+        ordered walk drive it by its own type, it aims TOWARD the craft on the generic (32-magnitude,
+        2 px/frame) tier and awards 50 points, its update fires EXACTLY ONE bullet directly via the
+        allocator (never the shared fire gate, and gated so it cannot repeat), holds position during the
+        hover, then re-aims ONCE 180 degrees AWAY (a half-turn on the folded angle) onto the FAST
+        (48-magnitude, 3 px/frame) tier and flees — with every phase transition nested inside its own
+        phase gate so the once-only re-aim and single shot cannot recur (the settling harness advances
+        whole ticks and cannot observe a single re-fired or re-aimed frame, so it is pinned structurally)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def num_operand(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], list) and len(inp[1]) >= 2 and inp[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                try:
+                    return int(inp[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def const_item(b):
+            it = b["inputs"].get("ITEM")
+            if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], list) and len(it[1]) >= 2 and it[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                try:
+                    return int(it[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        # (1) Both Torkan lifecycle procedures exist and are warp (atomic) — a non-warp walk sub-proc
+        # would yield mid-slot, letting a half-moved enemy render or be hit.
+        for proccode in (director.INIT_TORKAN_PROCCODE, director.UPDATE_TORKAN_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("torkan-lifecycle-procs-warp")
+
+        # (2) The spawner inits Torkan by type; (3) the ordered walk dispatches to its updater.
+        if not calls(director.INIT_TORKAN_PROCCODE):
+            failures.add("spawn-inits-torkan")
+        if not calls(director.UPDATE_TORKAN_PROCCODE):
+            failures.add("dispatch-updates-torkan")
+
+        # (4) The spawn init aims TOWARD the craft on the GENERIC 32-magnitude tier (2 px/frame) — it
+        # reads both 32-magnitude aim tables, not the fast 48-magnitude (3 px/frame) tables.
+        init_lists = {
+            b["fields"]["LIST"][1]
+            for b in _proc_body_blocks(stage, director.INIT_TORKAN_PROCCODE)
+            if b["opcode"] == "data_itemoflist"
+        }
+        if not {director.AIM_DX_32_ID, director.AIM_DY_32_ID} <= init_lists:
+            failures.add("torkan-aims-generic-tier")
+
+        # (5) The spawn init awards 50 points — it writes `slot pts` = TORKAN_PTS (the 1-based value-table
+        # index of 50). A wrong index would score the wrong value on the kill.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and const_item(b) == director.TORKAN_PTS
+            for b in _proc_body_blocks(stage, director.INIT_TORKAN_PROCCODE)
+        ):
+            failures.add("torkan-awards-50-pts")
+
+        update_body = _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE)
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def flag_gated(node_id: str, flag_value: int) -> bool:
+            # True when some ancestor of node_id is an `if <slot flag == flag_value>` — the per-phase gate.
+            cur = blocks.get(node_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = blocks.get(ref(parent["inputs"].get("CONDITION")))
+                    lhs = blocks.get(ref(cond["inputs"].get("OPERAND1"))) if cond else None
+                    if (
+                        cond is not None
+                        and cond["opcode"] == "operator_equals"
+                        and lhs is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                        and num_operand(cond["inputs"].get("OPERAND2")) == flag_value
+                    ):
+                        return True
+                cur = parent
+            return False
+
+        # (6) FIRES EXACTLY ONCE. The Torkan fires one bullet DIRECTLY via the allocator (never the shared
+        # fire gate — it takes no mask). In the update body there must be exactly ONE allocator call, and
+        # it must sit inside the `if flag == APPROACH` gate whose same transition flips the flag off
+        # APPROACH — so the instant it fires the approach branch is unreachable and the shot cannot repeat.
+        alloc_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+        ]
+        if len(alloc_ids) != 1 or not flag_gated(alloc_ids[0], director.TORKAN_FLAG_APPROACH):
+            failures.add("torkan-fires-once")
+
+        # (6b) It fires directly, NOT through the shared fire-permission gate (the faithful simplification:
+        # a single un-masked shot, torkan_shoot 3379). A gate call would be a periodic-fire regression.
+        if any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+            for b in update_body
+        ):
+            failures.add("torkan-fires-without-gate")
+
+        # (7) The retreat reads the FAST 48-magnitude tier (3 px/frame) — both 48-magnitude aim tables,
+        # not the generic 32-magnitude approach tables. Wrong tier = wrong retreat speed (the fidelity trap).
+        update_lists = {b["fields"]["LIST"][1] for b in update_body if b["opcode"] == "data_itemoflist"}
+        if not {director.AIM_DX_48_ID, director.AIM_DY_48_ID} <= update_lists:
+            failures.add("torkan-reaims-fast-tier")
+
+        # (8) The retreat is AWAY, not homing: the `aim index` is recomputed with a HALF-TURN
+        # (TORKAN_REAIM_HALF_TURN) added to the folded angle before indexing the tier — the port's
+        # faithful `add.b #0x80` 180-degree flip (torkan_update_dir 3403). Without the half-turn the
+        # re-aim would point back TOWARD the craft (a homing retreat — the visible failure).
+        if not any(
+            b["opcode"] == "operator_add"
+            and num_operand(b["inputs"].get("NUM2")) == director.TORKAN_REAIM_HALF_TURN
+            for b in update_body
+        ):
+            failures.add("torkan-reaim-half-turn")
+
+        # (9) HOVER HOLDS: the hover branch zeroes both velocity axes (`slot dx` = 0 and `slot dy` = 0),
+        # each nested in the `if flag == HOVER` gate — the no-enemy-scroll mapping of the arcade's
+        # scroll-carried hover (record 029). Without it the fired Torkan would keep flying, never hovering.
+        holds_dx = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+            and const_item(b) == 0
+            and flag_gated(id_of[id(b)], director.TORKAN_FLAG_HOVER)
+            for b in update_body
+        )
+        holds_dy = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+            and const_item(b) == 0
+            and flag_gated(id_of[id(b)], director.TORKAN_FLAG_HOVER)
+            for b in update_body
+        )
+        if not (holds_dx and holds_dy):
+            failures.add("torkan-hover-holds")
+
+        # (10) ONCE-ONLY phase transitions (the re-fire / re-aim guard). Every write that flips the flag
+        # to HOVER must sit inside the `if flag == APPROACH` gate, and every write that flips it to FLEE
+        # inside the `if flag == HOVER` gate — so each transition is reachable only from the phase it
+        # leaves, and the single shot and the one-time re-aim cannot recur on a later tick. Purely
+        # structural: the settling harness advances whole ticks and cannot see a single re-fired frame.
+        hover_writes = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and const_item(b) == director.TORKAN_FLAG_HOVER
+        ]
+        flee_writes = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and const_item(b) == director.TORKAN_FLAG_FLEE
+        ]
+        transitions_gated = (
+            hover_writes
+            and flee_writes
+            and all(flag_gated(w, director.TORKAN_FLAG_APPROACH) for w in hover_writes)
+            and all(flag_gated(w, director.TORKAN_FLAG_HOVER) for w in flee_writes)
+        )
+        if not transitions_gated:
+            failures.add("torkan-phase-transitions-gated")
+        return failures
+
+    # Roadmap closure evidence for leaf `air.torkan` (AIR-02.torkan): Torkan is a live family — spawned by
+    # type from the formation wave (via the no-exclusion draw), advanced by the ordered walk, aimed on the
+    # 2 px/frame generic tier, firing ONE direct un-masked shot at its shot-delay expiry, holding position
+    # through the hover, then re-aiming ONCE 180 degrees away onto the 3 px/frame fast tier and fleeing.
+    # The live proof (spawns, fires exactly once, then reverses AWAY at speed) is the harness
+    # `torkan-approaches-and-fires` / `torkan-reaims-and-flees`.
+    # roadmap-evidence: AIR-02 success  (test_torkan_slice_authoring_present — lifecycle procs warp, spawn+dispatch by type, generic-tier aim, 50 pts, fires once directly without the gate, holds the hover, re-aims away on the fast tier, phase transitions gated)
+    # roadmap-evidence: AIR-02 failure  (test_torkan_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_torkan_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air02_failures(project))
+
+    def test_torkan_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air02_failures(base))
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_TORKAN_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_init_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_TORKAN_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_TORKAN_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def aim_wrong_tier(p: dict) -> None:
+            # Repoint the init's generic-tier aim reads to the fast 48-magnitude tables → the
+            # generic-tier clause no longer holds.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            swap = {director.AIM_DX_32_ID: ("aim dx 48", director.AIM_DX_48_ID), director.AIM_DY_32_ID: ("aim dy 48", director.AIM_DY_48_ID)}
+            for b in _proc_body_blocks(stage, director.INIT_TORKAN_PROCCODE):
+                if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
+                    b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
+
+        def wrong_points(p: dict) -> None:
+            # Change the awarded value-table index off TORKAN_PTS → the 50-point award clause bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.INIT_TORKAN_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_PTS_ID:
+                    b["inputs"]["ITEM"] = [1, [4, str(director.TORKAN_PTS + 1)]]
+
+        def drop_fire(p: dict) -> None:
+            # Silence the single direct shot (retarget the allocator call) → the fires-once clause bites
+            # (zero allocator calls, so the count is no longer exactly one).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def add_fire_gate(p: dict) -> None:
+            # Turn the direct allocator call into a shared fire-gate call → the fires-WITHOUT-gate clause
+            # bites (a periodic-masked-fire regression). Also trips fires-once (the allocator vanishes).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.FIRE_GATE_PROCCODE
+
+        def reaim_wrong_tier(p: dict) -> None:
+            # Repoint the retreat's fast-tier reads to the generic 32-magnitude tables → the fast-tier
+            # clause bites (the retreat would flee at the slow approach speed).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            swap = {director.AIM_DX_48_ID: ("aim dx 32", director.AIM_DX_32_ID), director.AIM_DY_48_ID: ("aim dy 32", director.AIM_DY_32_ID)}
+            for b in _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE):
+                if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
+                    b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
+
+        def drop_half_turn(p: dict) -> None:
+            # Zero the 180-degree half-turn added to the folded angle → the re-aim points back TOWARD the
+            # craft (a homing retreat). The away-flip clause bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE):
+                if b["opcode"] == "operator_add":
+                    n2 = b["inputs"].get("NUM2")
+                    if isinstance(n2, list) and len(n2) >= 2 and isinstance(n2[1], list) and n2[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                        try:
+                            if int(n2[1][1]) == director.TORKAN_REAIM_HALF_TURN:
+                                b["inputs"]["NUM2"] = [1, [4, "0"]]
+                        except (ValueError, TypeError):
+                            pass
+
+        def unhold_hover(p: dict) -> None:
+            # Make the hover's velocity-zeroing writes non-zero → the Torkan keeps moving instead of
+            # holding. The hover-holds clause bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] in (director.SLOT_DX_ID, director.SLOT_DY_ID)
+                ):
+                    it = b["inputs"].get("ITEM")
+                    if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], list) and it[1][0] in (4, 5, 6, 7, 8, 9, 10) and int(it[1][1]) == 0:
+                        b["inputs"]["ITEM"] = [1, [4, "3"]]
+
+        def ungate_hover_transition(p: dict) -> None:
+            # Break the `flag == APPROACH` gate enclosing the HOVER transition (retarget its flag test to a
+            # value the flag never holds) → the fire/hover transition could run outside the approach phase
+            # and recur. The once-only structural guard bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            b = stage["blocks"]
+            id_map = {id(v): k for k, v in b.items()}
+
+            def cref(inp):
+                return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+            for x in _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE):
+                it = x["inputs"].get("ITEM") if x["opcode"] == "data_replaceitemoflist" else None
+                if not (
+                    x["opcode"] == "data_replaceitemoflist"
+                    and x["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and isinstance(it, list)
+                    and isinstance(it[1], list)
+                    and int(it[1][1]) == director.TORKAN_FLAG_HOVER
+                ):
+                    continue
+                cur = b.get(id_map[id(x)])
+                while cur is not None:
+                    parent = b.get(cur.get("parent")) if cur.get("parent") else None
+                    if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                        cond = b.get(cref(parent["inputs"].get("CONDITION")))
+                        lhs = b.get(cref(cond["inputs"].get("OPERAND1"))) if cond else None
+                        if (
+                            cond is not None
+                            and cond["opcode"] == "operator_equals"
+                            and lhs is not None
+                            and lhs["opcode"] == "data_itemoflist"
+                            and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                            and num_operand(cond["inputs"].get("OPERAND2")) == director.TORKAN_FLAG_APPROACH
+                        ):
+                            cond["inputs"]["OPERAND2"] = [1, [4, 77]]
+                    cur = parent
+
+        def num_operand(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], list) and len(inp[1]) >= 2 and inp[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                try:
+                    return int(inp[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        cases = [
+            ("torkan-lifecycle-procs-warp", unwarp_update),
+            ("spawn-inits-torkan", drop_init_call),
+            ("dispatch-updates-torkan", drop_dispatch_call),
+            ("torkan-aims-generic-tier", aim_wrong_tier),
+            ("torkan-awards-50-pts", wrong_points),
+            ("torkan-fires-once", drop_fire),
+            ("torkan-fires-without-gate", add_fire_gate),
+            ("torkan-reaims-fast-tier", reaim_wrong_tier),
+            ("torkan-reaim-half-turn", drop_half_turn),
+            ("torkan-hover-holds", unhold_hover),
+            ("torkan-phase-transitions-gated", ungate_hover_transition),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air02_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -5884,7 +6272,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "8d5309e5a7c12d88df3fb3f14cb7931680794b5436b9a80706305546334741c3",
+            "d590c89c6f0748354946819f3600223270f6a2529a7509ede3006e95bb2696e8",
             build_hash,
         )
 
