@@ -2412,6 +2412,22 @@ class ScratchProjectTests(unittest.TestCase):
                 cur = parent
             return False
 
+        # The true enclosing `if` of each block, mapped by walking DOWN each if's SUBSTACK/SUBSTACK2
+        # `next`-chain. (This builder's `parent` pointers chain forward through siblings, so a parent-walk
+        # would land on a sibling `if`, not the gate a block actually sits inside.) Two blocks with the
+        # same enclosing-if are direct children of the SAME substack.
+        enclosing_if = {}
+        for _bid, _b in blocks.items():
+            if _b["opcode"] in ("control_if", "control_if_else"):
+                for _key in ("SUBSTACK", "SUBSTACK2"):
+                    _cur = ref(_b["inputs"].get(_key)) if _key in _b["inputs"] else None
+                    while _cur:
+                        enclosing_if[_cur] = _bid
+                        _cur = blocks[_cur].get("next")
+
+        def immediate_if(node_id: str):
+            return enclosing_if.get(node_id)
+
         # (6) FIRES EXACTLY ONCE. The Torkan fires one bullet DIRECTLY via the allocator (never the shared
         # fire gate — it takes no mask). In the update body there must be exactly ONE allocator call, and
         # it must sit inside the `if flag == APPROACH` gate whose same transition flips the flag off
@@ -2433,6 +2449,28 @@ class ScratchProjectTests(unittest.TestCase):
             for b in update_body
         ):
             failures.add("torkan-fires-without-gate")
+
+        # (6c) The single shot fires in the SAME expiry gate that flips the flag to HOVER — the allocator
+        # call and the `slot flag = HOVER` write share their immediate enclosing `if` (the `slot fire
+        # timer <= 0` gate). Clause (6) only asks that the fire sit SOMEWHERE under `if flag == APPROACH`;
+        # a fire lifted out of the expiry gate to a bare child of the approach branch is still APPROACH-
+        # gated (clause 6 passes) yet would fire on EVERY approach tick. Requiring the fire and the flag-
+        # flip to share the expiry gate is what actually pins "exactly once" — the instant it fires it
+        # flips to HOVER in the same breath, so the approach branch cannot re-fire it.
+        hover_flip_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and const_item(b) == director.TORKAN_FLAG_HOVER
+        ]
+        if not (
+            len(alloc_ids) == 1
+            and len(hover_flip_ids) == 1
+            and immediate_if(alloc_ids[0]) is not None
+            and immediate_if(alloc_ids[0]) == immediate_if(hover_flip_ids[0])
+        ):
+            failures.add("torkan-fire-in-expiry-gate")
 
         # (7) The retreat reads the FAST 48-magnitude tier (3 px/frame) — both 48-magnitude aim tables,
         # not the generic 32-magnitude approach tables. Wrong tier = wrong retreat speed (the fidelity trap).
@@ -2581,6 +2619,50 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["mutation"]["proccode"] = director.FIRE_GATE_PROCCODE
 
+        def lift_fire_from_expiry(p: dict) -> None:
+            # Splice the single shot OUT of the shot-expiry gate and up to the front of the enclosing
+            # APPROACH branch — the exact "fires on every approach tick" regression. It stays gated in
+            # APPROACH (so the fires-once clause alone still passes) but no longer shares the expiry gate
+            # that flips the flag to HOVER → the fire-in-expiry-gate clause bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            b = stage["blocks"]
+            id_map = {id(v): k for k, v in b.items()}
+
+            def cref(inp):
+                return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+            # Map each block to its enclosing `if` by the same downward SUBSTACK/next walk the check uses.
+            encl = {}
+            for bid, blk in b.items():
+                if blk["opcode"] in ("control_if", "control_if_else"):
+                    for key in ("SUBSTACK", "SUBSTACK2"):
+                        cur = cref(blk["inputs"].get(key)) if key in blk["inputs"] else None
+                        while cur:
+                            encl[cur] = bid
+                            cur = b[cur].get("next")
+
+            alloc_id = next(
+                id_map[id(x)]
+                for x in _proc_body_blocks(stage, director.UPDATE_TORKAN_PROCCODE)
+                if x["opcode"] == "procedures_call"
+                and x.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+            )
+            expiry_if = encl[alloc_id]          # the `slot fire timer <= 0` gate
+            approach_if = encl[expiry_if]        # the enclosing `if flag == APPROACH` branch
+            after_alloc = b[alloc_id].get("next")  # capture before we relink
+
+            # Remove alloc from the expiry gate's substack (point the gate at alloc's successor).
+            b[expiry_if]["inputs"]["SUBSTACK"] = [2, after_alloc]
+            if after_alloc:
+                b[after_alloc]["parent"] = expiry_if
+            # Prepend alloc to the APPROACH branch's substack.
+            approach_first = cref(b[approach_if]["inputs"].get("SUBSTACK"))
+            b[alloc_id]["next"] = approach_first
+            b[alloc_id]["parent"] = approach_if
+            if approach_first:
+                b[approach_first]["parent"] = alloc_id
+            b[approach_if]["inputs"]["SUBSTACK"] = [2, alloc_id]
+
         def reaim_wrong_tier(p: dict) -> None:
             # Repoint the retreat's fast-tier reads to the generic 32-magnitude tables → the fast-tier
             # clause bites (the retreat would flee at the slow approach speed).
@@ -2671,6 +2753,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("torkan-awards-50-pts", wrong_points),
             ("torkan-fires-once", drop_fire),
             ("torkan-fires-without-gate", add_fire_gate),
+            ("torkan-fire-in-expiry-gate", lift_fire_from_expiry),
             ("torkan-reaims-fast-tier", reaim_wrong_tier),
             ("torkan-reaim-half-turn", drop_half_turn),
             ("torkan-hover-holds", unhold_hover),

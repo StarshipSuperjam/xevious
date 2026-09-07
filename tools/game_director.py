@@ -663,8 +663,10 @@ TERRAZI_FORMATION_OFFSET = 78
 # spawner to force a Kapi wave.
 KAPI_FORMATION_OFFSET = 69
 # The flying-type-table offset whose 6-slot run is all Torkan (0x0F) — code 15 sits at 0-based positions
-# 25-30 (object-types.json), the same six-wide derivation as the Kapi/Terrazi offsets. Area 1 names this
-# run in its formation, so a built Torkan appears in natural area-1 waves (not only via the debug key).
+# 25-30 (object-types.json), the same six-wide derivation as the Kapi/Terrazi offsets. The debug key
+# forces THIS all-Torkan run; the natural area-1 waves reach Torkan through the AI-level formation table
+# instead (other offsets), so a built Torkan still appears in normal area-1 play at standard difficulty
+# — not only via the debug key. See docs/mechanics/029 deviation 7 for the schedule trace.
 TORKAN_FORMATION_OFFSET = 25
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
@@ -5124,8 +5126,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             kapi["costumes"].extend(copy.deepcopy(death["costumes"]))
         kapi["currentCostume"] = 0
-    # AIR-02: the Torkan renderer mirrors its 7 roll frames, then the shared explosion frames (the same
-    # solv_death burst appended after them, ordinals 8.., exactly like the Toroid/Terrazi/Kapi).
+    # AIR-02: the Torkan renderer mirrors its 6 roll frames (TORKAN_ANIM_FRAMES; the rip has six for the
+    # seven arcade codes, so the seventh code-step holds the last), then the shared explosion frames (the
+    # same solv_death burst appended after them, ordinals 7.., exactly like the Toroid/Terrazi/Kapi).
     torkan = next((t for t in result["targets"] if t.get("name") == TORKAN_TARGET), None)
     if proof is not None and torkan is not None:
         torkan["costumes"] = proof_by_family("torkan/")

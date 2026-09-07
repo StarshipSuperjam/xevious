@@ -57,9 +57,11 @@
     inside this expiry transition, so it cannot re-fire the next tick.
   - **hover** (`slot flag == 1`): hold position by zeroing `slot dx` and `slot dy` (the no-enemy-scroll
     mapping of the arcade `scroll_sprite_X` hover, deviation 1); when `slot timer` reaches the 28-frame
-    window end, re-aim **away**: set the aim diffs to `self − craft` (negated from the toward form),
-    call `compute aim index`, read the **48-tier** `aim dx 48`/`aim dy 48` into `slot dx`/`slot dy`, and
-    set `slot flag` to flee. The re-aim reuses the un-rounded folded aim base and adds `16`
+    window end, re-aim **away**: set the aim diffs **toward** the craft (`player − self`, the same
+    orientation as the spawn aim), call `compute aim index`, then add the half-turn to the derived index
+    (below) — the flip, not the diffs, is what points the vector away — and read the **48-tier**
+    `aim dx 48`/`aim dy 48` into `slot dx`/`slot dy`, and set `slot flag` to flee. The re-aim reuses the
+    un-rounded folded aim base and adds `16`
     (`(floor(base/8) + 16) mod 32`), which is exactly the arcade's `add.b #0x80` before its `lsr #3`
     (0x80 is divisible by 8, so the flip is identical either side of the divide) — and it deliberately
     omits the toward path's `addq #4,d2` rounding, matching `torkan_update_dir`, which flips without it.
@@ -132,9 +134,23 @@
   the render clone mirrors them by family prefix and plays the shared explosion on a hit. (6) **Two
   arcade frames per tick.** All per-frame reference rates are doubled for the port's two-frame tick (the
   shot delay and hover window counted by the two-frame step, velocities scaled by the shared position
-  step), the same tick scaling every family uses. (7) **Not in area 1's baseline waves.** Type `0x0F`
-  appears only at higher-AI-level formations, so the family is proven through seeded harness scenarios
-  and the debug spawn key rather than area-1 live density.
+  step), the same tick scaling every family uses. (7) **Appears in area-1 waves at standard difficulty
+  (difficulty-dependent); the debug key and seeded scenarios prove it in isolation.** Type `0x0F` is
+  reached through the natural AI-level formation schedule, not only the debug key. Area 1 runs ten
+  AI-raise records, each advancing `enemy_AI_level` — cleared to 0 at new-game start (`coined_up` 418) —
+  by the difficulty increment and indexing the flying-formation table (`src/xevious_sub.68k`
+  `sub_2_fn_3__inc_enemy_AI_and_flying_enemies` 317–330, reading `src/xevious_sub.68k` `difficulty_tbl`
+  338–342 = 2/0/6/16). At the increment-2 setting the second raise reaches AI level 4, whose formation
+  entry (`formation_table.entries` in `docs/spec/data/formations.json`) draws from type-table offset
+  92 = 15/15/8/8/8/8 — two Torkans, early in area 1; other standard settings reach Torkan formations at
+  other AI levels (e.g. increment 6 → AI level 24 → offset 88, ending in two Torkans). Only the
+  increment-0 setting keeps `enemy_AI_level` at 0 and area 1 on entry 0, with no Torkan. So a built
+  Torkan appears in natural area-1 waves at standard difficulty — it is wired into the ordinary spawn
+  dispatch (`FLYING_HANDLED_TYPES`, the `spawn torkan` branch), not only the debug key. The all-Torkan
+  run at type-table offset 25 that the debug key forces (`TORKAN_FORMATION_OFFSET`) is a separate,
+  denser formation the natural area-1 schedule does not select; the seeded harness scenarios and the
+  debug key are used to prove the behavior in **isolation** (a clean single- or six-Torkan wave), not
+  because the family is unreachable in normal play.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

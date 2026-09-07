@@ -33,9 +33,9 @@ paragraphs (the slice-8 vertical slice), the **Terrazi (AIR-06)** paragraph toge
 **fire-permission gate** (its own family slice — the first firing aerial family), and the **Kapi
 (AIR-05)** paragraph (its own family slice — the first peel-away *diving* family, reusing the gate), and
 the **Torkan (AIR-02)** paragraph (its own family slice — the first three-phase attack-and-retreat
-family, firing one un-gated shot; its earlier "~64-frame cycle recomputes" prose was corrected to the
-one-time re-aim it verified against the source, with the operator's acknowledgement). The other eight
-families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
+family, firing one un-gated shot; its earlier "~64-frame cycle recomputes" prose is corrected to the
+one-time re-aim it verified against the source, under the operator's guardrail acknowledgement). The
+remaining families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
 transcribed from the reference as the plan of record, but their line-by-line verification lands with their
 own build slice (10–11); each is confirmed against the reference — and this document amended where it
 diverges, with the operator's acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-

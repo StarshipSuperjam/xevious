@@ -28,7 +28,7 @@ also starts from the title), **B** bombs; the crosshair leads the ship and track
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to
 score, let one (or its bullet) touch you to die. One new **temporary** key is present: holding **T**
 during play brings in one debug enemy at a time and **cycles through the built firing families** as the
-field clears — **Terrazi** first (step 4b), then **Kapi** (step 4c), then wrapping — so families
+field clears — **Terrazi** first (step 4b), then **Kapi** (step 4c), then **Torkan** (step 4d), then wrapping — so families
 unreachable in early play can be tested. A dev tool tracked for removal (issue #119), not part of the
 finished game.
 
@@ -102,7 +102,7 @@ so area position is read from the `area progress`/`area number` variable watcher
    AI levels, unreachable in a normal area-1 flight, so this build carries a **temporary playtest key**:
    while playing, **hold `T`** to bring in one debug enemy at a time. The tool **cycles through the built
    firing families** — the first enemy is a **Terrazi**; each time the field clears while you keep holding
-   `T`, it advances to the next family (**Kapi**, step 4c), then wraps. This key is a dev tool tracked for
+   `T`, it advances to the next family (**Kapi**, step 4c; then **Torkan**, step 4d), then wraps. This key is a dev tool tracked for
    removal (issue #119) — it is not part of the finished game.
    **Note:** to isolate a single debug enemy, engaging `T` **clears the whole flying field first** — any live
    Toroid wave on screen simply vanishes (no explosion, no score) as the lone enemy comes in. That is the
@@ -133,7 +133,27 @@ so area position is read from the `area progress`/`area number` variable watcher
      *silent* when it glides. Silent on the way in, firing once it dives.
    **Shoot one:** it explodes and the score rises by **300** (the HUD digits are the definitive signal), the
    wreck clears. Check the **dive sprite** cycles through its frames; the shared explosion is the same
-   placeholder burst as the Toroid (note, do not fail). Release `T` and confirm normal Toroid waves resume.
+   placeholder burst as the Toroid (note, do not fail). Then **keep holding `T`**: once the Kapi is gone the
+   tool advances to the next family — go to step 4d. (Release `T` at any point and normal Toroid waves resume.)
+4d. **Torkan combat — the approach → one-shot → hover → break-away family (temporary debug spawn, next in the
+   `T` cycle).** With the Kapi gone and `T` still held, the next debug enemy is a **Torkan**. Torkan, like the
+   others, reaches high AI levels in ordinary play (it *does* appear in normal area-1 waves at standard
+   difficulty), but the `T` key is the reliable way to watch one in isolation. Watch a single Torkan through
+   its whole arc, confirming:
+   - it **approaches aimed toward the craft** on the 2 px/frame tier (the same speed as the Kapi's approach),
+     and it does **not** fire during this approach (silent on the way in);
+   - it then fires **exactly one** aimed bullet — a single shot, **not** the Kapi's continuous stream and
+     **not** silent like the gliding Terrazi. One bullet, once;
+   - immediately after that shot it **hovers in place** — it stops advancing and holds position for a short
+     beat while its **roll sprite cycles through its frames** (this is the animate phase);
+   - then it **breaks away, once**: it re-aims **180° away from your craft** and **flees at the faster
+     3 px/frame tier** — it curves *away* from where you are and speeds off the field. This is the behavior to
+     watch most closely: a retreat that **homes back toward** your column, or that flees on the **slow**
+     2 px/frame tier instead of the fast one, is the failure to flag (the away-direction and the faster tier
+     are the fidelity-critical points here).
+   **Shoot one:** it explodes and the score rises by **50** (the HUD digits are the definitive signal), the
+   wreck clears. The shared explosion is the same placeholder burst as the Toroid (note, do not fail). Release
+   `T` and confirm normal Toroid waves resume.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row by letting a Toroid or its
    bullet touch the craft (once ground objects and Bacura exist, exercise those too): the full death
    presentation and sound complete uncut, the craft respawns **immediately vulnerable** (fly into an enemy
