@@ -554,6 +554,11 @@
       "name": "tick",
       "scope": "Stage"
     },
+    "torkan-clone-slot": {
+      "kind": "variable",
+      "name": "torkan clone slot",
+      "scope": "torkan"
+    },
     "toroid-clone-slot": {
       "kind": "variable",
       "name": "toroid clone slot",

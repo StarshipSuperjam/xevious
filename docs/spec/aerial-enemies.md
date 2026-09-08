@@ -31,8 +31,11 @@ every family below was re-verified against the reference to the same bar when it
 line-by-line against the pinned reference and built: the **Shared rules** and the **Toroid (AIR-01)**
 paragraphs (the slice-8 vertical slice), the **Terrazi (AIR-06)** paragraph together with the shared
 **fire-permission gate** (its own family slice — the first firing aerial family), and the **Kapi
-(AIR-05)** paragraph (its own family slice — the first peel-away *diving* family, reusing the gate). The other nine families
-(Torkan, Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
+(AIR-05)** paragraph (its own family slice — the first peel-away *diving* family, reusing the gate), and
+the **Torkan (AIR-02)** paragraph (its own family slice — the first three-phase attack-and-retreat
+family, firing one un-gated shot; its earlier "~64-frame cycle recomputes" prose is corrected to the
+one-time re-aim it verified against the source, under the operator's guardrail acknowledgement). The
+remaining families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
 transcribed from the reference as the plan of record, but their line-by-line verification lands with their
 own build slice (10–11); each is confirmed against the reference — and this document amended where it
 diverges, with the operator's acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
@@ -68,10 +71,18 @@ ascending 8..F), while its approach along the scroll axis continues (3289–3327
 re-tests the window. The
 shooting variant fires exactly one aimed bullet at that trigger, never again (3281–3286, 3323–3327).
 
-**Torkan (AIR-02).** Approaches aimed at 2 px/frame with an initial fire delay of 64–127 frames drawn
-from the stream (3357–3369); fires one aimed bullet, then on a ~64-frame cycle recomputes the angle to
-the craft, flips it 180°, and retreats at 3 px/frame (`torkan_update_dir` 3395–3410) — attack, shoot,
-break away.
+**Torkan (AIR-02).** Spawns at a plain random lateral column with **no** craft-proximity exclusion
+(`gen_random_Y_store_obj` — the same draw Kapi uses) and approaches aimed at the craft on the generic
+2 px/frame tier (`angle_dX_dY_tbl` 6360), counting down an initial fire delay of 64–127 frames drawn
+from the stream (`handle_0F_Torkan` 3357–3376). When the delay expires it fires **one** aimed bullet
+directly through `init_new_bullet` — **not** the shared fire-permission gate and with **no** fire mask;
+it never fires again. It then stops moving on its own vector and only rides the background scroll
+(`scroll_sprite_X`), cycling a seven-code animation (`0x10`–`0x16`) through a 28-frame hover window
+(`torkan_shoot` 3378–3393). At the end of that window it recomputes the angle to the craft **once**,
+adds `0x80` — a true 180° flip — and reads the fast 3 px/frame tier
+(`torkan_update_dir` 3395–3407, `angle_dX_dY_terrazi_torkan_tbl` 6325), then flees straight on that
+away vector until it is culled off-field — approach, one shot, hover, break away. (The re-aim happens
+**once** at the end of the hover window, not on a repeating cycle.)
 
 **Zoshi (AIR-03).** Three scheduled variants share one movement core (3414–3499): the top and bottom
 spawners (bottom entering at a fixed edge position) fire *aimed* shots; the random variant fires in a

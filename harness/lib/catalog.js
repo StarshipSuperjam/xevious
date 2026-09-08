@@ -858,40 +858,145 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'fire permission gate'),
   },
   {
+    key: 'torkan-approaches-and-fires',
+    behavior:
+      'A Torkan approaches aimed at the craft and, at its shot-delay expiry, fires ONE aimed bullet DIRECTLY (via the allocator, not the shared periodic fire gate and with no fire mask) — the arcade torkan_shoot single un-masked shot',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Isolate the Torkan shot from live shooting Toroids: make every spawnable flying type the
+      // NON-shooting Toroid (type 10) and clear the flying slots, so `bullet alloc result` can only move
+      // if the Torkan itself fires. Seed one Torkan in APPROACH near the craft's column, with a shot
+      // countdown about to expire. A single pump settles the whole approach->fire->hover->flee arc; the
+      // shot allocates exactly at the expiry.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 15);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 10) * 256); // ten rows ahead in scroll, aimed back toward the craft
+      put('slot-y', slot, pc * 256); // near the craft's column so it stays on-field to fire
+      put('slot-dx', slot, 32); // the aimed toward-approach velocity (generic 2 px/frame tier)
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH — the shot triggers at the countdown expiry
+      put('slot-fire-timer', slot, 2); // shot countdown expires on the first active tick
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 16); // 0x10, the approach sprite code
+      writeVar(vm, 'bullet-alloc-result', 0);
+      let fired = false;
+      for (let i = 0; i < 12 && !fired; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0) fired = true;
+      }
+      return { fired };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'an approaching Torkan allocated an aimed bullet directly at its shot-delay expiry');
+    },
+    // Empty `update torkan` so the approach never reaches its shot → no bullet allocates (no other firing
+    // path exists, every spawnable type being non-shooting) → `bullet alloc result` stays 0 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update torkan'),
+  },
+  {
+    key: 'torkan-reaims-and-flees',
+    behavior:
+      'After it fires and hovers, a Torkan re-aims ONCE 180 degrees AWAY from the craft and flees on the FAST (3 px/frame) tier — the arcade torkan_update_dir +0x80 flip onto the terrazi/torkan tier, NOT a homing re-aim or the slow approach tier',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed one Torkan in APPROACH ten rows AHEAD of the craft in scroll and on its column, so its
+      // aimed approach velocity points TOWARD the craft (positive `slot dx`, larger row). A single pump
+      // settles the whole arc: it fires, hovers, then re-aims once and flees. Cull preserves
+      // `slot dx`/`slot dy`, so the committed FLEE velocity survives to read (the post-cull read the Kapi
+      // dive uses). A faithful retreat REVERSES the course (dx flips negative — AWAY) at the faster tier
+      // magnitude (48 vs the approach 32); a homing re-aim would keep dx positive, and the slow tier
+      // would leave |dx| at 32.
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 15);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 10) * 256); // ahead in scroll => toward-aim is +dx (larger row)
+      put('slot-y', slot, pc * 256); // same column => the retreat rides the row axis, dy stays ~0
+      put('slot-dx', slot, 32); // seeded toward-approach velocity (positive); the retreat must reverse it
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH
+      put('slot-fire-timer', slot, 2); // fire promptly so the hover + re-aim complete within the pump
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 16);
+      step(vm, 1);
+      return {
+        dx: readVar(vm, 'slot-dx')[slot],
+        dy: readVar(vm, 'slot-dy')[slot],
+      };
+    },
+    assert(obs) {
+      assert.ok(
+        obs.dx < 0,
+        `a fleeing Torkan reverses its course AWAY from the craft (dx flips negative); got dx=${obs.dx}`,
+      );
+      assert.ok(
+        Math.abs(obs.dx) > 32,
+        `a fleeing Torkan flees on the FAST 3 px/frame tier (|dx| > the 32 approach magnitude); got dx=${obs.dx}`,
+      );
+    },
+    // Empty `update torkan` so the seeded approach never fires, hovers or re-aims → `slot dx` stays the
+    // seeded +32 (toward, slow tier) → both clauses (reversed, faster) bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update torkan'),
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
-      'The temporary debug key (T) brings in one debug enemy at a time and, each time the field clears, advances to the next built family (Terrazi then Kapi), so families unreachable in early play can be playtested (tracked for removal)',
+      'The temporary debug key (T) brings in one debug enemy at a time and, each time the field clears, advances to the next built family (Terrazi then Kapi then Torkan), so families unreachable in early play can be playtested (tracked for removal)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // Hold the debug key: with the field empty the walk brings in the first family (Terrazi, type 17)
-      // through the real spawn path and advances its cursor. Clearing the flying field makes the next
-      // fresh spawn advance to the second family (Kapi, type 16) — proving the cycle, not a fixed family.
+      // through the real spawn path and advances its cursor. Clearing the flying field each time makes the
+      // next fresh spawn advance to the following family (Kapi type 16, then Torkan type 15) — proving the
+      // cycle self-extends to the newly built family, not a fixed pair.
       keyDown(vm, 't');
-      let terraziSeen = false;
-      for (let i = 0; i < 30 && !terraziSeen; i += 1) {
-        step(vm, 1);
-        const type = readVar(vm, 'slot-type');
-        if (FLYING_SLOT_INDICES.some((s) => type[s] === 17)) terraziSeen = true;
-      }
-      // Clear the flying field so the next fresh spawn advances the cursor to the next family.
-      const slotType = readVar(vm, 'slot-type');
-      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
-      let kapiSeen = false;
-      for (let i = 0; i < 30 && !kapiSeen; i += 1) {
-        step(vm, 1);
-        const type = readVar(vm, 'slot-type');
-        if (FLYING_SLOT_INDICES.some((s) => type[s] === 16)) kapiSeen = true;
-      }
+      const sawType = (wanted) => {
+        for (let i = 0; i < 30; i += 1) {
+          step(vm, 1);
+          const type = readVar(vm, 'slot-type');
+          if (FLYING_SLOT_INDICES.some((s) => type[s] === wanted)) return true;
+        }
+        return false;
+      };
+      const clearField = () => {
+        const slotType = readVar(vm, 'slot-type');
+        for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      };
+      const terraziSeen = sawType(17);
+      clearField();
+      const kapiSeen = sawType(16);
+      clearField();
+      const torkanSeen = sawType(15);
       keyUp(vm, 't');
-      return { terraziSeen, kapiSeen };
+      return { terraziSeen, kapiSeen, torkanSeen };
     },
     assert(obs) {
       assert.equal(obs.terraziSeen, true, 'holding the debug key brings in the first family (Terrazi)');
       assert.equal(obs.kapiSeen, true, 'after the field clears, the cursor advances to the next family (Kapi)');
+      assert.equal(obs.torkanSeen, true, 'after the field clears again, the cursor advances to Torkan');
     },
     // Empty `debug spawn wave` so the key does nothing → no debug family ever occupies a flying slot
-    // → neither family is seen → the assertion bites.
+    // → no family is seen → the assertion bites.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
   },
   {

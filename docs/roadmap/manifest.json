@@ -78,7 +78,7 @@
     {"key":"ground.barra","parent":"ground","title":"Barra placement, fire, bombing, scoring, and cleanup","slice":"9","milestone":"Enemies","status":"provisional","criteria":["GND-01.barra"],"proof":"playable","records":["GND-01"]},
     {"key":"ground.logram","parent":"ground","title":"Logram open-fire-close cycle and bombing","slice":"9","milestone":"Enemies","status":"provisional","criteria":["GND-03.logram"],"proof":"playable","records":["GND-03"]},
 
-    {"key":"air.torkan","parent":"air","title":"Torkan family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-02.torkan"],"proof":"playable","records":["AIR-02"]},
+    {"key":"air.torkan","parent":"air","title":"Torkan family behavior","slice":"10","milestone":"Enemies","status":"history","delivered_by":122,"blocked_by":["air.toroid"],"criteria":["AIR-02.torkan"],"proof":"playable","records":["AIR-02"]},
     {"key":"air.zoshi","parent":"air","title":"Zoshi variants and distinct behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-03.zoshi"],"proof":"playable","records":["AIR-03"]},
     {"key":"air.jara","parent":"air","title":"Jara family behavior","slice":"10","milestone":"Enemies","status":"provisional","blocked_by":["air.toroid"],"criteria":["AIR-04.jara"],"proof":"playable","records":["AIR-04"]},
     {"key":"air.kapi","parent":"air","title":"Kapi family behavior","slice":"10","milestone":"Enemies","status":"history","delivered_by":121,"blocked_by":["air.toroid"],"criteria":["AIR-05.kapi"],"proof":"playable","records":["AIR-05"]},
