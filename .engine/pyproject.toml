@@ -38,7 +38,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [dependency-groups]
-core = ["jsonschema>=4.20", "mcp>=2", "pyyaml>=6.0"]
+core = ["jsonschema>=4.20", "mcp>=2.1.1", "pyyaml>=6.0"]
 # Meaning-based recall: numpy is the whole runtime. The word table it reads is committed
 # under the module's own directory, so nothing is fetched at install or at use, and the
 # tokenizer is implemented in the standard library rather than installed — the reference
