@@ -20,9 +20,10 @@ class SpriteExtractorTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count, contact_hash = extractor.check_repository()
-        # 30: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
-        # the 7 Kapi dive frames (AIR-05), and the 6 Torkan roll frames (AIR-02).
-        self.assertEqual(30, count)
+        # 34: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
+        # the 7 Kapi dive frames (AIR-05), the 6 Torkan roll frames (AIR-02), and the 4 Zoshi
+        # spin frames (AIR-03).
+        self.assertEqual(34, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -51,20 +52,17 @@ class SpriteExtractorTests(unittest.TestCase):
             self.assertTrue(any(pixel[3] == 255 for pixel in decoded.pixels))
             self.assertEqual([8, 8], derivative.frame["anchor"])
 
-    def test_flood_fill_preserves_enclosed_green_artwork(self) -> None:
+    def test_all_matte_is_transparent_including_enclosed(self) -> None:
+        # (0,128,0) is the sheet's reserved matte, so every matte pixel is background —
+        # even one fully enclosed by opaque artwork. An interior matte region is negative
+        # space (the Toroid ring's centre, the gaps around Kapi's eyes) that must show the
+        # game background through, not render as a green blob. Biting on the enclosed
+        # centre: under the old edge-connected-only rule it stayed opaque (0,128,0,255).
         matte = (0, 128, 0, 255)
         opaque = (255, 255, 255, 255)
+        ring = ((1, 1), (2, 1), (3, 1), (1, 2), (3, 2), (1, 3), (2, 3), (3, 3))
         pixels = [matte] * 25
-        for x, y in (
-            (1, 1),
-            (2, 1),
-            (3, 1),
-            (1, 2),
-            (3, 2),
-            (1, 3),
-            (2, 3),
-            (3, 3),
-        ):
+        for x, y in ring:
             pixels[y * 5 + x] = opaque
         source = extractor.Image(5, 5, tuple(pixels))
         cropped = extractor._crop_and_remove_matte(
@@ -72,8 +70,13 @@ class SpriteExtractorTests(unittest.TestCase):
             (0, 0, 5, 5),
             (0, 128, 0),
         )
-        self.assertEqual((0, 128, 0, 255), cropped.pixel(2, 2))
+        # the enclosed matte centre is now transparent (the biting change from the old rule)
+        self.assertEqual(0, cropped.pixel(2, 2)[3])
+        # edge-reachable matte is transparent too
         self.assertEqual(0, cropped.pixel(0, 0)[3])
+        # opaque artwork is never touched
+        for x, y in ring:
+            self.assertEqual(opaque, cropped.pixel(x, y))
 
     def test_duplicate_frame_name_is_rejected(self) -> None:
         manifest = copy.deepcopy(self.manifest)
@@ -153,7 +156,8 @@ class SpriteExtractorTests(unittest.TestCase):
             [f"toroid/turn/{index:02d}" for index in range(1, 8)]
             + [f"terrazi/roll/{index:02d}" for index in range(1, 8)]
             + [f"kapi/dive/{index:02d}" for index in range(1, 8)]
-            + [f"torkan/roll/{index:02d}" for index in range(1, 7)],
+            + [f"torkan/roll/{index:02d}" for index in range(1, 7)]
+            + [f"zoshi/spin/{index:02d}" for index in range(1, 5)],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])

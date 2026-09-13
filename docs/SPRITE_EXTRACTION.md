@@ -44,9 +44,11 @@ anchor, and no crop may include labels, examples, or credit panels.
 1. Verify every source-sheet SHA-256.
 2. Validate the complete manifest before producing output.
 3. Crop the exact rectangle without scaling or filtering.
-4. From crop edges only, flood-fill pixels exactly equal to `(0, 128, 0)` and
-   make that connected matte transparent.
-5. Preserve enclosed green pixels not connected to an edge.
+4. Make every pixel exactly equal to `(0, 128, 0)` transparent — the sheet's
+   dedicated matte, enclosed regions included (interior negative space, e.g. a
+   ring's centre, that must show the game background through).
+5. Reject a crop that is left with no opaque artwork (a mis-cropped or
+   fully-matte rectangle fails rather than emitting an empty frame).
 6. Place the crop on its transparent canvas at the declared anchor.
 7. Encode RGBA PNG at native 1× with fixed settings.
 8. Use the MD5 of final PNG bytes as the Scratch `MD5.png` filename.

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from collections import deque
 from dataclasses import dataclass
 import hashlib
 import json
@@ -446,31 +445,17 @@ def _crop_and_remove_matte(
         for source_y in range(y, y + height)
         for source_x in range(x, x + width)
     ]
-    connected: set[int] = set()
-    queue: deque[tuple[int, int]] = deque()
-    for edge_x in range(width):
-        queue.append((edge_x, 0))
-        queue.append((edge_x, height - 1))
-    for edge_y in range(height):
-        queue.append((0, edge_y))
-        queue.append((width - 1, edge_y))
-    while queue:
-        current_x, current_y = queue.popleft()
-        index = current_y * width + current_x
-        if index in connected or pixels[index][:3] != matte:
-            continue
-        connected.add(index)
-        if current_x:
-            queue.append((current_x - 1, current_y))
-        if current_x + 1 < width:
-            queue.append((current_x + 1, current_y))
-        if current_y:
-            queue.append((current_x, current_y - 1))
-        if current_y + 1 < height:
-            queue.append((current_x, current_y + 1))
+    # Every matte pixel is background — enclosed pixels included. The sheet reserves
+    # (0,128,0) as its dedicated matte, so a matte pixel is never sprite artwork: an
+    # enclosed matte region is interior negative space (the Toroid ring's centre, the
+    # gaps around Kapi's eyes) that must show the game background through, exactly as it
+    # does in the arcade. An earlier edge-connected-only rule kept enclosed matte opaque
+    # and rendered those regions as stray green blobs (reference-checked against the
+    # credited sheet; corrects docs/mechanics/027 record 6, which had read them as
+    # intentional artwork).
     rgba = tuple(
-        (red, green, blue, 0 if index in connected else alpha)
-        for index, (red, green, blue, alpha) in enumerate(pixels)
+        (red, green, blue, 0 if (red, green, blue) == matte else alpha)
+        for (red, green, blue, alpha) in pixels
     )
     if not any(pixel[3] for pixel in rgba):
         raise SpriteExtractionError("frame crop contains no opaque artwork")
