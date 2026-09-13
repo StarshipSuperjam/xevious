@@ -699,9 +699,11 @@ FIRE_MASK_KAPI_ID = "fire-mask-kapi"
 # Zoshi fire block (which also re-headings the enemy's own drift on the same trigger).
 FIRE_MASK_ZOSHI_ID = "fire-mask-zoshi"
 
-# Object type codes the flying dispatch handles (object-types.json). With AIR-04 Jara built, every
-# flying-enemy type the arcade's area-1 formation table emits is now spawned — the pre-slice-10
-# "fewer enemies" deviation is retired for the aerial families.
+# Object type codes the flying dispatch handles (object-types.json). With AIR-04 Jara built, the
+# slice-10 aerial families (Toroid, Terrazi, Kapi, Torkan, Zoshi, Jara) all spawn. Other flying
+# enemies the formation table still emits — Giddo Spario (0x08) and the Zakato variants (0x12-0x17) —
+# remain unhandled (not in FLYING_HANDLED_TYPES) and are silently skipped by the spawner until their
+# own slices; the "fewer enemies" deviation is retired only for the built families, not all aerials.
 TOROID_TYPE = 10  # 0x0A, non-shooting
 TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
 # AIR-03 Zoshi (Octopus): three object types sharing one movement/anim/fire core (handle_0C/0D/0E,

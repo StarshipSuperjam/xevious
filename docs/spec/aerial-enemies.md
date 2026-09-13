@@ -117,7 +117,7 @@ the **fast 3 px/frame tier** (`jara_init` 3581–3582 loads `angle_dX_dY_terrazi
 (3584), and clears the anim timer; it **captures no fire mask** (`_FFREQ` is never set — unlike every prior
 shooter). Each then **cruises** straight on that fixed aimed vector, static frame `0xA0`, pulsing colour, **no
 spin** (`jara_set_clr_and_move` 3508–3511), until `jara_check_proximity` (3588–3595) reports the craft within a
-**±6 lateral band** on `_Y` (`(solvalou._Y − self._Y) − 6 + 0x0c` sets carry when close). On that first close
+**[−6, +5] lateral band** on `_Y` (`(solvalou._Y − self._Y) − 6 + 0x0c` sets carry when close). On that first close
 tick it commits **one-way** to a turn (the coroutine re-entry address is set only inside the turn arms —
 `jara_moving_right` 3518 and `jara_moving_left` 3553 — so approach, proximity and fire never re-run): it peels **laterally away** from the craft's column
 — `jara_moving_right` ramps `_dY` by −1/tick (3532), `jara_moving_left` by +1/tick (3567), `_dX` untouched — the

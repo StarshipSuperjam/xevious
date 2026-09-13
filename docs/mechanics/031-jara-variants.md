@@ -20,7 +20,7 @@
   angle table) at a random lateral column that excludes ±8 of the craft's column, holding the static frame
   `0xA0` with a pulsing colour and **no spin**, and score **150 pts each, scored independently**. `jara_init`
   captures **no fire mask** — Jara is the only shooter with no `_FFREQ`. Each tick during approach the core
-  measures the lateral gap `solvalou._Y − self._Y`; while the craft is outside a **±6 lateral band** the Jara
+  measures the lateral gap `solvalou._Y − self._Y`; while the craft is outside a **[−6, +5] lateral band** the Jara
   just cruises. On the first tick the craft is inside the band the object commits **one-way** to its turn:
   it ramps its lateral velocity **away** from the craft's column (`±1/frame`, forward/scroll velocity
   untouched), the side chosen by the sign of `solvalou._Y − self._Y` (craft at/right → peel one way, craft
@@ -41,7 +41,7 @@
   `jara_init` 3581–3582), `_PTS = 18` = 150 pts 3583, the initial code `0xA0` 3584, and the anim-timer clear
   3585 — with **no** `_FFREQ` write). The
   proximity band is `jara_check_proximity` (3588–3595): `(solvalou._Y − self._Y) − 6 + 0x0c` sets carry when
-  the craft is within the ±6 band on `_Y`. The one-way turn is `jara_set_dir` (3513–3515, side from the sign of
+  the craft is within the [−6, +5] band on `_Y`. The one-way turn is `jara_set_dir` (3513–3515, side from the sign of
   `solvalou._Y − self._Y`) into `jara_moving_right` (3517–3534, `subq #1,(_dY,a5)` 3532, forward
   `jara_right_sprite_tbl` `0xA0..0xA5` 3571–3572) or `jara_moving_left` (3552–3569, `addq #1,(_dY,a5)` 3567,
   reversed `jara_left_sprite_tbl` `0xA5..0xA0` 3574–3575); both arms set the coroutine re-entry address (the
@@ -100,7 +100,7 @@
   the lateral velocity away while leaving the forward velocity untouched, and the extended
   `debug-key-cycles-families`), each with a biting negative.
 - Acceptance criteria: Two Jara object types spawn by type from the debug cycle (and the natural wave), each
-  cruising aimed at the craft at 3 px/frame with a **static** sprite; at a ±6 lateral band each commits a
+  cruising aimed at the craft at 3 px/frame with a **static** sprite; at a [−6, +5] lateral band each commits a
   one-way turn that peels **away** from the craft's column while spinning the six-frame cycle; the shooter
   fires **exactly one** aimed bullet at the turn and the silent type fires none; both score 150 pts,
   independently; adjacent spawns produce an **emergent pair that splits apart** (harness
