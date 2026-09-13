@@ -389,6 +389,11 @@
       "name": "invuln",
       "scope": "Stage"
     },
+    "jara-clone-slot": {
+      "kind": "variable",
+      "name": "jara clone slot",
+      "scope": "jara"
+    },
     "kapi-clone-slot": {
       "kind": "variable",
       "name": "kapi clone slot",

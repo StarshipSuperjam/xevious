@@ -402,6 +402,72 @@
       "family": "zoshi",
       "animation": "spin",
       "duration_frames": 1
+    },
+    {
+      "name": "jara/spin/01",
+      "sheet": "aerial_enemies",
+      "rect": [2, 90, 16, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "jara",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "jara/spin/02",
+      "sheet": "aerial_enemies",
+      "rect": [21, 90, 16, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "jara",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "jara/spin/03",
+      "sheet": "aerial_enemies",
+      "rect": [40, 90, 12, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "jara",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "jara/spin/04",
+      "sheet": "aerial_enemies",
+      "rect": [55, 90, 10, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "jara",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "jara/spin/05",
+      "sheet": "aerial_enemies",
+      "rect": [68, 90, 12, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "jara",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "jara/spin/06",
+      "sheet": "aerial_enemies",
+      "rect": [83, 90, 12, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "jara",
+      "animation": "spin",
+      "duration_frames": 1
     }
   ]
 }

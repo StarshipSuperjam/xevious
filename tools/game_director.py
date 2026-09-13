@@ -677,6 +677,17 @@ TORKAN_FORMATION_OFFSET = 25
 ZOSHI_RND_FORMATION_OFFSET = 31
 ZOSHI_TOP_FORMATION_OFFSET = 45
 ZOSHI_BOTTOM_FORMATION_OFFSET = 51
+# The flying-type-table offsets for the two Jara types (object-types.json 0-based run starts): the
+# 0x55 shooter run is codes 13-18 and the 0x56 silent run is codes 19-24 (both full six-wide, like
+# the other families). The PAIR offset 18 straddles the boundary: its two-slot window reads codes[18]
+# = 0x55 then codes[19] = 0x56, so a debug spawn of COUNT 2 there brings in one shooter AND one
+# silent — the adjacent shooter+silent run the arcade wave data emits. Two independent craft-excluding
+# random-Y draws (one per spawn) put them at different rows, so they cross the proximity band at
+# different moments and peel opposite ways: the EMERGENT pair, made watchable on demand (see #74,
+# docs/mechanics/031). The natural area waves reach both types through the AI-level formation table.
+JARA_SHOOTER_FORMATION_OFFSET = 13
+JARA_SILENT_FORMATION_OFFSET = 19
+JARA_PAIR_FORMATION_OFFSET = 18
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
@@ -688,9 +699,9 @@ FIRE_MASK_KAPI_ID = "fire-mask-kapi"
 # Zoshi fire block (which also re-headings the enemy's own drift on the same trigger).
 FIRE_MASK_ZOSHI_ID = "fire-mask-zoshi"
 
-# Object type codes this slice's flying dispatch handles (object-types.json). Other formation-named
-# families (e.g. Jara, the remaining slice-10 aerial) are SKIPPED by the spawner until their
-# own slice builds them — a recorded deviation (fewer enemies than the arcade pre-slice-10).
+# Object type codes the flying dispatch handles (object-types.json). With AIR-04 Jara built, every
+# flying-enemy type the arcade's area-1 formation table emits is now spawned — the pre-slice-10
+# "fewer enemies" deviation is retired for the aerial families.
 TOROID_TYPE = 10  # 0x0A, non-shooting
 TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
 # AIR-03 Zoshi (Octopus): three object types sharing one movement/anim/fire core (handle_0C/0D/0E,
@@ -704,6 +715,14 @@ ZOSHI_BOTTOM_TYPE = 14  # 0x0E, handle_0E_Zoshi_bottom: bottom-entry (fixed row)
 TORKAN_TYPE = 15  # 0x0F, attack-and-retreat: one aimed shot, hover/animate, then flee AWAY at speed
 KAPI_TYPE = 16  # 0x10, the first peel-away DIVING aerial family (handle_10_Kapi)
 TERRAZI_TYPE = 17  # 0x11, the first periodically-firing aerial family (handle_11_Terrazi)
+# AIR-04 Jara (Spinner): two INDEPENDENT object types over one shared init + one shared update
+# (handle_55_Jara_shoots / handle_56_Jara, 3502-3599). These are the arcade's own codes 0x55/0x56
+# (NOT sequential after Terrazi — the flying type table is loaded and hash-verified verbatim, and the
+# dispatch is by direct equality, so a family's port type byte MUST equal its arcade code). Both
+# cruise aimed at the craft on the fast 48-tier holding a static frame, then peel AWAY and spin when
+# the craft enters a lateral proximity band; the 0x55 shooter also fires one aimed bullet at the turn.
+JARA_SHOOTER_TYPE = 85  # 0x55, handle_55_Jara_shoots: fires exactly one aimed bullet at the turn
+JARA_SILENT_TYPE = 86  # 0x56, handle_56_Jara: identical motion/anim but never fires
 FLYING_HANDLED_TYPES = (
     TOROID_TYPE,
     TOROID_SHOOTS_TYPE,
@@ -713,19 +732,26 @@ FLYING_HANDLED_TYPES = (
     TORKAN_TYPE,
     KAPI_TYPE,
     TERRAZI_TYPE,
+    JARA_SHOOTER_TYPE,
+    JARA_SILENT_TYPE,
 )
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
-# (type, formation offset) whose offset points the spawner at a six-slot run of that family. T brings
-# in the family at `debug spawn index`, then advances the index (mod len). Append one entry per future
-# aerial family; no new key. The type element documents which family the offset selects (the present
-# check that keeps a spawned enemy solo is family-agnostic).
+# (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
+# whose count is how many to bring in as one group (almost always 1). T brings in the entry at `debug
+# spawn index`, then advances the index (mod len). The type element documents which family the offset
+# selects (the present check that keeps a group solo is family-agnostic). The final Jara entry is the
+# one exception to count 1: it spawns the shooter+silent PAIR (count 2 at the straddling offset 18) so
+# the operator can watch the emergent split — two Jara at different random Y peeling opposite ways.
 DEBUG_SPAWN_FAMILIES = (
-    (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET),
-    (KAPI_TYPE, KAPI_FORMATION_OFFSET),
-    (TORKAN_TYPE, TORKAN_FORMATION_OFFSET),
-    (ZOSHI_TOP_TYPE, ZOSHI_TOP_FORMATION_OFFSET),
-    (ZOSHI_BOTTOM_TYPE, ZOSHI_BOTTOM_FORMATION_OFFSET),
-    (ZOSHI_RND_TYPE, ZOSHI_RND_FORMATION_OFFSET),
+    (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET, 1),
+    (KAPI_TYPE, KAPI_FORMATION_OFFSET, 1),
+    (TORKAN_TYPE, TORKAN_FORMATION_OFFSET, 1),
+    (ZOSHI_TOP_TYPE, ZOSHI_TOP_FORMATION_OFFSET, 1),
+    (ZOSHI_BOTTOM_TYPE, ZOSHI_BOTTOM_FORMATION_OFFSET, 1),
+    (ZOSHI_RND_TYPE, ZOSHI_RND_FORMATION_OFFSET, 1),
+    (JARA_SHOOTER_TYPE, JARA_SHOOTER_FORMATION_OFFSET, 1),  # shooter solo
+    (JARA_SILENT_TYPE, JARA_SILENT_FORMATION_OFFSET, 1),  # silent solo
+    (JARA_SHOOTER_TYPE, JARA_PAIR_FORMATION_OFFSET, 2),  # emergent pair: one 0x55 + one 0x56
 )
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
@@ -864,6 +890,45 @@ INIT_ZOSHI_BOTTOM_PROCCODE = "init zoshi bottom"
 INIT_ZOSHI_RND_PROCCODE = "init zoshi rnd"
 UPDATE_ZOSHI_PROCCODE = "update zoshi"
 
+# AIR-04 Jara (Spinner) — handle_55_Jara_shoots / handle_56_Jara (3502-3599). Two INDEPENDENT object
+# types over one shared init + one shared update. Both aim the initial drift at the craft on the fast
+# 48-magnitude tier (3 px/frame, angle_dX_dY_terrazi_torkan_tbl 3581), draw a craft-EXCLUDING random Y
+# (gen_rnd_spriteY 3580, the +/-8 reject), and score 150 pts (_PTS byte 18 -> table pos 7). They cruise
+# straight on that fixed vector holding the static frame 0xA0 (jara_set_clr_and_move 3508 never touches
+# _CODE/_TIMER) until jara_check_proximity (3588-3595) reports the craft within the LATERAL band; on
+# that first close tick they commit ONE-WAY to a turn (jara_set_dir 3513) that ramps the lateral
+# velocity +/-1/frame AWAY from the craft (jara_moving_right `subq #1,_dY` 3532 / jara_moving_left
+# `addq #1,_dY` 3567) and spins the 6-frame animation. _dX (scroll/forward) is UNTOUCHED — unlike Kapi's
+# dive, which also decelerates _dX. The shooter (0x55) ALSO fires exactly one aimed bullet at the turn
+# instant (jara_shoot 3544 -> init_new_bullet, nested in the transition so it cannot repeat); the silent
+# (0x56) never fires. No fire mask exists (jara_init never sets _FFREQ). See docs/mechanics/031.
+JARA_PTS = 7  # 1-based value-table position of 150 points (_PTS byte 18 = 3*(7-1))
+JARA_INIT_CODE = 0xA0  # spawn/approach sprite code (_CODE=0xA0); the spin animates 0xA0..0xA5
+JARA_ANIM_FRAMES = 6  # jara/spin/01..06 (sprite codes 0xA0..0xA5)
+# Anim period, in ARCADE FRAMES: the arcade advances the sprite code every 2 frames (`_TIMER>>1` then
+# `&7`, reset at 6 -> the 0..5 cycle each frame-pair, 3521-3528). `slot timer` counts arcade frames
+# (advances 2/tick), so phase = floor(slot timer / 2) mod 6 gives one frame per tick, the same pacing.
+JARA_ANIM_PERIOD = 2
+# Slot sub-state (`slot flag`): pre-turn approach, then a committed peel side, mirroring Kapi's dive
+# side latch EXACTLY. The proximity gap and the peel are both on the LATERAL axis (arcade `_Y` = the
+# port's col; jara_check_proximity reads solvalou._Y - self._Y). Turn side = sign of the lateral offset
+# (player col - self col) at the turn instant: craft at/right laterally (offset >= 0) -> jara_moving_
+# right `subq #1,_dY` (TURN_MINUS, forward spin order); craft left (offset < 0) -> jara_moving_left
+# `addq #1,_dY` (TURN_PLUS, reversed spin order). Latched once at the turn and never recomputed.
+JARA_FLAG_APPROACH = 0
+JARA_FLAG_TURN_MINUS = 1  # _dY -= accel: craft at/right laterally (offset >= 0), forward spin
+JARA_FLAG_TURN_PLUS = 2  # _dY += accel: craft left laterally (offset < 0), reversed spin
+JARA_TURN_LATERAL_ACCEL = 2  # lateral velocity change per tick (`_dY +/- 1`/frame * 2 frames/tick)
+# Proximity band (jara_check_proximity 3591-3594): offset = player col - self col; the arcade computes
+# (craft._Y - self._Y), `subq #6`, then `add #0x0c`, setting the carry (close) exactly when the offset
+# is in [-6, +5] — ASYMMETRIC (the +6 boundary is EXCLUDED by the unsigned byte carry). The turn
+# commits on the first tick the offset enters this band; the side then splits it at offset 0.
+JARA_PROXIMITY_LOW = -6
+JARA_PROXIMITY_HIGH = 5
+
+INIT_JARA_PROCCODE = "init jara"
+UPDATE_JARA_PROCCODE = "update jara"
+
 # FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
 # => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
 # unbounded; the port bounds it at SPAWN_DRAW_ATTEMPTS and, on exhaustion, skips the spawn this tick
@@ -974,6 +1039,16 @@ TORKAN_ANIM_PERIOD = 4  # advance the hover frame every 4 arcade frames (`timer>
 ZOSHI_TARGET = "zoshi"
 ZOSHI_CLONE_SLOT_ID = "zoshi-clone-slot"  # sprite-local: which flying slot this clone renders
 ZOSHI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+
+# AIR-04 Jara renderer constants. One persistent clone per flying slot draws the spinner; unlike the
+# Zoshi (which writes `slot code` each tick), the spin frame is derived render-only from the slot's
+# animation clock — the Kapi/Terrazi/Torkan idiom. While APPROACHING it holds the static entry frame
+# 0xA0; while TURNED it cycles the 6 spin frames, in FORWARD order (jara/spin/01..06) for the TURN_MINUS
+# side and REVERSED (06..01) for TURN_PLUS — the arcade's jara_right_sprite_tbl / jara_left_sprite_tbl
+# (3571-3575). The shared explosion frames follow the six spin frames (ordinals 7..).
+JARA_TARGET = "jara"
+JARA_CLONE_SLOT_ID = "jara-clone-slot"  # sprite-local: which flying slot this clone renders
+JARA_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
 
 
 def _schedule_arg(record: dict) -> int:
@@ -1934,11 +2009,22 @@ def install_advance_slots(blocks: Blocks) -> None:
     zoshi_branch = blocks.if_reporter(
         is_zoshi, [blocks.call_proc(UPDATE_ZOSHI_PROCCODE, warp=True)]
     )
+    # AIR-04: the two Jara object types (shooter 0x55 / silent 0x56) share ONE update proc — both fall
+    # through the same approach/turn/anim core (handle_55 and handle_56 differ only in the one-shot fire
+    # the shooter adds at the turn). Dispatch with a single OR branch, as the Zoshi ORs its three types;
+    # the per-type difference (fire vs no fire) is decided inside `update jara` on `slot type`.
+    is_jara = blocks.op_or(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(JARA_SHOOTER_TYPE)),
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(JARA_SILENT_TYPE)),
+    )
+    jara_branch = blocks.if_reporter(
+        is_jara, [blocks.call_proc(UPDATE_JARA_PROCCODE, warp=True)]
+    )
     bullet_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, bullet_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2850,6 +2936,136 @@ def install_update_torkan(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def install_init_jara(blocks: Blocks) -> None:
+    # AIR-04: initialize the flying slot at `slot index` as a Jara of type `walk type` (jara_init
+    # 3577-3586, shared by both 0x55 and 0x56). Craft-EXCLUDING random-Y draw (gen_rnd_spriteY 3580,
+    # the +/-8 reject, the same as the Toroid/Terrazi), top-row entry (the shared no-enemy-scroll
+    # deviation), aimed at the craft on the fast 48-magnitude tier (3 px/frame,
+    # angle_dX_dY_terrazi_torkan_tbl 3581). Stamps the Jara's points/flag/code. Unlike the Terrazi/Kapi
+    # it captures NO fire mask and seeds NO fire timer (jara_init never sets _FFREQ): the 0x55 shooter
+    # fires exactly once at the turn, structurally gated, and the 0x56 silent never fires. Shared by both
+    # types — only the update branches on shooter vs silent.
+    definition = _install_warp_proc(blocks, INIT_JARA_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks)  # default exclude_craft=True (gen_rnd_spriteY)
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, variable("walk type", WALK_TYPE_ID)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            # Enter from the TOP row, like the other flying families (no enemy scroll, so every wave
+            # streams in from the top with room to reach its proximity band and turn).
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 48", AIM_DX_48_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 48", AIM_DY_48_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(JARA_FLAG_APPROACH)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(JARA_INIT_CODE)),
+            _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(JARA_PTS)),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_jara(blocks: Blocks) -> None:
+    # AIR-04: advance the Jara at `slot index` by one tick (handle_55/56 3502-3599, shared core). While
+    # APPROACHING it cruises straight on its aimed 3 px/frame velocity holding the static frame (no anim
+    # advance) and does NOT fire; each tick it tests the LATERAL offset (player col - self col) against
+    # the proximity band [LOW, HIGH] (the reference's carry test on `_Y`, 3591-3594). On the first tick
+    # inside the band it commits ONE-WAY to a turn: it latches the peel-away side by the offset sign
+    # (jara_set_dir 3513-3515, the same side mapping as the Kapi dive), and — for the 0x55 shooter ONLY —
+    # fires EXACTLY ONE aimed bullet DIRECTLY (jara_shoot 3544 -> init_new_bullet), both nested in the
+    # SAME transition gate so neither can recur. While TURNED it ramps the LATERAL velocity by +/-accel
+    # in the latched direction (peeling away; _dX untouched, unlike the Kapi dive) and spins the 6-frame
+    # animation (render-only). One-way: it never re-tests proximity and never re-fires. Shares the flying
+    # hit window / explosion; the spin animation is derived render-only from the slot clock.
+    definition = _install_warp_proc(blocks, UPDATE_JARA_PROCCODE)
+    flag = lambda: _cur_item(blocks, "slot flag", SLOT_FLAG_ID)
+    col_offset = lambda: blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))
+
+    # Latch the peel-away side (jara_set_dir 3513-3515): craft at/right laterally (offset >= 0) ->
+    # TURN_MINUS (`subq #1,_dY`); craft left (offset < 0) -> TURN_PLUS (`addq #1,_dY`). Identical side
+    # mapping to the Kapi dive. Latched once at the turn and never recomputed.
+    side = blocks.add("control_if_else")
+    craft_at_or_right = blocks.op_not(blocks.op_lt(col_offset(), number(0)))  # offset >= 0
+    blocks.blocks[side]["inputs"]["CONDITION"] = [2, craft_at_or_right]
+    blocks.blocks[craft_at_or_right]["parent"] = side
+    blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(JARA_FLAG_TURN_MINUS))])
+    blocks.substack(side, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(JARA_FLAG_TURN_PLUS))], name="SUBSTACK2")
+    # The 0x55 shooter fires ONE aimed bullet at the turn instant (jara_shoot 3544-3547); the 0x56
+    # silent has no fire. Nested in the transition gate below, so it happens exactly once.
+    shoots = blocks.if_reporter(
+        blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(JARA_SHOOTER_TYPE)),
+        _fire_aimed_bullet(blocks),
+    )
+    # Turn trigger (only while approaching): LOW <= lateral offset <= HIGH -> commit the one-way turn.
+    # Latch the side, fire (shooter only), and reset the animation clock so the spin starts clean at the
+    # entry frame (`clr _TIMER`-equivalent, matching the arcade's per-turn reset at 3528/3563). The fire
+    # and the side latch are both nested HERE, so once the flag leaves APPROACH neither can run again.
+    at_or_above_low = blocks.op_not(blocks.op_lt(col_offset(), number(JARA_PROXIMITY_LOW)))
+    at_or_below_high = blocks.op_not(blocks.op_gt(col_offset(), number(JARA_PROXIMITY_HIGH)))
+    in_band = blocks.op_and(at_or_above_low, at_or_below_high)
+    trigger = blocks.if_reporter(
+        blocks.op_and(blocks.op_eq(flag(), number(JARA_FLAG_APPROACH)), in_band),
+        [
+            side,
+            shoots,
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        ],
+    )
+    # Turn kinematics, by latched side: ramp the LATERAL velocity away from the craft. Runs on the
+    # trigger tick too (the flag was just flipped to a turn side), matching the arcade's fall-through
+    # from jara_set_dir into the same-frame `_dY +/- 1` and move. _dX is UNTOUCHED (no scroll decel).
+    turn_minus = blocks.if_reporter(
+        blocks.op_eq(flag(), number(JARA_FLAG_TURN_MINUS)),
+        [_set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(JARA_TURN_LATERAL_ACCEL)))],
+    )
+    turn_plus = blocks.if_reporter(
+        blocks.op_eq(flag(), number(JARA_FLAG_TURN_PLUS)),
+        [_set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(JARA_TURN_LATERAL_ACCEL)))],
+    )
+    # Move by 4*velocity per tick (2 arcade frames), advance the animation clock, then cull.
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))  # row <= -2  ==  row < -1
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))  # col <= -2 (left edge)
+    # The peel carries the Jara off a side; the same explicit four-edge cull as the other flying
+    # families (this port's signed columns need the left edge the reference's byte-wrap handles).
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    # PLY-02: an active Jara touching the craft's cell kills it (raises `player hit`), checked at the
+    # tick-start position before it moves or culls — the shared flying-vs-craft window.
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    # Ordered body: offer to the shot detector (via the wrapper below), then the turn trigger (which
+    # fires the shooter's one bullet from the slot's pre-move position, matching jara_shoot's order), the
+    # latched turn ramp, move, cull.
+    normal = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, trigger, turn_minus, turn_plus, *move, cull],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
 def _install_zoshi_init(
     blocks: Blocks,
     proccode: str,
@@ -3199,7 +3415,17 @@ def install_spawn_flying(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOSHI_RND_TYPE)),
         [blocks.call_proc(INIT_ZOSHI_RND_PROCCODE, warp=True)],
     )
-    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd])
+    # AIR-04: both Jara object types (shooter 0x55 / silent 0x56) run the SAME shared initializer
+    # (jara_init 3577-3586 — they differ only in the update's one-shot fire); one OR branch, as the
+    # dispatch ORs them. Adjacent shooter/silent positions in a wave run thus spawn one of each.
+    spawn_jara = blocks.if_reporter(
+        blocks.op_or(
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(JARA_SHOOTER_TYPE)),
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(JARA_SILENT_TYPE)),
+        ),
+        [blocks.call_proc(INIT_JARA_PROCCODE, warp=True)],
+    )
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd, spawn_jara])
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
@@ -3233,7 +3459,16 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
             blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
             [blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(offset))],
         )
-        for index, (_family_type, offset) in enumerate(DEBUG_SPAWN_FAMILIES)
+        for index, (_family_type, offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES)
+    ]
+    # The current family's group size, set only on a fresh spawn (below): 1 for every solo family, 2
+    # for the Jara pair entry (offset 18, whose two-slot window brings in one shooter + one silent).
+    set_count = [
+        blocks.if_reporter(
+            blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
+            [blocks.set_var("formation count", FORMATION_COUNT_ID, number(count))],
+        )
+        for index, (_family_type, _offset, count) in enumerate(DEBUG_SPAWN_FAMILIES)
     ]
 
     # Any flying enemy already on the field?  (OR over the six flying slots — family-agnostic, so the
@@ -3250,12 +3485,12 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
     blocks.blocks[present]["parent"] = branch
     # An enemy is alive: spawn nothing more this tick (keep it a solo).
     blocks.substack(branch, [blocks.set_var("formation count", FORMATION_COUNT_ID, number(0))])
-    # Field empty: clear the flying slots and bring in exactly one from the top, then advance the family
-    # index. Free each slot the same way `cull slot` does — BOTH `slot type` and `slot state` to 0 — so
-    # no slot is left type-empty but state-stale (a half-freed slot the walk could misread). This wipes
-    # any live flying enemy on the field with no explosion or score, which is the intended cost of the
-    # one-at-a-time isolation (the operator sees a clean single enemy); the playtest checklist notes it
-    # so it does not read as a bug.
+    # Field empty: clear the flying slots and bring in this family's group (count 1, or 2 for the Jara
+    # pair) from the top, then advance the family index. Free each slot the same way `cull slot` does —
+    # BOTH `slot type` and `slot state` to 0 — so no slot is left type-empty but state-stale (a
+    # half-freed slot the walk could misread). This wipes any live flying enemy on the field with no
+    # explosion or score, which is the intended cost of the one-at-a-time isolation (the operator sees a
+    # clean single enemy or pair); the playtest checklist notes it so it does not read as a bug.
     clear = [
         block
         for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
@@ -3274,7 +3509,7 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
     )
     blocks.substack(
         branch,
-        [*clear, blocks.set_var("formation count", FORMATION_COUNT_ID, number(1)), advance_index],
+        [*clear, *set_count, advance_index],
         name="SUBSTACK2",
     )
     blocks.substack(gate, [*set_offset, branch])
@@ -3678,6 +3913,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_zoshi_top(blocks)
     install_init_zoshi_bottom(blocks)
     install_init_zoshi_rnd(blocks)
+    install_init_jara(blocks)
     install_check_air_hit(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
@@ -3686,6 +3922,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_kapi(blocks)
     install_update_torkan(blocks)
     install_update_zoshi(blocks)
+    install_update_jara(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -5407,6 +5644,120 @@ def zoshi_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def jara_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-04 Jara renderer (game_director owns these blocks; sprite_extractor owns the costumes). One
+    # persistent clone per flying slot (59..64), the same pool pattern as the Kapi/Terrazi: shown and
+    # positioned when its slot holds EITHER Jara type (0x55/0x56), hidden otherwise. The clone writes no
+    # state. While the slot is APPROACHING it holds the static entry frame 0xA0 (silent cruise); while
+    # TURNED it cycles the 6-frame spin derived render-only from the slot's animation clock — a plain
+    # 6-phase loop (no hold, unlike the Kapi's 8th-phase hold; the arcade cycle wraps at 6, 3521-3528).
+    # The frame ORDER follows the turn side: TURN_MINUS uses the FORWARD table (jara/spin/01..06 =
+    # 0xA0..0xA5), TURN_PLUS the REVERSED table (06..01 = 0xA5..0xA0) — the arcade's jara_right/left_
+    # sprite_tbl (3571-3575). On a hit it plays the shared explosion (the solv_death frames appended
+    # after the 6 spin frames, ordinals 7..), exactly like the other families.
+    blocks = Blocks(JARA_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("jara clone slot", JARA_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("jara clone slot", JARA_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_jara = blocks.op_or(
+        blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(JARA_SHOOTER_TYPE)),
+        blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(JARA_SILENT_TYPE)),
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Spin animation clock (render-only): phase = floor(timer / PERIOD) mod FRAMES. A fresh reporter per
+    # read (a reporter cannot be shared across parents — it is stolen by the first).
+    phase = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(JARA_ANIM_PERIOD))),
+        number(JARA_ANIM_FRAMES),
+    )
+    # Turned costume: the frame order depends on the peel side. TURN_MINUS -> forward table, ordinal
+    # phase+1 (phase 0 -> jara/spin/01 = 0xA0); TURN_PLUS -> reversed table, ordinal FRAMES-phase
+    # (phase 0 -> jara/spin/06 = 0xA5). The arcade's jara_right/left_sprite_tbl indexed by the same phase.
+    turn_costume = blocks.add("control_if_else")
+    is_turn_minus = blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(JARA_FLAG_TURN_MINUS))
+    blocks.blocks[turn_costume]["inputs"]["CONDITION"] = [2, is_turn_minus]
+    blocks.blocks[is_turn_minus]["parent"] = turn_costume
+    blocks.substack(turn_costume, [blocks.switch_costume_expr(blocks.op_add(phase(), number(1)))])
+    blocks.substack(turn_costume, [blocks.switch_costume_expr(blocks.op_sub(number(JARA_ANIM_FRAMES), phase()))], name="SUBSTACK2")
+    # Active costume: hold the static entry frame while approaching (silent cruise), else the spin.
+    active_costume = blocks.add("control_if_else")
+    is_approach = blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(JARA_FLAG_APPROACH))
+    blocks.blocks[active_costume]["inputs"]["CONDITION"] = [2, is_approach]
+    blocks.blocks[is_approach]["parent"] = active_costume
+    blocks.substack(active_costume, [blocks.switch_costume("jara/spin/01")])
+    blocks.substack(active_costume, [turn_costume], name="SUBSTACK2")
+    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
+    # appended after the 6 spin frames (ordinal 7..); the burst doubles at the 2x phase (record 025).
+    phase_for_costume = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    explode_ordinal = blocks.op_add(number(JARA_ANIM_FRAMES + 1), phase_for_costume)
+    phase_for_size = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(JARA_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [
+            active_costume,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(JARA_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_jara]
+    blocks.blocks[is_jara]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -5522,6 +5873,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, KAPI_TARGET)
     _ensure_gameplay_target(result, TORKAN_TARGET)
     _ensure_gameplay_target(result, ZOSHI_TARGET)
+    _ensure_gameplay_target(result, JARA_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -5577,6 +5929,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             zoshi["costumes"].extend(copy.deepcopy(death["costumes"]))
         zoshi["currentCostume"] = 0
+    # AIR-04: the Jara renderer mirrors its 6 spin frames (JARA_ANIM_FRAMES), then the shared explosion
+    # frames (the same solv_death burst appended after them, ordinals 7.., exactly like the other families).
+    jara = next((t for t in result["targets"] if t.get("name") == JARA_TARGET), None)
+    if proof is not None and jara is not None:
+        jara["costumes"] = proof_by_family("jara/")
+        if death is not None:
+            jara["costumes"].extend(copy.deepcopy(death["costumes"]))
+        jara["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -5873,6 +6233,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "kapi": kapi_blocks(),
         "torkan": torkan_blocks(),
         "zoshi": zoshi_blocks(),
+        "jara": jara_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -5938,6 +6299,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-03: likewise, the only Zoshi render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 ZOSHI_CLONE_SLOT_ID: ["zoshi clone slot", 0],
+            }
+        elif target["name"] == JARA_TARGET:
+            # AIR-04: likewise, the only Jara render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                JARA_CLONE_SLOT_ID: ["jara clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
