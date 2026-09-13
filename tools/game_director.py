@@ -668,22 +668,52 @@ KAPI_FORMATION_OFFSET = 69
 # instead (other offsets), so a built Torkan still appears in normal area-1 play at standard difficulty
 # — not only via the debug key. See docs/mechanics/029 deviation 7 for the schedule trace.
 TORKAN_FORMATION_OFFSET = 25
+# The flying-type-table offsets whose runs select each Zoshi type (object-types.json 0-based starts):
+# rnd (0x0C) at 31-36 and top (0x0D) at 45-50 are full six-wide runs like the other families; bottom
+# (0x0E) has NO six-wide run (its longest is the three-wide 51-53), so its offset points at that run's
+# start. That shorter run is immaterial to the debug spawner, which forces `formation count` = 1 and so
+# reads only the run's first position; the natural area waves reach every Zoshi type through the AI-level
+# formation table (other offsets), independent of these debug offsets.
+ZOSHI_RND_FORMATION_OFFSET = 31
+ZOSHI_TOP_FORMATION_OFFSET = 45
+ZOSHI_BOTTOM_FORMATION_OFFSET = 51
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
 # The Kapi family's fire-permission mask Stage var (set live by the area schedule's `fire_mask_kapi`
 # record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn, consumed by the dive.
 FIRE_MASK_KAPI_ID = "fire-mask-kapi"
+# The Zoshi family's fire-permission mask Stage var (set live by the area schedule's `fire_mask_zoshi`
+# record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn, consumed by the shared
+# Zoshi fire block (which also re-headings the enemy's own drift on the same trigger).
+FIRE_MASK_ZOSHI_ID = "fire-mask-zoshi"
 
 # Object type codes this slice's flying dispatch handles (object-types.json). Other formation-named
-# families (e.g. Zoshi/Jara, the remaining slice-10 aerials) are SKIPPED by the spawner until their
+# families (e.g. Jara, the remaining slice-10 aerial) are SKIPPED by the spawner until their
 # own slice builds them — a recorded deviation (fewer enemies than the arcade pre-slice-10).
 TOROID_TYPE = 10  # 0x0A, non-shooting
 TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
+# AIR-03 Zoshi (Octopus): three object types sharing one movement/anim/fire core (handle_0C/0D/0E,
+# 3412-3499). All three drift on the 24-magnitude toroid tier (1.5 px/frame) aimed at the craft and
+# fire the shared aimed bullet under the Zoshi mask; they differ only in spawn entry and in how each
+# RE-HEADINGS its OWN drift at each shot — top/bottom re-aim toward the craft, rnd veers to a RANDOM
+# angle (the distinctive erratic flyer). The arcade's "random" is this ENEMY MOVEMENT, never the shot.
+ZOSHI_RND_TYPE = 12  # 0x0C, handle_0C_Zoshi_rnd: top-entry, 70 pts, RANDOM drift re-heading each shot
+ZOSHI_TOP_TYPE = 13  # 0x0D, handle_0D_Zoshi_top: top-entry, 100 pts, re-aims drift toward the craft
+ZOSHI_BOTTOM_TYPE = 14  # 0x0E, handle_0E_Zoshi_bottom: bottom-entry (fixed row), 100 pts, re-aims toward craft
 TORKAN_TYPE = 15  # 0x0F, attack-and-retreat: one aimed shot, hover/animate, then flee AWAY at speed
 KAPI_TYPE = 16  # 0x10, the first peel-away DIVING aerial family (handle_10_Kapi)
 TERRAZI_TYPE = 17  # 0x11, the first periodically-firing aerial family (handle_11_Terrazi)
-FLYING_HANDLED_TYPES = (TOROID_TYPE, TOROID_SHOOTS_TYPE, TORKAN_TYPE, KAPI_TYPE, TERRAZI_TYPE)
+FLYING_HANDLED_TYPES = (
+    TOROID_TYPE,
+    TOROID_SHOOTS_TYPE,
+    ZOSHI_RND_TYPE,
+    ZOSHI_TOP_TYPE,
+    ZOSHI_BOTTOM_TYPE,
+    TORKAN_TYPE,
+    KAPI_TYPE,
+    TERRAZI_TYPE,
+)
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
 # (type, formation offset) whose offset points the spawner at a six-slot run of that family. T brings
 # in the family at `debug spawn index`, then advances the index (mod len). Append one entry per future
@@ -693,6 +723,9 @@ DEBUG_SPAWN_FAMILIES = (
     (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET),
     (KAPI_TYPE, KAPI_FORMATION_OFFSET),
     (TORKAN_TYPE, TORKAN_FORMATION_OFFSET),
+    (ZOSHI_TOP_TYPE, ZOSHI_TOP_FORMATION_OFFSET),
+    (ZOSHI_BOTTOM_TYPE, ZOSHI_BOTTOM_FORMATION_OFFSET),
+    (ZOSHI_RND_TYPE, ZOSHI_RND_FORMATION_OFFSET),
 )
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
@@ -806,6 +839,31 @@ TORKAN_HOVER_END = 28
 # (0..255): (aim base >> 3 + 16) mod 32, 1-based. 0x80 >> 3 = 16 = half of the 32-entry circle.
 TORKAN_REAIM_HALF_TURN = 16
 
+# AIR-03 Zoshi (Octopus) — handle_0C_Zoshi_rnd / handle_0D_Zoshi_top / handle_0E_Zoshi_bottom
+# (3412-3499). Three object types over one shared movement/anim/fire core. All three drift on the
+# 24-magnitude toroid tier (1.5 px/frame, angle_dX_dY_toroid_tbl 6394 -> the port's `aim d? 24` lists),
+# initial heading aimed at the craft (calc_dX_dY_for_vector_to_solvalou at init). Each fires the shared
+# aimed bullet under the Zoshi fire mask on a masked-periodic timer; on each fire it also RE-HEADINGS its
+# OWN drift — top/bottom re-aim toward the craft, rnd draws a RANDOM angle. That erratic movement is the
+# whole distinction the arcade calls "random"; every Zoshi SHOT is aimed at the craft (init_new_bullet ->
+# the TYPE-6 homing bullet the port models as fire-once-aimed, record 026). See docs/mechanics/030.
+ZOSHI_PTS_AIMED = 6  # top/bottom: 1-based value-table position of 100 points (0D/0E PTS byte 15 -> 100)
+ZOSHI_PTS_RND = 5  # rnd: 1-based value-table position of 70 points (0C PTS byte 12 -> value 70)
+ZOSHI_INIT_CODE = 0x28  # spin sprite code base (_CODE = 0x28 + (timer & 3)); frames 0x28..0x2B
+ZOSHI_ANIM_FRAMES = 4  # zoshi/spin/01..04 — the 4-code spin cycle (0x28..0x2B, `& 3`)
+# The bottom-entry Zoshi enters from the bottom of the screen at a fixed scroll row (handle_0E
+# `move.b #40,(_X,a5)`) and drifts UP toward the craft; the other two enter from the top row like the
+# rest of the flying families (the no-enemy-scroll deviation). Row 40 is the bottom cull threshold
+# (CULL_ROW_MAX), so the enemy sits at the very bottom edge on the entry tick and the move-before-cull
+# ordering (shared by every family) carries it up into view before the cull test runs — faithful to the
+# arcade's from-the-bottom entry.
+ZOSHI_BOTTOM_EDGE_X = 40
+
+INIT_ZOSHI_TOP_PROCCODE = "init zoshi top"
+INIT_ZOSHI_BOTTOM_PROCCODE = "init zoshi bottom"
+INIT_ZOSHI_RND_PROCCODE = "init zoshi rnd"
+UPDATE_ZOSHI_PROCCODE = "update zoshi"
+
 # FORM-01 spawner draw (gen_rnd_spriteY 5155-5169): lateral column = (rnd & 31), reject >= 25, + 3
 # => column 3..27; also reject a column within SPAWN_CRAFT_GAP of the craft. The reference loops
 # unbounded; the port bounds it at SPAWN_DRAW_ATTEMPTS and, on exhaustion, skips the spawn this tick
@@ -908,6 +966,14 @@ TORKAN_ANIM_FRAMES = 6  # torkan/roll/01..06 — see below. The arcade cycles SE
 # frame" idiom the Kapi uses for its 8th dive phase. The hover-window length (28 frames) and the re-aim
 # boundary are driven by the timer, not the art, so they stay exactly faithful (deviation recorded 029).
 TORKAN_ANIM_PERIOD = 4  # advance the hover frame every 4 arcade frames (`timer>>2`); slot timer ~= frames
+
+# AIR-03 Zoshi renderer constants. One persistent clone per flying slot draws the spinning octopus; the
+# 4-code spin (0x28..0x2B) is written into `slot code` by the shared update each active tick (from the
+# global frame, `0x28 + (tick & 3)`), so the render reads only the Stage slot lists — the same clone-pool
+# pattern as the Kapi/Torkan. The shared explosion frames follow the four spin frames (ordinals 5..).
+ZOSHI_TARGET = "zoshi"
+ZOSHI_CLONE_SLOT_ID = "zoshi-clone-slot"  # sprite-local: which flying slot this clone renders
+ZOSHI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
 
 
 def _schedule_arg(record: dict) -> int:
@@ -1854,11 +1920,25 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TERRAZI_TYPE)),
         [blocks.call_proc(UPDATE_TERRAZI_PROCCODE, warp=True)],
     )
+    # AIR-03: the three Zoshi object types (rnd 0x0C / top 0x0D / bottom 0x0E) share ONE update proc
+    # (handle_0C/0D/0E all fall through to zoshi_0D_main); dispatch them with a single OR branch, as the
+    # Toroid ORs 0x0A/0x0B. The per-type difference (aimed vs random drift re-heading) is decided inside
+    # `update zoshi` on `slot type`.
+    is_zoshi = blocks.op_or(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOSHI_RND_TYPE)),
+        blocks.op_or(
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOSHI_TOP_TYPE)),
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOSHI_BOTTOM_TYPE)),
+        ),
+    )
+    zoshi_branch = blocks.if_reporter(
+        is_zoshi, [blocks.call_proc(UPDATE_ZOSHI_PROCCODE, warp=True)]
+    )
     bullet_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, bullet_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, bullet_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2770,6 +2850,234 @@ def install_update_torkan(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def _install_zoshi_init(
+    blocks: Blocks,
+    proccode: str,
+    pts: int,
+    *,
+    exclude_craft: bool,
+    bottom_entry: bool,
+) -> None:
+    # AIR-03 shared Zoshi initializer body (handle_0C/0D/0E init, 3412-3499). Draw a lateral spawn
+    # column from the shared stream, stamp the slot, aim the INITIAL drift at the craft on the
+    # 24-magnitude toroid tier (1.5 px/frame, calc_dX_dY_for_vector_to_solvalou -> angle_dX_dY_toroid_tbl),
+    # capture the Zoshi fire mask, and seed the shot timer. The three thin wrappers below select the two
+    # arcade differences: the spawn-column draw (bottom uses gen_rnd_spriteY, the craft-EXCLUDING draw;
+    # top/rnd use gen_random_Y_store_obj, the plain draw) and the entry row (bottom enters at the fixed
+    # bottom row 40 and drifts up; top/rnd enter from the top row, the shared no-enemy-scroll deviation).
+    definition = _install_warp_proc(blocks, proccode)
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=exclude_craft)
+    entry_row = ZOSHI_BOTTOM_EDGE_X if bottom_entry else TOROID_SPAWN_ROW
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, variable("walk type", WALK_TYPE_ID)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            # Set the entry row BEFORE aiming so the initial drift is computed from the true spawn row.
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(entry_row * SLOT_UNITS_PER_CELL)),
+            # Aim the initial drift at the craft on the 24-magnitude tier (all three variants, 3428/3468/
+            # 3466 -> zoshi_0D_init's calc_dX_dY_for_vector_to_solvalou). The 0C erratic veer only emerges
+            # later, at each fire trigger.
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 24", AIM_DX_24_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 24", AIM_DY_24_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            # Zoshi has no maneuver phases (it always spins and fires); `slot flag` is unused (0). The
+            # aimed-vs-random re-heading keys on `slot type`, never on `slot flag`.
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(0)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(ZOSHI_INIT_CODE)),
+            _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(pts)),
+            # Fire-permission capture-at-spawn: snapshot the Zoshi mask into the per-slot field, then seed
+            # the shot timer to (rng & mask) + 1. Unlike the Terrazi's spawn seed (rng & mask, no +1),
+            # the arcade Zoshi ADDS 1 at spawn too (0D/0C `addq.b #1,d0` before `move.b d0,(_TIMER)`), so
+            # the countdown is at least 1 and reaches its first fire without a byte-underflow wait. A fresh
+            # RNG draw after the spawn-column draws, in walk order; `rng & mask` == `rng mod (mask+1)` for
+            # the contiguous fire-frequency mask.
+            _set_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID, variable("fire mask zoshi", FIRE_MASK_ZOSHI_ID)),
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(
+                blocks,
+                "slot fire timer",
+                SLOT_FIRE_TIMER_ID,
+                blocks.op_add(
+                    blocks.op_mod(
+                        variable("rng out", RNG_OUT_ID),
+                        blocks.op_add(_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)),
+                    ),
+                    number(1),
+                ),
+            ),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_init_zoshi_top(blocks: Blocks) -> None:
+    # AIR-03 top-entry Zoshi (handle_0D_Zoshi_top 3421-3426): plain spawn-column draw (gen_random_Y_
+    # store_obj 3424, NO craft exclusion), top-row entry, 100 pts. Re-aims its drift toward the craft
+    # at each shot (the shared update's non-rnd branch).
+    _install_zoshi_init(blocks, INIT_ZOSHI_TOP_PROCCODE, ZOSHI_PTS_AIMED, exclude_craft=False, bottom_entry=False)
+
+
+def install_init_zoshi_bottom(blocks: Blocks) -> None:
+    # AIR-03 bottom-entry Zoshi (handle_0E_Zoshi_bottom 3414-3419): craft-EXCLUDING spawn-column draw
+    # (gen_rnd_spriteY 3417 — the same craft-proximity reject the Toroid/Terrazi use), fixed bottom-row
+    # entry (`_X = #40`), 100 pts. Re-aims its drift toward the craft at each shot.
+    _install_zoshi_init(blocks, INIT_ZOSHI_BOTTOM_PROCCODE, ZOSHI_PTS_AIMED, exclude_craft=True, bottom_entry=True)
+
+
+def install_init_zoshi_rnd(blocks: Blocks) -> None:
+    # AIR-03 random-veer Zoshi (handle_0C_Zoshi_rnd 3463-3470): plain spawn-column draw (gen_random_Y_
+    # store_obj 3466, NO craft exclusion), top-row entry, 70 pts. Re-headings its drift to a RANDOM angle
+    # at each shot (the shared update's rnd branch) — the distinctive erratic flyer. Its SHOT is still
+    # aimed at the craft, exactly like the other two.
+    _install_zoshi_init(blocks, INIT_ZOSHI_RND_PROCCODE, ZOSHI_PTS_RND, exclude_craft=False, bottom_entry=False)
+
+
+def install_update_zoshi(blocks: Blocks) -> None:
+    # AIR-03: advance the Zoshi at `slot index` by one tick — the one movement/anim/fire core shared by
+    # all three types (zoshi_0D_main / zoshi_0C_main and their inline fire blocks, 3432-3499). Each active
+    # tick it drifts on its current 24-tier velocity, animates the 4-code spin, and runs a masked-periodic
+    # fire block. On the fire trigger it RE-HEADINGS its OWN drift (the only per-type branch), fires ONE
+    # aimed bullet, and reloads the shot timer:
+    #  - top/bottom (type != ZOSHI_RND_TYPE): re-aim the drift TOWARD the craft on the 24-tier
+    #    (calc_dX_dY_for_vector_to_solvalou, 3446-3447).
+    #  - rnd (type == ZOSHI_RND_TYPE): re-heading the drift to a RANDOM angle on the 24-tier
+    #    (pseudo_random_gen -> get_dX_dY_and_cpy_to_obj, 3487-3489). This is where the arcade's "random"
+    #    lives — the ENEMY'S MOVEMENT, never the shot. All three fire the identical aimed bullet.
+    # The fire block replicates the shared fire-permission gate INLINE (the arcade Zoshi carries its own
+    # bespoke fire block rather than calling chk_timer_fire_bullet_reinit_timer, because the re-heading and
+    # the bullet spawn share one trigger): the 8-arcade-frame phase (tick & 3 == 0 -> every 4th tick), a
+    # byte decrement of the per-slot countdown, and at zero the re-heading + fire + reload to
+    # (rng & mask) + 1. Shares the flying hit window / explosion; the spin is written into `slot code` from
+    # the global frame and drawn render-only.
+    definition = _install_warp_proc(blocks, UPDATE_ZOSHI_PROCCODE)
+    slot_type = lambda: _cur_item(blocks, "slot type", SLOT_TYPE_ID)
+    fire_timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+
+    # Re-heading the enemy's OWN drift at the fire trigger, branched on the slot type. Fresh reporters
+    # per read (a reporter attaches to one parent only), so every operand keeps its own subtree.
+    reaim_toward = [
+        blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+        blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+        blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+        _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 24", AIM_DX_24_ID, variable("aim index", AIM_INDEX_ID))),
+        _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 24", AIM_DY_24_ID, variable("aim index", AIM_INDEX_ID))),
+    ]
+    # rnd re-heading: draw a random byte and set the drift from a random 24-tier direction. The index is
+    # floor(rng / 8) + 1 (1..32) — the port's no-bitwise form of get_dX_dY_and_cpy_to_obj's
+    # `(rand >> 3) & 0x1f` (Scratch has no bitwise ops; the +1 makes it a 1-based list index). The arcade's
+    # own `d0 -> d2` handoff for this draw is a leftover-register quirk of the 68K transcode (pseudo_random_
+    # gen returns in d0, the table index is read from d2, 1428-1445 / 3487-3489); the port has no leftover
+    # register, so this is rendered as a clean random draw — a documented, operator-approved deviation
+    # (docs/mechanics/030). Nothing about "aimed shot, not random shot" depends on that quirk: the shot is
+    # the TYPE-6 homing bullet and this index writes the ENEMY'S drift, not the bullet's.
+    reaim_random = [
+        blocks.call_proc(RNG_PROCCODE, warp=True),
+        blocks.set_var_expr(
+            "aim index",
+            AIM_INDEX_ID,
+            blocks.op_add(blocks.op_floor(blocks.op_div(variable("rng out", RNG_OUT_ID), number(8))), number(1)),
+        ),
+        _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 24", AIM_DX_24_ID, variable("aim index", AIM_INDEX_ID))),
+        _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 24", AIM_DY_24_ID, variable("aim index", AIM_INDEX_ID))),
+    ]
+    reheading = blocks.add("control_if_else")
+    is_rnd = blocks.op_eq(slot_type(), number(ZOSHI_RND_TYPE))
+    blocks.blocks[reheading]["inputs"]["CONDITION"] = [2, is_rnd]
+    blocks.blocks[is_rnd]["parent"] = reheading
+    blocks.substack(reheading, reaim_random)
+    blocks.substack(reheading, reaim_toward, name="SUBSTACK2")
+
+    # Reload the shot timer under the Zoshi mask: (rng mod (mask+1)) + 1, the arcade's `(rng & mask) + 1`.
+    reload = [
+        blocks.call_proc(RNG_PROCCODE, warp=True),
+        _set_cur_item(
+            blocks,
+            "slot fire timer",
+            SLOT_FIRE_TIMER_ID,
+            blocks.op_add(
+                blocks.op_mod(
+                    variable("rng out", RNG_OUT_ID),
+                    blocks.op_add(_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)),
+                ),
+                number(1),
+            ),
+        ),
+    ]
+    # On the fire trigger (countdown reached 0): re-heading the drift, fire ONE aimed bullet (the shared
+    # aim/alloc body, identical for all three), then reload. The re-heading runs BEFORE the fire so the new
+    # drift takes effect on this tick's move (the arcade re-aims then moves); _fire_aimed_bullet recomputes
+    # its own toward-craft aim for the BULLET and does not disturb the drift just written.
+    on_zero = blocks.if_reporter(
+        blocks.op_eq(fire_timer(), number(0)),
+        [reheading, *_fire_aimed_bullet(blocks), *reload],
+    )
+    dec = _set_cur_item(
+        blocks,
+        "slot fire timer",
+        SLOT_FIRE_TIMER_ID,
+        blocks.op_mod(
+            blocks.op_add(blocks.op_sub(fire_timer(), number(1)), number(FIRE_TIMER_BYTE_MOD)),
+            number(FIRE_TIMER_BYTE_MOD),
+        ),
+    )
+    on_phase = blocks.if_reporter(
+        blocks.op_eq(blocks.op_mod(variable("tick", TICK_ID), number(FIRE_GATE_PHASE_TICKS)), number(0)),
+        [dec, on_zero],
+    )
+
+    # Spin animation (render data): code = 0x28 + (global frame & 3), written each active tick so the
+    # renderer reads only the Stage slot lists (`slot code`). The arcade drives the spin from the GLOBAL
+    # countup_timer_1 (3452-3455 / 3494-3497), so all Zoshi spin in lockstep; `tick` is the port's global
+    # frame counter (half-rate under the shared 2-frames-per-tick scaling, deviation record 023).
+    anim = _set_cur_item(
+        blocks,
+        "slot code",
+        SLOT_CODE_ID,
+        blocks.op_add(number(ZOSHI_INIT_CODE), blocks.op_mod(variable("tick", TICK_ID), number(ZOSHI_ANIM_FRAMES))),
+    )
+
+    # Move by 4*velocity per tick (2 arcade frames), advance the animation clock, then cull.
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))  # row <= -2  ==  row < -1
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))  # col <= -2 (left edge)
+    # A Zoshi's random/toward re-heading can send it off any edge; the same explicit four-edge cull as the
+    # other flying families (this port's signed columns need the left edge the reference's byte-wrap
+    # handles implicitly).
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    # PLY-02: an active Zoshi touching the craft's cell kills it (raises `player hit`), checked at the
+    # tick-start position before it moves or culls — the shared flying-vs-craft window.
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    normal = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, on_phase, anim, *move, cull],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
 def install_fire_permission_gate(blocks: Blocks) -> None:
     # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
     # Operates on the current slot (`slot index`): every firing family calls this each active tick after
@@ -2875,7 +3183,21 @@ def install_spawn_flying(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(TERRAZI_TYPE)),
         [blocks.call_proc(INIT_TERRAZI_PROCCODE, warp=True)],
     )
-    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi])
+    # AIR-03: the three Zoshi object types each run their own thin initializer (they differ only in spawn
+    # draw / entry row / points), then share `update zoshi`.
+    spawn_zoshi_top = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOSHI_TOP_TYPE)),
+        [blocks.call_proc(INIT_ZOSHI_TOP_PROCCODE, warp=True)],
+    )
+    spawn_zoshi_bottom = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOSHI_BOTTOM_TYPE)),
+        [blocks.call_proc(INIT_ZOSHI_BOTTOM_PROCCODE, warp=True)],
+    )
+    spawn_zoshi_rnd = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOSHI_RND_TYPE)),
+        [blocks.call_proc(INIT_ZOSHI_RND_PROCCODE, warp=True)],
+    )
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd])
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
@@ -3351,6 +3673,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_terrazi(blocks)
     install_init_kapi(blocks)
     install_init_torkan(blocks)
+    install_init_zoshi_top(blocks)
+    install_init_zoshi_bottom(blocks)
+    install_init_zoshi_rnd(blocks)
     install_check_air_hit(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
@@ -3358,6 +3683,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_terrazi(blocks)
     install_update_kapi(blocks)
     install_update_torkan(blocks)
+    install_update_zoshi(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -4974,6 +5300,111 @@ def torkan_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def zoshi_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-03 Zoshi renderer (game_director owns the blocks; sprite_extractor owns the costumes). One
+    # persistent clone per flying slot (59..64), the same pool pattern as the Kapi/Terrazi/Torkan: shown
+    # and positioned when its slot holds any of the three Zoshi types, hidden otherwise. The clone writes
+    # no state. The 4-frame spin runs continuously from the moment it spawns (Zoshi has no silent-approach
+    # phase — it always spins and fires): the update writes `slot code = 0x28 + (tick & 3)` each tick, so
+    # the renderer reads that code back to the 1-based costume ordinal `(slot code - 0x28) + 1` (1..4).
+    # Driving the frame from `slot code` keeps every Zoshi in lockstep, matching the arcade's global
+    # countup_timer spin (zoshi_0D_main 3452-3455). On a hit it plays the shared explosion (the solv_death
+    # frames appended after the 4 spin frames, ordinals 5..), exactly like the other flying families.
+    blocks = Blocks(ZOSHI_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("zoshi clone slot", ZOSHI_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("zoshi clone slot", ZOSHI_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    # The three Zoshi object types share one renderer; show the clone for any of them.
+    slot_type = lambda: blocks.list_item("slot type", SLOT_TYPE_ID, slotvar())
+    is_zoshi = blocks.op_or(
+        blocks.op_eq(slot_type(), number(ZOSHI_RND_TYPE)),
+        blocks.op_or(
+            blocks.op_eq(slot_type(), number(ZOSHI_TOP_TYPE)),
+            blocks.op_eq(slot_type(), number(ZOSHI_BOTTOM_TYPE)),
+        ),
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Active costume: the continuous spin. `slot code` (0x28..0x2B) maps to the 1-based ordinal
+    # (slot code - 0x28) + 1 = 1..4 over zoshi/spin/01..04. Fresh reporter per read (a reporter attaches
+    # to one parent only).
+    active_costume = blocks.switch_costume_expr(
+        blocks.op_add(
+            blocks.op_sub(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()), number(ZOSHI_INIT_CODE)),
+            number(1),
+        )
+    )
+    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
+    # appended after the 4 spin frames (ordinal 5..); the burst doubles at the 2x phase (record 025).
+    phase_for_costume = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    explode_ordinal = blocks.op_add(number(ZOSHI_ANIM_FRAMES + 1), phase_for_costume)
+    phase_for_size = blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    )
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(ZOSHI_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [
+            active_costume,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZOSHI_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_zoshi]
+    blocks.blocks[is_zoshi]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -5088,6 +5519,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, TERRAZI_TARGET)
     _ensure_gameplay_target(result, KAPI_TARGET)
     _ensure_gameplay_target(result, TORKAN_TARGET)
+    _ensure_gameplay_target(result, ZOSHI_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -5135,6 +5567,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             torkan["costumes"].extend(copy.deepcopy(death["costumes"]))
         torkan["currentCostume"] = 0
+    # AIR-03: the Zoshi renderer mirrors its 4 spin frames (ZOSHI_ANIM_FRAMES), then the shared explosion
+    # frames (the same solv_death burst appended after them, ordinals 5.., exactly like the other families).
+    zoshi = next((t for t in result["targets"] if t.get("name") == ZOSHI_TARGET), None)
+    if proof is not None and zoshi is not None:
+        zoshi["costumes"] = proof_by_family("zoshi/")
+        if death is not None:
+            zoshi["costumes"].extend(copy.deepcopy(death["costumes"]))
+        zoshi["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -5430,6 +5870,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "terrazi": terrazi_blocks(),
         "kapi": kapi_blocks(),
         "torkan": torkan_blocks(),
+        "zoshi": zoshi_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -5490,6 +5931,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-02: likewise, the only Torkan render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 TORKAN_CLONE_SLOT_ID: ["torkan clone slot", 0],
+            }
+        elif target["name"] == ZOSHI_TARGET:
+            # AIR-03: likewise, the only Zoshi render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                ZOSHI_CLONE_SLOT_ID: ["zoshi clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.

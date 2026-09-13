@@ -358,6 +358,50 @@
       "family": "torkan",
       "animation": "roll",
       "duration_frames": 1
+    },
+    {
+      "name": "zoshi/spin/01",
+      "sheet": "aerial_enemies",
+      "rect": [2, 61, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "zoshi",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "zoshi/spin/02",
+      "sheet": "aerial_enemies",
+      "rect": [21, 61, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "zoshi",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "zoshi/spin/03",
+      "sheet": "aerial_enemies",
+      "rect": [40, 61, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "zoshi",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "zoshi/spin/04",
+      "sheet": "aerial_enemies",
+      "rect": [59, 61, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "zoshi",
+      "animation": "spin",
+      "duration_frames": 1
     }
   ]
 }

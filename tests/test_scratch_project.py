@@ -207,14 +207,15 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 22: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
-        # enemy-bullet renderers, and the slice-10 terrazi + kapi + torkan renderers (all reuse proof
-        # costumes by ref).
-        self.assertEqual(22, len(project["targets"]))
-        # 118: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # 23: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, and the slice-10 terrazi + kapi + torkan + zoshi renderers (all reuse
+        # proof costumes by ref).
+        self.assertEqual(23, len(project["targets"]))
+        # 122: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
-        # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director).
-        self.assertEqual(118, len(assets))
+        # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
+        # the 4 Zoshi spin-frame PNGs (AIR-03).
+        self.assertEqual(122, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1146,6 +1147,14 @@ class ScratchProjectTests(unittest.TestCase):
             # directly (via the allocator, not the fire gate), so it takes no mask and no gate call.
             director.INIT_TORKAN_PROCCODE,
             director.UPDATE_TORKAN_PROCCODE,
+            # AIR-03 Zoshi family (slice 10): three spawn inits (top/bottom/rnd) over ONE shared
+            # movement/anim/fire update, all warp, no state write — dispatched from the same spawner /
+            # walk. Its update replicates the fire gate INLINE (re-heading the enemy drift and firing
+            # share one trigger), so it fires via the allocator, not a FIRE_GATE call.
+            director.INIT_ZOSHI_TOP_PROCCODE,
+            director.INIT_ZOSHI_BOTTOM_PROCCODE,
+            director.INIT_ZOSHI_RND_PROCCODE,
+            director.UPDATE_ZOSHI_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -2763,6 +2772,574 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air02_failures(project), label)
+
+    @staticmethod
+    def _air03_failures(project: dict) -> set:
+        """AIR-03 Zoshi authoring contract — violated labels. Pins the structural facts that make Zoshi a
+        faithful THREE-TYPES-OVER-ONE-CORE aerial family: three spawn inits (top/bottom/rnd) and one shared
+        movement/anim/fire update all run atomically; the spawner inits all three by type and the ordered
+        walk drives the one shared updater; every variant aims its INITIAL drift at the craft on the
+        24-magnitude toroid tier (1.5 px/frame); top/bottom award 100 points and rnd 70; the bottom variant
+        enters at the fixed bottom edge row while top/rnd enter from the top; each captures the Zoshi fire
+        mask at spawn. The shared update fires EXACTLY ONE bullet via the allocator (the fire gate replicated
+        INLINE, never a FIRE_GATE call), the bullet aimed on the 32-magnitude tier (the shared aimed shot,
+        identical for all three), under a masked-periodic phase (fired only when the per-slot countdown hits
+        zero on the 4-tick phase boundary, then reloaded under the mask). On each fire it RE-HEADINGS its OWN
+        drift — the ONLY per-type branch, keyed on `slot type == ZOSHI_RND_TYPE`: the rnd branch draws a
+        RANDOM 24-tier angle from an rng step (index = floor(rng/8)+1), while top/bottom re-aim their drift
+        TOWARD the craft via the aim compute. The "random" is the ENEMY'S MOVEMENT, never the shot (all three
+        fire the same aimed bullet). The 24-vs-32 tier split is the clean discriminator between enemy drift
+        (24) and bullet aim (32); the rnd-vs-aimed branch split is pinned by DOWNWARD substack descent from
+        the type fork (this builder's `parent` pointers chain forward through siblings, so a parent-walk would
+        mistake a sibling `if` for the branch a block sits inside)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def rref(inp):
+            r = ref(inp)
+            return blocks.get(r) if r else None
+
+        def num_operand(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 2
+                and inp[1][0] in (4, 5, 6, 7, 8, 9, 10)
+            ):
+                try:
+                    return int(inp[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def var_operand(inp):
+            # The variable id of an inline variable value-spec [3, [12, name, id], ...], or None.
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 3
+                and inp[1][0] == 12
+            ):
+                return inp[1][2]
+            return None
+
+        def const_item(b):
+            it = b["inputs"].get("ITEM")
+            return num_operand(it)
+
+        def descend(start_id):
+            # Every block reachable from start_id along `next` and every reporter/substack input — one
+            # branch's own subtree, so the rnd (SUBSTACK) and aimed (SUBSTACK2) re-heading branches are
+            # inspected apart. Downward, never by parent-walk (parents chain forward to prior siblings).
+            seen: set = set()
+            frontier = [start_id]
+            while frontier:
+                bid = frontier.pop()
+                if not bid or bid in seen or bid not in blocks:
+                    continue
+                seen.add(bid)
+                blk = blocks[bid]
+                frontier.append(blk.get("next"))
+                for value in blk.get("inputs", {}).values():
+                    if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str):
+                        frontier.append(value[1])
+            return [blocks[bid] for bid in seen]
+
+        init_procs = (
+            director.INIT_ZOSHI_TOP_PROCCODE,
+            director.INIT_ZOSHI_BOTTOM_PROCCODE,
+            director.INIT_ZOSHI_RND_PROCCODE,
+        )
+
+        # (1) All four lifecycle procedures exist and are warp (atomic) — a non-warp lifecycle proc would
+        # yield mid-slot, letting a half-moved/half-aimed Zoshi render or be hit.
+        for proccode in (*init_procs, director.UPDATE_ZOSHI_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("zoshi-lifecycle-procs-warp")
+
+        # (2) The spawner inits all THREE types; (3) the ordered walk dispatches to the ONE shared updater.
+        if not all(calls(pc) for pc in init_procs):
+            failures.add("spawn-inits-zoshi")
+        if not calls(director.UPDATE_ZOSHI_PROCCODE):
+            failures.add("dispatch-updates-zoshi")
+
+        # (4) EVERY spawn init aims the INITIAL drift TOWARD the craft on the 24-magnitude toroid tier
+        # (1.5 px/frame) — it reads both 24-magnitude aim tables (all three variants aim their entry
+        # heading; the 0C erratic veer only emerges later, at each fire).
+        for pc in init_procs:
+            init_lists = {
+                b["fields"]["LIST"][1]
+                for b in _proc_body_blocks(stage, pc)
+                if b["opcode"] == "data_itemoflist"
+            }
+            if not {director.AIM_DX_24_ID, director.AIM_DY_24_ID} <= init_lists:
+                failures.add("zoshi-inits-aim-24-tier")
+
+        def awards(pc, pts):
+            return any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                and const_item(b) == pts
+                for b in _proc_body_blocks(stage, pc)
+            )
+
+        # (5) The point award per variant: top/bottom write `slot pts` = the 100-point index, rnd the
+        # 70-point index (1-based value-table indices; a wrong index scores the wrong value on the kill).
+        if not awards(director.INIT_ZOSHI_TOP_PROCCODE, director.ZOSHI_PTS_AIMED):
+            failures.add("zoshi-top-awards-100")
+        if not awards(director.INIT_ZOSHI_BOTTOM_PROCCODE, director.ZOSHI_PTS_AIMED):
+            failures.add("zoshi-bottom-awards-100")
+        if not awards(director.INIT_ZOSHI_RND_PROCCODE, director.ZOSHI_PTS_RND):
+            failures.add("zoshi-rnd-awards-70")
+
+        # (6) The BOTTOM variant enters at the fixed bottom edge row (`slot x` = ZOSHI_BOTTOM_EDGE_X cells,
+        # in slot units) — the arcade's `_X = #40` bottom entry, distinct from top/rnd's top-row entry.
+        bottom_entry = director.ZOSHI_BOTTOM_EDGE_X * director.SLOT_UNITS_PER_CELL
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_X_ID
+            and const_item(b) == bottom_entry
+            for b in _proc_body_blocks(stage, director.INIT_ZOSHI_BOTTOM_PROCCODE)
+        ):
+            failures.add("zoshi-bottom-fixed-edge-entry")
+
+        # (7) EVERY variant captures the Zoshi fire mask at spawn — it writes `slot fire mask` from the
+        # `fire mask zoshi` var, so the shared fire cadence reads the right mask.
+        for pc in init_procs:
+            if not any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_FIRE_MASK_ID
+                and var_operand(b["inputs"].get("ITEM")) == director.FIRE_MASK_ZOSHI_ID
+                for b in _proc_body_blocks(stage, pc)
+            ):
+                failures.add("zoshi-captures-fire-mask")
+
+        update_body = _proc_body_blocks(stage, director.UPDATE_ZOSHI_PROCCODE)
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        # (8) FIRES THE SHARED AIMED BULLET. Exactly ONE allocator call in the update body, and the bullet
+        # is aimed on the 32-magnitude tier (both 32-magnitude tables read) — the shared `_fire_aimed_bullet`
+        # every family fires, distinct from the enemy's own 24-tier drift.
+        alloc_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+        ]
+        update_lists = {
+            b["fields"]["LIST"][1] for b in update_body if b["opcode"] == "data_itemoflist"
+        }
+        if len(alloc_ids) != 1 or not (
+            {director.AIM_DX_32_ID, director.AIM_DY_32_ID} <= update_lists
+        ):
+            failures.add("zoshi-fires-shared-aimed-bullet")
+
+        # Map each block to its true enclosing `if` by walking DOWN each if's SUBSTACK/SUBSTACK2 next-chain
+        # (parent pointers chain forward through siblings, so a parent-walk would land on a sibling `if`).
+        enclosing_if = {}
+        for _bid, _b in blocks.items():
+            if _b["opcode"] in ("control_if", "control_if_else"):
+                for _key in ("SUBSTACK", "SUBSTACK2"):
+                    _cur = ref(_b["inputs"].get(_key)) if _key in _b["inputs"] else None
+                    while _cur:
+                        enclosing_if[_cur] = _bid
+                        _cur = blocks[_cur].get("next")
+
+        def cond_of(if_id):
+            b = blocks.get(if_id)
+            return rref(b["inputs"].get("CONDITION")) if b else None
+
+        def is_eq_listitem_const(cond, list_id, value):
+            # cond is `<data_itemoflist LIST=list_id> == value`.
+            if cond is None or cond["opcode"] != "operator_equals":
+                return False
+            lhs = rref(cond["inputs"].get("OPERAND1"))
+            return (
+                lhs is not None
+                and lhs["opcode"] == "data_itemoflist"
+                and lhs["fields"]["LIST"][1] == list_id
+                and num_operand(cond["inputs"].get("OPERAND2")) == value
+            )
+
+        # (9) MASKED-PERIODIC FIRE. The one allocator call sits inside `if slot fire timer == 0`, and that
+        # gate sits inside `if tick mod FIRE_GATE_PHASE_TICKS == 0` — the fire fires only when the per-slot
+        # countdown expires on the phase boundary. Plus a reload write: `slot fire timer` set to
+        # (rng mod (mask+1)) + 1. Without the phase/zero nesting the Zoshi would fire every tick; without the
+        # reload it would fire once and never again.
+        masked_phase = False
+        if len(alloc_ids) == 1:
+            zero_gate = enclosing_if.get(alloc_ids[0])
+            phase_gate = enclosing_if.get(zero_gate) if zero_gate else None
+            reload_present = any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+                and (item := rref(b["inputs"].get("ITEM"))) is not None
+                and item["opcode"] == "operator_add"
+                and num_operand(item["inputs"].get("NUM2")) == 1
+                and (m := rref(item["inputs"].get("NUM1"))) is not None
+                and m["opcode"] == "operator_mod"
+                for b in update_body
+            )
+            phase_cond = cond_of(phase_gate)
+            phase_ok = (
+                phase_cond is not None
+                and phase_cond["opcode"] == "operator_equals"
+                and (mod := rref(phase_cond["inputs"].get("OPERAND1"))) is not None
+                and mod["opcode"] == "operator_mod"
+                and var_operand(mod["inputs"].get("NUM1")) == director.TICK_ID
+                and num_operand(mod["inputs"].get("NUM2")) == director.FIRE_GATE_PHASE_TICKS
+                and num_operand(phase_cond["inputs"].get("OPERAND2")) == 0
+            )
+            masked_phase = (
+                is_eq_listitem_const(cond_of(zero_gate), director.SLOT_FIRE_TIMER_ID, 0)
+                and phase_ok
+                and reload_present
+            )
+        if not masked_phase:
+            failures.add("zoshi-fire-masked-phase")
+
+        # The single per-type branch: the re-heading `if slot type == ZOSHI_RND_TYPE`. SUBSTACK is the rnd
+        # branch, SUBSTACK2 the aimed branch — distinguished by downward descent, never parent-walk.
+        fork = next(
+            (
+                b
+                for b in update_body
+                if b["opcode"] == "control_if_else"
+                and is_eq_listitem_const(
+                    cond_of(id_of[id(b)]) or rref(b["inputs"].get("CONDITION")),
+                    director.SLOT_TYPE_ID,
+                    director.ZOSHI_RND_TYPE,
+                )
+            ),
+            None,
+        )
+        rnd_branch = descend(ref(fork["inputs"].get("SUBSTACK"))) if fork else []
+        aimed_branch = descend(ref(fork["inputs"].get("SUBSTACK2"))) if fork else []
+
+        def branch_calls(branch, proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in branch
+            )
+
+        def branch_reads_24(branch):
+            lists = {b["fields"]["LIST"][1] for b in branch if b["opcode"] == "data_itemoflist"}
+            return {director.AIM_DX_24_ID, director.AIM_DY_24_ID} <= lists
+
+        # (10) THE RND ENEMY DRIFT IS RANDOM (the erratic flyer). In the rnd branch the drift angle comes
+        # from an rng step, indexed floor(rng/8)+1 — a floor(divide(rng out, 8)) reading the stream — and
+        # writes the drift from the 24-tier; it does NOT call the aim compute. This is the biting
+        # aimed-vs-random pair on the ENEMY MOVEMENT (never the shot): if 0C re-aimed toward the craft it
+        # would stop veering.
+        rng_indexed = any(
+            b["opcode"] == "operator_mathop"
+            and b["fields"].get("OPERATOR", [None])[0] == "floor"
+            and (div := rref(b["inputs"].get("NUM"))) is not None
+            and div["opcode"] == "operator_divide"
+            and var_operand(div["inputs"].get("NUM1")) == director.RNG_OUT_ID
+            and num_operand(div["inputs"].get("NUM2")) == 8
+            for b in rnd_branch
+        )
+        if not (
+            fork is not None
+            and branch_calls(rnd_branch, director.RNG_PROCCODE)
+            and rng_indexed
+            and branch_reads_24(rnd_branch)
+            and not branch_calls(rnd_branch, director.COMPUTE_AIM_PROCCODE)
+        ):
+            failures.add("zoshi-rnd-reheadings-from-rng")
+
+        # (11) THE TOP/BOTTOM ENEMY DRIFT RE-AIMS TOWARD THE CRAFT. The aimed branch calls the aim compute
+        # and writes the drift from the 24-tier; it does NOT draw from the rng stream. Without the aim
+        # compute the drift would not track the craft.
+        if not (
+            fork is not None
+            and branch_calls(aimed_branch, director.COMPUTE_AIM_PROCCODE)
+            and branch_reads_24(aimed_branch)
+            and not branch_calls(aimed_branch, director.RNG_PROCCODE)
+        ):
+            failures.add("zoshi-aimed-reheadings-toward-craft")
+
+        # (12) SPIN ANIMATION. The update writes `slot code` = ZOSHI_INIT_CODE + (tick mod ZOSHI_ANIM_FRAMES)
+        # each active tick, so the renderer reads only the Stage slot lists and every Zoshi spins in
+        # lockstep. Distinct from the bullet's constant `slot code` write.
+        anim_present = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_CODE_ID
+            and (item := rref(b["inputs"].get("ITEM"))) is not None
+            and item["opcode"] == "operator_add"
+            and num_operand(item["inputs"].get("NUM1")) == director.ZOSHI_INIT_CODE
+            and (m := rref(item["inputs"].get("NUM2"))) is not None
+            and m["opcode"] == "operator_mod"
+            and var_operand(m["inputs"].get("NUM1")) == director.TICK_ID
+            and num_operand(m["inputs"].get("NUM2")) == director.ZOSHI_ANIM_FRAMES
+            for b in update_body
+        )
+        if not anim_present:
+            failures.add("zoshi-anim-spin")
+        return failures
+
+    # Roadmap closure evidence for leaf `air.zoshi` (AIR-03): Zoshi is a live THREE-TYPES-OVER-ONE-CORE
+    # family — three inits (top random-Y, bottom fixed-edge craft-excluding-Y, rnd random-Y) spawned by type
+    # from the formation wave, one shared updater driven by the ordered walk, each aiming its entry drift on
+    # the 1.5 px/frame 24-tier and firing the SAME aimed 32-tier bullet under the Zoshi mask. On each fire it
+    # re-headings its own drift: top/bottom toward the craft, rnd to a random 24-tier angle drawn from the
+    # rng step (the distinctive erratic flyer) — the "random" is the MOVEMENT, not the shot. The live proof
+    # (three types spawn and fire aimed shots; 0C veers erratically) is the harness `zoshi-top-aims-and-fires`
+    # / `zoshi-bottom-enters-edge` / `zoshi-rnd-veers-erratically`.
+    # roadmap-evidence: AIR-03 success  (test_zoshi_slice_authoring_present — four lifecycle procs warp, spawn-inits-three-types + dispatch-one-updater by type, all inits aim the 24-tier, top/bottom 100 pts + rnd 70, bottom fixed-edge entry, all capture the fire mask, fires one shared 32-tier aimed bullet under the masked phase, rnd drift re-heads from the rng draw + top/bottom re-aim toward the craft, spin anim)
+    # roadmap-evidence: AIR-03 failure  (test_zoshi_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_zoshi_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air03_failures(project))
+
+    def test_zoshi_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air03_failures(base))
+
+        def _cref(inp):
+            return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+        def _body(p, proccode):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, proccode)
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_ZOSHI_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_top_init_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_ZOSHI_TOP_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_ZOSHI_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def init_aim_wrong_tier(p: dict) -> None:
+            # Repoint the top init's 24-tier aim reads to the 32-tier tables → the initial-drift-aims-24
+            # clause bites (the entry drift would move at the wrong speed/tier).
+            stage, body = _body(p, director.INIT_ZOSHI_TOP_PROCCODE)
+            swap = {
+                director.AIM_DX_24_ID: ("aim dx 32", director.AIM_DX_32_ID),
+                director.AIM_DY_24_ID: ("aim dy 32", director.AIM_DY_32_ID),
+            }
+            for b in body:
+                if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
+                    b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
+
+        def wrong_top_points(p: dict) -> None:
+            stage, body = _body(p, director.INIT_ZOSHI_TOP_PROCCODE)
+            for b in body:
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_PTS_ID:
+                    b["inputs"]["ITEM"] = [1, [4, str(director.ZOSHI_PTS_AIMED + 1)]]
+
+        def wrong_bottom_points(p: dict) -> None:
+            stage, body = _body(p, director.INIT_ZOSHI_BOTTOM_PROCCODE)
+            for b in body:
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_PTS_ID:
+                    b["inputs"]["ITEM"] = [1, [4, str(director.ZOSHI_PTS_AIMED + 1)]]
+
+        def wrong_rnd_points(p: dict) -> None:
+            stage, body = _body(p, director.INIT_ZOSHI_RND_PROCCODE)
+            for b in body:
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_PTS_ID:
+                    b["inputs"]["ITEM"] = [1, [4, str(director.ZOSHI_PTS_RND + 1)]]
+
+        def move_bottom_entry(p: dict) -> None:
+            # Change the bottom variant's fixed edge row off ZOSHI_BOTTOM_EDGE_X → the fixed-edge clause
+            # bites (it would no longer enter at the bottom edge).
+            stage, body = _body(p, director.INIT_ZOSHI_BOTTOM_PROCCODE)
+            entry = director.ZOSHI_BOTTOM_EDGE_X * director.SLOT_UNITS_PER_CELL
+            for b in body:
+                it = b["inputs"].get("ITEM") if b["opcode"] == "data_replaceitemoflist" else None
+                if not (b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID):
+                    continue
+                if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], list) and it[1][0] in (4, 5, 6, 7, 8, 9, 10) and int(it[1][1]) == entry:
+                    b["inputs"]["ITEM"] = [1, [4, str(entry + director.SLOT_UNITS_PER_CELL)]]
+
+        def drop_mask_capture(p: dict) -> None:
+            # Repoint the top init's fire-mask capture to a different var → the captures-fire-mask clause
+            # bites (the shared cadence would read the wrong mask).
+            stage, body = _body(p, director.INIT_ZOSHI_TOP_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_FIRE_MASK_ID
+                ):
+                    it = b["inputs"].get("ITEM")
+                    if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], list) and it[1][0] == 12:
+                        it[1][2] = director.TICK_ID
+
+        def drop_fire(p: dict) -> None:
+            # Silence the single shared shot (retarget the allocator call) → the fires-shared-aimed-bullet
+            # clause bites (zero allocator calls).
+            stage, body = _body(p, director.UPDATE_ZOSHI_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def break_zero_gate(p: dict) -> None:
+            # Change the fire-timer-zero gate constant off 0 → the masked-phase clause bites (the fire no
+            # longer gates on the countdown reaching zero).
+            stage, body = _body(p, director.UPDATE_ZOSHI_PROCCODE)
+            for b in body:
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = _cref(b["inputs"].get("OPERAND1"))
+                lb = stage["blocks"].get(lhs) if lhs else None
+                if (
+                    lb is not None
+                    and lb["opcode"] == "data_itemoflist"
+                    and lb["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def _fork(stage):
+            blocks = stage["blocks"]
+            for b in _proc_body_blocks(stage, director.UPDATE_ZOSHI_PROCCODE):
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = blocks.get(_cref(b["inputs"].get("CONDITION")))
+                lhs = blocks.get(_cref(cond["inputs"].get("OPERAND1"))) if cond else None
+                if (
+                    cond is not None
+                    and cond["opcode"] == "operator_equals"
+                    and lhs is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                ):
+                    o2 = cond["inputs"].get("OPERAND2")
+                    if isinstance(o2, list) and isinstance(o2[1], list) and int(o2[1][1]) == director.ZOSHI_RND_TYPE:
+                        return b
+            return None
+
+        def _descend(stage, start_id):
+            blocks = stage["blocks"]
+            seen: set = set()
+            frontier = [start_id]
+            while frontier:
+                bid = frontier.pop()
+                if not bid or bid in seen or bid not in blocks:
+                    continue
+                seen.add(bid)
+                blk = blocks[bid]
+                frontier.append(blk.get("next"))
+                for value in blk.get("inputs", {}).values():
+                    if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str):
+                        frontier.append(value[1])
+            return [(bid, blocks[bid]) for bid in seen]
+
+        def unrandom_rnd_branch(p: dict) -> None:
+            # Silence the rnd branch's rng draw (retarget its rng-step call) → the rnd-reheadings-from-rng
+            # clause bites: the 0C drift would no longer come from the stream (the erratic flyer regression).
+            stage = next(t for t in p["targets"] if t["isStage"])
+            fork = _fork(stage)
+            start = _cref(fork["inputs"].get("SUBSTACK"))
+            for _bid, b in _descend(stage, start):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.RNG_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def unaim_aimed_branch(p: dict) -> None:
+            # Silence the aimed branch's aim compute (retarget its call) → the aimed-reheadings-toward-craft
+            # clause bites: top/bottom would no longer curve toward the craft.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            fork = _fork(stage)
+            start = _cref(fork["inputs"].get("SUBSTACK2"))
+            for _bid, b in _descend(stage, start):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.COMPUTE_AIM_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def break_anim(p: dict) -> None:
+            # Change the spin base off ZOSHI_INIT_CODE → the anim clause bites (the spin would read the
+            # wrong costume band).
+            stage, body = _body(p, director.UPDATE_ZOSHI_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if not (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_CODE_ID
+                ):
+                    continue
+                item = blocks.get(_cref(b["inputs"].get("ITEM")))
+                if item is None or item["opcode"] != "operator_add":
+                    continue
+                n1 = item["inputs"].get("NUM1")
+                if isinstance(n1, list) and isinstance(n1[1], list) and n1[1][0] in (4, 5, 6, 7, 8, 9, 10):
+                    item["inputs"]["NUM1"] = [1, [4, str(director.ZOSHI_INIT_CODE + 7)]]
+
+        cases = [
+            ("zoshi-lifecycle-procs-warp", unwarp_update),
+            ("spawn-inits-zoshi", drop_top_init_call),
+            ("dispatch-updates-zoshi", drop_dispatch_call),
+            ("zoshi-inits-aim-24-tier", init_aim_wrong_tier),
+            ("zoshi-top-awards-100", wrong_top_points),
+            ("zoshi-bottom-awards-100", wrong_bottom_points),
+            ("zoshi-rnd-awards-70", wrong_rnd_points),
+            ("zoshi-bottom-fixed-edge-entry", move_bottom_entry),
+            ("zoshi-captures-fire-mask", drop_mask_capture),
+            ("zoshi-fires-shared-aimed-bullet", drop_fire),
+            ("zoshi-fire-masked-phase", break_zero_gate),
+            ("zoshi-rnd-reheadings-from-rng", unrandom_rnd_branch),
+            ("zoshi-aimed-reheadings-toward-craft", unaim_aimed_branch),
+            ("zoshi-anim-spin", break_anim),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air03_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -6355,7 +6932,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d590c89c6f0748354946819f3600223270f6a2529a7509ede3006e95bb2696e8",
+            "bba187277446858743498abb8de846324eb3a9ae633a9853750f6b866c59f53a",
             build_hash,
         )
 

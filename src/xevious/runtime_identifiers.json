@@ -583,6 +583,11 @@
       "kind": "variable",
       "name": "bomb in flight",
       "scope": "Stage"
+    },
+    "zoshi-clone-slot": {
+      "kind": "variable",
+      "name": "zoshi clone slot",
+      "scope": "zoshi"
     }
   }
 }

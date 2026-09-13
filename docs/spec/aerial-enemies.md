@@ -84,10 +84,25 @@ adds `0x80` — a true 180° flip — and reads the fast 3 px/frame tier
 away vector until it is culled off-field — approach, one shot, hover, break away. (The re-aim happens
 **once** at the end of the hover window, not on a repeating cycle.)
 
-**Zoshi (AIR-03).** Three scheduled variants share one movement core (3414–3499): the top and bottom
-spawners (bottom entering at a fixed edge position) fire *aimed* shots; the random variant fires in a
-genuinely random direction (its angle index is a raw draw from the stream) and scores lower. All three
-fire periodically under the Zoshi mask.
+**Zoshi (AIR-03).** Three scheduled variants share one movement/animation core (`handle_0E_Zoshi_bottom`
+3414, `handle_0D_Zoshi_top` 3422 and `handle_0C_Zoshi_rnd` 3463, over the shared `zoshi_0D_init` 3427 and
+the `zoshi_0D_main` 3452 / `zoshi_0C_main` 3492 spin cores): all spin a four-code animation
+(`0x28 + (timer & 3)`) and drift on the toroid tier (`angle_dX_dY_toroid_tbl` 6394), entering aimed at the
+craft (`zoshi_0D_init` 3427–3429, which writes the *enemy's* `_dX`/`_dY` via
+`calc_dX_dY_for_vector_to_solvalou` 5119). The bottom variant enters at a fixed edge row (`_X = #40`,
+`handle_0E_Zoshi_bottom` 3414–3418) with a craft-excluding column draw; the other two enter from the top
+row with a plain draw. **All three fire the same aimed shot.** A Zoshi shot is a TYPE-6 bullet
+(`init_new_bullet` 5012 → `found_idle_bullet_slot` 5039 → `set_state_and_copy_obj_coords` 5032, which
+copies only the firer's *position* to the bullet — never a direction), and every TYPE-6 bullet re-vectors
+onto the craft each frame (`handle_06_Bullet` 4278), so the shot homes on the craft whichever variant
+fired it. What differs per variant is the *enemy's own drift re-heading* at each shot: top and bottom
+re-aim their drift toward the craft (`zoshi_0D_init` 3446–3448), while the random variant re-headings its
+drift to an erratic angle (`handle_0C_Zoshi_rnd` 3487–3490, via `get_dX_dY_and_cpy_to_obj` 5129) and
+scores lower (70 pts vs 100). The `handle_0C` source comment "shoots in a random direction" describes that
+erratic *movement*, not the shot: the random draw writes the enemy's `_dX`/`_dY` (a5), which drives
+`move_object_dX_dY`, while the bullet still homes. All three reload the shot timer under the Zoshi
+fire-frequency mask (`ffreq_mask_zoshi`). Built and verified against the pinned source (AIR-03); see
+[030 — Zoshi variants](../mechanics/030-zoshi-variants.md) for the port deviations.
 
 **Jara (AIR-04).** Aimed approach at 3 px/frame; at a wider proximity window (~[−6, 5], derived) it
 banks into a left/right spin with a 6-frame sprite cycle (3502–3595); the shooting variant fires exactly

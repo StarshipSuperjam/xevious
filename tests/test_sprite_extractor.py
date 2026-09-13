@@ -20,9 +20,10 @@ class SpriteExtractorTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count, contact_hash = extractor.check_repository()
-        # 30: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
-        # the 7 Kapi dive frames (AIR-05), and the 6 Torkan roll frames (AIR-02).
-        self.assertEqual(30, count)
+        # 34: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
+        # the 7 Kapi dive frames (AIR-05), the 6 Torkan roll frames (AIR-02), and the 4 Zoshi
+        # spin frames (AIR-03).
+        self.assertEqual(34, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -153,7 +154,8 @@ class SpriteExtractorTests(unittest.TestCase):
             [f"toroid/turn/{index:02d}" for index in range(1, 8)]
             + [f"terrazi/roll/{index:02d}" for index in range(1, 8)]
             + [f"kapi/dive/{index:02d}" for index in range(1, 8)]
-            + [f"torkan/roll/{index:02d}" for index in range(1, 7)],
+            + [f"torkan/roll/{index:02d}" for index in range(1, 7)]
+            + [f"zoshi/spin/{index:02d}" for index in range(1, 5)],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])

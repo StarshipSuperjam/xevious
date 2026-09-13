@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "71fa03c10775a23f6f86c5ca8dafa02445142276db258c12d2c6691e956b2c59",
+  "manifest_sha256": "455e107feb0c587e1b37c70eaac4e12ce1dfbc9fabfadd2213551c13b19d69d9",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -722,11 +722,107 @@
         8
       ],
       "generator_version": 1
+    },
+    "afacbdcf4dad9a4c3a26bb593ede4811.png": {
+      "frame": "zoshi/spin/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        2,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f011d8830b764e0a8b05d9910c838921.png": {
+      "frame": "zoshi/spin/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        21,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f042e3402be1557ec0b23f95c1fb0e21.png": {
+      "frame": "zoshi/spin/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        40,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "cd0bab355e4e524448ec79cb04a52ef9.png": {
+      "frame": "zoshi/spin/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        59,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "f8e544bbee4100c0a9ec9b2b5d48cd473bf249d5a0bd8a4161cc595a7b443169",
+    "sha256": "d0cf092553c559b04c3b261bc82126051babdd0266c8a43bb7a3cb9b91836290",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -757,7 +853,11 @@
       "torkan/roll/03",
       "torkan/roll/04",
       "torkan/roll/05",
-      "torkan/roll/06"
+      "torkan/roll/06",
+      "zoshi/spin/01",
+      "zoshi/spin/02",
+      "zoshi/spin/03",
+      "zoshi/spin/04"
     ]
   }
 }
