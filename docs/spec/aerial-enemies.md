@@ -104,9 +104,32 @@ erratic *movement*, not the shot: the random draw writes the enemy's `_dX`/`_dY`
 fire-frequency mask (`ffreq_mask_zoshi`). Built and verified against the pinned source (AIR-03); see
 [030 — Zoshi variants](../mechanics/030-zoshi-variants.md) for the port deviations.
 
-**Jara (AIR-04).** Aimed approach at 3 px/frame; at a wider proximity window (~[−6, 5], derived) it
-banks into a left/right spin with a 6-frame sprite cycle (3502–3595); the shooting variant fires exactly
-one aimed bullet at the trigger. Scores per the scoring table.
+**Jara (AIR-04).** Two independent flying types — the **shooter** `0x55` (`handle_55_Jara_shoots` 3537) and
+the **silent** `0x56` (`handle_56_Jara` 3502) — over one shared init (`jara_init` 3577) and one shared
+approach/turn core; the update branches on type only to fire. There is **no pair linkage**: no leader/follower,
+no sibling pointer, no shared state, no separation code. The "pair" is a spawn-stream convention — wave data
+emits adjacent runs of the two types — and the split is **emergent**: two Jara spawn at different random
+lateral columns, cross the proximity band on different ticks and on opposite sides of the craft's column, so
+one peels one way and the other the other. Nothing coordinates them. `jara_init` (3577–3586) draws a random
+lateral column excluding ±8 of the craft's column (`gen_rnd_spriteY` 5156–5169), aims the drift at the craft on
+the **fast 3 px/frame tier** (`jara_init` 3581–3582 loads `angle_dX_dY_terrazi_torkan_tbl` 6325 and calls
+`calc_dX_dY_for_vector_to_solvalou` 5119 — the Terrazi/Torkan angle table), sets **150 pts** (`_PTS = 18` 3583), the static initial sprite `0xA0`
+(3584), and clears the anim timer; it **captures no fire mask** (`_FFREQ` is never set — unlike every prior
+shooter). Each then **cruises** straight on that fixed aimed vector, static frame `0xA0`, pulsing colour, **no
+spin** (`jara_set_clr_and_move` 3508–3511), until `jara_check_proximity` (3588–3595) reports the craft within a
+**±6 lateral band** on `_Y` (`(solvalou._Y − self._Y) − 6 + 0x0c` sets carry when close). On that first close
+tick it commits **one-way** to a turn (the coroutine re-entry address is set only inside the turn arms —
+`jara_moving_right` 3518 and `jara_moving_left` 3553 — so approach, proximity and fire never re-run): it peels **laterally away** from the craft's column
+— `jara_moving_right` ramps `_dY` by −1/tick (3532), `jara_moving_left` by +1/tick (3567), `_dX` untouched — the
+side chosen by the sign of `solvalou._Y − self._Y` (`jara_set_dir` 3513–3515). `_Y` is the lateral axis (see
+Kapi below); the source's "left/right" names the **spin frame order**, not a horizontal motion. Turning, it now
+**spins** a 6-frame cycle `0xA0..0xA5` advancing every 2 ticks (`(TIMER>>1) & 7`, reset at 6, 3521–3528); the
+away-from-craft arc uses the reversed table (`jara_left_sprite_tbl` 0xA5..0xA0 3574). The **shooter** additionally
+fires **exactly one** aimed bullet at the turn instant (`jara_shoot` 3544 → `init_new_bullet` once 3546); the
+**silent** type never fires. That bullet is a TYPE-6 that re-vectors onto the craft each frame (`handle_06_Bullet`
+4278), so it homes. Exit is the standard offscreen cull; the ramping `_dY` carries it off. **150 pts each, both
+variants, scored independently.** Built and verified against the pinned source (AIR-04); see
+[031 — Jara variants](../mechanics/031-jara-variants.md) for the port deviations.
 
 **Kapi (AIR-05).** A **silent** aimed approach at 2 px/frame (the generic `angle_dX_dY_tbl` 6360),
 then, on a timer, a **peel-away dive** — the Toroid/Terrazi swing kinematics, not a homing dive.
