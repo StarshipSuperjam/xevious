@@ -30,7 +30,7 @@
   `handle_0C_Zoshi_rnd` (3463–3491, the plain draw, the 70-point score, and its own fire block), over the
   shared `zoshi_0D_init` (3427–3451: the initial toward-craft aim via `calc_dX_dY_for_vector_to_solvalou`,
   the 100-point score, the mask capture and shot-timer seed, the every-8-frame countdown, and — at expiry —
-  the timer reload, the **toward-craft** drift re-aim at 3446–3447, and `init_new_bullet` at 3448) and the
+  the timer reload at 3444–3447, the **toward-craft** drift re-aim at 3448–3449, and `init_new_bullet` at 3450) and the
   spin cores `zoshi_0D_main` (3452–3461) / `zoshi_0C_main` (3492–3499). The random variant's re-heading is
   `handle_0C_Zoshi_rnd` 3487–3489 (`pseudo_random_gen`, then `get_dX_dY_and_cpy_to_obj` 5129–5134, which
   writes the **enemy's** `_dX`/`_dY` from an angle index). The toward aim is `calc_dX_dY_for_vector_to_solvalou`
@@ -82,8 +82,10 @@
   from an aim over a single frame — that the **random** branch re-headings from an `rng step` draw with
   **no** `compute aim` call while the **aimed** branch re-headings from `compute aim` with **no** `rng`
   draw (the biting aimed-vs-random pair, on the enemy drift, not the bullet); the live scenarios in
-  `harness/lib/catalog.js` (`zoshi-top-aims-and-fires` asserting the shot's lateral velocity points back
-  toward the craft column, `zoshi-rnd-veers-erratically` asserting the enemy's drift takes a variety of
+  `harness/lib/catalog.js` (`zoshi-top-aims-and-fires` asserting the top variant allocates a bullet through
+  the shared aimed-fire path — the settling harness cannot read a stable shot direction because the top
+  variant homes its own drift onto the craft within one settling step, so the aim itself is pinned
+  structurally and by playtest, see deviation 7; `zoshi-rnd-veers-erratically` asserting the enemy's drift takes a variety of
   headings where a toward-aim would hold one, `zoshi-bottom-enters-edge` asserting the bottom variant is
   its own reachable type, and the extended `debug-key-cycles-families`), each with a biting negative.
 - Acceptance criteria: Three Zoshi object types spawn by type from the debug cycle (and the natural wave),
@@ -128,8 +130,8 @@
   re-home ([record 026](026-enemy-bullets-and-collision-death.md), pre-existing). The shot is still aimed
   at the craft for all three variants at fire time; it simply does not curve after launch. (5) **Masked
   spawn-timer seed for all three; the arcade `0x0D`/`0x0E` spawn quirk is not reproduced.** The arcade
-  `0x0D`/`0x0E` spawn seeds the first shot timer with `and.b d0,(_FFREQ,a5)` (3432) — the AND operands
-  swapped versus the `0x0C` spawn's `and.b (_FFREQ,a5),d0` — which stores an **unmasked** `rnd + 1` first
+  `0x0D`/`0x0E` spawn seeds the first shot timer with `and.b d0,(_FFREQ,a5)` (3433) — the AND operands
+  swapped versus the `0x0C` spawn's `and.b (_FFREQ,a5),d0` (3472) — which stores an **unmasked** `rnd + 1` first
   timer and corrupts the object's mask field to `mask & rnd`; every re-fire block (all three) masks
   correctly. This is a transcode artifact, not intended cadence; the port seeds all three uniformly with
   the masked `(rng mod (mask + 1)) + 1` that the `0x0C` spawn and all three re-fires use. (6) **No-bitwise
@@ -142,9 +144,16 @@
   threshold faithfully separates them; the exact entry row `ZOSHI_BOTTOM_EDGE_X * SLOT_UNITS_PER_CELL` is
   pinned as an exact-value clause in `_air03_failures` (`zoshi-bottom-fixed-edge-entry`), and the live
   `zoshi-bottom-enters-edge` scenario asserts the bottom variant's reachability instead. (8) **Two arcade
-  frames per tick.** All per-frame reference rates are doubled for the port's two-frame tick (the
-  every-8-frame fire phase becomes every 4 ticks; velocities scaled by the shared position step), the same
-  tick scaling every family uses. (9) **Four extracted frames match the four arcade spin codes.** The
+  frames per tick, and the one rate that cannot double: the spin.** Most per-frame reference rates are
+  doubled for the port's two-frame tick — the every-8-frame fire phase (`countup_timer_1 & 7`, 3439–3440)
+  becomes every `FIRE_GATE_PHASE_TICKS = 4` ticks, and velocities are scaled by the shared `×4` position
+  step — the same tick scaling every family uses. The **spin animation is the exception**: the arcade
+  advances it one sprite frame per arcade frame (`0x28 + (countup_timer_1 & 3)`, `zoshi_0D_main` 3453–3455 /
+  `zoshi_0C_main` 3493–3495 — a full four-code cycle every four frames), but a build tick is two arcade
+  frames, so a four-code cycle cannot advance once per arcade frame without dropping half its frames. The
+  port advances all four frames one per tick (`0x28 + (tick mod ZOSHI_ANIM_FRAMES)`) — the same four-frame
+  spin at **half the arcade rate**, chosen over a full-rate two-of-four-frame flip that would discard two of
+  the four extracted frames. This is visual cadence only, with no gameplay effect. (9) **Four extracted frames match the four arcade spin codes.** The
   arcade spins codes `0x28`–`0x2B` (four codes); the Aerial Enemies rip supplies four distinct Zoshi
   frames, so the render maps one-to-one with no hold-last idiom, on the shared 16×16 sprite cell, mirrored
   by family prefix onto the shared sprite-extraction proof, playing the shared explosion on a hit.

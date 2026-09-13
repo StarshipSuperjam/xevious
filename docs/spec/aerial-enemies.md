@@ -96,7 +96,7 @@ row with a plain draw. **All three fire the same aimed shot.** A Zoshi shot is a
 copies only the firer's *position* to the bullet — never a direction), and every TYPE-6 bullet re-vectors
 onto the craft each frame (`handle_06_Bullet` 4278), so the shot homes on the craft whichever variant
 fired it. What differs per variant is the *enemy's own drift re-heading* at each shot: top and bottom
-re-aim their drift toward the craft (`zoshi_0D_init` 3446–3448), while the random variant re-headings its
+re-aim their drift toward the craft (`zoshi_0D_init` 3448–3449), while the random variant re-headings its
 drift to an erratic angle (`handle_0C_Zoshi_rnd` 3487–3490, via `get_dX_dY_and_cpy_to_obj` 5129) and
 scores lower (70 pts vs 100). The `handle_0C` source comment "shoots in a random direction" describes that
 erratic *movement*, not the shot: the random draw writes the enemy's `_dX`/`_dY` (a5), which drives

@@ -3031,8 +3031,10 @@ def install_update_zoshi(blocks: Blocks) -> None:
 
     # Spin animation (render data): code = 0x28 + (global frame & 3), written each active tick so the
     # renderer reads only the Stage slot lists (`slot code`). The arcade drives the spin from the GLOBAL
-    # countup_timer_1 (3452-3455 / 3494-3497), so all Zoshi spin in lockstep; `tick` is the port's global
-    # frame counter (half-rate under the shared 2-frames-per-tick scaling, deviation record 023).
+    # countup_timer_1 (zoshi_0D_main 3453-3455 / zoshi_0C_main 3493-3495), so all Zoshi spin in lockstep;
+    # `tick` is the port's global frame counter. The arcade advances one frame per arcade frame, but a tick
+    # is two arcade frames, so this four-code cycle runs at HALF the arcade rate — the one per-frame rate
+    # that cannot double at 2-frames-per-tick (mechanics record 030, deviation 8).
     anim = _set_cur_item(
         blocks,
         "slot code",
