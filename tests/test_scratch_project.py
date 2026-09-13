@@ -207,15 +207,15 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 23: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
-        # enemy-bullet renderers, and the slice-10 terrazi + kapi + torkan + zoshi renderers (all reuse
-        # proof costumes by ref).
-        self.assertEqual(23, len(project["targets"]))
-        # 122: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # 24: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, and the slice-10 terrazi + kapi + torkan + zoshi + jara renderers (all
+        # reuse proof costumes by ref).
+        self.assertEqual(24, len(project["targets"]))
+        # 128: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
-        # the 4 Zoshi spin-frame PNGs (AIR-03).
-        self.assertEqual(122, len(assets))
+        # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04).
+        self.assertEqual(128, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1155,6 +1155,13 @@ class ScratchProjectTests(unittest.TestCase):
             director.INIT_ZOSHI_BOTTOM_PROCCODE,
             director.INIT_ZOSHI_RND_PROCCODE,
             director.UPDATE_ZOSHI_PROCCODE,
+            # AIR-04 Jara family (slice 10, the final aerial): ONE shared spawn init and ONE shared
+            # per-tick approach->turn update over both types (0x55 shooter / 0x56 silent), both warp,
+            # no state write — dispatched from the same spawner / walk. The shooter fires ONE bullet
+            # directly (via the allocator, gated inside the approach->turn transition), so it takes no
+            # mask and no fire-gate call; the silent type never fires.
+            director.INIT_JARA_PROCCODE,
+            director.UPDATE_JARA_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -3340,6 +3347,561 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air03_failures(project), label)
+
+    @staticmethod
+    def _air04_failures(project: dict) -> set:
+        """AIR-04 Jara authoring contract — violated labels. Pins the structural facts that make Jara a
+        faithful TWO-TYPES-OVER-ONE-CORE final aerial (handle_55/handle_56 3502-3599): one shared init and
+        one shared update serve both the 0x55 shooter and the 0x56 silent; the spawner inits both by type
+        and the ordered walk drives the one shared updater; both run atomically (warp). The shared init
+        draws its Y craft-EXCLUDING (jara_init 3580, the +/-8 reject, distinct from the Kapi's craft-
+        overlapping draw), aims the entry drift TOWARD the craft on the FAST 48-magnitude tier (3 px/frame,
+        3581) and awards 150 points, and captures NO fire mask / seeds NO fire timer (jara_init never sets
+        _FFREQ — the distinctive negative vs every prior shooter). The shared update commits a ONE-WAY turn
+        only while APPROACHING and only inside the lateral proximity band [LOW, HIGH] (3591-3594): the turn
+        peels the LATERAL velocity AWAY from the craft (slot dy ramps by +/-JARA_TURN_LATERAL_ACCEL in the
+        latched side, slot dx untouched). At that same transition — and ONLY then — the 0x55 shooter fires
+        EXACTLY ONE aimed bullet DIRECTLY via the allocator (jara_shoot 3544), nested inside BOTH the
+        `flag == APPROACH` transition gate (so it cannot recur once the flag leaves APPROACH) and the
+        `slot type == SHOOTER` gate (so the 0x56 silent never fires); it takes no mask and calls no shared
+        fire gate. The 6-frame spin is render-only and lives in the Jara target: static entry frame while
+        APPROACHING, the phase-cycled spin once TURNED (the settling harness advances whole ticks and
+        cannot see a single fired/turned frame, so the once-only guards are pinned structurally)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def rref(inp):
+            r = ref(inp)
+            return blocks.get(r) if r else None
+
+        def num_operand(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 2
+                and inp[1][0] in (4, 5, 6, 7, 8, 9, 10)
+            ):
+                try:
+                    return int(inp[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def const_item(b):
+            return num_operand(b["inputs"].get("ITEM"))
+
+        init_body = _proc_body_blocks(stage, director.INIT_JARA_PROCCODE)
+        update_body = _proc_body_blocks(stage, director.UPDATE_JARA_PROCCODE)
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        # A block's condition subtree contains `<data_itemoflist LIST=list_id> == value`.
+        def cond_has_eq(cond_id, list_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                if b["opcode"] == "operator_equals":
+                    lhs = rref(b["inputs"].get("OPERAND1"))
+                    if (
+                        lhs is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == list_id
+                        and num_operand(b["inputs"].get("OPERAND2")) == value
+                    ):
+                        return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        # A block's condition subtree contains a numeric operand equal to `value` (used to spot the
+        # proximity-band constants inside the AND-wrapped turn gate).
+        def cond_has_num(cond_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                for key, v in b.get("inputs", {}).items():
+                    if num_operand(v) == value:
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        # True when some ANCESTOR `if` of node_id satisfies pred(condition_id). The builder chains blocks
+        # forward through `next` with `parent` pointing back (to the prior sibling, or the enclosing C-block
+        # for a substack's first child), so a parent-walk climbs through siblings up to each enclosing `if`
+        # and beyond — reaching every ancestor gate (the same idiom the Torkan/Zoshi checks use).
+        def ancestor_if(node_id, pred):
+            cur = blocks.get(node_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    if pred(ref(parent["inputs"].get("CONDITION"))):
+                        return True
+                cur = parent
+            return False
+
+        def gated_by_flag(node_id, value):
+            return ancestor_if(node_id, lambda c: cond_has_eq(c, director.SLOT_FLAG_ID, value))
+
+        # (1) Both Jara lifecycle procedures exist and are warp (atomic) — a non-warp lifecycle proc would
+        # yield mid-slot, letting a half-moved/half-turned Jara render or be hit.
+        for proccode in (director.INIT_JARA_PROCCODE, director.UPDATE_JARA_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("jara-lifecycle-procs-warp")
+
+        # (2) The spawner inits Jara (shared by both types); (3) the ordered walk dispatches to the ONE
+        # shared updater. Both branches OR the two types, so a single init/update call covers 0x55 and 0x56.
+        if not calls(director.INIT_JARA_PROCCODE):
+            failures.add("spawn-inits-jara")
+        if not calls(director.UPDATE_JARA_PROCCODE):
+            failures.add("dispatch-updates-jara")
+
+        # (4) The spawn init aims the entry drift TOWARD the craft on the FAST 48-magnitude tier
+        # (3 px/frame) — it reads both 48-magnitude aim tables (the Terrazi/Torkan fast angle table).
+        init_lists = {
+            b["fields"]["LIST"][1] for b in init_body if b["opcode"] == "data_itemoflist"
+        }
+        if not {director.AIM_DX_48_ID, director.AIM_DY_48_ID} <= init_lists:
+            failures.add("jara-aims-fast-tier")
+
+        # (5) The spawn init awards 150 points — it writes `slot pts` = JARA_PTS (the 1-based value-table
+        # index of 150, both types). A wrong index would score the wrong value on the kill.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and const_item(b) == director.JARA_PTS
+            for b in init_body
+        ):
+            failures.add("jara-awards-150-pts")
+
+        # (6) The spawn init draws its Y CRAFT-EXCLUDING (jara_init's gen_rnd_spriteY reject): the draw
+        # rejects any column whose |player col - candidate| is within SPAWN_CRAFT_GAP — an `abs(...)` fed
+        # to an `< SPAWN_CRAFT_GAP` test. This is the clean discriminator from the Kapi's craft-overlapping
+        # draw (no such reject), so a Jara never spawns on top of the craft's column.
+        if not any(
+            b["opcode"] == "operator_lt"
+            and (lhs := rref(b["inputs"].get("OPERAND1"))) is not None
+            and lhs["opcode"] == "operator_mathop"
+            and lhs["fields"].get("OPERATOR", [None])[0] == "abs"
+            and num_operand(b["inputs"].get("OPERAND2")) == director.SPAWN_CRAFT_GAP
+            for b in init_body
+        ):
+            failures.add("jara-craft-excluding-draw")
+
+        # (7) NO FIRE MASK / NO FIRE TIMER at spawn (the distinctive negative — jara_init never sets
+        # _FFREQ). The shooter's single shot is proximity-gated at the turn, not paced by a captured mask;
+        # the silent type never fires. A `slot fire mask` / `slot fire timer` write in the init would be a
+        # periodic-fire regression (the shape of every prior shooter), so its ABSENCE is the contract.
+        if any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] in (director.SLOT_FIRE_MASK_ID, director.SLOT_FIRE_TIMER_ID)
+            for b in init_body
+        ):
+            failures.add("jara-no-fire-mask")
+
+        # (8) THE SHOOTER FIRES EXACTLY ONCE, GATED IN THE APPROACH->TURN TRANSITION. There is exactly ONE
+        # allocator call in the update body, and it sits inside the `flag == APPROACH` transition gate — so
+        # the instant it fires the transition flips the flag off APPROACH and the shot cannot recur. It
+        # fires DIRECTLY (never the shared fire-permission gate). Structural: the settling harness advances
+        # whole ticks and cannot observe a single re-fired frame.
+        alloc_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+        ]
+        if len(alloc_ids) != 1 or not gated_by_flag(alloc_ids[0], director.JARA_FLAG_APPROACH):
+            failures.add("jara-fires-once-in-approach-gate")
+        if any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+            for b in update_body
+        ):
+            failures.add("jara-fires-without-gate")
+
+        # (9) ONLY THE 0x55 SHOOTER FIRES. The one allocator call sits inside `slot type == SHOOTER`, so the
+        # 0x56 silent type never fires — the shared update's only per-type branch on the fire path.
+        if len(alloc_ids) != 1 or not ancestor_if(
+            alloc_ids[0], lambda c: cond_has_eq(c, director.SLOT_TYPE_ID, director.JARA_SHOOTER_TYPE)
+        ):
+            failures.add("jara-shooter-only-fires")
+
+        # (10) THE TURN IS PROXIMITY-GATED. Every write that latches a turn side (slot flag -> TURN_MINUS or
+        # TURN_PLUS) sits inside a gate whose condition tests the lateral proximity band — it carries BOTH
+        # band constants (LOW and HIGH). Without the band the Jara would turn immediately instead of cruising
+        # to the craft's row first.
+        turn_latch_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and const_item(b) in (director.JARA_FLAG_TURN_MINUS, director.JARA_FLAG_TURN_PLUS)
+        ]
+        band = lambda c: cond_has_num(c, director.JARA_PROXIMITY_LOW) and cond_has_num(
+            c, director.JARA_PROXIMITY_HIGH
+        )
+        if not turn_latch_ids or not all(
+            ancestor_if(t, band) for t in turn_latch_ids
+        ):
+            failures.add("jara-turn-proximity-gated")
+
+        # (11) THE TURN RAMPS THE LATERAL VELOCITY AWAY. The TURN_MINUS branch decrements `slot dy` by
+        # JARA_TURN_LATERAL_ACCEL (an `slot dy - accel` write gated by `flag == TURN_MINUS`) and the
+        # TURN_PLUS branch increments it by the same accel (gated by `flag == TURN_PLUS`) — the peel-away
+        # ramp, opposite signs on the two sides. `slot dx` is untouched (no scroll decel, unlike the Kapi).
+        def ramps_dy(op, flag_value):
+            for b in update_body:
+                if not (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+                ):
+                    continue
+                item = rref(b["inputs"].get("ITEM"))
+                if item is None or item["opcode"] != op:
+                    continue
+                base = rref(item["inputs"].get("NUM1"))
+                if (
+                    base is not None
+                    and base["opcode"] == "data_itemoflist"
+                    and base["fields"]["LIST"][1] == director.SLOT_DY_ID
+                    and num_operand(item["inputs"].get("NUM2")) == director.JARA_TURN_LATERAL_ACCEL
+                    and gated_by_flag(id_of[id(b)], flag_value)
+                ):
+                    return True
+            return False
+
+        if not (
+            ramps_dy("operator_subtract", director.JARA_FLAG_TURN_MINUS)
+            and ramps_dy("operator_add", director.JARA_FLAG_TURN_PLUS)
+        ):
+            failures.add("jara-turn-ramps-dy-away")
+
+        # (12) SPIN ONLY AFTER THE TURN; STATIC WHILE APPROACHING (render-only, in the Jara target). The
+        # renderer chooses the active costume by phase: `if slot flag == APPROACH` -> a FIXED entry costume
+        # (jara/spin/01, the silent cruise); else the phase-cycled spin (a computed costume). Without the
+        # approach gate the Jara would spin during its silent cruise.
+        jara = next((t for t in project["targets"] if t.get("name") == director.JARA_TARGET), None)
+        static_gated = False
+        if jara is not None:
+            jblocks = jara["blocks"]
+
+            def jref(inp):
+                return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+            for bid, b in jblocks.items():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = jblocks.get(jref(b["inputs"].get("CONDITION")))
+                if cond is None or cond["opcode"] != "operator_equals":
+                    continue
+                lhs = jblocks.get(jref(cond["inputs"].get("OPERAND1")))
+                rhs = cond["inputs"].get("OPERAND2")
+                is_approach_gate = (
+                    lhs is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and num_operand(rhs) == director.JARA_FLAG_APPROACH
+                )
+                if not is_approach_gate:
+                    continue
+                # True branch: a FIXED costume switch (COSTUME input is a bare shadow [1, menu]); false
+                # branch: a COMPUTED costume (obscured shadow [3, reporter, menu]) — the spin.
+                true_first = jref(b["inputs"].get("SUBSTACK"))
+                false_first = jref(b["inputs"].get("SUBSTACK2"))
+                true_static = (
+                    true_first is not None
+                    and jblocks[true_first]["opcode"] == "looks_switchcostumeto"
+                    and isinstance(jblocks[true_first]["inputs"].get("COSTUME"), list)
+                    and jblocks[true_first]["inputs"]["COSTUME"][0] == 1
+                )
+
+                def branch_has_computed_costume(first_id):
+                    cur = first_id
+                    while cur:
+                        blk = jblocks.get(cur)
+                        if blk is None:
+                            break
+                        if (
+                            blk["opcode"] == "looks_switchcostumeto"
+                            and isinstance(blk["inputs"].get("COSTUME"), list)
+                            and blk["inputs"]["COSTUME"][0] == 3
+                        ):
+                            return True
+                        # descend one level into a nested if/if_else's substacks too (the spin sits in the
+                        # turn-side if_else nested under the false branch).
+                        for key in ("SUBSTACK", "SUBSTACK2"):
+                            nested = jref(blk["inputs"].get(key)) if key in blk.get("inputs", {}) else None
+                            sub = nested
+                            while sub:
+                                sblk = jblocks.get(sub)
+                                if sblk is None:
+                                    break
+                                if (
+                                    sblk["opcode"] == "looks_switchcostumeto"
+                                    and isinstance(sblk["inputs"].get("COSTUME"), list)
+                                    and sblk["inputs"]["COSTUME"][0] == 3
+                                ):
+                                    return True
+                                sub = sblk.get("next")
+                        cur = blk.get("next")
+                    return False
+
+                if true_static and branch_has_computed_costume(false_first):
+                    static_gated = True
+                    break
+        if not static_gated:
+            failures.add("jara-spin-only-after-turn")
+
+        return failures
+
+    # Roadmap closure evidence for leaf `air.jara` (AIR-04): Jara is a live TWO-TYPES-OVER-ONE-CORE family —
+    # the 0x55 shooter and 0x56 silent share one init and one update, spawned by type from the formation wave
+    # (adjacent runs, so the visual pair is emergent, never coupled), advanced by the ordered walk. Each
+    # cruises its craft-excluding entry aimed on the 3 px/frame fast tier without spinning, then at the
+    # lateral proximity band peels AWAY (slot dy ramps, slot dx held) and spins the 6-frame render animation;
+    # the shooter fires ONE aimed bullet at the turn (gated so it cannot recur), the silent never fires; 150
+    # pts each, scored independently. The live proof (shooter fires at proximity; the turn is reached and the
+    # spin/dy grows) is the harness `jara-shooter-fires-at-proximity` / `jara-peels-and-spins`.
+    # roadmap-evidence: AIR-04 success  (test_jara_slice_authoring_present — lifecycle procs warp, spawn-inits + dispatch-updates by type, init aims the fast 48-tier, awards 150, craft-excluding draw, no fire mask, shooter fires exactly one aimed bullet gated in the approach->turn transition and only for 0x55, silent never fires, turn proximity-gated, dy ramps away, spin only after the turn)
+    # roadmap-evidence: AIR-04 failure  (test_jara_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_jara_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air04_failures(project))
+
+    def test_jara_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air04_failures(base))
+
+        def _body(p, proccode):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, proccode)
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_JARA_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_init_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_JARA_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_JARA_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def aim_wrong_tier(p: dict) -> None:
+            # Repoint the init's fast 48-tier aim reads to the generic 32-tier tables → the fast-tier clause
+            # bites (the entry drift would cruise at the wrong speed).
+            stage, body = _body(p, director.INIT_JARA_PROCCODE)
+            swap = {
+                director.AIM_DX_48_ID: ("aim dx 32", director.AIM_DX_32_ID),
+                director.AIM_DY_48_ID: ("aim dy 32", director.AIM_DY_32_ID),
+            }
+            for b in body:
+                if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in swap:
+                    b["fields"]["LIST"] = list(swap[b["fields"]["LIST"][1]])
+
+        def wrong_points(p: dict) -> None:
+            # Change the awarded value-table index off JARA_PTS → the 150-point award clause bites.
+            stage, body = _body(p, director.INIT_JARA_PROCCODE)
+            for b in body:
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_PTS_ID:
+                    b["inputs"]["ITEM"] = [1, [4, str(director.JARA_PTS + 1)]]
+
+        def drop_craft_exclusion(p: dict) -> None:
+            # Zero the craft-proximity reject distance (SPAWN_CRAFT_GAP -> 0) so |player col - col| < 0 is
+            # never true → the draw stops excluding the craft's column. The craft-excluding clause bites.
+            stage, body = _body(p, director.INIT_JARA_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "operator_lt"
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and b["inputs"]["OPERAND2"][1][1] == director.SPAWN_CRAFT_GAP
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "0"]]
+
+        def capture_fire_mask(p: dict) -> None:
+            # Repurpose the init's `slot code` write to write `slot fire timer` instead → the init now seeds
+            # a fire timer (a periodic-fire regression). The no-fire-mask clause bites.
+            stage, body = _body(p, director.INIT_JARA_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_CODE_ID
+                ):
+                    b["fields"]["LIST"] = ["slot fire timer", director.SLOT_FIRE_TIMER_ID]
+                    break
+
+        def ungate_fire_from_approach(p: dict) -> None:
+            # Flip the transition gate's `flag == APPROACH` constant to a value the flag never holds → the
+            # shooter's shot is no longer nested under an APPROACH gate, so it could re-fire after the turn.
+            # The fires-once-in-approach-gate clause bites (the fires-every-tick regression).
+            stage, body = _body(p, director.UPDATE_JARA_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if b["opcode"] != "operator_equals":
+                    continue
+                o1 = b["inputs"].get("OPERAND1")
+                lhs = blocks.get(o1[1]) if isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], str) else None
+                if (
+                    lhs is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and isinstance(b["inputs"]["OPERAND2"][1], list)
+                    and b["inputs"]["OPERAND2"][1][1] == director.JARA_FLAG_APPROACH
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def add_fire_gate(p: dict) -> None:
+            # Turn the direct allocator call into a shared fire-gate call → the fires-without-gate clause
+            # bites (a periodic-masked-fire regression). Also trips fires-once (the allocator vanishes).
+            stage, body = _body(p, director.UPDATE_JARA_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.FIRE_GATE_PROCCODE
+
+        def fire_from_silent(p: dict) -> None:
+            # Flip the fire's `slot type == SHOOTER` gate constant to the SILENT type → the 0x55 shooter no
+            # longer fires and the 0x56 silent would. The shooter-only-fires clause bites.
+            stage, body = _body(p, director.UPDATE_JARA_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if b["opcode"] != "operator_equals":
+                    continue
+                o1 = b["inputs"].get("OPERAND1")
+                lhs = blocks.get(o1[1]) if isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], str) else None
+                if (
+                    lhs is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and isinstance(b["inputs"]["OPERAND2"][1], list)
+                    and b["inputs"]["OPERAND2"][1][1] == director.JARA_SHOOTER_TYPE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, str(director.JARA_SILENT_TYPE)]]
+
+        def ungate_turn_proximity(p: dict) -> None:
+            # Change the low proximity-band constant off JARA_PROXIMITY_LOW → the turn gate no longer carries
+            # both band constants, so the check can no longer see it as proximity-gated. The clause bites.
+            stage, body = _body(p, director.UPDATE_JARA_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] in ("operator_lt", "operator_gt")
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and b["inputs"]["OPERAND2"][1][1] == director.JARA_PROXIMITY_LOW
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "-99"]]
+
+        def flatten_turn_ramp(p: dict) -> None:
+            # Zero the lateral accel in the TURN_MINUS decrement (accel -> 0) → the peel-away ramp no longer
+            # carries JARA_TURN_LATERAL_ACCEL on the minus side. The dy-ramps-away clause bites.
+            stage, body = _body(p, director.UPDATE_JARA_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if not (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+                ):
+                    continue
+                item = blocks.get(b["inputs"].get("ITEM", [None, None])[1])
+                if item is None or item["opcode"] != "operator_subtract":
+                    continue
+                n2 = item["inputs"].get("NUM2")
+                if isinstance(n2, list) and isinstance(n2[1], list) and int(n2[1][1]) == director.JARA_TURN_LATERAL_ACCEL:
+                    item["inputs"]["NUM2"] = [1, [4, "0"]]
+
+        def spin_during_approach(p: dict) -> None:
+            # Flip the renderer's `slot flag == APPROACH` costume gate to a value the flag never holds → the
+            # static entry frame is never selected, so the Jara would spin during its silent cruise. The
+            # spin-only-after-turn clause bites.
+            jara = next(t for t in p["targets"] if t.get("name") == director.JARA_TARGET)
+            jblocks = jara["blocks"]
+            for b in jblocks.values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                o1 = b["inputs"].get("OPERAND1")
+                lhs = jblocks.get(o1[1]) if isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], str) else None
+                if (
+                    lhs is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and isinstance(b["inputs"]["OPERAND2"][1], list)
+                    and b["inputs"]["OPERAND2"][1][1] == director.JARA_FLAG_APPROACH
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        cases = [
+            ("jara-lifecycle-procs-warp", unwarp_update),
+            ("spawn-inits-jara", drop_init_call),
+            ("dispatch-updates-jara", drop_dispatch_call),
+            ("jara-aims-fast-tier", aim_wrong_tier),
+            ("jara-awards-150-pts", wrong_points),
+            ("jara-craft-excluding-draw", drop_craft_exclusion),
+            ("jara-no-fire-mask", capture_fire_mask),
+            ("jara-fires-once-in-approach-gate", ungate_fire_from_approach),
+            ("jara-fires-without-gate", add_fire_gate),
+            ("jara-shooter-only-fires", fire_from_silent),
+            ("jara-turn-proximity-gated", ungate_turn_proximity),
+            ("jara-turn-ramps-dy-away", flatten_turn_ramp),
+            ("jara-spin-only-after-turn", spin_during_approach),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air04_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -6932,7 +7494,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "bcc80703932bc236f06421b1dd5e04cb69420f3ca656cf54b8aef53e82a3e993",
+            "0b1f9fe3829b4a5083e2b390c3b5eddeb65557735aa5420e41a3e3162c2aa066",
             build_hash,
         )
 
