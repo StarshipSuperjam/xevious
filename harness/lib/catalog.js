@@ -1115,9 +1115,109 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zoshi'),
   },
   {
+    key: 'jara-shooter-fires-at-proximity',
+    behavior:
+      'A 0x55 Jara shooter cruises its aimed approach SILENTLY, then the instant the craft is within its lateral proximity band it commits its one-way turn and fires EXACTLY ONE aimed bullet DIRECTLY (via the allocator, no fire mask, no shared periodic gate) — the arcade jara_shoot single proximity-triggered shot',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Isolate the Jara shot from live shooting Toroids: make every spawnable flying type the NON-shooting
+      // Toroid (type 10) and clear the flying slots, so `bullet alloc result` can only move if the seeded
+      // Jara itself fires. Seed one 0x55 shooter in APPROACH ON the craft's column (lateral offset 0, well
+      // inside the [-6,+5] band) and a few rows ahead in scroll, stationary (dx=dy=0) so it stays on-field
+      // to reach its turn. On the first active tick `update jara` sees flag==APPROACH && in-band and commits
+      // the turn, firing one aimed bullet. Reset the shared alloc signal, then pump until a bullet allocates.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 85); // the 0x55 shooter
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 8) * 256); // eight rows ahead in scroll, not overlapping the craft cell
+      put('slot-y', slot, pc * 256); // ON the craft's column => lateral offset 0, inside the turn band
+      put('slot-dx', slot, 0); // stationary: the shot triggers on proximity, not on drift
+      put('slot-dy', slot, 0);
+      put('slot-flag', slot, 0); // APPROACH — the turn+shot trigger the first in-band tick
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 160); // 0xA0, the approach sprite code
+      writeVar(vm, 'bullet-alloc-result', 0);
+      let fired = false;
+      for (let i = 0; i < 12 && !fired; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0) fired = true;
+      }
+      return { fired };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'an approaching 0x55 Jara allocated one aimed bullet directly when the craft entered its proximity band');
+    },
+    // Empty `update jara` so the approach never reaches its turn → no bullet allocates (no other firing path
+    // exists, every spawnable type being non-shooting) → `bullet alloc result` stays 0 → the assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update jara'),
+  },
+  {
+    key: 'jara-peels-and-spins',
+    behavior:
+      'A Jara cruises straight until the craft is within its lateral band, then commits a ONE-WAY turn that RAMPS its lateral velocity AWAY from the craft column (slot dy grows in the peel direction) while leaving its forward/scroll velocity UNTOUCHED (slot dx unchanged, unlike the Kapi dive) — the arcade jara_moving_right/left ±1 lateral ramp',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Seed one 0x56 silent Jara in APPROACH a few rows ahead in scroll, laterally aside on the SMALLER-
+      // column side of the craft (self col = craft col - 4, so the lateral offset = craft - self = +4, inside
+      // the [-6,+5] band and >= 0 => the TURN_MINUS side). On the first in-band tick `update jara` latches
+      // the turn ONCE (flag -> 1) and thereafter each tick DECREMENTS slot dy (peeling to an even smaller
+      // column, AWAY from the craft) while never touching slot dx. A single pump settles past the trigger;
+      // cull preserves slot flag/dx/dy, so the committed peel survives to read (the same post-cull read the
+      // Kapi dive uses). The 6-frame spin is render-only (derived from the advancing slot clock in the Jara
+      // target) and is pinned structurally in _air04_failures; here the observable is the peel kinematics.
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      put('slot-type', slot, 86); // the 0x56 silent (motion is identical to the shooter; no fire to isolate)
+      put('slot-state', slot, 1);
+      put('slot-x', slot, (pr - 8) * 256); // eight rows ahead in scroll
+      put('slot-y', slot, (pc - 4) * 256); // 4 columns aside on the smaller-column side => offset +4, in band
+      put('slot-dx', slot, 8); // a forward/scroll velocity the turn must leave UNTOUCHED
+      put('slot-dy', slot, 0); // no lateral drift until the turn ramps it
+      put('slot-flag', slot, 0); // APPROACH — eligible to trigger the turn
+      put('slot-timer', slot, 0);
+      put('slot-code', slot, 160); // 0xA0, the approach sprite code
+      step(vm, 1);
+      return {
+        flag: readVar(vm, 'slot-flag')[slot],
+        dy: readVar(vm, 'slot-dy')[slot],
+        dx: readVar(vm, 'slot-dx')[slot],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.flag, 1, 'the Jara latched its one-way turn on the craft-is-larger side (TURN_MINUS)');
+      assert.ok(
+        obs.dy < 0,
+        `a turning Jara ramps its LATERAL velocity AWAY from the craft column (dy < 0); got dy=${obs.dy}`,
+      );
+      assert.equal(
+        obs.dx,
+        8,
+        `a turning Jara leaves its FORWARD/scroll velocity UNTOUCHED (dx stays the seeded 8); got dx=${obs.dx}`,
+      );
+    },
+    // Empty `update jara` so the turn never runs → flag stays 0, dy stays 0 → the turn/peel clauses bite (and
+    // an axis swap — ramping dx instead of dy — would fail the dy<0 / dx==8 pair).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update jara'),
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
-      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zoshi entries), so each family can be cycled to for playtesting (tracked for removal)',
+      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Jara entries), so each family can be cycled to for playtesting (tracked for removal)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -1127,17 +1227,18 @@ export const SCENARIOS = [
       // make the negative bite. The debug-specific, pacing-invariant signal is the CURSOR itself: the
       // `debug spawn index` advances one step per fresh debug spawn and wraps mod len(DEBUG_SPAWN_FAMILIES)
       // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T and collect the
-      // distinct cursor values seen — the cycle must visit every family slot (all 6 residues 0..5, i.e. the
-      // three prior families plus the three newly built Zoshi entries), which proves it self-extends rather
-      // than stopping at a fixed set. Also confirm the key actually stamps flying enemies. The exact
-      // residue→family binding is pinned structurally in tests/test_scratch_project.py (DEBUG_SPAWN_
-      // FAMILIES); this scenario proves the cursor drives the whole cycle at runtime. No manual field-clear
-      // (that would drive the normal spawner); the debug wave clears its own slots. Worst-case full-cycle
-      // coverage measured at step ~33; budget 100 is ~3x that.
+      // distinct cursor values seen — the cycle must visit every family slot (all 9 residues 0..8, i.e. the
+      // six prior entries plus the three newly built Jara entries: the shooter solo, the silent solo, and
+      // the two-object pair spawn), which proves it self-extends rather than stopping at a fixed set. Also
+      // confirm the key actually stamps flying enemies. The exact residue→family binding is pinned
+      // structurally in tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the
+      // cursor drives the whole cycle at runtime. No manual field-clear (that would drive the normal
+      // spawner); the debug wave clears its own slots. Worst-case full-cycle coverage for 6 residues was
+      // measured at step ~33; the 9-residue cycle is proportionally longer, so budget 150 (~3x) to be safe.
       keyDown(vm, 't');
       const cursors = new Set();
       let anyFlying = false;
-      for (let i = 0; i < 100; i += 1) {
+      for (let i = 0; i < 150; i += 1) {
         step(vm, 1);
         cursors.add(readVar(vm, 'debug-spawn-index'));
         const type = readVar(vm, 'slot-type');
@@ -1149,8 +1250,8 @@ export const SCENARIOS = [
     assert(obs) {
       assert.equal(obs.anyFlying, true, 'holding the debug key stamps flying enemies through the shared spawner');
       assert.ok(
-        obs.distinctCursors >= 6,
-        `the debug cycle visits every built family slot (all 6 DEBUG_SPAWN_FAMILIES residues, incl. the three new Zoshi entries); saw ${obs.distinctCursors}`,
+        obs.distinctCursors >= 9,
+        `the debug cycle visits every built family slot (all 9 DEBUG_SPAWN_FAMILIES residues, incl. the three new Jara entries); saw ${obs.distinctCursors}`,
       );
     },
     // Empty `debug spawn wave` so the key never advances its cursor → `debug spawn index` stays 0 →
