@@ -959,44 +959,203 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update torkan'),
   },
   {
-    key: 'debug-key-cycles-families',
+    key: 'zoshi-top-aims-and-fires',
     behavior:
-      'The temporary debug key (T) brings in one debug enemy at a time and, each time the field clears, advances to the next built family (Terrazi then Kapi then Torkan), so families unreachable in early play can be playtested (tracked for removal)',
+      'A top-entry Zoshi (type 13) fires the SHARED aimed bullet through _fire_aimed_bullet when its masked fire countdown expires on the phase boundary — the arcade zoshi_0D fire allocates an aimed TYPE-6 shot (all three variants fire the same aimed bullet), never a random-direction shot',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Hold the debug key: with the field empty the walk brings in the first family (Terrazi, type 17)
-      // through the real spawn path and advances its cursor. Clearing the flying field each time makes the
-      // next fresh spawn advance to the following family (Kapi type 16, then Torkan type 15) — proving the
-      // cycle self-extends to the newly built family, not a fixed pair.
-      keyDown(vm, 't');
-      const sawType = (wanted) => {
-        for (let i = 0; i < 30; i += 1) {
-          step(vm, 1);
-          const type = readVar(vm, 'slot-type');
-          if (FLYING_SLOT_INDICES.some((s) => type[s] === wanted)) return true;
-        }
-        return false;
+      // Isolate the Zoshi shot from live shooting Toroids: make every spawnable flying type the
+      // NON-shooting Toroid (type 10) and clear the flying slots, so `bullet alloc result` can only move
+      // if the seeded Zoshi itself fires. Seed one top Zoshi OFF the craft's column and re-plant it +
+      // re-prime its countdown each tick until it reaches a fire on the 4-tick phase boundary.
+      //
+      // WHY THE ASSERTION IS `fired`, NOT A BULLET DIRECTION (settling trap — same hazard the sibling
+      // `zoshi-bottom-enters-edge` was designed around). `_step()` runs an unfixed, machine-speed-
+      // dependent number of ticks to settling (harness.js lib header), and the top Zoshi RE-AIMS ITS OWN
+      // DRIFT TOWARD THE CRAFT on every fire tick — so within one settling step it homes onto (and
+      // overshoots) the craft's column, and the LAST fire captured is from ~the craft's own column, where
+      // the lateral aim component is ~0 and its sign is a coin flip. A single-tick `bullet dy < 0` read is
+      // therefore flaky by construction (empirically ~2/3 fail). The shot's aim correctness is instead
+      // verified: (a) structurally in tests/test_scratch_project.py::_air03_failures (all three variants
+      // share the one _fire_aimed_bullet call reading the 32-tier aim), and (b) by the operator playtest.
+      // Here we assert only the pacing-invariant fact this scenario CAN observe: the shared fire path
+      // allocates a bullet — the aimed-shot allocation, matching the sibling aimed-fire scenarios
+      // (torkan-approaches-and-fires, terrazi, kapi).
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
       };
-      const clearField = () => {
-        const slotType = readVar(vm, 'slot-type');
-        for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
-      };
-      const terraziSeen = sawType(17);
-      clearField();
-      const kapiSeen = sawType(16);
-      clearField();
-      const torkanSeen = sawType(15);
-      keyUp(vm, 't');
-      return { terraziSeen, kapiSeen, torkanSeen };
+      writeVar(vm, 'bullet-alloc-result', 0);
+      let fired = false;
+      for (let i = 0; i < 24 && !fired; i += 1) {
+        put('slot-type', slot, 13);
+        put('slot-state', slot, 1);
+        put('slot-x', slot, (pr - 10) * 256); // ten rows ahead in scroll
+        put('slot-y', slot, (pc + 8) * 256); // eight columns to the side
+        put('slot-dx', slot, 24);
+        put('slot-dy', slot, 0);
+        put('slot-flag', slot, 0);
+        put('slot-fire-timer', slot, 1); // expires on the next phase boundary
+        put('slot-timer', slot, 0);
+        put('slot-code', slot, 40); // 0x28 spin base
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0) fired = true;
+      }
+      return { fired };
     },
     assert(obs) {
-      assert.equal(obs.terraziSeen, true, 'holding the debug key brings in the first family (Terrazi)');
-      assert.equal(obs.kapiSeen, true, 'after the field clears, the cursor advances to the next family (Kapi)');
-      assert.equal(obs.torkanSeen, true, 'after the field clears again, the cursor advances to Torkan');
+      assert.equal(
+        obs.fired,
+        true,
+        'a top Zoshi allocated a bullet through the shared aimed-fire path when its masked countdown expired on the phase boundary',
+      );
     },
-    // Empty `debug spawn wave` so the key does nothing → no debug family ever occupies a flying slot
-    // → no family is seen → the assertion bites.
+    // Empty `update zoshi` so the seeded Zoshi never runs its fire block → no bullet allocates (every
+    // spawnable type being non-shooting) → `bullet alloc result` stays 0 → the fired assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zoshi'),
+  },
+  {
+    key: 'zoshi-bottom-enters-edge',
+    behavior:
+      'The bottom-entry Zoshi (type 14) is its own reachable object type with its own initializer — the arcade zoshi_0E bottom variant is a distinct spawnable, brought in here through the shared debug spawn cycle (its FIXED bottom-edge entry row 40 is the exact-value contract locked structurally in tests/test_scratch_project.py::_air03_failures, which the settling harness cannot observe — see note)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Reachability, not entry row. The bottom variant's DISTINCT trait is its fixed bottom-edge spawn
+      // row (40), set once by `init zoshi bottom`. That is a SPAWN-INSTANT value the settling harness
+      // cannot read: `_step()` runs an unfixed, machine-speed-dependent number of ticks (harness.js
+      // header), and BOTH top (row 0) and bottom (row 40) entrants converge on and overshoot the craft
+      // row, so within a single settling step they roam the same span (measured: top reaches ~38, bottom
+      // drops to ~15) — any post-settling row threshold is unfaithful. The exact entry row 40 is therefore
+      // pinned as an EXACT-VALUE structural contract in _air03_failures (zoshi-bottom-fixed-edge-entry).
+      // What IS pacing-invariant here is REACHABILITY: that the bottom variant is its own type with its own
+      // initializer that stamps a live type-14 slot. The shared debug cursor gallops by >1 per settling step
+      // (see debug-key-cycles-families), so an ordered per-family window is racy; instead hold the key,
+      // accumulate the types seen over a sustained hold, and require the bottom variant (type 14) to appear
+      // — order-independent, so the galloping cursor cannot false-fail it. Do NOT clear the field manually
+      // (the debug wave clears its own slots; a manual clear would drive the normal spawner and leak
+      // debug-only families, breaking the negative). The negative neutralizes the SHARED `init zoshi
+      // bottom` (used by both the debug and normal spawn paths, game_director.py install_spawn_flying), so
+      // no path can stamp a type-14 slot and the negative cannot be masked by normal-play leakage. Budget
+      // 100 gives generous margin for the bottom variant to be cycled in.
+      keyDown(vm, 't');
+      const seen = new Set();
+      for (let i = 0; i < 100; i += 1) {
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        for (const s of FLYING_SLOT_INDICES) if (type[s] !== 0) seen.add(type[s]);
+      }
+      keyUp(vm, 't');
+      return { saw: seen.has(14) };
+    },
+    assert(obs) {
+      assert.equal(obs.saw, true, 'the bottom Zoshi (type 14) is reachable — its initializer stamps a live type-14 slot');
+    },
+    // Empty `init zoshi bottom` so the bottom spawn never stamps its slot (type/state/entry row) → no
+    // type-14 slot ever appears → the saw assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'init zoshi bottom'),
+  },
+  {
+    key: 'zoshi-rnd-veers-erratically',
+    behavior:
+      'A random-veer Zoshi (type 12) re-headings its OWN drift to an UNPREDICTABLE angle at each shot (the arcade zoshi_0C erratic movement) — the "random" is the enemy MOVEMENT, not the shot; seeded ON the craft column, a faithful 0C walks a VARIETY of headings where a toward-craft re-aim would hold a single one',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
+      const slotType = readVar(vm, 'slot-type');
+      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63;
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Seed a rnd Zoshi ON the craft's column and ahead in scroll, with a fixed initial straight-ahead
+      // drift. Re-plant its position and re-prime its countdown each tick so it keeps firing on-field, and
+      // clear the enemy-bullet slots each tick so its own aimed shots cannot kill the craft mid-run. A
+      // faithful 0C re-headings to a RANDOM 24-tier angle at each fire, walking the drift across many
+      // distinct headings; a toward-craft re-aim (seeded on the craft column) would hold a single heading.
+      const headings = new Set();
+      for (let i = 0; i < 40; i += 1) {
+        const st = readVar(vm, 'slot-type');
+        for (let b = 39; b <= 57; b += 1) st[b] = 0; // clear enemy-bullet slots (indices 40..58)
+        put('slot-type', slot, 12);
+        put('slot-state', slot, 1);
+        put('slot-x', slot, (pr - 10) * 256);
+        put('slot-y', slot, pc * 256); // ON the craft column: a toward-aim keeps dy=0, a random one does not
+        put('slot-flag', slot, 0);
+        put('slot-fire-timer', slot, 1);
+        put('slot-code', slot, 40);
+        if (i === 0) {
+          put('slot-dx', slot, 24); // fixed initial heading; the re-heading is what varies it
+          put('slot-dy', slot, 0);
+        }
+        step(vm, 1);
+        headings.add(`${readVar(vm, 'slot-dx')[slot]},${readVar(vm, 'slot-dy')[slot]}`);
+      }
+      return { distinct: headings.size };
+    },
+    assert(obs) {
+      assert.ok(
+        obs.distinct >= 2,
+        `a random-veer Zoshi takes a VARIETY of headings across its shots (distinct headings >= 2); got ${obs.distinct}`,
+      );
+    },
+    // Empty `update zoshi` so the seeded rnd Zoshi never re-headings → its drift stays the fixed seeded
+    // (24, 0) for the whole run → exactly one distinct heading → the variety assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zoshi'),
+  },
+  {
+    key: 'debug-key-cycles-families',
+    behavior:
+      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zoshi entries), so each family can be cycled to for playtesting (tracked for removal)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Family PRESENCE cannot prove the debug key did anything: normal play eventually scrolls into zones
+      // that spawn every family too (measured with no key held — all of types 12..17 appear within ~80
+      // settling steps, type 15 as early as step ~2), so accumulating seen types is confounded and cannot
+      // make the negative bite. The debug-specific, pacing-invariant signal is the CURSOR itself: the
+      // `debug spawn index` advances one step per fresh debug spawn and wraps mod len(DEBUG_SPAWN_FAMILIES)
+      // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T and collect the
+      // distinct cursor values seen — the cycle must visit every family slot (all 6 residues 0..5, i.e. the
+      // three prior families plus the three newly built Zoshi entries), which proves it self-extends rather
+      // than stopping at a fixed set. Also confirm the key actually stamps flying enemies. The exact
+      // residue→family binding is pinned structurally in tests/test_scratch_project.py (DEBUG_SPAWN_
+      // FAMILIES); this scenario proves the cursor drives the whole cycle at runtime. No manual field-clear
+      // (that would drive the normal spawner); the debug wave clears its own slots. Worst-case full-cycle
+      // coverage measured at step ~33; budget 100 is ~3x that.
+      keyDown(vm, 't');
+      const cursors = new Set();
+      let anyFlying = false;
+      for (let i = 0; i < 100; i += 1) {
+        step(vm, 1);
+        cursors.add(readVar(vm, 'debug-spawn-index'));
+        const type = readVar(vm, 'slot-type');
+        if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
+      }
+      keyUp(vm, 't');
+      return { distinctCursors: cursors.size, anyFlying };
+    },
+    assert(obs) {
+      assert.equal(obs.anyFlying, true, 'holding the debug key stamps flying enemies through the shared spawner');
+      assert.ok(
+        obs.distinctCursors >= 6,
+        `the debug cycle visits every built family slot (all 6 DEBUG_SPAWN_FAMILIES residues, incl. the three new Zoshi entries); saw ${obs.distinctCursors}`,
+      );
+    },
+    // Empty `debug spawn wave` so the key never advances its cursor → `debug spawn index` stays 0 →
+    // distinctCursors == 1 → the full-cycle assertion bites (normal play leaves the cursor untouched, so
+    // it cannot mask the mutation).
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
   },
   {

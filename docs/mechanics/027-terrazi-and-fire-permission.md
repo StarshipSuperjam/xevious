@@ -110,9 +110,14 @@
   (`slot timer`), cycling the 7 frames every ~8 arcade frames — the same visible cadence with no
   build-logic change. The 7 frames are extracted from the same Aerial Enemies sheet as the Toroid, onto
   the shared sprite-extraction proof; the render clone mirrors them and plays the shared explosion on a
-  hit. Two of the banking frames keep a small enclosed `(0,128,0)` region as opaque artwork — the same
-  edge-connected-only matte rule the Toroid already relies on (`test_flood_fill_preserves_enclosed_green
-  _artwork`), applied consistently. (7) **Not in area 1's baseline waves.** Type 0x11 appears only at
+  hit. Two of the banking frames contain a small enclosed `(0,128,0)` region; this slice's
+  reference-checked matte correction (folded into the Zoshi PR, [030](030-zoshi-variants.md)) makes **all**
+  `(0,128,0)` matte transparent, enclosed regions included — they are interior negative space, not
+  artwork, and the earlier edge-connected-only rule rendered them as stray green blobs. The replacement
+  `test_all_matte_is_transparent_including_enclosed` (which supersedes the old
+  `test_flood_fill_preserves_enclosed_green_artwork`) now asserts the enclosed pixel is transparent. (This
+  corrects an earlier reading in this record that treated the enclosed green as intentional opaque
+  artwork.) (7) **Not in area 1's baseline waves.** Type 0x11 appears only at
   higher-AI-level formations, so the family is proven through seeded harness scenarios rather than
   area-1 live density.
 - [x] No assembly or other source code was copied into the Scratch project.

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "71fa03c10775a23f6f86c5ca8dafa02445142276db258c12d2c6691e956b2c59",
+  "manifest_sha256": "455e107feb0c587e1b37c70eaac4e12ce1dfbc9fabfadd2213551c13b19d69d9",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -75,7 +75,7 @@
       ],
       "generator_version": 1
     },
-    "5f6c5612231b19b128153b50e870c43f.png": {
+    "901f6ed68c8b92130fbb8b0b3faff9b1.png": {
       "frame": "toroid/turn/01",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -99,7 +99,7 @@
       ],
       "generator_version": 1
     },
-    "9c94d37935a530827266b0da7deab258.png": {
+    "e4fef1b9271dc0a50843b36bc07d697e.png": {
       "frame": "toroid/turn/02",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -123,7 +123,7 @@
       ],
       "generator_version": 1
     },
-    "f37d9821560eccb26a09feb525b21553.png": {
+    "5930a7a8746b2d4031ed54bb69ed742a.png": {
       "frame": "toroid/turn/03",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -219,7 +219,7 @@
       ],
       "generator_version": 1
     },
-    "80df5268ad39408371fa1be1fcbf8116.png": {
+    "d5b48e4bf70d08121b8cb786e2f67817.png": {
       "frame": "toroid/turn/07",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -267,7 +267,7 @@
       ],
       "generator_version": 1
     },
-    "ec916185062ee3899a1a6874acd6f907.png": {
+    "5c50577ad5bcbdf04a1f48a527d86304.png": {
       "frame": "terrazi/roll/02",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -363,7 +363,7 @@
       ],
       "generator_version": 1
     },
-    "5612d409be83f68e2532958104318534.png": {
+    "986c3dfc1fac0610a0862b9f65657033.png": {
       "frame": "terrazi/roll/06",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -411,7 +411,7 @@
       ],
       "generator_version": 1
     },
-    "831fca4c790ed36ab2f47a66cec381d2.png": {
+    "408c1924090a02401508edc937d1434e.png": {
       "frame": "kapi/dive/01",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -435,7 +435,7 @@
       ],
       "generator_version": 1
     },
-    "9fcf8086029a1e2b2877defc45b96b94.png": {
+    "876832aca121aac39217233b5a77b686.png": {
       "frame": "kapi/dive/02",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -531,7 +531,7 @@
       ],
       "generator_version": 1
     },
-    "b9116ec51c0269b68f8cce43da7f6f4e.png": {
+    "241b1f31a936b71ed56fdf5dc23082b0.png": {
       "frame": "kapi/dive/06",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -555,7 +555,7 @@
       ],
       "generator_version": 1
     },
-    "081c83a5729a17691f20facf64f019f1.png": {
+    "8fe88b6029c15108a454c10471ded910.png": {
       "frame": "kapi/dive/07",
       "target": "toroid_sprite_proof",
       "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
@@ -722,11 +722,107 @@
         8
       ],
       "generator_version": 1
+    },
+    "afacbdcf4dad9a4c3a26bb593ede4811.png": {
+      "frame": "zoshi/spin/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        2,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f011d8830b764e0a8b05d9910c838921.png": {
+      "frame": "zoshi/spin/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        21,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f042e3402be1557ec0b23f95c1fb0e21.png": {
+      "frame": "zoshi/spin/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        40,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "cd0bab355e4e524448ec79cb04a52ef9.png": {
+      "frame": "zoshi/spin/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        59,
+        61,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "f8e544bbee4100c0a9ec9b2b5d48cd473bf249d5a0bd8a4161cc595a7b443169",
+    "sha256": "b074a64aab5647471733b728083c313e00764519b13409a5d3e14ad548d749f1",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -757,7 +853,11 @@
       "torkan/roll/03",
       "torkan/roll/04",
       "torkan/roll/05",
-      "torkan/roll/06"
+      "torkan/roll/06",
+      "zoshi/spin/01",
+      "zoshi/spin/02",
+      "zoshi/spin/03",
+      "zoshi/spin/04"
     ]
   }
 }
