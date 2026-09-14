@@ -55,7 +55,7 @@ waves (`sub_2_fn_5__reset_flying_enemies` 331–335).
 
 **Fire-frequency masks.** Area schedules set one mask byte per firing family — Derota, Logram, Zoshi,
 Terrazi, Kapi, Boza Logram, Domogram, Andor Genesis — plus a ground-stop-firing row
-(`xevious_sub.68k` `sub_2_fn_8__fire_freq_mask_derota` through `sub_2_fn_22__fire_freq_mask_andor_genesis` 375–419; every mask value each area sets, with its
+(`xevious_sub.68k` `sub_2_fn_8__fire_freq_mask_derota` through `sub_2_fn_22__fire_freq_mask_andor_genesis` 375–414; every mask value each area sets, with its
 trigger row, is in [data/area-schedules.json](data/area-schedules.json)). A family's mask is a fire-*cadence*
 cap, not an on/off permission: each family seeds its fire countdown to `random & mask` plus one, so mask 0
 fires fastest and a larger mask fires more rarely — the mask scales the fire timer

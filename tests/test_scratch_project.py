@@ -6165,9 +6165,25 @@ class ScratchProjectTests(unittest.TestCase):
             if not broken:
                 raise AssertionError("no mask-reading fire reload")
 
+        def break_spawn_cursor(p):
+            # sever the cursor advance: freeze it at +0 so the loop no longer walks its spawn
+            # cursor (it would re-examine the same slot every iteration instead of the next).
+            b = stage_of(p)["blocks"]
+            broken = 0
+            for x in body_ids(p, spawn_loop(p)):
+                if (
+                    b[x]["opcode"] == "data_changevariableby"
+                    and b[x]["fields"].get("VARIABLE", [None, None])[1] == director.SPAWN_CURSOR_ID
+                ):
+                    b[x]["inputs"]["VALUE"] = [1, [4, 0]]  # advance by 0 — the cursor never moves
+                    broken += 1
+            if not broken:
+                raise AssertionError("no spawn-cursor advance in the spawn loop")
+
         cases = [
             ("spawn-loop-times-formation-count", break_loop_times),
             ("spawn-gates-empty-slot", break_empty_gate),
+            ("spawn-advances-cursor", break_spawn_cursor),
             ("fire-reload-reads-mask", break_fire_reload),
         ]
         for label, corrupt in cases:
