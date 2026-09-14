@@ -16,8 +16,8 @@ License status of extracted values: the reference states no reusable license (re
 Enemy pressure in Xevious is not fixed: it is driven by one adaptive difficulty number — the AI level —
 raised on a schedule, tuned by the cabinet's difficulty setting, and re-tuned by how well the player is
 actually scoring. The AI level selects which flying-enemy formations attack and how many enemies each wave
-contains. Per-family fire-permission masks, set by the area schedules, control which enemy families may
-fire and how often. Together these are why the game feels harder the better you play.
+contains. Per-family fire-*frequency* masks, set by the area schedules, control how often each enemy
+family fires. Together these are why the game feels harder the better you play.
 
 Excluded here (Super Xevious only, catalog EX-04): the Super formation and schedule tables are never
 read; the extractor proves no Super data reaches the committed files.
@@ -53,12 +53,17 @@ determines *which* enemy types compose the wave (the type table itself is docume
 [Aerial enemies](aerial-enemies.md)). A *reset-formation* record zeroes both, ending the pressure between
 waves (`sub_2_fn_5__reset_flying_enemies` 331–335).
 
-**Fire-permission masks.** Area schedules set one mask byte per firing family — Derota, Logram, Zoshi,
+**Fire-frequency masks.** Area schedules set one mask byte per firing family — Derota, Logram, Zoshi,
 Terrazi, Kapi, Boza Logram, Domogram, Andor Genesis — plus a ground-stop-firing row
 (`xevious_sub.68k` `sub_2_fn_8__fire_freq_mask_derota` through `sub_2_fn_22__fire_freq_mask_andor_genesis` 375–419; every mask value each area sets, with its
-trigger row, is in [data/area-schedules.json](data/area-schedules.json)). A family's mask gates how often
-its members may fire; the per-family firing behavior that consumes each mask is specified in that family's
-document ([Aerial enemies](aerial-enemies.md), [Ground objects](ground-objects.md),
+trigger row, is in [data/area-schedules.json](data/area-schedules.json)). A family's mask is a fire-*cadence*
+cap, not an on/off permission: each family seeds its fire countdown to `random & mask` plus one, so mask 0
+fires fastest and a larger mask fires more rarely — the mask scales the fire timer
+(`xevious_main.68k` `handle_logram_init` 2722–2732). The separate `sub_2_fn_10__gnd_stop_firing_row` byte
+is a *permission* gate — but a **ground-only** one: a family refuses to fire until it scrolls past the
+scheduled row, and its four consumers are all ground families with no flying family among them
+(`xevious_main.68k` `handle_logram_main` 2733–2740). The per-family firing behavior that consumes each mask
+is specified in that family's document ([Aerial enemies](aerial-enemies.md), [Ground objects](ground-objects.md),
 [Andor Genesis](andor-genesis.md)).
 
 **What resets.** The AI level, formation state, and masks belong to the per-player game state: they persist
@@ -73,6 +78,7 @@ carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 | The four difficulty-setting increments are 2, 0, 6, 16 and the build's data matches the committed file | Data-table comparison in the deterministic build fixtures | engine |
 | A model fixture over the committed data reproduces formation lookups (set-formation indexed by the record offset; raise indexed by the folded AI level; fold-back at 0x80); the build's in-game selection is confirmed in play (a runtime-harness candidate once the enemy/formation slice ships) | Python fixture over the committed tables; operator play for the in-game half | engine |
 | A model fixture over representative score/lives pairs computes the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (a runtime-harness candidate once the lives slice ships) | Python fixture implementing the documented rule; operator play for the in-game half | engine |
-| Wave sizes stay within the table's recorded range and grow as the game progresses at a fixed setting | Play several areas at one setting; waves grow denser and never exceed six enemies | operator |
+| Wave sizes stay within the table's recorded range and vary with the AI level at a fixed setting | Play several areas at one setting; wave sizes vary as the AI level walks the count table (the arcade sawtooth — rising and falling, not a strict climb) and never exceed six enemies | operator |
 | Playing better produces visibly harder waves | Play one area twice — once scoring heavily, once minimally — and compare wave pressure (paired with the seeded re-tune fixture above, since the two runs also differ in what was destroyed) | operator |
-| Enemy families fire only when their area's schedule has permitted them | Play area 1's Lograms (its scheduled firing family): they begin firing at their scheduled point, not from the start | operator |
+| A scheduled family's fire *cadence* follows its per-family fire-frequency mask | Play a Terrazi wave: its members fire on their scheduled per-family cadence through the shared fire gate — a smaller mask fires more densely, a larger mask more rarely | operator |
+| A ground family does not fire until it scrolls past its scheduled `gnd_stop_firing_row` — the schedule *permission* gate (ground-only; no flying family uses it) | Verified with the ground families that read `gnd_stop_firing_row`; see [Ground objects](ground-objects.md) | operator |
