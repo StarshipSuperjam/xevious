@@ -217,10 +217,10 @@
       "who": "engine"
     },
     {
-      "criterion": "Wave sizes stay within the table's recorded range and grow as the game progresses at a fixed setting",
-      "digest": "sha256:feaba395d3deeef7edb7c54298a219228027f3ebfd6aae6008c61be544097501",
+      "criterion": "Wave sizes stay within the table's recorded range and vary with the AI level at a fixed setting",
+      "digest": "sha256:fd0a23512202328cb4ebbe6df55db40f699b942fef5507e5f511e9207866ef4a",
       "doc": "docs/spec/difficulty-and-formations.md",
-      "how_verified": "Play several areas at one setting; waves grow denser and never exceed six enemies",
+      "how_verified": "Play several areas at one setting; wave sizes vary as the AI level walks the count table (the arcade sawtooth — rising and falling, not a strict climb) and never exceed six enemies",
       "position": 4,
       "who": "operator"
     },
@@ -233,11 +233,19 @@
       "who": "operator"
     },
     {
-      "criterion": "Enemy families fire only when their area's schedule has permitted them",
-      "digest": "sha256:afdbe761e403682f01b64a4a6d6375e1062f6abae08c83fe3548306483e8e746",
+      "criterion": "A scheduled family's fire *cadence* follows its per-family fire-frequency mask",
+      "digest": "sha256:2242545a73a799f65c8475dd4ce2284f21339948338a64f2d572da755c37301c",
       "doc": "docs/spec/difficulty-and-formations.md",
-      "how_verified": "Play area 1's Lograms (its scheduled firing family): they begin firing at their scheduled point, not from the start",
+      "how_verified": "Play a Terrazi wave: its members fire on their scheduled per-family cadence through the shared fire gate — a smaller mask fires more densely, a larger mask more rarely",
       "position": 6,
+      "who": "operator"
+    },
+    {
+      "criterion": "A ground family does not fire until it scrolls past its scheduled `gnd_stop_firing_row` — the schedule *permission* gate (ground-only; no flying family uses it)",
+      "digest": "sha256:1cd5a05a308bf3582875c4a9ef30b0fa47c60987135df739673e48728f6e2a7c",
+      "doc": "docs/spec/difficulty-and-formations.md",
+      "how_verified": "Verified with the ground families that read `gnd_stop_firing_row`; see [Ground objects](ground-objects.md)",
+      "position": 7,
       "who": "operator"
     },
     {
