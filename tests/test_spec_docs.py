@@ -723,6 +723,21 @@ class DifficultyAndFormations(unittest.TestCase):
     # roadmap-evidence: FORM-01 success (test_formation_lookup_reproduces_committed_table, in-domain proof)
     # roadmap-evidence: FORM-01 failure (harness difficulty-and-formations negative; the two-sided guard)
 
+    # Roadmap closure evidence for leaf #60 (difficulty.live-pressure) — the `.play` halves. These are
+    # the LIVE proofs, distinct from the #56 `.model` block above: pacing-invariant scratch-vm harness
+    # scenarios plus the structural wiring guards in test_scratch_project.py::_live_pressure_failures,
+    # each with a biting negative. (Fire RATE is unmeasurable in the settling harness — no per-tick
+    # hook, no fire counter — so DIF-03's `.play` proof is the mask->reload MECHANISM wiring plus the
+    # terrazi-fires-under-mask fire-through-gate scenario; the operator playtest is the live rate proof.)
+    # roadmap-evidence: DIF-01 success  (harness live-pressure-density: live count tracks the committed table at the live index)
+    # roadmap-evidence: DIF-01 failure  (live-pressure-density negative pins formation count off the table; _live_pressure_failures break_loop_times)
+    # roadmap-evidence: DIF-02 success  (harness live-pressure-adaptive: the score adjust crosses the raise-only fold ceiling)
+    # roadmap-evidence: DIF-02 failure  (live-pressure-adaptive negative severs the adjust dispatch)
+    # roadmap-evidence: DIF-03 success  (test_scratch_project.py::test_live_pressure_contract fire-reload-reads-mask; harness terrazi-fires-under-mask)
+    # roadmap-evidence: DIF-03 failure  (test_live_pressure_negative_fixtures break_fire_reload; terrazi-fires-under-mask negative neutralizes the shared gate)
+    # roadmap-evidence: FORM-01 success (harness live-pressure-density variation proof; test_live_pressure_contract spawn-gates-empty-slot)
+    # roadmap-evidence: FORM-01 failure (live-pressure-density negative; _live_pressure_failures break_empty_gate / break_loop_times)
+
     def _stage_lists(self):
         project = json.loads(PROJECT_JSON.read_text())
         stage = next(t for t in project["targets"] if t["isStage"])
