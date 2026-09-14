@@ -483,6 +483,93 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeEqualsOperand(p, 'Stage', 'fire_mask_logram', '__never__'),
   },
   {
+    key: 'live-pressure-density',
+    behavior:
+      'DIF-01/FORM-01 (.play): the live formation count tracks the committed count table indexed by the raised AI level — waves vary (the arcade sawtooth), not a constant or monotonic growth, and stay within 1..6',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The raise handler folds the AI level then re-selects the formation, setting `formation count`
+      // to `item (formation index + 33) of formation count table` (slot = index - FORMATION_MIN_INDEX
+      // + 1, FORMATION_MIN_INDEX = -32). The existing `difficulty-and-formations` scenario only proves
+      // *a* count is set; this proves the CORRESPONDENCE holds live against the in-VM table: every
+      // count set equals the table entry the live index points at, the counts VARY across pumps (the
+      // arcade sawtooth — refuting the old "waves grow denser" prose), and they stay in the 1..6 band.
+      const table = readVar(vm, 'formation-count-table'); // 0-based JS array of the 160 entries
+      let aiRose = false;
+      let mismatches = 0;
+      let checked = 0;
+      let countInRange = true;
+      const distinct = new Set();
+      for (let i = 0; i < 200; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'difficulty-ai-level') > 0) aiRose = true;
+        const count = readVar(vm, 'formation-count');
+        if (count > 0) {
+          const index = readVar(vm, 'formation-index');
+          const slot0 = Number(index) + 32; // 0-based: slot (1-based) = index + 33
+          if (slot0 >= 0 && slot0 < table.length) {
+            checked += 1;
+            distinct.add(Number(count));
+            if (count < 1 || count > 6) countInRange = false;
+            if (Number(count) !== Number(table[slot0])) mismatches += 1;
+          }
+        }
+      }
+      return { aiRose, mismatches, checked, countInRange, distinct: distinct.size };
+    },
+    assert(obs) {
+      assert.equal(obs.aiRose, true, 'the AI level climbs as raise records fire');
+      assert.ok(obs.checked >= 2, 'the density chain sets a formation count from the table live');
+      assert.equal(
+        obs.mismatches,
+        0,
+        'every live count equals the committed table entry at the live index',
+      );
+      assert.ok(
+        obs.distinct >= 2,
+        'wave size varies with the AI level (the sawtooth, not a constant/monotonic growth)',
+      );
+      assert.equal(obs.countInRange, true, 'every selected wave size stays within the recorded 1..6');
+    },
+    // Pin `formation count` to a constant so it no longer tracks the table: the distinct-values set
+    // collapses to one and the constant mismatches the table at most indices → the correspondence
+    // and variation assertions fail.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'formation count', 3),
+  },
+  {
+    key: 'live-pressure-adaptive',
+    behavior:
+      'DIF-02 (.play): a heavy score with craft in reserve re-tunes the AI level past the raise-only fold ceiling (the score adjust is NOT folded, unlike raises)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Raises fold at 0x80 (>=128 subtracts 64 once), so the AI level from raises ALONE can never be
+      // observed >= 128. The score adjust adds floor(floor(score/1000)/craft) (capped 16) WITHOUT
+      // folding, so a heavy score with craft in reserve is the ONLY way the live AI level crosses 128.
+      // Inject that state and pump area 1: crossing 128 is the adjust's unique signature (the raise-
+      // only baseline tops out at 126 here — see the `difficulty-and-formations` scenario).
+      writeVar(vm, 'eco-score', 999000);
+      writeVar(vm, 'eco-craft', 1);
+      let maxAi = 0;
+      for (let i = 0; i < 200; i += 1) {
+        step(vm, 1);
+        maxAi = Math.max(maxAi, Number(readVar(vm, 'difficulty-ai-level')));
+      }
+      return { maxAi };
+    },
+    assert(obs) {
+      assert.ok(
+        obs.maxAi >= 128,
+        'the score adjust pushes the AI level past the raise-only fold ceiling (127)',
+      );
+    },
+    // Sever the adjust dispatch (its handler == comparison never matches) so only raises drive the AI
+    // level → it folds and can never be observed >= 128 → the assertion fails.
+    negativeMutation: (p) =>
+      mutate.changeEqualsOperand(p, 'Stage', 'adjust_ai_level_from_score', '__never__'),
+  },
+  {
     key: 'toroid-wave-spawns-and-moves',
     behavior:
       'The formation spawner fills flying slots with live Toroids that then move under their own velocity each tick, drawn by six persistent clones',

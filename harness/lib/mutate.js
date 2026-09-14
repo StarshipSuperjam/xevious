@@ -49,6 +49,26 @@ export function freezeVariableChange(project, spriteName, varName) {
   if (!patched) throw new Error(`mutate: no 'change ${varName}' block on ${spriteName}`);
 }
 
+/**
+ * Pin every `set <var> to ...` on a sprite to a constant, severing whatever expression fed the
+ * set. Mirrors freezeVariableChange but for `data_setvariableto`: replaces inputs.VALUE with a
+ * literal shadow so the variable can no longer track its source. Used to break the density chain
+ * (pin `formation count` to a fixed value so it no longer follows the AI-level table lookup).
+ */
+export function pinVariableSet(project, spriteName, varName, constValue) {
+  const t = target(project, spriteName);
+  const vid = variableId(t, varName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode === 'data_setvariableto' && b.fields.VARIABLE && b.fields.VARIABLE[1] === vid) {
+      b.inputs.VALUE = [1, [10, String(constValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'set ${varName}' block on ${spriteName}`);
+}
+
 /** Change an `operator_equals` literal right-hand value on a sprite (breaks an == guard). */
 export function changeEqualsOperand(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);
