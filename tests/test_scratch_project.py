@@ -5978,6 +5978,219 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             self.assertIn(label, self._area02_failures(project), label)
 
+    @staticmethod
+    def _live_pressure_failures(project: dict) -> set:
+        """DIF-01/FORM-01/DIF-03 (.play): the live-pressure WIRING, structurally. The density chain's
+        spawn refill repeats `formation count` times and fills only EMPTY flying slots (so a denser
+        formation fills more slots), and the shared fire gate RELOADS the per-slot fire countdown from
+        an expression reading the captured fire MASK (the DIF-03 fire-frequency mechanism — `rng mod
+        (mask + 1)`). The exact table CORRESPONDENCE and the live dynamics are the scratch-vm harness
+        scenarios' job (live-pressure-density / live-pressure-adaptive / terrazi-fires-under-mask);
+        this only catches the wiring going missing."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def refs_var(spec, var_id):
+            return (
+                isinstance(spec, list)
+                and len(spec) > 1
+                and isinstance(spec[1], list)
+                and spec[1][2:3] == [var_id]
+            )
+
+        def reads_list(bid, list_id, seen):
+            if not isinstance(bid, str) or bid in seen or bid not in blocks:
+                return False
+            seen.add(bid)
+            blk = blocks[bid]
+            if (
+                blk["opcode"] == "data_itemoflist"
+                and blk["fields"].get("LIST", [None, None])[1] == list_id
+            ):
+                return True
+            return any(
+                isinstance(v, list) and len(v) > 1 and reads_list(v[1], list_id, seen)
+                for v in blk["inputs"].values()
+            )
+
+        def body_ids(loop_id):
+            sub = blocks[loop_id]["inputs"].get("SUBSTACK")
+            out, bid = [], (sub[1] if isinstance(sub, list) and len(sub) > 1 else None)
+            while bid:
+                out.append(bid)
+                bid = blocks[bid].get("next")
+            return out
+
+        # DIF-01/FORM-01 density -> spawn: the refill loop repeats `formation count` times, so a denser
+        # formation (a larger table entry at the live AI-level index) fills more slots this tick.
+        loop = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "control_repeat"
+                and refs_var(b["inputs"].get("TIMES"), director.FORMATION_COUNT_ID)
+            ),
+            None,
+        )
+        if loop is None:
+            failures.add("spawn-loop-times-formation-count")
+        else:
+            ids = body_ids(loop)
+            # FORM-01: the refill only fills EMPTY slots — a control_if in the loop body whose
+            # condition compares the current slot's type (== 0).
+            if not any(
+                blocks[x]["opcode"] == "control_if"
+                and isinstance(blocks[x]["inputs"].get("CONDITION"), list)
+                and len(blocks[x]["inputs"]["CONDITION"]) > 1
+                and blocks[blocks[x]["inputs"]["CONDITION"][1]]["opcode"] == "operator_equals"
+                and reads_list(blocks[x]["inputs"]["CONDITION"][1], director.SLOT_TYPE_ID, set())
+                for x in ids
+            ):
+                failures.add("spawn-gates-empty-slot")
+            # the loop advances its own spawn cursor by 1 each iteration.
+            if not any(
+                blocks[x]["opcode"] == "data_changevariableby"
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.SPAWN_CURSOR_ID
+                and blocks[x]["inputs"].get("VALUE") == [1, [4, 1]]
+                for x in ids
+            ):
+                failures.add("spawn-advances-cursor")
+
+        # DIF-03 mechanism: the shared fire gate reloads the per-slot fire timer from an expression that
+        # reads the captured fire MASK (rng mod (mask + 1)) — mask 0 => reload 1 (fastest), larger mask
+        # => rarer. This is the fire-FREQUENCY cap, not an on/off permission (the ground-only schedule
+        # permission gate is `gnd_stop_firing_row`, deferred to the ground slice).
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"].get("LIST", [None, None])[1] == director.SLOT_FIRE_TIMER_ID
+            and isinstance(b["inputs"].get("ITEM"), list)
+            and len(b["inputs"]["ITEM"]) > 1
+            and reads_list(b["inputs"]["ITEM"][1], director.SLOT_FIRE_MASK_ID, set())
+            for b in blocks.values()
+        ):
+            failures.add("fire-reload-reads-mask")
+
+        return failures
+
+    def test_live_pressure_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._live_pressure_failures(project))
+
+    def test_live_pressure_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._live_pressure_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def refs_var(spec, var_id):
+            return (
+                isinstance(spec, list)
+                and len(spec) > 1
+                and isinstance(spec[1], list)
+                and spec[1][2:3] == [var_id]
+            )
+
+        def spawn_loop(p):
+            b = stage_of(p)["blocks"]
+            for bid, blk in b.items():
+                if blk["opcode"] == "control_repeat" and refs_var(
+                    blk["inputs"].get("TIMES"), director.FORMATION_COUNT_ID
+                ):
+                    return bid
+            raise AssertionError("no spawn refill loop")
+
+        def body_ids(p, loop_id):
+            b = stage_of(p)["blocks"]
+            sub = b[loop_id]["inputs"].get("SUBSTACK")
+            out, bid = [], (sub[1] if isinstance(sub, list) and len(sub) > 1 else None)
+            while bid:
+                out.append(bid)
+                bid = b[bid].get("next")
+            return out
+
+        def find_list_read(p, root, list_id):
+            b = stage_of(p)["blocks"]
+            seen, stack = set(), [root]
+            while stack:
+                bid = stack.pop()
+                if not isinstance(bid, str) or bid in seen or bid not in b:
+                    continue
+                seen.add(bid)
+                if (
+                    b[bid]["opcode"] == "data_itemoflist"
+                    and b[bid]["fields"].get("LIST", [None, None])[1] == list_id
+                ):
+                    return bid
+                for v in b[bid]["inputs"].values():
+                    if isinstance(v, list) and len(v) > 1:
+                        stack.append(v[1])
+            raise AssertionError(f"no read of {list_id} under {root}")
+
+        def break_loop_times(p):
+            b = stage_of(p)["blocks"]
+            b[spawn_loop(p)]["inputs"]["TIMES"] = [1, [4, "3"]]  # a constant, no longer the count
+
+        def break_empty_gate(p):
+            # retarget the empty-slot read so the loop no longer gates on the slot's type.
+            b = stage_of(p)["blocks"]
+            for x in body_ids(p, spawn_loop(p)):
+                if b[x]["opcode"] == "control_if" and isinstance(b[x]["inputs"].get("CONDITION"), list):
+                    cond = b[x]["inputs"]["CONDITION"][1]
+                    read = find_list_read(p, cond, director.SLOT_TYPE_ID)
+                    b[read]["fields"]["LIST"] = ["slot state", director.SLOT_STATE_ID]
+                    return
+            raise AssertionError("no empty gate in the spawn loop")
+
+        def break_fire_reload(p):
+            # The mask->reload mechanism is wired in more than one place (the shared gate plus the
+            # families that inline their own fire reload), so sever the mask read in EVERY timer-reload
+            # that reads it — the `any` guard only reddens once the mechanism is gone entirely.
+            b = stage_of(p)["blocks"]
+            broken = 0
+            for bid, blk in list(b.items()):
+                if (
+                    blk["opcode"] == "data_replaceitemoflist"
+                    and blk["fields"].get("LIST", [None, None])[1] == director.SLOT_FIRE_TIMER_ID
+                    and isinstance(blk["inputs"].get("ITEM"), list)
+                    and len(blk["inputs"]["ITEM"]) > 1
+                ):
+                    try:
+                        read = find_list_read(p, blk["inputs"]["ITEM"][1], director.SLOT_FIRE_MASK_ID)
+                    except AssertionError:
+                        continue
+                    b[read]["fields"]["LIST"] = ["slot fire timer", director.SLOT_FIRE_TIMER_ID]
+                    broken += 1
+            if not broken:
+                raise AssertionError("no mask-reading fire reload")
+
+        def break_spawn_cursor(p):
+            # sever the cursor advance: freeze it at +0 so the loop no longer walks its spawn
+            # cursor (it would re-examine the same slot every iteration instead of the next).
+            b = stage_of(p)["blocks"]
+            broken = 0
+            for x in body_ids(p, spawn_loop(p)):
+                if (
+                    b[x]["opcode"] == "data_changevariableby"
+                    and b[x]["fields"].get("VARIABLE", [None, None])[1] == director.SPAWN_CURSOR_ID
+                ):
+                    b[x]["inputs"]["VALUE"] = [1, [4, 0]]  # advance by 0 — the cursor never moves
+                    broken += 1
+            if not broken:
+                raise AssertionError("no spawn-cursor advance in the spawn loop")
+
+        cases = [
+            ("spawn-loop-times-formation-count", break_loop_times),
+            ("spawn-gates-empty-slot", break_empty_gate),
+            ("spawn-advances-cursor", break_spawn_cursor),
+            ("fire-reload-reads-mask", break_fire_reload),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._live_pressure_failures(project), label)
+
     def test_generated_schedule_has_no_super_or_unknown_object(self) -> None:
         # AREA-03 acceptance guard on the BAKED project: every scheduled record decodes to a normal
         # object type (<= NORMAL_TYPE_MAX — INCLUSIVE; the max real type equals that ceiling) and a
