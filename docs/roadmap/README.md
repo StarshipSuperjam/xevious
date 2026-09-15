@@ -30,17 +30,16 @@ pull request may close a roadmap leaf. It rejects:
 - a capability parent as a close target;
 - a provisional leaf whose specification is not settled;
 - a leaf with an open blocker, unless the same pull request closes it;
-- a gameplay or operator-tested leaf without the `playtest-approved` label
-  and a repository-owner comment identifying the exact tested head commit;
+- a gameplay or operator-tested leaf without the `playtest-approved` label;
 - a mechanics-bearing leaf without matching updated mechanics evidence;
 - a leaf without changed automated success and failure evidence;
 - a leaf whose prerequisite delivery slices still contain open work.
 
-The marker recorded after a successful operator test is:
-
-```text
-<!-- xevious-playtest:v1 commit=<40-character-head-sha> -->
-```
+The operator applies the `playtest-approved` label by hand, as the sole approver
+and merger, after playing the build; that label is the playtest attestation. (An
+earlier design also required a hidden `<!-- xevious-playtest ... -->` marker
+comment pinning the exact tested head sha — removed, because the operator does
+not author hidden-tag comments and the label alone records the approval.)
 
 Automated tests added by a delivering PR identify both sides of every atomic
 obligation with comments such as:
