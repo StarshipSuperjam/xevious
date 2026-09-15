@@ -33,6 +33,21 @@ const RNG_FIXTURES = JSON.parse(
   readFileSync(new URL('../../docs/spec/data/rng.json', import.meta.url)),
 ).generator.fixture_sequences;
 const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
+// Suppress ALL ground-object spawns for the rest of the run by emptying the schedule's ground-object
+// type column (the ground analogue of forcing the flying type table to the non-shooting Toroid). With no
+// type to stamp, the ground dispatch spawns nothing, so the first ground firer — the Logram, which opens
+// on a masked-random timer and allocates one aimed enemy bullet through the SAME `bullet alloc result`
+// signal the flying firing scenarios watch — never appears and cannot contaminate an isolate-one-flying-
+// firer scenario (whose negative would otherwise never bite: a bullet still allocates even with the
+// flying proc severed). This MUST be a one-time source-data write, NOT a per-tick slot-band clear: one
+// `step()` settles through many internal ticks, during which the live schedule both spawns a Logram and
+// drives it to its ANIMATE fire, so clearing the slot band between pumps cannot catch it — only emptying
+// the spawn source keeps it from ever appearing. This is the ground extension of the
+// live-behavior-contaminates-older-unit-scenarios isolation pattern.
+function suppressGroundSpawns(vm) {
+  const groundType = readVar(vm, 'area-schedule-ground-type');
+  for (let i = 0; i < groundType.length; i += 1) groundType[i] = 0;
+}
 
 // Seed a deterministic blaster-to-air kill: place a live Toroid in the last flying slot (index 63,
 // which the walk sweeps last) and an active player shot in a shot slot at the SAME cell, so the walk's
@@ -253,6 +268,10 @@ export const SCENARIOS = [
       // bullet — `bullet alloc result` becomes that slot and stays non-zero after the first fire. (A
       // bullet flies and culls within one headless pump, so the allocation result is the stable signal;
       // the bullet actually killing the craft is a rendered collision, the operator playtest's.)
+      // Suppress ground spawns (a live Logram fires through the same alloc signal) and reset it (a ground
+      // firer may have tripped it during settling), so only a live shooting Toroid can move it.
+      suppressGroundSpawns(vm);
+      writeVar(vm, 'bullet-alloc-result', 0);
       let fired = false;
       for (let i = 0; i < 30 && !fired; i += 1) {
         step(vm, 1);
@@ -828,6 +847,7 @@ export const SCENARIOS = [
       put('slot-flag', slot, 0); // APPROACH
       put('slot-fire-mask', slot, 0); // mask 0 => reload 1 => fires every phase (fastest cap)
       put('slot-fire-timer', slot, 1); // fires on the first phase tick
+      suppressGroundSpawns(vm); // no live Logram may move the shared alloc signal
       writeVar(vm, 'bullet-alloc-result', 0);
       let fired = false;
       for (let i = 0; i < 12 && !fired; i += 1) {
@@ -931,6 +951,7 @@ export const SCENARIOS = [
       put('slot-fire-timer', slot, 1); // approach countdown expires on the first active tick
       put('slot-timer', slot, 0);
       put('slot-code', slot, 32);
+      suppressGroundSpawns(vm); // no live Logram may move the shared alloc signal
       writeVar(vm, 'bullet-alloc-result', 0);
       let fired = false;
       for (let i = 0; i < 12 && !fired; i += 1) {
@@ -978,6 +999,7 @@ export const SCENARIOS = [
       put('slot-fire-timer', slot, 2); // shot countdown expires on the first active tick
       put('slot-timer', slot, 0);
       put('slot-code', slot, 16); // 0x10, the approach sprite code
+      suppressGroundSpawns(vm); // no live Logram may move the shared alloc signal
       writeVar(vm, 'bullet-alloc-result', 0);
       let fired = false;
       for (let i = 0; i < 12 && !fired; i += 1) {
@@ -1081,6 +1103,7 @@ export const SCENARIOS = [
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
+      suppressGroundSpawns(vm); // no live Logram may move the shared alloc signal
       writeVar(vm, 'bullet-alloc-result', 0);
       let fired = false;
       for (let i = 0; i < 24 && !fired; i += 1) {
@@ -1235,6 +1258,7 @@ export const SCENARIOS = [
       put('slot-flag', slot, 0); // APPROACH — the turn+shot trigger the first in-band tick
       put('slot-timer', slot, 0);
       put('slot-code', slot, 160); // 0xA0, the approach sprite code
+      suppressGroundSpawns(vm); // no live Logram may move the shared alloc signal
       writeVar(vm, 'bullet-alloc-result', 0);
       let fired = false;
       for (let i = 0; i < 12 && !fired; i += 1) {
@@ -2155,6 +2179,156 @@ export const SCENARIOS = [
     // Empty the ground detector: the control node no longer scores (nodeDelta 0) → the control assertion
     // fails, proving the base's zero is measured against a genuinely live detector (not a dead seed).
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
+  },
+  {
+    key: 'logram-fires-once-at-full-open',
+    behavior:
+      'An armed Logram (0x26) opens and closes on a dome cycle and fires EXACTLY ONE aimed bullet at the midpoint (fully-open dome), mirroring handle_logram_main ($1B64): `update logram` counts its ANIMATE timer up, writes the dome costume ordinal for each stage (the open/peak/close triangle 1→4→1), allocates one aimed shot the single tick the timer hits 12 (stage 3, dome fully open), and at stage 7 re-rolls a fresh masked-random wait and returns to WAIT — it does NOT fire every animating tick, nor at the wrong stage',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Freeze the walk so one `update logram` call is exactly one tick (a settling pump would run the walk
+      // ~220 iterations and the live spawner would stamp other ground objects mid-step; see the harness
+      // pacing + live-contamination notes). Clear the ground band, pin `tick` to a phase-gate multiple so
+      // the every-4th-tick cadence gate passes on every hand-driven call, and lift the ground-stop-firing
+      // row well above the object's row so the arm gate stays satisfied through the whole cycle.
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      writeVar(vm, 'tick', 0); // on-phase (tick mod 4 == 0) true for every manual call
+      writeVar(vm, 'ground-stop-firing-row', 100); // armed regardless of the slow scroll
+      const pc = readVar(vm, 'player-col');
+      // Seed one ACTIVE Logram already in the ANIMATE phase with its timer at 0, in the last ground slot
+      // (Scratch 16 -> JS index 15), fire mask 0 (so the recycle re-roll is the deterministic (rng%1)+1 = 1)
+      // at the top of the field (row 0), and point the shared cursor at it.
+      put('slot-type', 15, 38); // Logram (0x26)
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-pts', 15, 10);
+      put('slot-flag', 15, 1); // ANIMATE phase
+      put('slot-fire-timer', 15, 0); // start of the up-count
+      put('slot-fire-mask', 15, 0); // recycle re-roll => (rng mod 1) + 1 = 1
+      put('slot-x', 15, 0); // row 0 (armed)
+      put('slot-y', 15, pc * 256);
+      put('slot-code', 15, 1); // closed dome
+      writeVar(vm, 'slot-index', 16); // Scratch 1-based slot 16 -> the seeded Logram
+      // Drive one full ANIMATE cycle (timer 1..27, then the stage-7 recycle at 28) a tick at a time,
+      // resetting the shared alloc signal before each call so a fire is attributed to the exact tick.
+      const codes = [];
+      const fireAt = [];
+      for (let t = 0; t < 28; t += 1) {
+        writeVar(vm, 'bullet-alloc-result', 0);
+        callProc(vm, 'Stage', 'update logram');
+        step(vm, 1);
+        codes.push(readVar(vm, 'slot-code')[15]);
+        if (readVar(vm, 'bullet-alloc-result') > 0) {
+          fireAt.push({ call: t + 1, timer: readVar(vm, 'slot-fire-timer')[15], code: codes[t] });
+        }
+      }
+      return {
+        codes: codes.slice(0, 27), // calls 1..27 span stages 0..6; call 28 is the recycle
+        fireAt,
+        flagAfter: readVar(vm, 'slot-flag')[15],
+        timerAfter: readVar(vm, 'slot-fire-timer')[15],
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.fireAt,
+        [{ call: 12, timer: 12, code: 4 }],
+        'the Logram fires EXACTLY ONCE per cycle, on the single tick its timer hits 12 (stage 3, dome fully open ordinal 4) — not every animating tick and not at the wrong stage',
+      );
+      assert.deepEqual(
+        obs.codes,
+        [1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1],
+        'the dome costume ordinal walks the open→peak→close triangle across the 7 stages (closed 1 → fully open 4 → closed 1)',
+      );
+      assert.equal(obs.flagAfter, 0, 'at stage 7 the Logram recycles back to the WAIT phase');
+      assert.equal(obs.timerAfter, 1, 'the recycle re-rolls a fresh masked-random wait (mask 0 => (rng mod 1) + 1 = 1)');
+    },
+    // Break the single-shot fire guard `item(slot index) of (slot fire timer) == 12` (both copies — the
+    // WAIT->ANIMATE fall-through and the steady ANIMATE branch) so the timer never triggers a shot → no
+    // bullet ever allocates → fireAt is empty → the exactly-once assertion bites. (The animation and
+    // recycle still run, so this isolates the fire, not the whole proc.)
+    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot fire timer', 12, 999),
+  },
+  {
+    key: 'logram-craters-when-bombed',
+    behavior:
+      'A bombed Logram (state HIT) craters PERSISTENTLY exactly like a Barra (handle_bomb_explosion $3186, the SAME routine — NOT the Garu node explode-and-remove): `update logram` advances the crater clock (`slot timer`, 2 arcade frames/tick) AND keeps scrolling it with the terrain (32/tick), never freeing it on the clock (it stays occupied and HIT well past the 20-frame flying free and the 56-frame crater start), removed only when it culls off the bottom of the field',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Freeze the walk so one `update logram` call is exactly one tick (see the Barra crater scenario for
+      // the identical isolation). Clear the ground band, then seed a struck Logram at the top of the field
+      // (slot x 0) in the last ground slot (Scratch 16 -> JS index 15) and hand-drive `update logram`.
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      put('slot-type', 15, 38); // Logram (0x26)
+      put('slot-state', 15, 2); // HIT — the bomb has struck it; the crater clock starts here
+      put('slot-pts', 15, 10);
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 4096);
+      put('slot-timer', 15, 0); // the detector zeroes the clock on the hit tick
+      writeVar(vm, 'slot-index', 16);
+      const xs = [];
+      const N = 30; // 30 ticks -> clock 60 frames: past the 20-frame flying free AND the 56-frame crater start
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update logram');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+      }
+      const persisted = {
+        type: readVar(vm, 'slot-type')[15],
+        state: readVar(vm, 'slot-state')[15],
+        timer: readVar(vm, 'slot-timer')[15],
+      };
+      // Cull: re-seed the crater one scroll step short of the bottom row (40*256 - 32), so the next
+      // `update logram` scrolls it to row 40 (>= CULL_ROW_MAX) and frees the slot — the crater's ONLY exit.
+      put('slot-type', 15, 38);
+      put('slot-state', 15, 2);
+      put('slot-x', 15, 40 * 256 - 32);
+      writeVar(vm, 'slot-index', 16);
+      callProc(vm, 'Stage', 'update logram');
+      step(vm, 1);
+      return {
+        xs,
+        persisted,
+        n: N,
+        culledType: readVar(vm, 'slot-type')[15],
+        culledState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.xs.slice(0, 3),
+        [32, 64, 96],
+        'a struck Logram keeps scrolling DOWN by exactly 32 units/tick (the crater is terrain-locked)',
+      );
+      const monotonic = obs.xs.every((x, i) => i === 0 || x === obs.xs[i - 1] + 32);
+      assert.equal(monotonic, true, 'the crater scrolls a steady 32/tick for the whole run');
+      assert.equal(obs.persisted.timer, obs.n * 2, 'the crater clock keeps counting (2 frames/tick) and is never reset');
+      assert.ok(obs.persisted.timer > 56, 'the clock runs past the 56-frame crater start without freeing (persistent, like the Barra)');
+      assert.equal(obs.persisted.type, 38, 'the crater stays OCCUPIED on its clock (never freed like a flying kill or the Garu node)');
+      assert.equal(obs.persisted.state, 2, 'the crater stays HIT on its clock (a persistent crater, not a vanishing burst)');
+      assert.equal(obs.culledType, 0, 'a crater scrolled off the bottom (row >= 40) is finally culled (type cleared)');
+      assert.equal(obs.culledState, 0, 'the culled crater slot is freed (state cleared) so it can be reused');
+    },
+    // Sever the Logram's whole per-tick update: with `update logram` neutralized, a struck Logram neither
+    // advances its crater clock nor scrolls → the [32,64,96] drift and the clock-advance assertions fail.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update logram'),
   },
   {
     key: 'craft-collision-is-single-cell',

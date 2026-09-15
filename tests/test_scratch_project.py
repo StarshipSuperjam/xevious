@@ -207,10 +207,10 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 26: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # 27: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
         # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, and the
-        # slice-9 barra + garu ground renderers (all reuse proof costumes by ref).
-        self.assertEqual(26, len(project["targets"]))
+        # slice-9 barra + garu + logram ground renderers (all reuse proof costumes by ref).
+        self.assertEqual(27, len(project["targets"]))
         # 137: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -1201,6 +1201,10 @@ class ScratchProjectTests(unittest.TestCase):
             # advances the explode-and-remove clock then removes the slot; base and active node delegate
             # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu slot.
             director.UPDATE_GARU_PROCCODE,
+            # GND (slice 9) ground.logram: the Logram's per-tick wrapper — a HIT Logram runs the Barra
+            # crater clock; an ACTIVE one runs the gated open/close + single-shot cycle; both delegate the
+            # terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Logram slot.
+            director.UPDATE_LOGRAM_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -6843,9 +6847,12 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["TIMES"] = [1, [4, span - 1]]
 
-        def break_alloc_live(p):  # the shooting Toroid never fires (allocator call removed)
-            sblocks = stage_blocks_of(p)
-            for b in sblocks.values():
+        def break_alloc_live(p):  # the shooting Toroid never fires (its allocator call removed)
+            # Scope to `update toroid`: the allocator now has a SECOND live caller (`update logram`), so a
+            # blanket "first allocator call anywhere" would corrupt the wrong one and leave the Toroid's
+            # intact — the guard checks the Toroid's stack specifically.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(stage, director.UPDATE_TOROID_PROCCODE):
                 if (
                     b.get("opcode") == "procedures_call"
                     and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
@@ -7803,7 +7810,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f2c89d69da88dd2aefc829757e49f7cfbc1c2f136fe5d426d568d68ad505b8d6",
+            "788341109513a7d4ae398135a982d9ffb2532fd01c70dd8e556ff49eb4bada06",
             build_hash,
         )
 

@@ -684,6 +684,13 @@ UPDATE_BARRA_PROCCODE = "update barra"
 # phase, 7 frames, then remove) and VANISHES — no crater, unlike the Barra. The base is never hit (the
 # detector's ==ACTIVE gate rejects the sentinel), so it only ever scrolls until it culls off-field.
 UPDATE_GARU_PROCCODE = "update garu"
+# GND (ground.logram #71): the per-tick update for a Logram — the dome that opens, fires ONE aimed shot at
+# full-open, and closes on a masked-random cycle (handle_logram_main $1B64). Like the Barra it is
+# terrain-locked and, once bombed (state HIT), craters PERSISTENTLY via handle_bomb_explosion — the SAME
+# routine the Barra uses, NOT the Garu node's explode-and-remove — so its HIT branch is the Barra's. Its
+# ACTIVE behaviour is a two-phase fire timer (a wait countdown, then an open/close count-up with a single
+# shot at the midpoint); both states share the terrain scroll + off-field cull of `advance ground`.
+UPDATE_LOGRAM_PROCCODE = "update logram"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -856,6 +863,21 @@ GROUND_CRATER_FLICKER_FRAMES = 4  # crater alternates 0xA6/0xA7 every 4 frames (
 # is culled the instant the burst finishes, so it never reaches the frame-7 costume on screen.
 GARU_EXPLOSION_PHASE_FRAMES = 4  # burst frame = floor(slot timer / 4) (arcade `TIMER >> 2`)
 GARU_REMOVE_FRAMES = GARU_EXPLOSION_PHASE_FRAMES * GROUND_EXPLOSION_FRAME_COUNT  # 28: remove at frame 7
+
+# GND (ground.logram #71) fire/animation cycle (handle_logram_main $1B64). The whole timer runs on the
+# arcade's every-8th-frame phase (`countup_timer_1 & 7`), which is the port's every-4th-TICK phase
+# (FIRE_GATE_PHASE_TICKS; 1 tick = 2 arcade frames). Two phases keyed by `slot flag`: a WAIT countdown (a
+# masked-random delay, `slot fire timer` decremented to 0) then an ANIMATE count-up (`slot fire timer`
+# 1..28). Each animate step derives the dome stage `(_TIMER>>2)&7` (0..6), FIRES one aimed bullet at
+# `_TIMER==12` (stage 3, the fully-open dome), and writes the dome costume ordinal for the stage; at stage
+# 7 (`_TIMER==28`) it re-rolls a fresh masked wait (start_logram_shot_timer $1BC9) and returns to WAIT.
+LOGRAM_WAIT_PHASE = 0  # slot flag: counting the masked-random delay down
+LOGRAM_ANIMATE_PHASE = 1  # slot flag: counting the open/close animation up
+LOGRAM_FIRE_TIMER = 12  # fire one aimed bullet when slot fire timer reaches 12 (arcade `cmp #0x0c`)
+LOGRAM_STAGE_PHASE = 4  # dome stage = floor(slot fire timer / 4) ...
+LOGRAM_STAGE_MOD = 8  # ... mod 8 (arcade `lsr #2; and #7`)
+LOGRAM_RECYCLE_STAGE = 7  # at stage 7 the cycle restarts: re-roll the wait, back to the closed dome
+LOGRAM_STAGE_PEAK = 3  # dome ordinal = LOGRAM_OPEN_FRAME_COUNT - abs(stage - 3): the triangle {1,2,3,4,3,2,1}
 
 # Slot sub-state (`slot flag`) for the Toroid: pre-trigger, then a committed swing side.
 TOROID_FLAG_APPROACH = 0
@@ -1194,6 +1216,21 @@ GARU_BASE_PULSE_FRAMES = 2  # the base alternates its two pulse frames
 GARU_BASE_PULSE_TICKS = 4  # ticks per pulse frame (8 arcade frames, the arcade global-animation phase)
 GARU_NODE_IDLE_ORDINAL = 3  # costume 3: the node idle pyramid (garu/node, mirrored from barra/idle)
 GARU_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared explosion burst the node plays before removal
+
+# GND (ground.logram #71) Logram renderer constants. One persistent clone per GROUND slot (1..16), the
+# same terrain-band pool as the Barra/Garu, each a pure per-tick function of its slot's live state. While
+# ACTIVE the dome shows the open/close frame `update logram` wrote into `slot code` (ordinals 1..4 =
+# logram/open/01..04, arcade codes 0x2C..0x2F); once bombed (HIT) it craters IDENTICALLY to the Barra
+# (handle_bomb_explosion): the shared solv_death burst, then the flickering crater. Costume layout:
+#   1..4   logram/open/01..04 (the dome open/close frames; `slot code` indexes them directly);
+#   5..12  the shared solv_death explosion burst (the ground bomb-burst is a deferred cosmetic stand-in);
+#   13..14 the two crater frames the HIT renderer flickers between once the burst finishes.
+LOGRAM_TARGET = "logram"
+LOGRAM_CLONE_SLOT_ID = "logram-clone-slot"  # sprite-local: which ground slot this clone renders
+LOGRAM_OPEN_FRAME_COUNT = 4  # logram/open/01..04 (the dome open/close cycle, arcade codes 0x2C..0x2F)
+LOGRAM_CLOSED_ORDINAL = 1  # costume 1: the closed dome (0x2C), the spawn + wait-phase frame
+LOGRAM_EXPLODE_BASE_ORDINAL = LOGRAM_OPEN_FRAME_COUNT + 1  # 5: shared explosion burst follows the dome frames
+LOGRAM_CRATER_BASE_ORDINAL = LOGRAM_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 13: crater frames last
 
 
 def _schedule_arg(record: dict) -> int:
@@ -2232,8 +2269,8 @@ def install_advance_slots(blocks: Blocks) -> None:
     # layers it on before delegating to `advance ground`. The Barra (#70) wraps it with the HIT
     # explosion clock (`update barra`); the Garu Barra (0x20, #70) with the node's explode-and-remove
     # (`update garu`) — the shared type dispatches BOTH its parts, which branch on state inside the proc.
-    # The Logram (#71, Commit 7) will get `update logram` for its open/close + fire and still falls back
-    # to the bare scroller here in the meantime.
+    # The Logram (#71) wraps it with `update logram` for its open/close + single aimed shot; it too
+    # delegates to `advance ground` for the shared terrain scroll + off-field cull.
     barra_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BARRA_TYPE)),
         [blocks.call_proc(UPDATE_BARRA_PROCCODE, warp=True)],
@@ -2244,7 +2281,7 @@ def install_advance_slots(blocks: Blocks) -> None:
     )
     logram_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
-        [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)],
+        [blocks.call_proc(UPDATE_LOGRAM_PROCCODE, warp=True)],
     )
     dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
@@ -2839,6 +2876,120 @@ def install_update_garu(blocks: Blocks) -> None:
     # Base (sentinel) or ACTIVE node: just the shared terrain scroll + off-field cull.
     blocks.substack(
         top, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    blocks.chain(definition, [top])
+
+
+def install_update_logram(blocks: Blocks) -> None:
+    # GND-01 / ground.logram (#71): one tick of a Logram at `slot index`, mirroring handle_logram_main
+    # ($1B64). A Logram is terrain-locked (it only ever scrolls) and, once bombed (state HIT), craters
+    # PERSISTENTLY exactly like the Barra (handle_bomb_explosion $3186 — the SAME routine, NOT the Garu
+    # node's explode-and-remove), so its HIT branch is identical to `update barra`: advance the crater
+    # clock (`slot timer`, zeroed by the detector at the hit) and scroll. Its ACTIVE behaviour is the
+    # open/close + single-shot cycle, gated two ways before the timer advances:
+    #   * ARMING — only while the object is still high enough on the field (`cur_row <= ground stop firing
+    #     row`); below that the arcade takes handle_logram_exit ($1BDC) and only scrolls (`jcs` at $1B77).
+    #   * CADENCE — the whole timer advances on the arcade's every-8th-frame phase (`countup_timer_1 & 7`),
+    #     i.e. every 4th tick here (FIRE_GATE_PHASE_TICKS; 1 tick = 2 arcade frames).
+    # Then two phases by `slot flag`: WAIT counts `slot fire timer` DOWN (the masked-random delay); on
+    # hitting 0 it flips to ANIMATE and runs one animate step the SAME tick (the arcade's fall-through
+    # past SET_REENTRY_ADDR_HERE). ANIMATE counts `slot fire timer` UP, fires ONE aimed bullet at 12
+    # (stage 3, dome fully open), writes the dome costume ordinal for the stage, and at stage 7 re-rolls a
+    # fresh wait and returns to WAIT (holding the closed dome). `advance ground` (scroll + off-field cull)
+    # runs EVERY tick in both states — the arcade scrolls the sprite on every frame regardless of phase.
+    definition = _install_warp_proc(blocks, UPDATE_LOGRAM_PROCCODE)
+    fire_timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+
+    def animate_step() -> list[str]:
+        # One ANIMATE-phase step. Built FRESH each call (used both at the WAIT->ANIMATE fall-through and in
+        # the steady ANIMATE branch), so no reporter or statement block is shared between two parents.
+        inc = _set_cur_item(
+            blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(fire_timer(), number(1))
+        )
+        fire = blocks.if_reporter(
+            blocks.op_eq(fire_timer(), number(LOGRAM_FIRE_TIMER)), _fire_aimed_bullet(blocks)
+        )
+        stage = lambda: blocks.op_mod(
+            blocks.op_floor(blocks.op_div(fire_timer(), number(LOGRAM_STAGE_PHASE))),
+            number(LOGRAM_STAGE_MOD),
+        )
+        recycle = blocks.add("control_if_else")
+        at_recycle = blocks.op_eq(stage(), number(LOGRAM_RECYCLE_STAGE))
+        blocks.blocks[recycle]["inputs"]["CONDITION"] = [2, at_recycle]
+        blocks.blocks[at_recycle]["parent"] = recycle
+        # Stage 7: re-roll the masked-random wait (start_logram_shot_timer $1BC9) and return to WAIT. The
+        # dome costume is NOT touched, so it holds the stage-6 closed frame through the wait.
+        blocks.substack(
+            recycle,
+            [
+                blocks.call_proc(RNG_PROCCODE, warp=True),
+                _set_cur_item(
+                    blocks,
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                _cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                ),
+                _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(LOGRAM_WAIT_PHASE)),
+            ],
+        )
+        # Stages 0..6: dome ordinal = LOGRAM_OPEN_FRAME_COUNT - |stage - peak|, the triangle {1,2,3,4,3,2,1}.
+        dome_ordinal = blocks.op_sub(
+            number(LOGRAM_OPEN_FRAME_COUNT),
+            blocks.op_abs(blocks.op_sub(stage(), number(LOGRAM_STAGE_PEAK))),
+        )
+        blocks.substack(
+            recycle, [_set_cur_item(blocks, "slot code", SLOT_CODE_ID, dome_ordinal)], name="SUBSTACK2"
+        )
+        return [inc, fire, recycle]
+
+    # WAIT vs ANIMATE (by slot flag).
+    phase = blocks.add("control_if_else")
+    in_wait = blocks.op_eq(_cur_item(blocks, "slot flag", SLOT_FLAG_ID), number(LOGRAM_WAIT_PHASE))
+    blocks.blocks[phase]["inputs"]["CONDITION"] = [2, in_wait]
+    blocks.blocks[in_wait]["parent"] = phase
+    # WAIT: decrement the delay; when it reaches 0, enter ANIMATE and run one animate step this tick
+    # (arcade `subq #1,_TIMER; jne set_logram_colour`, then the fall-through animate block).
+    dec = _set_cur_item(
+        blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_sub(fire_timer(), number(1))
+    )
+    transition = blocks.if_reporter(
+        blocks.op_eq(fire_timer(), number(0)),
+        [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(LOGRAM_ANIMATE_PHASE)), *animate_step()],
+    )
+    blocks.substack(phase, [dec, transition])
+    blocks.substack(phase, animate_step(), name="SUBSTACK2")
+
+    # ARMING + CADENCE gate wraps ONLY the timer phase; the scroll below always runs.
+    armed = blocks.op_not(
+        blocks.op_gt(_cur_row(blocks), variable("ground stop firing row", GROUND_STOP_FIRING_ROW_ID))
+    )
+    on_phase = blocks.op_eq(
+        blocks.op_mod(variable("tick", TICK_ID), number(FIRE_GATE_PHASE_TICKS)), number(0)
+    )
+    arm = blocks.if_reporter(blocks.op_and(armed, on_phase), [phase])
+
+    # HIT: the Barra crater clock; else the ACTIVE arm/animate. Both then scroll + cull via advance ground.
+    tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)])
+    blocks.substack(
+        top, [arm, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
     )
     blocks.chain(definition, [top])
 
@@ -4313,6 +4464,31 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
                     ground_target_slot(),
                     variable(FIRE_MASK_LOGRAM_NAME, FIRE_MASK_LOGRAM_ID),
                 ),
+                # Seed the open/close cycle (handle_logram_init $1B49): closed dome (_CODE=0x2C), WAIT phase,
+                # and a masked-random initial delay (_TIMER=(rand & mask)+1). A ground slot is only ever a
+                # ground object, but cull only clears type/state, so a slot reused from a prior Logram can
+                # hold a stale flag/timer/code — seed all three explicitly rather than trust the cleared slot.
+                blocks.list_replace(
+                    "slot code", SLOT_CODE_ID, ground_target_slot(), number(LOGRAM_CLOSED_ORDINAL)
+                ),
+                blocks.list_replace(
+                    "slot flag", SLOT_FLAG_ID, ground_target_slot(), number(LOGRAM_WAIT_PHASE)
+                ),
+                blocks.call_proc(RNG_PROCCODE, warp=True),
+                blocks.list_replace(
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    ground_target_slot(),
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                variable(FIRE_MASK_LOGRAM_NAME, FIRE_MASK_LOGRAM_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                ),
             ],
         ),
     ]
@@ -4385,9 +4561,11 @@ def install_advance_area(blocks: Blocks) -> None:
     # AREA-01/AREA-02 area clock + scheduler: one atomic (warp) pass per tick, called from the walk
     # thread BEFORE `advance slots` — matching the reference frame order (handle_next_area ->
     # handle_objects -> object updates) and fixing the PHASE order the enemy slices inherit while
-    # both dispatch bodies are still empty (no RNG is drawn in either phase yet). Advances the
-    # monotonic position and derives the row once; then a single `if/else` either completes the area
-    # (advance 16 -> 7 and re-top) OR consumes the schedule for this row — never both on one tick.
+    # both dispatch bodies are still empty. (Spawning a Logram now draws ONE RNG value here for its
+    # masked-random initial fire delay, mirroring handle_logram_init — the arcade draws at init too; it
+    # runs before the walk phase's own draws, so a Logram-spawn tick shifts that tick's stream by one.)
+    # Advances the monotonic position and derives the row once; then a single `if/else` either completes
+    # the area (advance 16 -> 7 and re-top) OR consumes the schedule for this row — never both on one tick.
     definition = _install_warp_proc(blocks, ADVANCE_AREA_PROCCODE)
     step = blocks.change_var("area progress", AREA_PROGRESS_ID, AREA_PROGRESS_STEP)
     set_row = _set_scroll_row(blocks)
@@ -4548,6 +4726,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_advance_ground(blocks)
     install_update_barra(blocks)
     install_update_garu(blocks)
+    install_update_logram(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)
@@ -6036,6 +6215,117 @@ def garu_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def logram_blocks() -> dict[str, dict[str, Any]]:
+    # GND (ground.logram #71) Logram renderer (game_director owns these blocks; sprite_extractor owns the
+    # costumes). One persistent clone per GROUND slot (1..16), the same terrain-band clone pool as the
+    # Barra/Garu, each a pure per-tick function of its slot's live state:
+    #   ACTIVE -> the open/close dome frame `update logram` wrote into `slot code` (ordinals 1..4 =
+    #             logram/open/01..04). The dome sits closed (ordinal 1) during the wait and opens to 4
+    #             (full) at the shot, so the renderer just mirrors `slot code` via the reporter switch.
+    #   HIT    -> IDENTICAL to the Barra crater (handle_bomb_explosion): the shared solv_death burst for
+    #             the first GROUND_CRATER_START_FRAMES (floor(timer/8)), then a PERSISTENT crater flickering
+    #             the two crater frames (floor(timer/4) mod 2), scrolling until it culls. No free-on-clock.
+    # The clone writes no state.
+    blocks = Blocks(LOGRAM_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("logram clone slot", LOGRAM_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("logram clone slot", LOGRAM_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_logram = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(LOGRAM_TYPE)
+    )
+    # Terrain-locked position — identical cell->stage mapping to every family renderer.
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # HIT costume: explosion burst until the crater begins, then the flickering crater (Barra-identical).
+    explode_ordinal = blocks.op_add(
+        number(LOGRAM_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(LOGRAM_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    hit_costume = blocks.add("control_if_else")
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
+    blocks.blocks[cratered]["parent"] = hit_costume
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [hit_costume])
+    # ACTIVE: the dome frame the update wrote into `slot code` (a runtime ordinal, so the reporter switch —
+    # a numeric costume value selects that 1-based costume, exactly as the burst/crater ordinals do).
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()))],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_logram]
+    blocks.blocks[is_logram]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def terrazi_blocks() -> dict[str, dict[str, Any]]:
     # AIR-06 Terrazi renderer (game_director owns these blocks; sprite_extractor owns the costumes).
     # One persistent clone per flying slot (59..64), the same pool pattern as the Toroid: shown and
@@ -6696,6 +6986,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, JARA_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
+    _ensure_gameplay_target(result, LOGRAM_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -6782,6 +7073,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             garu["costumes"].extend(copy.deepcopy(death["costumes"]))
         garu["currentCostume"] = 0
+    # GND (ground.logram #71): the Logram renderer mirrors its 4 open/close dome frames (ordinals 1..4),
+    # then the shared explosion burst (ordinals 5..12) and the two crater frames (ordinals 13..14) — the
+    # SAME crater as the Barra, since a bombed Logram runs handle_bomb_explosion. Idempotent; a no-op when
+    # any source is absent (generation runs to a fixpoint).
+    logram = next((t for t in result["targets"] if t.get("name") == LOGRAM_TARGET), None)
+    if proof is not None and logram is not None:
+        logram["costumes"] = proof_by_family("logram/")
+        if death is not None:
+            logram["costumes"].extend(copy.deepcopy(death["costumes"]))
+        logram["costumes"].extend(proof_by_family("crater/"))
+        logram["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -7094,6 +7396,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "jara": jara_blocks(),
         "barra": barra_blocks(),
         "garu": garu_blocks(),
+        "logram": logram_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -7180,6 +7483,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # GND-01: likewise, the only Garu render state is which GROUND slot each clone draws.
             target["variables"] = target["variables"] | {
                 GARU_CLONE_SLOT_ID: ["garu clone slot", 0],
+            }
+        elif target["name"] == LOGRAM_TARGET:
+            # GND (ground.logram #71): likewise, the only Logram render state is which GROUND slot each
+            # clone draws; the dome frame and crater clock live in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                LOGRAM_CLONE_SLOT_ID: ["logram clone slot", 0],
             }
     return result
 

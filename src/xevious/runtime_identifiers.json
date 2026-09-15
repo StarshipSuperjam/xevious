@@ -424,6 +424,11 @@
       "name": "kapi clone slot",
       "scope": "kapi"
     },
+    "logram-clone-slot": {
+      "kind": "variable",
+      "name": "logram clone slot",
+      "scope": "logram"
+    },
     "octant-table": {
       "kind": "list",
       "name": "octant table",

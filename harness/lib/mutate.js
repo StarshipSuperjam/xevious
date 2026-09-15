@@ -158,6 +158,38 @@ export function changeVarEqualsOperand(project, spriteName, varName, fromValue, 
   }
 }
 
+/**
+ * Change the literal right-hand value of an `operator_equals` whose LEFT operand (OPERAND1) is an
+ * `item (index) of <list>` reporter for a named list — the list-item analogue of
+ * changeVarEqualsOperand, for a `item(...) of <list> == N` guard that shares its literal with unrelated
+ * equals on the same target. Used to break the Logram single-shot fire guard
+ * (`item(slot index) of (slot fire timer) == 12`) without touching the `slot type == 12` /
+ * `walk type == 12` type-code checks that share the literal 12. `animate_step()` is built twice (the
+ * reporter-single-parent-steal fix), so BOTH copies of the fire guard are patched — exactly the intent:
+ * the Logram then never fires at full-open.
+ */
+export function changeListItemEqualsOperand(project, spriteName, listName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_equals' || !b.inputs.OPERAND1 || !b.inputs.OPERAND2) continue;
+    const lhsId = b.inputs.OPERAND1[1];
+    const lhs = typeof lhsId === 'string' ? t.blocks[lhsId] : null;
+    const isListItem =
+      lhs && lhs.opcode === 'data_itemoflist' && lhs.fields && lhs.fields.LIST && lhs.fields.LIST[0] === listName;
+    const rhs = b.inputs.OPERAND2[1];
+    const matchesLiteral = Array.isArray(rhs) && String(rhs[1]) === String(fromValue);
+    if (isListItem && matchesLiteral) {
+      b.inputs.OPERAND2 = [1, [10, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) {
+    throw new Error(`mutate: no 'operator_equals item of ${listName} == ${fromValue}' on ${spriteName}`);
+  }
+}
+
 /** Raise an `operator_gt` literal right-hand threshold on a sprite (breaks a > gate). */
 export function raiseGreaterThreshold(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);
