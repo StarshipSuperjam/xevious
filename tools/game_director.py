@@ -234,6 +234,14 @@ SLOT_UNITS_PER_SHADOW = 16
 # this — a cell-quantized craft hit box (recorded deviation): the reference tracks the craft's sub-cell
 # shadow, this port rounds it to its cell, the same rounding the aim already uses.
 SHADOW_PER_CELL = 16
+# GND-05 bomb-vs-ground window (docs/spec/ground-objects.md), in the same half-pixel shadow units,
+# as (y_bias, y_width, x_bias, x_width). The reference's `check_object_on_target` ($1A3D) reads both
+# the bomb target (slot 0x20) and each object from `sprite_shadow_msb` and range-checks the delta on
+# each axis via the carry idiom: scroll axis (spriteY) `sub #10; add #20` -> target-obj in [-10, 9];
+# lateral axis (spriteX) `subq #5; add #10` -> obj-target in [-5, 4]. Kept at the reference size (NOT
+# widened like the shot window): a bomb is a placed strike, not a fast-stepping projectile, so it
+# never tunnels, and the arcade footprint is the faithful feel.
+HIT_WINDOW_BOMB_GROUND = (10, 20, 5, 10)
 
 # ECO-02 HUD target (docs/mechanics/010, docs/mechanics/012). game_director owns this target's
 # EXISTENCE and BLOCKS — the HUD render itself (hud_blocks(), installed below); its costumes
@@ -629,6 +637,12 @@ READ_PLAYER_PROCCODE = "read player cell"
 # explosion advance for a struck Toroid.
 CHECK_AIR_HIT_PROCCODE = "check air shot hit"
 EXPLODE_TICK_PROCCODE = "explode toroid tick"
+# GND-05: the bomb-vs-ground overlap detector. Unlike the air detector (called once per active
+# flying slot with `slot index` set), this sweeps the 16 ground slots INTERNALLY against the fixed
+# bomb-target slot, mirroring the reference's `handle_bombed_obj_and_award_points` ($19EE) which
+# loops all 16 objects when a bomb finishes. It has no caller this commit (Commit 4 wires it from
+# the bomb-finish); the harness proves it by calling it directly.
+CHECK_GROUND_HIT_PROCCODE = "check ground hit"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -2389,6 +2403,78 @@ def install_check_air_hit(blocks: Blocks) -> None:
     blocks.chain(definition, body)
 
 
+def install_check_ground_hit(blocks: Blocks) -> None:
+    # GND-05 / ECO-01: test every ground object against the locked bomb target and score each one the
+    # bomb lands on, type-agnostically. Mirrors the reference's `handle_bombed_obj_and_award_points`
+    # ($19EE): when a bomb finishes, loop the 16 ground objects, and for each ACTIVE one on target set
+    # its state HIT and add its point value from the value table. So this sweeps GROUND_SLOTS (1-16)
+    # INTERNALLY (unrolled, one gate per slot) against the fixed bomb-target slot, rather than being
+    # called once per slot like the air detector. Each on-target ACTIVE slot resolves independently:
+    # `resolve hit` marks it HIT (so it can't re-score) and routes to the single `score` path, exactly
+    # as the arcade awards per on-target object. The window is the reference's shadow-MSB compare
+    # (`check_object_on_target` $1A3D): each position floored to its half-px shadow MSB, then the
+    # (bias,width) window HIT_WINDOW_BOMB_GROUND on the exact half-px delta (no mod-256 wrap). The
+    # blaster deliberately cannot reach ground objects, so install_check_air_hit is left untouched.
+    # No caller yet: Commit 4's bomb-finish (`check_bomb_finished` $190B) will invoke it; the harness
+    # proves it directly this commit.
+    definition = _install_warp_proc(blocks, CHECK_GROUND_HIT_PROCCODE)
+    y_bias, y_width, x_bias, x_width = HIT_WINDOW_BOMB_GROUND
+    dy_low, dy_high = -y_bias, y_width - y_bias - 1
+    dx_low, dx_high = -x_bias, x_width - x_bias - 1
+    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
+    # Every position reporter is a FRESH-per-call lambda (the bomb target too): a reporter attaches to
+    # only one parent, so a single shared `target x`/`target y` block would be stolen by its second use
+    # across the 16 slots and the two axis compares, leaving dead operands (memory: reporter-steal).
+    target_x = lambda: blocks.list_item("slot x", SLOT_X_ID, number(BOMB_TARGET_SLOT))
+    target_y = lambda: blocks.list_item("slot y", SLOT_Y_ID, number(BOMB_TARGET_SLOT))
+    obj_x = lambda s: blocks.list_item("slot x", SLOT_X_ID, number(s))
+    obj_y = lambda s: blocks.list_item("slot y", SLOT_Y_ID, number(s))
+
+    body: list[str] = []
+    for s in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        # Only ACTIVE ground objects score. The reference gates on `_STATE==2` (active); the port maps
+        # that active state to SLOT_ACTIVE. The Garu Barra base (Commit 6) is stamped a non-ACTIVE
+        # sentinel so this same gate excludes it for free (the arcade's indestructible outer, `_STATE==3`).
+        obj_live = blocks.op_eq(
+            blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE)
+        )
+        # Rebuild each delta FRESH per comparison — a reporter attaches to only one parent, so sharing
+        # one d_y/d_x across `<` and `>` lets the second steal it from the first, leaving a dead bound
+        # (memory: dsl-reporter-single-parent-steal). Lambdas give every compare its own subtree. The
+        # bomb target is the reference; the swept object is slot s, matching the reference's delta
+        # directions (scroll axis target-obj; lateral axis obj-target).
+        d_y = lambda: blocks.op_sub(sh(target_x()), sh(obj_x(s)))
+        d_x = lambda: blocks.op_sub(sh(obj_y(s)), sh(target_y()))
+        hit_y = blocks.op_and(
+            blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
+            blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
+        )
+        hit_x = blocks.op_and(
+            blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
+            blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
+        )
+        overlap = blocks.op_and(obj_live, blocks.op_and(hit_y, hit_x))
+        body.append(
+            blocks.if_reporter(
+                overlap,
+                [
+                    blocks.set_var("hit slot", HIT_SLOT_ID, number(s)),
+                    blocks.set_var_expr(
+                        "award value",
+                        AWARD_VALUE_ID,
+                        blocks.list_item(
+                            "value table",
+                            VALUE_TABLE_ID,
+                            blocks.list_item("slot pts", SLOT_PTS_ID, number(s)),
+                        ),
+                    ),
+                    blocks.call_proc(RESOLVE_HIT_PROCCODE, warp=True),
+                ],
+            )
+        )
+    blocks.chain(definition, body)
+
+
 def install_explode_toroid_tick(blocks: Blocks) -> None:
     # WPN-02: advance a struck Toroid's explosion one tick. It keeps drifting on its velocity while the
     # burst plays (the renderer maps the clock to a phase), and is freed once the recorded duration
@@ -3985,6 +4071,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_zoshi_rnd(blocks)
     install_init_jara(blocks)
     install_check_air_hit(blocks)
+    install_check_ground_hit(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)

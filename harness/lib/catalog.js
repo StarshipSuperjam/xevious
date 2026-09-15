@@ -17,6 +17,7 @@ import {
   readVar,
   writeVar,
   fireBroadcast,
+  callProc,
   cloneCount,
   cloneReports,
   constants,
@@ -1416,6 +1417,109 @@ export const SCENARIOS = [
     },
     // Empty the shot-vs-air detector so no controlled shot ever resolves → the on-column assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
+  },
+  {
+    key: 'bomb-kills-ground-and-scores',
+    behavior:
+      'A bomb whose locked target overlaps an active ground object resolves the hit through the single score path: the score rises by exactly the object value once and the object is marked struck',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Seed an ACTIVE Barra in the last ground slot (Scratch slot 16 -> JS index 15) and the locked
+      // bomb target (Scratch slot 33 -> JS index 32) at the SAME cell. slot pts 6 is the Barra's
+      // 1-based value-table position (100 pts). The detector has no in-project caller yet (the
+      // bomb-finish wiring is a later commit), so run it directly with callProc, then step once.
+      put('slot-type', 15, 30); // Barra ground-object marker (0x1E); its renderer arrives a later commit
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-pts', 15, 6);
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const award = readVar(vm, 'eco-value-table')[5]; // value-table position 6 -> JS index 5 = 100
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      return {
+        delta: readVar(vm, 'eco-score') - score0,
+        award,
+        objState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 100, 'the seeded Barra is worth its 100-pt value-table entry');
+      assert.equal(obs.delta, obs.award, 'the bomb scores exactly the ground object value once');
+      assert.equal(obs.objState, 2, 'the struck object is marked HIT (state 2), so it cannot re-score');
+    },
+    // Empty the bomb-vs-ground detector so no overlap is ever resolved → the score never rises.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
+  },
+  {
+    key: 'bomb-ground-window-bounded',
+    behavior:
+      'The bomb-vs-ground hit box is the reference shadow window (scroll axis ±10, lateral ±5): an object under the target scores, one at the window edge scores, one past it on EITHER axis does not',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const SH = 16; // SLOT_UNITS_PER_SHADOW: one shadow half-pixel is 16 slot units
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Target on shadow-aligned cells so each probe's shadow delta is exact. The detector floors each
+      // position to its shadow MSB, then tests scroll-axis delta = sh(target_x)-sh(obj_x) in [-10, 9]
+      // and lateral delta = sh(obj_y)-sh(target_y) in [-5, 4]. Each scoring probe frees nothing (it
+      // marks the object HIT), so every probe re-seeds the object ACTIVE first.
+      const tX = 5120,
+        tY = 4096;
+      const probe = (dy, dx) => {
+        put('slot-type', 15, 30);
+        put('slot-state', 15, 1);
+        put('slot-pts', 15, 6);
+        put('slot-x', 15, tX - dy * SH);
+        put('slot-y', 15, tY + dx * SH);
+        put('slot-x', 32, tX);
+        put('slot-y', 32, tY);
+        const s0 = readVar(vm, 'eco-score');
+        callProc(vm, 'Stage', 'check ground hit');
+        step(vm, 1);
+        return readVar(vm, 'eco-score') - s0;
+      };
+      return {
+        award: readVar(vm, 'eco-value-table')[5],
+        center: probe(0, 0),
+        yHi: probe(9, 0),
+        yHiOut: probe(10, 0),
+        yLo: probe(-10, 0),
+        yLoOut: probe(-11, 0),
+        xHi: probe(0, 4),
+        xHiOut: probe(0, 5),
+        xLo: probe(0, -5),
+        xLoOut: probe(0, -6),
+        // Far off on one axis while dead-on the other: a dropped bound (the reporter-steal bug)
+        // would make one axis always-hit, so these MUST miss.
+        farY: probe(-40, 0),
+        farX: probe(0, -40),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.center, obs.award, 'dead-on the target scores');
+      assert.equal(obs.yHi, obs.award, 'the scroll-axis high edge (+9) scores');
+      assert.equal(obs.yLo, obs.award, 'the scroll-axis low edge (-10) scores');
+      assert.equal(obs.xHi, obs.award, 'the lateral high edge (+4) scores');
+      assert.equal(obs.xLo, obs.award, 'the lateral low edge (-5) scores');
+      assert.equal(obs.yHiOut, 0, 'one past the scroll-axis high edge (+10) does NOT score');
+      assert.equal(obs.yLoOut, 0, 'one past the scroll-axis low edge (-11) does NOT score');
+      assert.equal(obs.xHiOut, 0, 'one past the lateral high edge (+5) does NOT score');
+      assert.equal(obs.xLoOut, 0, 'one past the lateral low edge (-6) does NOT score');
+      assert.equal(obs.farY, 0, 'far off the scroll axis does NOT score (both axes bind)');
+      assert.equal(obs.farX, 0, 'far off the lateral axis does NOT score (both axes bind)');
+    },
+    // Widen the scroll-axis high bound (`> 9`, unique to the ground detector's 16 unrolled slots) so a
+    // probe one past the edge now scores → the yHiOut miss assertion fails, proving the bound binds.
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', '9', '40'),
   },
   {
     key: 'craft-collision-is-single-cell',

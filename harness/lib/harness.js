@@ -135,6 +135,24 @@ export function fireBroadcast(vm, name) {
   vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: name.toUpperCase() });
 }
 
+/** Start a custom-block procedure directly by its proccode, for a warp proc that has no in-project
+ * caller yet — the bomb-vs-ground detector, whose caller arrives with the bomb-finish wiring a later
+ * commit. Pushes a thread on the procedure's `procedures_definition` (like fireBroadcast pushes a
+ * receiver hat), so it runs on the next `step`. The detector is unrolled with no waits, so one step
+ * runs it to completion. */
+export function callProc(vm, scope, proccode) {
+  const target = targetForScope(vm, scope);
+  const blocks = target.blocks._blocks;
+  for (const id of Object.keys(blocks)) {
+    const b = blocks[id];
+    if (b.opcode === 'procedures_prototype' && b.mutation && b.mutation.proccode === proccode) {
+      vm.runtime._pushThread(b.parent, target);
+      return;
+    }
+  }
+  throw new Error(`harness: no procedure '${proccode}' on scope '${scope}'`);
+}
+
 /** Count live clones of a sprite (originals excluded). */
 export function cloneCount(vm, spriteName) {
   return vm.runtime.targets.filter(
