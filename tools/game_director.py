@@ -481,6 +481,15 @@ FORMATION_TYPE_OFFSET_ID = "formation-type-offset"
 FORMATION_INDEX_ID = "formation-index"  # transient lookup index (machinery)
 AI_ADJUST_ID = "difficulty-ai-adjust"  # DIF-02 transient score re-tune addend (machinery)
 SCHEDULE_ARG_ID = "area-schedule-arg"  # 4th parallel schedule column (runtime scalar)
+# GND dispatch: an add_ground_object record needs THREE runtime scalars the single `schedule arg`
+# column cannot carry, so they ride three more parallel schedule columns — object type (the ground
+# dispatch discriminator), slot (0-15), and sprite_y (0-255, the lateral field position). Every
+# non-ground row fills 0 in all three; those fillers are inert because the ground columns are read
+# only when the record's handler is add_ground_object. Populated here, once and for all, so the
+# columns are complete for the ground dispatch that consumes them.
+GROUND_OBJECT_TYPE_ID = "area-schedule-ground-type"
+GROUND_OBJECT_SLOT_ID = "area-schedule-ground-slot"
+GROUND_OBJECT_SPRITE_Y_ID = "area-schedule-ground-sprite-y"
 DIFFICULTY_INCREMENT_ID = "difficulty-increment"  # baked [2,0,6,16], indexed by DIP
 FORMATION_COUNT_TABLE_ID = "formation-count-table"  # 160 entries, index -32..127
 FORMATION_TYPE_OFFSET_TABLE_ID = "formation-type-offset-table"
@@ -493,6 +502,7 @@ SET_FORMATION_HANDLER = "set_flying_formation"
 RESET_FORMATION_HANDLER = "reset_flying_formation"
 FIRE_MASK_PREFIX = "fire_mask_"
 GROUND_STOP_FIRING_HANDLER = "ground_stop_firing_row"
+ADD_GROUND_OBJECT_HANDLER = "add_ground_object"
 
 # DIF-03 per-family fire-permission masks. Area schedules set one mask byte per firing family; the
 # byte gates how often that family may fire, and the per-family firing that consumes each mask is the
@@ -1070,9 +1080,22 @@ def _schedule_arg(record: dict) -> int:
     return 0
 
 
+def _ground_scalars(record: dict) -> tuple[int, int, int]:
+    # GND: the three runtime-readable scalars an add_ground_object record needs, pre-decoded from the
+    # opaque JSON payload (Scratch cannot parse JSON at runtime) — object_type (the ground dispatch
+    # discriminator), slot (0-15), sprite_y (0-255). Every other handler needs none -> (0, 0, 0); those
+    # fillers are inert because the ground columns are read only when the handler is add_ground_object.
+    if record["handler"] != ADD_GROUND_OBJECT_HANDLER:
+        return 0, 0, 0
+    params = record.get("params", {})
+    return record["object_type"], params["slot"], params["sprite_y"]
+
+
 def _load_area_schedule(
     area_number: int,
-) -> tuple[list[str], list[int], list[str], list[int]]:
+) -> tuple[
+    list[str], list[int], list[str], list[int], list[int], list[int], list[int]
+]:
     # AREA-02: ingest one area's schedule from the committed, hash-pinned reference data as four
     # faithful parallel columns (handler, trigger row, opaque payload, and DIF-01/03+FORM-01's
     # runtime scalar `arg`). The end sentinel (a scalar in the JSON) is MATERIALIZED as the terminal
@@ -1088,6 +1111,9 @@ def _load_area_schedule(
     rows: list[int] = []
     payloads: list[str] = []
     args: list[int] = []
+    ground_types: list[int] = []
+    ground_slots: list[int] = []
+    ground_sprite_ys: list[int] = []
     for record in area["records"]:
         handlers.append(record["handler"])
         rows.append(record["scroll_row"])
@@ -1099,17 +1125,32 @@ def _load_area_schedule(
             )
         )
         args.append(_schedule_arg(record))
+        ground_type, ground_slot, ground_sprite_y = _ground_scalars(record)
+        ground_types.append(ground_type)
+        ground_slots.append(ground_slot)
+        ground_sprite_ys.append(ground_sprite_y)
     handlers.append(SCHEDULE_SENTINEL_HANDLER)
     rows.append(area["end_sentinel"])
     payloads.append("")
     args.append(0)
-    return handlers, rows, payloads, args
+    ground_types.append(0)
+    ground_slots.append(0)
+    ground_sprite_ys.append(0)
+    return handlers, rows, payloads, args, ground_types, ground_slots, ground_sprite_ys
 
 
 def _load_all_area_schedules() -> tuple[
-    list[str], list[int], list[str], list[int], list[int], list[int]
+    list[str],
+    list[int],
+    list[str],
+    list[int],
+    list[int],
+    list[int],
+    list[int],
+    list[int],
+    list[int],
 ]:
-    # AREA-03: flatten all 16 normal area schedules into three parallel columns, with two 16-entry
+    # AREA-03: flatten all 16 normal area schedules into the parallel columns, with two 16-entry
     # index lists giving each area's 1-based INCLUSIVE span [start..end] into those columns. Areas are
     # visited by explicit number (not JSON array order); an up-front check requires exactly areas
     # AREA_FIRST..AREA_MAX, once each, so a missing OR duplicated area fails LOUD with a clear message
@@ -1130,19 +1171,43 @@ def _load_all_area_schedules() -> tuple[
     rows: list[int] = []
     payloads: list[str] = []
     args: list[int] = []
+    ground_types: list[int] = []
+    ground_slots: list[int] = []
+    ground_sprite_ys: list[int] = []
     starts: list[int] = []
     ends: list[int] = []
     cursor = 1  # 1-based, matching Scratch list indexing and the runtime `schedule cursor`
     for area_number in range(AREA_FIRST, AREA_MAX + 1):
-        area_handlers, area_rows, area_payloads, area_args = _load_area_schedule(area_number)
+        (
+            area_handlers,
+            area_rows,
+            area_payloads,
+            area_args,
+            area_ground_types,
+            area_ground_slots,
+            area_ground_sprite_ys,
+        ) = _load_area_schedule(area_number)
         starts.append(cursor)  # this area's first index (before advancing the cursor)
         handlers.extend(area_handlers)
         rows.extend(area_rows)
         payloads.extend(area_payloads)
         args.extend(area_args)
+        ground_types.extend(area_ground_types)
+        ground_slots.extend(area_ground_slots)
+        ground_sprite_ys.extend(area_ground_sprite_ys)
         cursor += len(area_rows)
         ends.append(cursor - 1)  # this area's last index (after advancing; inclusive)
-    return handlers, rows, payloads, args, starts, ends
+    return (
+        handlers,
+        rows,
+        payloads,
+        args,
+        ground_types,
+        ground_slots,
+        ground_sprite_ys,
+        starts,
+        ends,
+    )
 
 
 (
@@ -1150,6 +1215,9 @@ def _load_all_area_schedules() -> tuple[
     SCHEDULE_ROWS,
     SCHEDULE_PAYLOADS,
     SCHEDULE_ARGS,
+    SCHEDULE_GROUND_TYPES,
+    SCHEDULE_GROUND_SLOTS,
+    SCHEDULE_GROUND_SPRITE_YS,
     AREA_SCHEDULE_START,
     AREA_SCHEDULE_END,
 ) = _load_all_area_schedules()
@@ -6127,6 +6195,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AREA_SCHEDULE_START_ID,
         AREA_SCHEDULE_END_ID,
         SCHEDULE_ARG_ID,
+        GROUND_OBJECT_TYPE_ID,
+        GROUND_OBJECT_SLOT_ID,
+        GROUND_OBJECT_SPRITE_Y_ID,
         DIFFICULTY_INCREMENT_ID,
         FORMATION_COUNT_TABLE_ID,
         FORMATION_TYPE_OFFSET_TABLE_ID,
@@ -6191,7 +6262,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # read-only reference table set on area entry, never written by a sprite.
         AREA_MAP_COLUMN_ID: ["area map column", list(AREA_MAP_COLUMNS)],
         # AREA-03 schedule table (docs/spec/data/area-schedules.json), ALL 16 normal areas flattened
-        # into three faithful parallel columns, each area = its records + a materialized sentinel row.
+        # into faithful parallel columns, each area = its records + a materialized sentinel row.
         # The two 16-entry index lists give each area's 1-based inclusive span into the columns, read at
         # runtime by area number. All read-only authority, sprite-write-forbidden.
         SCHEDULE_HANDLER_ID: ["schedule handler", list(SCHEDULE_HANDLERS)],
@@ -6201,6 +6272,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # each dispatched record needs (set-formation offset / fire-mask byte / ground-stop row; 0
         # otherwise), pre-decoded from the opaque payload. Same length as the other three columns.
         SCHEDULE_ARG_ID: ["schedule arg", list(SCHEDULE_ARGS)],
+        # GND: three more parallel schedule columns carrying the add_ground_object scalars the single
+        # `schedule arg` cannot — object type (the ground dispatch discriminator), slot (0-15), and
+        # sprite_y (0-255). 0 on every non-ground row; same length as the other columns. Read-only
+        # authority, sprite-write-forbidden, consumed by the ground dispatch.
+        GROUND_OBJECT_TYPE_ID: ["schedule ground type", list(SCHEDULE_GROUND_TYPES)],
+        GROUND_OBJECT_SLOT_ID: ["schedule ground slot", list(SCHEDULE_GROUND_SLOTS)],
+        GROUND_OBJECT_SPRITE_Y_ID: ["schedule ground sprite y", list(SCHEDULE_GROUND_SPRITE_YS)],
         AREA_SCHEDULE_START_ID: ["area schedule start", list(AREA_SCHEDULE_START)],
         AREA_SCHEDULE_END_ID: ["area schedule end", list(AREA_SCHEDULE_END)],
         # DIF-01 cabinet AI-level increments [2,0,6,16] (difficulty.json), indexed by the DIP.

@@ -1080,6 +1080,10 @@ class ScratchProjectTests(unittest.TestCase):
                 "schedule trigger row",
                 "schedule payload",
                 "schedule arg",
+                # GND: the three add_ground_object scalar columns (object type / slot / sprite_y).
+                "schedule ground type",
+                "schedule ground slot",
+                "schedule ground sprite y",
                 "area schedule start",
                 "area schedule end",
                 "difficulty increment",
@@ -1221,6 +1225,9 @@ class ScratchProjectTests(unittest.TestCase):
             director.SCHEDULE_TRIGGER_ROW_ID,
             director.SCHEDULE_PAYLOAD_ID,
             director.SCHEDULE_ARG_ID,
+            director.GROUND_OBJECT_TYPE_ID,
+            director.GROUND_OBJECT_SLOT_ID,
+            director.GROUND_OBJECT_SPRITE_Y_ID,
             director.AREA_SCHEDULE_START_ID,
             director.AREA_SCHEDULE_END_ID,
             director.DIFFICULTY_INCREMENT_ID,
@@ -7708,7 +7715,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "c5dd7456824392b6e406139a4a7a36acbaf3c27ebc60a3382c7df47d6766a83e",
+            "c2d879f659eb6aedf07d13facfd8e3cd913d78aa8f049a6a2743ef3cff8be21c",
             build_hash,
         )
 

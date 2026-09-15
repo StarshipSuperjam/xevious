@@ -109,6 +109,21 @@
       "name": "schedule fired",
       "scope": "Stage"
     },
+    "area-schedule-ground-slot": {
+      "kind": "list",
+      "name": "schedule ground slot",
+      "scope": "Stage"
+    },
+    "area-schedule-ground-sprite-y": {
+      "kind": "list",
+      "name": "schedule ground sprite y",
+      "scope": "Stage"
+    },
+    "area-schedule-ground-type": {
+      "kind": "list",
+      "name": "schedule ground type",
+      "scope": "Stage"
+    },
     "area-schedule-handler": {
       "kind": "list",
       "name": "schedule handler",

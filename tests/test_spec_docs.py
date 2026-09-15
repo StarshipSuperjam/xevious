@@ -502,6 +502,9 @@ class GeneratedAreaClock(unittest.TestCase):
         rows = by_name["schedule trigger row"]
         payloads = by_name["schedule payload"]
         args = by_name["schedule arg"]
+        ground_types = by_name["schedule ground type"]
+        ground_slots = by_name["schedule ground slot"]
+        ground_sprite_ys = by_name["schedule ground sprite y"]
         gen_start = by_name["area schedule start"]
         gen_end = by_name["area schedule end"]
 
@@ -518,6 +521,15 @@ class GeneratedAreaClock(unittest.TestCase):
                 return params["row"]
             return 0
 
+        # GND: the three add_ground_object scalars, re-decoded INDEPENDENTLY here — object_type
+        # (the ground dispatch discriminator), slot (0-15), sprite_y (0-255); (0, 0, 0) for every
+        # other handler. A mis-populated or misaligned ground column fails here, not at play.
+        def expected_ground(record):
+            if record["handler"] != "add_ground_object":
+                return 0, 0, 0
+            params = record.get("params", {})
+            return record["object_type"], params["slot"], params["sprite_y"]
+
         areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
         by_area = {a["area"]: a for a in areas}
         self.assertEqual(16, len(areas))
@@ -532,9 +544,19 @@ class GeneratedAreaClock(unittest.TestCase):
             cursor += stride
         self.assertEqual(expected_start, gen_start, "area schedule start offsets")
         self.assertEqual(expected_end, gen_end, "area schedule end offsets")
-        # the four parallel columns are exactly as long as the last span says.
+        # all parallel columns are exactly as long as the last span says.
         self.assertEqual(cursor - 1, len(handlers))
-        self.assertEqual({len(handlers)}, {len(rows), len(payloads), len(args)})
+        self.assertEqual(
+            {len(handlers)},
+            {
+                len(rows),
+                len(payloads),
+                len(args),
+                len(ground_types),
+                len(ground_slots),
+                len(ground_sprite_ys),
+            },
+        )
 
         # each area's flattened window matches its SOURCE records + materialized sentinel.
         for area_number in range(1, 17):
@@ -552,12 +574,26 @@ class GeneratedAreaClock(unittest.TestCase):
                     f"area {area_number} payload {j}",
                 )
                 self.assertEqual(expected_arg(record), args[idx], f"area {area_number} arg {j}")
+                self.assertEqual(
+                    expected_ground(record),
+                    (ground_types[idx], ground_slots[idx], ground_sprite_ys[idx]),
+                    f"area {area_number} ground scalars {j}",
+                )
             # this area's window terminates in the materialized sentinel (its scalar end_sentinel).
             end = expected_end[area_number - 1]  # 1-based, inclusive
             self.assertEqual("sentinel", handlers[end - 1], f"area {area_number} sentinel handler")
             self.assertEqual(area["end_sentinel"], rows[end - 1], f"area {area_number} sentinel row")
             self.assertEqual("", payloads[end - 1], f"area {area_number} sentinel payload")
             self.assertEqual(0, args[end - 1], f"area {area_number} sentinel arg")
+            self.assertEqual(
+                (0, 0, 0),
+                (
+                    ground_types[end - 1],
+                    ground_slots[end - 1],
+                    ground_sprite_ys[end - 1],
+                ),
+                f"area {area_number} sentinel ground scalars",
+            )
 
 
 class AimingTables(unittest.TestCase):
