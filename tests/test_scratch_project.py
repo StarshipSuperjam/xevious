@@ -207,16 +207,16 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 25: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # 26: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
         # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, and the
-        # slice-9 barra ground renderer (all reuse proof costumes by ref).
-        self.assertEqual(25, len(project["targets"]))
-        # 135: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # slice-9 barra + garu ground renderers (all reuse proof costumes by ref).
+        self.assertEqual(26, len(project["targets"]))
+        # 137: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
-        # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 7 ground-frame
-        # PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants).
-        self.assertEqual(135, len(assets))
+        # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 9 ground-frame
+        # PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base pulse frames).
+        self.assertEqual(137, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1197,6 +1197,10 @@ class ScratchProjectTests(unittest.TestCase):
             # explosion/crater clock, then delegates the terrain scroll+cull to `advance ground`.
             # Warp, dispatched per OCCUPIED Barra slot from the walk.
             director.UPDATE_BARRA_PROCCODE,
+            # GND-01 (slice 9) ground.barra: the Garu Barra's thin per-tick wrapper — for a HIT node it
+            # advances the explode-and-remove clock then removes the slot; base and active node delegate
+            # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu slot.
+            director.UPDATE_GARU_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -7799,7 +7803,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "9675f892080e81f33999bf83d2bdb07621f7e6a3ae3c6b416c0c9af2f1ebb8cf",
+            "f2c89d69da88dd2aefc829757e49f7cfbc1c2f136fe5d426d568d68ad505b8d6",
             build_hash,
         )
 

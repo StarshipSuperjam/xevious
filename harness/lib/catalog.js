@@ -1678,20 +1678,23 @@ export const SCENARIOS = [
   {
     key: 'ground-dispatch-spawns-scoped',
     behavior:
-      'Playing area 1 spawns the built ground families (Barra 0x1E, Logram 0x26) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
+      'Playing area 1 spawns the built ground families (Barra 0x1E, Garu Barra 0x20, Logram 0x26) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // Live pacing (like area-clock-scheduler / fire-permission-masks): as area 1 scrolls it consumes
-      // add_ground_object records. Only the two families built this PR spawn; Barra (0x1E) and Logram
-      // (0x26) both appear in area 1, interleaved with out-of-scope ground types (0x53/0x1F/0x1D/0x2C/
-      // 0x2D) that must never reach a slot. A ground object survives the pump it spawns in (it scrolls
-      // < 40 rows before the pump settles), so scanning the ground band after each pump catches it. The
-      // Logram fire mask (record 2, value 0x25) is set before the first Logram (record 17), so a
-      // spawned Logram captures it; read the slot mask and the Stage mask in the SAME settled sample so
-      // the compare is consistent even as later areas re-set the mask.
+      // add_ground_object records. Only the families built this PR spawn; Barra (0x1E), Garu Barra
+      // (0x20) and Logram (0x26) all appear in area 1, interleaved with out-of-scope ground types
+      // (0x53/0x1F/0x1D/0x2C/0x2D) that must never reach a slot. A ground object survives the pump it
+      // spawns in (it scrolls < 40 rows before the pump settles), so scanning the ground band after each
+      // pump catches it. The Logram fire mask (record 2, value 0x25) is set before the first Logram
+      // (record 17), so a spawned Logram captures it; read the slot mask and the Stage mask in the SAME
+      // settled sample so the compare is consistent even as later areas re-set the mask. Garu Barra
+      // spawns two adjacent slots sharing type 0x20 — the destructible node (ACTIVE) and the
+      // indestructible base (state sentinel SLOT_GARU_BASE = 3); both are in-scope here.
       let barraSeen = false;
       let logramSeen = false;
+      let garuSeen = false;
       let barraOk = false;
       let logramOk = false;
       let onlyHandledTypes = true;
@@ -1710,6 +1713,9 @@ export const SCENARIOS = [
           if (t === 30) {
             barraSeen = true;
             if (states[s] === 1 && pts[s] === 6) barraOk = true;
+          } else if (t === 32) {
+            // Garu Barra: node (state ACTIVE) or base (state SLOT_GARU_BASE = 3), both in-scope.
+            garuSeen = true;
           } else if (t === 38) {
             logramSeen = true;
             if (states[s] === 1 && pts[s] === 10) {
@@ -1727,6 +1733,7 @@ export const SCENARIOS = [
       return {
         barraSeen,
         logramSeen,
+        garuSeen,
         barraOk,
         logramOk,
         onlyHandledTypes,
@@ -1736,13 +1743,14 @@ export const SCENARIOS = [
     },
     assert(obs) {
       assert.equal(obs.barraSeen, true, 'a Barra (0x1E) is spawned into the ground band');
+      assert.equal(obs.garuSeen, true, 'a Garu Barra (0x20) is spawned into the ground band');
       assert.equal(obs.logramSeen, true, 'a Logram (0x26) is spawned into the ground band');
       assert.equal(obs.barraOk, true, 'the spawned Barra is ACTIVE at its 100-pt value position (6)');
       assert.equal(obs.logramOk, true, 'the spawned Logram is ACTIVE at its 300-pt value position (10)');
       assert.equal(
         obs.onlyHandledTypes,
         true,
-        'no out-of-scope ground type is ever stamped into a slot (only the two built families spawn)',
+        'no out-of-scope ground type is ever stamped into a slot (only the built families spawn)',
       );
       assert.ok(obs.logramStageMask > 0, 'the schedule set a live Logram fire mask before the spawn');
       assert.equal(
@@ -1985,6 +1993,168 @@ export const SCENARIOS = [
     // Empty the shot-vs-air detector: the flying control no longer scores → the control assertion fails,
     // proving the shot mechanism (not a dead seed) is what the ground immunity is measured against.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
+  },
+  {
+    key: 'garu-node-scores-and-vanishes',
+    behavior:
+      "A Garu Barra node is the destructible half (state ACTIVE, worth 300): a bomb on its cell resolves through the shared ground detector for exactly its 300-pt value-table entry, and once struck (state HIT) `update garu` runs the node's burst clock and — mirroring the arcade's explode_and_remove_object, NOT the Barra crater — REMOVES the node when the burst finishes (timer >= GARU_REMOVE_FRAMES = 28, i.e. frame 7). It scrolls with the terrain while the burst plays, then vanishes leaving no persistent crater",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const clearBand = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      // Freeze the walk so a manual detector/update call is the only thing that runs on the step (the
+      // live ground spawner would otherwise stamp other objects into the band mid-step; see
+      // bomb-kills-ground-and-scores / barra-craters for the same isolation).
+      writeVar(vm, 'game-director-state', 'frozen');
+      // --- Scoring: an ACTIVE node (type 32, pts pos 10 -> 300) under the locked bomb target scores 300.
+      clearBand();
+      put('slot-type', 15, 32); // Garu Barra (0x20); the node half is state ACTIVE
+      put('slot-state', 15, 1); // ACTIVE (destructible)
+      put('slot-pts', 15, 10); // 1-based value-table position of 300
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120); // locked bomb target (Scratch slot 33 -> JS index 32), same cell
+      put('slot-y', 32, 4096);
+      const award = readVar(vm, 'eco-value-table')[9]; // value-table position 10 -> JS index 9 = 300
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const scoreDelta = readVar(vm, 'eco-score') - score0;
+      const nodeState = readVar(vm, 'slot-state')[15];
+      // --- Death: a struck node (state HIT) bursts, scrolls, then REMOVES itself at frame 7 (no crater).
+      clearBand();
+      put('slot-type', 15, 32);
+      put('slot-state', 15, 2); // HIT — the detector zeroed the burst clock on the hit tick
+      put('slot-pts', 15, 10);
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 4096);
+      put('slot-timer', 15, 0);
+      writeVar(vm, 'slot-index', 16); // Scratch 1-based slot 16 -> the seeded node
+      const snaps = [];
+      const N = 14; // 14 ticks -> clock 28 (= GARU_REMOVE_FRAMES): the burst finishes and the node is removed
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update garu');
+        step(vm, 1);
+        snaps.push({
+          x: readVar(vm, 'slot-x')[15],
+          type: readVar(vm, 'slot-type')[15],
+          state: readVar(vm, 'slot-state')[15],
+          timer: readVar(vm, 'slot-timer')[15],
+        });
+      }
+      return { award, scoreDelta, nodeState, snaps };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 300, 'a Garu node (pts position 10) is worth its 300-pt value-table entry');
+      assert.equal(obs.scoreDelta, obs.award, 'a bomb on the node cell scores exactly 300 once (shared ground detector)');
+      assert.equal(obs.nodeState, 2, 'the struck node is marked HIT (state 2), so it cannot re-score');
+      assert.deepEqual(
+        obs.snaps.slice(0, 3).map((s) => s.x),
+        [32, 64, 96],
+        'the bursting node scrolls DOWN with the terrain (32/tick) while its burst plays',
+      );
+      const mid = obs.snaps[12]; // 13th tick: timer 26, still mid-burst
+      assert.equal(mid.type, 32, 'mid-burst the node is still present (type held)');
+      assert.equal(mid.state, 2, 'mid-burst the node is still HIT (bursting, not yet removed)');
+      assert.equal(mid.timer, 26, 'the burst clock counts 2 frames/tick');
+      const gone = obs.snaps[13]; // 14th tick: timer 28 = GARU_REMOVE_FRAMES -> removed
+      assert.equal(gone.timer, 28, 'the node is removed exactly when its burst finishes (frame 7 = 28 frames)');
+      assert.equal(gone.type, 0, 'the node VANISHES (type cleared) — no persistent crater, unlike the Barra');
+      assert.equal(gone.state, 0, 'the removed node slot is freed (state cleared) so it can be reused');
+    },
+    // Sever the node's whole per-tick update: with `update garu` neutralized, a struck node neither bursts,
+    // scrolls, nor removes itself → it persists stuck-HIT forever (a non-vanishing crater), so both the
+    // scroll drift and the frame-7 removal assertions go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update garu'),
+  },
+  {
+    key: 'garu-base-is-indestructible',
+    behavior:
+      "A Garu Barra base is the indestructible half: it is stamped a non-ACTIVE sentinel state (SLOT_GARU_BASE) that the ground detector's `== ACTIVE` gate rejects, so a bomb dead on the base scores NOTHING and never marks it struck — while the SAME bomb on the SAME cell destroys an ACTIVE node for 300, proving the detector is live and it is specifically the base's sentinel that is immune. On its own tick the base just scrolls with the terrain, persisting (never HIT, never clock-removed)",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const clearBand = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      writeVar(vm, 'game-director-state', 'frozen'); // isolate each manual call (see the ground scenarios)
+      // --- Immunity: the base (state SLOT_GARU_BASE = 3) dead on the bomb target scores nothing.
+      clearBand();
+      put('slot-type', 15, 32); // Garu Barra (0x20); the base half carries the sentinel state
+      put('slot-state', 15, 3); // SLOT_GARU_BASE — the detector's `== ACTIVE (1)` gate excludes it
+      put('slot-pts', 15, 10);
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120); // locked bomb target on the exact base cell
+      put('slot-y', 32, 4096);
+      const baseScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const baseDelta = readVar(vm, 'eco-score') - baseScore0;
+      const baseState = readVar(vm, 'slot-state')[15];
+      // --- Live control: an ACTIVE node on the identical cell DOES score 300, so the zero above is real
+      // immunity, not a dead detector.
+      clearBand();
+      put('slot-type', 15, 32);
+      put('slot-state', 15, 1); // ACTIVE node
+      put('slot-pts', 15, 10);
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const nodeScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const nodeDelta = readVar(vm, 'eco-score') - nodeScore0;
+      // --- Persistence: the base's own tick just scrolls it (never HIT, never removed on a clock).
+      clearBand();
+      put('slot-type', 15, 32);
+      put('slot-state', 15, 3); // SLOT_GARU_BASE
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 4096);
+      writeVar(vm, 'slot-index', 16);
+      const xs = [];
+      for (let t = 0; t < 3; t += 1) {
+        callProc(vm, 'Stage', 'update garu');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+      }
+      return {
+        baseDelta,
+        baseState,
+        nodeDelta,
+        award: readVar(vm, 'eco-value-table')[9],
+        xs,
+        persistType: readVar(vm, 'slot-type')[15],
+        persistState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.baseDelta, 0, 'a bomb dead on the Garu base scores NOTHING (its sentinel state fails the ACTIVE gate)');
+      assert.equal(obs.baseState, 3, 'the base is never marked struck — it keeps its SLOT_GARU_BASE sentinel');
+      assert.equal(obs.award, 300, 'the control node is worth a positive 300-pt value');
+      assert.equal(obs.nodeDelta, obs.award, 'control: the SAME bomb on the SAME cell destroys+scores an ACTIVE node');
+      assert.deepEqual(obs.xs, [32, 64, 96], 'the base scrolls DOWN with the terrain (32/tick) on its own tick');
+      assert.equal(obs.persistType, 32, 'the base persists OCCUPIED (never consumed by a bomb)');
+      assert.equal(obs.persistState, 3, 'the base persists as the sentinel (never flips to HIT)');
+    },
+    // Empty the ground detector: the control node no longer scores (nodeDelta 0) → the control assertion
+    // fails, proving the base's zero is measured against a genuinely live detector (not a dead seed).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
   },
   {
     key: 'craft-collision-is-single-cell',

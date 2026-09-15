@@ -558,6 +558,28 @@
       "family": "crater",
       "animation": "idle",
       "duration_frames": 1
+    },
+    {
+      "name": "garu/base/01",
+      "sheet": "ground_enemies",
+      "rect": [11, 168, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "garu",
+      "animation": "base",
+      "duration_frames": 1
+    },
+    {
+      "name": "garu/base/02",
+      "sheet": "ground_enemies",
+      "rect": [48, 168, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "garu",
+      "animation": "base",
+      "duration_frames": 1
     }
   ]
 }

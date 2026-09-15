@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "a20df8dcbffcd6d53f7ef7357f70db7b4e8ebd47095c77910d05d71fba6c0a61",
+  "manifest_sha256": "c8ee48f19e6aa751a019141d16af918ab4ce35e9630fb0ba56931b9d27b7b1df",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1130,11 +1130,59 @@
         8
       ],
       "generator_version": 1
+    },
+    "3c9a5fc3f0c459a57c78aceb4d9f3816.png": {
+      "frame": "garu/base/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        11,
+        168,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "7ff54915a7cabf7f0f5e6f603f944f61.png": {
+      "frame": "garu/base/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        48,
+        168,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "483c7db417ffa3d0daaef4662051ed5a2ce6bcf882aa27f3c1e4552d5f96f27e",
+    "sha256": "4d175c83e7cfeaeb700105a440ec996630e5798116b5c6676b6cdcab8c0a5184",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -1182,7 +1230,9 @@
       "logram/open/03",
       "logram/open/04",
       "crater/idle/01",
-      "crater/idle/02"
+      "crater/idle/02",
+      "garu/base/01",
+      "garu/base/02"
     ]
   }
 }

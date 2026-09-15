@@ -364,6 +364,11 @@
       "name": "game state",
       "scope": "Stage"
     },
+    "garu-clone-slot": {
+      "kind": "variable",
+      "name": "garu clone slot",
+      "scope": "garu"
+    },
     "ground-stop-firing-row": {
       "kind": "variable",
       "name": "ground stop firing row",

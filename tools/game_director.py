@@ -173,6 +173,13 @@ SLOT_HIT = 2
 # slot-state->HIT write stays inside `resolve hit`, SYS-03's single-hit invariant). Its clone sees
 # state != ACTIVE next iteration, frees its slot, and deletes.
 SHOT_SPENT = 3
+# GND (ground.barra #70): the Garu Barra's indestructible 2x2 base is stamped this NON-ACTIVE state
+# sentinel so the bomb-vs-ground detector's `==SLOT_ACTIVE` gate excludes it for free (no collision-group
+# edit) — exactly the arcade's `_STATE==3` on the outer section (handle_20_Garu_Barra $1A89, "can't
+# destroy outer section"). Numerically equal to SHOT_SPENT, but in the disjoint ground-slot band, and it
+# mirrors the arcade's own reuse of state 3 for an inert object. The renderer draws the base off `slot
+# type` (== GARU_BARRA_TYPE) with this sentinel state, never off `==SLOT_ACTIVE`.
+SLOT_GARU_BASE = 3
 HIT_SLOT_ID = "hit-slot"
 RESOLVE_HIT_PROCCODE = "resolve hit"
 SCORE_PROCCODE = "score"
@@ -670,6 +677,13 @@ ADVANCE_GROUND_PROCCODE = "advance ground"
 # to scroll, converting to a persistent crater. Mirrors the flying families' per-family `update <family>`
 # split (an active/hit control_if_else), calling the shared `advance ground` scroller for the motion.
 UPDATE_BARRA_PROCCODE = "update barra"
+# GND (ground.barra #70): the per-tick update for a Garu Barra — a two-slot object. Both the
+# indestructible 2x2 base (state sentinel SLOT_GARU_BASE) and the destructible node (state ACTIVE)
+# scroll with the terrain; the ONLY per-state difference is the node's death: when the node is bombed
+# (state HIT) it plays the SHORTER explode-and-remove burst (explode_and_remove_object $3216: a 4-frame
+# phase, 7 frames, then remove) and VANISHES — no crater, unlike the Barra. The base is never hit (the
+# detector's ==ACTIVE gate rejects the sentinel), so it only ever scrolls until it culls off-field.
+UPDATE_GARU_PROCCODE = "update garu"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -816,9 +830,10 @@ TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during t
 BARRA_TYPE = 30  # 0x1E, handle_1E_Barra: passive terrain target, never fires, crater on death
 GARU_BARRA_TYPE = 32  # 0x20, handle_20_Garu_Barra: indestructible base + destructible node (Commit 6)
 LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at full-open (Commit 7)
-GROUND_HANDLED_TYPES = (BARRA_TYPE, LOGRAM_TYPE)  # spawned this commit (Garu joins in Commit 6)
+GROUND_HANDLED_TYPES = (BARRA_TYPE, GARU_BARRA_TYPE, LOGRAM_TYPE)  # spawned by this PR
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 LOGRAM_PTS = 10  # 1-based value-table position of 300 points (handle_logram_init _PTS=27)
+GARU_BARRA_PTS = 10  # 1-based value-table position of 300 points (handle_20_Garu_Barra node _PTS=27)
 
 # GND crater/explosion (handle_bomb_explosion $3186 / bomb_explosion_finished $31D7): a bombed passive
 # ground object (Barra) plays the shared bomb-explosion animation, then becomes a PERSISTENT scrolling
@@ -832,6 +847,15 @@ GROUND_EXPLOSION_PHASE_FRAMES = 8  # animation frame = floor(slot timer / 8) (ar
 GROUND_EXPLOSION_FRAME_COUNT = 7  # animation frames 0..6 play, then the crater begins
 GROUND_CRATER_START_FRAMES = GROUND_EXPLOSION_PHASE_FRAMES * GROUND_EXPLOSION_FRAME_COUNT  # 56
 GROUND_CRATER_FLICKER_FRAMES = 4  # crater alternates 0xA6/0xA7 every 4 frames (arcade `countup >> 2`)
+
+# GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
+# SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
+# this burst on every 4th arcade frame (`TIMER & 3`) — twice the cadence of the Barra crater's every-8th
+# — and removes the object at animation frame 7 (`(TIMER >> 2) == 7`). In `slot timer` arcade-frame units
+# that is a 4-frame phase and removal at frame 7 => timer 28. There is no persistent crater: the object
+# is culled the instant the burst finishes, so it never reaches the frame-7 costume on screen.
+GARU_EXPLOSION_PHASE_FRAMES = 4  # burst frame = floor(slot timer / 4) (arcade `TIMER >> 2`)
+GARU_REMOVE_FRAMES = GARU_EXPLOSION_PHASE_FRAMES * GROUND_EXPLOSION_FRAME_COUNT  # 28: remove at frame 7
 
 # Slot sub-state (`slot flag`) for the Toroid: pre-trigger, then a committed swing side.
 TOROID_FLAG_APPROACH = 0
@@ -1152,6 +1176,24 @@ EXPLODE_COSTUME_COUNT = 8  # the shared solv_death burst is 8 costumes (explode_
 BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
 BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
 BARRA_CRATER_BASE_ORDINAL = BARRA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
+
+# GND (ground.barra #70) Garu Barra renderer constants. The Garu is TWO objects in adjacent ground slots
+# sharing one type (GARU_BARRA_TYPE): a 2x2 indestructible base (state SLOT_GARU_BASE) and a 1x1
+# destructible node (state ACTIVE/HIT). One `garu` target's clone pool covers the ground band; each clone
+# branches on its slot's STATE — base vs node — because both carry the same slot type. Costume layout:
+#   1..2  garu/base pulse frames (the arcade base cycles pulsing_colour_1; the two sheet frames — plain
+#         pyramid / red-glow core — stand in, alternated on the global `tick` like the Zoshi spin);
+#   3     the node idle pyramid (garu/node reuses the Barra pyramid, mirrored from barra/idle);
+#   4..11 the shared solv_death burst the node's explode-and-remove plays before it vanishes.
+# The base is drawn TWICE the linear size of the node (arcade _ATTR=3, 2x2) — its costume is a 32-px
+# canvas vs the node's 16-px, so the SAME GROUND_RENDER_SIZE yields ~2x on screen (no extra scaling).
+GARU_TARGET = "garu"
+GARU_CLONE_SLOT_ID = "garu-clone-slot"  # sprite-local: which ground slot this clone renders
+GARU_BASE_IDLE_ORDINAL = 1  # costumes 1..2: the 2x2 base pulse frames (garu/base/01..02)
+GARU_BASE_PULSE_FRAMES = 2  # the base alternates its two pulse frames
+GARU_BASE_PULSE_TICKS = 4  # ticks per pulse frame (8 arcade frames, the arcade global-animation phase)
+GARU_NODE_IDLE_ORDINAL = 3  # costume 3: the node idle pyramid (garu/node, mirrored from barra/idle)
+GARU_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared explosion burst the node plays before removal
 
 
 def _schedule_arg(record: dict) -> int:
@@ -2188,17 +2230,23 @@ def install_advance_slots(blocks: Blocks) -> None:
     # GND (#69): every ground family shares the terrain-locked scroll + off-field cull of `advance
     # ground`, but each family that has per-state behaviour of its own gets a thin wrapper proc that
     # layers it on before delegating to `advance ground`. The Barra (#70) wraps it with the HIT
-    # explosion clock (`update barra`); the Logram (#71, Commit 7) will get `update logram` for its
-    # open/close + fire and still fall back here in the meantime. Garu Barra (0x20) joins in Commit 7.
+    # explosion clock (`update barra`); the Garu Barra (0x20, #70) with the node's explode-and-remove
+    # (`update garu`) — the shared type dispatches BOTH its parts, which branch on state inside the proc.
+    # The Logram (#71, Commit 7) will get `update logram` for its open/close + fire and still falls back
+    # to the bare scroller here in the meantime.
     barra_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BARRA_TYPE)),
         [blocks.call_proc(UPDATE_BARRA_PROCCODE, warp=True)],
+    )
+    garu_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_BARRA_TYPE)),
+        [blocks.call_proc(UPDATE_GARU_PROCCODE, warp=True)],
     )
     logram_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
         [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch, barra_branch, logram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2749,6 +2797,46 @@ def install_update_barra(blocks: Blocks) -> None:
     blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = top
     blocks.substack(top, [tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)])
+    blocks.substack(
+        top, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    blocks.chain(definition, [top])
+
+
+def install_update_garu(blocks: Blocks) -> None:
+    # GND-01 / ground.barra (#70): one tick of a Garu Barra part at `slot index`. A Garu is two adjacent
+    # slots sharing GARU_BARRA_TYPE: the indestructible 2x2 base (state SLOT_GARU_BASE) and the
+    # destructible node (state ACTIVE, then HIT once bombed). Both are terrain-locked and just scroll —
+    # so the base and an un-bombed node both fall through to the shared `advance ground` scroll + off-field
+    # cull. The ONE per-state difference is the node's death: mirroring explode_and_remove_object ($3216),
+    # a HIT node advances its burst clock (`slot timer`, zeroed by the detector) and, once the burst
+    # finishes (timer >= GARU_REMOVE_FRAMES = frame 7), REMOVES itself — it vanishes with no crater, unlike
+    # the Barra. While the burst still plays it keeps scrolling (the arcade calls scroll_sprite_X each
+    # step), so a mid-field kill drifts with the terrain until it pops.
+    definition = _install_warp_proc(blocks, UPDATE_GARU_PROCCODE)
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    done = blocks.op_not(
+        blocks.op_lt(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(GARU_REMOVE_FRAMES))
+    )
+    finish = blocks.add("control_if_else")
+    blocks.blocks[finish]["inputs"]["CONDITION"] = [2, done]
+    blocks.blocks[done]["parent"] = finish
+    blocks.substack(finish, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.substack(
+        finish, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    # HIT node: advance the burst clock, then either remove (burst done) or keep scrolling.
+    blocks.substack(top, [tick_clock, finish])
+    # Base (sentinel) or ACTIVE node: just the shared terrain scroll + off-field cull.
     blocks.substack(
         top, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
     )
@@ -4082,6 +4170,11 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         # 1-based Scratch slot in the ground band: band base (GROUND_SLOTS[0]) + the record's 0-based slot.
         return blocks.op_add(number(GROUND_SLOTS[0]), ground_slot_at_cursor())
 
+    def ground_target_slot_next() -> str:
+        # The next ground-band slot (N+1): a Garu Barra occupies two adjacent slots — the base at N and
+        # its destructible node at N+1 (handle_20_Garu_Barra stamps a5 and a5+_OBJSIZE).
+        return blocks.op_add(number(GROUND_SLOTS[0] + 1), ground_slot_at_cursor())
+
     end = blocks.list_item(
         "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
     )
@@ -4223,13 +4316,48 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             ],
         ),
     ]
-    is_handled_ground = blocks.op_or(
+    is_barra_or_logram = blocks.op_or(
         blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
         blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
     )
+    # GND (ground.barra #70): the Garu Barra is a TWO-slot object (handle_20_Garu_Barra $1A89), so it does
+    # not fit the single-slot spawn_ground. Base @ N: the indestructible 2x2 (state SLOT_GARU_BASE, so the
+    # detector's ==ACTIVE gate rejects it), at slot x = 0 (top of field) and the record's lateral sprite_y.
+    # Node @ N+1: the destructible core (state ACTIVE, 300 pts), placed at the arcade's absolute offsets —
+    # slot x = 1 cell (_X = 0x0100) and slot y = base_y - 1 cell (_Y = base_Y - 0x0100, the verified 8-px
+    # LATERAL offset, GND-01). Both scroll together at the shared terrain rate. slot y = sprite_y << 5 (x32).
+    spawn_garu = [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot(), ground_type_at_cursor()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot(), number(SLOT_GARU_BASE)),
+        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot(), number(0)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            ground_target_slot(),
+            blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
+        ),
+        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot_next(), ground_type_at_cursor()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot_next(), number(SLOT_ACTIVE)),
+        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot_next(), number(SLOT_UNITS_PER_CELL)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            ground_target_slot_next(),
+            blocks.op_sub(
+                blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
+                number(SLOT_UNITS_PER_CELL),
+            ),
+        ),
+        blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot_next(), number(GARU_BARRA_PTS)),
+    ]
     add_ground_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
-        [blocks.if_reporter(is_handled_ground, spawn_ground)],
+        [
+            blocks.if_reporter(is_barra_or_logram, spawn_ground),
+            blocks.if_reporter(
+                blocks.op_eq(ground_type_at_cursor(), number(GARU_BARRA_TYPE)), spawn_garu
+            ),
+        ],
     )
     # ENGINE-TODO: the remaining spawn / boss handler dispatch (add_domogram_with_path, add_object,
     # *bacura*, andor_genesis_*, sheonite_*) lands with the later enemy slices. The DIF/FORM handlers
@@ -4419,6 +4547,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_advance_bomb(blocks)
     install_advance_ground(blocks)
     install_update_barra(blocks)
+    install_update_garu(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)
@@ -5801,6 +5930,112 @@ def barra_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def garu_blocks() -> dict[str, dict[str, Any]]:
+    # GND-01 Garu Barra renderer (game_director owns these blocks; sprite_extractor owns the costumes).
+    # One persistent clone per GROUND slot (1..16), the same terrain-band clone pool as the Barra. A Garu
+    # occupies two adjacent slots that both carry GARU_BARRA_TYPE, so each clone that sees its slot holding
+    # a Garu branches on the slot's STATE to know which part it is:
+    #   SLOT_GARU_BASE -> the 2x2 indestructible base, pulsing between its two frames on the global `tick`
+    #                     (the arcade cycles pulsing_colour_1; the frame swap stands in). Its costume is a
+    #                     32-px canvas, so the shared GROUND_RENDER_SIZE draws it ~2x the node (arcade 2x2).
+    #   SLOT_ACTIVE    -> the destructible node's idle pyramid (garu/node, mirrored from the Barra pyramid).
+    #   SLOT_HIT       -> the node's explode-and-remove burst (explode_and_remove_object $3216): the shared
+    #                     solv_death frames indexed floor(timer/4). `update garu` removes the slot when the
+    #                     burst finishes, so the clone hides on the next tick — no crater. The clone writes
+    #                     no state.
+    blocks = Blocks(GARU_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("garu clone slot", GARU_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("garu clone slot", GARU_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_garu = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(GARU_BARRA_TYPE)
+    )
+    # Terrain-locked position — identical cell->stage mapping to every family renderer.
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # The node's HIT burst frame: floor(slot timer / 4), the shorter explode-and-remove cadence.
+    burst_ordinal = blocks.op_add(
+        number(GARU_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GARU_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    # The base pulse frame: alternate the two frames on the global tick (like the Zoshi lockstep spin).
+    base_ordinal = blocks.op_add(
+        number(GARU_BASE_IDLE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(variable("tick", TICK_ID), number(GARU_BASE_PULSE_TICKS))
+            ),
+            number(GARU_BASE_PULSE_FRAMES),
+        ),
+    )
+    # State cascade: HIT (node exploding) -> base (sentinel) -> ACTIVE node.
+    base_or_node = blocks.add("control_if_else")
+    is_base = blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_GARU_BASE)
+    )
+    blocks.blocks[base_or_node]["inputs"]["CONDITION"] = [2, is_base]
+    blocks.blocks[is_base]["parent"] = base_or_node
+    blocks.substack(base_or_node, [blocks.switch_costume_expr(base_ordinal)])
+    # ACTIVE node idle: the pyramid is a fixed costume (mirrored from the Barra), so select it by name —
+    # switch_costume_expr obscures a menu with a runtime reporter; for a constant the by-name switch is direct.
+    blocks.substack(base_or_node, [blocks.switch_costume("barra/idle/01")], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(burst_ordinal)])
+    blocks.substack(state_render, [base_or_node], name="SUBSTACK2")
+
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_garu]
+    blocks.blocks[is_garu]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def terrazi_blocks() -> dict[str, dict[str, Any]]:
     # AIR-06 Terrazi renderer (game_director owns these blocks; sprite_extractor owns the costumes).
     # One persistent clone per flying slot (59..64), the same pool pattern as the Toroid: shown and
@@ -6460,6 +6695,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, ZOSHI_TARGET)
     _ensure_gameplay_target(result, JARA_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
+    _ensure_gameplay_target(result, GARU_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -6535,6 +6771,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             barra["costumes"].extend(copy.deepcopy(death["costumes"]))
         barra["costumes"].extend(proof_by_family("crater/"))
         barra["currentCostume"] = 0
+    # GND-01: the Garu Barra renderer mirrors its two 2x2 base pulse frames (ordinals 1..2), then the node
+    # idle pyramid (ordinal 3, "garu/node reuses the Barra pyramid" -> the barra/idle frame mirrored in),
+    # then the shared explosion burst (ordinals 4..11) the node plays before it vanishes. Idempotent; a
+    # no-op when any source is absent (generation runs to a fixpoint).
+    garu = next((t for t in result["targets"] if t.get("name") == GARU_TARGET), None)
+    if proof is not None and garu is not None:
+        garu["costumes"] = proof_by_family("garu/")
+        garu["costumes"].extend(proof_by_family("barra/"))
+        if death is not None:
+            garu["costumes"].extend(copy.deepcopy(death["costumes"]))
+        garu["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -6846,6 +7093,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "zoshi": zoshi_blocks(),
         "jara": jara_blocks(),
         "barra": barra_blocks(),
+        "garu": garu_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -6927,6 +7175,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # creation. All entity state lives in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 BARRA_CLONE_SLOT_ID: ["barra clone slot", 0],
+            }
+        elif target["name"] == GARU_TARGET:
+            # GND-01: likewise, the only Garu render state is which GROUND slot each clone draws.
+            target["variables"] = target["variables"] | {
+                GARU_CLONE_SLOT_ID: ["garu clone slot", 0],
             }
     return result
 
