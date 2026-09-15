@@ -130,8 +130,9 @@ export const SCENARIOS = [
     assert(obs) {
       assert.equal(obs.armedSeen, true, 'pressing b arms the bomb');
     },
-    // Break the arm guard (bomb in flight == 0) so a press never arms → assertion fails.
-    negativeMutation: (p) => mutate.changeEqualsOperand(p, 'bomb', 0, 99),
+    // Break the arm guard (Stage `advance bomb`'s `bomb in flight == 0`, moved off the bomb sprite in
+    // the ground-targeting rework) so a press never arms → the armed-seen assertion fails.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'bomb in flight', 0, 99),
   },
   {
     key: 'terrain-wrap',
@@ -1520,6 +1521,141 @@ export const SCENARIOS = [
     // Widen the scroll-axis high bound (`> 9`, unique to the ground detector's 16 unrolled slots) so a
     // probe one past the edge now scores → the yHiOut miss assertion fails, proving the bound binds.
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', '9', '40'),
+  },
+  {
+    key: 'bomb-crosshair-leads-craft',
+    behavior:
+      'The bomb crosshair (slot 35) leads the craft by a fixed 96-px (-3072 unit) forward depth offset each tick while sharing the craft column — the reticle sits ahead of the craft (init_bombing solvalou_X + 0xF400), not on it',
+    playtestStep: 3,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2); // let the walk cache the craft cell and track the crosshair
+      const row = readVar(vm, 'player-row');
+      const col = readVar(vm, 'player-col');
+      return {
+        crosshairX: readVar(vm, 'slot-x')[34], // Scratch slot 35 -> JS index 34
+        crosshairY: readVar(vm, 'slot-y')[34],
+        crosshairState: readVar(vm, 'slot-state')[34],
+        leadExpect: row * 256 - 3072, // craft depth + BOMB_TARGET_LEAD (-12 cells * 256)
+        lateralExpect: col * 256,
+      };
+    },
+    assert(obs) {
+      assert.equal(
+        obs.crosshairX,
+        obs.leadExpect,
+        'the crosshair leads the craft by -3072 units (96 px forward)',
+      );
+      assert.equal(
+        obs.crosshairY,
+        obs.lateralExpect,
+        'the crosshair shares the craft column (laterally aligned)',
+      );
+      assert.equal(obs.crosshairState, 1, 'the crosshair slot is active (drawn)');
+    },
+    // Zero the forward lead so the crosshair sits on the craft (row*256) → the lead assertion fails.
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', -3072, 0),
+  },
+  {
+    key: 'bomb-target-locks-ahead',
+    behavior:
+      'Arming a bomb locks the bomb target (slot 33) at the crosshair lead ahead of the craft and drops the bomb (slot 34) from the craft depth behind it — the target is set from the sight, never steered by the player',
+    playtestStep: 3,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const row = readVar(vm, 'player-row');
+      const col = readVar(vm, 'player-col');
+      // Freeze the walk so ONE advance-bomb call is exactly one tick: a settling pump otherwise runs
+      // the walk ~220 iterations and flies the bomb to completion (see the harness pacing note).
+      writeVar(vm, 'game-director-state', 'frozen');
+      keyDown(vm, 'b');
+      callProc(vm, 'Stage', 'advance bomb'); // arm tick — the if/else arms only, no advance
+      step(vm, 1);
+      keyUp(vm, 'b');
+      return {
+        targetX: readVar(vm, 'slot-x')[32], // Scratch slot 33 -> JS index 32
+        targetY: readVar(vm, 'slot-y')[32],
+        bombX: readVar(vm, 'slot-x')[33], // Scratch slot 34 -> JS index 33
+        inFlight: readVar(vm, 'weapon-bomb-in-flight'),
+        leadExpect: row * 256 - 3072,
+        lateralExpect: col * 256,
+        craftDepth: row * 256,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.inFlight, 1, 'the bomb arms into flight');
+      assert.equal(
+        obs.targetX,
+        obs.leadExpect,
+        'the bomb target locks at the crosshair lead (96 px ahead of the craft)',
+      );
+      assert.equal(obs.targetY, obs.lateralExpect, 'the bomb target shares the craft column');
+      assert.equal(
+        obs.bombX,
+        obs.craftDepth,
+        'the bomb drops from the craft depth, behind the locked target',
+      );
+    },
+    // Zero the lead so the sight (and thus the locked target) sits on the craft → the lock assertion
+    // fails (target == craft depth == bomb, the "lands at the craft" regression).
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', -3072, 0),
+  },
+  {
+    key: 'bomb-finish-resolves-ground',
+    behavior:
+      "An in-flight bomb reaching its target (target_x >= bomb_x) resolves ground objects under the locked target through advance-bomb's own finish path — the score rises by the object value once and the weapon clears — proving the finish is wired to check-ground-hit (not just the detector in isolation)",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Freeze the walk and hand-drive one advance-bomb tick (see the harness pacing note).
+      writeVar(vm, 'game-director-state', 'frozen');
+      // Seed an ACTIVE Barra (pts pos 6 -> 100) at a cell, the locked bomb target dead-on it, and the
+      // in-flight bomb one sub-step from catching the target (target just behind the bomb).
+      const gx = 5120;
+      const gy = 4096;
+      put('slot-type', 15, 30); // Barra ground-object marker (0x1E), last ground slot (16 -> idx 15)
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-pts', 15, 6);
+      put('slot-x', 15, gx);
+      put('slot-y', 15, gy);
+      put('slot-x', 32, gx); // bomb target (slot 33) dead-on the object
+      put('slot-y', 32, gy);
+      put('slot-state', 32, 1);
+      put('slot-x', 33, gx + 4); // bomb (slot 34) just ahead; sub-step 1 pulls it back to gx
+      put('slot-state', 33, 1);
+      writeVar(vm, 'weapon-bomb-in-flight', 1);
+      writeVar(vm, 'weapon-bomb-dx', 0);
+      const award = readVar(vm, 'eco-value-table')[5]; // value-table position 6 -> JS index 5 = 100
+      const score0 = readVar(vm, 'eco-score');
+      // Sub-step 1: dx -= 2 (bomb -> gx), target += 16 (-> gx+16); target >= bomb now holds, so the
+      // finish fires check-ground-hit and clears the weapon.
+      callProc(vm, 'Stage', 'advance bomb');
+      step(vm, 1);
+      return {
+        award,
+        delta: readVar(vm, 'eco-score') - score0,
+        objState: readVar(vm, 'slot-state')[15],
+        inFlight: readVar(vm, 'weapon-bomb-in-flight'),
+        targetState: readVar(vm, 'slot-state')[32],
+        bombState: readVar(vm, 'slot-state')[33],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 100, 'the seeded Barra is worth its 100-pt value-table entry');
+      assert.equal(obs.delta, obs.award, "the bomb's finish scores the ground object exactly once");
+      assert.equal(obs.objState, 2, 'the struck object is marked HIT (state 2)');
+      assert.equal(obs.inFlight, 0, 'the finish clears the weapon so it can re-arm');
+      assert.equal(obs.targetState, 0, 'the bomb target slot is cleared at finish');
+      assert.equal(obs.bombState, 0, 'the bomb slot is cleared at finish');
+    },
+    // Empty check-ground-hit: the finish still clears the weapon but nothing scores → delta 0 fails
+    // (the finish wiring runs, but the resolved-hit path it calls is gone).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
   },
   {
     key: 'craft-collision-is-single-cell',

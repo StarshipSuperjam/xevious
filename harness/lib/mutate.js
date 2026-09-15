@@ -105,6 +105,59 @@ export function misnameMathopOperator(project, spriteName) {
   if (!patched) throw new Error(`mutate: no operator_mathop on ${spriteName}`);
 }
 
+/**
+ * Rewrite an `operator_add` numeric literal on a sprite (either operand, NUM1 or NUM2). Used to zero
+ * the bomb crosshair's forward lead (`craft_row*256 + (-3072)` → `+ 0`) so the sight sits on the craft
+ * instead of 96 px ahead — the severing negative for the crosshair-lead / target-lock scenarios.
+ */
+export function changeAddLiteral(project, spriteName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_add') continue;
+    for (const slot of ['NUM1', 'NUM2']) {
+      const input = b.inputs[slot];
+      if (
+        Array.isArray(input) &&
+        Array.isArray(input[1]) &&
+        String(input[1][1]) === String(fromValue)
+      ) {
+        b.inputs[slot] = [1, [4, String(toValue)]];
+        patched += 1;
+      }
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'operator_add ${fromValue}' on ${spriteName}`);
+}
+
+/**
+ * Change the literal right-hand value of an `operator_equals` whose LEFT operand (OPERAND1) is a
+ * specific variable reporter — a surgical variant of changeEqualsOperand for a `<var> == N` guard
+ * that shares its literal (e.g. `0`) with many other equals on the same target. Used to break the
+ * bomb arm gate (`bomb in flight == 0`, now Stage-owned) without touching every other `== 0`.
+ */
+export function changeVarEqualsOperand(project, spriteName, varName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  const vid = variableId(t, varName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_equals' || !b.inputs.OPERAND1 || !b.inputs.OPERAND2) continue;
+    const lhs = b.inputs.OPERAND1[1];
+    const isVar = Array.isArray(lhs) && lhs[0] === 12 && lhs[2] === vid;
+    const rhs = b.inputs.OPERAND2[1];
+    const matchesLiteral = Array.isArray(rhs) && String(rhs[1]) === String(fromValue);
+    if (isVar && matchesLiteral) {
+      b.inputs.OPERAND2 = [1, [10, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) {
+    throw new Error(`mutate: no 'operator_equals ${varName} == ${fromValue}' on ${spriteName}`);
+  }
+}
+
 /** Raise an `operator_gt` literal right-hand threshold on a sprite (breaks a > gate). */
 export function raiseGreaterThreshold(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);

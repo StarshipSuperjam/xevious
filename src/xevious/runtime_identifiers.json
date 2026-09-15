@@ -599,6 +599,11 @@
       "name": "blaster reload",
       "scope": "blaster"
     },
+    "weapon-bomb-dx": {
+      "kind": "variable",
+      "name": "bomb dx",
+      "scope": "Stage"
+    },
     "weapon-bomb-in-flight": {
       "kind": "variable",
       "name": "bomb in flight",

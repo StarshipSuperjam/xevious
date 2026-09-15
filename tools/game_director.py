@@ -35,6 +35,10 @@ DEATH_EPOCH_ID = "solv-death-director-entry-epoch"
 # guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
 # run on different threads — share it; the reload counter is blaster-local.
 BOMB_INFLIGHT_ID = "weapon-bomb-in-flight"
+# The in-flight bomb's accelerating scroll-axis velocity (init_bombing $188C `_dX`). A Stage
+# variable for the same reason as the guard: the walk thread writes it and the bomb renderer reads
+# it (to pick its falling frame). Cleared to 0 on every reset scope alongside the guard.
+BOMB_DX_ID = "weapon-bomb-dx"
 RELOAD_ID = "weapon-blaster-reload"
 # Per-strip terrain scroll counter (preserved across a new life; only cold-start /
 # new-game rewinds it), driving the counted-cycle wrap that replaces the position
@@ -643,6 +647,13 @@ EXPLODE_TICK_PROCCODE = "explode toroid tick"
 # loops all 16 objects when a bomb finishes. It has no caller this commit (Commit 4 wires it from
 # the bomb-finish); the harness proves it by calling it directly.
 CHECK_GROUND_HIT_PROCCODE = "check ground hit"
+# WPN-04 player-ground-targeting (#67): the sight that leads the craft every tick (update_crosshair
+# $16E8) and the one-tick bomb weapon step — arm on a fresh press, otherwise fly the in-flight bomb
+# and, when it lands, resolve the ground objects under it (init_bombing $188C, check_bomb_finished
+# $190B). Both are Stage warp procs run from the walk thread; the crosshair/bomb-target/bomb sprites
+# are pure renderers of their slots.
+TRACK_CROSSHAIR_PROCCODE = "track crosshair"
+ADVANCE_BOMB_PROCCODE = "advance bomb"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -801,6 +812,16 @@ CULL_ROW_MIN = -2  # <= -2 rows (past the top, the reference's byte-wrap) -> off
 CULL_COL_MAX = 31  # >= 0x1F columns -> offscreen (lateral)
 CULL_COL_MIN = -2  # <= -2 columns -> offscreen (left edge; bullets can fly out any side)
 TOROID_SPAWN_ROW = 0  # new/refilled flying enemies enter from the top row (see install_init_toroid)
+
+# WPN-04 bombing geometry (init_bombing $188C / update_crosshair $16E8), all on the scroll/depth axis
+# (slot x). The crosshair and the locked bomb target sit a fixed distance AHEAD of the craft:
+# arcade `solvalou_X + 0xF400` = -3072 units = -12 cells = -96 stage-px (lower slot x is up-screen).
+BOMB_TARGET_LEAD = -12 * SLOT_UNITS_PER_CELL  # 0xF400 at the pin
+FRAMES_PER_TICK = 2  # 1 port tick = 2 arcade frames (the established scroll cadence)
+BOMB_ACCEL_PER_FRAME = 2  # the bomb's `_dX` gains -2 per arcade frame, then `_X += _dX*2`
+# The bomb target scrolls with the terrain — the same scroll_delta the ground uses (scroll_sprite_X
+# $30E8: +16 units/arcade-frame). Per tick that is AREA_PROGRESS_STEP (32); per frame, half of it.
+SCROLL_UNITS_PER_FRAME = AREA_PROGRESS_STEP // FRAMES_PER_TICK  # 16
 
 # AIR-06 Terrazi (handle_11_Terrazi 3667-3729): the first periodically-firing aerial family. Aimed
 # approach on the 48-magnitude (3 px/frame) tier; while distant it fires under its mask (the shared
@@ -1244,11 +1265,11 @@ MESSAGES = {
     "death complete": "broadcastMsgId-death-complete",
     "game over complete": "broadcastMsgId-game-over-complete",
     "craft changed": "broadcastMsgId-craft-changed",
+    # WPN-04: the walk thread owns the bomb logic and fires these two purely for the bomb renderer's
+    # sounds — `bomb` on arm (drop), `bomb landed` on finish (explosion). The retired arrow-key target
+    # sprite's bounds broadcasts (target-bounds-*) are gone: the crosshair is a pure renderer now.
     "bomb": "broadcastMsgId-bomb-release",
-    "target_b": "broadcastMsgId-target-bounds-bottom",
-    "target_l": "broadcastMsgId-target-bounds-left",
-    "target_r": "broadcastMsgId-target-bounds-right",
-    "target_t": "broadcastMsgId-target-bounds-top",
+    "bomb landed": "broadcastMsgId-bomb-landed",
 }
 
 PROCCODE = "transition to %s reset %s"
@@ -2473,6 +2494,140 @@ def install_check_ground_hit(blocks: Blocks) -> None:
             )
         )
     blocks.chain(definition, body)
+
+
+def install_track_crosshair(blocks: Blocks) -> None:
+    # WPN-04 bomb sight (update_crosshair $16E8): every tick the crosshair leads the craft by a fixed
+    # depth offset — arcade `crosshair _X = solvalou_X + 0xF400`, `_Y = solvalou_Y`. `read player cell`
+    # has already cached the craft's (row, col) in cells, so the crosshair slot is (row*256 + LEAD, col*256)
+    # in slot units; the renderer maps that to 96 stage-px ahead of the ship on the same lateral column.
+    # The crosshair carries no gameplay state — it is only marked ACTIVE so its renderer shows it while
+    # playing. The reference's on-target colour flash (check_targeted_ground_object) is a deferred cosmetic.
+    definition = _install_warp_proc(blocks, TRACK_CROSSHAIR_PROCCODE)
+    set_x = blocks.list_replace(
+        "slot x",
+        SLOT_X_ID,
+        number(CROSSHAIR_SLOT),
+        blocks.op_add(
+            blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SLOT_UNITS_PER_CELL)),
+            number(BOMB_TARGET_LEAD),
+        ),
+    )
+    set_y = blocks.list_replace(
+        "slot y",
+        SLOT_Y_ID,
+        number(CROSSHAIR_SLOT),
+        blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SLOT_UNITS_PER_CELL)),
+    )
+    set_state = blocks.list_replace(
+        "slot state", SLOT_STATE_ID, number(CROSSHAIR_SLOT), number(SLOT_ACTIVE)
+    )
+    blocks.chain(definition, [set_x, set_y, set_state])
+
+
+def install_advance_bomb(blocks: Blocks) -> None:
+    # WPN-04 bombing, one tick of the bomb weapon (init_bombing $188C, check_bomb_finished $190B).
+    # ARM (mirroring init_bombing's `bomb target idle` gate): on a fresh B press while no bomb is in
+    # flight, lock the bomb target at the crosshair (target _X/_Y = crosshair _X/_Y) and drop the bomb
+    # from the craft (bomb _X/_Y = solvalou _X/_Y) with zero velocity. Otherwise ADVANCE the in-flight
+    # bomb by FRAMES_PER_TICK arcade-frame sub-steps (a port tick is two frames): each sub-step
+    # accelerates the bomb toward the terrain (`_dX -= 2; _X += _dX*2`, so the bomb's slot x DECREASES —
+    # up-screen, ahead) while the bomb target scrolls DOWN with the terrain (+SCROLL_UNITS_PER_FRAME,
+    # the same scroll_delta the ground uses). The bomb finishes the sub-step the target catches it on the
+    # depth axis (`target_x >= bomb_x`, check_bomb_finished's not-borrow) — which resolves every ground
+    # object under the target (`check ground hit`) and clears the weapon. Arm and advance are the two
+    # arms of one if/else, so arming costs no advance on its own tick (init_bombing sets up, then the
+    # bomb-active block runs on the following frames). Sounds are fired to the bomb renderer as broadcasts.
+    definition = _install_warp_proc(blocks, ADVANCE_BOMB_PROCCODE)
+    crosshair_x = lambda: blocks.list_item("slot x", SLOT_X_ID, number(CROSSHAIR_SLOT))
+    crosshair_y = lambda: blocks.list_item("slot y", SLOT_Y_ID, number(CROSSHAIR_SLOT))
+    bomb_x = lambda: blocks.list_item("slot x", SLOT_X_ID, number(BOMB_SLOT))
+    target_x = lambda: blocks.list_item("slot x", SLOT_X_ID, number(BOMB_TARGET_SLOT))
+
+    # arm gate: (key b pressed) AND (bomb in flight == 0). Build the AND first, then wire its two
+    # boolean children into OPERAND1/OPERAND2 (the bomb_blocks arm-gate idiom), so neither reporter is
+    # re-parented out from under it.
+    arm_gate = blocks.add("control_if_else")
+    pressed_and_idle = blocks.add("operator_and")
+    b_pressed = blocks.key_pressed(pressed_and_idle, "b")
+    idle = blocks.var_equals(pressed_and_idle, "bomb in flight", BOMB_INFLIGHT_ID, 0)
+    blocks.blocks[pressed_and_idle]["inputs"] = {
+        "OPERAND1": [2, b_pressed],
+        "OPERAND2": [2, idle],
+    }
+    blocks.blocks[arm_gate]["inputs"]["CONDITION"] = [2, pressed_and_idle]
+    arm_body = [
+        # bomb drops from the craft (solvalou depth/lateral), zero velocity.
+        blocks.list_replace(
+            "slot x",
+            SLOT_X_ID,
+            number(BOMB_SLOT),
+            blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SLOT_UNITS_PER_CELL)),
+        ),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            number(BOMB_SLOT),
+            blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SLOT_UNITS_PER_CELL)),
+        ),
+        # bomb target locks at the crosshair's current lead position.
+        blocks.list_replace("slot x", SLOT_X_ID, number(BOMB_TARGET_SLOT), crosshair_x()),
+        blocks.list_replace("slot y", SLOT_Y_ID, number(BOMB_TARGET_SLOT), crosshair_y()),
+        blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
+        blocks.list_replace("slot state", SLOT_STATE_ID, number(BOMB_SLOT), number(SLOT_ACTIVE)),
+        blocks.list_replace(
+            "slot state", SLOT_STATE_ID, number(BOMB_TARGET_SLOT), number(SLOT_ACTIVE)
+        ),
+        blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(1)),
+        blocks.send("bomb"),  # drop sound (bomb renderer)
+    ]
+    blocks.substack(arm_gate, arm_body)
+
+    # advance branch (SUBSTACK2): fly the in-flight bomb two arcade-frame sub-steps this tick.
+    substep_guard = blocks.add("control_if")
+    still_flying = blocks.var_equals(substep_guard, "bomb in flight", BOMB_INFLIGHT_ID, 1)
+    blocks.blocks[substep_guard]["inputs"]["CONDITION"] = [2, still_flying]
+    # target_x >= bomb_x  <=>  NOT (target_x < bomb_x)   (check_bomb_finished's not-borrow)
+    finished = blocks.op_not(blocks.op_lt(target_x(), bomb_x()))
+    finish_body = [
+        blocks.call_proc(CHECK_GROUND_HIT_PROCCODE, warp=True),
+        blocks.list_replace("slot state", SLOT_STATE_ID, number(BOMB_SLOT), number(0)),
+        blocks.list_replace("slot state", SLOT_STATE_ID, number(BOMB_TARGET_SLOT), number(0)),
+        blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
+        blocks.send("bomb landed"),  # explosion sound (bomb renderer)
+    ]
+    substep_body = [
+        blocks.set_var_expr(
+            "bomb dx",
+            BOMB_DX_ID,
+            blocks.op_sub(variable("bomb dx", BOMB_DX_ID), number(BOMB_ACCEL_PER_FRAME)),
+        ),
+        blocks.list_replace(
+            "slot x",
+            SLOT_X_ID,
+            number(BOMB_SLOT),
+            blocks.op_add(bomb_x(), blocks.op_mul(variable("bomb dx", BOMB_DX_ID), number(2))),
+        ),
+        blocks.list_replace(
+            "slot x",
+            SLOT_X_ID,
+            number(BOMB_TARGET_SLOT),
+            blocks.op_add(target_x(), number(SCROLL_UNITS_PER_FRAME)),
+        ),
+        blocks.if_reporter(finished, finish_body),
+    ]
+    blocks.substack(substep_guard, substep_body)
+    flight_loop = blocks.add("control_repeat", inputs={"TIMES": number(FRAMES_PER_TICK)})
+    blocks.substack(flight_loop, [substep_guard])
+    # the whole advance runs only when a bomb is actually in flight (the else arm can be reached with
+    # no bomb armed — B not pressed and none flying).
+    advance_gate = blocks.add("control_if")
+    in_flight = blocks.var_equals(advance_gate, "bomb in flight", BOMB_INFLIGHT_ID, 1)
+    blocks.blocks[advance_gate]["inputs"]["CONDITION"] = [2, in_flight]
+    blocks.substack(advance_gate, [flight_loop])
+    blocks.substack(arm_gate, [advance_gate], name="SUBSTACK2")
+
+    blocks.chain(definition, [arm_gate])
 
 
 def install_explode_toroid_tick(blocks: Blocks) -> None:
@@ -4072,6 +4227,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_jara(blocks)
     install_check_air_hit(blocks)
     install_check_ground_hit(blocks)
+    install_track_crosshair(blocks)
+    install_advance_bomb(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)
@@ -4222,8 +4379,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         walk_loop,
         [
             blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
+            # WPN-04: the bomb sight leads the craft (needs the just-cached player cell).
+            blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True),
             blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
             blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
+            # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
+            # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
+            blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
             # DEBUG (temporary, tracked for removal): overrides the scheduled formation to a Terrazi
             # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
             blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
@@ -4253,6 +4415,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         stage_reset,
         [
             blocks.call_proc(CLEAR_SLOTS_PROCCODE, warp=True),
+            # WPN-04: disarm the bomb weapon on every reset scope (a bomb in flight interrupted by a
+            # death or a new game must not strand the one-bomb lockout). The slot states for the
+            # bomb/target/crosshair are already zeroed by `clear slots` above.
+            blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
+            blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
             reset_if(
                 blocks,
                 ("cold-start", "new-game"),
@@ -4415,10 +4582,16 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
             [blocks.add(opcode, inputs={input_name: number(amount)})],
         )
         movement_body.append(pressed)
-    for frame, opcode, input_name, amount, message in (
-        ("frame_b", "motion_changeyby", "DY", 7, "target_b"),
-        ("frame_l", "motion_changexby", "DX", 7, "target_l"),
-        ("frame_r", "motion_changexby", "DX", -7, "target_r"),
+    # The craft is self-bounded on all four sides against the frame borders (update_solvalou_sprite_XY
+    # $15C1 clamps the craft's own position on both axes; the sight/crosshair is a pure +offset lead and
+    # never gates craft movement). The top bound used to be indirect — via the crosshair sprite touching
+    # frame_t — which is retired now the crosshair is a pure renderer, so the craft takes its own top
+    # bound here alongside the other three.
+    for frame, opcode, input_name, amount in (
+        ("frame_t", "motion_changeyby", "DY", -7),
+        ("frame_b", "motion_changeyby", "DY", 7),
+        ("frame_l", "motion_changexby", "DX", 7),
+        ("frame_r", "motion_changexby", "DX", -7),
     ):
         correction = blocks.add("control_if")
         blocks.blocks[correction]["inputs"]["CONDITION"] = [
@@ -4427,19 +4600,13 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
         ]
         blocks.substack(
             correction,
-            [
-                blocks.add(opcode, inputs={input_name: number(amount)}),
-                blocks.send(message),
-            ],
+            [blocks.add(opcode, inputs={input_name: number(amount)})],
         )
         movement_body.append(correction)
     blocks.substack(movement, movement_body)
     playing = blocks.if_state("playing", [blocks.show(), movement])
     dead = blocks.if_either_state("player-dead", "game-over", [blocks.hide()])
     blocks.chain(enter, [snapshot, title, ready, playing, dead])
-
-    top = blocks.receive("target_t")
-    blocks.chain(top, [blocks.add("motion_changeyby", inputs={"DY": number(-7)})])
     return blocks.blocks
 
 
@@ -4827,156 +4994,109 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
-def bomb_blocks() -> dict[str, dict[str, Any]]:
-    blocks = Blocks("bomb")
-    common_stop(blocks, hide=True)
-    # Reset unconditionally re-arms the bomb — every transition passes through reset,
-    # and the reset-scope postconditions require "clear bomb". Without this an in-flight
-    # bomb interrupted by a death (a routine sequence) would strand the guard set and
-    # lock out bombing for the rest of the game.
-    reset = blocks.receive("director reset")
-    blocks.chain(
-        reset,
-        [blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)), blocks.hide()],
+def _render_stage_x(blocks: Blocks, slot: int) -> str:
+    # Inverse of read_player's lateral map: stage x = (slot y / 256) * RENDER_COL_STAGE - RENDER_COL_OFFSET.
+    # A fresh reporter subtree per call (reporters attach to a single parent).
+    return blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, number(slot)), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
     )
 
-    # B2: one bomb at a time. The poller arms a bomb only when the slot is idle
-    # (WPN-04: arming requires the bomb-target slot idle) and broadcasts `bomb`, which
-    # drives the drop below plus the crosshair release (B6) and the impact marker (B7).
+
+def _render_stage_y(blocks: Blocks, slot: int) -> str:
+    # Inverse of read_player's depth map: stage y = RENDER_ROW_TOP - (slot x / 256) * RENDER_ROW_STAGE.
+    return blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, number(slot)), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+
+
+def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str, Any]]:
+    # WPN-04 pure single-slot renderer for the crosshair (35) and the bomb target (33). Each is one
+    # persistent sprite (not a clone pool — there is exactly one of each) that, while playing, shows
+    # itself at its slot's mapped stage position when the slot is ACTIVE and hides otherwise. It writes
+    # no state; the walk-thread procs own the slot's position and active flag.
+    blocks = Blocks(name)
+    common_stop(blocks, hide=True)
+    blocks.chain(blocks.receive("director reset"), [blocks.hide()])
+
     enter = blocks.receive("director enter")
     loop = blocks.add("control_repeat_until")
     loop_condition = blocks.not_state(loop, "playing")
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    arm_gate = blocks.add("control_if")
-    idle_and_pressed = blocks.add("operator_and")
-    blocks.blocks[idle_and_pressed]["parent"] = arm_gate
-    b_pressed = blocks.key_pressed(idle_and_pressed, "b")
-    slot_idle = blocks.var_equals(idle_and_pressed, "bomb in flight", BOMB_INFLIGHT_ID, 0)
-    blocks.blocks[idle_and_pressed]["inputs"] = {
-        "OPERAND1": [2, b_pressed],
-        "OPERAND2": [2, slot_idle],
-    }
-    blocks.blocks[arm_gate]["inputs"]["CONDITION"] = [2, idle_and_pressed]
+    is_active = blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, number(slot)), number(SLOT_ACTIVE)
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_active]
+    blocks.blocks[is_active]["parent"] = render
     blocks.substack(
-        arm_gate,
+        render,
         [
-            blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(1)),
-            blocks.send("bomb"),
-        ],
-    )
-    blocks.substack(loop, [arm_gate])
-    blocks.chain(enter, [blocks.if_state("playing", [loop])])
-
-    # The drop: to the ship, then a two-stage fall, then re-arm the slot (the natural
-    # resolve-time clear; the reset above is the death-interrupt backstop). The re-arm
-    # timing is preserved-baseline (baseline ~0.75 s cooldown); the arcade re-arm path
-    # is unpinned in the reference (WPN-04).
-    release = blocks.receive("bomb")
-    flight = blocks.add("control_repeat", inputs={"TIMES": number(12)})
-    blocks.substack(flight, [blocks.add("motion_changeyby", inputs={"DY": number(5)})])
-    explode = blocks.add("control_repeat", inputs={"TIMES": number(4)})
-    blocks.substack(explode, [blocks.add("looks_nextcostume"), blocks.hold_ticks(2)])
-    blocks.chain(
-        release,
-        [
-            blocks.to_front(),  # B9: the bomb renders above the terrain
-            blocks.go_to_sprite("solvalou"),
-            blocks.switch_costume("bomb_01"),
+            blocks.switch_costume(costume),
+            blocks.go_expr(_render_stage_x(blocks, slot), _render_stage_y(blocks, slot)),
+            blocks.to_front(),  # B9: the reticle/target render above the terrain
             blocks.show(),
-            blocks.play_sound("bomb_drop"),
-            flight,
-            blocks.play_sound("bomb_explode"),
-            explode,
-            blocks.hide(),
-            blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
         ],
     )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(enter, [blocks.if_state("playing", [loop])])
     return blocks.blocks
 
 
-def target_blocks(name: str, y: int) -> dict[str, dict[str, Any]]:
-    blocks = Blocks(name)
+def bomb_blocks() -> dict[str, dict[str, Any]]:
+    # WPN-04 pure renderer for the in-flight bomb (slot 34). Like slot_marker_blocks, but it also
+    # animates through the 5 bomb frames as the bomb accelerates (the falling frame is a render-only
+    # function of the bomb's velocity, kept in range by mod 5) and plays the drop/explosion sounds the
+    # walk thread broadcasts on arm/finish (the sounds live on this sprite). It writes no game state.
+    blocks = Blocks("bomb")
     common_stop(blocks, hide=True)
-    reset = blocks.receive("director reset")
-    blocks.chain(reset, [blocks.go(0, y), blocks.hide()])
+    blocks.chain(blocks.receive("director reset"), [blocks.hide()])
+    # Sound-only receivers: the walk thread owns the bomb logic and fires these on arm / landing.
+    blocks.chain(blocks.receive("bomb"), [blocks.play_sound("bomb_drop")])
+    blocks.chain(blocks.receive("bomb landed"), [blocks.play_sound("bomb_explode")])
+
     enter = blocks.receive("director enter")
-    if name == "target_a":
-        movement = blocks.add("control_repeat_until")
-        movement_condition = blocks.not_state(movement, "playing")
-        blocks.blocks[movement]["inputs"]["CONDITION"] = [2, movement_condition]
-        movement_body = []
-        for key, (opcode, input_name, amount) in {
-            "left arrow": ("motion_changexby", "DX", -7),
-            "right arrow": ("motion_changexby", "DX", 7),
-            "up arrow": ("motion_changeyby", "DY", 7),
-            "down arrow": ("motion_changeyby", "DY", -7),
-        }.items():
-            pressed = blocks.add("control_if")
-            blocks.blocks[pressed]["inputs"]["CONDITION"] = [
-                2,
-                blocks.key_pressed(pressed, key),
-            ]
-            blocks.substack(
-                pressed,
-                [blocks.add(opcode, inputs={input_name: number(amount)})],
-            )
-            movement_body.append(pressed)
-        top = blocks.add("control_if")
-        blocks.blocks[top]["inputs"]["CONDITION"] = [
-            2,
-            blocks.touching(top, "frame_t"),
-        ]
-        blocks.substack(
-            top,
-            [
-                blocks.add("motion_changeyby", inputs={"DY": number(-7)}),
-                blocks.send("target_t"),
-            ],
-        )
-        movement_body.append(top)
-        blocks.substack(movement, movement_body)
-        blocks.chain(
-            enter,
-            [
-                blocks.if_state(
-                    "playing", [blocks.go(0, y), blocks.to_front(), blocks.show(), movement]
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_active = blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, number(BOMB_SLOT)), number(SLOT_ACTIVE)
+    )
+    # Falling frame ordinal 1..5 from |bomb dx| (grows as it accelerates); mod 5 keeps it in range.
+    ordinal = blocks.op_add(
+        number(1),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.op_abs(variable("bomb dx", BOMB_DX_ID)), number(BOMB_ACCEL_PER_FRAME)
                 )
-            ],
-        )
-        for message, opcode, input_name, amount in (
-            ("target_b", "motion_changeyby", "DY", 7),
-            ("target_l", "motion_changexby", "DX", 7),
-            ("target_r", "motion_changexby", "DX", -7),
-        ):
-            correction = blocks.receive(message)
-            blocks.chain(
-                correction,
-                [blocks.add(opcode, inputs={input_name: number(amount)})],
-            )
-        # B6: the crosshair plays its release animation on each bomb, then returns to
-        # its base costume — restored from the frozen single-costume reticle.
-        release = blocks.receive("bomb")
-        anim = blocks.add("control_repeat", inputs={"TIMES": number(3)})
-        blocks.substack(anim, [blocks.add("looks_nextcostume"), blocks.hold_ticks(2)])
-        blocks.chain(release, [anim, blocks.switch_costume("target_01")])
-    else:
-        blocks.chain(enter, [blocks.if_state("playing", [blocks.hide()])])
-        # B7: target_b is the ground-impact marker — restored from the inert hide-only
-        # sprite. On each bomb it appears at the crosshair and drifts, per the baseline.
-        release = blocks.receive("bomb")
-        drift = blocks.add("control_repeat", inputs={"TIMES": number(20)})
-        blocks.substack(drift, [blocks.add("motion_changeyby", inputs={"DY": number(-1)})])
-        blocks.chain(
-            release,
-            [
-                blocks.go_to_sprite("target_a"),
-                blocks.switch_costume("target_03"),
-                blocks.to_front(),
-                blocks.show(),
-                drift,
-                blocks.hide(),
-            ],
-        )
+            ),
+            number(5),
+        ),
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_active]
+    blocks.blocks[is_active]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.switch_costume_expr(ordinal),
+            blocks.go_expr(_render_stage_x(blocks, BOMB_SLOT), _render_stage_y(blocks, BOMB_SLOT)),
+            blocks.to_front(),  # B9: the bomb renders above the terrain
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(enter, [blocks.if_state("playing", [loop])])
     return blocks.blocks
 
 
@@ -6107,6 +6227,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SCOPE_ID,
         OUTCOME_ID,
         BOMB_INFLIGHT_ID,
+        BOMB_DX_ID,
         RNG_STATE_ID,
         RNG_OUT_ID,
         RNG_HIGH_ID,
@@ -6172,6 +6293,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # Shared weapon state — the one-bomb lockout the poller and the in-flight bomb
         # both read; cleared by every reset scope (bomb_blocks).
         BOMB_INFLIGHT_ID: ["bomb in flight", 0],
+        # WPN-04: the in-flight bomb's accelerating scroll-axis velocity (init_bombing `_dX`).
+        BOMB_DX_ID: ["bomb dx", 0],
         # SYS-04 shared stream: the seed, its latest output byte, and the four per-step
         # working values (custom blocks have no locals). Cited to rng.json / SYS-04.
         RNG_STATE_ID: ["rng state", 0],
@@ -6391,8 +6514,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "area_01b": terrain_blocks("area_01b", "area01_11-0", 344, TERRAIN_STEP_B_ID, 0),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
-        "target_a": target_blocks("target_a", 15),
-        "target_b": target_blocks("target_b", 2),
+        "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, "target_01"),
+        "target_b": slot_marker_blocks("target_b", BOMB_TARGET_SLOT, "target_03"),
         "bomb": bomb_blocks(),
         "hud": hud_blocks(),
         "toroid": toroid_blocks(),

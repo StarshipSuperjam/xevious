@@ -964,6 +964,10 @@ class ScratchProjectTests(unittest.TestCase):
             # DEBUG (tracked for removal, #119): the T-key family-cycle cursor — a transient dev-tool
             # register, not Stage-write-protected state.
             "debug spawn index",
+            # WPN-04 (slice 9): the in-flight bomb's accelerating scroll-axis velocity — a transient
+            # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
+            # it for its falling-frame animation). Machinery, not durable Stage state.
+            "bomb dx",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1177,6 +1181,13 @@ class ScratchProjectTests(unittest.TestCase):
             # the bullet allocator the shooting Toroid now calls to fire its single aimed bullet.
             director.UPDATE_BULLET_PROCCODE,
             director.ALLOC_BULLET_PROCCODE,
+            # WPN-04 (slice 9) player.ground-targeting: the walk tracks the bomb sight ahead of the
+            # craft (`track crosshair`) and arms/flies the bomb (`advance bomb`), which on its finish
+            # sub-step resolves ground objects under the locked target through `check ground hit`
+            # (economy.ground-awards, slice 9). All warp, no state write.
+            director.TRACK_CROSSHAIR_PROCCODE,
+            director.ADVANCE_BOMB_PROCCODE,
+            director.CHECK_GROUND_HIT_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -7136,32 +7147,40 @@ class ScratchProjectTests(unittest.TestCase):
         if window_height_cells < shot_step_cells + 1.0:
             fails.add("B8-no-tunnel")
 
-        # B2 — single bomb: no clone, a guard armed and re-armed, the bomb broadcast.
+        # B2 — single guarded bomb. WPN-04 (slice 9) moved the bomb logic OFF the bomb sprite (now a
+        # pure slot renderer) and INTO the Stage walk (`advance bomb`): the walk arms the one-bomb
+        # guard, re-arms it at the finish, tests idle before arming, and broadcasts the drop. The bomb
+        # sprite keeps no clone and only RECEIVES the drop/land sounds.
         if count("bomb", "control_start_as_clone") != 0:
             fails.add("B2-clone")
-        if not sets_var("bomb", "bomb in flight", 1):
+        if not sets_var("Stage", "bomb in flight", 1):
             fails.add("B2-arm")
-        if not sets_var("bomb", "bomb in flight", 0):
+        if not sets_var("Stage", "bomb in flight", 0):
             fails.add("B2-rearm")
         if not has(
-            "bomb",
+            "Stage",
             lambda b: b["opcode"] == "operator_equals"
             and num(b["inputs"].get("OPERAND2")) == 0
             and b["inputs"].get("OPERAND1", [None, [None, None]])[1][1] == "bomb in flight",
         ):
             fails.add("B2-idle-test")
-        if not broadcasts("bomb", "bomb"):
+        if not broadcasts("Stage", "bomb"):
             fails.add("B2-broadcast")
+        # The bomb sprite renderer still receives the drop-sound broadcast.
+        if not receives("bomb", "bomb"):
+            fails.add("B2-drop-receive")
 
-        # B6 — the crosshair receives the bomb and returns to its base costume.
-        if not receives("target_a", "bomb"):
-            fails.add("B6-crosshair-receive")
+        # B6 — the crosshair is a pure slot renderer (slice 9): it no longer receives the bomb
+        # broadcast; it switches to the targeting reticle costume off its slot state.
+        if receives("target_a", "bomb"):
+            fails.add("B6-crosshair-not-receiver")
         if not has("target_a", lambda b: b["opcode"] == "looks_switchcostumeto"):
             fails.add("B6-crosshair-costume")
 
-        # B7 — the impact marker receives the bomb and shows (was inert hide-only).
-        if not receives("target_b", "bomb"):
-            fails.add("B7-marker-receive")
+        # B7 — the impact marker is a pure slot renderer (slice 9): no bomb-broadcast receiver; it
+        # shows when its slot is active.
+        if receives("target_b", "bomb"):
+            fails.add("B7-marker-not-receiver")
         if not has("target_b", lambda b: b["opcode"] == "looks_show"):
             fails.add("B7-marker-show")
 
@@ -7224,7 +7243,11 @@ class ScratchProjectTests(unittest.TestCase):
             for block in solvalou.values()
             if block["opcode"] == "sensing_touchingobjectmenu"
         }
-        self.assertEqual({"frame_b", "frame_l", "frame_r"}, touched_frames)
+        # WPN-04 (slice 9): the craft now clamps its OWN top bound (frame_t), mirroring
+        # update_solvalou_sprite_XY's hard clamp on both axes. The interim crosshair-driven
+        # `target_t` broadcast that used to stand in for the top bound is retired, so the craft
+        # touches all four frame edges directly.
+        self.assertEqual({"frame_b", "frame_t", "frame_l", "frame_r"}, touched_frames)
         death = targets["solv_death"]["blocks"]
         self.assertIn("sound_play", {block["opcode"] for block in death.values()})
         self.assertNotIn(
@@ -7285,11 +7308,13 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["fields"]["TOUCHINGOBJECTMENU"][0] = "frame_b"
 
-        def break_bomb_broadcast(p):  # B2: drop the bomb broadcast
+        def break_bomb_broadcast(p):  # B2: drop the Stage walk's bomb-drop broadcast
             b = first(
                 p,
-                "bomb",
-                lambda b: b["opcode"] == "event_broadcast",
+                "Stage",
+                lambda b: b["opcode"] == "event_broadcast"
+                and b["inputs"].get("BROADCAST_INPUT", [None, [None, None, None]])[1][1]
+                == "bomb",
             )
             b["opcode"] = "control_wait"
 
@@ -7329,14 +7354,26 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "solv_death", lambda b: b["opcode"] == "looks_show")
             b["opcode"] = "looks_sayforsecs"
 
-        def break_crosshair_receive(p):  # B6: drop the crosshair bomb receiver
+        def break_crosshair_costume(p):  # B6: drop the crosshair reticle costume switch
+            b = first(p, "target_a", lambda b: b["opcode"] == "looks_switchcostumeto")
+            b["opcode"] = "looks_show"
+
+        def break_drop_receive(p):  # B2: drop the bomb sprite's drop-sound receiver
             b = first(
                 p,
-                "target_a",
+                "bomb",
                 lambda b: b["opcode"] == "event_whenbroadcastreceived"
                 and b["fields"]["BROADCAST_OPTION"][0] == "bomb",
             )
-            b["fields"]["BROADCAST_OPTION"][0] = "target_t"
+            b["fields"]["BROADCAST_OPTION"][0] = "director stop"
+
+        def couple_crosshair_to_bomb(p):  # B6: regress the crosshair back to a bomb receiver
+            b = first(p, "target_a", lambda b: b["opcode"] == "event_whenbroadcastreceived")
+            b["fields"]["BROADCAST_OPTION"][0] = "bomb"
+
+        def couple_marker_to_bomb(p):  # B7: regress the marker back to a bomb receiver
+            b = first(p, "target_b", lambda b: b["opcode"] == "event_whenbroadcastreceived")
+            b["fields"]["BROADCAST_OPTION"][0] = "bomb"
 
         def break_explosion_holds(p):  # B5: shorten one explosion hold
             b = first(
@@ -7347,10 +7384,10 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_HOLD_TICKS + 1]]
 
-        def break_bomb_arm(p):  # B2: fail to set the in-flight guard
+        def break_bomb_arm(p):  # B2: fail to set the in-flight guard on arm (now Stage-owned)
             b = first(
                 p,
-                "bomb",
+                "Stage",
                 lambda b: b["opcode"] == "data_setvariableto"
                 and b["fields"]["VARIABLE"][0] == "bomb in flight"
                 and num(b["inputs"].get("VALUE")) == 1,
@@ -7368,12 +7405,15 @@ class ScratchProjectTests(unittest.TestCase):
             ("B1-reload-gate", break_reload_gate),
             ("B2-broadcast", break_bomb_broadcast),
             ("B2-arm", break_bomb_arm),
+            ("B2-drop-receive", break_drop_receive),
             ("B3-position-test-area_01a", break_terrain_count),
             ("B4-glide", break_title_glide),
             ("B5B10-explosion", break_explosion_holds),
             ("B5B10-pause", break_death_pause),
-            ("B6-crosshair-receive", break_crosshair_receive),
+            ("B6-crosshair-costume", break_crosshair_costume),
+            ("B6-crosshair-not-receiver", couple_crosshair_to_bomb),
             ("B7-marker-show", break_marker),
+            ("B7-marker-not-receiver", couple_marker_to_bomb),
             ("B8-top-expiry", break_shot_expiry),
             ("B9-craft-front", break_craft_layer),
             ("B9-terrain-back-area_01a", break_terrain_layer),
@@ -7383,6 +7423,41 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
+
+    def test_bomb_sight_is_not_player_movable(self) -> None:
+        # WPN-04 (slice 9, player.ground-targeting #67): the bomb crosshair (slot 35) and the locked
+        # bomb target (slot 33) are driven ONLY by the craft cell + the fixed 96-px forward lead +
+        # terrain scroll — never by arrow keys. The interim reticle was arrow-movable; that branch is
+        # retired (init_bombing's target follows the craft, it is not steered). Arrow-key movement lives
+        # solely on the solvalou sprite (its four arrow reads clamp the craft itself); the Stage walk,
+        # which owns the sight/target slot lists, must sense NO arrow key. Re-adding an arrow-key branch
+        # to steer the target would poll an arrow key on the Stage and trip this guard.
+        project = load_source(scratch.SOURCE_DIR)
+        stage = next(t for t in project["targets"] if t["isStage"])
+        arrow_keys = {"up arrow", "down arrow", "left arrow", "right arrow"}
+
+        def stage_sensed_keys(st: dict) -> set:
+            return {
+                b["fields"]["KEY_OPTION"][0]
+                for b in st["blocks"].values()
+                if b["opcode"] == "sensing_keyoptions"
+            }
+
+        sensed = stage_sensed_keys(stage)
+        self.assertEqual(
+            set(), sensed & arrow_keys, "the Stage walk must not steer the bomb sight by arrow keys"
+        )
+        # Only the bomb-arm 'b' poll and the debug-spawn 't' poll are expected Stage key reads.
+        self.assertLessEqual(sensed, {"b", "t"}, sensed)
+
+        # Negative: re-add an arrow-key branch (an arrow-key poll on the Stage) → the guard fires.
+        corrupt = copy.deepcopy(project)
+        cstage = next(t for t in corrupt["targets"] if t["isStage"])
+        first_keyopt = next(
+            b for b in cstage["blocks"].values() if b["opcode"] == "sensing_keyoptions"
+        )
+        first_keyopt["fields"]["KEY_OPTION"][0] = "left arrow"
+        self.assertTrue(stage_sensed_keys(cstage) & arrow_keys)
 
     def test_tick_constants_match_arcade_conversion(self) -> None:
         # 1 build tick = 2 arcade frames (core-game-systems units rule). Pin the
@@ -7715,7 +7790,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "2b26a59224aa518b40926709608029ddae839bee3a2faabc6b09a73a92643eb8",
+            "bb5d0358ea1a260a8964d81d54fc1a63e70c0155167ff620d442980b22589942",
             build_hash,
         )
 
