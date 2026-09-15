@@ -62,7 +62,11 @@
   shared path; the walk-thread crosshair/bomb-target/bomb procs port the reticle lead, the target lock, and
   the bomb flight; and the Barra, Garu, and Logram renderers/handlers implement the per-object behaviour.
   The crater is the object's own slot left in a bombed state that keeps scrolling; the Garu base is a
-  non-ACTIVE sentinel the award gate ignores.
+  non-ACTIVE sentinel the award gate ignores. Render layering (port render decision, not a slot-list or
+  behaviour change): the ground renderers deliberately do not `go to front` — a ground object rests on the
+  terrain, so its static layer order (already above the never-fronting terrain strips) leaves it below the
+  craft and the bomb sight, both of which front themselves every tick. This keeps the crosshair/bomb-target
+  the player aims with, and the craft that flies over the terrain, visible above the ground objects.
 
 - Scratch evidence: harness scenarios with biting negatives, structural guards each paired with a severing
   negative, and fresh `.play` evidence markers.

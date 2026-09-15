@@ -6099,7 +6099,13 @@ def barra_blocks() -> dict[str, dict[str, Any]]:
             blocks.go_expr(stage_x, stage_y),
             state_render,
             blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            blocks.to_front(),
+            # WPN-04 layering: a ground object sits ON the terrain, under the craft that
+            # flies over it and the bomb sight the player aims with. Unlike the flying
+            # renderers it does NOT go to front — its static layerOrder is already above
+            # the terrain strips (which never front themselves), so leaving it unfronted
+            # keeps it below the craft/crosshair/bomb-target (which do front every tick)
+            # while staying above the ground. Fronting here is what put a Barra over the
+            # sight the player was aiming with.
             blocks.show(),
         ],
     )
@@ -6205,7 +6211,9 @@ def garu_blocks() -> dict[str, dict[str, Any]]:
             blocks.go_expr(stage_x, stage_y),
             state_render,
             blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            blocks.to_front(),
+            # WPN-04 layering: like the Barra, the Garu base/node stay on the terrain,
+            # under the craft and the bomb sight — its static layerOrder is already above
+            # the (never-fronting) terrain, so it is left unfronted. See barra_blocks.
             blocks.show(),
         ],
     )
@@ -6316,7 +6324,9 @@ def logram_blocks() -> dict[str, dict[str, Any]]:
             blocks.go_expr(stage_x, stage_y),
             state_render,
             blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            blocks.to_front(),
+            # WPN-04 layering: like the Barra, the Logram dome/crater stays on the terrain,
+            # under the craft and the bomb sight — its static layerOrder is already above
+            # the (never-fronting) terrain, so it is left unfronted. See barra_blocks.
             blocks.show(),
         ],
     )
