@@ -1,5 +1,5 @@
 ---
-status: draft
+status: locked
 reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 ---
 
@@ -38,8 +38,9 @@ remains in the object's slot, scrolling with the terrain until culled (`handle_b
 
 **Barra and Garu Barra (GND-01).** Barra is the passive target: terrain-fixed, never fires, crater on
 death (2644–2654). Garu Barra spawns as a pair: a larger double-size base born permanently
-indestructible (decorative, never explodes) plus a destructible scoring node 8 pixels above it that
-vanishes cleanly when bombed (2657–2682). Neither variant fires. Scores per the scoring table.
+indestructible (decorative, never explodes) plus a destructible scoring node offset 8 px to the side
+(lateral `_Y = base_Y − 0x100`, its row `_X` set absolutely) that vanishes cleanly when bombed
+(2657–2682). Neither variant fires. Scores per the scoring table.
 
 **Zolbak (GND-02).** Terrain-fixed and never fires; bombing it scores per the scoring table and — this
 document's own rule — lowers the adaptive AI level by 2, floored at zero (`handle_1F_Zolbak`,
@@ -61,9 +62,12 @@ diamond (row offsets 0/+12/+12/+24 px, lateral 0/+12/−12/0) around a center do
 domes behave as Lograms (same fire cycle, on the Boza mask) and crater when bombed; each outer death
 also downgrades the center's value per the scoring table's recorded downgrade
 (`update_centre_points_value` 2986–2989). The center never fires; bombing it kills every surviving
-outer dome in cascade (2921–2942). Whether the cascaded outer deaths also score is recorded as
-uncertain (the crediting path is outside the handler labels; resolution by fixture or arcade
-observation at build time).
+outer dome in cascade (2921–2942). The cascaded outer deaths do not score: point crediting happens
+only in `handle_bombed_obj_and_award_points` (2597–2623), which awards an object's value only when it
+is active (`_STATE` 2) on the bomb target; the cascade sets each surviving outer to the hit state
+(`_STATE` 3) directly, bypassing that path, and neither `update_centre_points_value` nor
+`handle_bomb_explosion` awards points. So only a directly-bombed outer scores (and downgrades the
+center); center-first scores the center alone and clears the outers for free.
 
 **Grobda (GND-06).** The tank family — twelve variants, none of which fires (recorded finding: the
 catalog's older "fire" phrasing is unsupported). Their game is movement reacting to the player's aim.
@@ -93,7 +97,7 @@ Land variants crater when bombed; water variants vanish. Scores per the scoring 
 **Domogram (GND-07).** The path-following slider: its schedule record carries a per-instance path — a
 list of (duration, vector-index) steps, decoded in the committed schedule data — where each index
 selects a (dy, dx) delta from Domogram's own 32-entry vector table, committed in
-[data/domogram.json](data/domogram.json) (`domogram_vector_tbl` 4695–4728). It holds each vector for
+[data/domogram.json](data/domogram.json) (`domogram_vector_tbl` 4695–4727). It holds each vector for
 its step's duration, producing back-and-forth patrols relative to the terrain, and keeps its last
 vector when the scripted path ends (4620–4689). It fires on the Domogram mask through a 24-frame shot
 animation releasing the bullet at its midpoint. Bombed: scores, crater.

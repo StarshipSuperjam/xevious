@@ -249,6 +249,78 @@
       "who": "operator"
     },
     {
+      "criterion": "Ground objects appear at their scheduled slots and positions, terrain-fixed unless their variant moves",
+      "digest": "sha256:ff662f54bcbf1f8505282e7cce489681bae0ea219859d58842f9c9e74a6d5387",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Data fixture: build placements equal the committed schedule data",
+      "position": 0,
+      "who": "engine"
+    },
+    {
+      "criterion": "Bombs destroy ground objects; the blaster never does; land kills leave scrolling craters, water kills vanish",
+      "digest": "sha256:0b8e6a7646c7577d6f14ded513dd849cc1f34318f93f50c83a79e163cd32befc",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Play: bomb and shoot a Barra; bomb a water Grobda",
+      "position": 1,
+      "who": "operator"
+    },
+    {
+      "criterion": "The build's fire masks and stop-firing rows equal the committed schedule data",
+      "digest": "sha256:71f013584fd8edf93255e8715289f273cd8bd47ef7424f693b825cb1d66f1611",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Data comparison over the build's generated area tables",
+      "position": 2,
+      "who": "engine"
+    },
+    {
+      "criterion": "Firing families visibly begin and stop firing at their scheduled points",
+      "digest": "sha256:72acd5ecadb6e1df16282ab4aebd366b8217261b2d9d5e20b7a37312783e31a3",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Play an area with scheduled ground fire (area 2 onward)",
+      "position": 3,
+      "who": "operator"
+    },
+    {
+      "criterion": "Logram fires exactly once per open cycle, at full-open",
+      "digest": "sha256:858a223c3b5e555d5ab7ab182444ece9046504ebe1b0f03b55f3fd218b05a17e",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Play area 1's Lograms; observe the open-fire-close rhythm",
+      "position": 4,
+      "who": "operator"
+    },
+    {
+      "criterion": "Boza Logram: outer-first triggers the recorded downgrade; center-first cascades the outers",
+      "digest": "sha256:161da98eab59e8cc0f45397c29be18ae90c22c5c3c1bf42b1ad7fc06242eb0b1",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Play (or fixture) both orders",
+      "position": 5,
+      "who": "operator"
+    },
+    {
+      "criterion": "Grobda variants react to the reticles per the table above and never fire",
+      "digest": "sha256:34f0e63ceb9fc403844bb600e4195a40181bbd5b67f274585748bdaff7978c85",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Play a Grobda area: line up the reticles and watch the reactions",
+      "position": 6,
+      "who": "operator"
+    },
+    {
+      "criterion": "The build's Domogram paths and vector table equal the committed data",
+      "digest": "sha256:7b33d072f384a2914d9a87ecac8457aab45983279a9ace4ba87bd15ed5bcc893",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Data comparison against the schedule data and [data/domogram.json](data/domogram.json)",
+      "position": 7,
+      "who": "engine"
+    },
+    {
+      "criterion": "Zolbak's destruction visibly eases subsequent pressure",
+      "digest": "sha256:55f28dbdac92fd23b2534b84f311970b0d93538ea566ee6a3bc43f7d365c2934",
+      "doc": "docs/spec/ground-objects.md",
+      "how_verified": "Play: clear Zolbaks in one run, spare them in another, compare waves",
+      "position": 8,
+      "who": "operator"
+    },
+    {
       "criterion": "Craft moves in 8 directions at equal per-axis speed with the recorded bounds, no diagonal normalization",
       "digest": "sha256:fc1ab53a3b2024b996068790366d3ebe906d5d4c5e29a97c7d5d7df168bb23c2",
       "doc": "docs/spec/player-craft-and-weapons.md",
