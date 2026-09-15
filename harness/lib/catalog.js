@@ -1822,6 +1822,171 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', 32, 0),
   },
   {
+    key: 'barra-craters-persists-and-scrolls',
+    behavior:
+      'A bombed Barra (state HIT) runs its explosion clock and becomes a PERSISTENT scrolling crater: `update barra` advances the clock (2 arcade frames/tick) AND keeps scrolling it with the terrain (32/tick), and — UNLIKE a flying kill, which frees on its clock at 20 frames — it is NEVER freed on the clock (it stays occupied and HIT well past both the 20-frame flying duration and the 56-frame crater start), removed only when it culls off the bottom of the field',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Freeze the walk so one `update barra` call is exactly one tick (a settling pump would run the
+      // walk ~220 iterations and the live spawner would stamp other ground objects mid-step; see the
+      // harness pacing + live-contamination notes). Clear the ground band, then seed a struck Barra at
+      // the top of the field (slot x 0) in the last ground slot (Scratch 16 -> JS index 15), point the
+      // shared cursor at it, and hand-drive `update barra` a tick at a time.
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const GY = 4096;
+      put('slot-type', 15, 30); // Barra (0x1E)
+      put('slot-state', 15, 2); // HIT — the bomb has struck it; the crater clock starts here
+      put('slot-pts', 15, 6);
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, GY);
+      put('slot-timer', 15, 0); // the detector zeroes the clock on the hit tick
+      writeVar(vm, 'slot-index', 16); // Scratch 1-based slot 16 -> the seeded object
+      const xs = [];
+      const N = 30; // 30 ticks -> clock 60 frames: past the 20-frame flying free AND the 56-frame crater start
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update barra');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+      }
+      const persisted = {
+        type: readVar(vm, 'slot-type')[15],
+        state: readVar(vm, 'slot-state')[15],
+        timer: readVar(vm, 'slot-timer')[15],
+        x: readVar(vm, 'slot-x')[15],
+      };
+      // Cull: re-seed the crater one scroll step short of the bottom row (40*256 - 32), so the next
+      // `update barra` scrolls it to row 40 (>= CULL_ROW_MAX) and frees the slot (type/state -> 0) —
+      // the crater's ONLY removal path.
+      put('slot-type', 15, 30);
+      put('slot-state', 15, 2);
+      put('slot-x', 15, 40 * 256 - 32);
+      writeVar(vm, 'slot-index', 16);
+      callProc(vm, 'Stage', 'update barra');
+      step(vm, 1);
+      return {
+        xs,
+        persisted,
+        n: N,
+        culledType: readVar(vm, 'slot-type')[15],
+        culledState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.xs.slice(0, 3),
+        [32, 64, 96],
+        'a struck Barra keeps scrolling DOWN by exactly 32 units/tick (the crater is terrain-locked)',
+      );
+      const monotonic = obs.xs.every((x, i) => i === 0 || x === obs.xs[i - 1] + 32);
+      assert.equal(monotonic, true, 'the crater scrolls a steady 32/tick for the whole run');
+      assert.equal(obs.persisted.timer, obs.n * 2, 'the crater clock keeps counting (2 frames/tick) and is never reset');
+      assert.ok(obs.persisted.timer > 20, 'the clock runs past the 20-frame flying-explosion free without freeing');
+      assert.ok(obs.persisted.timer > 56, 'the clock runs past the 56-frame crater start without freeing');
+      assert.equal(obs.persisted.type, 30, 'the crater stays OCCUPIED on its clock (never freed like a flying kill)');
+      assert.equal(obs.persisted.state, 2, 'the crater stays HIT on its clock (a persistent crater, not a vanishing burst)');
+      assert.equal(obs.culledType, 0, 'a crater scrolled off the bottom (row >= 40) is finally culled (type cleared)');
+      assert.equal(obs.culledState, 0, 'the culled crater slot is freed (state cleared) so it can be reused');
+    },
+    // Sever the Barra's whole per-tick update: with `update barra` neutralized, a struck Barra neither
+    // advances its crater clock nor scrolls → the [32,64,96] drift and the clock-advance assertions fail
+    // (no crater ever forms or moves).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update barra'),
+  },
+  {
+    key: 'barra-blaster-cannot-destroy',
+    behavior:
+      'The blaster (air weapon) structurally cannot destroy a ground object: the shot-vs-air detector is dispatched only from FLYING enemy updates, so a Barra (routed to `update barra`) is never offered to it. The SAME controlled shot on the SAME cell scores an overlapping flying enemy but scores NOTHING against an overlapping ground Barra',
+    playtestStep: 7,
+    async drive(vm) {
+      // Live-drive both probes exactly like `air-shot-hit-column-bounded`: the shot-vs-air detector is
+      // dispatched from the live flying-enemy walk (a hand-called detector needs live warming, and driving
+      // the real walk is what proves the routing anyway). Invuln stays ON from reachPlaying so the craft
+      // never dies. Each probe fires an identical CONTROLLED shot in a real detector slot (SHOT_SLOTS =
+      // 37-39, JS index 37) on a cell 6 rows / 8 columns off the craft — far enough that only the seeded
+      // shot reaches the target, not the craft's own tapped shot.
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const pr = readVar(vm, 'player-row'),
+        pc = readVar(vm, 'player-col');
+      const eRow = pr - 6,
+        eCol = pc - 8;
+      const clearBands = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        for (let s = 58; s <= 63; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        put('slot-type', 37, 0);
+        put('slot-state', 37, 0);
+      };
+      const seedShot = () => {
+        put('slot-type', 37, 1); // SHOT_TYPE controlled shot in a real detector slot
+        put('slot-state', 37, 1);
+        put('slot-x', 37, eRow * 256);
+        put('slot-y', 37, eCol * 256);
+      };
+      // Positive control: an ACTIVE flying Toroid (slot 64 -> JS 63) under the shot IS destroyed + scores.
+      // It is stationary (dx=dy=0) and flyers never scroll, so it stays put to be hit before the pump
+      // settles.
+      clearBands();
+      put('slot-type', 63, 10); // Toroid
+      put('slot-state', 63, 1); // ACTIVE
+      put('slot-pts', 63, 3);
+      put('slot-x', 63, eRow * 256);
+      put('slot-y', 63, eCol * 256);
+      put('slot-dx', 63, 0);
+      put('slot-dy', 63, 0);
+      put('slot-flag', 63, 9);
+      put('slot-timer', 63, 0);
+      put('slot-code', 63, 8);
+      seedShot();
+      const flyScore0 = readVar(vm, 'eco-score');
+      step(vm, 1);
+      const flyDelta = readVar(vm, 'eco-score') - flyScore0;
+      // Immunity: the SAME shot over an ACTIVE ground Barra (slot 16 -> JS 15) scores nothing. The Barra
+      // routes to `update barra`, never to the air detector, so it is never even offered for a shot hit.
+      // (During the settling pump the terrain-locked Barra scrolls DOWN the field and is finally culled —
+      // culling never scores, so the unchanged score is the immunity observable that survives the pump.)
+      clearBands();
+      put('slot-type', 15, 30); // Barra
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-pts', 15, 6);
+      put('slot-x', 15, eRow * 256);
+      put('slot-y', 15, eCol * 256);
+      seedShot();
+      const gndScore0 = readVar(vm, 'eco-score');
+      step(vm, 1);
+      return {
+        flyDelta,
+        gndDelta: readVar(vm, 'eco-score') - gndScore0,
+        award: readVar(vm, 'eco-value-table')[2], // Toroid pts 3 -> value-table position 3 -> JS index 2
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.award > 0, 'the control enemy is worth a positive value');
+      assert.equal(obs.flyDelta, obs.award, 'control: the shot DOES destroy+score an overlapping flying enemy');
+      assert.equal(obs.gndDelta, 0, 'the identical shot on the identical cell scores NOTHING against a ground Barra');
+    },
+    // Empty the shot-vs-air detector: the flying control no longer scores → the control assertion fails,
+    // proving the shot mechanism (not a dead seed) is what the ground immunity is measured against.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
+  },
+  {
     key: 'craft-collision-is-single-cell',
     behavior:
       'A Toroid raises player-hit ONLY on the craft’s exact cell: one column off or one row off does not — the collision box is a single cell, not the quadrant above/beside the craft',

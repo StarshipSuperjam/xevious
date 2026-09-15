@@ -154,6 +154,11 @@
       "name": "terrain column",
       "scope": "Stage"
     },
+    "barra-clone-slot": {
+      "kind": "variable",
+      "name": "barra clone slot",
+      "scope": "barra"
+    },
     "blaster-alloc-result": {
       "kind": "variable",
       "name": "alloc result",

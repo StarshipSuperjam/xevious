@@ -207,10 +207,10 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 24: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
-        # enemy-bullet renderers, and the slice-10 terrazi + kapi + torkan + zoshi + jara renderers (all
-        # reuse proof costumes by ref).
-        self.assertEqual(24, len(project["targets"]))
+        # 25: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, and the
+        # slice-9 barra ground renderer (all reuse proof costumes by ref).
+        self.assertEqual(25, len(project["targets"]))
         # 135: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -1193,6 +1193,10 @@ class ScratchProjectTests(unittest.TestCase):
             # writes are its own scroll of `slot x`; the spawn stamp lives in `advance area`'s schedule
             # consume, not a proc call.
             director.ADVANCE_GROUND_PROCCODE,
+            # GND-01 (slice 9) ground.barra: the Barra's thin per-tick wrapper — it advances the HIT
+            # explosion/crater clock, then delegates the terrain scroll+cull to `advance ground`.
+            # Warp, dispatched per OCCUPIED Barra slot from the walk.
+            director.UPDATE_BARRA_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -7795,7 +7799,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "c640e8c187623f499208bbdaa0acfa2549cde70578373859134fc7cb7411560c",
+            "9675f892080e81f33999bf83d2bdb07621f7e6a3ae3c6b416c0c9af2f1ebb8cf",
             build_hash,
         )
 

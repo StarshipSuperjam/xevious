@@ -665,6 +665,11 @@ ADVANCE_BOMB_PROCCODE = "advance bomb"
 # scroll_delta doubled, +16 units/arcade-frame = +32/tick) and is culled once it scrolls off the bottom
 # of the field. Per-family behaviour (Barra crater, Logram open/fire) layers on this in later commits.
 ADVANCE_GROUND_PROCCODE = "advance ground"
+# GND (ground.barra #70): the per-tick update for a Barra — the passive terrain target. It scrolls while
+# ACTIVE and, once bombed (state HIT), advances the crater/explosion clock (slot timer) while continuing
+# to scroll, converting to a persistent crater. Mirrors the flying families' per-family `update <family>`
+# split (an active/hit control_if_else), calling the shared `advance ground` scroller for the motion.
+UPDATE_BARRA_PROCCODE = "update barra"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -814,6 +819,19 @@ LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at f
 GROUND_HANDLED_TYPES = (BARRA_TYPE, LOGRAM_TYPE)  # spawned this commit (Garu joins in Commit 6)
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 LOGRAM_PTS = 10  # 1-based value-table position of 300 points (handle_logram_init _PTS=27)
+
+# GND crater/explosion (handle_bomb_explosion $3186 / bomb_explosion_finished $31D7): a bombed passive
+# ground object (Barra) plays the shared bomb-explosion animation, then becomes a PERSISTENT scrolling
+# crater. `slot timer` (reset to 0 by the ground detector at the hit, exactly as the air detector resets
+# it) is the clock in arcade-frame units (TICK_TIMER_STEP per tick). The arcade advances the 7-frame
+# animation on every 8th arcade frame (`TIMER & 7`); at animation frame 7 it switches to the crater and
+# flickers codes 0xA6/0xA7 (bomb_explosion_finished) indefinitely while it keeps scrolling. There is NO
+# free-on-clock — a crater is culled only once it scrolls off the bottom, unlike the flying explosion
+# (install_explode_toroid_tick) which frees its own slot on the clock.
+GROUND_EXPLOSION_PHASE_FRAMES = 8  # animation frame = floor(slot timer / 8) (arcade `TIMER >> 3`)
+GROUND_EXPLOSION_FRAME_COUNT = 7  # animation frames 0..6 play, then the crater begins
+GROUND_CRATER_START_FRAMES = GROUND_EXPLOSION_PHASE_FRAMES * GROUND_EXPLOSION_FRAME_COUNT  # 56
+GROUND_CRATER_FLICKER_FRAMES = 4  # crater alternates 0xA6/0xA7 every 4 frames (arcade `countup >> 2`)
 
 # Slot sub-state (`slot flag`) for the Toroid: pre-trigger, then a committed swing side.
 TOROID_FLAG_APPROACH = 0
@@ -1120,6 +1138,20 @@ ZOSHI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~
 JARA_TARGET = "jara"
 JARA_CLONE_SLOT_ID = "jara-clone-slot"  # sprite-local: which flying slot this clone renders
 JARA_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+
+# GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
+# ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
+# slot's live state: the single Barra idle pyramid (code 0x17) while ACTIVE, then — once bombed (HIT) —
+# the shared bomb-explosion burst for the first GROUND_CRATER_START_FRAMES, then the flickering crater.
+# Costume ordinals on the barra target: 1 = barra/idle, 2.. = the shared solv_death explosion burst,
+# then the two crater frames appended last (see expected_project's mirror). The clone writes no state.
+BARRA_TARGET = "barra"
+BARRA_CLONE_SLOT_ID = "barra-clone-slot"  # sprite-local: which ground slot this clone renders
+GROUND_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+EXPLODE_COSTUME_COUNT = 8  # the shared solv_death burst is 8 costumes (explode_01..08)
+BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
+BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
+BARRA_CRATER_BASE_ORDINAL = BARRA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
 
 
 def _schedule_arg(record: dict) -> int:
@@ -2153,16 +2185,20 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
     )
-    # GND (#69): the built ground families (Barra, Logram this PR) share ONE terrain-locked scroller, as
-    # the Toroid ORs its two types. Garu Barra (0x20) joins in Commit 6 when its base/node spawn lands.
-    is_ground = blocks.op_or(
+    # GND (#69): every ground family shares the terrain-locked scroll + off-field cull of `advance
+    # ground`, but each family that has per-state behaviour of its own gets a thin wrapper proc that
+    # layers it on before delegating to `advance ground`. The Barra (#70) wraps it with the HIT
+    # explosion clock (`update barra`); the Logram (#71, Commit 7) will get `update logram` for its
+    # open/close + fire and still fall back here in the meantime. Garu Barra (0x20) joins in Commit 7.
+    barra_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BARRA_TYPE)),
+        [blocks.call_proc(UPDATE_BARRA_PROCCODE, warp=True)],
+    )
+    logram_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
+        [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)],
     )
-    ground_branch = blocks.if_reporter(
-        is_ground, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)]
-    )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch, ground_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch, barra_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2523,6 +2559,12 @@ def install_check_ground_hit(blocks: Blocks) -> None:
                         ),
                     ),
                     blocks.call_proc(RESOLVE_HIT_PROCCODE, warp=True),
+                    # `resolve hit` marks the slot HIT and scores but does NOT touch the slot timer.
+                    # Reset it here (mirroring the air detector at install_check_air_hit) so the ground
+                    # explosion clock — floor(slot timer / 8) through the 7 burst frames, then the
+                    # persistent crater — starts from 0 on the tick of the hit. The renderer reads this
+                    # same timer; the walk's update-barra advances it (TICK_TIMER_STEP/tick).
+                    blocks.list_replace("slot timer", SLOT_TIMER_ID, number(s), number(0)),
                 ],
             )
         )
@@ -2682,6 +2724,35 @@ def install_advance_ground(blocks: Blocks) -> None:
     off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
     cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     blocks.chain(definition, [scroll, cull])
+
+
+def install_update_barra(blocks: Blocks) -> None:
+    # GND-01 / ground.barra (#70): one tick of a Barra at `slot index`. A Barra never fires and never
+    # moves under its own power — it is glued to the terrain and scrolls with it — so both an ACTIVE
+    # (idle pyramid) and a HIT (exploding, then a persistent crater) Barra share the terrain scroll +
+    # off-field cull of `advance ground`. The ONLY per-state difference is the explosion clock: a HIT
+    # Barra advances `slot timer` (TICK_TIMER_STEP/tick) so the renderer can walk it through the 7
+    # bomb-explosion burst frames (handle_bomb_explosion $3186, floor(timer/8)) and then flip to the
+    # flickering crater (bomb_explosion_finished $31D7). UNLIKE the flying explosion (install_explode
+    # _toroid_tick), the crater is NEVER freed on its clock — the arcade crater scrolls forever until it
+    # leaves the field, so `advance ground`'s bottom-edge cull is its only removal path. The detector
+    # zeroed `slot timer` on the tick of the hit, so the clock starts from 0.
+    definition = _install_warp_proc(blocks, UPDATE_BARRA_PROCCODE)
+    tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)])
+    blocks.substack(
+        top, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    blocks.chain(definition, [top])
 
 
 def install_explode_toroid_tick(blocks: Blocks) -> None:
@@ -4347,6 +4418,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_track_crosshair(blocks)
     install_advance_bomb(blocks)
     install_advance_ground(blocks)
+    install_update_barra(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)
@@ -5611,6 +5683,124 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def barra_blocks() -> dict[str, dict[str, Any]]:
+    # GND-01 Barra renderer (game_director owns these blocks; sprite_extractor owns the costumes).
+    # One persistent clone per GROUND slot (1..16), the same clone-pool pattern as the Toroid but over
+    # the terrain band instead of the flying band. Each clone is a pure per-tick function of its slot's
+    # live state: shown, positioned (arcade cell -> stage px, the SAME mapping as every family renderer),
+    # and costumed when the slot holds a Barra; hidden otherwise. The clone writes no state.
+    #
+    # Costume by state:
+    #   ACTIVE -> the idle pyramid (ordinal BARRA_IDLE_ORDINAL).
+    #   HIT    -> the bomb-explosion clock (slot timer, reset to 0 by the detector, advanced by
+    #             `update barra`). For the first GROUND_CRATER_START_FRAMES (7 burst frames x 8) it plays
+    #             the shared solv_death burst (floor(timer/8) selects the frame, arcade `TIMER >> 3` in
+    #             handle_bomb_explosion $3186 — the distinct 0x60.. bomb-burst sprites are a deferred
+    #             cosmetic, so the shared aerial burst stands in). After that it is a PERSISTENT crater
+    #             (bomb_explosion_finished $31D7) flickering between the two crater costumes every
+    #             GROUND_CRATER_FLICKER_FRAMES (arcade `countup >> 2 & 1`), scrolling with the terrain
+    #             until it culls off the bottom. There is no size-doubling and no free-on-clock — unlike
+    #             the flying burst, the ground crater never removes itself on its clock.
+    blocks = Blocks(BARRA_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("barra clone slot", BARRA_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("barra clone slot", BARRA_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_barra = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(BARRA_TYPE)
+    )
+    # Terrain-locked position — identical cell->stage mapping to every family renderer.
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # HIT costume: explosion burst until the crater begins, then the flickering crater.
+    explode_ordinal = blocks.op_add(
+        number(BARRA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(BARRA_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    hit_costume = blocks.add("control_if_else")
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
+    blocks.blocks[cratered]["parent"] = hit_costume
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [hit_costume])
+    # ACTIVE: the single idle pyramid. It is a fixed costume, so select it by name (switch_costume_expr
+    # obscures a menu with a runtime reporter — for a constant the by-name switch is the direct tool).
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume("barra/idle/01")],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_barra]
+    blocks.blocks[is_barra]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def terrazi_blocks() -> dict[str, dict[str, Any]]:
     # AIR-06 Terrazi renderer (game_director owns these blocks; sprite_extractor owns the costumes).
     # One persistent clone per flying slot (59..64), the same pool pattern as the Toroid: shown and
@@ -6269,6 +6459,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, TORKAN_TARGET)
     _ensure_gameplay_target(result, ZOSHI_TARGET)
     _ensure_gameplay_target(result, JARA_TARGET)
+    _ensure_gameplay_target(result, BARRA_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -6332,6 +6523,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             jara["costumes"].extend(copy.deepcopy(death["costumes"]))
         jara["currentCostume"] = 0
+    # GND-01: the Barra renderer mirrors its single idle pyramid frame (ordinal 1), then the shared
+    # explosion burst (the same solv_death frames, ordinals 2..9 — the ground bomb-burst is a deferred
+    # cosmetic, so the aerial burst stands in), then the two crater frames (ordinals 10..11) that the
+    # HIT renderer flickers between once the burst finishes. Idempotent; a no-op when any source is
+    # absent (generation runs to a fixpoint).
+    barra = next((t for t in result["targets"] if t.get("name") == BARRA_TARGET), None)
+    if proof is not None and barra is not None:
+        barra["costumes"] = proof_by_family("barra/")
+        if death is not None:
+            barra["costumes"].extend(copy.deepcopy(death["costumes"]))
+        barra["costumes"].extend(proof_by_family("crater/"))
+        barra["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -6642,6 +6845,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "torkan": torkan_blocks(),
         "zoshi": zoshi_blocks(),
         "jara": jara_blocks(),
+        "barra": barra_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -6717,6 +6921,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
             target["variables"] = target["variables"] | {
                 ENEMY_BULLET_CLONE_SLOT_ID: ["enemy bullet clone slot", 0],
+            }
+        elif target["name"] == BARRA_TARGET:
+            # GND-01: the only Barra render state is which GROUND slot each clone draws, snapshotted at
+            # creation. All entity state lives in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                BARRA_CLONE_SLOT_ID: ["barra clone slot", 0],
             }
     return result
 
