@@ -109,6 +109,21 @@
       "name": "schedule fired",
       "scope": "Stage"
     },
+    "area-schedule-ground-slot": {
+      "kind": "list",
+      "name": "schedule ground slot",
+      "scope": "Stage"
+    },
+    "area-schedule-ground-sprite-y": {
+      "kind": "list",
+      "name": "schedule ground sprite y",
+      "scope": "Stage"
+    },
+    "area-schedule-ground-type": {
+      "kind": "list",
+      "name": "schedule ground type",
+      "scope": "Stage"
+    },
     "area-schedule-handler": {
       "kind": "list",
       "name": "schedule handler",
@@ -138,6 +153,11 @@
       "kind": "variable",
       "name": "terrain column",
       "scope": "Stage"
+    },
+    "barra-clone-slot": {
+      "kind": "variable",
+      "name": "barra clone slot",
+      "scope": "barra"
     },
     "blaster-alloc-result": {
       "kind": "variable",
@@ -344,6 +364,11 @@
       "name": "game state",
       "scope": "Stage"
     },
+    "garu-clone-slot": {
+      "kind": "variable",
+      "name": "garu clone slot",
+      "scope": "garu"
+    },
     "ground-stop-firing-row": {
       "kind": "variable",
       "name": "ground stop firing row",
@@ -398,6 +423,11 @@
       "kind": "variable",
       "name": "kapi clone slot",
       "scope": "kapi"
+    },
+    "logram-clone-slot": {
+      "kind": "variable",
+      "name": "logram clone slot",
+      "scope": "logram"
     },
     "octant-table": {
       "kind": "list",
@@ -583,6 +613,11 @@
       "kind": "variable",
       "name": "blaster reload",
       "scope": "blaster"
+    },
+    "weapon-bomb-dx": {
+      "kind": "variable",
+      "name": "bomb dx",
+      "scope": "Stage"
     },
     "weapon-bomb-in-flight": {
       "kind": "variable",

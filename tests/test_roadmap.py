@@ -133,18 +133,19 @@ class ClosureGuardTests(unittest.TestCase):
     @mock.patch.object(closures, "file_at_revision", return_value="Mechanic: SYS-01\n")
     @mock.patch.object(closures, "added_test_lines", return_value="# roadmap-evidence: SYS-01 success\n# roadmap-evidence: SYS-01 failure")
     @mock.patch.object(closures, "changed_files", return_value=["docs/mechanics/099-test.md", "tests/test_feature.py"])
-    def test_exact_commit_playtest_record_allows_ready_leaf(self, _changed, _added, _content) -> None:
-        comment = [{"user": {"login": "StarshipSuperjam"}, "body": f"<!-- xevious-playtest:v1 commit={'b' * 40} -->"}]
-        with mock.patch.dict("os.environ", {"ROADMAP_COMMENTS_JSON": json.dumps(comment)}, clear=False):
-            self.assertEqual([], closures.validate_pr(self.pr, self.manifest, self.migration))
+    def test_playtest_label_allows_ready_leaf(self, _changed, _added, _content) -> None:
+        # The `playtest-approved` label is the whole playtest attestation now; no
+        # marker comment is required or consulted.
+        self.assertEqual([], closures.validate_pr(self.pr, self.manifest, self.migration))
 
-    @mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]", "ROADMAP_ISSUE_STATES_JSON": '{"11":"closed"}', "ROADMAP_COMMENTS_JSON": "[]"}, clear=False)
+    @mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[12]", "ROADMAP_ISSUE_STATES_JSON": '{"11":"closed"}'}, clear=False)
     @mock.patch.object(closures, "file_at_revision", return_value="Mechanic: SYS-01\n")
     @mock.patch.object(closures, "added_test_lines", return_value="# roadmap-evidence: SYS-01 success\n# roadmap-evidence: SYS-01 failure")
     @mock.patch.object(closures, "changed_files", return_value=["docs/mechanics/099-test.md", "tests/test_feature.py"])
-    def test_label_without_exact_commit_record_is_rejected(self, _changed, _added, _content) -> None:
-        failures = closures.validate_pr(self.pr, self.manifest, self.migration)
-        self.assertTrue(any("exact tested head commit" in item for item in failures))
+    def test_missing_playtest_label_is_rejected(self, _changed, _added, _content) -> None:
+        pr = {**self.pr, "labels": []}
+        failures = closures.validate_pr(pr, self.manifest, self.migration)
+        self.assertTrue(any("playtest-approved" in item for item in failures))
 
     @mock.patch.dict("os.environ", {"ROADMAP_CLOSURES_JSON": "[13]"}, clear=False)
     @mock.patch.object(closures, "added_test_lines", return_value="")

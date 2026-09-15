@@ -18,7 +18,6 @@ MANIFEST_REL = "docs/roadmap/manifest.json"
 MANIFEST = ROOT / MANIFEST_REL
 MIGRATION = ROOT / "docs" / "roadmap" / "migration.json"
 PLAYTEST_LABEL = "playtest-approved"
-PLAYTEST_MARKER = re.compile(r"<!-- xevious-playtest:v1 commit=([0-9a-f]{40}) -->")
 CLOSE_LINE = re.compile(r"(?im)^\s*(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#(\d+)\s*$")
 
 
@@ -145,19 +144,18 @@ def computed_closures(repo: str, pr: dict[str, Any]) -> set[int]:
 
 
 def playtest_recorded(repo: str, pr: dict[str, Any]) -> bool:
+    """The operator's ``playtest-approved`` label IS the playtest attestation.
+
+    The operator is the sole approver and merger and applies this label by hand,
+    deliberately, after playing the build — so its presence records the approval.
+    An earlier design additionally demanded a hidden ``<!-- xevious-playtest ... -->``
+    marker comment pinning the exact tested head sha, but the operator does not author
+    hidden-tag comments, so the label alone now satisfies the gate. Trade-off accepted
+    consciously: a label persists across pushes, so re-approving after a later commit is
+    operator discipline, not an enforced commit-pin.
+    """
     labels = {item["name"] if isinstance(item, dict) else item for item in pr.get("labels", [])}
-    if PLAYTEST_LABEL not in labels:
-        return False
-    injected = os.environ.get("ROADMAP_COMMENTS_JSON")
-    comments = json.loads(injected) if injected else paginated(f"repos/{repo}/issues/{pr['number']}/comments?per_page=100")
-    owner = repo.split("/", 1)[0].lower()
-    head = pr["head"]["sha"]
-    for comment in comments:
-        author = (comment.get("user") or {}).get("login", "").lower()
-        match = PLAYTEST_MARKER.search(comment.get("body") or "")
-        if author == owner and match and match.group(1) == head:
-            return True
-    return False
+    return PLAYTEST_LABEL in labels
 
 
 def validate_pr(pr: dict[str, Any], manifest: dict[str, Any], migration: dict[str, Any]) -> list[str]:
@@ -192,8 +190,7 @@ def validate_pr(pr: dict[str, Any], manifest: dict[str, Any], migration: dict[st
                     )
         if leaf["proof"] in {"playable", "operator"} and not playtest_recorded(repo, pr):
             failures.append(
-                f"#{number} ({leaf['key']}) requires `playtest-approved` plus an owner comment "
-                f"recording the exact tested head commit"
+                f"#{number} ({leaf['key']}) requires the `playtest-approved` label"
             )
         if leaf.get("records"):
             mechanics_files = [path for path in files if path.startswith("docs/mechanics/") and path.endswith(".md")]
