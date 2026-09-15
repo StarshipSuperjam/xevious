@@ -4753,6 +4753,17 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["mutation"]["proccode"] = "noop"
 
+        def misread_award_source(p):
+            # Repoint the value-table read off VALUE_TABLE_ID (award no longer sourced from the value table
+            # by `slot pts`) while leaving `resolve hit` intact -> severs the OTHER half of
+            # scores-through-shared-path, which drop_resolve does not reach.
+            for b in _proc_body_blocks(_stage(p), director.CHECK_GROUND_HIT_PROCCODE):
+                if (
+                    b["opcode"] == "data_itemoflist"
+                    and b["fields"]["LIST"][1] == director.VALUE_TABLE_ID
+                ):
+                    b["fields"]["LIST"] = ["slot pts", director.SLOT_PTS_ID]
+
         def keep_stale_clock(p):
             # Change every `slot timer = 0` reset in the detector to non-zero, so the crater clock is not
             # zeroed on the hit: the crater-clock-reset clause bites.
@@ -4770,6 +4781,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("check-ground-hit-warp", unwarp),
             ("sweeps-16-active-ground-slots", drop_one_active_gate),
             ("scores-through-shared-path", drop_resolve),
+            ("scores-through-shared-path", misread_award_source),
             ("resets-crater-clock", keep_stale_clock),
         ]
         for label, corrupt in cases:
