@@ -531,6 +531,11 @@ FIRE_MASK_FAMILIES = [
     ("andor_genesis", "fire mask andor genesis", "fire-mask-andor-genesis"),
 ]
 GROUND_STOP_FIRING_ROW_ID = "ground-stop-firing-row"
+# The Logram fire-mask display name + id, captured into a spawned Logram's `slot fire mask` at dispatch
+# (GND #69) and consumed by its aimed-shot gate (Commit 7). Derived from FIRE_MASK_FAMILIES so the two
+# never drift if a family's id is renamed.
+FIRE_MASK_LOGRAM_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "logram")
+FIRE_MASK_LOGRAM_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "logram")
 
 # Project-defined cabinet difficulty DIP index (four-marker placeholder; the spec records
 # no arcade power-on default, like RNG_COLD_START_SEED). Index 0 selects increment +2 —
@@ -654,6 +659,12 @@ CHECK_GROUND_HIT_PROCCODE = "check ground hit"
 # are pure renderers of their slots.
 TRACK_CROSSHAIR_PROCCODE = "track crosshair"
 ADVANCE_BOMB_PROCCODE = "advance bomb"
+# GND (area.ground-dispatch #69): the per-tick update for a spawned ground object — the first
+# TERRAIN-LOCKED scroller. Unlike a flying enemy (which moves by its own velocity), a ground object
+# advances its scroll-axis position by AREA_PROGRESS_STEP each tick (scroll_sprite_X $30E8: the terrain
+# scroll_delta doubled, +16 units/arcade-frame = +32/tick) and is culled once it scrolls off the bottom
+# of the field. Per-family behaviour (Barra crater, Logram open/fire) layers on this in later commits.
+ADVANCE_GROUND_PROCCODE = "advance ground"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -793,6 +804,17 @@ DEBUG_SPAWN_FAMILIES = (
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
 
+# GND ground-object types — the arcade object codes (obj_handler_tbl 6196), dispatched by direct
+# equality like the flying families. This PR builds Barra (#70) and Logram (#71); the other ground
+# codes present in the schedules (Zolbak 0x1F, Derota 0x2C/0x2D, ...) stay on the empty seam for their
+# own slices, so an add_ground_object record for an unbuilt type advances the cursor without spawning.
+BARRA_TYPE = 30  # 0x1E, handle_1E_Barra: passive terrain target, never fires, crater on death
+GARU_BARRA_TYPE = 32  # 0x20, handle_20_Garu_Barra: indestructible base + destructible node (Commit 6)
+LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at full-open (Commit 7)
+GROUND_HANDLED_TYPES = (BARRA_TYPE, LOGRAM_TYPE)  # spawned this commit (Garu joins in Commit 6)
+BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
+LOGRAM_PTS = 10  # 1-based value-table position of 300 points (handle_logram_init _PTS=27)
+
 # Slot sub-state (`slot flag`) for the Toroid: pre-trigger, then a committed swing side.
 TOROID_FLAG_APPROACH = 0
 TOROID_FLAG_SWING_RIGHT = 1
@@ -804,6 +826,8 @@ TOROID_SWING_HIGH = 1
 
 # Motion / cull, in slot units (1/32 px; row = floor(slot x / 256), col = floor(slot y / 256)).
 SLOT_UNITS_PER_CELL = 256
+SLOT_UNITS_PER_PIXEL = SLOT_UNITS_PER_CELL // 8  # 32; a cell is 8 px. Ground spawn maps the schedule's
+# sprite_y byte (a lateral PIXEL position) to slot y with the reference's `lsl #5` (x32), sub_2_fn_1.
 TICK_VELOCITY_SCALE = 4  # 1 tick = 2 arcade frames; each applies 2*velocity => 4*velocity/tick
 TICK_TIMER_STEP = 2  # the animation clock advances 2 arcade frames per tick
 TOROID_SWING_ACCEL = 2  # lateral velocity change per tick (1 unit/frame * 2 frames)
@@ -2129,7 +2153,16 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch])
+    # GND (#69): the built ground families (Barra, Logram this PR) share ONE terrain-locked scroller, as
+    # the Toroid ORs its two types. Garu Barra (0x20) joins in Commit 6 when its base/node spawn lands.
+    is_ground = blocks.op_or(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BARRA_TYPE)),
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
+    )
+    ground_branch = blocks.if_reporter(
+        is_ground, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)]
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch, ground_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2628,6 +2661,27 @@ def install_advance_bomb(blocks: Blocks) -> None:
     blocks.substack(arm_gate, [advance_gate], name="SUBSTACK2")
 
     blocks.chain(definition, [arm_gate])
+
+
+def install_advance_ground(blocks: Blocks) -> None:
+    # GND (area.ground-dispatch #69): one tick of a spawned ground object at `slot index` — the first
+    # TERRAIN-LOCKED scroller. A flying enemy moves by its own (slot dx, slot dy); a ground object is
+    # glued to the terrain, so each tick it only advances its scroll-axis position by AREA_PROGRESS_STEP
+    # (scroll_sprite_X $30E8: scroll_delta -8 doubled -> +16 units/arcade-frame = +32/tick), moving DOWN
+    # the field toward the craft (higher slot x = further down). It is then culled once it scrolls off the
+    # bottom (row >= CULL_ROW_MAX); a ground object never leaves the top or sides, so only the bottom edge
+    # is tested. Per-family behaviour (Barra's crater on hit, Logram's open/close + fire) layers on top in
+    # Commits 6-7; the scroll+cull here is shared by every ground family.
+    definition = _install_warp_proc(blocks, ADVANCE_GROUND_PROCCODE)
+    scroll = _set_cur_item(
+        blocks,
+        "slot x",
+        SLOT_X_ID,
+        blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), number(AREA_PROGRESS_STEP)),
+    )
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.chain(definition, [scroll, cull])
 
 
 def install_explode_toroid_tick(blocks: Blocks) -> None:
@@ -3942,6 +3996,21 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     def arg_at_cursor() -> str:
         return blocks.list_item("schedule arg", SCHEDULE_ARG_ID, cursor())
 
+    # GND (#69) ground-record columns at the cursor. Each returns a FRESH reporter so it can be
+    # consumed as its own input (a reporter attaches to only one parent — reuse would silently steal it).
+    def ground_type_at_cursor() -> str:
+        return blocks.list_item("schedule ground type", GROUND_OBJECT_TYPE_ID, cursor())
+
+    def ground_slot_at_cursor() -> str:
+        return blocks.list_item("schedule ground slot", GROUND_OBJECT_SLOT_ID, cursor())
+
+    def ground_sprite_y_at_cursor() -> str:
+        return blocks.list_item("schedule ground sprite y", GROUND_OBJECT_SPRITE_Y_ID, cursor())
+
+    def ground_target_slot() -> str:
+        # 1-based Scratch slot in the ground band: band base (GROUND_SLOTS[0]) + the record's 0-based slot.
+        return blocks.op_add(number(GROUND_SLOTS[0]), ground_slot_at_cursor())
+
     end = blocks.list_item(
         "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
     )
@@ -4045,10 +4114,57 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         blocks.op_eq(handler_at_cursor(), text(GROUND_STOP_FIRING_HANDLER)),
         [blocks.set_var_expr("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, arg_at_cursor())],
     )
-    # ENGINE-TODO: the spawn / boss handler dispatch (add_ground_object, add_domogram_with_path,
-    # add_object, *bacura*, andor_genesis_*, sheonite_*) lands with the enemy slices (8+). The
-    # DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks, ground-stop) are all
-    # wired above; the still-unhandled spawn/boss records advance the cursor and count the fire only.
+    # GND (area.ground-dispatch #69): add_ground_object spawns a terrain-locked ground object into its
+    # ground-band slot. Mirrors sub_2_fn_1__ground_object ($073F: it sets only _TYPE and _Y, leaving
+    # _X = 0 at the top of the field) plus the per-family init the arcade runs on the object handler's
+    # first coroutine step, relocated to spawn time in the port: _PTS by family, and (Logram) the
+    # captured fire mask. slot y = sprite_y << 5 (x32), matching the arcade lsl #5; slot x starts at 0
+    # (top-of-field) and `advance ground` scrolls it DOWN each tick. Only the two families built this
+    # PR (Barra 0x1E, Logram 0x26) spawn; every other add_ground_object record (Zolbak, Garu Barra
+    # until Commit 6, Domogram, ...) advances the cursor WITHOUT stamping a slot, so no unbuilt family
+    # renders a live-but-inert object. Each column reader and target-slot index is rebuilt fresh per use.
+    spawn_ground = [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot(), ground_type_at_cursor()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot(), number(SLOT_ACTIVE)),
+        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot(), number(0)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            ground_target_slot(),
+            blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
+        ),
+        blocks.if_reporter(
+            blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
+            [blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot(), number(BARRA_PTS))],
+        ),
+        blocks.if_reporter(
+            blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
+            [
+                blocks.list_replace(
+                    "slot pts", SLOT_PTS_ID, ground_target_slot(), number(LOGRAM_PTS)
+                ),
+                blocks.list_replace(
+                    "slot fire mask",
+                    SLOT_FIRE_MASK_ID,
+                    ground_target_slot(),
+                    variable(FIRE_MASK_LOGRAM_NAME, FIRE_MASK_LOGRAM_ID),
+                ),
+            ],
+        ),
+    ]
+    is_handled_ground = blocks.op_or(
+        blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
+        blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
+    )
+    add_ground_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
+        [blocks.if_reporter(is_handled_ground, spawn_ground)],
+    )
+    # ENGINE-TODO: the remaining spawn / boss handler dispatch (add_domogram_with_path, add_object,
+    # *bacura*, andor_genesis_*, sheonite_*) lands with the later enemy slices. The DIF/FORM handlers
+    # (raise, adjust, set/reset formation, the 8 fire masks, ground-stop) and add_ground_object (the
+    # two built ground families) are wired above; the still-unhandled spawn/boss records advance the
+    # cursor and count the fire only.
     blocks.substack(
         loop,
         [
@@ -4058,6 +4174,7 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             reset_branch,
             *mask_branches,
             ground_stop_branch,
+            add_ground_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -4229,6 +4346,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_check_ground_hit(blocks)
     install_track_crosshair(blocks)
     install_advance_bomb(blocks)
+    install_advance_ground(blocks)
     install_explode_toroid_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)

@@ -1188,6 +1188,11 @@ class ScratchProjectTests(unittest.TestCase):
             director.TRACK_CROSSHAIR_PROCCODE,
             director.ADVANCE_BOMB_PROCCODE,
             director.CHECK_GROUND_HIT_PROCCODE,
+            # AREA-04 (slice 9) area.ground-dispatch: the terrain-locked scroll+cull one built ground
+            # families share, dispatched per OCCUPIED ground slot from the walk. Warp, and the only slot
+            # writes are its own scroll of `slot x`; the spawn stamp lives in `advance area`'s schedule
+            # consume, not a proc call.
+            director.ADVANCE_GROUND_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -7790,7 +7795,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "bb5d0358ea1a260a8964d81d54fc1a63e70c0155167ff620d442980b22589942",
+            "c640e8c187623f499208bbdaa0acfa2549cde70578373859134fc7cb7411560c",
             build_hash,
         )
 

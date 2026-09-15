@@ -1429,6 +1429,16 @@ export const SCENARIOS = [
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
+      // Freeze the walk so the manual `check ground hit` call is the ONLY thing that runs on the step:
+      // with the live ground spawner (area.ground-dispatch), an un-frozen pump would consume the area
+      // schedule and stamp OTHER ground objects into the band mid-step, contaminating this detector
+      // unit test. Frozen, no spawn/scroll runs; the callProc-pushed detector still executes. Clear the
+      // ground band first so any object spawned before `playing` was reached is not swept either.
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
       // Seed an ACTIVE Barra in the last ground slot (Scratch slot 16 -> JS index 15) and the locked
       // bomb target (Scratch slot 33 -> JS index 32) at the SAME cell. slot pts 6 is the Barra's
       // 1-based value-table position (100 pts). The detector has no in-project caller yet (the
@@ -1469,6 +1479,14 @@ export const SCENARIOS = [
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
+      // Freeze the walk and clear the ground band so the live ground spawner cannot stamp other objects
+      // into the band mid-step: each probe's `check ground hit` then sees exactly the one seeded object
+      // (see bomb-kills-ground-and-scores for the same isolation).
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
       // Target on shadow-aligned cells so each probe's shadow delta is exact. The detector floors each
       // position to its shadow MSB, then tests scroll-axis delta = sh(target_x)-sh(obj_x) in [-10, 9]
       // and lateral delta = sh(obj_y)-sh(target_y) in [-5, 4]. Each scoring probe frees nothing (it
@@ -1656,6 +1674,152 @@ export const SCENARIOS = [
     // Empty check-ground-hit: the finish still clears the weapon but nothing scores → delta 0 fails
     // (the finish wiring runs, but the resolved-hit path it calls is gone).
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
+  },
+  {
+    key: 'ground-dispatch-spawns-scoped',
+    behavior:
+      'Playing area 1 spawns the built ground families (Barra 0x1E, Logram 0x26) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Live pacing (like area-clock-scheduler / fire-permission-masks): as area 1 scrolls it consumes
+      // add_ground_object records. Only the two families built this PR spawn; Barra (0x1E) and Logram
+      // (0x26) both appear in area 1, interleaved with out-of-scope ground types (0x53/0x1F/0x1D/0x2C/
+      // 0x2D) that must never reach a slot. A ground object survives the pump it spawns in (it scrolls
+      // < 40 rows before the pump settles), so scanning the ground band after each pump catches it. The
+      // Logram fire mask (record 2, value 0x25) is set before the first Logram (record 17), so a
+      // spawned Logram captures it; read the slot mask and the Stage mask in the SAME settled sample so
+      // the compare is consistent even as later areas re-set the mask.
+      let barraSeen = false;
+      let logramSeen = false;
+      let barraOk = false;
+      let logramOk = false;
+      let onlyHandledTypes = true;
+      let logramSlotMask = null;
+      let logramStageMask = null;
+      const types = readVar(vm, 'slot-type');
+      const states = readVar(vm, 'slot-state');
+      const pts = readVar(vm, 'slot-pts');
+      const fmask = readVar(vm, 'slot-fire-mask');
+      for (let i = 0; i < 90; i += 1) {
+        step(vm, 1);
+        for (let s = 0; s < 16; s += 1) {
+          // ground band = Scratch slots 1..16 -> JS indices 0..15
+          const t = types[s];
+          if (t === 0) continue;
+          if (t === 30) {
+            barraSeen = true;
+            if (states[s] === 1 && pts[s] === 6) barraOk = true;
+          } else if (t === 38) {
+            logramSeen = true;
+            if (states[s] === 1 && pts[s] === 10) {
+              logramOk = true;
+              if (logramSlotMask === null) {
+                logramSlotMask = fmask[s];
+                logramStageMask = readVar(vm, 'fire-mask-logram');
+              }
+            }
+          } else {
+            onlyHandledTypes = false;
+          }
+        }
+      }
+      return {
+        barraSeen,
+        logramSeen,
+        barraOk,
+        logramOk,
+        onlyHandledTypes,
+        logramSlotMask,
+        logramStageMask,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.barraSeen, true, 'a Barra (0x1E) is spawned into the ground band');
+      assert.equal(obs.logramSeen, true, 'a Logram (0x26) is spawned into the ground band');
+      assert.equal(obs.barraOk, true, 'the spawned Barra is ACTIVE at its 100-pt value position (6)');
+      assert.equal(obs.logramOk, true, 'the spawned Logram is ACTIVE at its 300-pt value position (10)');
+      assert.equal(
+        obs.onlyHandledTypes,
+        true,
+        'no out-of-scope ground type is ever stamped into a slot (only the two built families spawn)',
+      );
+      assert.ok(obs.logramStageMask > 0, 'the schedule set a live Logram fire mask before the spawn');
+      assert.equal(
+        obs.logramSlotMask,
+        obs.logramStageMask,
+        "the spawned Logram captures the area's Logram fire mask into its slot",
+      );
+    },
+    // Break the add_ground_object dispatch (its handler == comparison never matches) so no ground
+    // object is ever stamped → barraSeen / logramSeen fail.
+    negativeMutation: (p) =>
+      mutate.changeEqualsOperand(p, 'Stage', 'add_ground_object', '__never__'),
+  },
+  {
+    key: 'ground-object-scrolls-with-terrain',
+    behavior:
+      'A spawned ground object is terrain-locked: each tick advance-ground advances its scroll-axis position (slot x) by exactly AREA_PROGRESS_STEP (32 = +16 units/frame doubled) DOWN the field while its lateral column holds, and it is culled once it scrolls off the bottom (row >= 40)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Freeze the walk so ONE advance-ground call is exactly one tick (a settling pump would run the
+      // walk ~220 iterations; see the harness pacing note). Seed an ACTIVE Barra at the top of the
+      // field (slot x 0) in the last ground slot (Scratch 16 -> JS index 15) and point the shared slot
+      // cursor at it, then hand-drive advance-ground one tick at a time.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const GY = 4096;
+      put('slot-type', 15, 30); // Barra (0x1E)
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-pts', 15, 6);
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, GY);
+      writeVar(vm, 'slot-index', 16); // Scratch 1-based slot 16 -> the seeded object
+      const xs = [];
+      const ys = [];
+      for (let t = 0; t < 3; t += 1) {
+        callProc(vm, 'Stage', 'advance ground');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+        ys.push(readVar(vm, 'slot-y')[15]);
+      }
+      // Cull: re-seed the object one scroll step short of the bottom row (40*256 - 32), so the next
+      // advance scrolls it to row 40 (>= CULL_ROW_MAX) and frees the slot (type/state -> 0).
+      put('slot-type', 15, 30);
+      put('slot-state', 15, 1);
+      put('slot-x', 15, 40 * 256 - 32);
+      writeVar(vm, 'slot-index', 16);
+      callProc(vm, 'Stage', 'advance ground');
+      step(vm, 1);
+      return {
+        xs,
+        ys,
+        culledType: readVar(vm, 'slot-type')[15],
+        culledState: readVar(vm, 'slot-state')[15],
+        gy: GY,
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.xs,
+        [32, 64, 96],
+        'the ground object scrolls DOWN by exactly 32 units/tick (terrain-locked)',
+      );
+      assert.deepEqual(
+        obs.ys,
+        [obs.gy, obs.gy, obs.gy],
+        'the lateral column holds while it scrolls (only the scroll axis moves)',
+      );
+      assert.equal(obs.culledType, 0, 'an object scrolled off the bottom (row >= 40) is culled (type cleared)');
+      assert.equal(obs.culledState, 0, 'the culled slot is freed (state cleared) so it can be reused');
+    },
+    // Zero the scroll step (the unique `operator_add` literal 32 on the Stage, in advance-ground) so
+    // slot x never advances → the [32,64,96] drift assertion fails (the object is frozen in place).
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', 32, 0),
   },
   {
     key: 'craft-collision-is-single-cell',
