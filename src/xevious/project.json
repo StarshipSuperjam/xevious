@@ -80401,6 +80401,69 @@
           "md5ext": "11eeefd72270f4bed12f552c74ffa232.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
+        },
+        {
+          "name": "barra/idle/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b6046906d12c01313304fd68d214d56f",
+          "md5ext": "b6046906d12c01313304fd68d214d56f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "logram/open/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "04b454a1de49f48dbb3488395a234776",
+          "md5ext": "04b454a1de49f48dbb3488395a234776.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "logram/open/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e02d03a9699a8822dad404b91a3f7c07",
+          "md5ext": "e02d03a9699a8822dad404b91a3f7c07.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "logram/open/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "8083deb088058e3caf76cb5a8e8d6541",
+          "md5ext": "8083deb088058e3caf76cb5a8e8d6541.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "logram/open/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "fa2da5d728c258f236ba4e8154211da2",
+          "md5ext": "fa2da5d728c258f236ba4e8154211da2.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "crater/idle/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b07fb7052b32ea9332a0c62bb1a0207c",
+          "md5ext": "b07fb7052b32ea9332a0c62bb1a0207c.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "crater/idle/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "78e7e9e2773a3391238a1a99b8845c86",
+          "md5ext": "78e7e9e2773a3391238a1a99b8845c86.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         }
       ],
       "sounds": [],

@@ -211,11 +211,12 @@ class ScratchProjectTests(unittest.TestCase):
         # enemy-bullet renderers, and the slice-10 terrazi + kapi + torkan + zoshi + jara renderers (all
         # reuse proof costumes by ref).
         self.assertEqual(24, len(project["targets"]))
-        # 128: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # 135: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
-        # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04).
-        self.assertEqual(128, len(assets))
+        # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 7 ground-frame
+        # PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants).
+        self.assertEqual(135, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -7707,7 +7708,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "0b1f9fe3829b4a5083e2b390c3b5eddeb65557735aa5420e41a3e3162c2aa066",
+            "c5dd7456824392b6e406139a4a7a36acbaf3c27ebc60a3382c7df47d6766a83e",
             build_hash,
         )
 

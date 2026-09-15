@@ -26,6 +26,19 @@
         [238, 7, 143, 12],
         [5, 300, 229, 59]
       ]
+    },
+    "ground_enemies": {
+      "asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "excluded_rects": [
+        [28, 36, 30, 12],
+        [76, 58, 48, 14],
+        [206, 46, 64, 16],
+        [80, 360, 205, 45]
+      ]
     }
   },
   "frames": [
@@ -467,6 +480,83 @@
       "target": "toroid_sprite_proof",
       "family": "jara",
       "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "barra/idle/01",
+      "sheet": "ground_enemies",
+      "rect": [8, 33, 14, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "barra",
+      "animation": "idle",
+      "duration_frames": 1
+    },
+    {
+      "name": "logram/open/01",
+      "sheet": "ground_enemies",
+      "rect": [9, 58, 13, 13],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "logram",
+      "animation": "open",
+      "duration_frames": 1
+    },
+    {
+      "name": "logram/open/02",
+      "sheet": "ground_enemies",
+      "rect": [25, 58, 13, 13],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "logram",
+      "animation": "open",
+      "duration_frames": 1
+    },
+    {
+      "name": "logram/open/03",
+      "sheet": "ground_enemies",
+      "rect": [41, 58, 13, 13],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "logram",
+      "animation": "open",
+      "duration_frames": 1
+    },
+    {
+      "name": "logram/open/04",
+      "sheet": "ground_enemies",
+      "rect": [57, 58, 13, 13],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "logram",
+      "animation": "open",
+      "duration_frames": 1
+    },
+    {
+      "name": "crater/idle/01",
+      "sheet": "ground_enemies",
+      "rect": [170, 48, 12, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "crater",
+      "animation": "idle",
+      "duration_frames": 1
+    },
+    {
+      "name": "crater/idle/02",
+      "sheet": "ground_enemies",
+      "rect": [187, 48, 12, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "crater",
+      "animation": "idle",
       "duration_frames": 1
     }
   ]
