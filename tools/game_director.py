@@ -623,12 +623,14 @@ AIM_DY_32_ID = "aim-dy-32"  # aimed-bullet / generic tier (magnitude 32 = 2 px/f
 AIM_DX_32_ID = "aim-dx-32"
 AIM_DY_48_ID = "aim-dy-48"  # Terrazi/Torkan approach tier (magnitude 48 = 3 px/frame)
 AIM_DX_48_ID = "aim-dx-48"
+AIM_DY_64_ID = "aim-dy-64"  # Sheonite/Giddo-Spario tier (magnitude 64 = 4 px/frame)
+AIM_DX_64_ID = "aim-dx-64"
 
 
 def _load_aiming_tables() -> dict[str, list[int]]:
     data = _load_spec_data("aiming.json")["aiming"]
     tables = {"octant": list(data["octant_table"]["values"])}
-    for tier in ("toroid", "generic", "terrazi_torkan"):
+    for tier in ("toroid", "generic", "terrazi_torkan", "sheonite"):
         vectors = data["angle_tables"][tier]["vectors"]
         tables[f"{tier}_dy"] = [v["dy"] for v in vectors]
         tables[f"{tier}_dx"] = [v["dx"] for v in vectors]
@@ -640,6 +642,7 @@ OCTANT_TABLE = _AIMING["octant"]
 AIM_DY_24, AIM_DX_24 = _AIMING["toroid_dy"], _AIMING["toroid_dx"]
 AIM_DY_32, AIM_DX_32 = _AIMING["generic_dy"], _AIMING["generic_dx"]
 AIM_DY_48, AIM_DX_48 = _AIMING["terrazi_torkan_dy"], _AIMING["terrazi_torkan_dx"]
+AIM_DY_64, AIM_DX_64 = _AIMING["sheonite_dy"], _AIMING["sheonite_dx"]
 
 # --- AIR-01 Toroid live-combat machinery (slice 8) ---------------------------------------------
 # The 32-direction aim quantizer's working vars (custom blocks have no locals): the two input diffs
@@ -742,6 +745,11 @@ INIT_TORKAN_PROCCODE = "init torkan"
 UPDATE_TORKAN_PROCCODE = "update torkan"
 INIT_ZAKATO_PROCCODE = "init zakato"  # AIR-07: shared initializer for the four base Zakato variants
 UPDATE_ZAKATO_PROCCODE = "update zakato"  # AIR-07: shared teleport/active/self-destruct phase dispatch
+INIT_GIDDO_SPARIO_PROCCODE = "init giddo spario"  # AIR-10: aim-once 64-tier flyby init
+UPDATE_GIDDO_SPARIO_PROCCODE = "update giddo spario"  # AIR-10: straight flight + own short burst
+EXPLODE_GIDDO_SPARIO_PROCCODE = "explode giddo spario tick"  # AIR-10: the 8-frame burst exception
+INIT_BRAG_SPARIO_PROCCODE = "init brag spario"  # AIR-10: accelerating-homer init
+UPDATE_BRAG_SPARIO_PROCCODE = "update brag spario"  # AIR-10: per-tick homing acceleration
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
 # DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
@@ -879,6 +887,41 @@ ZAKATO_FAST_FUSE_SPAN = 64  # (rng mod 64) + 1 = 1-64 arcade frames (handle_14 a
 # SLOT_UNITS_PER_CELL. Fire when the lateral offset (player col - self col) is within this band.
 ZAKATO_CLOSEY_LOW = -4
 ZAKATO_CLOSEY_HIGH = 3
+# AIR-10 Spario: two INDEPENDENT projectile-like flyers with distinct motion and distinct death.
+# Giddo Spario (handle_08_Giddo_Spario 5219-5240) is aimed ONCE at the craft at spawn on the fast
+# 64-magnitude tier (angle_dX_dY_sheonite_tbl, 4 px/frame — faster than any other family), then flies
+# straight and NEVER fires; killed, it plays its OWN short burst (giddo_spario_hit 5241-5253), the one
+# documented exception to the shared ~20-frame flying explosion. Brag Spario (handle_09_Brag_Spario
+# 3080-3129) is an accelerating homer: each frame it nudges its velocity by +/-2 raw toward the craft
+# on each axis (0 if aligned) and moves by the accumulated velocity, unbounded; it uses the shared
+# flying explosion. Brag Sparios also arrive four-at-a-time from the Garu Zakato detonation (AIR-08,
+# air.special-pairs) — this handler exists first so that consumer can spawn them.
+GIDDO_SPARIO_TYPE = 8  # 0x08, handle_08_Giddo_Spario: aim-once 4 px/f flyby, no fire, own short burst
+BRAG_SPARIO_TYPE = 9  # 0x09, handle_09_Brag_Spario: accelerating homer, shared explosion
+GIDDO_SPARIO_PTS = 1  # 10 points (handle_08 _PTS byte 0 -> value-table position 1)
+BRAG_SPARIO_PTS = 12  # 500 points (handle_09 _PTS byte 33 -> position 12; the port has no super-xevious)
+# Giddo flight animation: the arcade cycles CODE through 4 frames from its clock ((TIMER>>1)&3, 5229-5233);
+# the port derives the frame from `slot timer` in the renderer. Spawn on frame 0.
+GIDDO_SPARIO_INIT_CODE = 0
+GIDDO_SPARIO_FLIGHT_FRAMES = 4  # flight sprites (arcade CODE 0..3)
+# Giddo's OWN short burst (giddo_spario_hit 5241-5253): the arcade shows 4 burst sprites (CODE 4..7),
+# each for 2 arcade frames ((TIMER>>1), remove at ==4), so 8 arcade frames total — versus the shared
+# 20-frame flying burst. It keeps moving on its velocity while the burst plays, like the shared one.
+GIDDO_SPARIO_BURST_FRAMES = 4  # burst sprites (arcade CODE 4..7)
+GIDDO_SPARIO_HIT_DURATION_FRAMES = 8  # burst runs 8 arcade frames, then the slot frees
+# Brag homing acceleration: the arcade adds +/-2 raw to each velocity axis per arcade frame toward the
+# craft (0 when the MSB cells are equal); one port tick is two arcade frames, so the per-tick step is
+# 2*2 = 4 raw, matching the port's 2-frames-per-tick velocity convention (slot dx/dy hold raw arcade
+# velocity, moved by TICK_VELOCITY_SCALE). Velocity is unbounded, exactly as the arcade (no clamp).
+BRAG_SPARIO_ACCEL = 4  # raw velocity step per tick per axis (arcade +/-2/frame over 2 frames)
+BRAG_SPARIO_INIT_CODE = 0  # single body sprite; the arcade animates via ATTR flip, not CODE (3117-3119)
+# Giddo Spario's flying-type-table run (object-types.json 0-based): 0x08 is a six-wide run starting at
+# offset 39 (also 94/102/114). The debug spawner forces count 1 and reads only the run's first code, so
+# offset 39 gives the operator a solo Giddo on demand; natural area waves reach it through the AI-level
+# formation table. Brag Spario (0x09) is NOT in the type table at all — it is never a formation enemy;
+# it spawns only four-at-a-time from the Garu Zakato detonation (AIR-08, same PR), so it has no debug
+# formation entry and its in-play proof arrives with air.special-pairs.
+GIDDO_SPARIO_FORMATION_OFFSET = 39
 FLYING_HANDLED_TYPES = (
     TOROID_TYPE,
     TOROID_SHOOTS_TYPE,
@@ -890,6 +933,8 @@ FLYING_HANDLED_TYPES = (
     TERRAZI_TYPE,
     JARA_SHOOTER_TYPE,
     JARA_SILENT_TYPE,
+    GIDDO_SPARIO_TYPE,
+    BRAG_SPARIO_TYPE,
     ZAKATO_SLOW_TYPE,
     ZAKATO_CLOSEY_TYPE,
     ZAKATO_FAST_TYPE,
@@ -912,6 +957,7 @@ DEBUG_SPAWN_FAMILIES = (
     (JARA_SHOOTER_TYPE, JARA_SHOOTER_FORMATION_OFFSET, 1),  # shooter solo
     (JARA_SILENT_TYPE, JARA_SILENT_FORMATION_OFFSET, 1),  # silent solo
     (JARA_SHOOTER_TYPE, JARA_PAIR_FORMATION_OFFSET, 2),  # emergent pair: one 0x55 + one 0x56
+    (GIDDO_SPARIO_TYPE, GIDDO_SPARIO_FORMATION_OFFSET, 1),  # solo Giddo Spario (fast aim-once flyby)
     # The four base Zakato variants, one at a time. fast/cont also appear in natural area waves, but the
     # T key gives the operator a solo of each variant on demand — and it is the ONLY way to see slow/closeY,
     # which no built area schedules (see the ZAKATO_*_FORMATION_OFFSET note above).
@@ -1293,6 +1339,27 @@ ZAKATO_CLONE_SLOT_ID = "zakato-clone-slot"  # sprite-local: which flying slot th
 ZAKATO_RENDER_SIZE = 225  # 1x1 (16-px) sprite (_ATTR #0x80), the shared flying scale
 ZAKATO_BODY_ORDINAL = 1  # costume 1: the active body (arcade code 0x11)
 ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first shared solv_death burst frame
+
+# AIR-10 Spario renderer constants (shared shape for Giddo and Brag). One persistent clone per flying slot,
+# drawn when its slot holds the family's type, hidden otherwise; the clone writes no state. IMPORTANT: the
+# CrazyCarl aerial-enemies rip carries NO Spario sprites (it labels Toroid/Torkan/Zoshi/Jara/Kapi/Terrazi/
+# Zakato/Brag-Zakato/Sheonite/Bacura/Shooting-Star only), so a distinct Spario costume cannot be sourced or
+# operator-pixel-verified. Both families therefore stand in the Zakato body frame (a small dark blob — and
+# the Sparios are the payload a Zakato releases, so the stand-in reads sensibly) as a DEFERRED cosmetic with
+# its reason recorded, exactly as every family defers its own burst to the shared solv_death frames. The
+# Giddo's 4-frame flight loop (arcade CODE 0..3, 5229-5233) and short 4-code burst (codes 4..7), and the
+# Brag's ATTR flip mirror (3116-3119), are all deferred with it; the mechanically-meaningful distinctions
+# (aim-once flyby vs accelerating homer, and the Giddo's SHORT 8-frame burst duration) live in the handlers.
+# Costume layout on each target: ordinal 1 = the Zakato body stand-in, ordinals 2.. = the shared burst.
+SPARIO_BODY_ORDINAL = 1  # costume 1: the Zakato body stand-in
+SPARIO_BURST_ORDINAL_BASE = SPARIO_BODY_ORDINAL + 1  # 2: first shared solv_death burst frame
+SPARIO_RENDER_SIZE = 225  # 1x1 (16-px) sprite, the shared flying scale
+
+GIDDO_SPARIO_TARGET = "giddo-spario"
+GIDDO_SPARIO_CLONE_SLOT_ID = "giddo-spario-clone-slot"  # sprite-local: which flying slot this clone renders
+
+BRAG_SPARIO_TARGET = "brag-spario"
+BRAG_SPARIO_CLONE_SLOT_ID = "brag-spario-clone-slot"  # sprite-local: which flying slot this clone renders
 
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
@@ -2386,6 +2453,17 @@ def install_advance_slots(blocks: Blocks) -> None:
     zakato_branch = blocks.if_reporter(
         is_zakato, [blocks.call_proc(UPDATE_ZAKATO_PROCCODE, warp=True)]
     )
+    # AIR-10: the two Spario types each have their OWN update — Giddo (0x08) flies straight and plays its
+    # own short burst; Brag (0x09) is the accelerating homer. Unlike Zoshi/Jara/Zakato these share no
+    # core, so each gets its own single-type branch.
+    giddo_spario_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GIDDO_SPARIO_TYPE)),
+        [blocks.call_proc(UPDATE_GIDDO_SPARIO_PROCCODE, warp=True)],
+    )
+    brag_spario_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_SPARIO_TYPE)),
+        [blocks.call_proc(UPDATE_BRAG_SPARIO_PROCCODE, warp=True)],
+    )
     bullet_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
@@ -2409,7 +2487,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_LOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -4338,6 +4416,166 @@ def install_update_zoshi(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def install_init_giddo_spario(blocks: Blocks) -> None:
+    # AIR-10: initialize the flying slot at `slot index` as a Giddo Spario (handle_08_Giddo_Spario
+    # 5219-5240, first-call init). Craft-EXCLUDING random-Y draw (gen_random_Y_store_obj 5222), top-row
+    # entry (the shared no-enemy-scroll deviation), aimed ONCE at the craft on the fast 64-magnitude tier
+    # (4 px/frame, angle_dX_dY_sheonite_tbl via calc_dX_dY_for_vector_to_solvalou 5223-5224). It captures
+    # NO fire mask and seeds no fire timer: Giddo never fires. `slot timer` is the flight/burst clock.
+    definition = _install_warp_proc(blocks, INIT_GIDDO_SPARIO_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks)  # default exclude_craft=True
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, variable("walk type", WALK_TYPE_ID)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 64", AIM_DX_64_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 64", AIM_DY_64_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(0)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(GIDDO_SPARIO_INIT_CODE)),
+            _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(GIDDO_SPARIO_PTS)),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_explode_giddo_spario_tick(blocks: Blocks) -> None:
+    # AIR-10: advance a struck Giddo Spario's OWN short burst one tick (giddo_spario_hit 5241-5253) — the
+    # one documented exception to the shared ~20-frame flying burst. Like the shared burst it keeps
+    # drifting on its velocity while the burst plays (the renderer maps the clock to a burst sprite), but
+    # it frees after only GIDDO_SPARIO_HIT_DURATION_FRAMES (8) rather than TOROID_HIT_DURATION_FRAMES (20).
+    definition = _install_warp_proc(blocks, EXPLODE_GIDDO_SPARIO_PROCCODE)
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    done = blocks.op_not(blocks.op_lt(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(GIDDO_SPARIO_HIT_DURATION_FRAMES)))
+    free = blocks.if_reporter(done, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.chain(definition, [*move, free])
+
+
+def install_update_giddo_spario(blocks: Blocks) -> None:
+    # AIR-10: advance the Giddo Spario at `slot index` by one tick (handle_08_Giddo_Spario 5219-5253).
+    # While ACTIVE it flies straight on its once-aimed 4 px/frame velocity (move_object_dX_dY 5238), never
+    # fires, and advances its animation clock; it culls off any edge. It uses its OWN burst on death
+    # (state HIT -> `explode giddo spario tick`), NOT the shared `explode toroid tick`. The same shared
+    # flying-vs-craft window applies (an active Giddo on the craft's cell kills it).
+    definition = _install_warp_proc(blocks, UPDATE_GIDDO_SPARIO_PROCCODE)
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    normal = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, *move, cull],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_GIDDO_SPARIO_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
+def install_init_brag_spario(blocks: Blocks) -> None:
+    # AIR-10: stamp the non-kinematic fields of a Brag Spario at `slot index` (handle_09_Brag_Spario
+    # first-call init 3081-3090). The Garu Zakato detonation (AIR-08, air.special-pairs) is the ONLY
+    # spawner: it writes each slot's TYPE, position (copied from the Garu) and cardinal initial velocity
+    # (brag_spario_dX/dY_tbl) directly, then calls this to stamp state/code/points/clock. Brag never
+    # spawns from a formation wave, so there is no spawn-flying branch for it. Points 500 (no super).
+    definition = _install_warp_proc(blocks, INIT_BRAG_SPARIO_PROCCODE)
+    blocks.chain(definition, [
+        _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(0)),
+        _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(BRAG_SPARIO_INIT_CODE)),
+        _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(BRAG_SPARIO_PTS)),
+    ])
+
+
+def install_update_brag_spario(blocks: Blocks) -> None:
+    # AIR-10: advance the Brag Spario at `slot index` by one tick (handle_09_Brag_Spario 3092-3121). It is
+    # an accelerating homer: each tick it nudges its velocity toward the craft by +/-BRAG_SPARIO_ACCEL on
+    # EACH axis — scroll axis (slot dx) by the sign of (player row - slot row), lateral (slot dy) by the
+    # sign of (player col - slot col), with NO change on an axis already aligned to the craft's cell (the
+    # arcade's MSB compare: jcs -2 / jeq 0 / else +2, 3095-3109). Velocity is unbounded, exactly as the
+    # arcade (no clamp). Then it moves by the accumulated velocity, advances its flip-animation clock, and
+    # culls off any edge. Shares the flying hit window and the shared ~20-frame burst on death.
+    definition = _install_warp_proc(blocks, UPDATE_BRAG_SPARIO_PROCCODE)
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    row_offset = lambda: blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))
+    col_offset = lambda: blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))
+    # Scroll-axis acceleration: craft ahead (offset > 0) -> +accel; craft behind (offset < 0) -> -accel;
+    # aligned (offset == 0) -> no change. Two guarded nudges leave the aligned case untouched.
+    accel_dx_plus = blocks.if_reporter(
+        blocks.op_gt(row_offset(), number(0)),
+        [_set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.op_add(_cur_item(blocks, "slot dx", SLOT_DX_ID), number(BRAG_SPARIO_ACCEL)))],
+    )
+    accel_dx_minus = blocks.if_reporter(
+        blocks.op_lt(row_offset(), number(0)),
+        [_set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.op_sub(_cur_item(blocks, "slot dx", SLOT_DX_ID), number(BRAG_SPARIO_ACCEL)))],
+    )
+    accel_dy_plus = blocks.if_reporter(
+        blocks.op_gt(col_offset(), number(0)),
+        [_set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_add(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(BRAG_SPARIO_ACCEL)))],
+    )
+    accel_dy_minus = blocks.if_reporter(
+        blocks.op_lt(col_offset(), number(0)),
+        [_set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.op_sub(_cur_item(blocks, "slot dy", SLOT_DY_ID), number(BRAG_SPARIO_ACCEL)))],
+    )
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    normal = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, accel_dx_plus, accel_dx_minus, accel_dy_plus, accel_dy_minus, *move, cull],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
 def install_fire_permission_gate(blocks: Blocks) -> None:
     # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
     # Operates on the current slot (`slot index`): every firing family calls this each active tick after
@@ -4483,7 +4721,14 @@ def install_spawn_flying(blocks: Blocks) -> None:
         ),
         [blocks.call_proc(INIT_ZAKATO_PROCCODE, warp=True)],
     )
-    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd, spawn_jara, spawn_zakato])
+    # AIR-10: Giddo Spario runs its own initializer (aim-once at the 64 tier). Brag Spario has no
+    # formation entry — it never spawns from a wave, only from the Garu detonation (air.special-pairs) —
+    # so it needs no spawn branch here; only its update and init proc (called by that detonation) exist.
+    spawn_giddo_spario = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GIDDO_SPARIO_TYPE)),
+        [blocks.call_proc(INIT_GIDDO_SPARIO_PROCCODE, warp=True)],
+    )
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd, spawn_jara, spawn_zakato, spawn_giddo_spario])
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
@@ -5103,6 +5348,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_zoshi_rnd(blocks)
     install_init_jara(blocks)
     install_init_zakato(blocks)
+    install_init_giddo_spario(blocks)
+    install_init_brag_spario(blocks)
     install_check_air_hit(blocks)
     install_check_ground_hit(blocks)
     install_track_crosshair(blocks)
@@ -5112,6 +5359,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_garu(blocks)
     install_update_logram(blocks)
     install_explode_toroid_tick(blocks)
+    install_explode_giddo_spario_tick(blocks)
     install_update_bullet(blocks)
     install_update_toroid(blocks)
     install_update_terrazi(blocks)
@@ -5120,6 +5368,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_zoshi(blocks)
     install_update_jara(blocks)
     install_update_zakato(blocks)
+    install_update_giddo_spario(blocks)
+    install_update_brag_spario(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -7392,6 +7642,115 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_code: int, big_phase: bool) -> dict[str, dict[str, Any]]:
+    # AIR-10 shared Spario renderer (game_director owns these blocks; the costumes are the Zakato body
+    # stand-in + the shared solv_death burst mirrored on in expected_project). One persistent clone per
+    # flying slot (59..64), the same pool pattern as the Jara/Zakato: shown and positioned when its slot
+    # holds `type_code`, hidden otherwise. The clone writes no state. While ACTIVE it holds the static body
+    # stand-in (ordinal 1); on a hit it plays the shared burst FORWARD from the slot clock. `big_phase`
+    # selects the burst scale: the Brag uses the shared ~20-frame flying kill (doubling at the 2x big phase,
+    # like every other family); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit 5241-5252) plays at
+    # normal scale — a small pop, never reaching the big phase (its handler frees it at frame 8).
+    blocks = Blocks(target)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable(clone_var_name, clone_var_id)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var(clone_var_name, clone_var_id, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_family = blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(type_code))
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Shared explosion on a hit: forward burst from the slot clock (the arcade `TIMER>>2`, fresh per read).
+    explode_ordinal = blocks.op_add(
+        number(SPARIO_BURST_ORDINAL_BASE),
+        blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))),
+    )
+    hit_body: list[str] = [blocks.switch_costume_expr(explode_ordinal)]
+    if big_phase:
+        # The Brag kill doubles at the 2x big phase like every other flying kill.
+        size_branch = blocks.add("control_if_else")
+        phase_for_size = blocks.op_floor(
+            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+        )
+        is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
+        blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+        blocks.blocks[is_big]["parent"] = size_branch
+        blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+        blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)})], name="SUBSTACK2")
+        hit_body.append(size_branch)
+    else:
+        # The Giddo's short own-burst stays at normal scale — a small pop.
+        hit_body.append(blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}))
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, hit_body)
+    blocks.substack(
+        state_render,
+        [
+            # The body stand-in is a fixed costume (the mirrored-in Zakato blob, ordinal 1), so switch by
+            # name — a constant costume needs no runtime reporter, exactly like the Zakato active body.
+            blocks.switch_costume("zakato/body/01"),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_family]
+    blocks.blocks[is_family]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
+def giddo_spario_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-10: the Giddo Spario clone pool — its SHORT own-burst plays the shared frames at normal scale.
+    return _spario_blocks(
+        GIDDO_SPARIO_TARGET, "giddo spario clone slot", GIDDO_SPARIO_CLONE_SLOT_ID, GIDDO_SPARIO_TYPE, big_phase=False
+    )
+
+
+def brag_spario_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-10: the Brag Spario clone pool — its kill uses the shared ~20-frame flying burst (big-phase 2x).
+    return _spario_blocks(
+        BRAG_SPARIO_TARGET, "brag spario clone slot", BRAG_SPARIO_CLONE_SLOT_ID, BRAG_SPARIO_TYPE, big_phase=True
+    )
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -7509,6 +7868,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, ZOSHI_TARGET)
     _ensure_gameplay_target(result, JARA_TARGET)
     _ensure_gameplay_target(result, ZAKATO_TARGET)
+    _ensure_gameplay_target(result, GIDDO_SPARIO_TARGET)
+    _ensure_gameplay_target(result, BRAG_SPARIO_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
@@ -7585,6 +7946,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             zakato["costumes"].extend(copy.deepcopy(death["costumes"]))
         zakato["currentCostume"] = 0
+    # AIR-10: the Giddo and Brag Spario renderers both mirror the ZAKATO body frame as their body stand-in
+    # (ordinal 1) — the CrazyCarl aerial rip carries no Spario sprite, so the Zakato blob stands in as a
+    # DEFERRED cosmetic (reason recorded in the constants and the mechanics record) — then the shared
+    # solv_death burst (ordinals 2..9) their hit draws from. Idempotent; a no-op when any source is absent.
+    for spario_name in (GIDDO_SPARIO_TARGET, BRAG_SPARIO_TARGET):
+        spario = next((t for t in result["targets"] if t.get("name") == spario_name), None)
+        if proof is not None and spario is not None:
+            spario["costumes"] = proof_by_family("zakato/")
+            if death is not None:
+                spario["costumes"].extend(copy.deepcopy(death["costumes"]))
+            spario["currentCostume"] = 0
     # GND-01: the Barra renderer mirrors its single idle pyramid frame (ordinal 1), then the shared
     # explosion burst (the same solv_death frames, ordinals 2..9 — the ground bomb-burst is a deferred
     # cosmetic, so the aerial burst stands in), then the two crater frames (ordinals 10..11) that the
@@ -7798,6 +8170,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_DX_32_ID,
         AIM_DY_48_ID,
         AIM_DX_48_ID,
+        AIM_DY_64_ID,
+        AIM_DX_64_ID,
         FLYING_TYPE_TABLE_ID,
         TOROID_FRAME_ID,
         VALUE_TABLE_ID,
@@ -7856,6 +8230,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_DX_32_ID: ["aim dx 32", list(AIM_DX_32)],
         AIM_DY_48_ID: ["aim dy 48", list(AIM_DY_48)],
         AIM_DX_48_ID: ["aim dx 48", list(AIM_DX_48)],
+        AIM_DY_64_ID: ["aim dy 64", list(AIM_DY_64)],
+        AIM_DX_64_ID: ["aim dx 64", list(AIM_DX_64)],
         # AIR-01/FORM-01 flying-enemy type table (object-types.json): the spawner reads the wave's
         # type codes at `formation type offset`. And the Toroid costume-ordinal map (sprite code
         # 8..15 -> costume 1..7, the 8th reusing 6): read-only render data.
@@ -7934,6 +8310,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "zoshi": zoshi_blocks(),
         "jara": jara_blocks(),
         "zakato": zakato_blocks(),
+        "giddo-spario": giddo_spario_blocks(),
+        "brag-spario": brag_spario_blocks(),
         "barra": barra_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
@@ -8013,6 +8391,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # phase (teleport/active/self-destruct/hit) lives in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 ZAKATO_CLONE_SLOT_ID: ["zakato clone slot", 0],
+            }
+        elif target["name"] == GIDDO_SPARIO_TARGET:
+            # AIR-10: likewise, the only Giddo render state is which flying slot each clone draws; the flight
+            # phase and hit clock live in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                GIDDO_SPARIO_CLONE_SLOT_ID: ["giddo spario clone slot", 0],
+            }
+        elif target["name"] == BRAG_SPARIO_TARGET:
+            # AIR-10: likewise, the only Brag render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                BRAG_SPARIO_CLONE_SLOT_ID: ["brag spario clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.

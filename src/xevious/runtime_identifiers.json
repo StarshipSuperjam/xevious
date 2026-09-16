@@ -24,6 +24,11 @@
       "name": "aim dx 48",
       "scope": "Stage"
     },
+    "aim-dx-64": {
+      "kind": "list",
+      "name": "aim dx 64",
+      "scope": "Stage"
+    },
     "aim-dx-diff": {
       "kind": "variable",
       "name": "aim dx diff",
@@ -42,6 +47,11 @@
     "aim-dy-48": {
       "kind": "list",
       "name": "aim dy 48",
+      "scope": "Stage"
+    },
+    "aim-dy-64": {
+      "kind": "list",
+      "name": "aim dy 64",
       "scope": "Stage"
     },
     "aim-dy-diff": {
@@ -168,6 +178,11 @@
       "kind": "variable",
       "name": "clone slot",
       "scope": "blaster"
+    },
+    "brag-spario-clone-slot": {
+      "kind": "variable",
+      "name": "brag spario clone slot",
+      "scope": "brag-spario"
     },
     "bullet-alloc-result": {
       "kind": "variable",
@@ -368,6 +383,11 @@
       "kind": "variable",
       "name": "garu clone slot",
       "scope": "garu"
+    },
+    "giddo-spario-clone-slot": {
+      "kind": "variable",
+      "name": "giddo spario clone slot",
+      "scope": "giddo-spario"
     },
     "ground-stop-firing-row": {
       "kind": "variable",

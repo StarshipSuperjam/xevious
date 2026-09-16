@@ -228,11 +228,12 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 28: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # 30: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
         # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, the
-        # slice-11 zakato renderer (AIR-07), and the slice-9 barra + garu + logram ground renderers (all
+        # slice-11 zakato renderer (AIR-07) + the giddo-spario + brag-spario renderers (AIR-10; both reuse
+        # the zakato body stand-in by ref), and the slice-9 barra + garu + logram ground renderers (all
         # reuse proof costumes by ref).
-        self.assertEqual(28, len(project["targets"]))
+        self.assertEqual(30, len(project["targets"]))
         # 138: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -1094,6 +1095,8 @@ class ScratchProjectTests(unittest.TestCase):
                 "aim dx 32",
                 "aim dy 48",
                 "aim dx 48",
+                "aim dy 64",
+                "aim dx 64",
                 "flying type table",
                 "toroid frame",
                 "value table",
@@ -1202,6 +1205,14 @@ class ScratchProjectTests(unittest.TestCase):
             # its trigger, then self-destructs awarding nothing, so it takes no mask and no fire-gate call.
             director.INIT_ZAKATO_PROCCODE,
             director.UPDATE_ZAKATO_PROCCODE,
+            # AIR-10 (slice 11) air.spario: the Giddo Spario (aim-once 64-tier flyby with its own short
+            # burst) and Brag Spario (accelerating homer, spawned only from the Garu detonation) lifecycle
+            # procs — one init + one update each, plus the Giddo's distinct burst tick.
+            director.INIT_GIDDO_SPARIO_PROCCODE,
+            director.UPDATE_GIDDO_SPARIO_PROCCODE,
+            director.EXPLODE_GIDDO_SPARIO_PROCCODE,
+            director.INIT_BRAG_SPARIO_PROCCODE,
+            director.UPDATE_BRAG_SPARIO_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -4594,6 +4605,553 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air07_failures(project), label)
+
+    @staticmethod
+    def _air10_failures(project: dict) -> set:
+        """AIR-10 Spario authoring contract — violated labels. Pins the two Spario families as distinct
+        faithful flyers:
+
+        GIDDO SPARIO (handle_08 5219-5257): an aim-ONCE straight flyby. One warp init + one warp update + a
+        distinct warp burst tick. The spawner inits it by type and the ordered walk drives its updater. It
+        spawns SLOT_ACTIVE (hittable at once — unlike the Zakato's indestructible teleport), aimed once on the
+        64-MAGNITUDE tier (4 px/frame, angle_dX_dY_sheonite_tbl 5223) — NOT the 32/48 tiers — awards
+        GIDDO_SPARIO_PTS (10), captures NO fire mask and seeds NO fire timer (Giddo never fires), and draws its
+        entry column craft-EXCLUDING. It flies STRAIGHT (no per-tick velocity change). On a shot-kill it plays
+        its OWN SHORT burst `explode giddo spario tick` (freed at GIDDO_SPARIO_HIT_DURATION_FRAMES = 8, the one
+        documented exception to the shared ~20-frame flying burst), NOT `explode toroid tick`, and it offers the
+        shared detector on the non-HIT path (so a shot scores it).
+
+        BRAG SPARIO (handle_09 3080-3121): an accelerating homer. One warp init + one warp update. It is NEVER
+        spawned from a formation wave (`spawn flying enemies` never inits it — the Garu Zakato detonation,
+        air.special-pairs #82, is the only spawner); the ordered walk still drives its updater. Each active tick
+        it nudges its velocity toward the craft by +/-BRAG_SPARIO_ACCEL on BOTH axes (scroll `slot dx`, lateral
+        `slot dy`), awards BRAG_SPARIO_PTS (500), plays the SHARED ~20-frame burst on a shot-kill, and offers the
+        shared detector on the non-HIT path.
+
+        The families run whole ticks under the settling harness (which cannot see a single mid-flight frame), so
+        these once-only structural facts are pinned here."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def calls_in(body, proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in body
+            )
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def rref(inp):
+            r = ref(inp)
+            return blocks.get(r) if r else None
+
+        def const_item(b):
+            return _num_operand(b["inputs"].get("ITEM"))
+
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def cond_has_num(cond_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                for key, v in b.get("inputs", {}).items():
+                    if _num_operand(v) == value:
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def cond_has_eq(cond_id, list_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                if b["opcode"] == "operator_equals":
+                    lhs = rref(b["inputs"].get("OPERAND1"))
+                    if (
+                        lhs is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == list_id
+                        and _num_operand(b["inputs"].get("OPERAND2")) == value
+                    ):
+                        return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def ancestor_if(node_id, pred):
+            cur = blocks.get(node_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    if pred(ref(parent["inputs"].get("CONDITION"))):
+                        return True
+                cur = parent
+            return False
+
+        def gated_by_state(node_id, value):
+            return ancestor_if(node_id, lambda c: cond_has_eq(c, director.SLOT_STATE_ID, value))
+
+        # A `slot <axis>` write whose ITEM adds or subtracts `delta` (an accel nudge). Used to detect the
+        # Brag's homing acceleration and, by its ABSENCE, the Giddo's straight flight.
+        def accel_writes(body, axis_id, delta):
+            found = 0
+            for b in body:
+                if b["opcode"] != "data_replaceitemoflist" or b["fields"]["LIST"][1] != axis_id:
+                    continue
+                item = rref(b["inputs"].get("ITEM"))
+                if item is None or item["opcode"] not in ("operator_add", "operator_subtract"):
+                    continue
+                for key in ("NUM1", "NUM2"):
+                    if _num_operand(item["inputs"].get(key)) == delta:
+                        found += 1
+            return found
+
+        def reads_list(body, out_list_id, src_list_id):
+            # a `data_replaceitemoflist` on out_list_id whose ITEM subtree reads data_itemoflist of src_list_id
+            for b in body:
+                if b["opcode"] != "data_replaceitemoflist" or b["fields"]["LIST"][1] != out_list_id:
+                    continue
+                item = rref(b["inputs"].get("ITEM"))
+                if item is not None and item["opcode"] == "data_itemoflist" and item["fields"]["LIST"][1] == src_list_id:
+                    return True
+            return False
+
+        giddo_init = _proc_body_blocks(stage, director.INIT_GIDDO_SPARIO_PROCCODE)
+        giddo_update = _proc_body_blocks(stage, director.UPDATE_GIDDO_SPARIO_PROCCODE)
+        giddo_burst = _proc_body_blocks(stage, director.EXPLODE_GIDDO_SPARIO_PROCCODE)
+        brag_init = _proc_body_blocks(stage, director.INIT_BRAG_SPARIO_PROCCODE)
+        brag_update = _proc_body_blocks(stage, director.UPDATE_BRAG_SPARIO_PROCCODE)
+        spawn_body = _proc_body_blocks(stage, director.SPAWN_FLYING_PROCCODE)
+
+        # ---- Giddo Spario ----
+        # (1) All three Giddo lifecycle procs exist and are warp (atomic) — a non-warp proc would yield
+        # mid-slot, letting a half-flown / half-burst Giddo render or be hit.
+        for proccode in (
+            director.INIT_GIDDO_SPARIO_PROCCODE,
+            director.UPDATE_GIDDO_SPARIO_PROCCODE,
+            director.EXPLODE_GIDDO_SPARIO_PROCCODE,
+        ):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("giddo-lifecycle-procs-warp")
+
+        # (2) The spawner inits Giddo; (3) the ordered walk dispatches its updater.
+        if not calls_in(spawn_body, director.INIT_GIDDO_SPARIO_PROCCODE):
+            failures.add("spawn-inits-giddo")
+        if not calls(director.UPDATE_GIDDO_SPARIO_PROCCODE):
+            failures.add("dispatch-updates-giddo")
+
+        # (4) Giddo spawns SLOT_ACTIVE (hittable at once — the distinctive contrast with the Zakato's
+        # indestructible SLOT_TELEPORT spawn); it never stamps SLOT_TELEPORT.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_ACTIVE
+            for b in giddo_init
+        ) or any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_TELEPORT
+            for b in giddo_init
+        ):
+            failures.add("giddo-spawns-active")
+
+        # (5) AIM-ONCE ON THE 64 TIER. The init sets `slot dx`/`slot dy` from the 64-magnitude aim tables
+        # (4 px/frame) — NOT the 32-tier (generic bullet) or 48-tier (radiating). Both axes must read tier 64.
+        if not (
+            reads_list(giddo_init, director.SLOT_DX_ID, director.AIM_DX_64_ID)
+            and reads_list(giddo_init, director.SLOT_DY_ID, director.AIM_DY_64_ID)
+        ) or reads_list(giddo_init, director.SLOT_DX_ID, director.AIM_DX_32_ID):
+            failures.add("giddo-aims-once-64-tier")
+
+        # (6) Giddo awards GIDDO_SPARIO_PTS (value-table position 1 -> 10 pts).
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and const_item(b) == director.GIDDO_SPARIO_PTS
+            for b in giddo_init
+        ):
+            failures.add("giddo-points")
+
+        # (7) NO FIRE MASK / NO FIRE TIMER AT SPAWN — Giddo never fires.
+        if any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] in (director.SLOT_FIRE_MASK_ID, director.SLOT_FIRE_TIMER_ID)
+            for b in giddo_init
+        ):
+            failures.add("giddo-no-fire-mask")
+
+        # (8) The init draws its entry column CRAFT-EXCLUDING (_draw_spawn_column's default reject:
+        # abs(player col - candidate) < SPAWN_CRAFT_GAP), so a Giddo never appears on the craft's column.
+        if not any(
+            b["opcode"] == "operator_lt"
+            and (lhs := rref(b["inputs"].get("OPERAND1"))) is not None
+            and lhs["opcode"] == "operator_mathop"
+            and lhs["fields"].get("OPERATOR", [None])[0] == "abs"
+            and _num_operand(b["inputs"].get("OPERAND2")) == director.SPAWN_CRAFT_GAP
+            for b in giddo_init
+        ):
+            failures.add("giddo-craft-excluding-draw")
+
+        # (9) Giddo flies STRAIGHT — the update makes NO per-tick velocity change (the distinctive contrast
+        # with the Brag's homing acceleration): no `slot dx`/`slot dy` write adds or subtracts an accel step.
+        if (
+            accel_writes(giddo_update, director.SLOT_DX_ID, director.BRAG_SPARIO_ACCEL)
+            or accel_writes(giddo_update, director.SLOT_DY_ID, director.BRAG_SPARIO_ACCEL)
+        ):
+            failures.add("giddo-flies-straight")
+
+        # (10) OWN SHORT BURST. The update's HIT branch runs Giddo's OWN `explode giddo spario tick` (gated by
+        # state == SLOT_HIT), NOT the shared `explode toroid tick`; and that burst tick frees the slot at
+        # GIDDO_SPARIO_HIT_DURATION_FRAMES (8) — a `cull slot` call whose gate carries the 8-frame bound.
+        own_burst_calls = [
+            id_of[id(b)]
+            for b in giddo_update
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.EXPLODE_GIDDO_SPARIO_PROCCODE
+        ]
+        shared_in_giddo = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+            for b in giddo_update
+        )
+        burst_free_gated = any(
+            b["opcode"] == "control_if"
+            and cond_has_num(ref(b["inputs"].get("CONDITION")), director.GIDDO_SPARIO_HIT_DURATION_FRAMES)
+            for b in giddo_burst
+        ) and calls_in(giddo_burst, director.CULL_SLOT_PROCCODE)
+        if (
+            not own_burst_calls
+            or not any(gated_by_state(c, director.SLOT_HIT) for c in own_burst_calls)
+            or shared_in_giddo
+            or not burst_free_gated
+        ):
+            failures.add("giddo-own-short-burst")
+
+        # (11) Giddo offers the shared detector on the non-HIT path (so a shot scores it).
+        if not calls_in(giddo_update, director.CHECK_AIR_HIT_PROCCODE):
+            failures.add("giddo-offers-detector")
+
+        # ---- Brag Spario ----
+        # (12) Both Brag lifecycle procs exist and are warp.
+        for proccode in (director.INIT_BRAG_SPARIO_PROCCODE, director.UPDATE_BRAG_SPARIO_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("brag-lifecycle-procs-warp")
+
+        # (13) The ordered walk dispatches the Brag updater.
+        if not calls(director.UPDATE_BRAG_SPARIO_PROCCODE):
+            failures.add("dispatch-updates-brag")
+
+        # (14) BRAG NEVER SPAWNS FROM A FORMATION WAVE. `spawn flying enemies` never inits a Brag — its only
+        # spawner is the Garu Zakato detonation (air.special-pairs). The absence in the spawner is the
+        # contract (a formation-spawned Brag would be a reachability regression).
+        if calls_in(spawn_body, director.INIT_BRAG_SPARIO_PROCCODE):
+            failures.add("brag-no-formation-spawn")
+
+        # (15) BRAG ACCELERATES TOWARD THE CRAFT ON BOTH AXES. Each active tick nudges its velocity by
+        # +/-BRAG_SPARIO_ACCEL on the scroll axis (`slot dx`) AND the lateral axis (`slot dy`) — one add and
+        # one subtract per axis (the arcade's MSB-compare +2/0/-2, 3095-3115). All four nudges must be present.
+        if not (
+            accel_writes(brag_update, director.SLOT_DX_ID, director.BRAG_SPARIO_ACCEL) >= 2
+            and accel_writes(brag_update, director.SLOT_DY_ID, director.BRAG_SPARIO_ACCEL) >= 2
+        ):
+            failures.add("brag-accelerates-both-axes")
+
+        # (16) Brag awards BRAG_SPARIO_PTS (value-table position 12 -> 500 pts).
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and const_item(b) == director.BRAG_SPARIO_PTS
+            for b in brag_init
+        ):
+            failures.add("brag-points")
+
+        # (17) Brag plays the SHARED ~20-frame burst on a shot-kill (gated by state == SLOT_HIT), NOT Giddo's
+        # own short burst.
+        shared_calls = [
+            id_of[id(b)]
+            for b in brag_update
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+        ]
+        own_in_brag = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.EXPLODE_GIDDO_SPARIO_PROCCODE
+            for b in brag_update
+        )
+        if not shared_calls or not any(gated_by_state(c, director.SLOT_HIT) for c in shared_calls) or own_in_brag:
+            failures.add("brag-shared-burst")
+
+        # (18) Brag offers the shared detector on the non-HIT path (so a shot scores it).
+        if not calls_in(brag_update, director.CHECK_AIR_HIT_PROCCODE):
+            failures.add("brag-offers-detector")
+
+        return failures
+
+    # Roadmap closure evidence for leaf `air.spario` (AIR-10): the two Spario families are distinct live
+    # flyers. The Giddo aims once on the 64-tier (4 px/frame), flies straight, never fires, scores 10, and
+    # dies to its OWN short 8-frame burst; the Brag is an accelerating homer that nudges its velocity toward
+    # the craft on both axes each tick, scores 500, dies to the shared ~20-frame burst, and NEVER spawns from
+    # a formation wave (only from the Garu Zakato detonation, air.special-pairs). Both are dispatched by the
+    # ordered walk and scored by the shared detector. The live proof is the harness `giddo-aims-once-64-tier`
+    # / `giddo-own-short-burst` / `brag-homing-acceleration`.
+    # roadmap-evidence: AIR-10 success  (test_spario_slice_authoring_present — Giddo/Brag lifecycle procs warp, spawn-inits Giddo + dispatch-updates both, Giddo spawns ACTIVE aimed on the 64 tier scoring 10 with no fire mask and a craft-excluding draw flying straight and dying to its own 8-frame burst, Brag never formation-spawned, accelerates both axes scoring 500 and dying to the shared burst, both offer the detector)
+    # roadmap-evidence: AIR-10 failure  (test_spario_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_spario_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air10_failures(project))
+
+    def test_spario_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air10_failures(base))
+
+        def _body(p, proccode):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, proccode)
+
+        def unwarp(proccode):
+            def _mut(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in stage["blocks"].values():
+                    if (
+                        b["opcode"] == "procedures_prototype"
+                        and b.get("mutation", {}).get("proccode") == proccode
+                    ):
+                        b["mutation"]["warp"] = "false"
+            return _mut
+
+        def drop_call_in(proccode_host, proccode_target):
+            # Rename the FIRST call to proccode_target inside proccode_host's body → the host no longer calls it.
+            def _mut(p: dict) -> None:
+                stage, body = _body(p, proccode_host)
+                for b in body:
+                    if (
+                        b["opcode"] == "procedures_call"
+                        and b.get("mutation", {}).get("proccode") == proccode_target
+                    ):
+                        b["mutation"]["proccode"] = "noop"
+                        return
+            return _mut
+
+        def spawn_giddo_teleporting(p: dict) -> None:
+            # Flip the Giddo init's SLOT_ACTIVE stamp to SLOT_TELEPORT → it no longer spawns ACTIVE.
+            stage, body = _body(p, director.INIT_GIDDO_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _const_item(b) == director.SLOT_ACTIVE
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.SLOT_TELEPORT)]]
+
+        def giddo_aims_32(p: dict) -> None:
+            # Repoint the Giddo init's `slot dx` aim read from the 64 tier to the 32 tier → wrong tier bites.
+            stage, body = _body(p, director.INIT_GIDDO_SPARIO_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+                    and isinstance(b["inputs"].get("ITEM"), list)
+                    and isinstance(b["inputs"]["ITEM"][1], str)
+                ):
+                    item = blocks.get(b["inputs"]["ITEM"][1])
+                    if item is not None and item["opcode"] == "data_itemoflist" and item["fields"]["LIST"][1] == director.AIM_DX_64_ID:
+                        item["fields"]["LIST"] = ["aim dx 32", director.AIM_DX_32_ID]
+
+        def giddo_wrong_points(p: dict) -> None:
+            stage, body = _body(p, director.INIT_GIDDO_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and _const_item(b) == director.GIDDO_SPARIO_PTS
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.GIDDO_SPARIO_PTS + 5)]]
+
+        def giddo_capture_fire_mask(p: dict) -> None:
+            # Repurpose the Giddo init's `slot code` write to write `slot fire mask` → captures a fire mask.
+            stage, body = _body(p, director.INIT_GIDDO_SPARIO_PROCCODE)
+            for b in body:
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_CODE_ID:
+                    b["fields"]["LIST"] = ["slot fire mask", director.SLOT_FIRE_MASK_ID]
+                    break
+
+        def giddo_drop_craft_exclusion(p: dict) -> None:
+            stage, body = _body(p, director.INIT_GIDDO_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "operator_lt"
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and isinstance(b["inputs"]["OPERAND2"][1], list)
+                    and int(b["inputs"]["OPERAND2"][1][1]) == director.SPAWN_CRAFT_GAP
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "0"]]
+
+        def giddo_add_acceleration(p: dict) -> None:
+            # Inject a `slot dx` = slot dx + BRAG_SPARIO_ACCEL nudge into the Giddo update (it writes no
+            # velocity today — it flies straight). Splice it onto the update definition's `next` so the proc
+            # body reaches it. The flies-straight clause then bites.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks = stage["blocks"]
+            proto_id = next(
+                bid for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.UPDATE_GIDDO_SPARIO_PROCCODE
+            )
+            definition = next(
+                b for b in blocks.values()
+                if b["opcode"] == "procedures_definition"
+                and b.get("inputs", {}).get("custom_block", [None, None])[1] == proto_id
+            )
+            add_id, write_id = "giddo_accel_add", "giddo_accel_write"
+            blocks[add_id] = {
+                "opcode": "operator_add", "next": None, "parent": write_id,
+                "inputs": {"NUM1": [1, [4, "0"]], "NUM2": [1, [4, str(director.BRAG_SPARIO_ACCEL)]]},
+                "fields": {}, "shadow": False, "topLevel": False,
+            }
+            blocks[write_id] = {
+                "opcode": "data_replaceitemoflist", "next": definition.get("next"), "parent": None,
+                "inputs": {"INDEX": [1, [7, "1"]], "ITEM": [3, add_id, [10, ""]]},
+                "fields": {"LIST": ["slot dx", director.SLOT_DX_ID]},
+                "shadow": False, "topLevel": False,
+            }
+            definition["next"] = write_id
+
+        def giddo_share_burst(p: dict) -> None:
+            # Flip the Giddo HIT branch's own burst call to the shared tick → the own-short-burst clause bites.
+            stage, body = _body(p, director.UPDATE_GIDDO_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.EXPLODE_GIDDO_SPARIO_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.EXPLODE_TICK_PROCCODE
+
+        def brag_formation_spawn(p: dict) -> None:
+            # Add an INIT_BRAG call into `spawn flying enemies` → Brag now spawns from a formation wave.
+            stage, body = _body(p, director.SPAWN_FLYING_PROCCODE)
+            blocks = stage["blocks"]
+            # graft a call onto the first Giddo spawn-init call's `next`
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_GIDDO_SPARIO_PROCCODE
+                ):
+                    call_id = "brag_formation_call"
+                    blocks[call_id] = {
+                        "opcode": "procedures_call",
+                        "next": b.get("next"),
+                        "parent": id_of_host(blocks, b),
+                        "inputs": {},
+                        "fields": {},
+                        "shadow": False,
+                        "topLevel": False,
+                        "mutation": {
+                            "tagName": "mutation",
+                            "children": [],
+                            "proccode": director.INIT_BRAG_SPARIO_PROCCODE,
+                            "argumentids": "[]",
+                            "warp": "true",
+                        },
+                    }
+                    b["next"] = call_id
+                    return
+
+        def id_of_host(blocks, target_block):
+            for bid, bb in blocks.items():
+                if bb is target_block:
+                    return bb.get("parent")
+            return None
+
+        def brag_flatten_accel(p: dict) -> None:
+            # Zero the Brag update's `slot dy` accel step → fewer than two lateral nudges remain.
+            stage, body = _body(p, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DY_ID:
+                    item = blocks.get(b["inputs"].get("ITEM", [None, None])[1]) if isinstance(b["inputs"].get("ITEM"), list) else None
+                    if item is not None and item["opcode"] in ("operator_add", "operator_subtract"):
+                        for key in ("NUM1", "NUM2"):
+                            if _num_operand(item["inputs"].get(key)) == director.BRAG_SPARIO_ACCEL:
+                                item["inputs"][key] = [1, [4, "0"]]
+
+        def brag_wrong_points(p: dict) -> None:
+            stage, body = _body(p, director.INIT_BRAG_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and _const_item(b) == director.BRAG_SPARIO_PTS
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.BRAG_SPARIO_PTS + 1)]]
+
+        def brag_own_burst(p: dict) -> None:
+            # Flip the Brag HIT branch's shared tick to Giddo's own burst → the shared-burst clause bites.
+            stage, body = _body(p, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.EXPLODE_GIDDO_SPARIO_PROCCODE
+                    return
+
+        cases = [
+            ("giddo-lifecycle-procs-warp", unwarp(director.UPDATE_GIDDO_SPARIO_PROCCODE)),
+            ("spawn-inits-giddo", drop_call_in(director.SPAWN_FLYING_PROCCODE, director.INIT_GIDDO_SPARIO_PROCCODE)),
+            ("dispatch-updates-giddo", drop_call_in(director.ADVANCE_SLOTS_PROCCODE, director.UPDATE_GIDDO_SPARIO_PROCCODE)),
+            ("giddo-spawns-active", spawn_giddo_teleporting),
+            ("giddo-aims-once-64-tier", giddo_aims_32),
+            ("giddo-points", giddo_wrong_points),
+            ("giddo-no-fire-mask", giddo_capture_fire_mask),
+            ("giddo-craft-excluding-draw", giddo_drop_craft_exclusion),
+            ("giddo-flies-straight", giddo_add_acceleration),
+            ("giddo-own-short-burst", giddo_share_burst),
+            ("brag-lifecycle-procs-warp", unwarp(director.UPDATE_BRAG_SPARIO_PROCCODE)),
+            ("dispatch-updates-brag", drop_call_in(director.ADVANCE_SLOTS_PROCCODE, director.UPDATE_BRAG_SPARIO_PROCCODE)),
+            ("brag-no-formation-spawn", brag_formation_spawn),
+            ("brag-accelerates-both-axes", brag_flatten_accel),
+            ("brag-points", brag_wrong_points),
+            ("brag-shared-burst", brag_own_burst),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air10_failures(project), label)
 
     @staticmethod
     def _air12_radiating_failures(project: dict) -> set:
@@ -9870,7 +10428,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "b2b0c389e8baecd72524ea9f12549db09a637c15074782b8fdc97be14c2a3d88",
+            "ab221acf4daf15b548c0f18d0a9887684ae890e906cb894e44b85ae4cc480d9a",
             build_hash,
         )
 

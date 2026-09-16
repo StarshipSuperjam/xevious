@@ -1554,6 +1554,139 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'emit radiating bullet'),
   },
   {
+    key: 'giddo-spario-flies-straight-and-self-bursts-short',
+    behavior:
+      'A Giddo Spario is aimed ONCE at spawn and then flies dead straight — `update giddo spario` never re-aims, so an ACTIVE Giddo keeps the exact velocity it was seeded with while it advances by 4*velocity/tick (handle_08_Giddo_Spario move_object_dX_dY 5238). On death it uses its OWN short burst, not the shared one: a HIT Giddo frees its slot on the 8-frame giddo_spario_hit clock (~4 ticks at 2/tick), far sooner than the 20-frame shared flying burst (~10 ticks) — the single documented exception, giddo_spario_hit 5241-5253.',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk so one callProc == one tick (a settling pump would run the update ~220x and race
+      // the slot off-field). Clear the flying band, then seed one Giddo and hand-drive it a tick at a time.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const clearBand = () => {
+        for (const s of FLYING_SLOT_INDICES) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      const slot = 63; // JS index; Scratch flying slot 64
+      // --- Phase A: an ACTIVE Giddo flies straight on its once-set velocity (no re-aim). ---
+      clearBand();
+      put('slot-type', slot, 8); // GIDDO_SPARIO_TYPE
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      put('slot-x', slot, 10 * 256); // interior row, clear of the cull edges
+      put('slot-y', slot, 12 * 256); // interior column
+      put('slot-dx', slot, 12); // a live once-aimed velocity the straight flyby must PRESERVE
+      put('slot-dy', slot, -8);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1); // Scratch 1-based
+      const dxSeq = [];
+      const dySeq = [];
+      for (let t = 0; t < 3; t += 1) {
+        callProc(vm, 'Stage', 'update giddo spario');
+        step(vm, 1);
+        dxSeq.push(readVar(vm, 'slot-dx')[slot]);
+        dySeq.push(readVar(vm, 'slot-dy')[slot]);
+      }
+      const flightX = readVar(vm, 'slot-x')[slot];
+      const flightY = readVar(vm, 'slot-y')[slot];
+      // --- Phase B: a HIT Giddo frees on its OWN short 8-frame burst clock. ---
+      clearBand();
+      put('slot-type', slot, 8);
+      put('slot-state', slot, 2); // SLOT_HIT: routes to `explode giddo spario tick`
+      put('slot-x', slot, 10 * 256);
+      put('slot-y', slot, 12 * 256);
+      put('slot-dx', slot, 4);
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      let freedTick = null;
+      for (let t = 1; t <= 12; t += 1) {
+        callProc(vm, 'Stage', 'update giddo spario');
+        step(vm, 1);
+        if (freedTick === null && readVar(vm, 'slot-type')[slot] === 0) freedTick = t;
+      }
+      return { dxSeq, dySeq, flightX, flightY, freedTick };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.dxSeq,
+        [12, 12, 12],
+        `a Giddo flies straight: its once-aimed scroll velocity is NEVER re-aimed; got dx sequence ${JSON.stringify(obs.dxSeq)}`,
+      );
+      assert.deepEqual(
+        obs.dySeq,
+        [-8, -8, -8],
+        `a Giddo's lateral velocity is likewise held constant (no re-aim); got dy sequence ${JSON.stringify(obs.dySeq)}`,
+      );
+      assert.equal(obs.flightX, 10 * 256 + 3 * 4 * 12, 'the Giddo advances by 4*dx per tick along the scroll axis');
+      assert.equal(obs.flightY, 12 * 256 + 3 * 4 * -8, 'the Giddo advances by 4*dy per tick laterally');
+      assert.ok(
+        obs.freedTick !== null && obs.freedTick <= 5,
+        `a struck Giddo frees on its OWN 8-frame burst (~4 ticks), well before the 20-frame shared burst (~10 ticks); freed at tick ${obs.freedTick}`,
+      );
+    },
+    // Empty `update giddo spario` so the ACTIVE slot never moves (flight displacement stays 0) and the HIT
+    // slot never advances its burst clock (never frees) → the displacement and free assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update giddo spario'),
+  },
+  {
+    key: 'brag-spario-accelerates-toward-craft',
+    behavior:
+      'A Brag Spario is an accelerating homer: every ACTIVE tick `update brag spario` nudges its velocity toward the craft by BRAG_SPARIO_ACCEL (4 raw units) on EACH axis — the scroll axis by the sign of (player row - slot row), the lateral axis by the sign of (player col - slot col) — with no clamp (handle_09_Brag_Spario 3092-3121). Seeded from rest with the craft ahead and to one side, |dx| and |dy| ramp 4,8,12,16 in lockstep — the sharpest contrast with the Giddo, which never re-aims.',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const slot = 63;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 9); // BRAG_SPARIO_TYPE
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      // Six cells behind and six cells to one side of the craft: both offsets stay POSITIVE across the run
+      // (the tiny per-tick displacement never overtakes the craft), so both axes accelerate in the + sign.
+      put('slot-x', slot, (pr - 6) * 256);
+      put('slot-y', slot, (pc - 6) * 256);
+      put('slot-dx', slot, 0); // seeded from REST: the homing must build the velocity itself
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const dxSeq = [];
+      const dySeq = [];
+      for (let t = 0; t < 4; t += 1) {
+        callProc(vm, 'Stage', 'update brag spario');
+        step(vm, 1);
+        dxSeq.push(readVar(vm, 'slot-dx')[slot]);
+        dySeq.push(readVar(vm, 'slot-dy')[slot]);
+      }
+      return { dxSeq, dySeq };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.dxSeq,
+        [4, 8, 12, 16],
+        `the Brag accelerates toward the craft on the scroll axis by 4/tick, unbounded; got dx sequence ${JSON.stringify(obs.dxSeq)}`,
+      );
+      assert.deepEqual(
+        obs.dySeq,
+        [4, 8, 12, 16],
+        `the Brag accelerates toward the craft on the lateral axis by 4/tick, unbounded; got dy sequence ${JSON.stringify(obs.dySeq)}`,
+      );
+    },
+    // Empty `update brag spario` so the velocity never ramps from rest → the acceleration sequences bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update brag spario'),
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
       'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',
