@@ -4,7 +4,10 @@
   expiring (AIR-12.standard), and the player craft dying from real aerial contact — a Toroid or an enemy
   bullet touching the craft (PLY-02.air-trigger). This retires the debug **D** (request respawn) and **G**
   (request terminal death) keyboard fixtures: death is now produced by live combat, and the death → respawn
-  / game-over decision (PLY-02.decision, built in slice 4) is driven by that real contact.
+  / game-over decision (PLY-02.decision, built in slice 4) is driven by that real contact. Slice 11 adds the
+  shared **radiating-spread emission** (AIR-12.radiating): a second way to launch a bullet from the same
+  pool, at a caller-chosen explicit direction on a faster velocity tier rather than aimed at the craft —
+  the mechanism the Brag Zakato fan and Garu Zakato ring (air.special-pairs) drive.
 - Derived behavior: When a type-0x0B Toroid commits its lateral swing it fires exactly one aimed bullet
   and never again — it allocates one idle bullet slot, places the bullet at its own position, and aims it
   at the craft's current cell on the generic aimed-bullet tier (2 px/frame). The bullet then flies straight
@@ -15,16 +18,18 @@
   terminal death check — gated on `player hit` = 1 **and** `invuln` = 0 — spends one craft, clears the hit
   flag, and runs the single player-dead transition; the death-complete handler then decides respawn vs
   game-over from the craft counter, exactly as before.
-- Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. The shooting Toroid
-  fires one aimed bullet at its swing trigger, once only (`src/xevious_main.68k` 3281–3286, 3323–3327);
-  aimed bullets travel at 2 px/frame from the angle tables (6290–6394), decoded in record
-  [023](023-aiming-and-slot-positions.md) and baked as the magnitude-32 tier. The craft-hit window is
-  `check_bullet_or_flying_hit_solvalou` ($1670, 2207–2219) — the same (bias, width) carry idiom as the
-  shot-vs-flying window, recorded in [player craft and weapons](../spec/player-craft-and-weapons.md)
-  (PLY-02, bullet/flying window) which owns the bullet rules; [aerial enemies](../spec/aerial-enemies.md)
-  (AIR-12) records the shared bullet behavior and the Toroid's single-shot rule; [core game
-  systems](../spec/core-game-systems.md) (SYS-03) records the enemy-shot-vs-player and air-enemy-vs-player
-  collision groups. No source text or media was copied.
+- Derived behavior (radiating emission): The radiating emitter fires one bullet from the firing object at a
+  direction the CALLER picks, not one aimed at the craft. It scans the same 19-slot pool for an idle bullet;
+  on success it copies the firing object's position into it and reads the velocity from the 48-magnitude tier
+  (3 px/frame — faster than the 2 px/frame aimed generic tier) at an explicit 5-bit angle index (0..31),
+  wrapping the index into range. Callers drive it in a loop, stepping the angle: the Garu Zakato detonation
+  walks 16 bullets two angle-steps apart to lay a full 360° ring, and the Brag Zakato shot walks 5 bullets
+  from a craft-relative base angle. The emitted bullet is an ordinary pool bullet from that point on — it
+  flies straight and culls off any edge exactly like an aimed one; only its launch direction and speed tier
+  differ. In the arcade these are a distinct object type (7, `handle_07_Garu_Zakato_Bullet`) whose handler is
+  simply "move" — the same straight motion the aimed bullet (type 6, re-aimed once at allocation, record
+  [026]) already has in this port, so the port needs no separate radiating motion, only the separate launch.
+- Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. The shooting Toroid fires one aimed bullet at its swing trigger, once only (`src/xevious_main.68k` 3281–3286, 3323–3327); aimed bullets travel at 2 px/frame from the angle tables (6290–6394), decoded in record [023](023-aiming-and-slot-positions.md) and baked as the magnitude-32 tier. The craft-hit window is `check_bullet_or_flying_hit_solvalou` ($1670, 2207–2219) — the same (bias, width) carry idiom as the shot-vs-flying window, recorded in [player craft and weapons](../spec/player-craft-and-weapons.md) (PLY-02, bullet/flying window) which owns the bullet rules; [aerial enemies](../spec/aerial-enemies.md) (AIR-12) records the shared bullet behavior and the Toroid's single-shot rule; [core game systems](../spec/core-game-systems.md) (SYS-03) records the enemy-shot-vs-player and air-enemy-vs-player collision groups. The radiating emitter mirrors the reference's radiating launch: `find_idle_and_init_radiating_bullet` (5021–5029) scans the bullet pool for an idle slot, then `init_radiating_bullet` (5045–5052) copies the firer's coordinates and reads the 48-magnitude tier at the caller's angle index via `cpy_dY_dX_to_obj` (5135–5144), stamping the arcade's straight bullet type 7; that 48-magnitude table is `angle_dX_dY_terrazi_torkan_tbl`, decoded in record [023](023-aiming-and-slot-positions.md) as the terrazi tier. No source text or media was copied.
 - Transfer class: Behavioral port and numeric constant (instruction-derived aim vector, collision window,
   and the fire-once / hit / death control flow; no source text or media copied).
 - Scratch interpretation: `update bullet` is a warp Stage proc, dispatched from the slot walk for each
@@ -35,7 +40,13 @@
   live consumer of the 19-slot bullet pool), and on success copies its own position into the allocated
   slot, resolves an aim to the craft's cell with `compute aim index`, and writes the bullet's velocity from
   `aim dx 32`/`aim dy 32`. The same `_craft_overlap_reporter` runs first in the active Toroid's own update,
-  so a Toroid on the craft's cell also raises `player hit`. The death check is the walk loop's terminal
+  so a Toroid on the craft's cell also raises `player hit`. The radiating emission is a second, warp Stage
+  proc `emit radiating bullet`: it calls the same `alloc bullet slot`, and on success copies the firing
+  slot's `slot x`/`slot y` into the allocated bullet and writes its velocity from `aim dx 48`/`aim dy 48`
+  (the 48 tier, not the 32 tier) indexed by `(radiating angle mod 32) + 1` — the caller's explicit
+  direction, with no `compute aim index` call. It stamps no distinct type: the allocator already marks the
+  slot a type-2 bullet, so the shared `update bullet` flies it straight. The Brag/Garu emitters (slice 11,
+  air.special-pairs) set `radiating angle` and call it in a loop. The death check is the walk loop's terminal
   statement: an `if (player hit = 1) and (invuln = 0)` that spends a craft, clears `player hit`, and calls
   the one transition proc; `invuln` is a dormant debug flag never set by game logic (the headless harness
   sets it to keep an agency-less craft alive for observation, and clears it to exercise real death). Two
@@ -52,7 +63,12 @@
   their per-clause negative fixtures in `tests/test_scratch_project.py`; the live scenarios
   `enemy-bullet-fires`, `death-respawn`, and `death-game-over` (each with a biting negative) and the
   harness invulnerability flag in `harness/lib/build.js` / `harness/lib/catalog.js`. The D and G key hats
-  are removed.
+  are removed. The radiating emission adds `install_emit_radiating_bullet` and the constants
+  `RADIATING_EMIT_PROCCODE` / `RADIATING_ANGLE_ID` in `tools/game_director.py`; the structural contract
+  `_air12_radiating_failures` (warp, allocates, 48-tier not 32, explicit caller angle not craft-aim, copies
+  the firing cell, gated on a successful alloc) with its per-clause negative fixtures; and the live scenario
+  `radiating-bullet-emits-at-explicit-angle` (two angles → two distinct 48-tier vectors; negative: the
+  emitter neutralized → no allocation) in `harness/lib/catalog.js`.
 - Acceptance criteria: A shooting Toroid drawing level with the craft allocates one aimed enemy bullet
   (harness `enemy-bullet-fires`, negative: `update toroid` neutralized → no allocation); a Toroid or bullet
   on the craft's cell runs death → respawn while craft remain and death → game-over on the last craft
@@ -61,7 +77,13 @@
   bullet updates raise `player hit`, and the invuln-gated death check spends a craft and transitions
   (`_air12_failures`, `_ply02_failures`, each clause corrupted bites); the D/G key hats are gone; two clean
   builds stay byte-identical and survive the build→import round-trip. The rendered bullet/craft collision
-  and the exact hit feel stay the operator playtest.
+  and the exact hit feel stay the operator playtest. For radiating emission: `emit radiating bullet`
+  allocates a fresh bullet and gives it the 48-tier velocity for the caller's explicit angle, two different
+  angles yield two different vectors, and the vector is the 48 tier not the 32 tier (harness
+  `radiating-bullet-emits-at-explicit-angle`, negative: the emitter neutralized → no allocation);
+  structurally the emitter is warp, allocates, uses the 48 tier with a caller angle and no craft-aim, copies
+  the firing cell, and gates every write on a successful alloc (`_air12_radiating_failures`, each clause
+  corrupted bites). The observable ring/fan in play arrives with the Garu/Brag emitters (air.special-pairs).
 - Fidelity status: **Live and playable — the enemy can now shoot back and the player can die in combat.**
   A shooting Toroid fires one aimed bullet; touching a Toroid or a bullet kills the craft, spends a life,
   and respawns or ends the game. The debug D/G fixtures are retired.
@@ -87,7 +109,15 @@
   the box degraded to the quadrant above-and-beside the craft, killing it whenever it crossed the row or
   column of a not-yet-fleeing Toroid (the operator playtest caught it). The fresh-per-compare build restores
   the single-cell box; `craft-collision-is-single-cell` asserts a Toroid one column or one row off does NOT
-  touch the craft so the regression cannot return.
+  touch the craft so the regression cannot return. (6) **Radiating bullets reuse the straight bullet motion
+  and the stand-in costume.** The arcade gives radiating bullets their own object type (7,
+  `handle_07_Garu_Zakato_Bullet`) whose per-frame behaviour is just "move" — identical to the port's already
+  straight-flying aimed bullet (the arcade's type 6 re-aims each frame; this port aims once at allocation and
+  then flies straight, deviation recorded above and in slice 8), so the two collapse into one `update bullet`
+  and radiating needs no distinct motion, only the distinct `emit radiating bullet` launch. As with the aimed
+  bullet, no dedicated radiating crop is added — it renders with the same stand-in enemy-bullet costume, and
+  the four-colour pulse remains deferred to a later art pass. The emitter itself is a shared mechanism; the
+  Garu ring and Brag fan that make it observable in play are built in air.special-pairs (same PR).
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

@@ -449,6 +449,11 @@
       "name": "player row",
       "scope": "Stage"
     },
+    "radiating-angle": {
+      "kind": "variable",
+      "name": "radiating angle",
+      "scope": "Stage"
+    },
     "rng-extend-flag": {
       "kind": "variable",
       "name": "rng extend",

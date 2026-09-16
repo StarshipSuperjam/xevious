@@ -973,6 +973,7 @@ class ScratchProjectTests(unittest.TestCase):
             "aim base",
             "aim fine",
             "aim index",
+            "radiating angle",
             "player row",
             "player col",
             "walk type",
@@ -4593,6 +4594,269 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air07_failures(project), label)
+
+    @staticmethod
+    def _air12_radiating_failures(project: dict) -> set:
+        """AIR-12 radiating-spread emission contract — violated labels. Pins the shared `emit radiating
+        bullet` mechanism (init_radiating_bullet 32C4 -> cpy_dY_dX_to_obj 3383) that the Brag Zakato fan
+        and Garu Zakato ring (slice 11 air.special-pairs) drive: allocate an idle enemy bullet from the
+        shared 19-slot pool, copy the FIRING slot's cell into it, and give it the 48-magnitude (3 px/frame)
+        velocity for a CALLER-SUPPLIED explicit direction (`radiating angle`, 0..31) — distinct from
+        `_fire_aimed_bullet`, which computes a craft-aimed index on the 32-magnitude (2 px/frame) generic
+        tier. Every placement write is gated on a successful allocation. The allocator stamps the slot an
+        ordinary BULLET_TYPE, so the emitted bullet then flies straight under the one shared bullet update
+        (the port folds the arcade's straight handle_07 into that update, 026) — this leaf is only the
+        EMISSION shape. The harness `radiating-bullet-emits-at-explicit-angle` drives it live (two angles ->
+        two distinct 48-tier vectors)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        body = _proc_body_blocks(stage, director.RADIATING_EMIT_PROCCODE)
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def walk(root_id):
+            # DFS over block refs from root_id; return (lists_read, vars_read) — data_itemoflist LIST
+            # fields and inline variable operands ([., [12, name, id], .]) anywhere in the subtree.
+            seen, frontier, lists, vars_ = set(), [root_id], set(), set()
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                if b["opcode"] == "data_itemoflist":
+                    lists.add(b["fields"]["LIST"][1])
+                for v in b.get("inputs", {}).values():
+                    if (
+                        isinstance(v, list)
+                        and len(v) >= 2
+                        and isinstance(v[1], list)
+                        and len(v[1]) >= 3
+                        and v[1][0] == 12
+                    ):
+                        vars_.add(v[1][2])
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return lists, vars_
+
+        def ancestor_if(node_id, pred):
+            cur = blocks.get(node_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    if pred(ref(parent["inputs"].get("CONDITION"))):
+                        return True
+                cur = parent
+            return False
+
+        def writes(list_id):
+            return [
+                b
+                for b in body
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == list_id
+            ]
+
+        def item_reads(write, want):
+            r = ref(write["inputs"].get("ITEM"))
+            return want in (walk(r)[0] if r else set())
+
+        # (1) the emitter exists and is warp (atomic) — a mid-emit yield could double-spend a bullet slot.
+        p = proto(director.RADIATING_EMIT_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("radiating-emit-proc-warp")
+
+        # (2) it allocates an idle bullet from the shared pool (the same allocator the aimed shooters use).
+        if not any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+            for b in body
+        ):
+            failures.add("radiating-emit-allocates")
+
+        dx_writes, dy_writes = writes(director.SLOT_DX_ID), writes(director.SLOT_DY_ID)
+        dx_lists, dx_vars = (walk(ref(dx_writes[0]["inputs"]["ITEM"])) if dx_writes else (set(), set()))
+        dy_lists, dy_vars = (walk(ref(dy_writes[0]["inputs"]["ITEM"])) if dy_writes else (set(), set()))
+        body_lists = {b["fields"]["LIST"][1] for b in body if b["opcode"] == "data_itemoflist"}
+        body_vars = set()
+        for b in body:
+            for v in b.get("inputs", {}).values():
+                if (
+                    isinstance(v, list)
+                    and len(v) >= 2
+                    and isinstance(v[1], list)
+                    and len(v[1]) >= 3
+                    and v[1][0] == 12
+                ):
+                    body_vars.add(v[1][2])
+
+        # (3) THE 48 TIER, NOT THE 32 TIER. `slot dx` reads `aim dx 48`, `slot dy` reads `aim dy 48`, and
+        # the body reads NEITHER generic-32 aim list — the discriminator from craft-aimed `_fire_aimed_bullet`.
+        if (
+            director.AIM_DX_48_ID not in dx_lists
+            or director.AIM_DY_48_ID not in dy_lists
+            or director.AIM_DX_32_ID in body_lists
+            or director.AIM_DY_32_ID in body_lists
+        ):
+            failures.add("radiating-emit-48-tier")
+
+        # (4) EXPLICIT CALLER ANGLE. Both velocity indices read the `radiating angle` variable, and the body
+        # NEITHER calls the craft-aim quantizer NOR reads its resolved `aim index` — so the direction is the
+        # caller's, not one computed toward the craft (the negative that separates radiating from aimed fire).
+        calls_compute = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.COMPUTE_AIM_PROCCODE
+            for b in body
+        )
+        if (
+            director.RADIATING_ANGLE_ID not in dx_vars
+            or director.RADIATING_ANGLE_ID not in dy_vars
+            or calls_compute
+            or director.AIM_INDEX_ID in body_vars
+        ):
+            failures.add("radiating-emit-explicit-angle")
+
+        # (5) the bullet spawns at the FIRING slot's cell — `slot x`/`slot y` writes copy that slot's own
+        # `slot x`/`slot y` (init_radiating_bullet's set_state_and_copy_obj_coords 32A5).
+        if not (
+            dx_writes
+            and writes(director.SLOT_X_ID)
+            and item_reads(writes(director.SLOT_X_ID)[0], director.SLOT_X_ID)
+            and writes(director.SLOT_Y_ID)
+            and item_reads(writes(director.SLOT_Y_ID)[0], director.SLOT_Y_ID)
+        ):
+            failures.add("radiating-emit-copies-firing-cell")
+
+        # (6) every placement is gated on a SUCCESSFUL allocation — the `slot dx` write sits under an
+        # ancestor `if` whose condition reads `bullet alloc result` (else a failed alloc would clobber slot 0).
+        if not (
+            dx_writes
+            and ancestor_if(
+                id_of[id(dx_writes[0])],
+                lambda c: director.BULLET_ALLOC_RESULT_ID in walk(c)[1],
+            )
+        ):
+            failures.add("radiating-emit-gated-on-alloc")
+
+        return failures
+
+    # roadmap-evidence: AIR-12 success  (test_radiating_emission_authoring_present — emitter warp, allocates from the shared pool, 48-tier not 32-tier velocity, explicit caller angle not craft-aim, copies the firing cell, every placement gated on a successful alloc)
+    # roadmap-evidence: AIR-12 failure  (test_radiating_emission_negative_fixtures — each contract clause corrupted bites)
+    def test_radiating_emission_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air12_radiating_failures(project))
+
+    def test_radiating_emission_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air12_radiating_failures(base))
+
+        def _body(p):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, director.RADIATING_EMIT_PROCCODE)
+
+        def _ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def unwarp(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.RADIATING_EMIT_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_alloc(p: dict) -> None:
+            # Rename the emitter's allocator call → nothing reserves a bullet slot. The allocates clause bites.
+            stage, body = _body(p)
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def use_32_tier(p: dict) -> None:
+            # Flip the `slot dx` velocity source from the 48 tier to the generic 32 tier → the bullet would
+            # fly at the slower aimed speed. The 48-tier clause bites.
+            stage, body = _body(p)
+            blocks = stage["blocks"]
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+                ):
+                    item = blocks.get(_ref(b["inputs"].get("ITEM")))
+                    if item is not None and item["opcode"] == "data_itemoflist" and item["fields"]["LIST"][1] == director.AIM_DX_48_ID:
+                        item["fields"]["LIST"] = ["aim dx 32", director.AIM_DX_32_ID]
+
+        def constant_angle(p: dict) -> None:
+            # Replace one velocity index's `radiating angle mod 32` input with a constant → that index no
+            # longer reads the caller's angle. The explicit-caller-angle clause bites (it requires BOTH).
+            stage, body = _body(p)
+            for b in body:
+                if b["opcode"] == "operator_mod" and (
+                    isinstance(b["inputs"].get("NUM1"), list)
+                    and isinstance(b["inputs"]["NUM1"][1], list)
+                    and len(b["inputs"]["NUM1"][1]) >= 3
+                    and b["inputs"]["NUM1"][1][2] == director.RADIATING_ANGLE_ID
+                ):
+                    b["inputs"]["NUM1"] = [1, [4, "1"]]
+                    break
+
+        def drop_position_copy(p: dict) -> None:
+            # Replace the `slot x` copy's ITEM with a constant → the bullet no longer spawns at the firing
+            # cell. The copies-firing-cell clause bites.
+            stage, body = _body(p)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+        def ungate_alloc(p: dict) -> None:
+            # Point the alloc-success guard's `> 0` test at a different variable → the placement is no longer
+            # gated on a successful allocation. The gated-on-alloc clause bites.
+            stage, body = _body(p)
+            for b in body:
+                if b["opcode"] == "operator_gt" and (
+                    isinstance(b["inputs"].get("OPERAND1"), list)
+                    and isinstance(b["inputs"]["OPERAND1"][1], list)
+                    and len(b["inputs"]["OPERAND1"][1]) >= 3
+                    and b["inputs"]["OPERAND1"][1][2] == director.BULLET_ALLOC_RESULT_ID
+                ):
+                    b["inputs"]["OPERAND1"] = [3, [12, "slot index", director.SLOT_INDEX_ID], [10, ""]]
+
+        cases = [
+            ("radiating-emit-proc-warp", unwarp),
+            ("radiating-emit-allocates", drop_alloc),
+            ("radiating-emit-48-tier", use_32_tier),
+            ("radiating-emit-explicit-angle", constant_angle),
+            ("radiating-emit-copies-firing-cell", drop_position_copy),
+            ("radiating-emit-gated-on-alloc", ungate_alloc),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air12_radiating_failures(project), label)
 
     # ------------------------------------------------------------------ slice-9 ground guards
     # The settling harness advances whole ticks and drives play to rest, so a family's per-tick,
@@ -9606,7 +9870,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "a4a456d6e9bc5460756cc66bdd118ab66db6f4412db39ea9f9d4c8e1697d3b25",
+            "b2b0c389e8baecd72524ea9f12549db09a637c15074782b8fdc97be14c2a3d88",
             build_hash,
         )
 

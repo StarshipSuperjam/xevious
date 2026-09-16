@@ -1459,6 +1459,101 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zakato'),
   },
   {
+    key: 'radiating-bullet-emits-at-explicit-angle',
+    behavior:
+      'The shared radiating emitter (emit radiating bullet) allocates a fresh enemy bullet from the firing slot and gives it the 48-magnitude (3 px/frame) velocity for the CALLER-CHOSEN direction index — NOT one aimed at the craft and NOT the 2 px/frame generic aimed tier — so the Brag Zakato fan and Garu Zakato ring can lay bullets on explicit angles (init_radiating_bullet 32C4 -> cpy_dY_dX_to_obj 3383, angle_dX_dY_terrazi_torkan_tbl). Two emissions at different angles land on their two distinct table vectors, and each is a live BULLET_TYPE slot the ordinary bullet sweep then flies straight.',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze so callProc == one deterministic invocation. Clear BOTH the flying band and the whole
+      // 19-slot bullet band (JS index 39..57 == Scratch bullet slots 40..58) so allocations are
+      // predictable and no stray live bullet confounds the reads.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      for (let js = 39; js <= 57; js += 1) {
+        put('slot-type', js, 0);
+        put('slot-state', js, 0);
+      }
+      const slot = 63; // JS index; Scratch flying slot 64
+      // Firing cell is an INTERIOR position deliberately NOT aligned with the craft — the whole point
+      // of the radiating mechanism is that the direction is the caller's, independent of the craft, so
+      // a craft-aim would land on a different vector. `emit radiating bullet` reads only this position.
+      const fx = 12 * 256;
+      const fy = 9 * 256;
+      put('slot-type', slot, 20);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, fx);
+      put('slot-y', slot, fy);
+      writeVar(vm, 'slot-index', slot + 1);
+      const aimDx48 = readVar(vm, 'aim-dx-48');
+      const aimDy48 = readVar(vm, 'aim-dy-48');
+      const aimDx32 = readVar(vm, 'aim-dx-32');
+      const emit = (angle) => {
+        writeVar(vm, 'radiating-angle', angle);
+        writeVar(vm, 'bullet-alloc-result', 0);
+        callProc(vm, 'Stage', 'emit radiating bullet');
+        step(vm, 1);
+        const b = readVar(vm, 'bullet-alloc-result');
+        const js = b - 1; // Scratch 1-based alloc index -> JS array index
+        return {
+          b,
+          dx: readVar(vm, 'slot-dx')[js],
+          dy: readVar(vm, 'slot-dy')[js],
+          x: readVar(vm, 'slot-x')[js],
+          y: readVar(vm, 'slot-y')[js],
+          type: readVar(vm, 'slot-type')[js],
+          state: readVar(vm, 'slot-state')[js],
+        };
+      };
+      const A = 4; // ter48 (dx,dy) = (34,34); generic32 = (23,23) — a biting tier difference
+      const B = 12; // ter48 (dx,dy) = (-34,34) — a different explicit direction
+      const a = emit(A);
+      const b = emit(B);
+      return {
+        a,
+        b,
+        expAdx: aimDx48[A],
+        expAdy: aimDy48[A],
+        expBdx: aimDx48[B],
+        expBdy: aimDy48[B],
+        gen32dxA: aimDx32[A],
+        fx,
+        fy,
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.a.b > 0, 'the emitter allocates a bullet slot for the first emission');
+      assert.ok(obs.b.b > 0, 'the emitter allocates a second bullet slot for the second emission');
+      assert.notEqual(obs.a.b, obs.b.b, 'two emissions occupy two DIFFERENT bullet slots (fresh alloc each)');
+      assert.equal(obs.a.dx, obs.expAdx, 'emission A gets the 48-tier dX for its explicit angle');
+      assert.equal(obs.a.dy, obs.expAdy, 'emission A gets the 48-tier dY for its explicit angle');
+      assert.equal(obs.b.dx, obs.expBdx, 'emission B gets the 48-tier dX for ITS explicit angle');
+      assert.equal(obs.b.dy, obs.expBdy, 'emission B gets the 48-tier dY for ITS explicit angle');
+      assert.ok(
+        obs.a.dx !== obs.b.dx || obs.a.dy !== obs.b.dy,
+        'two different angles produce two different velocity vectors (the caller angle is honored, not hardcoded)',
+      );
+      assert.notEqual(
+        obs.a.dx,
+        obs.gen32dxA,
+        'the radiating bullet uses the faster 48 (3 px/f) tier, not the generic 32 (2 px/f) aimed tier',
+      );
+      assert.equal(obs.a.x, obs.fx, "the bullet spawns at the firing slot's scroll-axis cell (x copied)");
+      assert.equal(obs.a.y, obs.fy, "the bullet spawns at the firing slot's lateral cell (y copied)");
+      assert.equal(obs.a.type, 2, 'the emitted slot is stamped BULLET_TYPE so the bullet sweep advances it');
+      assert.equal(obs.a.state, 1, 'the emitted bullet is ACTIVE');
+    },
+    // Empty `emit radiating bullet` so nothing is ever allocated → `bullet alloc result` stays 0,
+    // `b - 1 = -1` reads undefined velocities and the alloc/vector assertions all bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'emit radiating bullet'),
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
       'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',

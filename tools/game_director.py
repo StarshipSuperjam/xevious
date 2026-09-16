@@ -655,6 +655,17 @@ AIM_FINE_ID = "aim-fine"  # (base + 4) mod 256, before the >>3 & 0x1f
 AIM_INDEX_ID = "aim-index"  # resolved 1-based index into the 32-entry aim lists
 COMPUTE_AIM_PROCCODE = "compute aim index"
 
+# AIR-12 radiating-spread emission: the shared mechanism that fires ONE non-homing bullet at an
+# EXPLICIT direction the caller chooses, rather than one aimed at the craft. The angle is a 5-bit
+# index (0..31) into the 48-magnitude tier (`angle_dX_dY_terrazi_torkan_tbl`, 3 px/frame), matching
+# the reference's `init_radiating_bullet` ($32C4 -> `cpy_dY_dX_to_obj` $3383). The Brag Zakato fan
+# and Garu Zakato ring (slice 11, air.special-pairs) drive this in a loop, stepping the angle. The
+# emitted bullet is an ordinary BULLET_TYPE slot that flies straight via `install_update_bullet` --
+# the port folds the arcade's straight `handle_07_Garu_Zakato_Bullet` into the single non-homing
+# bullet update (recorded in 026), so radiating bullets need no distinct motion, only this emitter.
+RADIATING_ANGLE_ID = "radiating-angle"  # caller-supplied 5-bit direction (0..31); index = angle+1
+RADIATING_EMIT_PROCCODE = "emit radiating bullet"
+
 # The craft's live position, read once per walk (via sensing_of on the solvalou sprite) and mapped
 # back to arcade 8-px row/column, so every slot's aim/collision test uses one cached pair.
 PLAYER_ROW_ID = "player-row"  # scroll axis
@@ -3177,6 +3188,38 @@ def _fire_aimed_bullet(blocks: Blocks) -> list[str]:
     return [blocks.call_proc(ALLOC_BULLET_PROCCODE, warp=True), placed]
 
 
+def install_emit_radiating_bullet(blocks: Blocks) -> None:
+    # AIR-12: emit ONE non-homing bullet from the slot at `slot index`, aimed at the EXPLICIT
+    # direction `radiating angle` (0..31) rather than at the craft -- the shared radiating-spread
+    # mechanism the Brag Zakato fan and Garu Zakato ring consume (`init_radiating_bullet` $32C4).
+    # Allocate an idle bullet, copy the firing slot's cell into it, and set its velocity from the
+    # 48-magnitude tier (`angle_dX_dY_terrazi_torkan_tbl`, 3 px/frame -- FASTER than the 2 px/frame
+    # aimed generic bullet) at the given angle. The port lists are 1-based, so the table index is
+    # `(radiating angle mod 32) + 1` -- the reference's `& 0x1f` 5-bit wrap made explicit here so the
+    # emitter is self-contained (its ring/fan callers step the raw angle and this owns the wrap).
+    # The bullet then flies straight under `install_update_bullet` like every other enemy bullet; the
+    # arcade's separate straight `handle_07` handler collapses into that one update in this port (026).
+    definition = _install_warp_proc(blocks, RADIATING_EMIT_PROCCODE)
+    bindex = lambda: variable("bullet alloc result", BULLET_ALLOC_RESULT_ID)
+    angle_index = lambda: blocks.op_add(
+        blocks.op_mod(variable("radiating angle", RADIATING_ANGLE_ID), number(32)), number(1)
+    )
+    got = blocks.op_gt(variable("bullet alloc result", BULLET_ALLOC_RESULT_ID), number(0))
+    placed = blocks.if_reporter(
+        got,
+        [
+            blocks.list_replace("slot x", SLOT_X_ID, bindex(), _cur_item(blocks, "slot x", SLOT_X_ID)),
+            blocks.list_replace("slot y", SLOT_Y_ID, bindex(), _cur_item(blocks, "slot y", SLOT_Y_ID)),
+            blocks.list_replace("slot dx", SLOT_DX_ID, bindex(), blocks.list_item("aim dx 48", AIM_DX_48_ID, angle_index())),
+            blocks.list_replace("slot dy", SLOT_DY_ID, bindex(), blocks.list_item("aim dy 48", AIM_DY_48_ID, angle_index())),
+            blocks.list_replace("slot timer", SLOT_TIMER_ID, bindex(), number(0)),
+            blocks.list_replace("slot code", SLOT_CODE_ID, bindex(), number(BULLET_INIT_CODE)),
+            blocks.list_replace("slot flag", SLOT_FLAG_ID, bindex(), number(0)),
+        ],
+    )
+    blocks.chain(definition, [blocks.call_proc(ALLOC_BULLET_PROCCODE, warp=True), placed])
+
+
 def install_update_toroid(blocks: Blocks) -> None:
     # AIR-01: advance the Toroid at `slot index` by one tick. Before its swing trigger it approaches
     # on its aimed velocity; when nearly level with the craft laterally (offset in [-2,1]) it commits
@@ -5087,6 +5130,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_check_bonus_life(blocks)
     install_resolve_hit(blocks)
     install_alloc_bullet_slot(blocks)
+    install_emit_radiating_bullet(blocks)
 
     flag = blocks.flag()
     blocks.chain(
@@ -7629,6 +7673,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_BASE_ID,
         AIM_FINE_ID,
         AIM_INDEX_ID,
+        RADIATING_ANGLE_ID,
         PLAYER_ROW_ID,
         PLAYER_COL_ID,
         SPAWN_CURSOR_ID,
@@ -7723,6 +7768,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_BASE_ID: ["aim base", 0],
         AIM_FINE_ID: ["aim fine", 0],
         AIM_INDEX_ID: ["aim index", 0],
+        # AIR-12 radiating-spread emission: the caller-supplied explicit direction (0..31) the shared
+        # `emit radiating bullet` reads; transient, default 0 (set by the ring/fan emitters, slice 11).
+        RADIATING_ANGLE_ID: ["radiating angle", 0],
         PLAYER_ROW_ID: ["player row", 0],
         PLAYER_COL_ID: ["player col", 0],
         SPAWN_CURSOR_ID: ["spawn cursor", 0],
