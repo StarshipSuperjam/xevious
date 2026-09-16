@@ -24,6 +24,11 @@
       "name": "aim dx 48",
       "scope": "Stage"
     },
+    "aim-dx-64": {
+      "kind": "list",
+      "name": "aim dx 64",
+      "scope": "Stage"
+    },
     "aim-dx-diff": {
       "kind": "variable",
       "name": "aim dx diff",
@@ -42,6 +47,11 @@
     "aim-dy-48": {
       "kind": "list",
       "name": "aim dy 48",
+      "scope": "Stage"
+    },
+    "aim-dy-64": {
+      "kind": "list",
+      "name": "aim dy 64",
       "scope": "Stage"
     },
     "aim-dy-diff": {
@@ -168,6 +178,11 @@
       "kind": "variable",
       "name": "clone slot",
       "scope": "blaster"
+    },
+    "brag-spario-clone-slot": {
+      "kind": "variable",
+      "name": "brag spario clone slot",
+      "scope": "brag-spario"
     },
     "bullet-alloc-result": {
       "kind": "variable",
@@ -369,6 +384,31 @@
       "name": "garu clone slot",
       "scope": "garu"
     },
+    "garu-det-slot": {
+      "kind": "variable",
+      "name": "garu det slot",
+      "scope": "Stage"
+    },
+    "garu-det-x": {
+      "kind": "variable",
+      "name": "garu det x",
+      "scope": "Stage"
+    },
+    "garu-det-y": {
+      "kind": "variable",
+      "name": "garu det y",
+      "scope": "Stage"
+    },
+    "garu-zakato-clone-slot": {
+      "kind": "variable",
+      "name": "garu zakato clone slot",
+      "scope": "garu-zakato"
+    },
+    "giddo-spario-clone-slot": {
+      "kind": "variable",
+      "name": "giddo spario clone slot",
+      "scope": "giddo-spario"
+    },
     "ground-stop-firing-row": {
       "kind": "variable",
       "name": "ground stop firing row",
@@ -447,6 +487,11 @@
     "player-row": {
       "kind": "variable",
       "name": "player row",
+      "scope": "Stage"
+    },
+    "radiating-angle": {
+      "kind": "variable",
+      "name": "radiating angle",
       "scope": "Stage"
     },
     "rng-extend-flag": {
@@ -623,6 +668,11 @@
       "kind": "variable",
       "name": "bomb in flight",
       "scope": "Stage"
+    },
+    "zakato-clone-slot": {
+      "kind": "variable",
+      "name": "zakato clone slot",
+      "scope": "zakato"
     },
     "zoshi-clone-slot": {
       "kind": "variable",

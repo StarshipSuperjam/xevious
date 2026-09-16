@@ -471,7 +471,10 @@ export const SCENARIOS = [
       // one pump) can be stepped over — assert the robust fact instead: each family mask, the
       // ground-stop-firing row, and Andor Genesis (first scheduled in area 4) are SEEN set to a
       // non-zero scheduled value. (The FIRING that consumes them is the enemy slices'.) The window is
-      // long enough to cross into area 4 so all nine DIF-03 targets are actually exercised.
+      // long enough to cross into area 4 so all nine DIF-03 targets are actually exercised — and is held
+      // generously wide (area 4 is normally reached ~frame 34 and each mask, once scheduled, PERSISTS for
+      // ~120 frames) so that scratch-vm execution jitter in area-progression timing (which surfaced as an
+      // intermittent CI miss of the persistent Andor mask at the old 130-frame budget) cannot step past it.
       let logramSet = false;
       let otherMaskSet = false;
       let andorSet = false;
@@ -484,7 +487,7 @@ export const SCENARIOS = [
         'fire-mask-boza-logram',
         'fire-mask-domogram',
       ];
-      for (let i = 0; i < 130; i += 1) {
+      for (let i = 0; i < 260; i += 1) {
         step(vm, 1);
         if (readVar(vm, 'fire-mask-logram') > 0) logramSet = true;
         if (readVar(vm, 'fire-mask-andor-genesis') > 0) andorSet = true;
@@ -1328,9 +1331,566 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update jara'),
   },
   {
+    key: 'zakato-teleports-in-then-commits-active',
+    behavior:
+      'A Zakato teleports in HELD IN PLACE and not yet hittable (state SLOT_TELEPORT, dx=dy=0) while its ~20-frame sparkle plays; when the sparkle clock completes `update zakato` flips it to the hittable SLOT_ACTIVE and stamps its movement (an aimed variant gets a non-zero velocity toward the craft) — the arcade zakato_teleport -> zakato_NN_main fall-through (3961 -> 3733)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk so one `update zakato` call is exactly one tick (a settling pump would run the
+      // update ~220x and race the seeded slot straight through active/self-destruct to freed; see the
+      // harness pacing + live-contamination notes). Clear the flying band, seed one CONTINUOUS (0x15,
+      // aimed) Zakato mid-teleport at an INTERIOR row (not the top edge — the commit tick immediately runs
+      // the active move+cull, and a slot at row 0 would cull before the ACTIVE state could be read) and
+      // well OUTSIDE its lateral proximity band (so on commit it moves rather than firing), then hand-drive
+      // the update a tick at a time.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const slot = 63;
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 21); // cont (0x15): aims at the craft on commit → observable non-zero velocity
+      put('slot-state', slot, 4); // SLOT_TELEPORT: indestructible, holding in place
+      put('slot-x', slot, 10 * 256); // interior row, clear of the top/bottom cull edges
+      put('slot-y', slot, (pc - 8) * 256); // 8 columns aside: an on-field column outside the [-4,3] band (so
+      // no fire on commit) yet not off the left edge (so the commit-tick active move does not cull it)
+      put('slot-dx', slot, 0);
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1); // Scratch 1-based
+      const states = [];
+      let teleportTicks = 0;
+      let committedDx = null;
+      let committedDy = null;
+      for (let t = 0; t < 15; t += 1) {
+        callProc(vm, 'Stage', 'update zakato');
+        step(vm, 1);
+        const st = readVar(vm, 'slot-state')[slot];
+        states.push(st);
+        if (st === 4) teleportTicks += 1;
+        if (st === 1) {
+          committedDx = readVar(vm, 'slot-dx')[slot];
+          committedDy = readVar(vm, 'slot-dy')[slot];
+          break;
+        }
+      }
+      return { states, teleportTicks, committedDx, committedDy };
+    },
+    assert(obs) {
+      assert.ok(obs.teleportTicks >= 1, 'the Zakato holds in SLOT_TELEPORT while the sparkle plays (the indestructible teleport-in phase)');
+      assert.ok(obs.states.includes(1), 'the teleport commits to the hittable SLOT_ACTIVE when the sparkle clock completes');
+      assert.ok(
+        obs.committedDx !== 0 || obs.committedDy !== 0,
+        `a committed aimed Zakato stamps a non-zero velocity toward the craft; got dx=${obs.committedDx}, dy=${obs.committedDy}`,
+      );
+    },
+    // Empty `update zakato` so the sparkle clock never advances → the slot stays SLOT_TELEPORT forever and
+    // never commits to ACTIVE → the `states includes 1` assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zakato'),
+  },
+  {
+    key: 'zakato-fires-once-then-self-destructs',
+    behavior:
+      'An ACTIVE fused Zakato whose shot fuse has elapsed fires EXACTLY ONE aimed bullet (via the allocator) then flips ITSELF to the benign SLOT_SELF_EXPLODE with its velocity zeroed, plays out its own ~20-frame burst and frees the slot awarding NOTHING — the arcade zakato_shoot -> zakato_explode_and_remove one-shot suicide (3761 -> 3766/3926)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk (one call == one tick). Seed one fast (0x14, fused) Zakato ACTIVE off the craft
+      // cell with its fuse one tick from elapsing, then hand-drive the update. On the first tick the fuse
+      // decrements to <= 0, so it fires one aimed bullet and self-destructs; subsequent ticks play out the
+      // burst clock and free the slot. Scoring is structurally guarded (zakato-self-destruct-no-score); the
+      // score-unchanged check here is a runtime backstop against a stray award on the suicide path.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const slot = 63;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 20); // fast (0x14): fires on the fuse, not on Y-proximity
+      put('slot-state', slot, 1); // SLOT_ACTIVE, hittable and moving
+      put('slot-x', slot, (pr - 6) * 256); // off the craft cell so no craft-collision confounds the read
+      put('slot-y', slot, (pc - 8) * 256);
+      put('slot-dx', slot, 8); // a live velocity the self-destruct must zero
+      put('slot-dy', slot, 8);
+      put('slot-fire-timer', slot, 2); // decrements 2/tick → 0 this tick → the fuse elapses and it fires
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const score0 = readVar(vm, 'eco-score');
+      writeVar(vm, 'bullet-alloc-result', 0);
+      callProc(vm, 'Stage', 'update zakato');
+      step(vm, 1);
+      const afterFire = {
+        fired: readVar(vm, 'bullet-alloc-result') > 0,
+        state: readVar(vm, 'slot-state')[slot],
+        dx: readVar(vm, 'slot-dx')[slot],
+        dy: readVar(vm, 'slot-dy')[slot],
+      };
+      // Play out the self-destruct burst; it frees on its own 20-frame clock (2/tick, ~10 ticks).
+      for (let t = 0; t < 14; t += 1) {
+        callProc(vm, 'Stage', 'update zakato');
+        step(vm, 1);
+      }
+      return {
+        ...afterFire,
+        freedType: readVar(vm, 'slot-type')[slot],
+        freedState: readVar(vm, 'slot-state')[slot],
+        score0,
+        score1: readVar(vm, 'eco-score'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'a fused Zakato at fuse<=0 allocates exactly one aimed bullet');
+      assert.equal(obs.state, 5, 'having fired, the Zakato flips ITSELF to the benign SLOT_SELF_EXPLODE');
+      assert.equal(obs.dx, 0, 'the self-destructing Zakato zeroes its scroll-axis velocity');
+      assert.equal(obs.dy, 0, 'the self-destructing Zakato zeroes its lateral velocity');
+      assert.equal(obs.freedType, 0, 'the self-destruct burst frees the slot (type cleared) when its clock completes');
+      assert.equal(obs.freedState, 0, 'the freed slot state is cleared so it can be reused');
+      assert.equal(obs.score1, obs.score0, 'a Zakato that self-destructs after firing awards NOTHING');
+    },
+    // Empty `update zakato` so the fuse never elapses and it never fires → `bullet alloc result` stays 0
+    // and the state never leaves ACTIVE → the fired/state assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zakato'),
+  },
+  {
+    key: 'radiating-bullet-emits-at-explicit-angle',
+    behavior:
+      'The shared radiating emitter (emit radiating bullet) allocates a fresh enemy bullet from the firing slot and gives it the 48-magnitude (3 px/frame) velocity for the CALLER-CHOSEN direction index — NOT one aimed at the craft and NOT the 2 px/frame generic aimed tier — so the Brag Zakato fan and Garu Zakato ring can lay bullets on explicit angles (init_radiating_bullet 32C4 -> cpy_dY_dX_to_obj 3383, angle_dX_dY_terrazi_torkan_tbl). Two emissions at different angles land on their two distinct table vectors, and each is a live BULLET_TYPE slot the ordinary bullet sweep then flies straight.',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze so callProc == one deterministic invocation. Clear BOTH the flying band and the whole
+      // 19-slot bullet band (JS index 39..57 == Scratch bullet slots 40..58) so allocations are
+      // predictable and no stray live bullet confounds the reads.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      for (let js = 39; js <= 57; js += 1) {
+        put('slot-type', js, 0);
+        put('slot-state', js, 0);
+      }
+      const slot = 63; // JS index; Scratch flying slot 64
+      // Firing cell is an INTERIOR position deliberately NOT aligned with the craft — the whole point
+      // of the radiating mechanism is that the direction is the caller's, independent of the craft, so
+      // a craft-aim would land on a different vector. `emit radiating bullet` reads only this position.
+      const fx = 12 * 256;
+      const fy = 9 * 256;
+      put('slot-type', slot, 20);
+      put('slot-state', slot, 1);
+      put('slot-x', slot, fx);
+      put('slot-y', slot, fy);
+      writeVar(vm, 'slot-index', slot + 1);
+      const aimDx48 = readVar(vm, 'aim-dx-48');
+      const aimDy48 = readVar(vm, 'aim-dy-48');
+      const aimDx32 = readVar(vm, 'aim-dx-32');
+      const emit = (angle) => {
+        writeVar(vm, 'radiating-angle', angle);
+        writeVar(vm, 'bullet-alloc-result', 0);
+        callProc(vm, 'Stage', 'emit radiating bullet');
+        step(vm, 1);
+        const b = readVar(vm, 'bullet-alloc-result');
+        const js = b - 1; // Scratch 1-based alloc index -> JS array index
+        return {
+          b,
+          dx: readVar(vm, 'slot-dx')[js],
+          dy: readVar(vm, 'slot-dy')[js],
+          x: readVar(vm, 'slot-x')[js],
+          y: readVar(vm, 'slot-y')[js],
+          type: readVar(vm, 'slot-type')[js],
+          state: readVar(vm, 'slot-state')[js],
+        };
+      };
+      const A = 4; // ter48 (dx,dy) = (34,34); generic32 = (23,23) — a biting tier difference
+      const B = 12; // ter48 (dx,dy) = (-34,34) — a different explicit direction
+      const a = emit(A);
+      const b = emit(B);
+      return {
+        a,
+        b,
+        expAdx: aimDx48[A],
+        expAdy: aimDy48[A],
+        expBdx: aimDx48[B],
+        expBdy: aimDy48[B],
+        gen32dxA: aimDx32[A],
+        fx,
+        fy,
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.a.b > 0, 'the emitter allocates a bullet slot for the first emission');
+      assert.ok(obs.b.b > 0, 'the emitter allocates a second bullet slot for the second emission');
+      assert.notEqual(obs.a.b, obs.b.b, 'two emissions occupy two DIFFERENT bullet slots (fresh alloc each)');
+      assert.equal(obs.a.dx, obs.expAdx, 'emission A gets the 48-tier dX for its explicit angle');
+      assert.equal(obs.a.dy, obs.expAdy, 'emission A gets the 48-tier dY for its explicit angle');
+      assert.equal(obs.b.dx, obs.expBdx, 'emission B gets the 48-tier dX for ITS explicit angle');
+      assert.equal(obs.b.dy, obs.expBdy, 'emission B gets the 48-tier dY for ITS explicit angle');
+      assert.ok(
+        obs.a.dx !== obs.b.dx || obs.a.dy !== obs.b.dy,
+        'two different angles produce two different velocity vectors (the caller angle is honored, not hardcoded)',
+      );
+      assert.notEqual(
+        obs.a.dx,
+        obs.gen32dxA,
+        'the radiating bullet uses the faster 48 (3 px/f) tier, not the generic 32 (2 px/f) aimed tier',
+      );
+      assert.equal(obs.a.x, obs.fx, "the bullet spawns at the firing slot's scroll-axis cell (x copied)");
+      assert.equal(obs.a.y, obs.fy, "the bullet spawns at the firing slot's lateral cell (y copied)");
+      assert.equal(obs.a.type, 2, 'the emitted slot is stamped BULLET_TYPE so the bullet sweep advances it');
+      assert.equal(obs.a.state, 1, 'the emitted bullet is ACTIVE');
+    },
+    // Empty `emit radiating bullet` so nothing is ever allocated → `bullet alloc result` stays 0,
+    // `b - 1 = -1` reads undefined velocities and the alloc/vector assertions all bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'emit radiating bullet'),
+  },
+  {
+    key: 'giddo-spario-flies-straight-and-self-bursts-short',
+    behavior:
+      'A Giddo Spario is aimed ONCE at spawn and then flies dead straight — `update giddo spario` never re-aims, so an ACTIVE Giddo keeps the exact velocity it was seeded with while it advances by 4*velocity/tick (handle_08_Giddo_Spario move_object_dX_dY 5238). On death it uses its OWN short burst, not the shared one: a HIT Giddo frees its slot on the 8-frame giddo_spario_hit clock (~4 ticks at 2/tick), far sooner than the 20-frame shared flying burst (~10 ticks) — the single documented exception, giddo_spario_hit 5241-5253.',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk so one callProc == one tick (a settling pump would run the update ~220x and race
+      // the slot off-field). Clear the flying band, then seed one Giddo and hand-drive it a tick at a time.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const clearBand = () => {
+        for (const s of FLYING_SLOT_INDICES) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      const slot = 63; // JS index; Scratch flying slot 64
+      // --- Phase A: an ACTIVE Giddo flies straight on its once-set velocity (no re-aim). ---
+      clearBand();
+      put('slot-type', slot, 8); // GIDDO_SPARIO_TYPE
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      put('slot-x', slot, 10 * 256); // interior row, clear of the cull edges
+      put('slot-y', slot, 12 * 256); // interior column
+      put('slot-dx', slot, 12); // a live once-aimed velocity the straight flyby must PRESERVE
+      put('slot-dy', slot, -8);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1); // Scratch 1-based
+      const dxSeq = [];
+      const dySeq = [];
+      for (let t = 0; t < 3; t += 1) {
+        callProc(vm, 'Stage', 'update giddo spario');
+        step(vm, 1);
+        dxSeq.push(readVar(vm, 'slot-dx')[slot]);
+        dySeq.push(readVar(vm, 'slot-dy')[slot]);
+      }
+      const flightX = readVar(vm, 'slot-x')[slot];
+      const flightY = readVar(vm, 'slot-y')[slot];
+      // --- Phase B: a HIT Giddo frees on its OWN short 8-frame burst clock. ---
+      clearBand();
+      put('slot-type', slot, 8);
+      put('slot-state', slot, 2); // SLOT_HIT: routes to `explode giddo spario tick`
+      put('slot-x', slot, 10 * 256);
+      put('slot-y', slot, 12 * 256);
+      put('slot-dx', slot, 4);
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      let freedTick = null;
+      for (let t = 1; t <= 12; t += 1) {
+        callProc(vm, 'Stage', 'update giddo spario');
+        step(vm, 1);
+        if (freedTick === null && readVar(vm, 'slot-type')[slot] === 0) freedTick = t;
+      }
+      return { dxSeq, dySeq, flightX, flightY, freedTick };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.dxSeq,
+        [12, 12, 12],
+        `a Giddo flies straight: its once-aimed scroll velocity is NEVER re-aimed; got dx sequence ${JSON.stringify(obs.dxSeq)}`,
+      );
+      assert.deepEqual(
+        obs.dySeq,
+        [-8, -8, -8],
+        `a Giddo's lateral velocity is likewise held constant (no re-aim); got dy sequence ${JSON.stringify(obs.dySeq)}`,
+      );
+      assert.equal(obs.flightX, 10 * 256 + 3 * 4 * 12, 'the Giddo advances by 4*dx per tick along the scroll axis');
+      assert.equal(obs.flightY, 12 * 256 + 3 * 4 * -8, 'the Giddo advances by 4*dy per tick laterally');
+      assert.ok(
+        obs.freedTick !== null && obs.freedTick <= 5,
+        `a struck Giddo frees on its OWN 8-frame burst (~4 ticks), well before the 20-frame shared burst (~10 ticks); freed at tick ${obs.freedTick}`,
+      );
+    },
+    // Empty `update giddo spario` so the ACTIVE slot never moves (flight displacement stays 0) and the HIT
+    // slot never advances its burst clock (never frees) → the displacement and free assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update giddo spario'),
+  },
+  {
+    key: 'brag-spario-accelerates-toward-craft',
+    behavior:
+      'A Brag Spario is an accelerating homer: every ACTIVE tick `update brag spario` nudges its velocity toward the craft by BRAG_SPARIO_ACCEL (4 raw units) on EACH axis — the scroll axis by the sign of (player row - slot row), the lateral axis by the sign of (player col - slot col) — with no clamp (handle_09_Brag_Spario 3092-3121). Seeded from rest with the craft ahead and to one side, |dx| and |dy| ramp 4,8,12,16 in lockstep — the sharpest contrast with the Giddo, which never re-aims.',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const slot = 63;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 9); // BRAG_SPARIO_TYPE
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      // Six cells behind and six cells to one side of the craft: both offsets stay POSITIVE across the run
+      // (the tiny per-tick displacement never overtakes the craft), so both axes accelerate in the + sign.
+      put('slot-x', slot, (pr - 6) * 256);
+      put('slot-y', slot, (pc - 6) * 256);
+      put('slot-dx', slot, 0); // seeded from REST: the homing must build the velocity itself
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const dxSeq = [];
+      const dySeq = [];
+      for (let t = 0; t < 4; t += 1) {
+        callProc(vm, 'Stage', 'update brag spario');
+        step(vm, 1);
+        dxSeq.push(readVar(vm, 'slot-dx')[slot]);
+        dySeq.push(readVar(vm, 'slot-dy')[slot]);
+      }
+      return { dxSeq, dySeq };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.dxSeq,
+        [4, 8, 12, 16],
+        `the Brag accelerates toward the craft on the scroll axis by 4/tick, unbounded; got dx sequence ${JSON.stringify(obs.dxSeq)}`,
+      );
+      assert.deepEqual(
+        obs.dySeq,
+        [4, 8, 12, 16],
+        `the Brag accelerates toward the craft on the lateral axis by 4/tick, unbounded; got dy sequence ${JSON.stringify(obs.dySeq)}`,
+      );
+    },
+    // Empty `update brag spario` so the velocity never ramps from rest → the acceleration sequences bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update brag spario'),
+  },
+  {
+    key: 'brag-zakato-fires-five-bullet-fan',
+    behavior:
+      'A fused Brag Zakato whose shot fuse has elapsed fires a TERMINAL 5-bullet aimed radiating FAN — five fresh enemy bullets at the 48-magnitude (3 px/f) tier, two radiating-steps apart around the craft-aim direction (brag_zakato_shoot 5054) — then flips ITSELF to the benign SLOT_SELF_EXPLODE with its velocity zeroed, awarding NOTHING (brag_zakato_explode 3920). The sharpest contrast with the base Zakato, which fires a SINGLE aimed bullet.',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze so one callProc == one deterministic tick. Clear the flying band AND the whole 19-slot
+      // bullet band (JS 39..57 == Scratch bullet slots 40..58) so the fan's allocations are the only live
+      // bullets and no stray shot confounds the count.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      for (let js = 39; js <= 57; js += 1) {
+        put('slot-type', js, 0);
+        put('slot-state', js, 0);
+      }
+      const slot = 63;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 22); // BRAG_ZAKATO_RND_TYPE: fires on the random fuse, not Y-proximity
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      put('slot-x', slot, (pr - 6) * 256); // off the craft cell so no craft-collision confounds the read
+      put('slot-y', slot, (pc - 8) * 256);
+      put('slot-dx', slot, 8); // a live velocity the self-destruct must zero
+      put('slot-dy', slot, 8);
+      put('slot-fire-timer', slot, 2); // 2/tick → 0 this tick → the fuse elapses and it fires the fan
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const aimDx48 = readVar(vm, 'aim-dx-48');
+      const aimDy48 = readVar(vm, 'aim-dy-48');
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update brag zakato');
+      step(vm, 1);
+      // Collect the freshly-allocated enemy bullets (BULLET_TYPE, ACTIVE) across the 19-slot bullet band.
+      const bullets = [];
+      for (let js = 39; js <= 57; js += 1) {
+        if (readVar(vm, 'slot-type')[js] === 2 && readVar(vm, 'slot-state')[js] === 1) {
+          bullets.push({
+            dx: readVar(vm, 'slot-dx')[js],
+            dy: readVar(vm, 'slot-dy')[js],
+            x: readVar(vm, 'slot-x')[js],
+            y: readVar(vm, 'slot-y')[js],
+          });
+        }
+      }
+      // Recover the fan's aim-centred base angle: the shoot loop leaves `radiating angle` at
+      // base + FAN_COUNT*FAN_STEP (5 emits, +2 each), so base = (radiating angle - 10) mod 32.
+      const base = (((readVar(vm, 'radiating-angle') - 10) % 32) + 32) % 32;
+      const expected = [];
+      for (let i = 0; i < 5; i += 1) {
+        const a = (base + 2 * i) % 32;
+        expected.push(`${aimDx48[a]},${aimDy48[a]}`);
+      }
+      return {
+        count: bullets.length,
+        vectors: bullets.map((b) => `${b.dx},${b.dy}`).sort(),
+        expected: expected.sort(),
+        atCell: bullets.every((b) => b.x === (pr - 6) * 256 && b.y === (pc - 8) * 256),
+        distinctVectors: new Set(bullets.map((b) => `${b.dx},${b.dy}`)).size,
+        state: readVar(vm, 'slot-state')[slot],
+        dx: readVar(vm, 'slot-dx')[slot],
+        dy: readVar(vm, 'slot-dy')[slot],
+        scoreDelta: readVar(vm, 'eco-score') - score0,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.count, 5, 'the terminal fan emits exactly 5 enemy bullets');
+      assert.deepEqual(
+        obs.vectors,
+        obs.expected,
+        'the 5 fan bullets take the 48-tier vectors at the aim-centred angles two steps apart',
+      );
+      assert.ok(obs.distinctVectors >= 2, 'the fan spreads across distinct directions (not five identical shots)');
+      assert.equal(obs.atCell, true, "every fan bullet leaves the Brag Zakato's own cell");
+      assert.equal(obs.state, 5, 'having fired, the Brag flips ITSELF to the benign SLOT_SELF_EXPLODE');
+      assert.equal(obs.dx, 0, 'the self-destructing Brag zeroes its scroll-axis velocity');
+      assert.equal(obs.dy, 0, 'the self-destructing Brag zeroes its lateral velocity');
+      assert.equal(obs.scoreDelta, 0, 'a Brag Zakato that self-destructs after firing awards NOTHING');
+    },
+    // Empty `brag zakato shoot` so the fan never allocates → count 0 ≠ 5 and the vector/count assertions bite
+    // (the state flip still runs, so the fan-specific checks are what carry the proof).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'brag zakato shoot'),
+  },
+  {
+    key: 'garu-zakato-detonates-into-ring-and-four-sparios',
+    behavior:
+      'A Garu Zakato whose fuse elapses DETONATES: it lays a 16-bullet 360-degree ring (the even radiating angles 0,2,..,30 at the 48-magnitude tier, from its own cell) AND spawns 4 Brag Sparios into the 4 flying slots ADJACENT to it (the arcade clobbers obj 0x3C-0x3F) at its cell with the four CARDINAL velocities (±32 on each axis, brag_spario_dX/dY_tbl), then VANISHES with no burst and no score (garu_zakato_explode 4031 → init_garu_zakato_explosion 5075).',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze so one callProc == one deterministic tick. Clear the flying band (and its velocities) AND
+      // the bullet band so the detonation's ring + Sparios are the only live entities read back.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+        put('slot-dx', s, 0);
+        put('slot-dy', s, 0);
+      }
+      for (let js = 39; js <= 57; js += 1) {
+        put('slot-type', js, 0);
+        put('slot-state', js, 0);
+      }
+      // The Garu must occupy the FIRST flying slot (FLYING_SLOTS[0] == JS 58, Scratch slot-index 59) so its
+      // 4 successors — the slots the detonation writes (gslot+1..+4 == JS 59..62) — stay in-band; its only
+      // spawner (the debug key) stamps it there. This adjacency is the arcade's obj 0x3C-0x3F clobber.
+      const garu = 58;
+      const gx = 11 * 256;
+      const gy = 9 * 256;
+      put('slot-type', garu, 24); // GARU_ZAKATO_TYPE
+      put('slot-state', garu, 1); // SLOT_ACTIVE
+      put('slot-x', garu, gx);
+      put('slot-y', garu, gy);
+      put('slot-dx', garu, 48);
+      put('slot-dy', garu, 0);
+      put('slot-fire-timer', garu, 2); // 2/tick → 0 this tick → the fuse elapses and it detonates
+      writeVar(vm, 'slot-index', garu + 1);
+      const aimDx48 = readVar(vm, 'aim-dx-48');
+      const aimDy48 = readVar(vm, 'aim-dy-48');
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update garu zakato');
+      step(vm, 1);
+      // Ring bullets: BULLET_TYPE + ACTIVE across the 19-slot bullet band.
+      const bullets = [];
+      for (let js = 39; js <= 57; js += 1) {
+        if (readVar(vm, 'slot-type')[js] === 2 && readVar(vm, 'slot-state')[js] === 1) {
+          bullets.push({
+            dx: readVar(vm, 'slot-dx')[js],
+            dy: readVar(vm, 'slot-dy')[js],
+            x: readVar(vm, 'slot-x')[js],
+            y: readVar(vm, 'slot-y')[js],
+          });
+        }
+      }
+      const ringExpected = [];
+      for (let a = 0; a < 32; a += 2) ringExpected.push(`${aimDx48[a]},${aimDy48[a]}`);
+      // The 4 Sparios land in the adjacent slots garu+1..garu+4 (JS 59..62).
+      const sparios = [59, 60, 61, 62].map((js) => ({
+        type: readVar(vm, 'slot-type')[js],
+        state: readVar(vm, 'slot-state')[js],
+        dx: readVar(vm, 'slot-dx')[js],
+        dy: readVar(vm, 'slot-dy')[js],
+        x: readVar(vm, 'slot-x')[js],
+        y: readVar(vm, 'slot-y')[js],
+      }));
+      return {
+        ringCount: bullets.length,
+        ringVectors: bullets.map((b) => `${b.dx},${b.dy}`).sort(),
+        ringExpected: ringExpected.sort(),
+        ringAtCell: bullets.every((b) => b.x === gx && b.y === gy),
+        sparioTypes: sparios.map((s) => s.type),
+        sparioStates: sparios.map((s) => s.state),
+        sparioVels: sparios.map((s) => `${s.dx},${s.dy}`),
+        sparioAtCell: sparios.every((s) => s.x === gx && s.y === gy),
+        garuType: readVar(vm, 'slot-type')[garu],
+        garuState: readVar(vm, 'slot-state')[garu],
+        slotIndex: readVar(vm, 'slot-index'),
+        scoreDelta: readVar(vm, 'eco-score') - score0,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.ringCount, 16, 'the detonation lays exactly 16 ring bullets');
+      assert.deepEqual(
+        obs.ringVectors,
+        obs.ringExpected,
+        'the 16 ring bullets take the 48-tier vectors at the 16 even angles 0,2,..,30 (a full 360° ring)',
+      );
+      assert.equal(obs.ringAtCell, true, "every ring bullet leaves the Garu's own cell");
+      assert.deepEqual(obs.sparioTypes, [9, 9, 9, 9], 'the 4 slots adjacent to the Garu become Brag Sparios (type 9)');
+      assert.deepEqual(obs.sparioStates, [1, 1, 1, 1], 'each spawned Brag Spario is ACTIVE');
+      assert.deepEqual(
+        obs.sparioVels,
+        ['32,0', '0,-32', '-32,0', '0,32'],
+        'the 4 Sparios launch on the four cardinal velocities (brag_spario_dX/dY_tbl)',
+      );
+      assert.equal(obs.sparioAtCell, true, "each Brag Spario spawns at the Garu's cell");
+      assert.equal(obs.garuType, 0, 'the detonating Garu frees its own slot (type cleared) — no crater, no burst');
+      assert.equal(obs.garuState, 0, 'the detonating Garu clears its slot state');
+      assert.equal(
+        obs.slotIndex,
+        59,
+        "detonate restores the walk cursor (slot index) to the Garu's slot so the ordered walk resumes correctly",
+      );
+      assert.equal(obs.scoreDelta, 0, 'a Garu that detonates on its fuse awards NOTHING (it was not shot)');
+    },
+    // Empty `garu zakato detonate` so no ring/Sparios are laid and the Garu is never freed → the ring count,
+    // Spario and free assertions all bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'garu zakato detonate'),
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
-      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Jara entries), so each family can be cycled to for playtesting (tracked for removal)',
+      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -1339,37 +1899,60 @@ export const SCENARIOS = [
       // settling steps, type 15 as early as step ~2), so accumulating seen types is confounded and cannot
       // make the negative bite. The debug-specific, pacing-invariant signal is the CURSOR itself: the
       // `debug spawn index` advances one step per fresh debug spawn and wraps mod len(DEBUG_SPAWN_FAMILIES)
-      // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T and collect the
-      // distinct cursor values seen — the cycle must visit every family slot (all 9 residues 0..8, i.e. the
-      // six prior entries plus the three newly built Jara entries: the shooter solo, the silent solo, and
-      // the two-object pair spawn), which proves it self-extends rather than stopping at a fixed set. Also
-      // confirm the key actually stamps flying enemies. The exact residue→family binding is pinned
-      // structurally in tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the
-      // cursor drives the whole cycle at runtime. No manual field-clear (that would drive the normal
-      // spawner); the debug wave clears its own slots. Worst-case full-cycle coverage for 6 residues was
-      // measured at step ~33; the 9-residue cycle is proportionally longer, so budget 150 (~3x) to be safe.
+      // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T, sweep the cursor,
+      // and collect the distinct residues seen — proving it self-extends across every built family rather
+      // than stopping at a fixed set. The exact residue→family binding is pinned structurally in
+      // tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the cursor drives the
+      // whole cycle at runtime.
+      //
+      // The cursor only advances on a FRESH debug spawn — i.e. when the flying band is empty (the debug wave
+      // brings in one solo, then waits for it to leave before the next). But the tail of the cycle includes
+      // the Garu Zakato, whose detonation seeds 4 Brag Sparios — accelerating homers that, against this
+      // harness's stationary, non-firing craft, orbit forever and never cull. Passively held, the cursor
+      // therefore parks at the family after Garu and never completes the cycle (measured: it froze after 9
+      // of 17 residues even over 3000 frames). So we clear the flying band ourselves each frame to reopen
+      // the field-empty gate — this does NOT drive the normal spawner: while T is held the debug wave sets
+      // `formation count`/`formation type offset` every tick before the spawner runs, so the only family
+      // that can enter is the debug wave's current one, and only the debug wave ever writes the cursor.
+      // How far the cursor jumps between our per-frame samples varies (in the opening frames several fresh
+      // spawns land in one settling, so it can step by >1), so "reached the max" is not "saw every residue".
+      // But across successive wraps every residue 0..N-1 is eventually sampled, so we loop until the set is
+      // a complete contiguous run 0..max (no residue skipped) that reaches the last built family. When each
+      // gate reopens is subject to scratch-vm execution jitter (full coverage was measured between ~50 and
+      // ~195 frames across runs), so budget a generous cap (early-exit on completion keeps the common case
+      // fast) and let the count self-extend: a new family just pushes `max` up, no threshold to re-tune.
       keyDown(vm, 't');
-      const cursors = new Set();
+      const cursors = new Set([readVar(vm, 'debug-spawn-index')]);
       let anyFlying = false;
-      for (let i = 0; i < 150; i += 1) {
+      let maxCursor = 0;
+      for (let i = 0; i < 600; i += 1) {
+        const slotType = readVar(vm, 'slot-type');
+        const slotState = readVar(vm, 'slot-state');
+        for (const s of FLYING_SLOT_INDICES) { slotType[s] = 0; slotState[s] = 0; }
         step(vm, 1);
-        cursors.add(readVar(vm, 'debug-spawn-index'));
+        const cursor = readVar(vm, 'debug-spawn-index');
+        cursors.add(cursor);
+        if (cursor > maxCursor) maxCursor = cursor;
         const type = readVar(vm, 'slot-type');
         if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
+        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>=16).
+        if (cursors.size === maxCursor + 1 && maxCursor >= 16) break;
       }
       keyUp(vm, 't');
-      return { distinctCursors: cursors.size, anyFlying };
+      const contiguous = cursors.size === maxCursor + 1;
+      return { distinctCursors: cursors.size, maxCursor, contiguous, anyFlying };
     },
     assert(obs) {
       assert.equal(obs.anyFlying, true, 'holding the debug key stamps flying enemies through the shared spawner');
+      assert.ok(obs.contiguous, `the debug cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
       assert.ok(
-        obs.distinctCursors >= 9,
-        `the debug cycle visits every built family slot (all 9 DEBUG_SPAWN_FAMILIES residues, incl. the three new Jara entries); saw ${obs.distinctCursors}`,
+        obs.maxCursor >= 16,
+        `the debug cycle self-extends through every built family slot (residues 0..16, incl. the new Giddo Spario, four base Zakato, two Brag Zakato and Garu Zakato entries); reached ${obs.maxCursor}`,
       );
     },
     // Empty `debug spawn wave` so the key never advances its cursor → `debug spawn index` stays 0 →
-    // distinctCursors == 1 → the full-cycle assertion bites (normal play leaves the cursor untouched, so
-    // it cannot mask the mutation).
+    // maxCursor == 0 → the self-extension assertion (maxCursor >= 16) bites (normal play leaves the cursor
+    // untouched, so it cannot mask the mutation).
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
   },
   {
@@ -1656,6 +2239,16 @@ export const SCENARIOS = [
       };
       // Freeze the walk and hand-drive one advance-bomb tick (see the harness pacing note).
       writeVar(vm, 'game-director-state', 'frozen');
+      // Clear the ground band first — mirroring bomb-kills-ground-and-scores. The pre-freeze live pump
+      // (reachPlaying + step) runs the area ground spawner, which can leave an ACTIVE object in the band;
+      // if one lands inside the bomb's shadow window it would be swept by the finish too, double-scoring.
+      // (This surfaced when slice-11's aerial families added during-play behavior that shifts spawn timing
+      // — memory: live behavior contaminates older step()-through-play scenarios. Freeze + clear re-isolates
+      // so ONLY the hand-seeded object is under the target.)
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
       // Seed an ACTIVE Barra (pts pos 6 -> 100) at a cell, the locked bomb target dead-on it, and the
       // in-flight bomb one sub-step from catching the target (target just behind the bomb).
       const gx = 5120;
