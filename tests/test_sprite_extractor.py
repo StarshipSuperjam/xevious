@@ -20,12 +20,12 @@ class SpriteExtractorTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count, contact_hash = extractor.check_repository()
-        # 50: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
+        # 51: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
         # the 7 Kapi dive frames (AIR-05), the 6 Torkan roll frames (AIR-02), the 4 Zoshi
         # spin frames (AIR-03), the 6 Jara spin frames (AIR-04), the 1 Zakato body frame (AIR-07),
-        # and the 9 ground frames (GND: 1 Barra idle, 4 Logram open stages, 2 crater variants,
-        # 2 Garu base pulse frames).
-        self.assertEqual(50, count)
+        # the 1 Bacura slab frame (AIR-11), and the 9 ground frames (GND: 1 Barra idle, 4 Logram
+        # open stages, 2 crater variants, 2 Garu base pulse frames).
+        self.assertEqual(51, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -54,10 +54,12 @@ class SpriteExtractorTests(unittest.TestCase):
             # transparency and a stable centred anchor — just no longer hard-coded to the 1x1 size.
             canvas = derivative.frame["canvas"]
             self.assertEqual(tuple(canvas), (decoded.width, decoded.height))
-            # Every crop with matte around/inside it keys transparent; the 2x2 Garu Barra base is
-            # the one genuinely solid sprite (a filled foundation block whose crop holds no matte),
-            # so it has no transparent pixel to assert — but it must still be fully opaque RGBA.
-            if not derivative.frame["name"].startswith("garu/"):
+            # Every crop with matte around/inside it keys transparent; the two genuinely solid
+            # sprites are the 2x2 Garu Barra base (a filled foundation block) and the Bacura slab
+            # (a solid indestructible panel), whose crops hold no matte — so neither has a
+            # transparent pixel to assert, but both must still be fully opaque RGBA.
+            name = derivative.frame["name"]
+            if not name.startswith("garu/") and not name.startswith("bacura/"):
                 self.assertTrue(any(pixel[3] == 0 for pixel in decoded.pixels))
             self.assertTrue(any(pixel[3] == 255 for pixel in decoded.pixels))
             self.assertEqual([canvas[0] // 2, canvas[1] // 2], derivative.frame["anchor"])
@@ -170,6 +172,7 @@ class SpriteExtractorTests(unittest.TestCase):
             + [f"zoshi/spin/{index:02d}" for index in range(1, 5)]
             + [f"jara/spin/{index:02d}" for index in range(1, 7)]
             + ["zakato/body/01"]
+            + ["bacura/slab/01"]
             + ["barra/idle/01"]
             + [f"logram/open/{index:02d}" for index in range(1, 5)]
             + [f"crater/idle/{index:02d}" for index in range(1, 3)]
@@ -180,8 +183,14 @@ class SpriteExtractorTests(unittest.TestCase):
         self.assertEqual({}, toroid["blocks"])
         self.assertEqual("don't rotate", toroid["rotationStyle"])
         for costume in solvalou["costumes"][-3:] + toroid["costumes"]:
-            # Every 1x1 sprite is centred at (8,8); the 2x2 Garu Barra base (32x32 canvas) at (16,16).
-            expected_center = (16, 16) if costume["name"].startswith("garu/") else (8, 8)
+            # Every 1x1 sprite is centred at (8,8); the 2x2 Garu Barra base (32x32 canvas) at (16,16);
+            # the Bacura slab (24x16 canvas, wider than tall) at (12,8).
+            if costume["name"].startswith("garu/"):
+                expected_center = (16, 16)
+            elif costume["name"].startswith("bacura/"):
+                expected_center = (12, 8)
+            else:
+                expected_center = (8, 8)
             self.assertEqual(
                 expected_center,
                 (

@@ -140454,6 +140454,15 @@
           "rotationCenterY": 8
         },
         {
+          "name": "bacura/slab/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "0e603bd44407c54428d1808fa440f838",
+          "md5ext": "0e603bd44407c54428d1808fa440f838.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 8
+        },
+        {
           "name": "barra/idle/01",
           "bitmapResolution": 1,
           "dataFormat": "png",

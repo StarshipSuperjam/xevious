@@ -239,9 +239,9 @@ class ScratchProjectTests(unittest.TestCase):
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
         # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
-        # body-frame PNG (AIR-07) + the 9 ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages +
-        # 2 crater variants + 2 Garu base pulse frames).
-        self.assertEqual(138, len(assets))
+        # body-frame PNG (AIR-07) + the 1 Bacura slab-frame PNG (AIR-11) + the 9 ground-frame PNGs
+        # (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base pulse frames).
+        self.assertEqual(139, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -10790,7 +10790,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "7ef2aa835d306e056578e291941bfcae7bd9ee79467e0998d0f54b9dcc07f139",
+            "e4dc0656af2b93b9bb09410edde75f892833f76700bd501c83993a26071d915f",
             build_hash,
         )
 
