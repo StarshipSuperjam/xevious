@@ -384,6 +384,26 @@
       "name": "garu clone slot",
       "scope": "garu"
     },
+    "garu-det-slot": {
+      "kind": "variable",
+      "name": "garu det slot",
+      "scope": "Stage"
+    },
+    "garu-det-x": {
+      "kind": "variable",
+      "name": "garu det x",
+      "scope": "Stage"
+    },
+    "garu-det-y": {
+      "kind": "variable",
+      "name": "garu det y",
+      "scope": "Stage"
+    },
+    "garu-zakato-clone-slot": {
+      "kind": "variable",
+      "name": "garu zakato clone slot",
+      "scope": "garu-zakato"
+    },
     "giddo-spario-clone-slot": {
       "kind": "variable",
       "name": "giddo spario clone slot",

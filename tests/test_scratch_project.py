@@ -228,12 +228,13 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 30: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # 31: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
         # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, the
-        # slice-11 zakato renderer (AIR-07) + the giddo-spario + brag-spario renderers (AIR-10; both reuse
-        # the zakato body stand-in by ref), and the slice-9 barra + garu + logram ground renderers (all
-        # reuse proof costumes by ref).
-        self.assertEqual(30, len(project["targets"]))
+        # slice-11 zakato renderer (AIR-07; the two Brag Zakato variants fold into it) + the giddo-spario +
+        # brag-spario renderers (AIR-10) + the garu-zakato renderer (AIR-08; all three Spario-style pools
+        # reuse the zakato body stand-in by ref), and the slice-9 barra + garu + logram ground renderers
+        # (all reuse proof costumes by ref).
+        self.assertEqual(31, len(project["targets"]))
         # 138: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -975,6 +976,11 @@ class ScratchProjectTests(unittest.TestCase):
             "aim fine",
             "aim index",
             "radiating angle",
+            # AIR-08 (slice 11): the Garu Zakato detonation temps — the captured Garu x/y and its own slot
+            # index, used to place the 16-bullet ring + the 4 adjacent Brag Sparios before it frees its slot.
+            "garu det x",
+            "garu det y",
+            "garu det slot",
             "player row",
             "player col",
             "walk type",
@@ -1213,6 +1219,20 @@ class ScratchProjectTests(unittest.TestCase):
             director.EXPLODE_GIDDO_SPARIO_PROCCODE,
             director.INIT_BRAG_SPARIO_PROCCODE,
             director.UPDATE_BRAG_SPARIO_PROCCODE,
+            # AIR-08 (slice 11) air.special-pairs: the two Brag Zakato variants (rnd/closeY) share one
+            # teleport->active->self-destruct update ending in a 5-bullet radiating fan (`brag zakato
+            # shoot`); the Garu Zakato has its own no-teleport straight update whose fuse detonates into a
+            # 16-bullet ring + 4 Brag Sparios (`garu zakato detonate`). All warp, no state write beyond the
+            # slot's own phase machine — dispatched from the same spawner / walk (the Garu stamped by the
+            # debug key). Plus the shared radiating-bullet emitter (AIR-12, slice 11) whose first live
+            # callers are this family's fan and ring.
+            director.INIT_BRAG_ZAKATO_PROCCODE,
+            director.UPDATE_BRAG_ZAKATO_PROCCODE,
+            director.BRAG_ZAKATO_SHOOT_PROCCODE,
+            director.INIT_GARU_ZAKATO_PROCCODE,
+            director.UPDATE_GARU_ZAKATO_PROCCODE,
+            director.GARU_ZAKATO_DETONATE_PROCCODE,
+            director.RADIATING_EMIT_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -2046,6 +2066,386 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air06_failures(project), label)
+
+    @staticmethod
+    def _air08_failures(project: dict) -> set:
+        """AIR-08 special-pairs authoring contract — violated labels. Pins the structural facts that make
+        the two Brag Zakato variants (rnd 0x16 / closeY 0x17) and the Garu Zakato (0x18) faithful live
+        families. The biting contrast between them is the entry: the Brags TELEPORT in (SLOT_TELEPORT,
+        indestructible while the sparkle plays) and end in a 5-bullet aimed radiating FAN then vanish
+        awarding nothing; the Garu enters IMMEDIATELY ACTIVE, flies straight (dX=48, no aim), and on a
+        32-63 fuse DETONATES into a 16-bullet ring + 4 Brag Sparios written into the 4 adjacent flying
+        slots, then frees itself with no burst and no score."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def body(proccode):
+            return _proc_body_blocks(stage, proccode)
+
+        def call_count(body_blocks, proccode):
+            return sum(
+                1
+                for b in body_blocks
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+            )
+
+        def calls_in(body_blocks, proccode):
+            return call_count(body_blocks, proccode) > 0
+
+        def read_lists(body_blocks):
+            return {
+                b["fields"]["LIST"][1]
+                for b in body_blocks
+                if b["opcode"] == "data_itemoflist"
+            }
+
+        def write_consts(body_blocks, list_id):
+            return {
+                _const_item(b)
+                for b in body_blocks
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == list_id
+            }
+
+        def writes_const(body_blocks, list_id, value):
+            return value in write_consts(body_blocks, list_id)
+
+        def repeats(body_blocks, times):
+            return any(
+                b["opcode"] == "control_repeat"
+                and _num_operand(b["inputs"].get("TIMES")) == times
+                for b in body_blocks
+            )
+
+        def changes_var(body_blocks, variable_id, delta):
+            return any(
+                b["opcode"] == "data_changevariableby"
+                and b["fields"]["VARIABLE"][1] == variable_id
+                and _num_operand(b["inputs"].get("VALUE")) == delta
+                for b in body_blocks
+            )
+
+        def sets_var_to(body_blocks, variable_id, value):
+            return any(
+                b["opcode"] == "data_setvariableto"
+                and b["fields"]["VARIABLE"][1] == variable_id
+                and _num_operand(b["inputs"].get("VALUE")) == value
+                for b in body_blocks
+            )
+
+        def var_id(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], list) and len(inp[1]) >= 3 and inp[1][0] in (12, 13):
+                return inp[1][2]
+            return None
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def seeds_fuse(body_blocks, span, offset):
+            # A random fuse draw `(rng mod SPAN) + OFFSET` written into `slot fire timer`: an
+            # `operator_add` of OFFSET onto an `operator_mod` of the shared stream by SPAN. Both the Brag
+            # (rnd variant: span 64, offset 1) and the Garu (span 32, offset 32) draw this way.
+            for b in body_blocks:
+                if b["opcode"] != "operator_add" or _num_operand(b["inputs"].get("NUM2")) != offset:
+                    continue
+                inner = blocks.get(ref(b["inputs"].get("NUM1")))
+                if (
+                    inner
+                    and inner["opcode"] == "operator_mod"
+                    and var_id(inner["inputs"].get("NUM1")) == director.RNG_OUT_ID
+                    and _num_operand(inner["inputs"].get("NUM2")) == span
+                ):
+                    return True
+            return False
+
+        init_brag = body(director.INIT_BRAG_ZAKATO_PROCCODE)
+        update_brag = body(director.UPDATE_BRAG_ZAKATO_PROCCODE)
+        shoot = body(director.BRAG_ZAKATO_SHOOT_PROCCODE)
+        init_garu = body(director.INIT_GARU_ZAKATO_PROCCODE)
+        update_garu = body(director.UPDATE_GARU_ZAKATO_PROCCODE)
+        detonate = body(director.GARU_ZAKATO_DETONATE_PROCCODE)
+
+        # (1)/(2) Both families' lifecycle procedures exist and are warp (atomic) — a non-warp walk
+        # sub-proc would yield mid-slot, letting a half-moved teleporter/flyer render or be hit.
+        for proccode in (
+            director.INIT_BRAG_ZAKATO_PROCCODE,
+            director.UPDATE_BRAG_ZAKATO_PROCCODE,
+            director.BRAG_ZAKATO_SHOOT_PROCCODE,
+        ):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("brag-zakato-lifecycle-procs-warp")
+        for proccode in (
+            director.INIT_GARU_ZAKATO_PROCCODE,
+            director.UPDATE_GARU_ZAKATO_PROCCODE,
+            director.GARU_ZAKATO_DETONATE_PROCCODE,
+        ):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("garu-zakato-lifecycle-procs-warp")
+
+        # (3)-(6) Each family is driven: the formation spawner inits the Brags by type, the ordered walk
+        # dispatches to both updaters, and the Garu (no formation entry) is stamped by its own spawner
+        # (the debug key) — so a spawned member actually advances.
+        if not calls(director.INIT_BRAG_ZAKATO_PROCCODE):
+            failures.add("spawn-inits-brag-zakato")
+        if not calls(director.UPDATE_BRAG_ZAKATO_PROCCODE):
+            failures.add("dispatch-updates-brag-zakato")
+        if not calls(director.INIT_GARU_ZAKATO_PROCCODE):
+            failures.add("stamp-inits-garu-zakato")
+        if not calls(director.UPDATE_GARU_ZAKATO_PROCCODE):
+            failures.add("dispatch-updates-garu-zakato")
+
+        # (7)/(8) The BITING CONTRAST — the Brag spawn commits SLOT_TELEPORT (indestructible sparkle),
+        # the Garu spawn commits SLOT_ACTIVE (hittable at once, no sparkle). Swapping either is the
+        # invulnerability bug.
+        if not writes_const(init_brag, director.SLOT_STATE_ID, director.SLOT_TELEPORT):
+            failures.add("brag-zakato-spawns-teleporting")
+        if not writes_const(init_garu, director.SLOT_STATE_ID, director.SLOT_ACTIVE):
+            failures.add("garu-zakato-spawns-active")
+
+        # (9) The Brag spawn stamps its active-phase body sprite code.
+        if not writes_const(init_brag, director.SLOT_CODE_ID, director.BRAG_ZAKATO_MAIN_CODE):
+            failures.add("brag-zakato-stamps-main-code")
+
+        # (10) The Garu flies STRAIGHT down the scroll axis at spawn (dX=48, no aim) — unlike the Brags
+        # it never reads the aim tables at init.
+        if not writes_const(init_garu, director.SLOT_DX_ID, director.GARU_STRAIGHT_DX):
+            failures.add("garu-zakato-flies-straight")
+
+        # (11) Both Brag variants aim at the craft on the generic (32-magnitude, 2 px/frame) tier when the
+        # teleport completes — the shared update reads both aim-32 tables.
+        if not {director.AIM_DX_32_ID, director.AIM_DY_32_ID} <= read_lists(update_brag):
+            failures.add("brag-zakato-aims-generic-tier")
+
+        # (12) On its terminal trigger the Brag fires the fan (BRAG_ZAKATO_SHOOT) AND flips to
+        # SLOT_SELF_EXPLODE (benign, the hit gate ignores it) — the fire-then-vanish.
+        if not (
+            calls_in(update_brag, director.BRAG_ZAKATO_SHOOT_PROCCODE)
+            and writes_const(update_brag, director.SLOT_STATE_ID, director.SLOT_SELF_EXPLODE)
+        ):
+            failures.add("brag-zakato-fires-fan-then-self-explodes")
+
+        # (13) A self-exploding / shot Brag plays the SHARED ~20-frame burst (explode-tick) before it frees.
+        if not calls_in(update_brag, director.EXPLODE_TICK_PROCCODE):
+            failures.add("brag-zakato-self-explode-shares-burst")
+
+        # (14) The fan is exactly 5 bullets two angle-steps apart, emitted through the shared radiating
+        # emitter — a 5-count repeat that calls the emitter and steps `radiating angle` by 2.
+        if not (
+            repeats(shoot, director.BRAG_ZAKATO_FAN_COUNT)
+            and calls_in(shoot, director.RADIATING_EMIT_PROCCODE)
+            and changes_var(shoot, director.RADIATING_ANGLE_ID, director.BRAG_ZAKATO_FAN_STEP)
+        ):
+            failures.add("brag-zakato-fan-emits-five")
+
+        # (15) The rnd Brag draws its 1-64 fuse `(rng mod 64) + 1` on teleport completion.
+        if not seeds_fuse(update_brag, director.BRAG_ZAKATO_RND_FUSE_SPAN, 1):
+            failures.add("brag-zakato-rnd-fuse-seeded")
+
+        # (16) The Garu draws its 32-63 fuse `(rng mod 32) + 32` at spawn.
+        if not seeds_fuse(init_garu, director.GARU_ZAKATO_FUSE_SPAN, director.GARU_ZAKATO_FUSE_OFFSET):
+            failures.add("garu-zakato-fuse-seeded")
+
+        # (17) The Garu detonates when its fuse elapses (no self-destruct fan — the whole point of the
+        # family) and (18) plays the shared burst only when SHOT (its HIT branch), never on detonation.
+        if not calls_in(update_garu, director.GARU_ZAKATO_DETONATE_PROCCODE):
+            failures.add("garu-zakato-detonates-on-fuse")
+        if not calls_in(update_garu, director.EXPLODE_TICK_PROCCODE):
+            failures.add("garu-zakato-hit-shares-burst")
+
+        # (19) The detonation lays a 16-bullet 360-degree ring: a 16-count repeat calling the shared
+        # emitter and stepping `radiating angle` by 2, starting from angle 0.
+        if not (
+            repeats(detonate, director.GARU_RING_COUNT)
+            and calls_in(detonate, director.RADIATING_EMIT_PROCCODE)
+            and changes_var(detonate, director.RADIATING_ANGLE_ID, director.GARU_RING_STEP)
+            and sets_var_to(detonate, director.RADIATING_ANGLE_ID, 0)
+        ):
+            failures.add("garu-detonate-lays-ring")
+
+        # (20) The detonation spawns exactly 4 Brag Sparios (one per adjacent slot) through the shared
+        # Spario init, stamping the Spario type.
+        if not (
+            call_count(detonate, director.INIT_BRAG_SPARIO_PROCCODE) == director.GARU_SPARIO_COUNT
+            and writes_const(detonate, director.SLOT_TYPE_ID, director.BRAG_SPARIO_TYPE)
+        ):
+            failures.add("garu-detonate-spawns-four-sparios")
+
+        # (21) The 4 Sparios launch on the CARDINAL velocities from brag_spario_dX/dY_tbl — the detonation
+        # writes the opposing x-axis pair (+/-32) into `slot dx` and the opposing y-axis pair into `slot dy`.
+        if not (
+            {32, -32} <= write_consts(detonate, director.SLOT_DX_ID)
+            and {-32, 32} <= write_consts(detonate, director.SLOT_DY_ID)
+        ):
+            failures.add("garu-detonate-cardinal-velocities")
+
+        # (22) The detonation FREES the Garu slot (type 0 AND state 0) — it vanishes with no burst and no
+        # score (the arcade clr TYPE/STATE).
+        if not (
+            writes_const(detonate, director.SLOT_TYPE_ID, 0)
+            and writes_const(detonate, director.SLOT_STATE_ID, 0)
+        ):
+            failures.add("garu-detonate-frees-garu")
+        return failures
+
+    # Roadmap closure evidence for leaf `air.special-pairs` (AIR-08): the Brag Zakato pair and the Garu
+    # Zakato are live families — the Brags teleport in, aim on the generic tier, and end in a 5-bullet
+    # radiating fan then vanish awarding nothing; the Garu enters active, flies straight on a 32-63 fuse,
+    # and detonates into a 16-bullet ring + 4 Brag Sparios written into the adjacent slots, then frees
+    # itself with no score. The live proof (fan emission, ring + 4 cardinal Sparios, Garu freed) is the
+    # harness `brag-zakato-fires-five-bullet-fan` / `garu-zakato-detonates-into-ring-and-four-sparios`.
+    # roadmap-evidence: AIR-08 success  (test_special_pairs_slice_authoring_present — both families' procs warp, spawn/dispatch driven, Brag teleports+fans vs Garu active+detonates, ring + 4 cardinal Sparios, Garu freed)
+    # roadmap-evidence: AIR-08 failure  (test_special_pairs_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_special_pairs_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air08_failures(project))
+
+    def test_special_pairs_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air08_failures(base))
+
+        def unwarp(proccode):
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in stage["blocks"].values():
+                    if (
+                        b["opcode"] == "procedures_prototype"
+                        and b.get("mutation", {}).get("proccode") == proccode
+                    ):
+                        b["mutation"]["warp"] = "false"
+            return corrupt
+
+        def noop_call(proccode):
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in stage["blocks"].values():
+                    if (
+                        b["opcode"] == "procedures_call"
+                        and b.get("mutation", {}).get("proccode") == proccode
+                    ):
+                        b["mutation"]["proccode"] = "noop"
+            return corrupt
+
+        def noop_call_in(host_proccode, target_proccode):
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if (
+                        b["opcode"] == "procedures_call"
+                        and b.get("mutation", {}).get("proccode") == target_proccode
+                    ):
+                        b["mutation"]["proccode"] = "noop"
+            return corrupt
+
+        def reitem(host_proccode, list_id, new_value):
+            # Change the constant a `data_replaceitemoflist` writes into `list_id` within one proc.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == list_id
+                        and _num_operand(b["inputs"].get("ITEM")) is not None
+                    ):
+                        b["inputs"]["ITEM"] = [1, [4, new_value]]
+            return corrupt
+
+        def repoint_write(host_proccode, list_id):
+            # Repoint every `data_replaceitemoflist` on `list_id` to a scratch list → the write is lost.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == list_id
+                    ):
+                        b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+            return corrupt
+
+        def repoint_read(host_proccode, from_ids, to_id, to_name):
+            # Repoint the fast/generic-tier aim reads to another table → the tier clause no longer holds.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] in from_ids:
+                        b["fields"]["LIST"] = [to_name, to_id]
+            return corrupt
+
+        def rescale_repeat(host_proccode, times):
+            # Change a control_repeat count off its faithful value → the emit count is wrong.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if (
+                        b["opcode"] == "control_repeat"
+                        and _num_operand(b["inputs"].get("TIMES")) == times
+                    ):
+                        b["inputs"]["TIMES"] = [1, [4, times + 1]]
+            return corrupt
+
+        def break_fuse_offset(host_proccode, offset):
+            # Zero the `+ offset` of a random fuse draw → the fuse span/base is wrong.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if (
+                        b["opcode"] == "operator_add"
+                        and _num_operand(b["inputs"].get("NUM2")) == offset
+                    ):
+                        b["inputs"]["NUM2"] = [1, [4, 0]]
+            return corrupt
+
+        cases = [
+            ("brag-zakato-lifecycle-procs-warp", unwarp(director.UPDATE_BRAG_ZAKATO_PROCCODE)),
+            ("garu-zakato-lifecycle-procs-warp", unwarp(director.GARU_ZAKATO_DETONATE_PROCCODE)),
+            ("spawn-inits-brag-zakato", noop_call(director.INIT_BRAG_ZAKATO_PROCCODE)),
+            ("dispatch-updates-brag-zakato", noop_call(director.UPDATE_BRAG_ZAKATO_PROCCODE)),
+            ("stamp-inits-garu-zakato", noop_call(director.INIT_GARU_ZAKATO_PROCCODE)),
+            ("dispatch-updates-garu-zakato", noop_call(director.UPDATE_GARU_ZAKATO_PROCCODE)),
+            ("brag-zakato-spawns-teleporting", reitem(director.INIT_BRAG_ZAKATO_PROCCODE, director.SLOT_STATE_ID, director.SLOT_ACTIVE)),
+            ("garu-zakato-spawns-active", reitem(director.INIT_GARU_ZAKATO_PROCCODE, director.SLOT_STATE_ID, director.SLOT_TELEPORT)),
+            ("brag-zakato-stamps-main-code", repoint_write(director.INIT_BRAG_ZAKATO_PROCCODE, director.SLOT_CODE_ID)),
+            ("garu-zakato-flies-straight", reitem(director.INIT_GARU_ZAKATO_PROCCODE, director.SLOT_DX_ID, 0)),
+            ("brag-zakato-aims-generic-tier", repoint_read(director.UPDATE_BRAG_ZAKATO_PROCCODE, {director.AIM_DX_32_ID, director.AIM_DY_32_ID}, director.AIM_DX_48_ID, "aim dx 48")),
+            ("brag-zakato-fires-fan-then-self-explodes", noop_call_in(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.BRAG_ZAKATO_SHOOT_PROCCODE)),
+            ("brag-zakato-self-explode-shares-burst", noop_call_in(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.EXPLODE_TICK_PROCCODE)),
+            ("brag-zakato-fan-emits-five", rescale_repeat(director.BRAG_ZAKATO_SHOOT_PROCCODE, director.BRAG_ZAKATO_FAN_COUNT)),
+            ("brag-zakato-rnd-fuse-seeded", break_fuse_offset(director.UPDATE_BRAG_ZAKATO_PROCCODE, 1)),
+            ("garu-zakato-fuse-seeded", break_fuse_offset(director.INIT_GARU_ZAKATO_PROCCODE, director.GARU_ZAKATO_FUSE_OFFSET)),
+            ("garu-zakato-detonates-on-fuse", noop_call_in(director.UPDATE_GARU_ZAKATO_PROCCODE, director.GARU_ZAKATO_DETONATE_PROCCODE)),
+            ("garu-zakato-hit-shares-burst", noop_call_in(director.UPDATE_GARU_ZAKATO_PROCCODE, director.EXPLODE_TICK_PROCCODE)),
+            ("garu-detonate-lays-ring", rescale_repeat(director.GARU_ZAKATO_DETONATE_PROCCODE, director.GARU_RING_COUNT)),
+            ("garu-detonate-spawns-four-sparios", noop_call_in(director.GARU_ZAKATO_DETONATE_PROCCODE, director.INIT_BRAG_SPARIO_PROCCODE)),
+            ("garu-detonate-cardinal-velocities", repoint_write(director.GARU_ZAKATO_DETONATE_PROCCODE, director.SLOT_DX_ID)),
+            ("garu-detonate-frees-garu", reitem(director.GARU_ZAKATO_DETONATE_PROCCODE, director.SLOT_STATE_ID, 1)),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air08_failures(project), label)
 
     @staticmethod
     def _air05_failures(project: dict) -> set:
@@ -10428,7 +10828,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "ab221acf4daf15b548c0f18d0a9887684ae890e906cb894e44b85ae4cc480d9a",
+            "502f1781601744565596efb7a6f07300eac7c3971750adff4c315e06dec11fae",
             build_hash,
         )
 

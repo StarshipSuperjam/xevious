@@ -750,6 +750,12 @@ UPDATE_GIDDO_SPARIO_PROCCODE = "update giddo spario"  # AIR-10: straight flight 
 EXPLODE_GIDDO_SPARIO_PROCCODE = "explode giddo spario tick"  # AIR-10: the 8-frame burst exception
 INIT_BRAG_SPARIO_PROCCODE = "init brag spario"  # AIR-10: accelerating-homer init
 UPDATE_BRAG_SPARIO_PROCCODE = "update brag spario"  # AIR-10: per-tick homing acceleration
+INIT_BRAG_ZAKATO_PROCCODE = "init brag zakato"  # AIR-08: shared teleport-in init for both Brag variants
+UPDATE_BRAG_ZAKATO_PROCCODE = "update brag zakato"  # AIR-08: teleport/active/self-destruct + terminal fan
+BRAG_ZAKATO_SHOOT_PROCCODE = "brag zakato shoot"  # AIR-08: the terminal 5-bullet aimed radiating fan
+INIT_GARU_ZAKATO_PROCCODE = "init garu zakato"  # AIR-08: no-teleport straight flyer init (random lateral Y)
+UPDATE_GARU_ZAKATO_PROCCODE = "update garu zakato"  # AIR-08: straight flight + fuse -> detonate
+GARU_ZAKATO_DETONATE_PROCCODE = "garu zakato detonate"  # AIR-08: 16-bullet ring + 4 Brag Sparios, then free
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
 # DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
@@ -804,6 +810,14 @@ ZAKATO_SLOW_FORMATION_OFFSET = 54
 ZAKATO_CLOSEY_FORMATION_OFFSET = 57
 ZAKATO_FAST_FORMATION_OFFSET = 60
 ZAKATO_CONT_FORMATION_OFFSET = 110
+# AIR-08 Brag Zakato: the flying-type-table runs whose first code selects each Brag variant
+# (object-types.json 0-based): rnd (0x16) is a four-wide run at 84-87, closeY (0x17) a four-wide run
+# at 88-91. The debug spawner forces `formation count` = 1, so only the run's first position is read.
+# NATURAL reachability is AI-level/formation-table dependent (set_flying_formation's signed offset is
+# an index into flying_enemy_offset_tbl, not a direct type-table offset), so the debug key is the
+# deterministic playtest lever, exactly as for the base slow/closeY variants.
+BRAG_ZAKATO_RND_FORMATION_OFFSET = 84
+BRAG_ZAKATO_CLOSEY_FORMATION_OFFSET = 88
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
@@ -922,6 +936,54 @@ BRAG_SPARIO_INIT_CODE = 0  # single body sprite; the arcade animates via ATTR fl
 # it spawns only four-at-a-time from the Garu Zakato detonation (AIR-08, same PR), so it has no debug
 # formation entry and its in-play proof arrives with air.special-pairs.
 GIDDO_SPARIO_FORMATION_OFFSET = 39
+# AIR-08 Brag Zakato (Cracker) + Garu Zakato (Bullseye): the "special pairs" — the last of the Zakato
+# cluster. Two Brag variants teleport in exactly like the base Zakato (init_teleport, ~20-frame sparkle,
+# indestructible during it) but END their life with a terminal 5-bullet AIMED radiating FAN (two
+# angle-steps apart) rather than a single aimed bullet: the rnd variant on a 1-64 random fuse
+# (handle_16 3863), the closeY variant when the craft is level in Y (handle_17 3893). Both are aimed at
+# the craft on the 32-magnitude generic tier while alive (calc_dX_dY_for_vector_to_solvalou), body code
+# 0x12. The Garu Zakato does NOT teleport (handle_18 4010): it enters at a random lateral column
+# (gen_random_Y_store_obj), flies STRAIGHT down the scroll axis at 3 px/frame (dX=48), and — left alone
+# — detonates on a 32-63 fuse into a 16-bullet 360-degree ring PLUS 4 Brag Sparios and vanishes with NO
+# explosion or score (init_garu_zakato_explosion 5075); shot first, it scores its value on the shared
+# flying kill. Codes 0x16/0x17/0x18 (22/23/24); the port type byte equals the arcade handle number.
+BRAG_ZAKATO_RND_TYPE = 22  # 0x16, handle_16_Brag_Zakato_rnd: teleport in, random 1-64 fuse, terminal fan
+BRAG_ZAKATO_CLOSEY_TYPE = 23  # 0x17, handle_17_Brag_Zakato_closeY: teleport in, fires level-in-Y, terminal fan
+GARU_ZAKATO_TYPE = 24  # 0x18, handle_18_Garu_Zakato: no teleport, straight 3 px/f, fuse -> ring + 4 Sparios
+BRAG_ZAKATO_TYPES = (BRAG_ZAKATO_RND_TYPE, BRAG_ZAKATO_CLOSEY_TYPE)
+# Points are 1-based value-table positions (VALUE_TABLE_POINTS): rnd 600 -> 13, closeY 1500 -> 18, Garu
+# 1000 -> 17 (arcade _PTS bytes 36/51/48 name those arcade-table slots; same decoded remap as the base
+# Zakato). Brag Zakato bodies use arcade code 0x12, the Garu 0x13 (cosmetic — the renderer derives its
+# frame from state/clock, not the code byte, like every ported family).
+BRAG_ZAKATO_RND_PTS = 13  # 600 points (handle_16 _PTS byte 36)
+BRAG_ZAKATO_CLOSEY_PTS = 18  # 1,500 points (handle_17 _PTS byte 51)
+GARU_ZAKATO_PTS = 17  # 1,000 points (handle_18 _PTS byte 48)
+BRAG_ZAKATO_MAIN_CODE = 0x12  # active-phase body sprite code (brag_zakato_NN_main move.b #0x12,_CODE)
+GARU_ZAKATO_MAIN_CODE = 0x13  # active-phase body sprite code (handle_18 move.b #0x13,_CODE)
+# Brag Zakato rnd draws a 1-64 fuse on teleport completion ((rng & 0x3f)+1, 3874-3875) — the same span
+# as the base fast variant; the closeY variant has NO fuse (it fires on the lateral-proximity test, the
+# same [-4, 3] cell band as the base closeY, reusing ZAKATO_CLOSEY_LOW/HIGH). The Garu draws a 32-63
+# fuse at spawn ((rng & 0x1f)+32, 4018-4021) — span 32, offset 32.
+BRAG_ZAKATO_RND_FUSE_SPAN = 64  # (rng mod 64) + 1 = 1-64 arcade frames (handle_16 and.w #0x3f)
+GARU_ZAKATO_FUSE_SPAN = 32  # (rng mod 32) + offset = the 32-63 fuse (handle_18 and.b #0x1f)
+GARU_ZAKATO_FUSE_OFFSET = 32  # +32 -> 32-63 (handle_18 add.b #32)
+GARU_STRAIGHT_DX = 48  # raw scroll-axis velocity for the Garu (arcade dX=48, 3 px/frame)
+# The terminal fan (brag_zakato_shoot 5054) aims at the craft, converts the aim angle to a radiating
+# index ((base - 32) >> 3 & 0x1f — the arcade sub #32 / ror.b #3 / and #0x1f) and emits 5 bullets two
+# steps apart (addq #2 / and #0x1f). The Garu ring (init_garu_zakato_explosion 5075) emits 16 bullets at
+# even angles 0,2,..,30 (a full 360-degree ring), then spawns 4 Brag Sparios into the slots ADJACENT to
+# the Garu with cardinal velocities from brag_spario_dX/dY_tbl.
+BRAG_ZAKATO_FAN_COUNT = 5  # bullets in the terminal aimed fan (moveq #5-1)
+BRAG_ZAKATO_FAN_STEP = 2  # angle step between fan bullets (addq #2)
+BRAG_ZAKATO_FAN_BASE_BIAS = 32  # the arcade sub #32 before the >>3 index fold
+GARU_RING_COUNT = 16  # bullets in the 360-degree detonation ring (moveq #16-1)
+GARU_RING_STEP = 2  # angle step -> even angles 0,2,..,30 (addq #2, and #30)
+GARU_SPARIO_COUNT = 4  # Brag Sparios spawned by the detonation (moveq #4-1)
+# The 4 detonation Sparios take cardinal velocities from brag_spario_dX_tbl/brag_spario_dY_tbl (5106/5112,
+# 0xE0 == signed -32): (dX,dY) = (+32,0),(0,-32),(-32,0),(0,+32) — down/left/up/right on the port axes
+# (arcade _dX == scroll axis == slot dx; _dY == lateral == slot dy). Magnitude 32 raw = 2 px/frame.
+BRAG_SPARIO_SPAWN_DX = (32, 0, -32, 0)
+BRAG_SPARIO_SPAWN_DY = (0, -32, 0, 32)
 FLYING_HANDLED_TYPES = (
     TOROID_TYPE,
     TOROID_SHOOTS_TYPE,
@@ -939,6 +1001,9 @@ FLYING_HANDLED_TYPES = (
     ZAKATO_CLOSEY_TYPE,
     ZAKATO_FAST_TYPE,
     ZAKATO_CONT_TYPE,
+    BRAG_ZAKATO_RND_TYPE,
+    BRAG_ZAKATO_CLOSEY_TYPE,
+    GARU_ZAKATO_TYPE,
 )
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
 # (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
@@ -965,6 +1030,16 @@ DEBUG_SPAWN_FAMILIES = (
     (ZAKATO_CLOSEY_TYPE, ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
     (ZAKATO_FAST_TYPE, ZAKATO_FAST_FORMATION_OFFSET, 1),
     (ZAKATO_CONT_TYPE, ZAKATO_CONT_FORMATION_OFFSET, 1),
+    # AIR-08: the two Brag Zakato variants spawn through the normal formation path (their type-table run
+    # first code selects them), one at a time.
+    (BRAG_ZAKATO_RND_TYPE, BRAG_ZAKATO_RND_FORMATION_OFFSET, 1),
+    (BRAG_ZAKATO_CLOSEY_TYPE, BRAG_ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
+    # AIR-08: the Garu Zakato is NOT in the flying type table (its only arcade spawn is the area
+    # `add_object` schedule, not yet consumed by the port — a documented follow-up). So it cannot come in
+    # through the formation spawner: its count is 0 (the spawner brings in nothing) and a dedicated
+    # direct-stamp branch in this proc stamps it into the first flying slot instead. Offset is immaterial
+    # at count 0.
+    (GARU_ZAKATO_TYPE, 0, 0),
 )
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
@@ -1360,6 +1435,19 @@ GIDDO_SPARIO_CLONE_SLOT_ID = "giddo-spario-clone-slot"  # sprite-local: which fl
 
 BRAG_SPARIO_TARGET = "brag-spario"
 BRAG_SPARIO_CLONE_SLOT_ID = "brag-spario-clone-slot"  # sprite-local: which flying slot this clone renders
+
+# AIR-08: the Garu Zakato renderer reuses the shared Spario factory (ACTIVE body stand-in + HIT burst,
+# no teleport phase) — it has its OWN clone pool over the flying slots. The Brag Zakato needs NO new
+# target: it teleports and self-destructs exactly like the base Zakato, so it folds into the Zakato
+# renderer (its `is_zakato` gate is extended to the two Brag types).
+GARU_ZAKATO_TARGET = "garu-zakato"
+GARU_ZAKATO_CLONE_SLOT_ID = "garu-zakato-clone-slot"  # sprite-local: which flying slot this clone renders
+# AIR-08 Garu detonation temporaries (Stage-scoped): the detonation copies the Garu's cell into the 16
+# ring bullets and the 4 spawned Sparios, then frees the Garu slot. `slot index` is repointed at each
+# spawned Sparios during the spawn loop, so the Garu's own cell and slot number are captured up front.
+GARU_DET_X_ID = "garu-det-x"  # the detonating Garu's scroll-axis position, copied into its spawns
+GARU_DET_Y_ID = "garu-det-y"  # the detonating Garu's lateral position, copied into its spawns
+GARU_DET_SLOT_ID = "garu-det-slot"  # the detonating Garu's own flying slot (to compute adjacency + free it)
 
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
@@ -2464,6 +2552,21 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_SPARIO_TYPE)),
         [blocks.call_proc(UPDATE_BRAG_SPARIO_PROCCODE, warp=True)],
     )
+    # AIR-08: the two Brag Zakato variants (0x16/0x17) share ONE update (teleport/active/self-destruct +
+    # terminal fan, branching inside on `slot type` for the fuse-vs-proximity trigger) — a single OR
+    # branch, like the base Zakato. The Garu Zakato (0x18) has its OWN update (no teleport, straight, fuse
+    # -> detonate) — a single-type branch.
+    is_brag_zakato = blocks.op_or(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_ZAKATO_RND_TYPE)),
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_ZAKATO_CLOSEY_TYPE)),
+    )
+    brag_zakato_branch = blocks.if_reporter(
+        is_brag_zakato, [blocks.call_proc(UPDATE_BRAG_ZAKATO_PROCCODE, warp=True)]
+    )
+    garu_zakato_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_ZAKATO_TYPE)),
+        [blocks.call_proc(UPDATE_GARU_ZAKATO_PROCCODE, warp=True)],
+    )
     bullet_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
@@ -2487,7 +2590,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_LOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -4576,6 +4679,323 @@ def install_update_brag_spario(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def install_init_brag_zakato(blocks: Blocks) -> None:
+    # AIR-08: shared teleport-in init for the two Brag Zakato variants (handle_16/17 3863/3893, via the
+    # shared init_teleport 3994). Identical to the base Zakato init — same ~20-frame teleport-in sparkle,
+    # indestructible (SLOT_TELEPORT) while it plays — except for the points and the type stamped. The
+    # update then aims it, drives its terminal fan trigger (random fuse for rnd / level-in-Y for closeY)
+    # and its self-destruct. Top-row entry via the shared spawn column, exactly as install_init_zakato
+    # (the arcade's random teleport X/Y is the same deferred cosmetic every ported flying family shares).
+    definition = _install_warp_proc(blocks, INIT_BRAG_ZAKATO_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks)  # default exclude_craft=True (mirrors install_init_zakato)
+    wt = lambda: variable("walk type", WALK_TYPE_ID)
+    pts_stamps = [
+        blocks.if_reporter(
+            blocks.op_eq(wt(), number(t)),
+            [_set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(p))],
+        )
+        for t, p in (
+            (BRAG_ZAKATO_RND_TYPE, BRAG_ZAKATO_RND_PTS),
+            (BRAG_ZAKATO_CLOSEY_TYPE, BRAG_ZAKATO_CLOSEY_PTS),
+        )
+    ]
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, wt()),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_TELEPORT)),
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(BRAG_ZAKATO_MAIN_CODE)),
+            *pts_stamps,
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_brag_zakato(blocks: Blocks) -> None:
+    # AIR-08: advance the Brag Zakato at `slot index` by one tick — the same teleport/active/self-destruct
+    # machine as the base Zakato (handle_16/17 3863-3924), differing in two ways: (1) BOTH variants aim at
+    # the craft on the 32-magnitude tier when the teleport completes (there is no straight Brag), and (2)
+    # they end with a 5-bullet aimed radiating FAN (brag_zakato_shoot) instead of a single aimed bullet.
+    # The rnd variant fires on a 1-64 random fuse (brag_zakato_16_main 3872); the closeY variant when the
+    # craft is level in the lateral axis, the same [-4, 3] cell band as the base closeY (3911-3915). Either
+    # way it fires the fan, flips to SELF_EXPLODE (benign, the hit gate ignores it) and plays out the
+    # shared ~20-frame burst before it frees, awarding nothing (brag_zakato_explode 3920 -> the shared
+    # zakato_explode_and_remove). Shot while active, it scores its value on the shared flying kill.
+    definition = _install_warp_proc(blocks, UPDATE_BRAG_ZAKATO_PROCCODE)
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    wt = lambda: _cur_item(blocks, "slot type", SLOT_TYPE_ID)
+    timer = lambda: _cur_item(blocks, "slot timer", SLOT_TIMER_ID)
+    fuse = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+    col_offset = lambda: blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))
+    is_fused = lambda: blocks.op_eq(wt(), number(BRAG_ZAKATO_RND_TYPE))
+    is_proximity = lambda: blocks.op_eq(wt(), number(BRAG_ZAKATO_CLOSEY_TYPE))
+
+    # --- TELEPORT phase: hold in place, advance the sparkle clock; on completion aim + commit to ACTIVE. ---
+    set_aimed = [
+        blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+        blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+        blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+        _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 32", AIM_DX_32_ID, variable("aim index", AIM_INDEX_ID))),
+        _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 32", AIM_DY_32_ID, variable("aim index", AIM_INDEX_ID))),
+    ]
+    # The rnd variant draws a 1-64 fuse on teleport completion ((rng mod 64)+1, 3874-3875); the closeY
+    # variant leaves `slot fire timer` unused (it fires on the proximity test).
+    seed_rnd_fuse = blocks.if_reporter(
+        is_fused(),
+        [
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(BRAG_ZAKATO_RND_FUSE_SPAN)), number(1))),
+        ],
+    )
+    commit_active = [
+        _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+        _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(BRAG_ZAKATO_MAIN_CODE)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        *set_aimed,
+        seed_rnd_fuse,
+    ]
+    teleport = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_TELEPORT)),
+        [
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(timer(), number(TICK_TIMER_STEP))),
+            blocks.if_reporter(blocks.op_not(blocks.op_lt(timer(), number(ZAKATO_PHASE_FRAMES))), commit_active),
+        ],
+    )
+
+    # --- ACTIVE phase: craft collision, terminal-fan trigger, else move + cull. ---
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    dec_fuse = blocks.if_reporter(
+        is_fused(),
+        [_set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_sub(fuse(), number(TICK_TIMER_STEP)))],
+    )
+    fired_fused = blocks.op_and(is_fused(), blocks.op_not(blocks.op_gt(fuse(), number(0))))
+    in_band = blocks.op_and(
+        blocks.op_not(blocks.op_lt(col_offset(), number(ZAKATO_CLOSEY_LOW))),
+        blocks.op_not(blocks.op_gt(col_offset(), number(ZAKATO_CLOSEY_HIGH))),
+    )
+    fired_prox = blocks.op_and(is_proximity(), in_band)
+    fire_now = blocks.op_or(fired_fused, fired_prox)
+    # Self-destruct: fire the 5-bullet aimed fan, flip to SELF_EXPLODE, zero the velocity, reset the burst
+    # clock. brag_zakato_shoot reads `slot index` (still this Brag) for the firing cell, so it runs first.
+    on_fire = [
+        blocks.call_proc(BRAG_ZAKATO_SHOOT_PROCCODE, warp=True),
+        _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_SELF_EXPLODE)),
+        _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
+        _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+    ]
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    fire_choice = blocks.add("control_if_else")
+    blocks.blocks[fire_now]["parent"] = fire_choice
+    blocks.blocks[fire_choice]["inputs"]["CONDITION"] = [2, fire_now]
+    blocks.substack(fire_choice, on_fire)
+    blocks.substack(fire_choice, [*move, cull], name="SUBSTACK2")
+    active = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, dec_fuse, fire_choice],
+    )
+
+    # --- SELF_EXPLODE phase: play out the shared burst clock and free (no score). ---
+    self_explode = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_SELF_EXPLODE)),
+        [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)],
+    )
+
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), teleport, active, self_explode],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
+def install_brag_zakato_shoot(blocks: Blocks) -> None:
+    # AIR-08: the terminal 5-bullet aimed radiating fan (brag_zakato_shoot 5054). Aim at the craft's
+    # current cell, convert the aim angle to a radiating index — the arcade `sub #32 / ror.b #3 / and
+    # #0x1f`, i.e. ((aim base - 32) mod 256) >> 3 masked to 0..31 — then emit 5 bullets two angle-steps
+    # apart via the shared radiating emitter (48-magnitude, 3 px/frame). `slot index` (the firing Brag) is
+    # preserved across the emits (the emitter uses its own bullet cursor), so all 5 leave the Brag's cell.
+    definition = _install_warp_proc(blocks, BRAG_ZAKATO_SHOOT_PROCCODE)
+    set_diffs = [
+        blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+        blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+        blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+    ]
+    # radiating base = floor(((aim base - 32) mod 256) / 8) mod 32.
+    base_index = blocks.op_mod(
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.op_mod(
+                    blocks.op_add(blocks.op_sub(variable("aim base", AIM_BASE_ID), number(BRAG_ZAKATO_FAN_BASE_BIAS)), number(256)),
+                    number(256),
+                ),
+                number(8),
+            )
+        ),
+        number(32),
+    )
+    set_angle = blocks.set_var_expr("radiating angle", RADIATING_ANGLE_ID, base_index)
+    loop = blocks.add("control_repeat", inputs={"TIMES": number(BRAG_ZAKATO_FAN_COUNT)})
+    blocks.substack(
+        loop,
+        [
+            blocks.call_proc(RADIATING_EMIT_PROCCODE, warp=True),
+            blocks.change_var("radiating angle", RADIATING_ANGLE_ID, BRAG_ZAKATO_FAN_STEP),
+        ],
+    )
+    blocks.chain(definition, [*set_diffs, set_angle, loop])
+
+
+def install_init_garu_zakato(blocks: Blocks) -> None:
+    # AIR-08: initialize the flying slot at `slot index` as a Garu Zakato (handle_18 4010). Unlike the
+    # teleporting Zakato/Brag it enters IMMEDIATELY ACTIVE (no sparkle, hittable at once) at a RANDOM
+    # lateral column (gen_random_Y_store_obj, the no-craft-reject draw), and flies straight down the
+    # scroll axis at 3 px/frame (dX=48, dY=0). It draws a 32-63 fuse into `slot fire timer` at spawn; the
+    # update counts it down and — if the Garu is not shot first — detonates. Points 1,000.
+    definition = _install_warp_proc(blocks, INIT_GARU_ZAKATO_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False)  # gen_random_Y_store_obj (handle_18 4013)
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(GARU_ZAKATO_TYPE)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(GARU_STRAIGHT_DX)),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(GARU_ZAKATO_MAIN_CODE)),
+            _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(GARU_ZAKATO_PTS)),
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(GARU_ZAKATO_FUSE_SPAN)), number(GARU_ZAKATO_FUSE_OFFSET))),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_garu_zakato(blocks: Blocks) -> None:
+    # AIR-08: advance the Garu Zakato at `slot index` by one tick (handle_18 4022-4029). No teleport / no
+    # self-destruct phase — it is ACTIVE from spawn. Each tick: if shot (SLOT_HIT) it plays the SHARED
+    # flying explosion (its value already scored by the detector); otherwise it counts its fuse down and,
+    # at zero, DETONATES (a 16-bullet ring + 4 Brag Sparios) and VANISHES with no burst and no score
+    # (garu_zakato_explode 4031 clr TYPE/STATE). Not yet detonating, it moves straight and culls off-edge.
+    definition = _install_warp_proc(blocks, UPDATE_GARU_ZAKATO_PROCCODE)
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    fuse = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    dec_fuse = _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_sub(fuse(), number(TICK_TIMER_STEP)))
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    # Fuse elapsed? detonate (which frees this slot); else move + cull. `fuse()` re-reads the list after
+    # the decrement, so the test sees the decremented value (subq then jeq, 4025-4026).
+    fuse_choice = blocks.add("control_if_else")
+    fuse_done = blocks.op_not(blocks.op_gt(fuse(), number(0)))
+    blocks.blocks[fuse_choice]["inputs"]["CONDITION"] = [2, fuse_done]
+    blocks.blocks[fuse_done]["parent"] = fuse_choice
+    blocks.substack(fuse_choice, [blocks.call_proc(GARU_ZAKATO_DETONATE_PROCCODE, warp=True)])
+    blocks.substack(fuse_choice, [*move, cull], name="SUBSTACK2")
+    active = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, dec_fuse, fuse_choice],
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), active],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
+def install_garu_zakato_detonate(blocks: Blocks) -> None:
+    # AIR-08: the Garu detonation (garu_zakato_explode 4031 -> init_garu_zakato_explosion 5075). Called
+    # with `slot index` = the detonating Garu. First emit a 16-bullet 360-degree ring (even angles
+    # 0,2,..,30) from the Garu's cell via the shared radiating emitter; then spawn 4 Brag Sparios into the
+    # 4 flying slots ADJACENT to the Garu (the arcade clobbers obj 0x3C-0x3F, the 4 objects after the Garu
+    # at 0x3B) at the Garu's cell with the cardinal velocities from brag_spario_dX/dY_tbl; then FREE the
+    # Garu slot (the arcade clr TYPE/STATE — no self-burst, no score). The final restore of `slot index`
+    # to the Garu's own slot both frees it AND restores the advance-slots loop cursor. CONTRACT: the Garu
+    # occupies the FIRST flying slot (its only spawner, the debug key, stamps it there), so its 4
+    # successors lie in the flying band; the natural add_object spawn (deferred follow-up) must preserve
+    # that placement. DEVIATION: the 4 Sparios update once on the tick they spawn (the walk reaches their
+    # higher slot indices later this same pass) — a one-tick head start, recorded in the mechanics note.
+    definition = _install_warp_proc(blocks, GARU_ZAKATO_DETONATE_PROCCODE)
+    gslot = lambda: variable("garu det slot", GARU_DET_SLOT_ID)
+    gx = lambda: variable("garu det x", GARU_DET_X_ID)
+    gy = lambda: variable("garu det y", GARU_DET_Y_ID)
+    capture = [
+        blocks.set_var("garu det slot", GARU_DET_SLOT_ID, variable("slot index", SLOT_INDEX_ID)),
+        blocks.set_var_expr("garu det x", GARU_DET_X_ID, _cur_item(blocks, "slot x", SLOT_X_ID)),
+        blocks.set_var_expr("garu det y", GARU_DET_Y_ID, _cur_item(blocks, "slot y", SLOT_Y_ID)),
+    ]
+    # Ring: 16 bullets at even angles 0,2,..,30. `slot index` is still the Garu, so the emitter copies its
+    # cell into each ring bullet.
+    ring = blocks.add("control_repeat", inputs={"TIMES": number(GARU_RING_COUNT)})
+    blocks.substack(
+        ring,
+        [
+            blocks.call_proc(RADIATING_EMIT_PROCCODE, warp=True),
+            blocks.change_var("radiating angle", RADIATING_ANGLE_ID, GARU_RING_STEP),
+        ],
+    )
+    set_ring_angle = blocks.set_var("radiating angle", RADIATING_ANGLE_ID, number(0))
+    # Spawn the 4 Brag Sparios into the adjacent slots (gslot+1 .. gslot+4): repoint `slot index`, copy
+    # the Garu's cell, set the cardinal velocity + type, then stamp state/code/points via the shared init.
+    spawn_body: list[str] = []
+    for k in range(GARU_SPARIO_COUNT):
+        spawn_body += [
+            blocks.set_var_expr("slot index", SLOT_INDEX_ID, blocks.op_add(gslot(), number(k + 1))),
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, gx()),
+            _set_cur_item(blocks, "slot y", SLOT_Y_ID, gy()),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(BRAG_SPARIO_SPAWN_DX[k])),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(BRAG_SPARIO_SPAWN_DY[k])),
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BRAG_SPARIO_TYPE)),
+            blocks.call_proc(INIT_BRAG_SPARIO_PROCCODE, warp=True),
+        ]
+    # Free the Garu slot AND restore the loop cursor to it.
+    free = [
+        blocks.set_var("slot index", SLOT_INDEX_ID, gslot()),
+        _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(0)),
+        _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(0)),
+    ]
+    blocks.chain(definition, [*capture, set_ring_angle, ring, *spawn_body, *free])
+
+
 def install_fire_permission_gate(blocks: Blocks) -> None:
     # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
     # Operates on the current slot (`slot index`): every firing family calls this each active tick after
@@ -4728,7 +5148,19 @@ def install_spawn_flying(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GIDDO_SPARIO_TYPE)),
         [blocks.call_proc(INIT_GIDDO_SPARIO_PROCCODE, warp=True)],
     )
-    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd, spawn_jara, spawn_zakato, spawn_giddo_spario])
+    # AIR-08: both Brag Zakato variants (rnd 0x16 / closeY 0x17) run the SAME shared teleport-in init
+    # (they differ only in the update's fan trigger). One OR branch, as the dispatch ORs them. The Garu
+    # Zakato has NO formation entry — it is absent from the flying type table (its only arcade spawn is
+    # the area add_object schedule, not yet consumed by the port) — so it has no spawn-flying branch; the
+    # debug key stamps it directly for playtesting (a documented deferred follow-up for natural spawn).
+    spawn_brag_zakato = blocks.if_reporter(
+        blocks.op_or(
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_ZAKATO_RND_TYPE)),
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_ZAKATO_CLOSEY_TYPE)),
+        ),
+        [blocks.call_proc(INIT_BRAG_ZAKATO_PROCCODE, warp=True)],
+    )
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd, spawn_jara, spawn_zakato, spawn_giddo_spario, spawn_brag_zakato])
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
@@ -4810,9 +5242,26 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
             number(len(DEBUG_SPAWN_FAMILIES)),
         ),
     )
+    # AIR-08: the Garu Zakato is not in the flying type table, so the formation spawner (which runs right
+    # after this) cannot bring it in — its DEBUG_SPAWN_FAMILIES count is 0. Stamp it directly into the
+    # first flying slot instead (INIT_GARU_ZAKATO draws its own random lateral column), so holding T shows
+    # a solo Garu that flies straight and detonates. Guarded on its family index; runs on the fresh spawn
+    # only, before the index advances. This is the same standing reachability tool the base slow/closeY
+    # Zakato lean on (debug-key-only until later areas are wired); the natural add_object spawn (areas
+    # 9/10/14) is a documented follow-up.
+    garu_debug_index = next(
+        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == GARU_ZAKATO_TYPE
+    )
+    garu_stamp = blocks.if_reporter(
+        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(garu_debug_index)),
+        [
+            blocks.set_var("slot index", SLOT_INDEX_ID, number(FLYING_SLOTS[0])),
+            blocks.call_proc(INIT_GARU_ZAKATO_PROCCODE, warp=True),
+        ],
+    )
     blocks.substack(
         branch,
-        [*clear, *set_count, advance_index],
+        [*clear, *set_count, garu_stamp, advance_index],
         name="SUBSTACK2",
     )
     blocks.substack(gate, [*set_offset, branch])
@@ -5350,6 +5799,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_zakato(blocks)
     install_init_giddo_spario(blocks)
     install_init_brag_spario(blocks)
+    install_init_brag_zakato(blocks)
+    install_init_garu_zakato(blocks)
     install_check_air_hit(blocks)
     install_check_ground_hit(blocks)
     install_track_crosshair(blocks)
@@ -5370,6 +5821,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_zakato(blocks)
     install_update_giddo_spario(blocks)
     install_update_brag_spario(blocks)
+    install_update_brag_zakato(blocks)
+    install_brag_zakato_shoot(blocks)
+    install_update_garu_zakato(blocks)
+    install_garu_zakato_detonate(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -7546,9 +8001,16 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     loop_condition = blocks.not_state(loop, "playing")
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
     stype = lambda: blocks.list_item("slot type", SLOT_TYPE_ID, slotvar())
+    # AIR-07 base variants + AIR-08 Brag variants: all six teleport in, hold a static body while active,
+    # and play the shared burst for their self-destruct / shot-kill — the same four render phases — so the
+    # Brag rnd/closeY fold into this renderer (they need no target of their own). The Garu Zakato does NOT
+    # (no teleport) and has its own Spario-factory renderer instead.
     is_zakato = blocks.op_or(
-        blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CLOSEY_TYPE))),
-        blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_FAST_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CONT_TYPE))),
+        blocks.op_or(
+            blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CLOSEY_TYPE))),
+            blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_FAST_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CONT_TYPE))),
+        ),
+        blocks.op_or(blocks.op_eq(stype(), number(BRAG_ZAKATO_RND_TYPE)), blocks.op_eq(stype(), number(BRAG_ZAKATO_CLOSEY_TYPE))),
     )
     stage_x = blocks.op_sub(
         blocks.op_mul(
@@ -7751,6 +8213,16 @@ def brag_spario_blocks() -> dict[str, dict[str, Any]]:
     )
 
 
+def garu_zakato_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-08: the Garu Zakato clone pool — no teleport phase (ACTIVE body stand-in + the shared ~20-frame
+    # flying kill burst, big-phase 2x), so it reuses the shared Spario renderer factory. When it DETONATES
+    # (fuse elapsed) it frees its own slot with no burst, so the clone simply hides — the ring bullets and
+    # the 4 Brag Sparios it spawns are drawn by their own pools.
+    return _spario_blocks(
+        GARU_ZAKATO_TARGET, "garu zakato clone slot", GARU_ZAKATO_CLONE_SLOT_ID, GARU_ZAKATO_TYPE, big_phase=True
+    )
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -7870,6 +8342,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, ZAKATO_TARGET)
     _ensure_gameplay_target(result, GIDDO_SPARIO_TARGET)
     _ensure_gameplay_target(result, BRAG_SPARIO_TARGET)
+    _ensure_gameplay_target(result, GARU_ZAKATO_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
@@ -7950,7 +8423,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     # (ordinal 1) — the CrazyCarl aerial rip carries no Spario sprite, so the Zakato blob stands in as a
     # DEFERRED cosmetic (reason recorded in the constants and the mechanics record) — then the shared
     # solv_death burst (ordinals 2..9) their hit draws from. Idempotent; a no-op when any source is absent.
-    for spario_name in (GIDDO_SPARIO_TARGET, BRAG_SPARIO_TARGET):
+    for spario_name in (GIDDO_SPARIO_TARGET, BRAG_SPARIO_TARGET, GARU_ZAKATO_TARGET):
         spario = next((t for t in result["targets"] if t.get("name") == spario_name), None)
         if proof is not None and spario is not None:
             spario["costumes"] = proof_by_family("zakato/")
@@ -8046,6 +8519,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AIM_FINE_ID,
         AIM_INDEX_ID,
         RADIATING_ANGLE_ID,
+        # AIR-08 Garu Zakato detonation temps: the captured Garu x/y and its own slot index, used to
+        # place the 16-bullet ring and the 4 adjacent Brag Sparios before the Garu frees its slot.
+        GARU_DET_X_ID,
+        GARU_DET_Y_ID,
+        GARU_DET_SLOT_ID,
         PLAYER_ROW_ID,
         PLAYER_COL_ID,
         SPAWN_CURSOR_ID,
@@ -8143,6 +8621,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # AIR-12 radiating-spread emission: the caller-supplied explicit direction (0..31) the shared
         # `emit radiating bullet` reads; transient, default 0 (set by the ring/fan emitters, slice 11).
         RADIATING_ANGLE_ID: ["radiating angle", 0],
+        # AIR-08 Garu Zakato detonation temps (slice 11): the captured Garu x/y and its own slot index.
+        GARU_DET_X_ID: ["garu det x", 0],
+        GARU_DET_Y_ID: ["garu det y", 0],
+        GARU_DET_SLOT_ID: ["garu det slot", 0],
         PLAYER_ROW_ID: ["player row", 0],
         PLAYER_COL_ID: ["player col", 0],
         SPAWN_CURSOR_ID: ["spawn cursor", 0],
@@ -8312,6 +8794,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "zakato": zakato_blocks(),
         "giddo-spario": giddo_spario_blocks(),
         "brag-spario": brag_spario_blocks(),
+        "garu-zakato": garu_zakato_blocks(),
         "barra": barra_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
@@ -8402,6 +8885,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-10: likewise, the only Brag render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 BRAG_SPARIO_CLONE_SLOT_ID: ["brag spario clone slot", 0],
+            }
+        elif target["name"] == GARU_ZAKATO_TARGET:
+            # AIR-08: likewise, the only Garu Zakato render state is which flying slot each clone draws.
+            target["variables"] = target["variables"] | {
+                GARU_ZAKATO_CLONE_SLOT_ID: ["garu zakato clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
