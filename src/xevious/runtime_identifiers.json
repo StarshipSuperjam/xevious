@@ -164,6 +164,11 @@
       "name": "terrain column",
       "scope": "Stage"
     },
+    "bacura-clone-slot": {
+      "kind": "variable",
+      "name": "bacura clone slot",
+      "scope": "bacura"
+    },
     "barra-clone-slot": {
       "kind": "variable",
       "name": "barra clone slot",

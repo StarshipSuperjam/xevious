@@ -756,6 +756,8 @@ BRAG_ZAKATO_SHOOT_PROCCODE = "brag zakato shoot"  # AIR-08: the terminal 5-bulle
 INIT_GARU_ZAKATO_PROCCODE = "init garu zakato"  # AIR-08: no-teleport straight flyer init (random lateral Y)
 UPDATE_GARU_ZAKATO_PROCCODE = "update garu zakato"  # AIR-08: straight flight + fuse -> detonate
 GARU_ZAKATO_DETONATE_PROCCODE = "garu zakato detonate"  # AIR-08: 16-bullet ring + 4 Brag Sparios, then free
+INIT_BACURA_PROCCODE = "init bacura"  # AIR-11: stamp one slab into a reserved-band slot at the top row
+UPDATE_BACURA_PROCCODE = "update bacura"  # AIR-11: craft-touch death + drift down + cull; NO shot hit-test
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
 # DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
@@ -1005,6 +1007,16 @@ FLYING_HANDLED_TYPES = (
     BRAG_ZAKATO_CLOSEY_TYPE,
     GARU_ZAKATO_TYPE,
 )
+# AIR-11 Bacura (indestructible slab). Arcade code 0x01 (main_fn_3__init_bacura 5188 writes _TYPE=1 into
+# the 0x10-0x1F object band). BACURA_TYPE keeps that arcade value, but the port must NOT dispatch it by
+# `slot type == 1`: the shot slots (SHOT_SLOTS 37-39) also carry slot type 1 (SHOT_TYPE), so a type-1
+# equality branch in the walk would run the Bacura handler over live shots. Instead the walk dispatches
+# the Bacura by BAND MEMBERSHIP (slot index in BACURA_SLOTS 17-32, which only ever holds Bacura), and the
+# renderer — whose clones are bound to band slots — can safely read `slot type == BACURA_TYPE` because a
+# band slot only ever holds 0 or 1. The shot-invulnerability is not a state flag: the Bacura walk branch
+# simply OMITS the CHECK_AIR_HIT_PROCCODE call every flying family makes, so no shot ever hit-tests it.
+BACURA_TYPE = 1  # 0x01, handle_01_Bacura: drifts down its own band, never destroyed/scored
+BACURA_DRIFT_DX = 16  # raw scroll-axis velocity (arcade _dX=16 => 4*16 units/tick = 1 px/frame down)
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
 # (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
 # whose count is how many to bring in as one group (almost always 1). T brings in the entry at `debug
@@ -1040,6 +1052,11 @@ DEBUG_SPAWN_FAMILIES = (
     # direct-stamp branch in this proc stamps it into the first flying slot instead. Offset is immaterial
     # at count 0.
     (GARU_ZAKATO_TYPE, 0, 0),
+    # AIR-11: the Bacura is not a flying-pool type at all — it lives in its own reserved band (17-32) and
+    # is spawned live by the area schedule. Like the Garu it has no formation-table run, so its count is 0
+    # (the formation spawner brings in nothing) and a dedicated direct-stamp branch stamps one slab into
+    # BACURA_SLOTS[0] instead. Offset is immaterial at count 0.
+    (BACURA_TYPE, 0, 0),
 )
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
@@ -1448,6 +1465,17 @@ GARU_ZAKATO_CLONE_SLOT_ID = "garu-zakato-clone-slot"  # sprite-local: which flyi
 GARU_DET_X_ID = "garu-det-x"  # the detonating Garu's scroll-axis position, copied into its spawns
 GARU_DET_Y_ID = "garu-det-y"  # the detonating Garu's lateral position, copied into its spawns
 GARU_DET_SLOT_ID = "garu-det-slot"  # the detonating Garu's own flying slot (to compute adjacency + free it)
+
+# AIR-11 (air.bacura #81) renderer constants. Unlike the flying families, the Bacura draws one persistent
+# clone per BACURA-BAND slot (17-32), each a pure per-tick function of its slot: a SINGLE static costume
+# (the slab) while the slot holds BACURA_TYPE, hidden otherwise. There is NO hit/explosion phase at all —
+# the Bacura is never destroyed, so its costume list is just the one slab frame (mirrored with no death
+# append, like the enemy_bullet). The clone writes no state. The slab costume is a 24-px-wide native crop,
+# so the shared 225 size renders it ~54x36 stage px — the wide horizontal panel the arcade draws.
+BACURA_TARGET = "bacura"
+BACURA_CLONE_SLOT_ID = "bacura-clone-slot"  # sprite-local: which Bacura-band slot this clone renders
+BACURA_RENDER_SIZE = 225  # the shared on-screen scale (~2.25 stage px per native px)
+BACURA_SLAB_ORDINAL = 1  # costume 1: the single static slab (bacura/slab/01); no burst frames follow
 
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
@@ -2567,6 +2595,18 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_ZAKATO_TYPE)),
         [blocks.call_proc(UPDATE_GARU_ZAKATO_PROCCODE, warp=True)],
     )
+    # AIR-11: the Bacura is the one occupant dispatched by BAND MEMBERSHIP rather than by `walk type`. Its
+    # slot type (BACURA_TYPE=1) collides with SHOT_TYPE — the shot slots (37-39) also carry type 1 — so a
+    # `walk type == 1` branch would run the Bacura handler over live shots. The Bacura band (17-32) only
+    # ever holds Bacura, so a slot-index range test dispatches it unambiguously. `update bacura` OMITS the
+    # CHECK_AIR_HIT call every flying family makes; that omission IS the shot-invulnerability.
+    in_bacura_band = blocks.op_and(
+        blocks.op_not(blocks.op_lt(cursor(), number(BACURA_SLOTS[0]))),
+        blocks.op_not(blocks.op_gt(cursor(), number(BACURA_SLOTS[1]))),
+    )
+    bacura_branch = blocks.if_reporter(
+        in_bacura_band, [blocks.call_proc(UPDATE_BACURA_PROCCODE, warp=True)]
+    )
     bullet_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
@@ -2590,7 +2630,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_LOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2614,12 +2654,14 @@ def _cur_col(blocks: Blocks) -> str:
     return blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot y", SLOT_Y_ID), number(SLOT_UNITS_PER_CELL)))
 
 
-def _craft_overlap_reporter(blocks: Blocks) -> str:
-    """PLY-02: boolean — does the current slot (`slot index`) overlap the craft's cell within the shared
-    flying/bullet hit window (HIT_WINDOW_BULLET_FLYING)? The craft is placed at player row/col scaled to
-    shadow half-px (cell-quantized); the object is floored to its shadow MSB. Y is the scroll axis, X the
-    lateral, matching the reference's `check_bullet_or_flying_hit_solvalou` byte compare."""
-    y_bias, y_width, x_bias, x_width = HIT_WINDOW_BULLET_FLYING
+def _craft_overlap_reporter(blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FLYING) -> str:
+    """PLY-02: boolean — does the current slot (`slot index`) overlap the craft's cell within `window`
+    (default HIT_WINDOW_BULLET_FLYING, the shared flying/bullet box)? The craft is placed at player
+    row/col scaled to shadow half-px (cell-quantized); the object is floored to its shadow MSB. Y is
+    the scroll axis, X the lateral, matching the reference's byte compare. AIR-11 (air.bacura) passes
+    the wider HIT_WINDOW_BACURA — the reference's `check_bacura_hit_solvalou` (2225-2237) uses the same
+    compare against a larger box than the flying/bullet check."""
+    y_bias, y_width, x_bias, x_width = window
     dy_low, dy_high = -y_bias, y_width - y_bias - 1
     dx_low, dx_high = -x_bias, x_width - x_bias - 1
     sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
@@ -3631,6 +3673,56 @@ def install_update_terrazi(blocks: Blocks) -> None:
         name="SUBSTACK2",
     )
     blocks.chain(definition, [top])
+
+
+def install_init_bacura(blocks: Blocks) -> None:
+    # AIR-11: stamp one Bacura slab into the reserved-band slot at `slot index` (main_fn_3__init_bacura
+    # 5188-5199, handle_01_Bacura 4247-4264). The arcade activates a run of the 0x10-0x1F object band as
+    # _TYPE=1, then handle_01 sets _STATE=2 (active), _dX=16, _dY=0 and a RANDOM lateral column
+    # (gen_random_Y_store_obj -> col 3..27, then addq #1 -> 4..28); it READS but never SETS _X, so a fresh
+    # slab starts at the TOP (_X=0) and drifts down. Port: the craft-independent draw (`_draw_spawn_column`
+    # exclude_craft=False) with col_offset=1 reproduces cols 4..28 exactly; the slab enters at the top row
+    # (slot x=0) and drifts at BACURA_DRIFT_DX. There is no aim, no fire, no fuse, and no points (never
+    # scored). Arcade _STATE=2 (active) maps to the PORT's SLOT_ACTIVE (=1), not port state 2 (SLOT_HIT).
+    definition = _install_warp_proc(blocks, INIT_BACURA_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False, col_offset=1)
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BACURA_TYPE)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            # Enter from the TOP row (arcade never sets _X, so a fresh slab starts at 0) and drift down.
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(BACURA_DRIFT_DX)),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_bacura(blocks: Blocks) -> None:
+    # AIR-11: advance the Bacura at `slot index` by one tick (handle_01_Bacura 4247-4264). The Bacura is
+    # indestructible: this handler deliberately OMITS the CHECK_AIR_HIT call every flying family makes, so
+    # no player shot ever hit-tests it — that omission IS the shot-invulnerability (there is no HIT state,
+    # no explosion, no score). It only (1) kills the craft on contact using the WIDER HIT_WINDOW_BACURA
+    # (check_bacura_hit_solvalou 2225-2237, the same overlap compare as the flying check but a larger box),
+    # checked at the tick-start position; (2) drifts DOWN the scroll axis at BACURA_DRIFT_DX (1 px/frame,
+    # dy=0); and (3) culls once it scrolls off the bottom. It enters at the top and only moves down, so the
+    # bottom edge is its only exit (unlike the maneuvering flying families, no four-edge cull is needed).
+    definition = _install_warp_proc(blocks, UPDATE_BACURA_PROCCODE)
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks, HIT_WINDOW_BACURA),
+        [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))],
+    )
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.chain(definition, [craft_hit, *move, cull])
 
 
 def install_init_kapi(blocks: Blocks) -> None:
@@ -5227,6 +5319,17 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
             blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
         )
         present = occupied if present is None else blocks.op_or(present, occupied)
+    # AIR-11: also wait on the Bacura band (17-32). The Bacura lives in its OWN band, not the flying pool,
+    # so without this the cursor would flash past the Bacura entry while a slab is still drifting (the same
+    # family of trap as the PR-A homer stall). A live Bacura is invulnerable and self-culls off the bottom,
+    # so this is a BOUNDED wait, not a permanent stall. The `clear` step below deliberately does NOT wipe
+    # the band — the slab is left to drift off on its own (which also lets the operator exercise the #77
+    # shot-bounce on it in isolation before it leaves).
+    for slot in range(BACURA_SLOTS[0], BACURA_SLOTS[1] + 1):
+        occupied = blocks.op_not(
+            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
+        )
+        present = occupied if present is None else blocks.op_or(present, occupied)
 
     branch = blocks.add("control_if_else")
     blocks.blocks[branch]["inputs"]["CONDITION"] = [2, present]
@@ -5272,9 +5375,24 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
             blocks.call_proc(INIT_GARU_ZAKATO_PROCCODE, warp=True),
         ],
     )
+    # AIR-11: the Bacura is likewise not in the flying type table (it has its own band, spawned live by the
+    # area schedule), so its DEBUG_SPAWN_FAMILIES count is 0 and the formation spawner brings it in nothing.
+    # Stamp one slab directly into the FIRST BACURA-band slot instead (INIT_BACURA draws its own random
+    # lateral column and enters at the top), so holding T shows a solo slab that drifts down and can't be
+    # destroyed. Guarded on its family index; runs on the fresh spawn only, before the index advances.
+    bacura_debug_index = next(
+        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == BACURA_TYPE
+    )
+    bacura_stamp = blocks.if_reporter(
+        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(bacura_debug_index)),
+        [
+            blocks.set_var("slot index", SLOT_INDEX_ID, number(BACURA_SLOTS[0])),
+            blocks.call_proc(INIT_BACURA_PROCCODE, warp=True),
+        ],
+    )
     blocks.substack(
         branch,
-        [*clear, *set_count, garu_stamp, advance_index],
+        [*clear, *set_count, garu_stamp, bacura_stamp, advance_index],
         name="SUBSTACK2",
     )
     blocks.substack(gate, [*set_offset, branch])
@@ -5814,6 +5932,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_brag_spario(blocks)
     install_init_brag_zakato(blocks)
     install_init_garu_zakato(blocks)
+    install_init_bacura(blocks)
     install_check_air_hit(blocks)
     install_check_ground_hit(blocks)
     install_track_crosshair(blocks)
@@ -5838,6 +5957,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_brag_zakato_shoot(blocks)
     install_update_garu_zakato(blocks)
     install_garu_zakato_detonate(blocks)
+    install_update_bacura(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -8236,6 +8356,66 @@ def garu_zakato_blocks() -> dict[str, dict[str, Any]]:
     )
 
 
+def bacura_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-11 Bacura renderer (game_director owns the blocks; the single slab costume is mirrored on in
+    # expected_project). One persistent clone per BACURA-BAND slot (17..32), created on director enter while
+    # playing and cleared on stop. Each clone shows the static slab at its slot's mapped position when the
+    # slot holds a Bacura, else hides. There is NO hit/explosion phase — the Bacura is never destroyed — so
+    # unlike the flying families this has just the one costume and no burst branch (like the enemy bullet).
+    # The clone writes no state (the walk owns the slot). It is safe to key rendering on `slot type ==
+    # BACURA_TYPE` here even though that value collides with SHOT_TYPE: these clones are bound to BACURA-band
+    # slots, which only ever hold a Bacura (0 or BACURA_TYPE) — the type-vs-band hazard is only in the walk.
+    blocks = Blocks(BACURA_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("bacura clone slot", BACURA_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(BACURA_SLOTS[0], BACURA_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("bacura clone slot", BACURA_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_bacura = blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(BACURA_TYPE))
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_bacura]
+    blocks.blocks[is_bacura]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            blocks.switch_costume("bacura/slab/01"),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(BACURA_RENDER_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -8356,6 +8536,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, GIDDO_SPARIO_TARGET)
     _ensure_gameplay_target(result, BRAG_SPARIO_TARGET)
     _ensure_gameplay_target(result, GARU_ZAKATO_TARGET)
+    _ensure_gameplay_target(result, BACURA_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
@@ -8443,6 +8624,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             if death is not None:
                 spario["costumes"].extend(copy.deepcopy(death["costumes"]))
             spario["currentCostume"] = 0
+    # AIR-11: the Bacura renderer mirrors its single static slab frame (ordinal 1) — and NOTHING else. The
+    # Bacura is never destroyed, so unlike every flying family it appends NO shared solv_death burst (it has
+    # no HIT/explosion phase at all, like the enemy bullet). Idempotent; a no-op when the proof source is
+    # absent (generation runs to a fixpoint).
+    bacura = next((t for t in result["targets"] if t.get("name") == BACURA_TARGET), None)
+    if proof is not None and bacura is not None:
+        bacura["costumes"] = proof_by_family("bacura/")
+        bacura["currentCostume"] = 0
     # GND-01: the Barra renderer mirrors its single idle pyramid frame (ordinal 1), then the shared
     # explosion burst (the same solv_death frames, ordinals 2..9 — the ground bomb-burst is a deferred
     # cosmetic, so the aerial burst stands in), then the two crater frames (ordinals 10..11) that the
@@ -8808,6 +8997,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "giddo-spario": giddo_spario_blocks(),
         "brag-spario": brag_spario_blocks(),
         "garu-zakato": garu_zakato_blocks(),
+        "bacura": bacura_blocks(),
         "barra": barra_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
@@ -8903,6 +9093,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-08: likewise, the only Garu Zakato render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 GARU_ZAKATO_CLONE_SLOT_ID: ["garu zakato clone slot", 0],
+            }
+        elif target["name"] == BACURA_TARGET:
+            # AIR-11: likewise, the only Bacura render state is which BACURA-band slot each clone draws; the
+            # slab has no phases at all, so there is nothing else to track.
+            target["variables"] = target["variables"] | {
+                BACURA_CLONE_SLOT_ID: ["bacura clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
