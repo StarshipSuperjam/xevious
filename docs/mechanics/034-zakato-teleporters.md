@@ -69,7 +69,10 @@
   - `SLOT_HIT` (2) — shot down while active: the **shared** flying explosion (`explode toroid tick`), its value
     already scored by the detector, exactly like every other flying family.
 
-  `install_init_zakato` draws the spawn column through the shared helper with the **craft-gap exclusion on**,
+  `install_init_zakato` draws the spawn column through the shared helper with the **craft-gap exclusion OFF**
+  (`gen_random_Y_store_obj` 5147 — an in-range clamp only, *no* craft-proximity reject, so a Zakato can
+  teleport in over the craft's own column), plus the **`+1`-cell teleport offset** `init_teleport` applies
+  (`add.b #1,(_Y,a5)` 4000, modelled as `col_offset=1`),
   stamps `SLOT_TELEPORT` (not `SLOT_ACTIVE` — the structural indestructibility), sets `slot code` to the active
   body ordinal, captures **no** fire mask (a Zakato fires structurally, not under the periodic gate), and
   stamps the per-variant `slot pts` by `walk type`. `install_update_zakato` runs a top HIT-vs-else guard
@@ -86,8 +89,9 @@
   the renderer draws (self burst vs shared burst, keyed on the state) and in awarding nothing — the detector,
   not the tick, awards, and it never runs on a self-destructing slot.
 - Scratch evidence: `install_init_zakato` and `install_update_zakato` (the shared lifecycle procs, reusing
-  `_fire_aimed_bullet`, `COMPUTE_AIM`, the 32-tier `aim dx 32`/`aim dy 32` tables, the craft-excluding
-  `_draw_spawn_column`, the shared `explode toroid tick`, and the inlined move/cull), the single Zakato branch
+  `_fire_aimed_bullet`, `COMPUTE_AIM`, the 32-tier `aim dx 32`/`aim dy 32` tables, the craft-independent
+  `_draw_spawn_column` (`exclude_craft=False`, `col_offset=1`), the shared `explode toroid tick`, and the
+  inlined move/cull), the single Zakato branch
   in `install_advance_slots`, the four per-type spawn branches in `install_spawn_flying`, `zakato_blocks` for
   the body/self-burst render, the four base-Zakato entries in `DEBUG_SPAWN_FAMILIES` with their
   `ZAKATO_*_FORMATION_OFFSET` constants, and the `ZAKATO_*` tuning constants in `tools/game_director.py`; the
@@ -95,7 +99,8 @@
   `test_zakato_slice_negative_fixtures`) in `tests/test_scratch_project.py`, whose clauses pin the shared
   lifecycle procs, the by-type spawn and single shared dispatch, that spawn stamps the **indestructible**
   `SLOT_TELEPORT` (not `SLOT_ACTIVE`), the per-variant points gated by `walk type`, the **absent** fire mask,
-  the craft-excluding draw, that the teleport commits `SLOT_ACTIVE` and sets the straight `dx` / 32-tier aim,
+  the craft-independent draw (`gen_random_Y_store_obj`, no craft reject, `+1` teleport offset), that the
+  teleport commits `SLOT_ACTIVE` and sets the straight `dx` / 32-tier aim,
   that it seeds the slow/fast random fuse, that it fires **exactly one** aimed bullet **then** self-destructs
   (with corrupters that ungate the fire and that skip the self-destruct flip), that the proximity band carries
   both constants, and that the self-destruct runs the shared tick and awards nothing while a shot-kill plays

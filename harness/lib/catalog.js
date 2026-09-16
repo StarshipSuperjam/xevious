@@ -471,7 +471,10 @@ export const SCENARIOS = [
       // one pump) can be stepped over — assert the robust fact instead: each family mask, the
       // ground-stop-firing row, and Andor Genesis (first scheduled in area 4) are SEEN set to a
       // non-zero scheduled value. (The FIRING that consumes them is the enemy slices'.) The window is
-      // long enough to cross into area 4 so all nine DIF-03 targets are actually exercised.
+      // long enough to cross into area 4 so all nine DIF-03 targets are actually exercised — and is held
+      // generously wide (area 4 is normally reached ~frame 34 and each mask, once scheduled, PERSISTS for
+      // ~120 frames) so that scratch-vm execution jitter in area-progression timing (which surfaced as an
+      // intermittent CI miss of the persistent Andor mask at the old 130-frame budget) cannot step past it.
       let logramSet = false;
       let otherMaskSet = false;
       let andorSet = false;
@@ -484,7 +487,7 @@ export const SCENARIOS = [
         'fire-mask-boza-logram',
         'fire-mask-domogram',
       ];
-      for (let i = 0; i < 130; i += 1) {
+      for (let i = 0; i < 260; i += 1) {
         step(vm, 1);
         if (readVar(vm, 'fire-mask-logram') > 0) logramSet = true;
         if (readVar(vm, 'fire-mask-andor-genesis') > 0) andorSet = true;
@@ -1896,37 +1899,60 @@ export const SCENARIOS = [
       // settling steps, type 15 as early as step ~2), so accumulating seen types is confounded and cannot
       // make the negative bite. The debug-specific, pacing-invariant signal is the CURSOR itself: the
       // `debug spawn index` advances one step per fresh debug spawn and wraps mod len(DEBUG_SPAWN_FAMILIES)
-      // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T and collect the
-      // distinct cursor values seen — the cycle must visit every family slot (all 13 residues 0..12, i.e.
-      // the nine prior entries plus the four newly built base-Zakato variants: slow, closeY, fast and
-      // cont), which proves it self-extends rather than stopping at a fixed set. Also confirm the key
-      // actually stamps flying enemies. The exact residue→family binding is pinned structurally in
+      // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T, sweep the cursor,
+      // and collect the distinct residues seen — proving it self-extends across every built family rather
+      // than stopping at a fixed set. The exact residue→family binding is pinned structurally in
       // tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the cursor drives the
-      // whole cycle at runtime. No manual field-clear (that would drive the normal spawner); the debug wave
-      // clears its own slots. Worst-case full-cycle coverage for 6 residues was measured at step ~33; the
-      // 13-residue cycle is proportionally longer, so budget 220 (~3x the residue-count scaling) to be safe.
+      // whole cycle at runtime.
+      //
+      // The cursor only advances on a FRESH debug spawn — i.e. when the flying band is empty (the debug wave
+      // brings in one solo, then waits for it to leave before the next). But the tail of the cycle includes
+      // the Garu Zakato, whose detonation seeds 4 Brag Sparios — accelerating homers that, against this
+      // harness's stationary, non-firing craft, orbit forever and never cull. Passively held, the cursor
+      // therefore parks at the family after Garu and never completes the cycle (measured: it froze after 9
+      // of 17 residues even over 3000 frames). So we clear the flying band ourselves each frame to reopen
+      // the field-empty gate — this does NOT drive the normal spawner: while T is held the debug wave sets
+      // `formation count`/`formation type offset` every tick before the spawner runs, so the only family
+      // that can enter is the debug wave's current one, and only the debug wave ever writes the cursor.
+      // How far the cursor jumps between our per-frame samples varies (in the opening frames several fresh
+      // spawns land in one settling, so it can step by >1), so "reached the max" is not "saw every residue".
+      // But across successive wraps every residue 0..N-1 is eventually sampled, so we loop until the set is
+      // a complete contiguous run 0..max (no residue skipped) that reaches the last built family. When each
+      // gate reopens is subject to scratch-vm execution jitter (full coverage was measured between ~50 and
+      // ~195 frames across runs), so budget a generous cap (early-exit on completion keeps the common case
+      // fast) and let the count self-extend: a new family just pushes `max` up, no threshold to re-tune.
       keyDown(vm, 't');
-      const cursors = new Set();
+      const cursors = new Set([readVar(vm, 'debug-spawn-index')]);
       let anyFlying = false;
-      for (let i = 0; i < 220; i += 1) {
+      let maxCursor = 0;
+      for (let i = 0; i < 600; i += 1) {
+        const slotType = readVar(vm, 'slot-type');
+        const slotState = readVar(vm, 'slot-state');
+        for (const s of FLYING_SLOT_INDICES) { slotType[s] = 0; slotState[s] = 0; }
         step(vm, 1);
-        cursors.add(readVar(vm, 'debug-spawn-index'));
+        const cursor = readVar(vm, 'debug-spawn-index');
+        cursors.add(cursor);
+        if (cursor > maxCursor) maxCursor = cursor;
         const type = readVar(vm, 'slot-type');
         if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
+        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>=16).
+        if (cursors.size === maxCursor + 1 && maxCursor >= 16) break;
       }
       keyUp(vm, 't');
-      return { distinctCursors: cursors.size, anyFlying };
+      const contiguous = cursors.size === maxCursor + 1;
+      return { distinctCursors: cursors.size, maxCursor, contiguous, anyFlying };
     },
     assert(obs) {
       assert.equal(obs.anyFlying, true, 'holding the debug key stamps flying enemies through the shared spawner');
+      assert.ok(obs.contiguous, `the debug cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
       assert.ok(
-        obs.distinctCursors >= 13,
-        `the debug cycle visits every built family slot (all 13 DEBUG_SPAWN_FAMILIES residues, incl. the four new base-Zakato entries); saw ${obs.distinctCursors}`,
+        obs.maxCursor >= 16,
+        `the debug cycle self-extends through every built family slot (residues 0..16, incl. the new Giddo Spario, four base Zakato, two Brag Zakato and Garu Zakato entries); reached ${obs.maxCursor}`,
       );
     },
     // Empty `debug spawn wave` so the key never advances its cursor → `debug spawn index` stays 0 →
-    // distinctCursors == 1 → the full-cycle assertion bites (normal play leaves the cursor untouched, so
-    // it cannot mask the mutation).
+    // maxCursor == 0 → the self-extension assertion (maxCursor >= 16) bites (normal play leaves the cursor
+    // untouched, so it cannot mask the mutation).
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
   },
   {

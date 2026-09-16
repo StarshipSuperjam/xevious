@@ -4390,7 +4390,7 @@ class ScratchProjectTests(unittest.TestCase):
         updater; both run atomically (warp). The shared init spawns the slot INDESTRUCTIBLE and NOT MOVING —
         `slot state` = SLOT_TELEPORT (the distinctive negative: every prior aerial spawns SLOT_ACTIVE, so the
         shared `check air hit` gate cannot score a Zakato mid-teleport — the arcade's _STATE=3 at init_teleport
-        3995) — draws its entry column craft-EXCLUDING, stamps ZAKATO_MAIN_CODE, and awards a PER-VARIANT value
+        3995) — draws its entry column craft-INDEPENDENTLY (gen_random_Y_store_obj, no craft reject), stamps ZAKATO_MAIN_CODE, and awards a PER-VARIANT value
         (slow 100 / close-Y 200 / fast 150 / continuous 300, each gated by `walk type`), capturing NO fire mask
         and seeding NO fire timer at spawn. The shared update carries the phase EXPLICITLY in `slot state`:
         TELEPORT advances a sparkle clock and, at ZAKATO_PHASE_FRAMES, commits to ACTIVE — setting the straight
@@ -4624,18 +4624,11 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("zakato-no-fire-mask")
 
-        # (7) The spawn init draws its entry column CRAFT-EXCLUDING (_draw_spawn_column's default reject):
-        # an `abs(player col - candidate) < SPAWN_CRAFT_GAP` test, so a Zakato never teleports onto the
-        # craft's own column.
-        if not any(
-            b["opcode"] == "operator_lt"
-            and (lhs := rref(b["inputs"].get("OPERAND1"))) is not None
-            and lhs["opcode"] == "operator_mathop"
-            and lhs["fields"].get("OPERATOR", [None])[0] == "abs"
-            and num_operand(b["inputs"].get("OPERAND2")) == director.SPAWN_CRAFT_GAP
-            for b in init_body
-        ):
-            failures.add("zakato-craft-excluding-draw")
+        # (7) [removed] The Zakato line draws its entry column CRAFT-INDEPENDENTLY: init_teleport (3994) ->
+        # gen_random_Y_store_obj (5147) is the in-range clamp with NO craft-proximity reject, so a Zakato
+        # CAN teleport in over/adjacent to the craft's column. (The craft-excluding `gen_rnd_spriteY` at 5156
+        # is a DIFFERENT routine the Zakato line never calls.) There is therefore no craft-exclusion contract
+        # to pin here — the faithful no-exclusion families, e.g. Kapi/_air05, likewise carry no such clause.
 
         # (8) THE TELEPORT COMMITS TO ACTIVE. The update writes `slot state` = SLOT_ACTIVE gated under
         # `state == SLOT_TELEPORT` (the phase transition). Without it the Zakato would never become hittable
@@ -4768,7 +4761,7 @@ class ScratchProjectTests(unittest.TestCase):
     # killed by a shot first it scores its per-variant value (100/200/150/300). The live proof (teleports in,
     # becomes hittable, fires once then vanishes) is the harness `zakato-teleports-then-active` /
     # `zakato-fires-once-then-vanishes`.
-    # roadmap-evidence: AIR-07 success  (test_zakato_slice_authoring_present — lifecycle procs warp, spawn-inits + dispatch-updates, spawns indestructible SLOT_TELEPORT not ACTIVE, per-variant points gated by walk type, no fire mask at spawn, craft-excluding draw, teleport commits ACTIVE, commit sets straight dx and 32-tier aim, seeds slow/fast random fuse, fires exactly one aimed bullet then SELF_EXPLODE, never the fire gate, proximity band carries both constants, self-destruct runs the shared tick and awards nothing while a shot-kill plays the shared explosion)
+    # roadmap-evidence: AIR-07 success  (test_zakato_slice_authoring_present — lifecycle procs warp, spawn-inits + dispatch-updates, spawns indestructible SLOT_TELEPORT not ACTIVE, per-variant points gated by walk type, no fire mask at spawn, craft-independent draw, teleport commits ACTIVE, commit sets straight dx and 32-tier aim, seeds slow/fast random fuse, fires exactly one aimed bullet then SELF_EXPLODE, never the fire gate, proximity band carries both constants, self-destruct runs the shared tick and awards nothing while a shot-kill plays the shared explosion)
     # roadmap-evidence: AIR-07 failure  (test_zakato_slice_negative_fixtures — each contract clause corrupted bites)
     def test_zakato_slice_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -4844,18 +4837,6 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["fields"]["LIST"] = ["slot fire mask", director.SLOT_FIRE_MASK_ID]
                     break
-
-        def drop_craft_exclusion(p: dict) -> None:
-            # Zero the craft-proximity reject distance (SPAWN_CRAFT_GAP -> 0) so |player col - col| < 0 is
-            # never true → the draw stops excluding the craft's column. The craft-excluding clause bites.
-            stage, body = _body(p, director.INIT_ZAKATO_PROCCODE)
-            for b in body:
-                if (
-                    b["opcode"] == "operator_lt"
-                    and isinstance(b["inputs"].get("OPERAND2"), list)
-                    and b["inputs"]["OPERAND2"][1][1] == director.SPAWN_CRAFT_GAP
-                ):
-                    b["inputs"]["OPERAND2"] = [1, [4, "0"]]
 
         def ungate_commit(p: dict) -> None:
             # Flip the teleport-completion gate's `state == SLOT_TELEPORT` to a value the state never holds →
@@ -4992,7 +4973,6 @@ class ScratchProjectTests(unittest.TestCase):
             ("zakato-spawns-teleporting", spawn_active),
             ("zakato-per-variant-points", wrong_points),
             ("zakato-no-fire-mask", capture_fire_mask),
-            ("zakato-craft-excluding-draw", drop_craft_exclusion),
             ("zakato-teleport-commits-active", ungate_commit),
             ("zakato-commit-sets-motion", flatten_straight_dx),
             ("zakato-seeds-random-fuse", drop_fast_fuse_span),
@@ -5016,7 +4996,7 @@ class ScratchProjectTests(unittest.TestCase):
         spawns SLOT_ACTIVE (hittable at once — unlike the Zakato's indestructible teleport), aimed once on the
         64-MAGNITUDE tier (4 px/frame, angle_dX_dY_sheonite_tbl 5223) — NOT the 32/48 tiers — awards
         GIDDO_SPARIO_PTS (10), captures NO fire mask and seeds NO fire timer (Giddo never fires), and draws its
-        entry column craft-EXCLUDING. It flies STRAIGHT (no per-tick velocity change). On a shot-kill it plays
+        entry column craft-INDEPENDENTLY (gen_random_Y_store_obj, no craft reject). It flies STRAIGHT (no per-tick velocity change). On a shot-kill it plays
         its OWN SHORT burst `explode giddo spario tick` (freed at GIDDO_SPARIO_HIT_DURATION_FRAMES = 8, the one
         documented exception to the shared ~20-frame flying burst), NOT `explode toroid tick`, and it offers the
         shared detector on the non-HIT path (so a shot scores it).
@@ -5213,17 +5193,11 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("giddo-no-fire-mask")
 
-        # (8) The init draws its entry column CRAFT-EXCLUDING (_draw_spawn_column's default reject:
-        # abs(player col - candidate) < SPAWN_CRAFT_GAP), so a Giddo never appears on the craft's column.
-        if not any(
-            b["opcode"] == "operator_lt"
-            and (lhs := rref(b["inputs"].get("OPERAND1"))) is not None
-            and lhs["opcode"] == "operator_mathop"
-            and lhs["fields"].get("OPERATOR", [None])[0] == "abs"
-            and _num_operand(b["inputs"].get("OPERAND2")) == director.SPAWN_CRAFT_GAP
-            for b in giddo_init
-        ):
-            failures.add("giddo-craft-excluding-draw")
+        # (8) [removed] The init draws its entry column CRAFT-INDEPENDENTLY: handle_08_Giddo_Spario calls
+        # gen_random_Y_store_obj (5222) directly — the in-range clamp with NO craft-proximity reject — so a
+        # Giddo CAN appear on the craft's column. (The craft-excluding `gen_rnd_spriteY` at 5156 is a
+        # DIFFERENT routine Giddo never calls.) There is therefore no craft-exclusion contract to pin here,
+        # matching the faithful no-exclusion families (e.g. Kapi/_air05).
 
         # (9) Giddo flies STRAIGHT — the update makes NO per-tick velocity change (the distinctive contrast
         # with the Brag's homing acceleration): no `slot dx`/`slot dy` write adds or subtracts an accel step.
@@ -5328,7 +5302,7 @@ class ScratchProjectTests(unittest.TestCase):
     # a formation wave (only from the Garu Zakato detonation, air.special-pairs). Both are dispatched by the
     # ordered walk and scored by the shared detector. The live proof is the harness `giddo-aims-once-64-tier`
     # / `giddo-own-short-burst` / `brag-homing-acceleration`.
-    # roadmap-evidence: AIR-10 success  (test_spario_slice_authoring_present — Giddo/Brag lifecycle procs warp, spawn-inits Giddo + dispatch-updates both, Giddo spawns ACTIVE aimed on the 64 tier scoring 10 with no fire mask and a craft-excluding draw flying straight and dying to its own 8-frame burst, Brag never formation-spawned, accelerates both axes scoring 500 and dying to the shared burst, both offer the detector)
+    # roadmap-evidence: AIR-10 success  (test_spario_slice_authoring_present — Giddo/Brag lifecycle procs warp, spawn-inits Giddo + dispatch-updates both, Giddo spawns ACTIVE aimed on the 64 tier scoring 10 with no fire mask and a craft-independent draw flying straight and dying to its own 8-frame burst, Brag never formation-spawned, accelerates both axes scoring 500 and dying to the shared burst, both offer the detector)
     # roadmap-evidence: AIR-10 failure  (test_spario_slice_negative_fixtures — each contract clause corrupted bites)
     def test_spario_slice_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -5409,17 +5383,6 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_CODE_ID:
                     b["fields"]["LIST"] = ["slot fire mask", director.SLOT_FIRE_MASK_ID]
                     break
-
-        def giddo_drop_craft_exclusion(p: dict) -> None:
-            stage, body = _body(p, director.INIT_GIDDO_SPARIO_PROCCODE)
-            for b in body:
-                if (
-                    b["opcode"] == "operator_lt"
-                    and isinstance(b["inputs"].get("OPERAND2"), list)
-                    and isinstance(b["inputs"]["OPERAND2"][1], list)
-                    and int(b["inputs"]["OPERAND2"][1][1]) == director.SPAWN_CRAFT_GAP
-                ):
-                    b["inputs"]["OPERAND2"] = [1, [4, "0"]]
 
         def giddo_add_acceleration(p: dict) -> None:
             # Inject a `slot dx` = slot dx + BRAG_SPARIO_ACCEL nudge into the Giddo update (it writes no
@@ -5538,7 +5501,6 @@ class ScratchProjectTests(unittest.TestCase):
             ("giddo-aims-once-64-tier", giddo_aims_32),
             ("giddo-points", giddo_wrong_points),
             ("giddo-no-fire-mask", giddo_capture_fire_mask),
-            ("giddo-craft-excluding-draw", giddo_drop_craft_exclusion),
             ("giddo-flies-straight", giddo_add_acceleration),
             ("giddo-own-short-burst", giddo_share_burst),
             ("brag-lifecycle-procs-warp", unwarp(director.UPDATE_BRAG_SPARIO_PROCCODE)),
@@ -10828,7 +10790,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "502f1781601744565596efb7a6f07300eac7c3971750adff4c315e06dec11fae",
+            "7ef2aa835d306e056578e291941bfcae7bd9ee79467e0998d0f54b9dcc07f139",
             build_hash,
         )
 

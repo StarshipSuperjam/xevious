@@ -64,8 +64,10 @@
   `update garu zakato`; the Brags share one `init brag zakato`, the Garu has `init garu zakato`. The axes follow
   the family convention: `slot x` is the scroll/forward row (arcade `_X`), `slot y` the lateral column (arcade
   `_Y`). With no coroutine re-entry the port carries the phase explicitly in `slot state`.
-  - **Brag.** `install_init_brag_zakato` clones the base Zakato teleport-in exactly — the craft-excluding spawn
-    column, `SLOT_TELEPORT` (indestructible), `slot code` = `BRAG_ZAKATO_MAIN_CODE` (`0x12`), and the per-variant
+  - **Brag.** `install_init_brag_zakato` clones the base Zakato teleport-in exactly — the craft-independent spawn
+    column (`exclude_craft=False` → `gen_random_Y_store_obj`, no craft reject, **with** `init_teleport`'s `+1`-cell
+    offset `col_offset=1`, since the Brag teleports in like the base Zakato), `SLOT_TELEPORT` (indestructible),
+    `slot code` = `BRAG_ZAKATO_MAIN_CODE` (`0x12`), and the per-variant
     `slot pts` — capturing **no** fire mask and seeding **no** fire timer at spawn (the fuse is drawn later, on
     teleport completion). `install_update_brag_zakato` runs the shared teleport → active → self-destruct machine:
     on completion it aims both variants through `compute aim` over the **32-tier** `aim dx 32` / `aim dy 32`

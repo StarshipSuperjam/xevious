@@ -15,8 +15,9 @@
   the earlier families ([record 023](023-aiming-and-slot-positions.md) slot fields and aim tiers,
   [record 024](024-toroid-vertical-slice.md) the shared flying lifecycle) and stand beside the base Zakato
   ([record 034](034-zakato-teleporters.md)).
-- Derived behavior: **Giddo** (`handle_08_Giddo_Spario`) inits `_STATE = 2`, draws a **craft-excluding random Y**
-  (`gen_random_Y_store_obj`), aims once at the craft's current cell through `calc_dX_dY_for_vector_to_solvalou`
+- Derived behavior: **Giddo** (`handle_08_Giddo_Spario`) inits `_STATE = 2`, draws a **craft-independent random Y**
+  (`gen_random_Y_store_obj` — an in-range clamp only, *no* craft-proximity reject, and no `init_teleport` `+1`
+  offset because Giddo does not teleport in), aims once at the craft's current cell through `calc_dX_dY_for_vector_to_solvalou`
   over `angle_dX_dY_sheonite_tbl` (the 64-magnitude / 4 px-frame tier), and stamps `_PTS = 0` (10 pts). Each
   subsequent frame, unless it has been shot (`_STATE == 3` → `giddo_spario_hit`), it advances a 4-frame flight
   animation from `countup_timer_1` (`_CODE = (t>>1) & 3`, colour `(t>>2) & 3 + 0x26`) and moves on its **fixed**
@@ -34,7 +35,7 @@
   `src/xevious_main.68k` unless noted. Giddo: `handle_08_Giddo_Spario` 5219–5240 (`_STATE = 2`, the aim-once
   `sheonite` tier, `_PTS = 0`, the 4-frame flight animation, `move_object_dX_dY`), `giddo_spario_hit` 5241–5253
   (the own ~8-frame burst, `(_TIMER>>1) == 4` remove test, burst codes `+4`) and `remove_giddo_spario` 5254–5257
-  (clears `_TYPE`/`_STATE`, no score), calling `gen_random_Y_store_obj` 5147 (craft-excluding Y),
+  (clears `_TYPE`/`_STATE`, no score), calling `gen_random_Y_store_obj` 5147 (craft-independent Y — in-range clamp, no craft reject),
   `calc_dX_dY_for_vector_to_solvalou` 5119 over `angle_dX_dY_sheonite_tbl` 6290 and `move_object_dX_dY` 4817.
   Brag: `handle_09_Brag_Spario` 3080–3121 (`_STATE = 2`, `_CODE = 0x15`, `_PTS = 33` = 500, the per-axis MSB
   compare, the unbounded `add.w ddX/ddY` velocity update, the ATTR-flip animation, `move_object_dX_dY`) with the
@@ -50,7 +51,9 @@
   `update brag spario`; each has its own init proc. The axes follow the family convention: `slot x` is the
   scroll/forward row (arcade `_X`), `slot y` the lateral column (arcade `_Y`). With no coroutine re-entry, the
   port carries the phase explicitly in `slot state`.
-  - **Giddo.** `install_init_giddo_spario` draws the spawn column with the **craft-gap exclusion on**, enters at
+  - **Giddo.** `install_init_giddo_spario` draws the spawn column with the **craft-gap exclusion OFF**
+    (`exclude_craft=False` → `gen_random_Y_store_obj`, no craft reject; no `col_offset`, since Giddo does not
+    teleport in), enters at
     the shared top row, stamps `SLOT_ACTIVE`, aims **once** through the shared `compute aim` over the new
     64-magnitude `aim dx 64`/`aim dy 64` tables, captures **no** fire mask and seeds **no** fire timer (Giddo
     never fires), and stamps `slot pts` = `GIDDO_SPARIO_PTS`. `install_update_giddo_spario` runs a top
@@ -74,7 +77,7 @@
   Spario sprites** (see License status), both bodies reuse the Zakato body frame as a documented stand-in.
 - Scratch evidence: `install_init_giddo_spario`, `install_update_giddo_spario`, `install_explode_giddo_spario_tick`,
   `install_init_brag_spario` and `install_update_brag_spario` (the lifecycle procs, reusing `compute aim`, the
-  new 64-tier `aim dx 64`/`aim dy 64` tables, the craft-excluding `_draw_spawn_column`, the shared
+  new 64-tier `aim dx 64`/`aim dy 64` tables, the craft-independent `_draw_spawn_column` (`exclude_craft=False`, no `col_offset`), the shared
   `explode toroid tick` for Brag and the family move/cull), the Giddo/Brag branches in `install_advance_slots`,
   the Giddo branch in `install_spawn_flying` (and the **absence** of a Brag one), `giddo_spario_blocks` /
   `brag_spario_blocks` for the render, the Giddo entry in `DEBUG_SPAWN_FAMILIES`, and the `GIDDO_SPARIO_*` /

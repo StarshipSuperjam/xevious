@@ -2730,7 +2730,7 @@ def install_read_player_cell(blocks: Blocks) -> None:
     blocks.chain(definition, [set_col, set_row])
 
 
-def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True) -> tuple[list, str]:
+def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True, col_offset: int = 0) -> tuple[list, str]:
     # Shared bounded spawn-column draw for the flying families: draw a lateral column from the shared
     # stream, reject-and-redraw until it is on-screen (`rnd & 31`, reject >= 25, + 3 => column 3..27),
     # or give up after SPAWN_DRAW_ATTEMPTS tries (the recorded bounded-draw deviation). On success it
@@ -2740,10 +2740,14 @@ def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True) -> tuple[list
     # Separate `rng mod (mask+1)` reads because a reporter cannot be shared across parents (it is stolen
     # from the first).
     #
-    # `exclude_craft` selects the two arcade draw routines: the DEFAULT (`gen_rnd_spriteY` 5155-5169,
-    # Toroid/Terrazi) ALSO rejects any column within SPAWN_CRAFT_GAP of the craft; `exclude_craft=False`
-    # is the Kapi draw (`gen_random_Y_store_obj` 5147-5154) — the SAME in-range clamp with NO
-    # craft-proximity reject, so a Kapi can spawn directly over the craft's column.
+    # `exclude_craft` selects the two arcade draw routines: the DEFAULT (`gen_rnd_spriteY` 5156-5169,
+    # Toroid/Terrazi/Jara) ALSO rejects any column within SPAWN_CRAFT_GAP of the craft; `exclude_craft=False`
+    # is the Kapi/Zakato/Spario draw (`gen_random_Y_store_obj` 5147-5154) — the SAME in-range clamp with NO
+    # craft-proximity reject, so those families can spawn directly over the craft's column.
+    # `col_offset` adds a fixed lateral cell to the accepted column: the teleport families (base Zakato,
+    # Brag Zakato) draw through `init_teleport` (3994), which does `add.b #1,(_Y,a5)` (4000) AFTER the
+    # craft-independent draw — a +1-cell teleport offset. It is applied to the stamped column only, not to
+    # the (unused-here) craft comparison, matching the arcade order.
     reset = [
         blocks.set_var("spawn attempts", SPAWN_ATTEMPTS_ID, number(0)),
         blocks.set_var("spawn found", SPAWN_FOUND_ID, number(0)),
@@ -2761,7 +2765,7 @@ def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True) -> tuple[list
             blocks,
             "slot y",
             SLOT_Y_ID,
-            blocks.op_mul(blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET)), number(SLOT_UNITS_PER_CELL)),
+            blocks.op_mul(blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(SPAWN_COL_MASK + 1)), number(SPAWN_COL_OFFSET + col_offset)), number(SLOT_UNITS_PER_CELL)),
         ),
         blocks.set_var("spawn found", SPAWN_FOUND_ID, number(1)),
     ]
@@ -4093,7 +4097,11 @@ def install_init_zakato(blocks: Blocks) -> None:
     # flying family uses. No fire mask is captured — a Zakato fires exactly one bullet, structurally, not
     # under the periodic gate.
     definition = _install_warp_proc(blocks, INIT_ZAKATO_PROCCODE)
-    reset, draw_loop = _draw_spawn_column(blocks)  # default exclude_craft=True
+    # init_teleport draws the entry column CRAFT-INDEPENDENTLY: gen_random_Y_store_obj (5147-5154) does the
+    # in-range clamp with NO craft-proximity reject, so a base Zakato CAN teleport in over/adjacent to the
+    # craft's column (source wins over the earlier craft-excluding assumption). init_teleport then does
+    # `add.b #1,(_Y,a5)` (4000) — the +1-cell teleport offset (col_offset=1).
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False, col_offset=1)
     wt = lambda: variable("walk type", WALK_TYPE_ID)
     # Per-variant points, stamped by type (the four handlers' distinct _PTS bytes -> value-table positions).
     pts_stamps = [
@@ -4521,12 +4529,15 @@ def install_update_zoshi(blocks: Blocks) -> None:
 
 def install_init_giddo_spario(blocks: Blocks) -> None:
     # AIR-10: initialize the flying slot at `slot index` as a Giddo Spario (handle_08_Giddo_Spario
-    # 5219-5240, first-call init). Craft-EXCLUDING random-Y draw (gen_random_Y_store_obj 5222), top-row
-    # entry (the shared no-enemy-scroll deviation), aimed ONCE at the craft on the fast 64-magnitude tier
-    # (4 px/frame, angle_dX_dY_sheonite_tbl via calc_dX_dY_for_vector_to_solvalou 5223-5224). It captures
-    # NO fire mask and seeds no fire timer: Giddo never fires. `slot timer` is the flight/burst clock.
+    # 5219-5240, first-call init). Craft-INDEPENDENT random-Y draw (gen_random_Y_store_obj 5222 — the
+    # in-range clamp with NO craft-proximity reject, so a Giddo CAN appear over the craft's column; source
+    # wins over the earlier craft-excluding assumption), top-row entry (the shared no-enemy-scroll
+    # deviation), aimed ONCE at the craft on the fast 64-magnitude tier (4 px/frame, angle_dX_dY_sheonite_tbl
+    # via calc_dX_dY_for_vector_to_solvalou 5223-5224). Unlike the teleport families it calls
+    # gen_random_Y_store_obj directly (no init_teleport), so it takes NO +1 offset. It captures NO fire mask
+    # and seeds no fire timer: Giddo never fires. `slot timer` is the flight/burst clock.
     definition = _install_warp_proc(blocks, INIT_GIDDO_SPARIO_PROCCODE)
-    reset, draw_loop = _draw_spawn_column(blocks)  # default exclude_craft=True
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False)  # gen_random_Y_store_obj (handle_08 5222)
     stamp = blocks.if_reporter(
         blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
         [
@@ -4684,10 +4695,12 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
     # shared init_teleport 3994). Identical to the base Zakato init — same ~20-frame teleport-in sparkle,
     # indestructible (SLOT_TELEPORT) while it plays — except for the points and the type stamped. The
     # update then aims it, drives its terminal fan trigger (random fuse for rnd / level-in-Y for closeY)
-    # and its self-destruct. Top-row entry via the shared spawn column, exactly as install_init_zakato
-    # (the arcade's random teleport X/Y is the same deferred cosmetic every ported flying family shares).
+    # and its self-destruct. Top-row entry via the shared spawn column, exactly as install_init_zakato:
+    # CRAFT-INDEPENDENT draw (gen_random_Y_store_obj, no craft reject) plus the +1-cell teleport offset
+    # (init_teleport 4000). The arcade's random teleport X (init_teleport 3996-3999) is the same deferred
+    # no-enemy-scroll cosmetic every ported flying family shares.
     definition = _install_warp_proc(blocks, INIT_BRAG_ZAKATO_PROCCODE)
-    reset, draw_loop = _draw_spawn_column(blocks)  # default exclude_craft=True (mirrors install_init_zakato)
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False, col_offset=1)  # mirrors install_init_zakato
     wt = lambda: variable("walk type", WALK_TYPE_ID)
     pts_stamps = [
         blocks.if_reporter(
