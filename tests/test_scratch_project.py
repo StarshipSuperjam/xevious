@@ -1000,6 +1000,14 @@ class ScratchProjectTests(unittest.TestCase):
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
             "bomb dx",
+            # AIR-11 (slice 11): the live Bacura spawn pump's registers — the active slab count, the
+            # remaining one-per-second increments, the frame countdown to the next increment, and the
+            # init loop's band cursor. Stage-written by the pump proc, never sprite-written; transient
+            # spawn machinery like the `spawn cursor` family, re-topped per area (not durable state).
+            "num bacura",
+            "bacura inc cnt",
+            "one second cntr",
+            "bacura seed slot",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1241,6 +1249,9 @@ class ScratchProjectTests(unittest.TestCase):
             # call — that omission is the shot-invulnerability.
             director.INIT_BACURA_PROCCODE,
             director.UPDATE_BACURA_PROCCODE,
+            # AIR-11 (Commit 3): the per-tick live spawn pump (inc counter -> init the band's empty slots),
+            # ported from main_fn_5__inc_num_bacura + main_fn_3__init_bacura.
+            director.PUMP_BACURA_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -5842,6 +5853,11 @@ class ScratchProjectTests(unittest.TestCase):
             def ref(inp):
                 return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
 
+            # Strip 17 from the CONDITION of EVERY if that reaches the bacura call. `_proc_body_blocks`
+            # yields blocks in set-iteration order (not structural order), so "the first reaching if" is
+            # not stable across a regen; the outer `occupied` gate reaches the call too but carries no 17,
+            # so replacing 17 across all reaching ifs is a no-op there and bites only the band gate — the
+            # one whose condition holds BACURA_SLOTS[0], regardless of iteration order.
             for b in body:
                 if b["opcode"] != "control_if":
                     continue
@@ -5860,7 +5876,6 @@ class ScratchProjectTests(unittest.TestCase):
                             bb["inputs"][key] = [1, [4, "0"]]
                         elif isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
                             frontier.append(v[1])
-                return
 
         def break_init_dx(p: dict) -> None:
             # Corrupt the init's `slot dx` stamp off BACURA_DRIFT_DX → the slab no longer drifts at spawn speed.
@@ -11194,7 +11209,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d6c32348655cdaf2002ce38da40bf77fb0270486711a70b15bd94810ff28da85",
+            "9a7acba22751570576cc0a5833b429837e8f6260cd99b4d23478f7c5af7223db",
             build_hash,
         )
 

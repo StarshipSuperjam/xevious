@@ -533,6 +533,12 @@ RESET_FORMATION_HANDLER = "reset_flying_formation"
 FIRE_MASK_PREFIX = "fire_mask_"
 GROUND_STOP_FIRING_HANDLER = "ground_stop_firing_row"
 ADD_GROUND_OBJECT_HANDLER = "add_ground_object"
+# AIR-11 (air.bacura #81): the two Bacura schedule handlers. `set_bacura_count` (arcade opcode 0x22,
+# sub_2_fn_6__set_bacura_inc_cnt $075D: `move.b (a0)+,(bacura_inc_cnt)`) sets the per-window increment
+# quota; `reset_bacura_count` (opcode 0x23, sub_2_fn_7__reset_num_bacura $05D8: `clr.b (num_bacura)`)
+# clears the active count. The pump (install_pump_bacura) consumes both.
+SET_BACURA_COUNT_HANDLER = "set_bacura_count"
+RESET_BACURA_COUNT_HANDLER = "reset_bacura_count"
 
 # DIF-03 per-family fire-permission masks. Area schedules set one mask byte per firing family; the
 # byte gates how often that family may fire, and the per-family firing that consumes each mask is the
@@ -758,6 +764,7 @@ UPDATE_GARU_ZAKATO_PROCCODE = "update garu zakato"  # AIR-08: straight flight + 
 GARU_ZAKATO_DETONATE_PROCCODE = "garu zakato detonate"  # AIR-08: 16-bullet ring + 4 Brag Sparios, then free
 INIT_BACURA_PROCCODE = "init bacura"  # AIR-11: stamp one slab into a reserved-band slot at the top row
 UPDATE_BACURA_PROCCODE = "update bacura"  # AIR-11: craft-touch death + drift down + cull; NO shot hit-test
+PUMP_BACURA_PROCCODE = "pump bacura"  # AIR-11: per-tick inc->init live spawn pump (main_fn_5 + main_fn_3)
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
 # DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
@@ -1017,6 +1024,16 @@ FLYING_HANDLED_TYPES = (
 # simply OMITS the CHECK_AIR_HIT_PROCCODE call every flying family makes, so no shot ever hit-tests it.
 BACURA_TYPE = 1  # 0x01, handle_01_Bacura: drifts down its own band, never destroyed/scored
 BACURA_DRIFT_DX = 16  # raw scroll-axis velocity (arcade _dX=16 => 4*16 units/tick = 1 px/frame down)
+# AIR-11 live spawn pipeline (main_fn_3__init_bacura 5188-5199, main_fn_5__inc_num_bacura 5201-5217).
+# The schedule sets `bacura inc cnt` (a per-window quota); the pump admits one slab per arcade second
+# into the reserved band, refilling any band slot whose slab has drifted off and culled. All three are
+# Stage-written spawn state (default 0), re-topped per area alongside the schedule cursor.
+NUM_BACURA_ID = "num-bacura"  # slabs the init pump keeps alive in the first N band slots
+BACURA_INC_CNT_ID = "bacura-inc-cnt"  # remaining one-per-second increments (set by set_bacura_count)
+ONE_SECOND_CNTR_ID = "one-second-cntr"  # frames until the next increment (main_fn_5 one_second_cntr=60)
+BACURA_SEED_SLOT_ID = "bacura-seed-slot"  # init-pump loop cursor (0-based offset into the band)
+BACURA_BAND_SIZE = BACURA_SLOTS[1] - BACURA_SLOTS[0] + 1  # 16 reserved slots (0x10-0x1F)
+BACURA_INC_PERIOD_FRAMES = 60  # main_fn_5 sets one_second_cntr=60; counted down TICK_TIMER_STEP/tick
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
 # (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
 # whose count is how many to bring in as one group (almost always 1). T brings in the entry at `debug
@@ -1539,6 +1556,8 @@ def _schedule_arg(record: dict) -> int:
         return params["mask"]
     if handler == GROUND_STOP_FIRING_HANDLER:
         return params["row"]
+    if handler == SET_BACURA_COUNT_HANDLER:
+        return params["count"]  # AIR-11: the increment quota the pump ramps num_bacura up by
     return 0
 
 
@@ -3725,6 +3744,72 @@ def install_update_bacura(blocks: Blocks) -> None:
     blocks.chain(definition, [craft_hit, *move, cull])
 
 
+def install_pump_bacura(blocks: Blocks) -> None:
+    # AIR-11 live spawn pump — one atomic pass per tick from the walk thread (after `advance area`, so
+    # this tick's schedule has already loaded the counts). Two halves, faithful to the arcade's two
+    # coroutines (which the port flattens into per-tick steps — Scratch has no coroutine yield):
+    #
+    # INC (main_fn_5__inc_num_bacura 5201-5217): while `bacura inc cnt` remains, count `one second cntr`
+    # down TICK_TIMER_STEP arcade frames per tick from 60 (one arcade second); each time it reaches 0,
+    # admit one slab (num_bacura += 1), spend one increment (bacura inc cnt -= 1), and reload the counter.
+    # The admit is clamped to the 16-slot band: the arcade has no explicit num_bacura clamp (the band is
+    # the physical limit and the real quotas stay well under it — Area 3 totals 8), so the clamp is a
+    # defensive port guard that never bites under the committed schedules but keeps the init loop from
+    # ever walking past the reserved band.
+    #
+    # INIT (main_fn_3__init_bacura 5188-5199): keep the first `num bacura` band slots populated. The arcade
+    # re-asserts _TYPE=1 for those objects each pass; handle_01_Bacura inits an object exactly once (its
+    # first coroutine step) then only drifts. The port reproduces that by stamping a fresh slab (init
+    # bacura) ONLY into an EMPTY band slot (slot type == 0), and re-filling a slot the instant its slab has
+    # drifted off and culled — a live, mid-drift slab (slot type != 0) is left untouched, never reset to
+    # the top. `init bacura` operates on `slot index`, so the loop points it at each band slot in turn.
+    definition = _install_warp_proc(blocks, PUMP_BACURA_PROCCODE)
+
+    # --- inc ---
+    admit = blocks.if_reporter(
+        blocks.op_not(blocks.op_gt(variable("one second cntr", ONE_SECOND_CNTR_ID), number(0))),
+        [
+            blocks.if_reporter(
+                blocks.op_lt(variable("num bacura", NUM_BACURA_ID), number(BACURA_BAND_SIZE)),
+                [blocks.change_var("num bacura", NUM_BACURA_ID, 1)],
+            ),
+            blocks.change_var("bacura inc cnt", BACURA_INC_CNT_ID, -1),
+            blocks.set_var("one second cntr", ONE_SECOND_CNTR_ID, number(BACURA_INC_PERIOD_FRAMES)),
+        ],
+    )
+    inc = blocks.if_reporter(
+        blocks.op_gt(variable("bacura inc cnt", BACURA_INC_CNT_ID), number(0)),
+        [
+            blocks.change_var("one second cntr", ONE_SECOND_CNTR_ID, -TICK_TIMER_STEP),
+            admit,
+        ],
+    )
+
+    # --- init ---
+    set_seed = blocks.set_var("bacura seed slot", BACURA_SEED_SLOT_ID, number(0))
+    init_loop = blocks.add(
+        "control_repeat", inputs={"TIMES": variable("num bacura", NUM_BACURA_ID)}
+    )
+    set_slot_index = blocks.set_var_expr(
+        "slot index",
+        SLOT_INDEX_ID,
+        blocks.op_add(number(BACURA_SLOTS[0]), variable("bacura seed slot", BACURA_SEED_SLOT_ID)),
+    )
+    fill = blocks.if_reporter(
+        blocks.op_eq(
+            blocks.list_item("slot type", SLOT_TYPE_ID, variable("slot index", SLOT_INDEX_ID)),
+            number(0),
+        ),
+        [blocks.call_proc(INIT_BACURA_PROCCODE, warp=True)],
+    )
+    blocks.substack(
+        init_loop,
+        [set_slot_index, fill, blocks.change_var("bacura seed slot", BACURA_SEED_SLOT_ID, 1)],
+    )
+
+    blocks.chain(definition, [inc, set_seed, init_loop])
+
+
 def install_init_kapi(blocks: Blocks) -> None:
     # AIR-05: initialize the flying slot at `slot index` as a Kapi of type `walk type` (handle_10_Kapi
     # 3602-3618). Same top-row entry as the other flying families, but with a PLAIN spawn-column draw —
@@ -5447,6 +5532,13 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
             ),
         ),
         blocks.set_var("schedule fired", SCHEDULE_FIRED_ID, number(0)),
+        # AIR-11: re-top the Bacura spawn state alongside the schedule cursor, so each area rebuilds its
+        # slab population from its own set/reset_bacura_count records and no count bleeds across an area
+        # boundary or a respawn. (Under the committed schedules every Bacura window resets num_bacura to 0
+        # before its area ends, so this is a no-op there; it hardens the port against a carried count.)
+        blocks.set_var("num bacura", NUM_BACURA_ID, number(0)),
+        blocks.set_var("bacura inc cnt", BACURA_INC_CNT_ID, number(0)),
+        blocks.set_var("one second cntr", ONE_SECOND_CNTR_ID, number(0)),
     ]
 
 
@@ -5743,8 +5835,25 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             ),
         ],
     )
+    # AIR-11 (air.bacura #81): set_bacura_count (op 0x22) loads the per-window increment quota
+    # (sub_2_fn_6__set_bacura_inc_cnt $075D); the pump then admits one slab per arcade second. Reload
+    # `one second cntr` here so the first admit lands ~1s after the record fires (the arcade's main_fn_5
+    # sets it on its first run). reset_bacura_count (op 0x23) clears the active count
+    # (sub_2_fn_7__reset_num_bacura $05D8: `clr.b (num_bacura)`), stopping refills — slabs already
+    # drifting are left to cull on their own.
+    set_bacura_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(SET_BACURA_COUNT_HANDLER)),
+        [
+            blocks.set_var_expr("bacura inc cnt", BACURA_INC_CNT_ID, arg_at_cursor()),
+            blocks.set_var("one second cntr", ONE_SECOND_CNTR_ID, number(BACURA_INC_PERIOD_FRAMES)),
+        ],
+    )
+    reset_bacura_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(RESET_BACURA_COUNT_HANDLER)),
+        [blocks.set_var("num bacura", NUM_BACURA_ID, number(0))],
+    )
     # ENGINE-TODO: the remaining spawn / boss handler dispatch (add_domogram_with_path, add_object,
-    # *bacura*, andor_genesis_*, sheonite_*) lands with the later enemy slices. The DIF/FORM handlers
+    # andor_genesis_*, sheonite_*) lands with the later enemy slices. The DIF/FORM handlers
     # (raise, adjust, set/reset formation, the 8 fire masks, ground-stop) and add_ground_object (the
     # two built ground families) are wired above; the still-unhandled spawn/boss records advance the
     # cursor and count the fire only.
@@ -5758,6 +5867,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             *mask_branches,
             ground_stop_branch,
             add_ground_branch,
+            set_bacura_branch,
+            reset_bacura_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -5958,6 +6069,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_garu_zakato(blocks)
     install_garu_zakato_detonate(blocks)
     install_update_bacura(blocks)
+    install_pump_bacura(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -6112,6 +6224,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
             blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
             blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
+            # AIR-11: the Bacura live-spawn pump runs in the spawn phase, after ADVANCE_AREA has loaded
+            # this tick's set/reset_bacura_count records and after the walk — so a freshly-stamped slab
+            # first drifts on the NEXT tick, matching the arcade's handle_01_Bacura (init, then yield)
+            # and the flying spawner above (spawn late, drive next tick).
+            blocks.call_proc(PUMP_BACURA_PROCCODE, warp=True),
             death_check,
         ],
     )
@@ -8736,6 +8853,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         INVULN_ID,
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
         DEBUG_SPAWN_INDEX_ID,
+        # AIR-11: the live Bacura spawn pump's state (main_fn_5 inc counter + main_fn_3 init loop).
+        NUM_BACURA_ID,
+        BACURA_INC_CNT_ID,
+        ONE_SECOND_CNTR_ID,
+        BACURA_SEED_SLOT_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -8841,6 +8963,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor (0-based into
         # DEBUG_SPAWN_FAMILIES); starts at the first family.
         DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
+        # AIR-11: Bacura live-spawn pump state (re-topped per area in _enter_area_top).
+        NUM_BACURA_ID: ["num bacura", 0],
+        BACURA_INC_CNT_ID: ["bacura inc cnt", 0],
+        ONE_SECOND_CNTR_ID: ["one second cntr", 0],
+        BACURA_SEED_SLOT_ID: ["bacura seed slot", 0],
     }
     owned_lists = {
         ALLOWED_ID,

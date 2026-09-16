@@ -519,6 +519,8 @@ class GeneratedAreaClock(unittest.TestCase):
                 return params["mask"]
             if handler == "ground_stop_firing_row":
                 return params["row"]
+            if handler == "set_bacura_count":
+                return params["count"]
             return 0
 
         # GND: the three add_ground_object scalars, re-decoded INDEPENDENTLY here — object_type
