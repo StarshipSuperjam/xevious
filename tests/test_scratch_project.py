@@ -1252,6 +1252,10 @@ class ScratchProjectTests(unittest.TestCase):
             # AIR-11 (Commit 3): the per-tick live spawn pump (inc counter -> init the band's empty slots),
             # ported from main_fn_5__inc_num_bacura + main_fn_3__init_bacura.
             director.PUMP_BACURA_PROCCODE,
+            # WPN-01 (slice 11) player.bacura-bounce: the shot-vs-Bacura detector, called per live slab from
+            # `update bacura`. It marks an overlapping player shot SHOT_BOUNCE and never touches the slab —
+            # the shot bounces (blaster clone reverses+animates), the Bacura is never destroyed or scored.
+            director.CHECK_SHOT_BACURA_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -5933,6 +5937,284 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air11_failures(project), label)
+
+    @staticmethod
+    def _wpn01_failures(project: dict) -> set:
+        """WPN-01 player.bacura-bounce contract — violated labels. A player shot that overlaps a Bacura is
+        REFLECTED, not consumed: the slab is indestructible and worthless, so the only consequence is the
+        shot's own rebound.
+
+        DETECTOR. `check shot bacura` is a warp proc, called per live slab from `update bacura` (a sibling of
+        `check air shot hit`, never a reuse). On an overlapping ACTIVE shot it stamps ONLY that shot slot's
+        state to SHOT_BOUNCE, through the doubled HIT_WINDOW_SHOT_BACURA overlap (recognised by its
+        distinctive low bound -y_bias). It NEVER resolves a hit: no `resolve hit` call, no `hit slot` /
+        `award value` write, and it never writes a Bacura field — the slab drifts on untouched.
+
+        SHOT. The blaster clone reads SHOT_BOUNCE when its travel loop ends and, instead of vanishing at
+        once, reverses (motion_changeyby BACURA_BOUNCE_DY, the negative step) and runs BACURA_BOUNCE_FRAMES
+        costume frames before the shared free+delete. That reversal + visible travel is the whole of
+        "bounces"."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls_in(body, proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in body
+            )
+
+        def ref(inp):
+            return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def cond_has_num(cond_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                for v in b.get("inputs", {}).values():
+                    if _num_operand(v) == value:
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def ancestor_if(node_id, pred):
+            cur = blocks.get(node_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    if pred(ref(parent["inputs"].get("CONDITION"))):
+                        return True
+                cur = parent
+            return False
+
+        detector = _proc_body_blocks(stage, director.CHECK_SHOT_BACURA_PROCCODE)
+        bacura_update = _proc_body_blocks(stage, director.UPDATE_BACURA_PROCCODE)
+
+        # (1) The detector proc exists and is warp (atomic — a mid-sweep yield could let a shot render or be
+        # re-tested between marks).
+        p = proto(director.CHECK_SHOT_BACURA_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("bounce-detector-warp")
+
+        # (2) `update bacura` runs the shot-bounce detector every tick — the Bacura's ONLY interaction with a
+        # shot (it still omits `check air shot hit`, its shot-invulnerability).
+        if not calls_in(bacura_update, director.CHECK_SHOT_BACURA_PROCCODE):
+            failures.add("bacura-update-calls-bounce")
+
+        # (3) MARKS THE SHOT. The detector writes slot state = SHOT_BOUNCE — the rebound signal the blaster
+        # clone reads. (SHOT_BOUNCE is distinct from SHOT_SPENT so a bounce is told apart from an air-kill.)
+        bounce_writes = [
+            id_of[id(b)]
+            for b in detector
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and _const_item(b) == director.SHOT_BOUNCE
+        ]
+        if not bounce_writes:
+            failures.add("bounce-marks-shot")
+
+        # (4) THROUGH THE OVERLAP WINDOW. Each SHOT_BOUNCE write is gated by an overlap `if` carrying
+        # HIT_WINDOW_SHOT_BACURA's distinctive low bound (-y_bias) — so the mark is a real overlap test with
+        # the doubled slab window, not an unconditional stamp.
+        y_bias = director.HIT_WINDOW_SHOT_BACURA[0]
+        if not bounce_writes or not any(
+            ancestor_if(w, lambda c: cond_has_num(c, -y_bias)) for w in bounce_writes
+        ):
+            failures.add("bounce-window")
+
+        # (5) NEVER SCORES / NEVER TOUCHES THE SLAB. The Bacura is indestructible and worthless: the detector
+        # makes no `resolve hit` call and writes neither `hit slot` nor `award value`. It writes only the shot
+        # slot's own state (clause 3) — never a Bacura field.
+        if calls_in(detector, director.RESOLVE_HIT_PROCCODE) or any(
+            b["opcode"] == "data_setvariableto"
+            and b.get("fields", {}).get("VARIABLE", [None, None])[1]
+            in (director.HIT_SLOT_ID, director.AWARD_VALUE_ID)
+            for b in detector
+        ):
+            failures.add("bounce-not-scored")
+
+        # (6) THE SHOT REBOUNDS. In the blaster sprite a control_if gated on SHOT_BOUNCE runs the reversal: a
+        # control_repeat of BACURA_BOUNCE_FRAMES whose body has a motion_changeyby of BACURA_BOUNCE_DY (the
+        # negative, reversed step). A forward step or a missing branch is not a bounce.
+        blaster = next((t for t in project["targets"] if t.get("name") == "blaster"), None)
+        bb = blaster["blocks"] if blaster else {}
+
+        def bref(inp):
+            return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+        def subtree_has_num(root_id, value):
+            seen, frontier = set(), [root_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in bb:
+                    continue
+                seen.add(cid)
+                b = bb[cid]
+                for v in b.get("inputs", {}).values():
+                    if _num_operand(v) == value:
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def stack_of(root_id):
+            out, cur = [], root_id
+            while cur and cur in bb:
+                out.append(cur)
+                cur = bb[cur].get("next")
+            return out
+
+        def substack_reverses(if_id):
+            for sid in stack_of(bref(bb[if_id]["inputs"].get("SUBSTACK"))):
+                b = bb[sid]
+                if b["opcode"] != "control_repeat":
+                    continue
+                if _num_operand(b["inputs"].get("TIMES")) != director.BACURA_BOUNCE_FRAMES:
+                    continue
+                if any(
+                    bb[i]["opcode"] == "motion_changeyby"
+                    and _num_operand(bb[i]["inputs"].get("DY")) == director.BACURA_BOUNCE_DY
+                    for i in stack_of(bref(b["inputs"].get("SUBSTACK")))
+                ):
+                    return True
+            return False
+
+        if not any(
+            b["opcode"] == "control_if"
+            and subtree_has_num(bref(b["inputs"].get("CONDITION")), director.SHOT_BOUNCE)
+            and substack_reverses(bid)
+            for bid, b in bb.items()
+        ):
+            failures.add("shot-reverses-and-animates")
+
+        return failures
+
+    # Roadmap closure evidence for leaf `player.bacura-bounce` (WPN-01): a player shot that overlaps a Bacura
+    # is reflected, never consumed. The dedicated `check shot bacura` detector (a sibling of the air detector,
+    # never a reuse) marks the overlapping shot SHOT_BOUNCE through the doubled HIT_WINDOW_SHOT_BACURA and
+    # touches neither score nor slab; the blaster clone reads that mark and reverses (BACURA_BOUNCE_DY) for
+    # BACURA_BOUNCE_FRAMES before deleting. The live proof is the harness shot-bounce scenarios (slab lives,
+    # shot reverses).
+    # roadmap-evidence: WPN-01 success  (test_bacura_bounce_authoring_present — the detector proc is warp and called from update bacura, marks a shot SHOT_BOUNCE through the doubled window, never resolves a hit or writes a Bacura field, and the blaster clone reverses at BACURA_BOUNCE_DY for BACURA_BOUNCE_FRAMES)
+    # roadmap-evidence: WPN-01 failure  (test_bacura_bounce_negative_fixtures — each contract clause corrupted bites)
+    def test_bacura_bounce_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._wpn01_failures(project))
+
+    def test_bacura_bounce_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._wpn01_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def unwarp_detector(p: dict) -> None:
+            for b in _stage(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.CHECK_SHOT_BACURA_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_bounce_call(p: dict) -> None:
+            stage = _stage(p)
+            for b in _proc_body_blocks(stage, director.UPDATE_BACURA_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.CHECK_SHOT_BACURA_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+                    return
+
+        def break_mark(p: dict) -> None:
+            # Repoint EVERY SHOT_BOUNCE write (one per shot slot) off `slot state` → no shot is ever marked
+            # for the bounce. (Also trips bounce-window, which keys off the same writes; assertIn only needs
+            # the target label.)
+            stage = _stage(p)
+            for b in _proc_body_blocks(stage, director.CHECK_SHOT_BACURA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _const_item(b) == director.SHOT_BOUNCE
+                ):
+                    b["fields"]["LIST"] = ["slot timer", director.SLOT_TIMER_ID]
+
+        def break_window(p: dict) -> None:
+            # Zero the detector's distinctive low bound (-y_bias) → the mark is no longer an overlap test.
+            stage = _stage(p)
+            low = -director.HIT_WINDOW_SHOT_BACURA[0]
+            for b in _proc_body_blocks(stage, director.CHECK_SHOT_BACURA_PROCCODE):
+                for key, v in list(b.get("inputs", {}).items()):
+                    if _num_operand(v) == low:
+                        b["inputs"][key] = [1, [4, "0"]]
+
+        def add_score(p: dict) -> None:
+            # Graft a `resolve hit` call onto the detector's definition `next` → it now scores the slab.
+            stage = _stage(p)
+            blocks = stage["blocks"]
+            proto_id = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.CHECK_SHOT_BACURA_PROCCODE
+            )
+            definition = next(
+                b
+                for b in blocks.values()
+                if b["opcode"] == "procedures_definition"
+                and b.get("inputs", {}).get("custom_block", [None, None])[1] == proto_id
+            )
+            blocks["graft_resolve_hit"] = {
+                "opcode": "procedures_call", "next": definition.get("next"), "parent": None,
+                "inputs": {}, "fields": {}, "shadow": False, "topLevel": False,
+                "mutation": {
+                    "tagName": "mutation", "children": [], "proccode": director.RESOLVE_HIT_PROCCODE,
+                    "argumentids": "[]", "warp": "true",
+                },
+            }
+            definition["next"] = "graft_resolve_hit"
+
+        def forward_bounce(p: dict) -> None:
+            # Flip the blaster's reversed bounce step to its positive → a forward shove, not a rebound.
+            blaster = next(t for t in p["targets"] if t.get("name") == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "motion_changeyby"
+                    and _num_operand(b["inputs"].get("DY")) == director.BACURA_BOUNCE_DY
+                ):
+                    b["inputs"]["DY"] = [1, [4, str(-director.BACURA_BOUNCE_DY)]]
+
+        cases = [
+            ("bounce-detector-warp", unwarp_detector),
+            ("bacura-update-calls-bounce", drop_bounce_call),
+            ("bounce-marks-shot", break_mark),
+            ("bounce-window", break_window),
+            ("bounce-not-scored", add_score),
+            ("shot-reverses-and-animates", forward_bounce),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._wpn01_failures(project), label)
 
     @staticmethod
     def _air12_radiating_failures(project: dict) -> set:
@@ -11209,7 +11491,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "9a7acba22751570576cc0a5833b429837e8f6260cd99b4d23478f7c5af7223db",
+            "73307a6892ed3af220c05618af62a6cb8a58422bf354fd2849ecf0345476b4e0",
             build_hash,
         )
 

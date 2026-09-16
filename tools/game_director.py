@@ -191,6 +191,11 @@ SLOT_GARU_BASE = 3
 # it never scores; a player hit still routes through `resolve hit` -> SLOT_HIT -> the shared explosion.
 SLOT_TELEPORT = 4  # teleport-in sparkle phase: indestructible, not yet hittable
 SLOT_SELF_EXPLODE = 5  # fired-and-vanishing phase: benign, animating its own burst, awards nothing
+# WPN-01 (player.bacura-bounce #77): a player shot that has struck a Bacura is stamped this NON-ACTIVE
+# shot-slot state by `check shot bacura`. Distinct from SHOT_SPENT (3) so the blaster clone can tell a
+# bacura bounce (reverse + animate, then delete — arcade shot_destroyed 2400-2417) from an ordinary
+# air-kill spend (delete at once). The Bacura itself is never touched: the shot bounces, the slab lives.
+SHOT_BOUNCE = 6
 HIT_SLOT_ID = "hit-slot"
 RESOLVE_HIT_PROCCODE = "resolve hit"
 SCORE_PROCCODE = "score"
@@ -246,6 +251,14 @@ HIT_WINDOW_BACURA = (28, 40, 8, 16)
 #      (HIT_WINDOW_BULLET_FLYING, single cell) is intentionally NOT widened: forgiving offence,
 #      precise defence.
 HIT_WINDOW_SHOT_FLYING = (32, 64, 16, 32)
+# WPN-01 player-shot vs Bacura window. The reference's `check_shot_hit_bacura` ($19CB, 2583-2595) uses
+# `sub #24; add #32` (Y) and `sub #8; add #16` (X) → shotY-bacuraY in [-24,7], bacuraX-shotX in [-8,7]
+# half-pixel shadow units — a taller low bias than the flying box (the slab sits lower). This port DOUBLES
+# it to (48,64,16,32) for the SAME recorded reasons as HIT_WINDOW_SHOT_FLYING above: the shot is the same
+# fast mover (changeyby 20 = 2.5 cells/frame), so the 2-cell arcade Y window tunnels — a shot would skip
+# clean over the thin (one-row-tall) slab instead of bouncing; and the doubled box matches the rendered
+# 24x16 slab body. Same fast-shot detector class, same ratified deviation — not a new one.
+HIT_WINDOW_SHOT_BACURA = (48, 64, 16, 32)
 # Shadow (half-pixel) unit expressed in the slot lists' 1/32-px units: 1 half-px = 16 units. The
 # detector floors each slot position to its shadow MSB before differencing, matching the reference's
 # byte compare — but on the EXACT half-px delta (no mod-256 wrap), so it never produces the
@@ -675,6 +688,12 @@ COMPUTE_AIM_PROCCODE = "compute aim index"
 RADIATING_ANGLE_ID = "radiating-angle"  # caller-supplied 5-bit direction (0..31); index = angle+1
 RADIATING_EMIT_PROCCODE = "emit radiating bullet"
 
+# WPN-01 (player.bacura-bounce #77): the shot-vs-Bacura detector, called per live slab from
+# `update bacura`. It marks an overlapping player shot for the bounce (SHOT_BOUNCE) and never touches the
+# slab — the reference routes a shot that hits a Bacura through `deactivate_shot` (STATE=3 + BACURA_HIT_SND)
+# while the Bacura is untouched (check_shot_hit_bacura 2583-2595; deactivate_shot 2557-2561).
+CHECK_SHOT_BACURA_PROCCODE = "check shot bacura"
+
 # The craft's live position, read once per walk (via sensing_of on the solvalou sprite) and mapped
 # back to arcade 8-px row/column, so every slot's aim/collision test uses one cached pair.
 PLAYER_ROW_ID = "player-row"  # scroll axis
@@ -1024,6 +1043,14 @@ FLYING_HANDLED_TYPES = (
 # simply OMITS the CHECK_AIR_HIT_PROCCODE call every flying family makes, so no shot ever hit-tests it.
 BACURA_TYPE = 1  # 0x01, handle_01_Bacura: drifts down its own band, never destroyed/scored
 BACURA_DRIFT_DX = 16  # raw scroll-axis velocity (arcade _dX=16 => 4*16 units/tick = 1 px/frame down)
+# WPN-01 (player.bacura-bounce #77) shot rebound. When a player shot is marked SHOT_BOUNCE by
+# `check shot bacura`, its blaster clone reverses and animates in place before deleting, instead of
+# vanishing at once. The arcade's `shot_destroyed` (2400-2417) sets the reflected shot _dX=+24 = 1/4 of
+# the normal 6 px/frame, reversed — so from the port's forward `changeyby 20` the reversed step is
+# 20 * (1/4) reversed = -5 stage-px/frame (NOT a naive halve, NOT a literal 1.5). The animation runs the
+# reference's 8 frames (_TIMER 0..7, deleted at 8; sprite code 0x18+((TIMER>>1)&3), four costume codes).
+BACURA_BOUNCE_DY = -5  # reversed shot step during the bounce (arcade reflected _dX=+24 = 1/4, reversed)
+BACURA_BOUNCE_FRAMES = 8  # bounce animation length (arcade shot_destroyed deletes at _TIMER==8)
 # AIR-11 live spawn pipeline (main_fn_3__init_bacura 5188-5199, main_fn_5__inc_num_bacura 5201-5217).
 # The schedule sets `bacura inc cnt` (a per-window quota); the pump admits one slab per arcade second
 # into the reserved band, refilling any band slot whose slab has drifted off and culled. All three are
@@ -3720,20 +3747,75 @@ def install_init_bacura(blocks: Blocks) -> None:
     blocks.chain(definition, [*reset, draw_loop, stamp])
 
 
+def install_check_shot_bacura(blocks: Blocks) -> None:
+    # WPN-01 (player.bacura-bounce #77): test the live Bacura at `slot index` against the three player-shot
+    # slots and, on the first overlapping ACTIVE shot, route THAT SHOT to the bounce — the slab is never
+    # touched. This is a deliberate sibling of install_check_air_hit, NOT a reuse: the air detector resolves
+    # a hit (score + explosion + SHOT_SPENT), which is exactly wrong for a Bacura (indestructible, worth
+    # nothing). Here the only consequence is stamping the shot slot SHOT_BOUNCE, a non-ACTIVE state the
+    # blaster clone reads next iteration to reverse+animate itself before deleting (arcade check_shot_hit_
+    # bacura 2583-2595 -> deactivate_shot 2557-2561: STATE=3 + BACURA_HIT_SND, Bacura untouched). Called
+    # per live slab from `update bacura`; the Bacura band is otherwise absent from every hit/score sweep.
+    # Window is the shadow-MSB compare with HIT_WINDOW_SHOT_BACURA (the arcade box doubled for the same
+    # anti-tunneling + sprite-match reasons ratified for HIT_WINDOW_SHOT_FLYING).
+    definition = _install_warp_proc(blocks, CHECK_SHOT_BACURA_PROCCODE)
+    y_bias, y_width, x_bias, x_width = HIT_WINDOW_SHOT_BACURA
+    dy_low, dy_high = -y_bias, y_width - y_bias - 1
+    dx_low, dx_high = -x_bias, x_width - x_bias - 1
+    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
+    shot_x = lambda s: blocks.list_item("slot x", SLOT_X_ID, number(s))
+    shot_y = lambda s: blocks.list_item("slot y", SLOT_Y_ID, number(s))
+
+    body: list[str] = []
+    for s in range(SHOT_SLOTS[0], SHOT_SLOTS[1] + 1):
+        shot_live = blocks.op_and(
+            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(s)), number(SHOT_TYPE)),
+            blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE)),
+        )
+        bacura_live = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE))
+        # Fresh delta subtree per compare (a reporter attaches to a single parent); same orientation as
+        # install_check_air_hit — slot x is the scroll axis (governed by the taller y window), slot y lateral.
+        d_y = lambda: blocks.op_sub(sh(shot_x(s)), sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
+        d_x = lambda: blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), sh(shot_y(s)))
+        hit_y = blocks.op_and(
+            blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
+            blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
+        )
+        hit_x = blocks.op_and(
+            blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
+            blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
+        )
+        overlap = blocks.op_and(
+            blocks.op_and(shot_live, bacura_live), blocks.op_and(hit_y, hit_x)
+        )
+        # Bounce, don't kill: mark ONLY the shot slot. No hit slot, no award, no `resolve hit`, no timer,
+        # and the Bacura's own slot is left exactly as it was — it keeps drifting, indestructible.
+        body.append(
+            blocks.if_reporter(
+                overlap,
+                [blocks.list_replace("slot state", SLOT_STATE_ID, number(s), number(SHOT_BOUNCE))],
+            )
+        )
+    blocks.chain(definition, body)
+
+
 def install_update_bacura(blocks: Blocks) -> None:
     # AIR-11: advance the Bacura at `slot index` by one tick (handle_01_Bacura 4247-4264). The Bacura is
     # indestructible: this handler deliberately OMITS the CHECK_AIR_HIT call every flying family makes, so
-    # no player shot ever hit-tests it — that omission IS the shot-invulnerability (there is no HIT state,
-    # no explosion, no score). It only (1) kills the craft on contact using the WIDER HIT_WINDOW_BACURA
-    # (check_bacura_hit_solvalou 2225-2237, the same overlap compare as the flying check but a larger box),
-    # checked at the tick-start position; (2) drifts DOWN the scroll axis at BACURA_DRIFT_DX (1 px/frame,
-    # dy=0); and (3) culls once it scrolls off the bottom. It enters at the top and only moves down, so the
-    # bottom edge is its only exit (unlike the maneuvering flying families, no four-edge cull is needed).
+    # no player shot ever HIT-tests it (there is no HIT state, no explosion, no score) — that omission IS
+    # the shot-invulnerability. It DOES run the WPN-01 shot-bounce detector (`check shot bacura`), which
+    # only marks an overlapping shot for its rebound and never touches the slab. Per tick it (1) kills the
+    # craft on contact using the WIDER HIT_WINDOW_BACURA (check_bacura_hit_solvalou 2225-2237, the same
+    # overlap compare as the flying check but a larger box), checked at the tick-start position; (2) marks
+    # any overlapping player shot for the bounce; (3) drifts DOWN the scroll axis at BACURA_DRIFT_DX
+    # (1 px/frame, dy=0); and (4) culls once it scrolls off the bottom. It enters at the top and only moves
+    # down, so the bottom edge is its only exit (unlike the maneuvering flying families, no four-edge cull).
     definition = _install_warp_proc(blocks, UPDATE_BACURA_PROCCODE)
     craft_hit = blocks.if_reporter(
         _craft_overlap_reporter(blocks, HIT_WINDOW_BACURA),
         [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))],
     )
+    shot_bounce = blocks.call_proc(CHECK_SHOT_BACURA_PROCCODE, warp=True)
     move = [
         _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
         _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
@@ -3741,7 +3823,7 @@ def install_update_bacura(blocks: Blocks) -> None:
     ]
     off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
     cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
-    blocks.chain(definition, [craft_hit, *move, cull])
+    blocks.chain(definition, [craft_hit, shot_bounce, *move, cull])
 
 
 def install_pump_bacura(blocks: Blocks) -> None:
@@ -6068,6 +6150,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_brag_zakato_shoot(blocks)
     install_update_garu_zakato(blocks)
     install_garu_zakato_detonate(blocks)
+    install_check_shot_bacura(blocks)
     install_update_bacura(blocks)
     install_pump_bacura(blocks)
     install_fire_permission_gate(blocks)
@@ -6804,6 +6887,29 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.add("looks_nextcostume"),
         ],
     )
+    # WPN-01 shot bounce: the travel loop above exits the instant the walk marks this shot non-ACTIVE.
+    # When that mark is SHOT_BOUNCE (a `check shot bacura` overlap), the shot does not simply vanish — it
+    # rebounds. Reverse it (BACURA_BOUNCE_DY = -5 stage-px/frame, the arcade's reflected 1/4-speed) and run
+    # the reference's BACURA_BOUNCE_FRAMES (8) costume frames in place, then fall through to the shared
+    # free+delete below. The Bacura is untouched; only the shot animates away. Ordinary air-kill spends
+    # (SHOT_SPENT) and top-expiry (still ACTIVE) skip this branch and delete at once as before. The
+    # BACURA_HIT_SND has no ripped asset, so the "blaster" sound stands in (matching the Zakato/Spario
+    # stand-in precedent; recorded in docs/mechanics/038).
+    bounce_anim = blocks.add("control_repeat", inputs={"TIMES": number(BACURA_BOUNCE_FRAMES)})
+    blocks.substack(
+        bounce_anim,
+        [
+            blocks.add("motion_changeyby", inputs={"DY": number(BACURA_BOUNCE_DY)}),
+            blocks.add("looks_nextcostume"),
+        ],
+    )
+    bounce = blocks.if_reporter(
+        blocks.op_eq(
+            blocks.list_item("slot state", SLOT_STATE_ID, variable("clone slot", CLONE_SLOT_ID)),
+            number(SHOT_BOUNCE),
+        ),
+        [blocks.play_sound("blaster"), bounce_anim],
+    )
     # The clone snapshots `alloc result` (its allocated index) into its own `clone slot`
     # at birth, and frees that slot on expiry — so every delete path returns the slot to
     # the pool and the cap can never desync. (director stop / reset paths are covered by
@@ -6818,6 +6924,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.show(),
             blocks.play_sound("blaster"),
             travel,
+            bounce,
             blocks.list_replace(
                 "slot type", SLOT_TYPE_ID, variable("clone slot", CLONE_SLOT_ID), number(0)
             ),
