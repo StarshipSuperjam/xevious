@@ -1328,9 +1328,140 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update jara'),
   },
   {
+    key: 'zakato-teleports-in-then-commits-active',
+    behavior:
+      'A Zakato teleports in HELD IN PLACE and not yet hittable (state SLOT_TELEPORT, dx=dy=0) while its ~20-frame sparkle plays; when the sparkle clock completes `update zakato` flips it to the hittable SLOT_ACTIVE and stamps its movement (an aimed variant gets a non-zero velocity toward the craft) — the arcade zakato_teleport -> zakato_NN_main fall-through (3961 -> 3733)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk so one `update zakato` call is exactly one tick (a settling pump would run the
+      // update ~220x and race the seeded slot straight through active/self-destruct to freed; see the
+      // harness pacing + live-contamination notes). Clear the flying band, seed one CONTINUOUS (0x15,
+      // aimed) Zakato mid-teleport at an INTERIOR row (not the top edge — the commit tick immediately runs
+      // the active move+cull, and a slot at row 0 would cull before the ACTIVE state could be read) and
+      // well OUTSIDE its lateral proximity band (so on commit it moves rather than firing), then hand-drive
+      // the update a tick at a time.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const slot = 63;
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 21); // cont (0x15): aims at the craft on commit → observable non-zero velocity
+      put('slot-state', slot, 4); // SLOT_TELEPORT: indestructible, holding in place
+      put('slot-x', slot, 10 * 256); // interior row, clear of the top/bottom cull edges
+      put('slot-y', slot, (pc - 8) * 256); // 8 columns aside: an on-field column outside the [-4,3] band (so
+      // no fire on commit) yet not off the left edge (so the commit-tick active move does not cull it)
+      put('slot-dx', slot, 0);
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1); // Scratch 1-based
+      const states = [];
+      let teleportTicks = 0;
+      let committedDx = null;
+      let committedDy = null;
+      for (let t = 0; t < 15; t += 1) {
+        callProc(vm, 'Stage', 'update zakato');
+        step(vm, 1);
+        const st = readVar(vm, 'slot-state')[slot];
+        states.push(st);
+        if (st === 4) teleportTicks += 1;
+        if (st === 1) {
+          committedDx = readVar(vm, 'slot-dx')[slot];
+          committedDy = readVar(vm, 'slot-dy')[slot];
+          break;
+        }
+      }
+      return { states, teleportTicks, committedDx, committedDy };
+    },
+    assert(obs) {
+      assert.ok(obs.teleportTicks >= 1, 'the Zakato holds in SLOT_TELEPORT while the sparkle plays (the indestructible teleport-in phase)');
+      assert.ok(obs.states.includes(1), 'the teleport commits to the hittable SLOT_ACTIVE when the sparkle clock completes');
+      assert.ok(
+        obs.committedDx !== 0 || obs.committedDy !== 0,
+        `a committed aimed Zakato stamps a non-zero velocity toward the craft; got dx=${obs.committedDx}, dy=${obs.committedDy}`,
+      );
+    },
+    // Empty `update zakato` so the sparkle clock never advances → the slot stays SLOT_TELEPORT forever and
+    // never commits to ACTIVE → the `states includes 1` assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zakato'),
+  },
+  {
+    key: 'zakato-fires-once-then-self-destructs',
+    behavior:
+      'An ACTIVE fused Zakato whose shot fuse has elapsed fires EXACTLY ONE aimed bullet (via the allocator) then flips ITSELF to the benign SLOT_SELF_EXPLODE with its velocity zeroed, plays out its own ~20-frame burst and frees the slot awarding NOTHING — the arcade zakato_shoot -> zakato_explode_and_remove one-shot suicide (3761 -> 3766/3926)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk (one call == one tick). Seed one fast (0x14, fused) Zakato ACTIVE off the craft
+      // cell with its fuse one tick from elapsing, then hand-drive the update. On the first tick the fuse
+      // decrements to <= 0, so it fires one aimed bullet and self-destructs; subsequent ticks play out the
+      // burst clock and free the slot. Scoring is structurally guarded (zakato-self-destruct-no-score); the
+      // score-unchanged check here is a runtime backstop against a stray award on the suicide path.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const slot = 63;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 20); // fast (0x14): fires on the fuse, not on Y-proximity
+      put('slot-state', slot, 1); // SLOT_ACTIVE, hittable and moving
+      put('slot-x', slot, (pr - 6) * 256); // off the craft cell so no craft-collision confounds the read
+      put('slot-y', slot, (pc - 8) * 256);
+      put('slot-dx', slot, 8); // a live velocity the self-destruct must zero
+      put('slot-dy', slot, 8);
+      put('slot-fire-timer', slot, 2); // decrements 2/tick → 0 this tick → the fuse elapses and it fires
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const score0 = readVar(vm, 'eco-score');
+      writeVar(vm, 'bullet-alloc-result', 0);
+      callProc(vm, 'Stage', 'update zakato');
+      step(vm, 1);
+      const afterFire = {
+        fired: readVar(vm, 'bullet-alloc-result') > 0,
+        state: readVar(vm, 'slot-state')[slot],
+        dx: readVar(vm, 'slot-dx')[slot],
+        dy: readVar(vm, 'slot-dy')[slot],
+      };
+      // Play out the self-destruct burst; it frees on its own 20-frame clock (2/tick, ~10 ticks).
+      for (let t = 0; t < 14; t += 1) {
+        callProc(vm, 'Stage', 'update zakato');
+        step(vm, 1);
+      }
+      return {
+        ...afterFire,
+        freedType: readVar(vm, 'slot-type')[slot],
+        freedState: readVar(vm, 'slot-state')[slot],
+        score0,
+        score1: readVar(vm, 'eco-score'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.fired, true, 'a fused Zakato at fuse<=0 allocates exactly one aimed bullet');
+      assert.equal(obs.state, 5, 'having fired, the Zakato flips ITSELF to the benign SLOT_SELF_EXPLODE');
+      assert.equal(obs.dx, 0, 'the self-destructing Zakato zeroes its scroll-axis velocity');
+      assert.equal(obs.dy, 0, 'the self-destructing Zakato zeroes its lateral velocity');
+      assert.equal(obs.freedType, 0, 'the self-destruct burst frees the slot (type cleared) when its clock completes');
+      assert.equal(obs.freedState, 0, 'the freed slot state is cleared so it can be reused');
+      assert.equal(obs.score1, obs.score0, 'a Zakato that self-destructs after firing awards NOTHING');
+    },
+    // Empty `update zakato` so the fuse never elapses and it never fires → `bullet alloc result` stays 0
+    // and the state never leaves ACTIVE → the fired/state assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update zakato'),
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
-      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Jara entries), so each family can be cycled to for playtesting (tracked for removal)',
+      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -1340,18 +1471,18 @@ export const SCENARIOS = [
       // make the negative bite. The debug-specific, pacing-invariant signal is the CURSOR itself: the
       // `debug spawn index` advances one step per fresh debug spawn and wraps mod len(DEBUG_SPAWN_FAMILIES)
       // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T and collect the
-      // distinct cursor values seen — the cycle must visit every family slot (all 9 residues 0..8, i.e. the
-      // six prior entries plus the three newly built Jara entries: the shooter solo, the silent solo, and
-      // the two-object pair spawn), which proves it self-extends rather than stopping at a fixed set. Also
-      // confirm the key actually stamps flying enemies. The exact residue→family binding is pinned
-      // structurally in tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the
-      // cursor drives the whole cycle at runtime. No manual field-clear (that would drive the normal
-      // spawner); the debug wave clears its own slots. Worst-case full-cycle coverage for 6 residues was
-      // measured at step ~33; the 9-residue cycle is proportionally longer, so budget 150 (~3x) to be safe.
+      // distinct cursor values seen — the cycle must visit every family slot (all 13 residues 0..12, i.e.
+      // the nine prior entries plus the four newly built base-Zakato variants: slow, closeY, fast and
+      // cont), which proves it self-extends rather than stopping at a fixed set. Also confirm the key
+      // actually stamps flying enemies. The exact residue→family binding is pinned structurally in
+      // tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the cursor drives the
+      // whole cycle at runtime. No manual field-clear (that would drive the normal spawner); the debug wave
+      // clears its own slots. Worst-case full-cycle coverage for 6 residues was measured at step ~33; the
+      // 13-residue cycle is proportionally longer, so budget 220 (~3x the residue-count scaling) to be safe.
       keyDown(vm, 't');
       const cursors = new Set();
       let anyFlying = false;
-      for (let i = 0; i < 150; i += 1) {
+      for (let i = 0; i < 220; i += 1) {
         step(vm, 1);
         cursors.add(readVar(vm, 'debug-spawn-index'));
         const type = readVar(vm, 'slot-type');
@@ -1363,8 +1494,8 @@ export const SCENARIOS = [
     assert(obs) {
       assert.equal(obs.anyFlying, true, 'holding the debug key stamps flying enemies through the shared spawner');
       assert.ok(
-        obs.distinctCursors >= 9,
-        `the debug cycle visits every built family slot (all 9 DEBUG_SPAWN_FAMILIES residues, incl. the three new Jara entries); saw ${obs.distinctCursors}`,
+        obs.distinctCursors >= 13,
+        `the debug cycle visits every built family slot (all 13 DEBUG_SPAWN_FAMILIES residues, incl. the four new base-Zakato entries); saw ${obs.distinctCursors}`,
       );
     },
     // Empty `debug spawn wave` so the key never advances its cursor → `debug spawn index` stays 0 →

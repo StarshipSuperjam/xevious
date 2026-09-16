@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "c8ee48f19e6aa751a019141d16af918ab4ce35e9630fb0ba56931b9d27b7b1df",
+  "manifest_sha256": "029979381fef42afd85798ddaed10517edc87ef65586be10d39999a60d50b0b3",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -963,6 +963,30 @@
       ],
       "generator_version": 1
     },
+    "ca999f5e6ffe2120e49ac03fa64a95e6.png": {
+      "frame": "zakato/body/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "b44c4854722d2ffbb70cebc545ee7bd0.png",
+      "source_sha256": "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8",
+      "source": "The Spriters Resource: Xevious (Arcade), Aerial Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42387/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        6,
+        176,
+        8,
+        8
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
     "b6046906d12c01313304fd68d214d56f.png": {
       "frame": "barra/idle/01",
       "target": "toroid_sprite_proof",
@@ -1182,7 +1206,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "4d175c83e7cfeaeb700105a440ec996630e5798116b5c6676b6cdcab8c0a5184",
+    "sha256": "7340cc8d0231e1f6ebc4ae3e0e51b5247a41a5cdb131cc92c7df1e1bb44d8f5a",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -1224,6 +1248,7 @@
       "jara/spin/04",
       "jara/spin/05",
       "jara/spin/06",
+      "zakato/body/01",
       "barra/idle/01",
       "logram/open/01",
       "logram/open/02",

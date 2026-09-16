@@ -61,6 +61,27 @@ def _proc_body_blocks(stage: dict, proccode: str) -> list:
     return [blocks[bid] for bid in seen]
 
 
+def _num_operand(inp):
+    """The integer value of a numeric-literal block input (`[shadow, [type, "value"]]`), else None."""
+    if (
+        isinstance(inp, list)
+        and len(inp) >= 2
+        and isinstance(inp[1], list)
+        and len(inp[1]) >= 2
+        and inp[1][0] in (4, 5, 6, 7, 8, 9, 10)
+    ):
+        try:
+            return int(inp[1][1])
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _const_item(block):
+    """The integer literal written by a `data_replaceitemoflist` ITEM input, else None."""
+    return _num_operand(block["inputs"].get("ITEM"))
+
+
 ASSET_ONE = (
     b"\x89PNG\r\n\x1a\n"
     b"project-test-asset-one"
@@ -207,16 +228,18 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 27: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
-        # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, and the
-        # slice-9 barra + garu + logram ground renderers (all reuse proof costumes by ref).
-        self.assertEqual(27, len(project["targets"]))
-        # 137: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # 28: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, the
+        # slice-11 zakato renderer (AIR-07), and the slice-9 barra + garu + logram ground renderers (all
+        # reuse proof costumes by ref).
+        self.assertEqual(28, len(project["targets"]))
+        # 138: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
-        # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 9 ground-frame
-        # PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base pulse frames).
-        self.assertEqual(137, len(assets))
+        # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
+        # body-frame PNG (AIR-07) + the 9 ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages +
+        # 2 crater variants + 2 Garu base pulse frames).
+        self.assertEqual(138, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1171,6 +1194,13 @@ class ScratchProjectTests(unittest.TestCase):
             # mask and no fire-gate call; the silent type never fires.
             director.INIT_JARA_PROCCODE,
             director.UPDATE_JARA_PROCCODE,
+            # AIR-07 Zakato family (slice 11): ONE shared spawn init and ONE shared per-tick
+            # teleport->active->self-destruct update over all four base variants (slow / close-Y / fast /
+            # continuous), both warp, no state write beyond the slot's own phase machine — dispatched from
+            # the same spawner / walk. Each variant fires ONE aimed bullet directly (via the allocator) at
+            # its trigger, then self-destructs awarding nothing, so it takes no mask and no fire-gate call.
+            director.INIT_ZAKATO_PROCCODE,
+            director.UPDATE_ZAKATO_PROCCODE,
             # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
             director.DEBUG_SPAWN_PROCCODE,
             director.CULL_SLOT_PROCCODE,
@@ -3938,6 +3968,631 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air04_failures(project), label)
+
+    @staticmethod
+    def _air07_failures(project: dict) -> set:
+        """AIR-07 Zakato authoring contract — violated labels. Pins the structural facts that make the four
+        base Zakato variants a faithful TELEPORT->ACTIVE->SELF-DESTRUCT family (handle_12-15 3733-3859):
+        ONE shared init and ONE shared update serve slow (0x12) / close-Y (0x13) / fast (0x14) /
+        continuous (0x15); the spawner inits all four by type and the ordered walk drives the one shared
+        updater; both run atomically (warp). The shared init spawns the slot INDESTRUCTIBLE and NOT MOVING —
+        `slot state` = SLOT_TELEPORT (the distinctive negative: every prior aerial spawns SLOT_ACTIVE, so the
+        shared `check air hit` gate cannot score a Zakato mid-teleport — the arcade's _STATE=3 at init_teleport
+        3995) — draws its entry column craft-EXCLUDING, stamps ZAKATO_MAIN_CODE, and awards a PER-VARIANT value
+        (slow 100 / close-Y 200 / fast 150 / continuous 300, each gated by `walk type`), capturing NO fire mask
+        and seeding NO fire timer at spawn. The shared update carries the phase EXPLICITLY in `slot state`:
+        TELEPORT advances a sparkle clock and, at ZAKATO_PHASE_FRAMES, commits to ACTIVE — setting the straight
+        variants' scroll-axis drift (slot dx = ZAKATO_STRAIGHT_DX, dy 0) or the aimed variants' 32-magnitude
+        aim (2 px/frame, the generic tier), and seeding the fused variants' one-shot random fuse (slow mod 256,
+        fast mod 64). ACTIVE fires EXACTLY ONE aimed bullet DIRECTLY via the allocator — on the fused fuse
+        reaching 0 or the proximity variants' lateral band [LOW, HIGH] — then flips itself to SLOT_SELF_EXPLODE;
+        it never calls the shared fire gate. SELF_EXPLODE and a shot-kill (SLOT_HIT) both run the shared
+        `explode toroid tick`; only the shot-kill is scored (by the detector, which never runs on a
+        self-destructing slot), so the self-destruct awards NOTHING. The teleport(reversed)/self-destruct
+        (forward)/hit(forward) sprites are render-only in the Zakato target (the settling harness advances whole
+        ticks and cannot see a single fired/committed frame, so the once-only facts are pinned structurally)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def ref(inp):
+            if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str):
+                return inp[1]
+            return None
+
+        def rref(inp):
+            r = ref(inp)
+            return blocks.get(r) if r else None
+
+        def num_operand(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 2
+                and inp[1][0] in (4, 5, 6, 7, 8, 9, 10)
+            ):
+                try:
+                    return int(inp[1][1])
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def const_item(b):
+            return num_operand(b["inputs"].get("ITEM"))
+
+        init_body = _proc_body_blocks(stage, director.INIT_ZAKATO_PROCCODE)
+        update_body = _proc_body_blocks(stage, director.UPDATE_ZAKATO_PROCCODE)
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def cond_has_eq(cond_id, list_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                if b["opcode"] == "operator_equals":
+                    lhs = rref(b["inputs"].get("OPERAND1"))
+                    if (
+                        lhs is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == list_id
+                        and num_operand(b["inputs"].get("OPERAND2")) == value
+                    ):
+                        return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def cond_has_num(cond_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                for key, v in b.get("inputs", {}).items():
+                    if num_operand(v) == value:
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        # A subtree (an op tree rooted at root_id) reads `data_itemoflist` of every list in `list_ids`.
+        def subtree_reads_lists(root_id, list_ids):
+            seen, frontier, found = set(), [root_id], set()
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                if b["opcode"] == "data_itemoflist":
+                    found.add(b["fields"]["LIST"][1])
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return set(list_ids) <= found
+
+        # True when some ANCESTOR `if` of node_id satisfies pred(condition_id). Parent pointers chain back
+        # through siblings up to each enclosing C-block, so this reaches every ancestor gate (the same idiom
+        # the Jara/Torkan/Zoshi checks use).
+        def ancestor_if(node_id, pred):
+            cur = blocks.get(node_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    if pred(ref(parent["inputs"].get("CONDITION"))):
+                        return True
+                cur = parent
+            return False
+
+        # Like cond_has_eq but the left side is a VARIABLE read, not a list item — the spawn stamps gate on
+        # the `walk type` variable the walk carries. The variable appears INLINE as a primitive operand
+        # `[3|1, [12, name, var_id], ...]` (not a referenced block), so match that shape.
+        def is_var_operand(inp, var_id):
+            return (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 3
+                and inp[1][0] == 12
+                and inp[1][2] == var_id
+            )
+
+        def cond_has_var_eq(cond_id, var_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                if b["opcode"] == "operator_equals" and (
+                    (
+                        is_var_operand(b["inputs"].get("OPERAND1"), var_id)
+                        and num_operand(b["inputs"].get("OPERAND2")) == value
+                    )
+                    or (
+                        is_var_operand(b["inputs"].get("OPERAND2"), var_id)
+                        and num_operand(b["inputs"].get("OPERAND1")) == value
+                    )
+                ):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def gated_by_state(node_id, value):
+            return ancestor_if(node_id, lambda c: cond_has_eq(c, director.SLOT_STATE_ID, value))
+
+        def gated_by_walktype(node_id, value):
+            return ancestor_if(node_id, lambda c: cond_has_var_eq(c, director.WALK_TYPE_ID, value))
+
+        # (1) Both Zakato lifecycle procedures exist and are warp (atomic) — a non-warp lifecycle proc would
+        # yield mid-slot, letting a half-teleported / half-fired Zakato render or be hit.
+        for proccode in (director.INIT_ZAKATO_PROCCODE, director.UPDATE_ZAKATO_PROCCODE):
+            p = proto(proccode)
+            if p is None or p["mutation"].get("warp") != "true":
+                failures.add("zakato-lifecycle-procs-warp")
+
+        # (2) The spawner inits Zakato (shared by all four types); (3) the ordered walk dispatches the ONE
+        # shared updater.
+        if not calls(director.INIT_ZAKATO_PROCCODE):
+            failures.add("spawn-inits-zakato")
+        if not calls(director.UPDATE_ZAKATO_PROCCODE):
+            failures.add("dispatch-updates-zakato")
+
+        # (4) THE SPAWN IS INDESTRUCTIBLE — the init stamps `slot state` = SLOT_TELEPORT and NEVER
+        # SLOT_ACTIVE (the distinctive discriminator from every prior aerial, which all spawn ACTIVE). The
+        # shared hit gate ignores any non-ACTIVE slot, so a mid-teleport Zakato cannot be scored for free.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_TELEPORT
+            for b in init_body
+        ) or any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_ACTIVE
+            for b in init_body
+        ):
+            failures.add("zakato-spawns-teleporting")
+
+        # (5) PER-VARIANT SCORING. The init stamps `slot pts` to each variant's value-table index, each
+        # gated by `walk type` == that variant: slow->100, close-Y->200, fast->150, continuous->300. A
+        # wrong index or a missing/mis-gated stamp would score the wrong value on a kill-before-fire.
+        variant_pts = {
+            director.ZAKATO_SLOW_TYPE: director.ZAKATO_SLOW_PTS,
+            director.ZAKATO_CLOSEY_TYPE: director.ZAKATO_CLOSEY_PTS,
+            director.ZAKATO_FAST_TYPE: director.ZAKATO_FAST_PTS,
+            director.ZAKATO_CONT_TYPE: director.ZAKATO_CONT_PTS,
+        }
+        for vtype, vpts in variant_pts.items():
+            stamped = [
+                id_of[id(b)]
+                for b in init_body
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                and const_item(b) == vpts
+            ]
+            if not stamped or not any(gated_by_walktype(s, vtype) for s in stamped):
+                failures.add("zakato-per-variant-points")
+
+        # (6) NO FIRE MASK / NO FIRE TIMER AT SPAWN (the shooter negative — the fuse is drawn later, at the
+        # teleport->active commit, not captured at spawn). A `slot fire mask` write in the init would be the
+        # periodic-fire shape of the masked shooters; its ABSENCE is the contract.
+        if any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] in (director.SLOT_FIRE_MASK_ID, director.SLOT_FIRE_TIMER_ID)
+            for b in init_body
+        ):
+            failures.add("zakato-no-fire-mask")
+
+        # (7) The spawn init draws its entry column CRAFT-EXCLUDING (_draw_spawn_column's default reject):
+        # an `abs(player col - candidate) < SPAWN_CRAFT_GAP` test, so a Zakato never teleports onto the
+        # craft's own column.
+        if not any(
+            b["opcode"] == "operator_lt"
+            and (lhs := rref(b["inputs"].get("OPERAND1"))) is not None
+            and lhs["opcode"] == "operator_mathop"
+            and lhs["fields"].get("OPERATOR", [None])[0] == "abs"
+            and num_operand(b["inputs"].get("OPERAND2")) == director.SPAWN_CRAFT_GAP
+            for b in init_body
+        ):
+            failures.add("zakato-craft-excluding-draw")
+
+        # (8) THE TELEPORT COMMITS TO ACTIVE. The update writes `slot state` = SLOT_ACTIVE gated under
+        # `state == SLOT_TELEPORT` (the phase transition). Without it the Zakato would never become hittable
+        # or move.
+        commit_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_ACTIVE
+        ]
+        if not commit_ids or not all(gated_by_state(c, director.SLOT_TELEPORT) for c in commit_ids):
+            failures.add("zakato-teleport-commits-active")
+
+        # (9) THE COMMIT SETS BOTH MOTION MODELS. The straight variants (slow/close-Y) get the raw
+        # scroll-axis drift `slot dx` = ZAKATO_STRAIGHT_DX (16 = 1 px/frame, dY 0); the aimed variants
+        # (fast/continuous) read the 32-magnitude generic aim tables (2 px/frame). Both must be present.
+        straight_dx = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+            and const_item(b) == director.ZAKATO_STRAIGHT_DX
+            for b in update_body
+        )
+        aim_dx = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+            and (item := rref(b["inputs"].get("ITEM"))) is not None
+            and item["opcode"] == "data_itemoflist"
+            and item["fields"]["LIST"][1] == director.AIM_DX_32_ID
+            for b in update_body
+        )
+        aim_dy = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DY_ID
+            and (item := rref(b["inputs"].get("ITEM"))) is not None
+            and item["opcode"] == "data_itemoflist"
+            and item["fields"]["LIST"][1] == director.AIM_DY_32_ID
+            for b in update_body
+        )
+        if not (straight_dx and aim_dx and aim_dy):
+            failures.add("zakato-commit-sets-motion")
+
+        # (10) THE FUSED VARIANTS SEED A ONE-SHOT RANDOM FUSE. The commit writes `slot fire timer` from an
+        # `rng out` mod, one span per fused variant — slow mod ZAKATO_SLOW_FUSE_SPAN, fast mod
+        # ZAKATO_FAST_FUSE_SPAN. Both spans must appear on a `slot fire timer` write's value subtree.
+        fuse_writes = [
+            b for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+        ]
+        spans = set()
+        for b in fuse_writes:
+            root = ref(b["inputs"].get("ITEM"))
+            for span in (director.ZAKATO_SLOW_FUSE_SPAN, director.ZAKATO_FAST_FUSE_SPAN):
+                if root is not None and cond_has_num(root, span):
+                    spans.add(span)
+        if spans != {director.ZAKATO_SLOW_FUSE_SPAN, director.ZAKATO_FAST_FUSE_SPAN}:
+            failures.add("zakato-seeds-random-fuse")
+
+        # (11) FIRES EXACTLY ONCE, THEN SELF-DESTRUCTS. There is exactly ONE allocator call in the update
+        # body; it sits under `state == SLOT_ACTIVE`, and the SAME fire branch flips `slot state` to
+        # SLOT_SELF_EXPLODE — so the shot cannot recur (an active slot that just fired is no longer ACTIVE).
+        alloc_ids = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+        ]
+        self_explode_writes = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_SELF_EXPLODE
+        ]
+        if (
+            len(alloc_ids) != 1
+            or not gated_by_state(alloc_ids[0], director.SLOT_ACTIVE)
+            or not self_explode_writes
+            or not all(gated_by_state(s, director.SLOT_ACTIVE) for s in self_explode_writes)
+        ):
+            failures.add("zakato-fires-once-then-self-destructs")
+
+        # (12) FIRES DIRECTLY, NEVER THE SHARED FIRE GATE (a one-shot, not a periodic masked shooter).
+        if any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+            for b in update_body
+        ):
+            failures.add("zakato-fires-without-gate")
+
+        # (13) THE PROXIMITY TRIGGER CARRIES THE LATERAL BAND. Some fire-trigger condition in the update
+        # tests the lateral offset band — it carries BOTH band constants (ZAKATO_CLOSEY_LOW and
+        # ZAKATO_CLOSEY_HIGH). Without the band the close-Y/continuous variants would never fire on level.
+        if not (
+            any(cond_has_num(id_of[id(b)], director.ZAKATO_CLOSEY_LOW) for b in update_body)
+            and any(cond_has_num(id_of[id(b)], director.ZAKATO_CLOSEY_HIGH) for b in update_body)
+        ):
+            failures.add("zakato-fire-trigger-proximity-band")
+
+        # (14) SELF-DESTRUCT AWARDS NOTHING; A SHOT-KILL PLAYS THE SHARED EXPLOSION. The SELF_EXPLODE branch
+        # runs the shared `explode toroid tick` (gated by state == SELF_EXPLODE); a SLOT_HIT plays the same
+        # shared tick (gated by state == SLOT_HIT); and the shot detector is offered on the non-HIT path
+        # (`check air hit`, a no-op unless ACTIVE — the ONLY thing that scores a Zakato). The update itself
+        # never writes the score list, so a self-destructing slot (never seen by the detector) awards nothing.
+        explode_calls = [
+            id_of[id(b)]
+            for b in update_body
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+        ]
+        self_tick = any(gated_by_state(e, director.SLOT_SELF_EXPLODE) for e in explode_calls)
+        hit_tick = any(gated_by_state(e, director.SLOT_HIT) for e in explode_calls)
+        offers_detector = any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CHECK_AIR_HIT_PROCCODE
+            for b in update_body
+        )
+        if not (self_tick and hit_tick and offers_detector):
+            failures.add("zakato-self-destruct-no-score")
+
+        return failures
+
+    # Roadmap closure evidence for leaf `air.zakato` (AIR-07): the four base Zakato variants are a live
+    # TELEPORT->ACTIVE->SELF-DESTRUCT family — slow / close-Y / fast / continuous share one init and one
+    # update, spawned by type from the formation wave, advanced by the ordered walk. Each teleports in
+    # indestructible (SLOT_TELEPORT, the hit gate ignores it), then becomes ACTIVE and moves — straight on the
+    # scroll axis (slow/close-Y) or aimed on the 32-tier (fast/continuous) — fires EXACTLY ONE aimed bullet
+    # (fused fuse expiry, or the proximity band for close-Y/continuous), and self-destructs awarding NOTHING;
+    # killed by a shot first it scores its per-variant value (100/200/150/300). The live proof (teleports in,
+    # becomes hittable, fires once then vanishes) is the harness `zakato-teleports-then-active` /
+    # `zakato-fires-once-then-vanishes`.
+    # roadmap-evidence: AIR-07 success  (test_zakato_slice_authoring_present — lifecycle procs warp, spawn-inits + dispatch-updates, spawns indestructible SLOT_TELEPORT not ACTIVE, per-variant points gated by walk type, no fire mask at spawn, craft-excluding draw, teleport commits ACTIVE, commit sets straight dx and 32-tier aim, seeds slow/fast random fuse, fires exactly one aimed bullet then SELF_EXPLODE, never the fire gate, proximity band carries both constants, self-destruct runs the shared tick and awards nothing while a shot-kill plays the shared explosion)
+    # roadmap-evidence: AIR-07 failure  (test_zakato_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_zakato_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air07_failures(project))
+
+    def test_zakato_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air07_failures(base))
+
+        def _body(p, proccode):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, proccode)
+
+        def unwarp_update(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_ZAKATO_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_init_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.INIT_ZAKATO_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def drop_dispatch_call(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t["isStage"])
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_ZAKATO_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def spawn_active(p: dict) -> None:
+            # Flip the init's SLOT_TELEPORT stamp to SLOT_ACTIVE → the Zakato spawns hittable/scorable with
+            # no teleport phase. The spawns-teleporting clause bites (a free-kill regression).
+            stage, body = _body(p, director.INIT_ZAKATO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _const_item(b) == director.SLOT_TELEPORT
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.SLOT_ACTIVE)]]
+
+        def wrong_points(p: dict) -> None:
+            # Change the slow variant's value-table index off ZAKATO_SLOW_PTS → the per-variant-points
+            # clause bites (the slow Zakato would score the wrong value on a kill-before-fire).
+            stage, body = _body(p, director.INIT_ZAKATO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and _const_item(b) == director.ZAKATO_SLOW_PTS
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.ZAKATO_SLOW_PTS + 1)]]
+
+        def capture_fire_mask(p: dict) -> None:
+            # Repurpose the init's `slot code` write to write `slot fire mask` instead → the init now
+            # captures a fire mask (a periodic-shooter regression). The no-fire-mask clause bites.
+            stage, body = _body(p, director.INIT_ZAKATO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_CODE_ID
+                ):
+                    b["fields"]["LIST"] = ["slot fire mask", director.SLOT_FIRE_MASK_ID]
+                    break
+
+        def drop_craft_exclusion(p: dict) -> None:
+            # Zero the craft-proximity reject distance (SPAWN_CRAFT_GAP -> 0) so |player col - col| < 0 is
+            # never true → the draw stops excluding the craft's column. The craft-excluding clause bites.
+            stage, body = _body(p, director.INIT_ZAKATO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "operator_lt"
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and b["inputs"]["OPERAND2"][1][1] == director.SPAWN_CRAFT_GAP
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "0"]]
+
+        def ungate_commit(p: dict) -> None:
+            # Flip the teleport-completion gate's `state == SLOT_TELEPORT` to a value the state never holds →
+            # the ACTIVE commit is no longer nested under the teleport gate. The commits-active clause bites.
+            stage, body = _body(p, director.UPDATE_ZAKATO_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if b["opcode"] != "operator_equals":
+                    continue
+                o1 = b["inputs"].get("OPERAND1")
+                lhs = blocks.get(o1[1]) if isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], str) else None
+                if (
+                    lhs is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and isinstance(b["inputs"]["OPERAND2"][1], list)
+                    and int(b["inputs"]["OPERAND2"][1][1]) == director.SLOT_TELEPORT
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def flatten_straight_dx(p: dict) -> None:
+            # Change the straight-variant commit's `slot dx` = ZAKATO_STRAIGHT_DX to 0 → the commit no longer
+            # sets the scroll-axis drift. The commit-sets-motion clause bites.
+            stage, body = _body(p, director.UPDATE_ZAKATO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+                    and _const_item(b) == director.ZAKATO_STRAIGHT_DX
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+        def drop_fast_fuse_span(p: dict) -> None:
+            # Change the fast fuse span (mod ZAKATO_FAST_FUSE_SPAN) off its value → only one span remains on
+            # a `slot fire timer` write subtree. The seeds-random-fuse clause bites.
+            stage, body = _body(p, director.UPDATE_ZAKATO_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if b["opcode"] == "operator_mod" and _num_operand(b["inputs"].get("NUM2")) == director.ZAKATO_FAST_FUSE_SPAN:
+                    b["inputs"]["NUM2"] = [1, [4, "7"]]
+
+        def ungate_fire_from_active(p: dict) -> None:
+            # Flip the fire branch's `state == SLOT_ACTIVE` gate to a value the state never holds → the shot
+            # (and the SELF_EXPLODE flip) are no longer under the ACTIVE gate. The fires-once clause bites.
+            stage, body = _body(p, director.UPDATE_ZAKATO_PROCCODE)
+            blocks = stage["blocks"]
+            for b in body:
+                if b["opcode"] != "operator_equals":
+                    continue
+                o1 = b["inputs"].get("OPERAND1")
+                lhs = blocks.get(o1[1]) if isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], str) else None
+                if (
+                    lhs is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and isinstance(b["inputs"].get("OPERAND2"), list)
+                    and isinstance(b["inputs"]["OPERAND2"][1], list)
+                    and int(b["inputs"]["OPERAND2"][1][1]) == director.SLOT_ACTIVE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def add_fire_gate(p: dict) -> None:
+            # Turn the direct allocator call into a shared fire-gate call → the fires-without-gate clause
+            # bites (a periodic-masked-fire regression). Also trips fires-once (the allocator vanishes).
+            stage, body = _body(p, director.UPDATE_ZAKATO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.FIRE_GATE_PROCCODE
+
+        def break_proximity_band(p: dict) -> None:
+            # Change the low band constant off ZAKATO_CLOSEY_LOW → the proximity trigger no longer carries
+            # both band constants. The proximity-band clause bites.
+            stage, body = _body(p, director.UPDATE_ZAKATO_PROCCODE)
+            for b in body:
+                for key in ("OPERAND1", "OPERAND2", "NUM1", "NUM2"):
+                    if _num_operand(b["inputs"].get(key)) == director.ZAKATO_CLOSEY_LOW:
+                        b["inputs"][key] = [1, [4, "-99"]]
+
+        def self_explode_no_tick(p: dict) -> None:
+            # Neuter the SELF_EXPLODE branch's shared-tick call → the self-destruct no longer plays the
+            # shared explosion. The self-destruct-no-score clause bites (it needs the shared tick present on
+            # both the SELF_EXPLODE and HIT paths).
+            stage, body = _body(p, director.UPDATE_ZAKATO_PROCCODE)
+            blocks = stage["blocks"]
+            id_of = {id(b): bid for bid, b in blocks.items()}
+
+            def gated(node_id, value):
+                cur = blocks.get(node_id)
+                while cur is not None:
+                    parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                    if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                        cond_id = parent["inputs"].get("CONDITION")
+                        cond_id = cond_id[1] if isinstance(cond_id, list) and len(cond_id) >= 2 else None
+                        seen, frontier = set(), [cond_id]
+                        while frontier:
+                            cid = frontier.pop()
+                            if not cid or cid in seen or cid not in blocks:
+                                continue
+                            seen.add(cid)
+                            bb = blocks[cid]
+                            if bb["opcode"] == "operator_equals":
+                                lo1 = bb["inputs"].get("OPERAND1")
+                                lb = blocks.get(lo1[1]) if isinstance(lo1, list) and len(lo1) >= 2 and isinstance(lo1[1], str) else None
+                                o2 = bb["inputs"].get("OPERAND2")
+                                if (
+                                    lb is not None
+                                    and lb["opcode"] == "data_itemoflist"
+                                    and lb["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                                    and isinstance(o2, list) and isinstance(o2[1], list) and int(o2[1][1]) == value
+                                ):
+                                    return True
+                            for v in bb.get("inputs", {}).values():
+                                if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                                    frontier.append(v[1])
+                    cur = parent
+                return False
+
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+                    and gated(id_of[id(b)], director.SLOT_SELF_EXPLODE)
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        cases = [
+            ("zakato-lifecycle-procs-warp", unwarp_update),
+            ("spawn-inits-zakato", drop_init_call),
+            ("dispatch-updates-zakato", drop_dispatch_call),
+            ("zakato-spawns-teleporting", spawn_active),
+            ("zakato-per-variant-points", wrong_points),
+            ("zakato-no-fire-mask", capture_fire_mask),
+            ("zakato-craft-excluding-draw", drop_craft_exclusion),
+            ("zakato-teleport-commits-active", ungate_commit),
+            ("zakato-commit-sets-motion", flatten_straight_dx),
+            ("zakato-seeds-random-fuse", drop_fast_fuse_span),
+            ("zakato-fires-once-then-self-destructs", ungate_fire_from_active),
+            ("zakato-fires-without-gate", add_fire_gate),
+            ("zakato-fire-trigger-proximity-band", break_proximity_band),
+            ("zakato-self-destruct-no-score", self_explode_no_tick),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air07_failures(project), label)
 
     # ------------------------------------------------------------------ slice-9 ground guards
     # The settling harness advances whole ticks and drives play to rest, so a family's per-tick,
@@ -8951,7 +9606,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "1734b493e22cf215f765fd16c99dd15214cf43a6f598c85e599c93d2902040d2",
+            "a4a456d6e9bc5460756cc66bdd118ab66db6f4412db39ea9f9d4c8e1697d3b25",
             build_hash,
         )
 

@@ -180,6 +180,17 @@ SHOT_SPENT = 3
 # mirrors the arcade's own reuse of state 3 for an inert object. The renderer draws the base off `slot
 # type` (== GARU_BARRA_TYPE) with this sentinel state, never off `==SLOT_ACTIVE`.
 SLOT_GARU_BASE = 3
+# AIR-07/AIR-08 Zakato phase sentinels. A teleporting or self-detonating Zakato is stamped a NON-ACTIVE
+# flying-slot state so the shared `check air hit` gate (`== SLOT_ACTIVE`) excludes it for free — the same
+# device the Garu Barra base uses (SLOT_GARU_BASE above), and the arcade's own `_STATE=3` "indestructible"
+# during the teleport sparkle (init_teleport $2826) and "benign" during the self-destruct explosion
+# (zakato_shoot $25B9, brag_zakato_explode $2791). These live in the disjoint FLYING band (59-64) and are
+# read ONLY by the Zakato update's phase dispatch; every other flying seam keys off `slot type != 0`
+# (spawn refill, walk occupancy, renderer) or `== SLOT_ACTIVE` (hit/craft collision), never these values.
+# The one slot-state -> HIT write stays inside `resolve hit` (SYS-03): a self-destruct never writes HIT, so
+# it never scores; a player hit still routes through `resolve hit` -> SLOT_HIT -> the shared explosion.
+SLOT_TELEPORT = 4  # teleport-in sparkle phase: indestructible, not yet hittable
+SLOT_SELF_EXPLODE = 5  # fired-and-vanishing phase: benign, animating its own burst, awards nothing
 HIT_SLOT_ID = "hit-slot"
 RESOLVE_HIT_PROCCODE = "resolve hit"
 SCORE_PROCCODE = "score"
@@ -718,6 +729,8 @@ INIT_KAPI_PROCCODE = "init kapi"
 UPDATE_KAPI_PROCCODE = "update kapi"
 INIT_TORKAN_PROCCODE = "init torkan"
 UPDATE_TORKAN_PROCCODE = "update torkan"
+INIT_ZAKATO_PROCCODE = "init zakato"  # AIR-07: shared initializer for the four base Zakato variants
+UPDATE_ZAKATO_PROCCODE = "update zakato"  # AIR-07: shared teleport/active/self-destruct phase dispatch
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
 # DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
@@ -760,6 +773,18 @@ ZOSHI_BOTTOM_FORMATION_OFFSET = 51
 JARA_SHOOTER_FORMATION_OFFSET = 13
 JARA_SILENT_FORMATION_OFFSET = 19
 JARA_PAIR_FORMATION_OFFSET = 18
+# The flying-type-table offsets whose runs select each base Zakato variant (object-types.json 0-based run
+# starts): slow (0x12) at 54-56 and closeY (0x13) at 57-59 are three-wide runs; fast (0x14) at 60-65 is
+# six-wide; cont (0x15) at 110-113 is four-wide. The debug spawner forces `formation count` = 1, so only
+# the run's first position is read and the shorter runs are immaterial. NATURAL reachability differs by
+# variant: the area-1..16 formation waves DO reach fast (0x14, e.g. areas 4/9/14) and cont (0x15, areas
+# 9/14) through the AI-level formation table, so those two appear in normal play; slow (0x12) and closeY
+# (0x13) are NOT scheduled in any built area, so the debug key is the only way to see them until later
+# areas are wired (see docs/mechanics/034 for the schedule trace).
+ZAKATO_SLOW_FORMATION_OFFSET = 54
+ZAKATO_CLOSEY_FORMATION_OFFSET = 57
+ZAKATO_FAST_FORMATION_OFFSET = 60
+ZAKATO_CONT_FORMATION_OFFSET = 110
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
@@ -772,10 +797,11 @@ FIRE_MASK_KAPI_ID = "fire-mask-kapi"
 FIRE_MASK_ZOSHI_ID = "fire-mask-zoshi"
 
 # Object type codes the flying dispatch handles (object-types.json). With AIR-04 Jara built, the
-# slice-10 aerial families (Toroid, Terrazi, Kapi, Torkan, Zoshi, Jara) all spawn. Other flying
-# enemies the formation table still emits — Giddo Spario (0x08) and the Zakato variants (0x12-0x17) —
-# remain unhandled (not in FLYING_HANDLED_TYPES) and are silently skipped by the spawner until their
-# own slices; the "fewer enemies" deviation is retired only for the built families, not all aerials.
+# slice-10 aerial families (Toroid, Terrazi, Kapi, Torkan, Zoshi, Jara) all spawn. AIR-07 (slice 11)
+# retires the deviation for the four base Zakato teleporter variants (0x12-0x15); Giddo Spario (0x08),
+# Brag Spario (0x09), the Brag Zakato pair (0x16/0x17) and the Garu Zakato (0x18) arrive with the rest
+# of the Zakato cluster (AIR-08/AIR-10). Any still-unhandled formation type is silently skipped by the
+# spawner (the "fewer enemies" deviation), retired only for the built families, not all aerials.
 TOROID_TYPE = 10  # 0x0A, non-shooting
 TOROID_SHOOTS_TYPE = 11  # 0x0B, fires one aimed bullet at the swing trigger
 # AIR-03 Zoshi (Octopus): three object types sharing one movement/anim/fire core (handle_0C/0D/0E,
@@ -797,6 +823,51 @@ TERRAZI_TYPE = 17  # 0x11, the first periodically-firing aerial family (handle_1
 # the craft enters a lateral proximity band; the 0x55 shooter also fires one aimed bullet at the turn.
 JARA_SHOOTER_TYPE = 85  # 0x55, handle_55_Jara_shoots: fires exactly one aimed bullet at the turn
 JARA_SILENT_TYPE = 86  # 0x56, handle_56_Jara: identical motion/anim but never fires
+# AIR-07 Zakato (Teleporter): four object types (handle_12-15, 3733-3859) sharing one teleport-in
+# sparkle, one hittable-active phase and one self-destruct burst; they differ only in movement, in WHEN
+# they fire their single aimed bullet, and in points. All four teleport in invulnerable, become hittable,
+# fire ONE generic aimed bullet (init_new_bullet 3764) then self-destruct awarding nothing; killed while
+# active they score their variant value. Codes 0x12-0x15 (18-21).
+ZAKATO_SLOW_TYPE = 18  # 0x12, handle_12_Zakato_slow: drifts straight 1 px/f, random 0-255 fuse, 100 pts
+ZAKATO_CLOSEY_TYPE = 19  # 0x13, handle_13_Zakato_closeY: drifts straight 1 px/f, fires when level in Y, 200 pts
+ZAKATO_FAST_TYPE = 20  # 0x14, handle_14_Zakato_fast: aimed 2 px/f, random 0-63 fuse, 150 pts
+ZAKATO_CONT_TYPE = 21  # 0x15, handle_15_Zakato: aimed 2 px/f, fires when level in Y, 300 pts
+ZAKATO_TYPES = (ZAKATO_SLOW_TYPE, ZAKATO_CLOSEY_TYPE, ZAKATO_FAST_TYPE, ZAKATO_CONT_TYPE)
+# AIR-07 Zakato behaviour constants (handle_12-15, 3733-3859; init_teleport 3994; zakato_teleport 3961;
+# zakato_shoot 3761; zakato_explode 3931). Points are 1-based value-table positions (VALUE_TABLE_POINTS):
+# the arcade _PTS bytes 15/21/18/27 name arcade-table slots for 100/200/150/300, which are positions
+# 6/8/7/10 in this port's 22-entry decoded table (same remap as TERRAZI_PTS 14 -> 700).
+ZAKATO_SLOW_PTS = 6  # 100 points (handle_12 _PTS byte 15)
+ZAKATO_CLOSEY_PTS = 8  # 200 points (handle_13 _PTS byte 21)
+ZAKATO_FAST_PTS = 7  # 150 points (handle_14 _PTS byte 18)
+ZAKATO_CONT_PTS = 10  # 300 points (handle_15 _PTS byte 27)
+ZAKATO_MAIN_CODE = 0x11  # active-phase body sprite code (zakato_NN_main move.b #0x11,_CODE)
+# The teleport-in sparkle and the self-destruct burst share ONE 6-frame set (arcade sprite codes
+# 4,5,6,7,8,0xC): zakato_exploding_sprite_tbl runs them FORWARD (4->0xC) for the burst, and
+# zakato_teleport_sprite_tbl is the same list REVERSED (0xC->4) for the sparkle. Each shows 5 phases,
+# 4 arcade frames apart ((timer>>2)&7, done at >=5 -> ~20 frames), like the shared Toroid burst.
+ZAKATO_BURST_FRAMES = 6
+ZAKATO_ANIM_PHASE_FRAMES = 4  # arcade frames per sparkle/burst phase (timer>>2)
+ZAKATO_ANIM_PHASES = 5  # phases shown before the phase completes (cmp #5, jcc done)
+# Both the teleport-in sparkle and the self-destruct burst run ANIM_PHASES phases of ANIM_PHASE_FRAMES
+# each = 20 arcade frames (equal to the shared flying burst TOROID_HIT_DURATION_FRAMES, so the self-
+# destruct reuses `explode toroid tick` for its clock-and-free). The update advances `slot timer` by
+# TICK_TIMER_STEP/tick, so completion is `slot timer >= ZAKATO_PHASE_FRAMES`.
+ZAKATO_PHASE_FRAMES = ZAKATO_ANIM_PHASE_FRAMES * ZAKATO_ANIM_PHASES  # 20
+# Straight drifters (slow/closeY) move on the scroll axis at the arcade's raw dX=16 (1 px/frame),
+# dY=0 (handle_12/13 3736-3737); fast/continuous aim at the craft on the 32-magnitude generic tier
+# (angle_dX_dY_tbl, 2 px/frame), like the Kapi/Torkan approach. The two fused variants draw a random
+# shot countdown when the teleport completes: slow (rng & 0xff)+1 = 1-256, fast (rng & 0x3f)+1 = 1-64
+# (3745-3748 / 3814-3817). The Y-triggered variants (closeY/continuous) fire when |solvalou.Y - self.Y|
+# is within the arcade's close band (3793-3797) rather than on a countdown.
+ZAKATO_STRAIGHT_DX = 16  # raw scroll-axis velocity for slow/closeY (arcade dX=16, 1 px/frame)
+ZAKATO_SLOW_FUSE_SPAN = 256  # (rng mod 256) + 1 = 1-256 arcade frames (handle_12 and.w #0xff)
+ZAKATO_FAST_FUSE_SPAN = 64  # (rng mod 64) + 1 = 1-64 arcade frames (handle_14 and.w #0x3f)
+# Close-in-Y fire trigger: the arcade tests (solvalou.Y - self.Y - 4 + 8) carrying, i.e. the signed MSB
+# difference lands in [-4, 3] cells (3793-3796). `slot y` is the lateral axis in 1/32-px units; a cell is
+# SLOT_UNITS_PER_CELL. Fire when the lateral offset (player col - self col) is within this band.
+ZAKATO_CLOSEY_LOW = -4
+ZAKATO_CLOSEY_HIGH = 3
 FLYING_HANDLED_TYPES = (
     TOROID_TYPE,
     TOROID_SHOOTS_TYPE,
@@ -808,6 +879,10 @@ FLYING_HANDLED_TYPES = (
     TERRAZI_TYPE,
     JARA_SHOOTER_TYPE,
     JARA_SILENT_TYPE,
+    ZAKATO_SLOW_TYPE,
+    ZAKATO_CLOSEY_TYPE,
+    ZAKATO_FAST_TYPE,
+    ZAKATO_CONT_TYPE,
 )
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
 # (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
@@ -826,6 +901,13 @@ DEBUG_SPAWN_FAMILIES = (
     (JARA_SHOOTER_TYPE, JARA_SHOOTER_FORMATION_OFFSET, 1),  # shooter solo
     (JARA_SILENT_TYPE, JARA_SILENT_FORMATION_OFFSET, 1),  # silent solo
     (JARA_SHOOTER_TYPE, JARA_PAIR_FORMATION_OFFSET, 2),  # emergent pair: one 0x55 + one 0x56
+    # The four base Zakato variants, one at a time. fast/cont also appear in natural area waves, but the
+    # T key gives the operator a solo of each variant on demand — and it is the ONLY way to see slow/closeY,
+    # which no built area schedules (see the ZAKATO_*_FORMATION_OFFSET note above).
+    (ZAKATO_SLOW_TYPE, ZAKATO_SLOW_FORMATION_OFFSET, 1),
+    (ZAKATO_CLOSEY_TYPE, ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
+    (ZAKATO_FAST_TYPE, ZAKATO_FAST_FORMATION_OFFSET, 1),
+    (ZAKATO_CONT_TYPE, ZAKATO_CONT_FORMATION_OFFSET, 1),
 )
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
@@ -1184,6 +1266,22 @@ ZOSHI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~
 JARA_TARGET = "jara"
 JARA_CLONE_SLOT_ID = "jara-clone-slot"  # sprite-local: which flying slot this clone renders
 JARA_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+
+# AIR-07 Zakato renderer constants. One persistent clone per flying slot, keyed on the slot's phase in
+# `slot state`, which the update machine sequences (SLOT_TELEPORT -> SLOT_ACTIVE -> SLOT_SELF_EXPLODE, or
+# SLOT_ACTIVE -> SLOT_HIT). Costume ordinals: 1 = the single active body (arcade code 0x11); 2.. = the
+# shared solv_death burst (the recorded cosmetic stand-in every flying family appends, records 025/031).
+# The Zakato's own teleport/self-destruct sprites (arcade codes 4,5,6,7,8,0xC — zakato_teleport_sprite_tbl
+# / zakato_exploding_sprite_tbl) are a DEFERRED cosmetic like the other families' bursts: all three of the
+# Zakato's animated phases render from the shared burst — the teleport-in sparkle plays it REVERSED (the
+# arcade's sparkle is that same six-frame set run backwards, 3986-3992), the self-destruct and the shot
+# kill play it FORWARD. The self-destruct stays at normal scale (a small pop) while the shot kill grows at
+# the big phase like every other flying kill, keeping the two visually distinct.
+ZAKATO_TARGET = "zakato"
+ZAKATO_CLONE_SLOT_ID = "zakato-clone-slot"  # sprite-local: which flying slot this clone renders
+ZAKATO_RENDER_SIZE = 225  # 1x1 (16-px) sprite (_ATTR #0x80), the shared flying scale
+ZAKATO_BODY_ORDINAL = 1  # costume 1: the active body (arcade code 0x11)
+ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first shared solv_death burst frame
 
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
@@ -2260,6 +2358,23 @@ def install_advance_slots(blocks: Blocks) -> None:
     jara_branch = blocks.if_reporter(
         is_jara, [blocks.call_proc(UPDATE_JARA_PROCCODE, warp=True)]
     )
+    # AIR-07: the four base Zakato object types (slow 0x12 / closeY 0x13 / fast 0x14 / cont 0x15) share
+    # ONE update proc — all four run the same teleport-in / active / self-destruct machine, branching
+    # inside `update zakato` on `slot type` for their movement (straight vs aimed) and fire trigger
+    # (random fuse vs level-in-Y). Dispatch with a single OR branch, as the Zoshi/Jara do.
+    is_zakato = blocks.op_or(
+        blocks.op_or(
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_SLOW_TYPE)),
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_CLOSEY_TYPE)),
+        ),
+        blocks.op_or(
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_FAST_TYPE)),
+            blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_CONT_TYPE)),
+        ),
+    )
+    zakato_branch = blocks.if_reporter(
+        is_zakato, [blocks.call_proc(UPDATE_ZAKATO_PROCCODE, warp=True)]
+    )
     bullet_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BULLET_TYPE)),
         [blocks.call_proc(UPDATE_BULLET_PROCCODE, warp=True)],
@@ -2283,7 +2398,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_LOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -3741,6 +3856,215 @@ def install_update_jara(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def install_init_zakato(blocks: Blocks) -> None:
+    # AIR-07: initialize the flying slot at `slot index` as a Zakato of type `walk type` (handle_12-15
+    # 3733-3859; init_teleport 3994). All four base variants share this initializer; they differ only in
+    # the points stamped here and in the movement / shot trigger the update commits once the teleport-in
+    # completes. The Zakato TELEPORTS in: it is stamped SLOT_TELEPORT — indestructible, since the shared
+    # `check air hit` gate skips any non-ACTIVE slot (the arcade's `_STATE=3` at init_teleport 3995) — and
+    # holds in place while the ~20-frame sparkle plays (rendered from `slot timer`, the reversed burst).
+    # When the sparkle ends the update flips it to SLOT_ACTIVE and stamps its aimed/straight velocity and
+    # shot fuse. Top-row entry via the shared spawn-column draw; the arcade's random teleport X
+    # (init_teleport 3996-3999) is a deferred cosmetic deviation, the same no-enemy-scroll top entry every
+    # flying family uses. No fire mask is captured — a Zakato fires exactly one bullet, structurally, not
+    # under the periodic gate.
+    definition = _install_warp_proc(blocks, INIT_ZAKATO_PROCCODE)
+    reset, draw_loop = _draw_spawn_column(blocks)  # default exclude_craft=True
+    wt = lambda: variable("walk type", WALK_TYPE_ID)
+    # Per-variant points, stamped by type (the four handlers' distinct _PTS bytes -> value-table positions).
+    pts_stamps = [
+        blocks.if_reporter(
+            blocks.op_eq(wt(), number(t)),
+            [_set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(p))],
+        )
+        for t, p in (
+            (ZAKATO_SLOW_TYPE, ZAKATO_SLOW_PTS),
+            (ZAKATO_CLOSEY_TYPE, ZAKATO_CLOSEY_PTS),
+            (ZAKATO_FAST_TYPE, ZAKATO_FAST_PTS),
+            (ZAKATO_CONT_TYPE, ZAKATO_CONT_PTS),
+        )
+    ]
+    stamp = blocks.if_reporter(
+        blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, wt()),
+            # SLOT_TELEPORT: invulnerable and not yet moving — the sparkle plays in place, then the update
+            # transitions to SLOT_ACTIVE. Not SLOT_ACTIVE, so `check air hit` cannot score it mid-teleport.
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_TELEPORT)),
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(ZAKATO_MAIN_CODE)),
+            *pts_stamps,
+        ],
+    )
+    blocks.chain(definition, [*reset, draw_loop, stamp])
+
+
+def install_update_zakato(blocks: Blocks) -> None:
+    # AIR-07: advance the Zakato at `slot index` by one tick — the three-phase teleport/active/self-
+    # destruct machine the arcade sequences through its per-object re-entry PC (handle_12-15 3733-3859,
+    # zakato_teleport 3961, zakato_shoot 3761, zakato_explode 3931). With no per-slot PC, the port carries
+    # the phase EXPLICITLY in `slot state`:
+    #   SLOT_TELEPORT      teleporting in: indestructible (the shared `check air hit` gate ignores any
+    #                      non-ACTIVE slot, so it is unkillable here — the arcade's `_STATE=3` at
+    #                      init_teleport 3995), holding in place while the ~20-frame reversed sparkle plays.
+    #   SLOT_ACTIVE        hittable and moving: it fires EXACTLY ONE aimed bullet — on a random countdown
+    #                      (slow/fast) or when the craft is level in the lateral axis (closeY/cont) — then
+    #                      flips itself to SLOT_SELF_EXPLODE; killed by a shot first, it scores its value.
+    #   SLOT_SELF_EXPLODE  fired and vanishing: benign (again ignored by the hit gate), holding still while
+    #                      its own 20-frame burst plays, then freed awarding NOTHING (zakato_explode_and_
+    #                      remove 3766 -> remove_zakato 3926, no score).
+    #   SLOT_HIT           shot down while active: the SHARED flying explosion (`explode toroid tick`), its
+    #                      value already scored by the detector — exactly like every other flying family.
+    # The self-destruct reuses `explode toroid tick` (same 20-frame free clock); it differs from a shot
+    # kill only in the sprite the renderer draws (self burst vs shared burst, keyed on the state) and in
+    # awarding nothing (the detector, not the tick, awards — and it never ran on a self-destructing slot).
+    definition = _install_warp_proc(blocks, UPDATE_ZAKATO_PROCCODE)
+    state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
+    wt = lambda: _cur_item(blocks, "slot type", SLOT_TYPE_ID)
+    timer = lambda: _cur_item(blocks, "slot timer", SLOT_TIMER_ID)
+    fuse = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+    col_offset = lambda: blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))
+    is_straight = lambda: blocks.op_or(blocks.op_eq(wt(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(wt(), number(ZAKATO_CLOSEY_TYPE)))
+    is_fused = lambda: blocks.op_or(blocks.op_eq(wt(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(wt(), number(ZAKATO_FAST_TYPE)))
+    is_proximity = lambda: blocks.op_or(blocks.op_eq(wt(), number(ZAKATO_CLOSEY_TYPE)), blocks.op_eq(wt(), number(ZAKATO_CONT_TYPE)))
+
+    # --- TELEPORT phase: hold in place, advance the sparkle clock; on completion commit to ACTIVE. ---
+    # Straight variants (slow/closeY) descend on the raw scroll-axis velocity dX=16, dY=0 (handle_12/13
+    # 3736-3737); aimed variants (fast/cont) aim at the craft's CURRENT cell on the 32-magnitude generic
+    # tier at the completion instant (zakato_14/15_main's calc_dX_dY_for_vector_to_solvalou 3822/3848).
+    set_straight = blocks.if_reporter(
+        is_straight(),
+        [
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(ZAKATO_STRAIGHT_DX)),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+        ],
+    )
+    set_aimed = blocks.if_reporter(
+        blocks.op_not(is_straight()),
+        [
+            blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
+            blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
+            blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 32", AIM_DX_32_ID, variable("aim index", AIM_INDEX_ID))),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 32", AIM_DY_32_ID, variable("aim index", AIM_INDEX_ID))),
+        ],
+    )
+    # Draw the one-shot random fuse for the fused variants (slow (rng mod 256)+1, fast (rng mod 64)+1,
+    # 3745-3748 / 3814-3817). The Y-triggered variants leave `slot fire timer` unused. A fresh RNG draw
+    # in walk order, like the Kapi approach-delay draw.
+    seed_slow_fuse = blocks.if_reporter(
+        blocks.op_eq(wt(), number(ZAKATO_SLOW_TYPE)),
+        [
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(ZAKATO_SLOW_FUSE_SPAN)), number(1))),
+        ],
+    )
+    seed_fast_fuse = blocks.if_reporter(
+        blocks.op_eq(wt(), number(ZAKATO_FAST_TYPE)),
+        [
+            blocks.call_proc(RNG_PROCCODE, warp=True),
+            _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(ZAKATO_FAST_FUSE_SPAN)), number(1))),
+        ],
+    )
+    commit_active = [
+        _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+        _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(ZAKATO_MAIN_CODE)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        set_straight,
+        set_aimed,
+        seed_slow_fuse,
+        seed_fast_fuse,
+    ]
+    # Advance the sparkle clock 2/tick; `timer()` re-reads the list, so the completion test sees the
+    # incremented value. Completes when it reaches ZAKATO_PHASE_FRAMES (20). The commit runs the SAME tick
+    # the sparkle ends, matching the arcade fall-through from zakato_teleport into zakato_NN_main; the
+    # ACTIVE gate below then also runs this tick (its ==ACTIVE gate is now satisfied), as the arcade does.
+    teleport = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_TELEPORT)),
+        [
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(timer(), number(TICK_TIMER_STEP))),
+            blocks.if_reporter(blocks.op_not(blocks.op_lt(timer(), number(ZAKATO_PHASE_FRAMES))), commit_active),
+        ],
+    )
+
+    # --- ACTIVE phase: craft collision, fire-once trigger, else move + cull. ---
+    craft_hit = blocks.if_reporter(
+        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
+    )
+    # Fused variants count the fuse down 2/tick (2 arcade frames/tick); the Y-triggered variants never
+    # touch it. `fuse()` re-reads the list so the trigger sees the decremented value.
+    dec_fuse = blocks.if_reporter(
+        is_fused(),
+        [_set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_sub(fuse(), number(TICK_TIMER_STEP)))],
+    )
+    # Fire trigger: fused variants at fuse <= 0 (subq/jeq 3755/3826); proximity variants when the craft is
+    # level in the lateral axis, offset in [LOW, HIGH] (the carrying MSB test 3793-3796). Either way it
+    # fires ONE aimed bullet then flips to SELF_EXPLODE — vanishing benign, awarding nothing.
+    fired_fused = blocks.op_and(is_fused(), blocks.op_not(blocks.op_gt(fuse(), number(0))))
+    in_band = blocks.op_and(
+        blocks.op_not(blocks.op_lt(col_offset(), number(ZAKATO_CLOSEY_LOW))),
+        blocks.op_not(blocks.op_gt(col_offset(), number(ZAKATO_CLOSEY_HIGH))),
+    )
+    fired_prox = blocks.op_and(is_proximity(), in_band)
+    fire_now = blocks.op_or(fired_fused, fired_prox)
+    # Self-destruct: fire the one bullet, flip to SELF_EXPLODE, zero the velocity (the arcade stops calling
+    # move_object_dX_dY and only scroll-drifts — which this no-enemy-scroll port renders as holding still),
+    # and reset the burst clock.
+    on_fire = [
+        *_fire_aimed_bullet(blocks),
+        _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_SELF_EXPLODE)),
+        _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
+        _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+    ]
+    # Move by 4*velocity per tick, advance the body animation clock, then cull off any edge (the same
+    # explicit four-edge cull as the other flying families).
+    move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+        _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP))),
+    ]
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(CULL_COL_MIN + 1))
+    offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    fire_choice = blocks.add("control_if_else")
+    blocks.blocks[fire_now]["parent"] = fire_choice
+    blocks.blocks[fire_choice]["inputs"]["CONDITION"] = [2, fire_now]
+    blocks.substack(fire_choice, on_fire)
+    blocks.substack(fire_choice, [*move, cull], name="SUBSTACK2")
+    active = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_ACTIVE)),
+        [craft_hit, dec_fuse, fire_choice],
+    )
+
+    # --- SELF_EXPLODE phase: play out the burst clock and free (no score). ---
+    self_explode = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_SELF_EXPLODE)),
+        [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)],
+    )
+
+    # Top: a shot kill (SLOT_HIT) plays the SHARED flying explosion; otherwise offer to the shot detector
+    # (a no-op unless ACTIVE) then run the phase machine. The detector may flip ACTIVE->HIT this tick; the
+    # ACTIVE gate re-reads state and is then skipped, so the hit explosion starts next tick (as elsewhere).
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
+    blocks.substack(
+        top,
+        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), teleport, active, self_explode],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [top])
+
+
 def _install_zoshi_init(
     blocks: Blocks,
     proccode: str,
@@ -4100,7 +4424,23 @@ def install_spawn_flying(blocks: Blocks) -> None:
         ),
         [blocks.call_proc(INIT_JARA_PROCCODE, warp=True)],
     )
-    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd, spawn_jara])
+    # AIR-07: all four base Zakato object types (slow 0x12 / closeY 0x13 / fast 0x14 / cont 0x15) run the
+    # SAME shared initializer (they teleport in identically; they differ only in the update's movement and
+    # fire trigger). One OR branch of four, as the dispatch ORs them.
+    spawn_zakato = blocks.if_reporter(
+        blocks.op_or(
+            blocks.op_or(
+                blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_SLOW_TYPE)),
+                blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_CLOSEY_TYPE)),
+            ),
+            blocks.op_or(
+                blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_FAST_TYPE)),
+                blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZAKATO_CONT_TYPE)),
+            ),
+        ),
+        [blocks.call_proc(INIT_ZAKATO_PROCCODE, warp=True)],
+    )
+    bounds_gate = blocks.if_reporter(in_bounds, [set_type, spawn_toroid, spawn_kapi, spawn_torkan, spawn_terrazi, spawn_zoshi_top, spawn_zoshi_bottom, spawn_zoshi_rnd, spawn_jara, spawn_zakato])
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
@@ -4719,6 +5059,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_init_zoshi_bottom(blocks)
     install_init_zoshi_rnd(blocks)
     install_init_jara(blocks)
+    install_init_zakato(blocks)
     install_check_air_hit(blocks)
     install_check_ground_hit(blocks)
     install_track_crosshair(blocks)
@@ -4735,6 +5076,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_torkan(blocks)
     install_update_zoshi(blocks)
     install_update_jara(blocks)
+    install_update_zakato(blocks)
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -6878,6 +7220,134 @@ def jara_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def zakato_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-07 Zakato renderer (game_director owns these blocks; sprite_extractor owns the costumes). One
+    # persistent clone per flying slot (59..64), the same pool pattern as the Jara/Kapi: shown and
+    # positioned when its slot holds ANY of the four base Zakato types, hidden otherwise. The clone writes
+    # no state. It draws whichever of the four phases the slot's `slot state` names — the phase sequence the
+    # update machine drives:
+    #   SLOT_ACTIVE       the single static body (ordinal 1, arcade code 0x11).
+    #   SLOT_TELEPORT     the teleport-in sparkle: the shared burst played REVERSED (the arcade sparkle is
+    #                     the exploding six-frame set run backwards, 3986-3992), from the slot clock.
+    #   SLOT_SELF_EXPLODE the self-destruct: the shared burst FORWARD at normal scale — a small pop.
+    #   SLOT_HIT          the shot kill: the shared burst FORWARD, doubling at the big phase like every
+    #                     other flying kill (so it reads bigger than the self-destruct).
+    # All three animated phases run the same solv_death stand-in (record note in the constants); the
+    # Zakato's own teleport/burst sprites are a deferred cosmetic, as with the other families.
+    blocks = Blocks(ZAKATO_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("zakato clone slot", ZAKATO_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("zakato clone slot", ZAKATO_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    stype = lambda: blocks.list_item("slot type", SLOT_TYPE_ID, slotvar())
+    is_zakato = blocks.op_or(
+        blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CLOSEY_TYPE))),
+        blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_FAST_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CONT_TYPE))),
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Burst phase = floor(slot timer / phase-frames) — the arcade `TIMER>>2`. Fresh per read (a reporter
+    # attaches to only one parent). Both the teleport and self-destruct clocks and the shared-hit clock use
+    # the same 4-frame period (ZAKATO_ANIM_PHASE_FRAMES == TOROID_EXPLOSION_PHASE_FRAMES).
+    phase = lambda: blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(ZAKATO_ANIM_PHASE_FRAMES))
+    )
+    # SLOT_SELF_EXPLODE vs SLOT_ACTIVE (the innermost pair): the self-destruct plays the burst forward at
+    # normal scale; the active phase holds the static body.
+    self_or_active = blocks.add("control_if_else")
+    is_self = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_SELF_EXPLODE))
+    blocks.blocks[self_or_active]["inputs"]["CONDITION"] = [2, is_self]
+    blocks.blocks[is_self]["parent"] = self_or_active
+    blocks.substack(
+        self_or_active,
+        [
+            blocks.switch_costume_expr(blocks.op_add(number(ZAKATO_BURST_ORDINAL_BASE), phase())),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
+        ],
+    )
+    blocks.substack(
+        self_or_active,
+        [
+            # ACTIVE holds the static body — a fixed costume, so switch by name (switch_costume_expr
+            # obscures a menu with a runtime reporter; for a constant the by-name switch is direct).
+            blocks.switch_costume("zakato/body/01"),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
+        ],
+        name="SUBSTACK2",
+    )
+    # SLOT_TELEPORT vs the rest: the sparkle plays the burst REVERSED (ordinal base + (PHASES-1 - phase)).
+    tele_or_rest = blocks.add("control_if_else")
+    is_tele = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_TELEPORT))
+    blocks.blocks[tele_or_rest]["inputs"]["CONDITION"] = [2, is_tele]
+    blocks.blocks[is_tele]["parent"] = tele_or_rest
+    blocks.substack(
+        tele_or_rest,
+        [
+            blocks.switch_costume_expr(
+                blocks.op_sub(number(ZAKATO_BURST_ORDINAL_BASE + ZAKATO_ANIM_PHASES - 1), phase())
+            ),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
+        ],
+    )
+    blocks.substack(tele_or_rest, [self_or_active], name="SUBSTACK2")
+    # SLOT_HIT (the shared flying explosion): forward burst, doubling at the big phase — exactly the other
+    # families' hit render.
+    explode_ordinal = blocks.op_add(number(ZAKATO_BURST_ORDINAL_BASE), phase())
+    size_branch = blocks.add("control_if_else")
+    is_big = blocks.op_eq(phase(), number(TOROID_BIG_PHASE))
+    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
+    blocks.blocks[is_big]["parent"] = size_branch
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
+    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)})], name="SUBSTACK2")
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(state_render, [tele_or_rest], name="SUBSTACK2")
+
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_zakato]
+    blocks.blocks[is_zakato]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -6994,6 +7464,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, TORKAN_TARGET)
     _ensure_gameplay_target(result, ZOSHI_TARGET)
     _ensure_gameplay_target(result, JARA_TARGET)
+    _ensure_gameplay_target(result, ZAKATO_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
@@ -7060,6 +7531,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             jara["costumes"].extend(copy.deepcopy(death["costumes"]))
         jara["currentCostume"] = 0
+    # AIR-07: the Zakato renderer mirrors its single active body frame (ordinal 1, arcade code 0x11), then
+    # the shared explosion frames (the same solv_death burst appended after it, ordinals 2..9) — which the
+    # teleport (reversed), self-destruct (forward) and shot-kill (forward) phases all draw from, the
+    # deferred-family-burst stand-in every flying family uses.
+    zakato = next((t for t in result["targets"] if t.get("name") == ZAKATO_TARGET), None)
+    if proof is not None and zakato is not None:
+        zakato["costumes"] = proof_by_family("zakato/")
+        if death is not None:
+            zakato["costumes"].extend(copy.deepcopy(death["costumes"]))
+        zakato["currentCostume"] = 0
     # GND-01: the Barra renderer mirrors its single idle pyramid frame (ordinal 1), then the shared
     # explosion burst (the same solv_death frames, ordinals 2..9 — the ground bomb-burst is a deferred
     # cosmetic, so the aerial burst stands in), then the two crater frames (ordinals 10..11) that the
@@ -7404,6 +7885,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "torkan": torkan_blocks(),
         "zoshi": zoshi_blocks(),
         "jara": jara_blocks(),
+        "zakato": zakato_blocks(),
         "barra": barra_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
@@ -7477,6 +7959,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # AIR-04: likewise, the only Jara render state is which flying slot each clone draws.
             target["variables"] = target["variables"] | {
                 JARA_CLONE_SLOT_ID: ["jara clone slot", 0],
+            }
+        elif target["name"] == ZAKATO_TARGET:
+            # AIR-07: likewise, the only Zakato render state is which flying slot each clone draws; the
+            # phase (teleport/active/self-destruct/hit) lives in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                ZAKATO_CLONE_SLOT_ID: ["zakato clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.

@@ -624,6 +624,11 @@
       "name": "bomb in flight",
       "scope": "Stage"
     },
+    "zakato-clone-slot": {
+      "kind": "variable",
+      "name": "zakato clone slot",
+      "scope": "zakato"
+    },
     "zoshi-clone-slot": {
       "kind": "variable",
       "name": "zoshi clone slot",
