@@ -1512,14 +1512,19 @@ GARU_DET_SLOT_ID = "garu-det-slot"  # the detonating Garu's own flying slot (to 
 
 # AIR-11 (air.bacura #81) renderer constants. Unlike the flying families, the Bacura draws one persistent
 # clone per BACURA-BAND slot (17-32), each a pure per-tick function of its slot: a SINGLE static costume
-# (the slab) while the slot holds BACURA_TYPE, hidden otherwise. There is NO hit/explosion phase at all —
-# the Bacura is never destroyed, so its costume list is just the one slab frame (mirrored with no death
-# append, like the enemy_bullet). The clone writes no state. The slab costume is a 24-px-wide native crop,
-# so the shared 225 size renders it ~54x36 stage px — the wide horizontal panel the arcade draws.
+# (a tumble frame) while the slot holds BACURA_TYPE, hidden otherwise. There is NO hit/explosion phase at
+# all — the Bacura is never destroyed. But the slab is NOT static: `handle_01_Bacura` (xevious_main.68k
+# 4253-4262) resumes every frame via save_PC_to_fn_tbl_and_ret and reselects the sprite CODE from the live
+# _X — `(_X>>6)&0x0e` indexes bacura_sprite_tbl (8 colour/code pairs, 4268-4276), so the slab visibly
+# TUMBLES through 8 frames (edge-on -> broadside -> edge-on) as it drifts. In the port, `slot x` carries the
+# same 32-units-per-pixel scale as arcade `_X`, so the frame index is (floor(slot x / 128)) mod 8 = (_X>>7)&7
+# and the costume is bacura/slab/0{index+1}. The eight frames are mirrored on in expected_project (no death
+# append, like the enemy_bullet). The clone writes no state.
 BACURA_TARGET = "bacura"
 BACURA_CLONE_SLOT_ID = "bacura-clone-slot"  # sprite-local: which Bacura-band slot this clone renders
 BACURA_RENDER_SIZE = 225  # the shared on-screen scale (~2.25 stage px per native px)
-BACURA_SLAB_ORDINAL = 1  # costume 1: the single static slab (bacura/slab/01); no burst frames follow
+BACURA_TUMBLE_FRAMES = 8  # bacura/slab/01..08 — the tumble cycle (bacura_sprite_tbl has 8 entries)
+BACURA_TUMBLE_UNITS_PER_FRAME = 128  # slot-x units per frame flip: (_X>>7) => /128 (arcade lsr#6 + and#0x0e)
 
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
@@ -8581,14 +8586,18 @@ def garu_zakato_blocks() -> dict[str, dict[str, Any]]:
 
 
 def bacura_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-11 Bacura renderer (game_director owns the blocks; the single slab costume is mirrored on in
+    # AIR-11 Bacura renderer (game_director owns the blocks; the eight tumble costumes are mirrored on in
     # expected_project). One persistent clone per BACURA-BAND slot (17..32), created on director enter while
-    # playing and cleared on stop. Each clone shows the static slab at its slot's mapped position when the
-    # slot holds a Bacura, else hides. There is NO hit/explosion phase — the Bacura is never destroyed — so
-    # unlike the flying families this has just the one costume and no burst branch (like the enemy bullet).
-    # The clone writes no state (the walk owns the slot). It is safe to key rendering on `slot type ==
-    # BACURA_TYPE` here even though that value collides with SHOT_TYPE: these clones are bound to BACURA-band
-    # slots, which only ever hold a Bacura (0 or BACURA_TYPE) — the type-vs-band hazard is only in the walk.
+    # playing and cleared on stop. Each clone shows the slab at its slot's mapped position when the slot holds
+    # a Bacura, else hides. There is NO hit/explosion phase — the Bacura is never destroyed — so unlike the
+    # flying families this has no burst branch. But the slab is NOT static: the arcade `handle_01_Bacura`
+    # (xevious_main.68k 4253-4262) resumes every frame and reselects the sprite CODE from the live _X, so the
+    # slab TUMBLES through the 8 frames of bacura_sprite_tbl as it drifts. Port `slot x` carries the same
+    # 32-units-per-pixel scale as arcade `_X`, so the frame index = (floor(slot x / 128)) mod 8 = (_X>>7)&7 and
+    # the shown costume is bacura/slab/0{index+1}. The clone writes no state (the walk owns the slot). It is
+    # safe to key rendering on `slot type == BACURA_TYPE` here even though that value collides with SHOT_TYPE:
+    # these clones are bound to BACURA-band slots, which only ever hold a Bacura (0 or BACURA_TYPE) — the
+    # type-vs-band hazard is only in the walk.
     blocks = Blocks(BACURA_TARGET)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable("bacura clone slot", BACURA_CLONE_SLOT_ID)
@@ -8621,6 +8630,20 @@ def bacura_blocks() -> dict[str, dict[str, Any]]:
             number(RENDER_ROW_STAGE),
         ),
     )
+    # Position-driven tumble: frame index = (floor(slot x / 128)) mod 8 = arcade (_X>>7)&7, costume name
+    # "bacura/slab/0" + (index+1). The join's STRING1 is a text literal; STRING2 is the (index+1) reporter.
+    frame_index = blocks.op_mod(
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot x", SLOT_X_ID, slotvar()),
+                number(BACURA_TUMBLE_UNITS_PER_FRAME),
+            )
+        ),
+        number(BACURA_TUMBLE_FRAMES),
+    )
+    costume_name = blocks.op_join(
+        text("bacura/slab/0"), blocks.op_add(frame_index, number(1))
+    )
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_bacura]
     blocks.blocks[is_bacura]["parent"] = render
@@ -8628,7 +8651,7 @@ def bacura_blocks() -> dict[str, dict[str, Any]]:
         render,
         [
             blocks.go_expr(stage_x, stage_y),
-            blocks.switch_costume("bacura/slab/01"),
+            blocks.switch_costume_expr(costume_name),
             blocks.add("looks_setsizeto", inputs={"SIZE": number(BACURA_RENDER_SIZE)}),
             blocks.to_front(),
             blocks.show(),
@@ -8848,9 +8871,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             if death is not None:
                 spario["costumes"].extend(copy.deepcopy(death["costumes"]))
             spario["currentCostume"] = 0
-    # AIR-11: the Bacura renderer mirrors its single static slab frame (ordinal 1) — and NOTHING else. The
-    # Bacura is never destroyed, so unlike every flying family it appends NO shared solv_death burst (it has
-    # no HIT/explosion phase at all, like the enemy bullet). Idempotent; a no-op when the proof source is
+    # AIR-11: the Bacura renderer mirrors its eight tumble frames (bacura/slab/01..08, ordinals 1..8) — and
+    # NOTHING else. The Bacura is never destroyed, so unlike every flying family it appends NO shared
+    # solv_death burst (it has no HIT/explosion phase at all). The renderer picks one of these eight by
+    # position each frame, so the slab tumbles as it drifts. Idempotent; a no-op when the proof source is
     # absent (generation runs to a fixpoint).
     bacura = next((t for t in result["targets"] if t.get("name") == BACURA_TARGET), None)
     if proof is not None and bacura is not None:

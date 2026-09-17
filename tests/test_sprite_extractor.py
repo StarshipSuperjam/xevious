@@ -23,9 +23,9 @@ class SpriteExtractorTests(unittest.TestCase):
         # 51: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
         # the 7 Kapi dive frames (AIR-05), the 6 Torkan roll frames (AIR-02), the 4 Zoshi
         # spin frames (AIR-03), the 6 Jara spin frames (AIR-04), the 1 Zakato body frame (AIR-07),
-        # the 1 Bacura slab frame (AIR-11), and the 9 ground frames (GND: 1 Barra idle, 4 Logram
+        # the 8 Bacura slab tumble frames (AIR-11), and the 9 ground frames (GND: 1 Barra idle, 4 Logram
         # open stages, 2 crater variants, 2 Garu base pulse frames).
-        self.assertEqual(51, count)
+        self.assertEqual(58, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -172,7 +172,7 @@ class SpriteExtractorTests(unittest.TestCase):
             + [f"zoshi/spin/{index:02d}" for index in range(1, 5)]
             + [f"jara/spin/{index:02d}" for index in range(1, 7)]
             + ["zakato/body/01"]
-            + ["bacura/slab/01"]
+            + [f"bacura/slab/{index:02d}" for index in range(1, 9)]
             + ["barra/idle/01"]
             + [f"logram/open/{index:02d}" for index in range(1, 5)]
             + [f"crater/idle/{index:02d}" for index in range(1, 3)]
@@ -184,11 +184,12 @@ class SpriteExtractorTests(unittest.TestCase):
         self.assertEqual("don't rotate", toroid["rotationStyle"])
         for costume in solvalou["costumes"][-3:] + toroid["costumes"]:
             # Every 1x1 sprite is centred at (8,8); the 2x2 Garu Barra base (32x32 canvas) at (16,16);
-            # the Bacura slab (24x16 canvas, wider than tall) at (12,8).
+            # the Bacura slab tumble frames share one 32x16 canvas (wide enough for the widest edge-on
+            # frame) with a common (16,8) anchor, so each frame registers about that centre as it tumbles.
             if costume["name"].startswith("garu/"):
                 expected_center = (16, 16)
             elif costume["name"].startswith("bacura/"):
-                expected_center = (12, 8)
+                expected_center = (16, 8)
             else:
                 expected_center = (8, 8)
             self.assertEqual(

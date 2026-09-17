@@ -17,6 +17,12 @@
   invulnerable state), given the size-`1x2` bank-1 attribute, and set moving on the raw scroll-axis velocity
   `_dX = 16` with `_dY` untouched (0). It never re-vectors, never fires, and never changes state on its own;
   each frame `move_object_dX` advances it and, like every object, it is culled once it scrolls off the bottom.
+  But its **sprite is not static**: after its one-time init the handler tail-resumes through
+  `save_PC_to_fn_tbl_and_ret`, so on every subsequent frame it recomputes an 8-entry index from its own live
+  position — `(_X >> 6) & 0x0e` selects a colour/code pair from `bacura_sprite_tbl` — and rewrites `_COLOUR`
+  and `_CODE`. Because `_X` advances as the slab drifts, that index cycles `0…7`, so the slab visibly
+  **tumbles** through eight frames (edge-on → broadside → edge-on) as it falls. This is a purely cosmetic
+  per-frame re-skin: it changes neither the object's state, velocity, nor its collision behaviour.
   Its indestructibility is not a flag but a **routing** fact: the shot sweep and the bomb sweep simply never
   visit the Bacura band, and the Bacura handler never calls the flying-enemy hit test. The only test that does
   read a Bacura is `check_bacura_hit_solvalou`, run from the craft-collision pass: an `_STATE == 2` Bacura
@@ -31,6 +37,11 @@
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. Line citations are
   `src/xevious_main.68k` unless noted. The drift handler is `handle_01_Bacura` 4247–4264 (`_STATE = 2`,
   `_ATTR = 0x82` size 1x2, `_dX = 16`, `gen_random_Y_store_obj` for the entry column, then `move_object_dX`).
+  The per-frame tumble is that handler's tail 4253–4262: `save_PC_to_fn_tbl_and_ret` (186, pops the return
+  address into the object's fn-table so the tail re-runs every frame), then `(_X >> 6) & 0x0e` indexes
+  `bacura_sprite_tbl` (4268–4276, the eight `_COLOUR`/`_CODE` pairs) — the active path is the uncommented
+  `lsr.w #6` / `and.w #0x0e` (the `lsr #7` / `and #7` / `lsl #1` alternatives are commented out), giving the
+  even byte offset directly, i.e. entry `(_X >> 7) & 7`.
   The craft-contact box is `check_bacura_hit_solvalou` 2225–2237 (`_STATE == 2` gate, `_Y: sub #28 / add #40`,
   `_X: subq #8 / add #16`), invoked from the craft-collision pass at 2200. The live spawn coroutines are
   `main_fn_3__init_bacura` 5188–5199 (activate `num_bacura` objects from `obj_tbl + _OBJSIZE*0x10`, i.e. the
@@ -75,33 +86,42 @@
   slabs cull. The schedule wires `set_bacura_count` (op `0x22`, loads `bacura inc cnt` + `one second cntr`) and
   `reset_bacura_count` (op `0x23`, `num bacura = 0`) into `_consume_schedule` beside the ground branch. A T-key
   debug direct-stamp seeds one slab into `BACURA_SLOTS[0]` for isolated playtesting, with the debug cursor's
-  field-empty gate extended to wait on the Bacura band clearing too.
+  field-empty gate extended to wait on the Bacura band clearing too. `bacura_blocks` reproduces the arcade
+  tumble as a **position-driven costume select**: each render frame it computes `(floor(slot x / 128)) mod 8`
+  — the port image of the arcade's `(_X >> 7) & 7`, since `slot x` carries the same 32-units-per-pixel scale
+  as `_X` — and switches to `bacura/slab/0{index + 1}` (the eight tumble frames `01`…`08`), so the drawn slab
+  cycles through edge-on and broadside exactly as its position advances.
 - Scratch evidence: `install_init_bacura`, `install_update_bacura` and `install_pump_bacura` (the lifecycle +
   live pump), the **band-membership** Bacura branch in `install_advance_slots` (a slot-range test, not a type
   equality), the `set_bacura_count` / `reset_bacura_count` schedule branches in `_consume_schedule` with the
   `_schedule_arg` count decode, the `num bacura` / `bacura inc cnt` / `one second cntr` / `bacura seed slot`
   spawn variables re-topped per area in `_enter_area_top`, the Bacura entry in `DEBUG_SPAWN_FAMILIES` plus its
-  dedicated direct-stamp branch, `bacura_blocks` for the single-costume render, and the `BACURA_*` tuning
+  dedicated direct-stamp branch, `bacura_blocks` for the position-driven 8-frame tumble render, and the
+  `BACURA_*` tuning
   constants in `tools/game_director.py`; the structural contract `_air11_failures` and its per-clause negatives
   (`test_bacura_slice_authoring_present` / `test_bacura_slice_negative_fixtures`) in
   `tests/test_scratch_project.py`, whose clauses pin the warp lifecycle procs, the **band-keyed** dispatch (the
   gate carrying bounds 17 and 32, with a corrupter that strips the lower bound), that init stamps an
   **ACTIVE** slab entering at the top and drifting at `BACURA_DRIFT_DX` with **no** points, that the update
   **omits** the shot detector and runs **no** explosion (corrupters graft each back in), that craft-death
-  routes through the wider window's distinctive dy-high bound, and that the renderer draws exactly one slab
-  costume.
+  routes through the wider window's distinctive dy-high bound, and that the renderer selects its costume by
+  position (the eight `bacura/slab/0N` tumble frames, switched by a `(slot x / 128) mod 8` index — a corrupter
+  pins the render to a single frame).
 - Acceptance criteria: In areas 3/4/7/11/14 (and via the T-key debug spawn) Bacura slabs enter from the top of
   their own band and drift steadily downward; a player shot **cannot destroy** one (it bounces off, WPN-01);
   a bomb cannot reach one; no Bacura ever scores; and touching a Bacura kills the craft through the wider
   contact box. The operator playtest confirms the felt behavior — indestructible bars sliding down the field
   that you must dodge or shoot *around*, not through.
-- Fidelity status: Verified line-by-line against the pinned reference this slice (`handle_01_Bacura`,
-  `check_bacura_hit_solvalou`, `main_fn_3__init_bacura`, `main_fn_5__inc_num_bacura`, the
-  `set_bacura_inc_cnt` / `reset_num_bacura` schedule handlers, and the area-3 schedule counts were read at the
-  pin). The behavior matches the reference within the recorded deviations below.
+- Fidelity status: Verified line-by-line against the pinned reference this slice (`handle_01_Bacura` including
+  its per-frame `bacura_sprite_tbl` tumble tail and `save_PC_to_fn_tbl_and_ret`, `check_bacura_hit_solvalou`,
+  `main_fn_3__init_bacura`, `main_fn_5__inc_num_bacura`, the `set_bacura_inc_cnt` / `reset_num_bacura` schedule
+  handlers, and the area-3 schedule counts were read at the pin). The behavior matches the reference within the
+  recorded deviations below. (An earlier pre-submission review misread the handler as picking one static sprite
+  — the source shows the sprite code is recomputed every frame from the live `_X`, so the slab tumbles; the
+  render was corrected to the position-driven 8-frame select and this record reflects the source.)
 - License status: The reference states no reusable license; only instruction-derived behavior and numeric
   constants are transferred (recorded in [the index](../spec/index.md) and the data files). No source text is
-  reproduced. The single Bacura slab frame is the Aerial Enemies rip credited in
+  reproduced. The eight Bacura tumble frames are the Aerial Enemies rip credited in
   `src/xevious/assets/provenance.json` (`https://www.spriters-resource.com/arcade/xevious/`, sheet author
   "CrazyCarl").
 - Known deviations or uncertainty: (1) **Two arcade frames per tick (tick scaling).** The per-frame reference

@@ -2139,6 +2139,84 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'player hit', 0),
   },
   {
+    key: 'bacura-tumbles-with-position',
+    behavior:
+      'AIR-11 (.play): the Bacura render clone selects its costume by position — the drawn frame index is (floor(slot x / 128)) mod 8, the port image of the arcade (_X>>7)&7 — so as the slab advances it cycles through all eight tumble frames (edge-on → broadside → edge-on) rather than showing one fixed costume (the grey-square defect)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // director enter creates one render clone per Bacura band slot
+      const slotName = variable('bacura-clone-slot').name;
+      const slot = 16; // JS index; Scratch 1-based slot 17 (first Bacura band slot)
+      // Isolate: clear the band and stop the pump so nothing else is admitted, then seed one held slab.
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      writeVar(vm, 'num-bacura', 0);
+      writeVar(vm, 'bacura-inc-cnt', 0);
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 1); // BACURA_TYPE
+      put('slot-state', 1); // SLOT_ACTIVE
+      put('slot-y', 20 * 256);
+      put('slot-dx', 0); // hold position: the sampled frame is a pure function of the slot x we set
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      // The render clone reads slot x each frame and switches costume; walk the slab across the 8 buckets.
+      const UNITS = 128;
+      const FRAMES = 8;
+      const samples = [];
+      for (let k = 0; k < FRAMES; k += 1) {
+        put('slot-x', UNITS * k + 32); // mid-bucket, clear of the 128-unit boundary
+        step(vm, 1);
+        const rep = cloneReports(vm, 'bacura', [slotName]).find(
+          (r) => Number(r.vars[slotName]) === slot + 1,
+        );
+        const m = rep && rep.costume ? /^bacura\/slab\/0([1-8])$/.exec(rep.costume) : null;
+        samples.push({
+          k,
+          costume: rep ? rep.costume : null,
+          index: m ? Number(m[1]) - 1 : null,
+          visible: rep ? rep.visible : null,
+        });
+      }
+      return {
+        indices: samples.map((s) => s.index),
+        distinct: new Set(samples.map((s) => s.costume)).size,
+        allVisible: samples.every((s) => s.visible === true),
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.indices,
+        [0, 1, 2, 3, 4, 5, 6, 7],
+        'the drawn frame index tracks (floor(slot x / 128)) mod 8 across the 8 position buckets',
+      );
+      assert.equal(obs.distinct, 8, 'all eight tumble frames are shown as the slab advances — not one stuck costume');
+      assert.equal(obs.allVisible, true, 'the slab clone is shown at each sampled position');
+    },
+    // Collapse the tumble index (mod 8 → mod 1 = 0 always) so the render pins to a single frame → indices all
+    // 0 and distinct === 1 → both tumble assertions bite (this is exactly the grey-square regression).
+    negativeMutation: (p) => {
+      const t = p.targets.find((x) => x.name === 'bacura');
+      for (const b of Object.values(t.blocks)) {
+        if (
+          b.opcode === 'operator_mod' &&
+          b.inputs &&
+          b.inputs.NUM2 &&
+          Array.isArray(b.inputs.NUM2[1]) &&
+          Number(b.inputs.NUM2[1][1]) === 8
+        ) {
+          b.inputs.NUM2 = [1, [4, '1']];
+          return;
+        }
+      }
+      throw new Error('bacura-tumbles-with-position negative: no mod-8 index block found to collapse');
+    },
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
       'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',

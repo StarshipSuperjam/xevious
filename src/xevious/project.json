@@ -148620,7 +148620,7 @@
         },
         "gd-bacura-057": {
           "opcode": "control_start_as_clone",
-          "next": "gd-bacura-079",
+          "next": "gd-bacura-085",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -148632,7 +148632,7 @@
         "gd-bacura-058": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-bacura-079",
+          "parent": "gd-bacura-085",
           "inputs": {
             "CONDITION": [
               2,
@@ -148640,7 +148640,7 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-bacura-071"
+              "gd-bacura-077"
             ]
           },
           "fields": {},
@@ -148720,7 +148720,7 @@
         "gd-bacura-062": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-bacura-071",
+          "parent": "gd-bacura-077",
           "inputs": {
             "OPERAND1": [
               2,
@@ -148810,7 +148810,7 @@
         "gd-bacura-066": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-bacura-072",
+          "parent": "gd-bacura-078",
           "inputs": {
             "NUM1": [
               2,
@@ -148900,7 +148900,7 @@
         "gd-bacura-070": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-bacura-072",
+          "parent": "gd-bacura-078",
           "inputs": {
             "NUM1": [
               1,
@@ -148919,6 +148919,136 @@
           "topLevel": false
         },
         "gd-bacura-071": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-bacura-072",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "bacura clone slot",
+                "bacura-clone-slot"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot x",
+              "slot-x"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-072": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-bacura-073",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-bacura-071"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                128
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-073": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-bacura-074",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-bacura-072"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-074": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-bacura-075",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-bacura-073"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-075": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-bacura-076",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-bacura-074"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-076": {
+          "opcode": "operator_join",
+          "next": null,
+          "parent": "gd-bacura-080",
+          "inputs": {
+            "STRING1": [
+              1,
+              [
+                10,
+                "bacura/slab/0"
+              ]
+            ],
+            "STRING2": [
+              2,
+              "gd-bacura-075"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-077": {
           "opcode": "control_if_else",
           "next": null,
           "parent": "gd-bacura-058",
@@ -148929,21 +149059,21 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-bacura-072"
+              "gd-bacura-078"
             ],
             "SUBSTACK2": [
               2,
-              "gd-bacura-078"
+              "gd-bacura-084"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-072": {
+        "gd-bacura-078": {
           "opcode": "motion_gotoxy",
-          "next": "gd-bacura-074",
-          "parent": "gd-bacura-071",
+          "next": "gd-bacura-080",
+          "parent": "gd-bacura-077",
           "inputs": {
             "X": [
               2,
@@ -148958,38 +149088,39 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-073": {
+        "gd-bacura-079": {
           "opcode": "looks_costume",
           "next": null,
-          "parent": "gd-bacura-074",
+          "parent": "gd-bacura-080",
           "inputs": {},
           "fields": {
             "COSTUME": [
-              "bacura/slab/01",
+              "digit/0",
               null
             ]
           },
           "shadow": true,
           "topLevel": false
         },
-        "gd-bacura-074": {
+        "gd-bacura-080": {
           "opcode": "looks_switchcostumeto",
-          "next": "gd-bacura-075",
-          "parent": "gd-bacura-072",
+          "next": "gd-bacura-081",
+          "parent": "gd-bacura-078",
           "inputs": {
             "COSTUME": [
-              1,
-              "gd-bacura-073"
+              3,
+              "gd-bacura-076",
+              "gd-bacura-079"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-075": {
+        "gd-bacura-081": {
           "opcode": "looks_setsizeto",
-          "next": "gd-bacura-076",
-          "parent": "gd-bacura-074",
+          "next": "gd-bacura-082",
+          "parent": "gd-bacura-080",
           "inputs": {
             "SIZE": [
               1,
@@ -149003,10 +149134,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-076": {
+        "gd-bacura-082": {
           "opcode": "looks_gotofrontback",
-          "next": "gd-bacura-077",
-          "parent": "gd-bacura-075",
+          "next": "gd-bacura-083",
+          "parent": "gd-bacura-081",
           "inputs": {},
           "fields": {
             "FRONT_BACK": [
@@ -149017,25 +149148,25 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-077": {
+        "gd-bacura-083": {
           "opcode": "looks_show",
           "next": null,
-          "parent": "gd-bacura-076",
+          "parent": "gd-bacura-082",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-078": {
+        "gd-bacura-084": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-bacura-071",
+          "parent": "gd-bacura-077",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-079": {
+        "gd-bacura-085": {
           "opcode": "looks_hide",
           "next": "gd-bacura-058",
           "parent": "gd-bacura-057",
@@ -149052,9 +149183,72 @@
           "name": "bacura/slab/01",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "0e603bd44407c54428d1808fa440f838",
-          "md5ext": "0e603bd44407c54428d1808fa440f838.png",
-          "rotationCenterX": 12,
+          "assetId": "c1e86288ea910ecbae3fe2219fe7578b",
+          "md5ext": "c1e86288ea910ecbae3fe2219fe7578b.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "049620126999500e1adf6cca21ca7cc8",
+          "md5ext": "049620126999500e1adf6cca21ca7cc8.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "25a8002bb9ad7a5c5114311c32ed3a90",
+          "md5ext": "25a8002bb9ad7a5c5114311c32ed3a90.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ea8f880e4dfb3d1c728c2e9dcd38fbb9",
+          "md5ext": "ea8f880e4dfb3d1c728c2e9dcd38fbb9.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f207258936f053068bb6da907dd11975",
+          "md5ext": "f207258936f053068bb6da907dd11975.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "d3ed2a9e11290912bcbf6d0ae73c4964",
+          "md5ext": "d3ed2a9e11290912bcbf6d0ae73c4964.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b57bc23e7d548c8d9c6eb877cf8ec1fe",
+          "md5ext": "b57bc23e7d548c8d9c6eb877cf8ec1fe.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/08",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5b3ad3279c902614a97fe3be16862ffa",
+          "md5ext": "5b3ad3279c902614a97fe3be16862ffa.png",
+          "rotationCenterX": 16,
           "rotationCenterY": 8
         }
       ],
@@ -149425,9 +149619,72 @@
           "name": "bacura/slab/01",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "0e603bd44407c54428d1808fa440f838",
-          "md5ext": "0e603bd44407c54428d1808fa440f838.png",
-          "rotationCenterX": 12,
+          "assetId": "c1e86288ea910ecbae3fe2219fe7578b",
+          "md5ext": "c1e86288ea910ecbae3fe2219fe7578b.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "049620126999500e1adf6cca21ca7cc8",
+          "md5ext": "049620126999500e1adf6cca21ca7cc8.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "25a8002bb9ad7a5c5114311c32ed3a90",
+          "md5ext": "25a8002bb9ad7a5c5114311c32ed3a90.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ea8f880e4dfb3d1c728c2e9dcd38fbb9",
+          "md5ext": "ea8f880e4dfb3d1c728c2e9dcd38fbb9.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f207258936f053068bb6da907dd11975",
+          "md5ext": "f207258936f053068bb6da907dd11975.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "d3ed2a9e11290912bcbf6d0ae73c4964",
+          "md5ext": "d3ed2a9e11290912bcbf6d0ae73c4964.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b57bc23e7d548c8d9c6eb877cf8ec1fe",
+          "md5ext": "b57bc23e7d548c8d9c6eb877cf8ec1fe.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "bacura/slab/08",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5b3ad3279c902614a97fe3be16862ffa",
+          "md5ext": "5b3ad3279c902614a97fe3be16862ffa.png",
+          "rotationCenterX": 16,
           "rotationCenterY": 8
         },
         {

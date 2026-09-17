@@ -236,13 +236,13 @@ class ScratchProjectTests(unittest.TestCase):
         # single static slab costume with no burst), and the slice-9 barra + garu + logram ground renderers
         # (all reuse proof costumes by ref).
         self.assertEqual(32, len(project["targets"]))
-        # 138: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # 146: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
         # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
-        # body-frame PNG (AIR-07) + the 1 Bacura slab-frame PNG (AIR-11) + the 9 ground-frame PNGs
+        # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 9 ground-frame PNGs
         # (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base pulse frames).
-        self.assertEqual(139, len(assets))
+        self.assertEqual(146, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -5561,7 +5561,9 @@ class ScratchProjectTests(unittest.TestCase):
         distinctive dy-high bound of 11 — unique to the Bacura box), and (2) drifts DOWN the scroll axis (the
         `slot x` write accumulates `slot dx`).
 
-        RENDERER. The Bacura target draws a single costume `bacura/slab/01` with no death/explosion frame.
+        RENDERER. The Bacura target carries the eight tumble frames `bacura/slab/01`..`08` (no death/explosion
+        frame) and switches costume by a `(floor(slot x / 128)) mod 8` index — the port image of the arcade
+        `(_X>>7)&7` — so the drawn slab tumbles as it drifts, rather than showing one fixed frame.
 
         The slab runs whole ticks under the settling harness, so these structural facts — above all the
         band-keyed dispatch and the omitted detector — are pinned here."""
@@ -5747,14 +5749,40 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("bacura-craft-death-window")
 
-        # (10) RENDERER — a single slab costume, no death frame. The Bacura target draws exactly
-        # `bacura/slab/01`.
+        # (10) RENDERER — the position-driven 8-frame tumble, no death frame. The Bacura target carries exactly
+        # the eight tumble frames bacura/slab/01..08, and the render switches costume by a
+        # (floor(slot x / 128)) mod 8 index (the port image of the arcade (_X>>7)&7) rather than a fixed frame.
         bacura_target = next(
             (t for t in project["targets"] if t.get("name") == director.BACURA_TARGET), None
         )
         names = [c.get("name") for c in bacura_target["costumes"]] if bacura_target else []
-        if names != ["bacura/slab/01"]:
-            failures.add("bacura-renderer-single-costume")
+        expected_frames = [f"bacura/slab/0{i}" for i in range(1, director.BACURA_TUMBLE_FRAMES + 1)]
+        if names != expected_frames:
+            failures.add("bacura-renderer-tumble-frames")
+
+        bacura_blocks = bacura_target["blocks"] if bacura_target else {}
+        # A position-driven switch: a `looks_switchcostumeto` whose COSTUME input OBSCURES its shadow with a
+        # reporter ([3, reporter, shadow]) — the runtime computes the name — not a static menu ([1, menu]).
+        dynamic_switch = any(
+            b.get("opcode") == "looks_switchcostumeto"
+            and isinstance(b.get("inputs", {}).get("COSTUME"), list)
+            and b["inputs"]["COSTUME"][0] == 3
+            for b in bacura_blocks.values()
+        )
+        # The tumble mapping itself: mod by BACURA_TUMBLE_FRAMES (8) over a divide by
+        # BACURA_TUMBLE_UNITS_PER_FRAME (128). Pinning both constants ties the render to the arcade cadence.
+        mod_by_frames = any(
+            b.get("opcode") == "operator_mod"
+            and _num_operand(b.get("inputs", {}).get("NUM2")) == director.BACURA_TUMBLE_FRAMES
+            for b in bacura_blocks.values()
+        )
+        div_by_units = any(
+            b.get("opcode") == "operator_divide"
+            and _num_operand(b.get("inputs", {}).get("NUM2")) == director.BACURA_TUMBLE_UNITS_PER_FRAME
+            for b in bacura_blocks.values()
+        )
+        if not (dynamic_switch and mod_by_frames and div_by_units):
+            failures.add("bacura-renderer-position-select")
 
         # (11) SCHEDULE DISPATCH DRIVES THE PUMP. The area scheduler is the ONLY seam that turns a real area's
         # schedule into live Bacura: set_bacura_count (arcade op 0x22, sub_2_fn_6__set_bacura_inc_cnt $075D)
@@ -5969,10 +5997,23 @@ class ScratchProjectTests(unittest.TestCase):
                     if _num_operand(v) == 11:
                         b["inputs"][key] = [1, [4, "0"]]
 
-        def bloat_renderer(p: dict) -> None:
-            # Append a second costume to the Bacura target → no longer a single slab costume.
+        def strip_tumble_frames(p: dict) -> None:
+            # Drop all but the first tumble frame → the Bacura target no longer carries the eight frames the
+            # position select needs (a regression to a single static costume).
             target = next(t for t in p["targets"] if t.get("name") == director.BACURA_TARGET)
-            target["costumes"] = target["costumes"] + [copy.deepcopy(target["costumes"][0])]
+            target["costumes"] = target["costumes"][:1]
+
+        def pin_render_frame(p: dict) -> None:
+            # Collapse the tumble index to a constant (mod BACURA_TUMBLE_FRAMES → mod 1, always 0) → the slab
+            # draws one fixed frame instead of tumbling with its position.
+            target = next(t for t in p["targets"] if t.get("name") == director.BACURA_TARGET)
+            for b in target["blocks"].values():
+                if (
+                    b.get("opcode") == "operator_mod"
+                    and _num_operand(b.get("inputs", {}).get("NUM2")) == director.BACURA_TUMBLE_FRAMES
+                ):
+                    b["inputs"]["NUM2"] = [1, [4, "1"]]
+                    return
 
         def rebrand_handler(handler_text):
             # Rename the schedule handler literal the dispatch compares against → the branch never matches its
@@ -6005,7 +6046,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("bacura-no-explosion", graft_call(director.UPDATE_BACURA_PROCCODE, director.EXPLODE_TICK_PROCCODE)),
             ("bacura-never-scored", add_pts),
             ("bacura-craft-death-window", break_window),
-            ("bacura-renderer-single-costume", bloat_renderer),
+            ("bacura-renderer-tumble-frames", strip_tumble_frames),
+            ("bacura-renderer-position-select", pin_render_frame),
             ("bacura-schedule-sets-inc-cnt", rebrand_handler(director.SET_BACURA_COUNT_HANDLER)),
             ("bacura-schedule-resets-count", rebrand_handler(director.RESET_BACURA_COUNT_HANDLER)),
         ]
@@ -11567,7 +11609,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "73307a6892ed3af220c05618af62a6cb8a58422bf354fd2849ecf0345476b4e0",
+            "b3176ec87dfa1f195ffc2dad8b2133574831a0a1220f4b61a7105ec63632ddb5",
             build_hash,
         )
 
