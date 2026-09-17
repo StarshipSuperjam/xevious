@@ -2624,20 +2624,19 @@ export const SCENARIOS = [
   {
     key: 'ground-dispatch-spawns-scoped',
     behavior:
-      'Playing area 1 spawns the built ground families (Barra 0x1E, Garu Barra 0x20, Logram 0x26) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
+      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Live pacing (like area-clock-scheduler / fire-permission-masks): as area 1 scrolls it consumes
-      // add_ground_object records. Only the families built this PR spawn; Barra (0x1E), Garu Barra
-      // (0x20) and Logram (0x26) all appear in area 1, interleaved with out-of-scope ground types
-      // (0x53/0x1F/0x1D/0x2C/0x2D) that must never reach a slot. A ground object survives the pump it
-      // spawns in (it scrolls < 40 rows before the pump settles), so scanning the ground band after each
-      // pump catches it. The Logram fire mask (record 2, value 0x25) is set before the first Logram
-      // (record 17), so a spawned Logram captures it; read the slot mask and the Stage mask in the SAME
-      // settled sample so the compare is consistent even as later areas re-set the mask. Garu Barra
-      // spawns two adjacent slots sharing type 0x20 — the destructible node (ACTIVE) and the
-      // indestructible base (state sentinel SLOT_GARU_BASE = 3); both are in-scope here.
+      // Live free-run across the opening areas (like area-clock-scheduler / fire-permission-masks): as
+      // each area scrolls it consumes add_ground_object records. The families built this PR first spawn
+      // in different areas — Barra (0x1E) in area 1, Logram (0x26) in area 2, Garu Barra (0x20) in
+      // area 3 — interleaved with out-of-scope ground types (0x53/0x1F/0x1D/0x2C/0x2D) that must never
+      // reach a slot. The Logram fire mask (record 2, value 0x25) is set before the first Logram, so a
+      // spawned Logram captures it; read the slot mask and the Stage mask in the SAME settled sample so
+      // the compare is consistent even as later areas re-set the mask. Garu Barra spawns two adjacent
+      // slots sharing type 0x20 — the destructible node (ACTIVE) and the indestructible base (state
+      // sentinel SLOT_GARU_BASE = 3); both are in-scope here.
       let barraSeen = false;
       let logramSeen = false;
       let garuSeen = false;
@@ -2650,7 +2649,17 @@ export const SCENARIOS = [
       const states = readVar(vm, 'slot-state');
       const pts = readVar(vm, 'slot-pts');
       const fmask = readVar(vm, 'slot-fire-mask');
-      for (let i = 0; i < 90; i += 1) {
+      // Pace-invariant termination. The harness pumps by wall-clock budget, so a fixed pump count is a
+      // machine-speed-dependent proxy for scroll depth — on a slower or more heavily loaded runner each
+      // pump advances less game, so a fixed budget can stop before the deeper areas (and the area-3 Garu
+      // spawn) are reached. Instead: scan until every in-scope family has been seen (early exit on a fast
+      // machine) or until the run has advanced past area 3 (area number >= 5, so area 3 was fully
+      // traversed on ANY machine), whichever comes first. HARD_CAP only guards a build that never
+      // advances the area; the negative fixture's broken dispatch stamps nothing but still lets the area
+      // clock run, so it exits at the area bound with nothing seen and the assertions below fail, as they
+      // must.
+      const HARD_CAP = 5000;
+      for (let i = 0; i < HARD_CAP; i += 1) {
         step(vm, 1);
         for (let s = 0; s < 16; s += 1) {
           // ground band = Scratch slots 1..16 -> JS indices 0..15
@@ -2675,6 +2684,8 @@ export const SCENARIOS = [
             onlyHandledTypes = false;
           }
         }
+        if (barraSeen && garuSeen && logramSeen && barraOk && logramOk) break;
+        if (readVar(vm, 'area-number') >= 5) break;
       }
       return {
         barraSeen,
