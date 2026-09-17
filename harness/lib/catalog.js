@@ -1896,10 +1896,17 @@ export const SCENARIOS = [
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       step(vm, 1); // warm the walk once live before isolating
       // Freeze the walk so ONLY our pump call drives the spawn — no area clock, no schedule interference
-      // (the same isolation the garu-node / bomb-ground scenarios use for a hand-called handler). Then
-      // clear the reserved band and prime the inc coroutine's state directly: quota 3, the one-second
-      // counter one TICK_TIMER_STEP short of zero so the FIRST pump admits, and re-arm the counter between
-      // "seconds" exactly as a live inc pass would. `pump bacura` runs the arcade inc->init flatten per tick.
+      // (the same isolation the garu-node / bomb-ground scenarios use for a hand-called handler). Then clear
+      // the reserved band and prime the inc coroutine's state directly: quota 3 and the one-second counter at
+      // its full reload value (BACURA_INC_PERIOD_FRAMES = 60). We do NOT re-arm the counter between admits —
+      // the pump's OWN reload must carry the period, so the counter is left to count all the way down each
+      // time. That is what actually exercises the cadence: at TICK_TIMER_STEP = 2 arcade frames/tick, a full
+      // 60-frame second is PERIOD_TICKS = 30 pump ticks, so admits must land exactly 30 ticks apart. (An
+      // earlier version re-armed the counter to 2 every tick, collapsing the period to one-admit-per-tick and
+      // proving only the quota clamp — a regression to the period constant would have stayed green.)
+      const PERIOD_FRAMES = 60; // BACURA_INC_PERIOD_FRAMES (main_fn_5 reload one_second_cntr=60)
+      const STEP = 2; // TICK_TIMER_STEP arcade frames per tick
+      const PERIOD_TICKS = PERIOD_FRAMES / STEP; // 30 pump ticks per admitted slab
       writeVar(vm, 'game-director-state', 'frozen');
       const BAND_LO = 16, BAND_HI = 31; // JS indices for Bacura slots 17..32
       for (let s = BAND_LO; s <= BAND_HI; s += 1) {
@@ -1909,29 +1916,41 @@ export const SCENARIOS = [
       const quota = 3;
       writeVar(vm, 'num-bacura', 0);
       writeVar(vm, 'bacura-inc-cnt', quota);
-      writeVar(vm, 'one-second-cntr', 2); // -TICK_TIMER_STEP(2) -> 0 -> admit on the first pump
+      writeVar(vm, 'one-second-cntr', PERIOD_FRAMES); // full reload — the pump counts it down itself
+      // Drive whole periods with a few ticks of margin; record num-bacura after every tick.
+      const ticks = quota * PERIOD_TICKS + 5;
       const counts = [];
-      for (let i = 0; i < 6; i += 1) {
+      for (let i = 0; i < ticks; i += 1) {
         callProc(vm, 'Stage', 'pump bacura');
         step(vm, 1);
         counts.push(Number(readVar(vm, 'num-bacura')));
-        if (Number(readVar(vm, 'one-second-cntr')) > 0) writeVar(vm, 'one-second-cntr', 2);
       }
+      // The 1-based tick indices where a slab was admitted, and the per-admit jump (must be exactly +1).
+      const admitTicks = [];
+      let maxJump = 0;
+      let prev = 0;
+      for (let i = 0; i < counts.length; i += 1) {
+        const jump = counts[i] - prev;
+        if (jump > maxJump) maxJump = jump;
+        if (jump > 0) admitTicks.push(i + 1);
+        prev = counts[i];
+      }
+      const gaps = admitTicks.slice(1).map((t, i) => t - admitTicks[i]);
       const type = readVar(vm, 'slot-type');
       const x = readVar(vm, 'slot-x');
       const dx = readVar(vm, 'slot-dx');
       const banded = [];
       for (let s = BAND_LO; s <= BAND_HI; s += 1) if (type[s] === 1) banded.push(s);
-      let cadenceOk = counts[0] === 1;
-      for (let i = 1; i < counts.length; i += 1) {
-        const dcount = counts[i] - counts[i - 1];
-        if (dcount < 0 || dcount > 1) cadenceOk = false; // never more than one admit per second, never a retreat
-      }
       return {
-        counts,
         quota,
-        cadenceOk,
+        periodTicks: PERIOD_TICKS,
+        admitTicks,
+        gaps,
+        maxJump,
+        firstAdmitTick: admitTicks[0],
+        gapsAllOnePeriod: gaps.every((g) => g === PERIOD_TICKS),
         maxCount: Math.max(...counts),
+        finalCount: counts[counts.length - 1],
         bandedCount: banded.length,
         allInBand: banded.every((s) => s >= BAND_LO && s <= BAND_HI),
         allTopRow: banded.every((s) => x[s] === 0),
@@ -1939,17 +1958,23 @@ export const SCENARIOS = [
       };
     },
     assert(obs) {
-      assert.equal(obs.cadenceOk, true, 'slabs are admitted at most one per second (no burst, no retreat)');
-      assert.equal(obs.counts[2], obs.quota, 'three seconds admit the full quota of three slabs');
+      assert.equal(obs.maxJump, 1, 'no tick ever admits more than one slab (no burst)');
+      assert.equal(obs.admitTicks.length, obs.quota, 'the pump admits exactly the scheduled quota of slabs');
+      assert.equal(obs.firstAdmitTick, obs.periodTicks, 'the first slab is admitted exactly one arcade second (30 ticks) after the count is set — no early admit');
+      assert.equal(obs.gapsAllOnePeriod, true, 'each further slab is admitted exactly one arcade second (30 ticks) after the last — the real BACURA_INC_PERIOD_FRAMES cadence, not one-per-tick');
       assert.equal(obs.maxCount, obs.quota, 'the pump never admits past the scheduled quota');
+      assert.equal(obs.finalCount, obs.quota, 'the count settles at the quota and never retreats');
       assert.equal(obs.bandedCount, obs.quota, 'exactly the quota of slabs occupy the reserved band');
       assert.equal(obs.allInBand, true, 'every admitted slab sits in the reserved Bacura band (slots 17-32)');
       assert.equal(obs.allTopRow, true, 'every admitted slab enters at the top row (slot x = 0)');
       assert.equal(obs.allDrift, true, 'every admitted slab carries the downward drift velocity (dx = 16)');
     },
-    // Empty `pump bacura` so no slab is ever admitted → num-bacura stays 0 and the band stays empty → the
-    // cadence/quota/occupancy assertions all bite.
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'pump bacura'),
+    // Pin the pump's `one second cntr` reload to 0: the FIRST admit still lands one full period after the
+    // writeVar-primed 60 (that seed is a VM write, not a Scratch set), but every reload after it is 0, so the
+    // counter is <= 0 on the very next tick and the pump admits every tick thereafter. The quota is still
+    // reached, so this bites the CADENCE assertions specifically (gaps collapse from 30 to 1) — proving the
+    // period coverage is real, exactly the regression class (a broken period reload) the divergence review flagged.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'one second cntr', 0),
   },
   {
     key: 'bacura-drifts-down-the-field-indestructibly',

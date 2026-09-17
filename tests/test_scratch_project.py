@@ -5756,6 +5756,59 @@ class ScratchProjectTests(unittest.TestCase):
         if names != ["bacura/slab/01"]:
             failures.add("bacura-renderer-single-costume")
 
+        # (11) SCHEDULE DISPATCH DRIVES THE PUMP. The area scheduler is the ONLY seam that turns a real area's
+        # schedule into live Bacura: set_bacura_count (arcade op 0x22, sub_2_fn_6__set_bacura_inc_cnt $075D)
+        # must load the increment quota into `bacura inc cnt`, and reset_bacura_count (op 0x23,
+        # sub_2_fn_7__reset_num_bacura $05D8) must clear `num bacura`. Everything above passes on
+        # writeVar-primed counters, so without this a wrong handler string or a write to the wrong variable
+        # would leave every area Bacura-less with nothing to catch it. Pin the handler->counter wiring here.
+        def text_operand(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 2
+                and inp[1][0] == 10
+            ):
+                return inp[1][1]
+            return None
+
+        adv_area = _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE)
+
+        def branch_sets(handler_text, var_id):
+            # An `operator_equals(handler_at_cursor(), <handler_text>)` used as some control_if CONDITION whose
+            # SUBSTACK writes var_id via data_setvariableto (the schedule dispatch's `set_var_expr`).
+            for b in adv_area:
+                if b["opcode"] != "operator_equals":
+                    continue
+                if not any(text_operand(b["inputs"].get(k)) == handler_text for k in ("OPERAND1", "OPERAND2")):
+                    continue
+                eq_id = id_of[id(b)]
+                for c in adv_area:
+                    if c["opcode"] not in ("control_if", "control_if_else"):
+                        continue
+                    if ref(c["inputs"].get("CONDITION")) != eq_id:
+                        continue
+                    seen2, frontier2 = set(), [ref(c["inputs"].get("SUBSTACK"))]
+                    while frontier2:
+                        sid = frontier2.pop()
+                        if not sid or sid in seen2 or sid not in blocks:
+                            continue
+                        seen2.add(sid)
+                        sb = blocks[sid]
+                        if (
+                            sb["opcode"] == "data_setvariableto"
+                            and sb.get("fields", {}).get("VARIABLE", [None, None])[1] == var_id
+                        ):
+                            return True
+                        frontier2.append(sb.get("next"))
+            return False
+
+        if not branch_sets(director.SET_BACURA_COUNT_HANDLER, director.BACURA_INC_CNT_ID):
+            failures.add("bacura-schedule-sets-inc-cnt")
+        if not branch_sets(director.RESET_BACURA_COUNT_HANDLER, director.NUM_BACURA_ID):
+            failures.add("bacura-schedule-resets-count")
+
         return failures
 
     # Roadmap closure evidence for leaf `air.bacura` (AIR-11): the indestructible drifting slab lives in its own
@@ -5764,7 +5817,7 @@ class ScratchProjectTests(unittest.TestCase):
     # of its shot-invulnerability (no HIT state, no explosion, no score). It stamps an ACTIVE slab that enters
     # at the top and drifts down, kills the craft on contact through the wider HIT_WINDOW_BACURA, and renders a
     # single slab costume. The live proof is the harness Bacura drift/invulnerability/craft-touch scenarios.
-    # roadmap-evidence: AIR-11 success  (test_bacura_slice_authoring_present — init/update procs warp, dispatch-updates-bacura by band bounds 17/32, init stamps an ACTIVE slab entering at the top and drifting at BACURA_DRIFT_DX with no points, the update omits the shot detector and runs no explosion, craft-death routes through the wider window's distinctive dy-high bound, and the renderer draws one slab costume)
+    # roadmap-evidence: AIR-11 success  (test_bacura_slice_authoring_present — init/update procs warp, dispatch-updates-bacura by band bounds 17/32, init stamps an ACTIVE slab entering at the top and drifting at BACURA_DRIFT_DX with no points, the update omits the shot detector and runs no explosion, craft-death routes through the wider window's distinctive dy-high bound, the renderer draws one slab costume, and the area scheduler wires set_bacura_count -> `bacura inc cnt` / reset_bacura_count -> `num bacura` so a real area's records drive the pump)
     # roadmap-evidence: AIR-11 failure  (test_bacura_slice_negative_fixtures — each contract clause corrupted bites)
     def test_bacura_slice_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -5921,6 +5974,27 @@ class ScratchProjectTests(unittest.TestCase):
             target = next(t for t in p["targets"] if t.get("name") == director.BACURA_TARGET)
             target["costumes"] = target["costumes"] + [copy.deepcopy(target["costumes"][0])]
 
+        def rebrand_handler(handler_text):
+            # Rename the schedule handler literal the dispatch compares against → the branch never matches its
+            # record, so the schedule can no longer drive that counter (a wrong-handler-string regression).
+            def _mut(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in stage["blocks"].values():
+                    if b["opcode"] != "operator_equals":
+                        continue
+                    for k in ("OPERAND1", "OPERAND2"):
+                        v = b["inputs"].get(k)
+                        if (
+                            isinstance(v, list)
+                            and len(v) >= 2
+                            and isinstance(v[1], list)
+                            and len(v[1]) >= 2
+                            and v[1][0] == 10
+                            and v[1][1] == handler_text
+                        ):
+                            v[1][1] = "noop_" + handler_text
+            return _mut
+
         cases = [
             ("bacura-lifecycle-procs-warp", unwarp(director.UPDATE_BACURA_PROCCODE)),
             ("dispatch-updates-bacura", drop_call_in(director.ADVANCE_SLOTS_PROCCODE, director.UPDATE_BACURA_PROCCODE)),
@@ -5932,6 +6006,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("bacura-never-scored", add_pts),
             ("bacura-craft-death-window", break_window),
             ("bacura-renderer-single-costume", bloat_renderer),
+            ("bacura-schedule-sets-inc-cnt", rebrand_handler(director.SET_BACURA_COUNT_HANDLER)),
+            ("bacura-schedule-resets-count", rebrand_handler(director.RESET_BACURA_COUNT_HANDLER)),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
