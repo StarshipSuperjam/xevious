@@ -1888,6 +1888,232 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'garu zakato detonate'),
   },
   {
+    key: 'bacura-spawns-into-band-one-per-second',
+    behavior:
+      'AIR-11 (.play): the live spawn pump admits Bacura slabs into the reserved band (slots 17-32) one per second up to the scheduled quota and no further — each new slab enters at the top row and carries the downward drift velocity',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // warm the walk once live before isolating
+      // Freeze the walk so ONLY our pump call drives the spawn — no area clock, no schedule interference
+      // (the same isolation the garu-node / bomb-ground scenarios use for a hand-called handler). Then
+      // clear the reserved band and prime the inc coroutine's state directly: quota 3, the one-second
+      // counter one TICK_TIMER_STEP short of zero so the FIRST pump admits, and re-arm the counter between
+      // "seconds" exactly as a live inc pass would. `pump bacura` runs the arcade inc->init flatten per tick.
+      writeVar(vm, 'game-director-state', 'frozen');
+      const BAND_LO = 16, BAND_HI = 31; // JS indices for Bacura slots 17..32
+      for (let s = BAND_LO; s <= BAND_HI; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const quota = 3;
+      writeVar(vm, 'num-bacura', 0);
+      writeVar(vm, 'bacura-inc-cnt', quota);
+      writeVar(vm, 'one-second-cntr', 2); // -TICK_TIMER_STEP(2) -> 0 -> admit on the first pump
+      const counts = [];
+      for (let i = 0; i < 6; i += 1) {
+        callProc(vm, 'Stage', 'pump bacura');
+        step(vm, 1);
+        counts.push(Number(readVar(vm, 'num-bacura')));
+        if (Number(readVar(vm, 'one-second-cntr')) > 0) writeVar(vm, 'one-second-cntr', 2);
+      }
+      const type = readVar(vm, 'slot-type');
+      const x = readVar(vm, 'slot-x');
+      const dx = readVar(vm, 'slot-dx');
+      const banded = [];
+      for (let s = BAND_LO; s <= BAND_HI; s += 1) if (type[s] === 1) banded.push(s);
+      let cadenceOk = counts[0] === 1;
+      for (let i = 1; i < counts.length; i += 1) {
+        const dcount = counts[i] - counts[i - 1];
+        if (dcount < 0 || dcount > 1) cadenceOk = false; // never more than one admit per second, never a retreat
+      }
+      return {
+        counts,
+        quota,
+        cadenceOk,
+        maxCount: Math.max(...counts),
+        bandedCount: banded.length,
+        allInBand: banded.every((s) => s >= BAND_LO && s <= BAND_HI),
+        allTopRow: banded.every((s) => x[s] === 0),
+        allDrift: banded.every((s) => dx[s] === 16),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.cadenceOk, true, 'slabs are admitted at most one per second (no burst, no retreat)');
+      assert.equal(obs.counts[2], obs.quota, 'three seconds admit the full quota of three slabs');
+      assert.equal(obs.maxCount, obs.quota, 'the pump never admits past the scheduled quota');
+      assert.equal(obs.bandedCount, obs.quota, 'exactly the quota of slabs occupy the reserved band');
+      assert.equal(obs.allInBand, true, 'every admitted slab sits in the reserved Bacura band (slots 17-32)');
+      assert.equal(obs.allTopRow, true, 'every admitted slab enters at the top row (slot x = 0)');
+      assert.equal(obs.allDrift, true, 'every admitted slab carries the downward drift velocity (dx = 16)');
+    },
+    // Empty `pump bacura` so no slab is ever admitted → num-bacura stays 0 and the band stays empty → the
+    // cadence/quota/occupancy assertions all bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'pump bacura'),
+  },
+  {
+    key: 'bacura-drifts-down-the-field-indestructibly',
+    behavior:
+      'AIR-11 (.play): a live Bacura slab drifts DOWN the scroll axis at its own velocity each tick (slot x += 64/tick = 1 px/frame, dy = 0) and stays present — the slab is never destroyed or scored by the walk that advances it',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 16; // JS index; Scratch 1-based slot 17 (first Bacura slot)
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 1); // BACURA_TYPE
+      put('slot-state', 1); // SLOT_ACTIVE
+      put('slot-x', 5 * 256); // mid-field, clear of the craft and the bottom cull row
+      put('slot-y', 20 * 256);
+      put('slot-dx', 16); // BACURA_DRIFT_DX
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1); // point the handler at this slab
+      const xs = [];
+      const ys = [];
+      for (let t = 0; t < 4; t += 1) {
+        callProc(vm, 'Stage', 'update bacura');
+        step(vm, 1);
+        xs.push(Number(readVar(vm, 'slot-x')[slot]));
+        ys.push(Number(readVar(vm, 'slot-y')[slot]));
+      }
+      return {
+        xs,
+        ys,
+        firstDelta: xs[0] - 5 * 256,
+        monotonic: xs.every((v, i) => i === 0 || v > xs[i - 1]),
+        lateralHeld: ys.every((v) => v === 20 * 256),
+        aliveType: readVar(vm, 'slot-type')[slot],
+        aliveState: readVar(vm, 'slot-state')[slot],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.firstDelta, 64, 'the slab advances 64 units/tick down the scroll axis (1 px/frame)');
+      assert.equal(obs.monotonic, true, 'the slab keeps drifting down every tick');
+      assert.equal(obs.lateralHeld, true, 'the slab does not drift laterally (dy = 0)');
+      assert.equal(obs.aliveType, 1, 'the slab that the walk advanced is still present (never destroyed)');
+      assert.equal(obs.aliveState, 1, 'the slab stays active — the walk neither hit-marks nor scores it');
+    },
+    // Empty `update bacura` so the slab never advances → firstDelta 0, not monotonic → the drift assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update bacura'),
+  },
+  {
+    key: 'bacura-bounces-the-shot-and-survives',
+    behavior:
+      'WPN-01 (.play): a player shot overlapping a Bacura is marked for the bounce (shot slot state -> SHOT_BOUNCE = 6) while the slab is left untouched — the shot reflects, the indestructible slab keeps drifting, and nothing is scored',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The shot-vs-Bacura detector is dispatched from the LIVE walk (per live slab, from `update bacura`);
+      // a hand-called detector from a frozen VM does not fire (the air detector shares this live-warming
+      // need). So drive it live and re-seed the slab + an overlapping shot each frame (the same live re-seed
+      // the barra-blaster scenario uses), isolating from spurious kills by suppressing ground spawns and
+      // clearing the flying band. The observable is the shot's slot state flipping to SHOT_BOUNCE (6) while
+      // the slab's own slot stays a live Bacura.
+      step(vm, 2);
+      suppressGroundSpawns(vm);
+      const slot = 20; // JS; a mid-band Bacura slot, Scratch 1-based 21
+      const shotJs = 36; // JS; first player-shot slot (SHOT_SLOTS 37-39 -> JS 36-38)
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const score0 = Number(readVar(vm, 'eco-score'));
+      let bounced = false;
+      let slabAliveAtBounce = false;
+      for (let i = 0; i < 8 && !bounced; i += 1) {
+        // Clear the flying band and every OTHER Bacura slot so nothing else is offered to a detector.
+        for (let s = 58; s <= 63; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        for (let s = 16; s <= 31; s += 1) if (s !== slot) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        // A live slab, clear of the craft, and a live player shot on the SAME cell.
+        put('slot-type', slot, 1); // BACURA_TYPE
+        put('slot-state', slot, 1); // SLOT_ACTIVE
+        put('slot-x', slot, 6 * 256);
+        put('slot-y', slot, 18 * 256);
+        put('slot-dx', slot, 0); // hold it in place so the overlap is deterministic across the window
+        put('slot-dy', slot, 0);
+        put('slot-type', shotJs, 1); // SHOT_TYPE
+        put('slot-state', shotJs, 1); // SLOT_ACTIVE
+        put('slot-x', shotJs, 6 * 256);
+        put('slot-y', shotJs, 18 * 256);
+        step(vm, 1);
+        if (Number(readVar(vm, 'slot-state')[shotJs]) === 6) {
+          bounced = true;
+          slabAliveAtBounce =
+            readVar(vm, 'slot-type')[slot] === 1 && readVar(vm, 'slot-state')[slot] === 1;
+        }
+      }
+      return { bounced, slabAliveAtBounce, scoreDelta: Number(readVar(vm, 'eco-score')) - score0 };
+    },
+    assert(obs) {
+      assert.equal(obs.bounced, true, 'the overlapping shot is marked for the bounce (slot state -> SHOT_BOUNCE)');
+      assert.equal(obs.slabAliveAtBounce, true, 'the slab is untouched by the bounce — still a live Bacura');
+      assert.equal(obs.scoreDelta, 0, 'bouncing a shot off a Bacura scores nothing');
+    },
+    // Empty `check shot bacura` so an overlapping shot is never marked → it is never SHOT_BOUNCE → the bounce
+    // assertion bites (the slab-alive clause alone would pass vacuously, so the mark is what proves it).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check shot bacura'),
+  },
+  {
+    key: 'bacura-touch-raises-craft-death',
+    behavior:
+      'AIR-11 (.play): a Bacura overlapping the craft raises the player-hit death signal through the wider Bacura collision box, and a slab one cell off does NOT — the slab kills on contact even though it is itself indestructible',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 16;
+      const pr = Number(readVar(vm, 'player-row'));
+      const pc = Number(readVar(vm, 'player-col'));
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 1);
+      put('slot-state', 1);
+      put('slot-dx', 16);
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      // On the craft's exact cell -> player hit raised.
+      put('slot-x', pr * 256);
+      put('slot-y', pc * 256);
+      writeVar(vm, 'player-hit', 0);
+      callProc(vm, 'Stage', 'update bacura');
+      step(vm, 1);
+      const onCell = Number(readVar(vm, 'player-hit'));
+      // One row and one column off -> outside even the wider Bacura box -> no death.
+      put('slot-x', (pr - 6) * 256);
+      put('slot-y', (pc - 6) * 256);
+      writeVar(vm, 'player-hit', 0);
+      callProc(vm, 'Stage', 'update bacura');
+      step(vm, 1);
+      const offCell = Number(readVar(vm, 'player-hit'));
+      return { onCell, offCell };
+    },
+    assert(obs) {
+      assert.equal(obs.onCell, 1, 'a Bacura on the craft cell raises the player-hit death signal');
+      assert.equal(obs.offCell, 0, 'a Bacura clear of the craft raises no death');
+    },
+    // Pin every `set player hit` to 0 so the craft-touch consequence can never fire → onCell stays 0 → the
+    // death assertion bites (proving it is the Bacura's craft_hit that raises the signal).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'player hit', 0),
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
       'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',
