@@ -164,6 +164,21 @@
       "name": "terrain column",
       "scope": "Stage"
     },
+    "bacura-clone-slot": {
+      "kind": "variable",
+      "name": "bacura clone slot",
+      "scope": "bacura"
+    },
+    "bacura-inc-cnt": {
+      "kind": "variable",
+      "name": "bacura inc cnt",
+      "scope": "Stage"
+    },
+    "bacura-seed-slot": {
+      "kind": "variable",
+      "name": "bacura seed slot",
+      "scope": "Stage"
+    },
     "barra-clone-slot": {
       "kind": "variable",
       "name": "barra clone slot",
@@ -469,9 +484,19 @@
       "name": "logram clone slot",
       "scope": "logram"
     },
+    "num-bacura": {
+      "kind": "variable",
+      "name": "num bacura",
+      "scope": "Stage"
+    },
     "octant-table": {
       "kind": "list",
       "name": "octant table",
+      "scope": "Stage"
+    },
+    "one-second-cntr": {
+      "kind": "variable",
+      "name": "one second cntr",
       "scope": "Stage"
     },
     "player-col": {

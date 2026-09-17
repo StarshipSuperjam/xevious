@@ -1888,6 +1888,335 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'garu zakato detonate'),
   },
   {
+    key: 'bacura-spawns-into-band-one-per-second',
+    behavior:
+      'AIR-11 (.play): the live spawn pump admits Bacura slabs into the reserved band (slots 17-32) one per second up to the scheduled quota and no further — each new slab enters at the top row and carries the downward drift velocity',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // warm the walk once live before isolating
+      // Freeze the walk so ONLY our pump call drives the spawn — no area clock, no schedule interference
+      // (the same isolation the garu-node / bomb-ground scenarios use for a hand-called handler). Then clear
+      // the reserved band and prime the inc coroutine's state directly: quota 3 and the one-second counter at
+      // its full reload value (BACURA_INC_PERIOD_FRAMES = 60). We do NOT re-arm the counter between admits —
+      // the pump's OWN reload must carry the period, so the counter is left to count all the way down each
+      // time. That is what actually exercises the cadence: at TICK_TIMER_STEP = 2 arcade frames/tick, a full
+      // 60-frame second is PERIOD_TICKS = 30 pump ticks, so admits must land exactly 30 ticks apart. (An
+      // earlier version re-armed the counter to 2 every tick, collapsing the period to one-admit-per-tick and
+      // proving only the quota clamp — a regression to the period constant would have stayed green.)
+      const PERIOD_FRAMES = 60; // BACURA_INC_PERIOD_FRAMES (main_fn_5 reload one_second_cntr=60)
+      const STEP = 2; // TICK_TIMER_STEP arcade frames per tick
+      const PERIOD_TICKS = PERIOD_FRAMES / STEP; // 30 pump ticks per admitted slab
+      writeVar(vm, 'game-director-state', 'frozen');
+      const BAND_LO = 16, BAND_HI = 31; // JS indices for Bacura slots 17..32
+      for (let s = BAND_LO; s <= BAND_HI; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const quota = 3;
+      writeVar(vm, 'num-bacura', 0);
+      writeVar(vm, 'bacura-inc-cnt', quota);
+      writeVar(vm, 'one-second-cntr', PERIOD_FRAMES); // full reload — the pump counts it down itself
+      // Drive whole periods with a few ticks of margin; record num-bacura after every tick.
+      const ticks = quota * PERIOD_TICKS + 5;
+      const counts = [];
+      for (let i = 0; i < ticks; i += 1) {
+        callProc(vm, 'Stage', 'pump bacura');
+        step(vm, 1);
+        counts.push(Number(readVar(vm, 'num-bacura')));
+      }
+      // The 1-based tick indices where a slab was admitted, and the per-admit jump (must be exactly +1).
+      const admitTicks = [];
+      let maxJump = 0;
+      let prev = 0;
+      for (let i = 0; i < counts.length; i += 1) {
+        const jump = counts[i] - prev;
+        if (jump > maxJump) maxJump = jump;
+        if (jump > 0) admitTicks.push(i + 1);
+        prev = counts[i];
+      }
+      const gaps = admitTicks.slice(1).map((t, i) => t - admitTicks[i]);
+      const type = readVar(vm, 'slot-type');
+      const x = readVar(vm, 'slot-x');
+      const dx = readVar(vm, 'slot-dx');
+      const banded = [];
+      for (let s = BAND_LO; s <= BAND_HI; s += 1) if (type[s] === 1) banded.push(s);
+      return {
+        quota,
+        periodTicks: PERIOD_TICKS,
+        admitTicks,
+        gaps,
+        maxJump,
+        firstAdmitTick: admitTicks[0],
+        gapsAllOnePeriod: gaps.every((g) => g === PERIOD_TICKS),
+        maxCount: Math.max(...counts),
+        finalCount: counts[counts.length - 1],
+        bandedCount: banded.length,
+        allInBand: banded.every((s) => s >= BAND_LO && s <= BAND_HI),
+        allTopRow: banded.every((s) => x[s] === 0),
+        allDrift: banded.every((s) => dx[s] === 16),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.maxJump, 1, 'no tick ever admits more than one slab (no burst)');
+      assert.equal(obs.admitTicks.length, obs.quota, 'the pump admits exactly the scheduled quota of slabs');
+      assert.equal(obs.firstAdmitTick, obs.periodTicks, 'the first slab is admitted exactly one arcade second (30 ticks) after the count is set — no early admit');
+      assert.equal(obs.gapsAllOnePeriod, true, 'each further slab is admitted exactly one arcade second (30 ticks) after the last — the real BACURA_INC_PERIOD_FRAMES cadence, not one-per-tick');
+      assert.equal(obs.maxCount, obs.quota, 'the pump never admits past the scheduled quota');
+      assert.equal(obs.finalCount, obs.quota, 'the count settles at the quota and never retreats');
+      assert.equal(obs.bandedCount, obs.quota, 'exactly the quota of slabs occupy the reserved band');
+      assert.equal(obs.allInBand, true, 'every admitted slab sits in the reserved Bacura band (slots 17-32)');
+      assert.equal(obs.allTopRow, true, 'every admitted slab enters at the top row (slot x = 0)');
+      assert.equal(obs.allDrift, true, 'every admitted slab carries the downward drift velocity (dx = 16)');
+    },
+    // Pin the pump's `one second cntr` reload to 0: the FIRST admit still lands one full period after the
+    // writeVar-primed 60 (that seed is a VM write, not a Scratch set), but every reload after it is 0, so the
+    // counter is <= 0 on the very next tick and the pump admits every tick thereafter. The quota is still
+    // reached, so this bites the CADENCE assertions specifically (gaps collapse from 30 to 1) — proving the
+    // period coverage is real, exactly the regression class (a broken period reload) the divergence review flagged.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'one second cntr', 0),
+  },
+  {
+    key: 'bacura-drifts-down-the-field-indestructibly',
+    behavior:
+      'AIR-11 (.play): a live Bacura slab drifts DOWN the scroll axis at its own velocity each tick (slot x += 64/tick = 1 px/frame, dy = 0) and stays present — the slab is never destroyed or scored by the walk that advances it',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 16; // JS index; Scratch 1-based slot 17 (first Bacura slot)
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 1); // BACURA_TYPE
+      put('slot-state', 1); // SLOT_ACTIVE
+      put('slot-x', 5 * 256); // mid-field, clear of the craft and the bottom cull row
+      put('slot-y', 20 * 256);
+      put('slot-dx', 16); // BACURA_DRIFT_DX
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1); // point the handler at this slab
+      const xs = [];
+      const ys = [];
+      for (let t = 0; t < 4; t += 1) {
+        callProc(vm, 'Stage', 'update bacura');
+        step(vm, 1);
+        xs.push(Number(readVar(vm, 'slot-x')[slot]));
+        ys.push(Number(readVar(vm, 'slot-y')[slot]));
+      }
+      return {
+        xs,
+        ys,
+        firstDelta: xs[0] - 5 * 256,
+        monotonic: xs.every((v, i) => i === 0 || v > xs[i - 1]),
+        lateralHeld: ys.every((v) => v === 20 * 256),
+        aliveType: readVar(vm, 'slot-type')[slot],
+        aliveState: readVar(vm, 'slot-state')[slot],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.firstDelta, 64, 'the slab advances 64 units/tick down the scroll axis (1 px/frame)');
+      assert.equal(obs.monotonic, true, 'the slab keeps drifting down every tick');
+      assert.equal(obs.lateralHeld, true, 'the slab does not drift laterally (dy = 0)');
+      assert.equal(obs.aliveType, 1, 'the slab that the walk advanced is still present (never destroyed)');
+      assert.equal(obs.aliveState, 1, 'the slab stays active — the walk neither hit-marks nor scores it');
+    },
+    // Empty `update bacura` so the slab never advances → firstDelta 0, not monotonic → the drift assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update bacura'),
+  },
+  {
+    key: 'bacura-bounces-the-shot-and-survives',
+    behavior:
+      'WPN-01 (.play): a player shot overlapping a Bacura is marked for the bounce (shot slot state -> SHOT_BOUNCE = 6) while the slab is left untouched — the shot reflects, the indestructible slab keeps drifting, and nothing is scored',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The shot-vs-Bacura detector is dispatched from the LIVE walk (per live slab, from `update bacura`);
+      // a hand-called detector from a frozen VM does not fire (the air detector shares this live-warming
+      // need). So drive it live and re-seed the slab + an overlapping shot each frame (the same live re-seed
+      // the barra-blaster scenario uses), isolating from spurious kills by suppressing ground spawns and
+      // clearing the flying band. The observable is the shot's slot state flipping to SHOT_BOUNCE (6) while
+      // the slab's own slot stays a live Bacura.
+      step(vm, 2);
+      suppressGroundSpawns(vm);
+      const slot = 20; // JS; a mid-band Bacura slot, Scratch 1-based 21
+      const shotJs = 36; // JS; first player-shot slot (SHOT_SLOTS 37-39 -> JS 36-38)
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const score0 = Number(readVar(vm, 'eco-score'));
+      let bounced = false;
+      let slabAliveAtBounce = false;
+      for (let i = 0; i < 8 && !bounced; i += 1) {
+        // Clear the flying band and every OTHER Bacura slot so nothing else is offered to a detector.
+        for (let s = 58; s <= 63; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        for (let s = 16; s <= 31; s += 1) if (s !== slot) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        // A live slab, clear of the craft, and a live player shot on the SAME cell.
+        put('slot-type', slot, 1); // BACURA_TYPE
+        put('slot-state', slot, 1); // SLOT_ACTIVE
+        put('slot-x', slot, 6 * 256);
+        put('slot-y', slot, 18 * 256);
+        put('slot-dx', slot, 0); // hold it in place so the overlap is deterministic across the window
+        put('slot-dy', slot, 0);
+        put('slot-type', shotJs, 1); // SHOT_TYPE
+        put('slot-state', shotJs, 1); // SLOT_ACTIVE
+        put('slot-x', shotJs, 6 * 256);
+        put('slot-y', shotJs, 18 * 256);
+        step(vm, 1);
+        if (Number(readVar(vm, 'slot-state')[shotJs]) === 6) {
+          bounced = true;
+          slabAliveAtBounce =
+            readVar(vm, 'slot-type')[slot] === 1 && readVar(vm, 'slot-state')[slot] === 1;
+        }
+      }
+      return { bounced, slabAliveAtBounce, scoreDelta: Number(readVar(vm, 'eco-score')) - score0 };
+    },
+    assert(obs) {
+      assert.equal(obs.bounced, true, 'the overlapping shot is marked for the bounce (slot state -> SHOT_BOUNCE)');
+      assert.equal(obs.slabAliveAtBounce, true, 'the slab is untouched by the bounce — still a live Bacura');
+      assert.equal(obs.scoreDelta, 0, 'bouncing a shot off a Bacura scores nothing');
+    },
+    // Empty `check shot bacura` so an overlapping shot is never marked → it is never SHOT_BOUNCE → the bounce
+    // assertion bites (the slab-alive clause alone would pass vacuously, so the mark is what proves it).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check shot bacura'),
+  },
+  {
+    key: 'bacura-touch-raises-craft-death',
+    behavior:
+      'AIR-11 (.play): a Bacura overlapping the craft raises the player-hit death signal through the wider Bacura collision box, and a slab one cell off does NOT — the slab kills on contact even though it is itself indestructible',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 16;
+      const pr = Number(readVar(vm, 'player-row'));
+      const pc = Number(readVar(vm, 'player-col'));
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 1);
+      put('slot-state', 1);
+      put('slot-dx', 16);
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      // On the craft's exact cell -> player hit raised.
+      put('slot-x', pr * 256);
+      put('slot-y', pc * 256);
+      writeVar(vm, 'player-hit', 0);
+      callProc(vm, 'Stage', 'update bacura');
+      step(vm, 1);
+      const onCell = Number(readVar(vm, 'player-hit'));
+      // One row and one column off -> outside even the wider Bacura box -> no death.
+      put('slot-x', (pr - 6) * 256);
+      put('slot-y', (pc - 6) * 256);
+      writeVar(vm, 'player-hit', 0);
+      callProc(vm, 'Stage', 'update bacura');
+      step(vm, 1);
+      const offCell = Number(readVar(vm, 'player-hit'));
+      return { onCell, offCell };
+    },
+    assert(obs) {
+      assert.equal(obs.onCell, 1, 'a Bacura on the craft cell raises the player-hit death signal');
+      assert.equal(obs.offCell, 0, 'a Bacura clear of the craft raises no death');
+    },
+    // Pin every `set player hit` to 0 so the craft-touch consequence can never fire → onCell stays 0 → the
+    // death assertion bites (proving it is the Bacura's craft_hit that raises the signal).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'player hit', 0),
+  },
+  {
+    key: 'bacura-tumbles-with-position',
+    behavior:
+      'AIR-11 (.play): the Bacura render clone selects its costume by position — the drawn frame index is (floor(slot x / 128)) mod 8, the port image of the arcade (_X>>7)&7 — so as the slab advances it cycles through all eight tumble frames (edge-on → broadside → edge-on) rather than showing one fixed costume (the grey-square defect)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // director enter creates one render clone per Bacura band slot
+      const slotName = variable('bacura-clone-slot').name;
+      const slot = 16; // JS index; Scratch 1-based slot 17 (first Bacura band slot)
+      // Isolate: clear the band and stop the pump so nothing else is admitted, then seed one held slab.
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      writeVar(vm, 'num-bacura', 0);
+      writeVar(vm, 'bacura-inc-cnt', 0);
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 1); // BACURA_TYPE
+      put('slot-state', 1); // SLOT_ACTIVE
+      put('slot-y', 20 * 256);
+      put('slot-dx', 0); // hold position: the sampled frame is a pure function of the slot x we set
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      // The render clone reads slot x each frame and switches costume; walk the slab across the 8 buckets.
+      const UNITS = 128;
+      const FRAMES = 8;
+      const samples = [];
+      for (let k = 0; k < FRAMES; k += 1) {
+        put('slot-x', UNITS * k + 32); // mid-bucket, clear of the 128-unit boundary
+        step(vm, 1);
+        const rep = cloneReports(vm, 'bacura', [slotName]).find(
+          (r) => Number(r.vars[slotName]) === slot + 1,
+        );
+        const m = rep && rep.costume ? /^bacura\/slab\/0([1-8])$/.exec(rep.costume) : null;
+        samples.push({
+          k,
+          costume: rep ? rep.costume : null,
+          index: m ? Number(m[1]) - 1 : null,
+          visible: rep ? rep.visible : null,
+        });
+      }
+      return {
+        indices: samples.map((s) => s.index),
+        distinct: new Set(samples.map((s) => s.costume)).size,
+        allVisible: samples.every((s) => s.visible === true),
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.indices,
+        [0, 1, 2, 3, 4, 5, 6, 7],
+        'the drawn frame index tracks (floor(slot x / 128)) mod 8 across the 8 position buckets',
+      );
+      assert.equal(obs.distinct, 8, 'all eight tumble frames are shown as the slab advances — not one stuck costume');
+      assert.equal(obs.allVisible, true, 'the slab clone is shown at each sampled position');
+    },
+    // Collapse the tumble index (mod 8 → mod 1 = 0 always) so the render pins to a single frame → indices all
+    // 0 and distinct === 1 → both tumble assertions bite (this is exactly the grey-square regression).
+    negativeMutation: (p) => {
+      const t = p.targets.find((x) => x.name === 'bacura');
+      for (const b of Object.values(t.blocks)) {
+        if (
+          b.opcode === 'operator_mod' &&
+          b.inputs &&
+          b.inputs.NUM2 &&
+          Array.isArray(b.inputs.NUM2[1]) &&
+          Number(b.inputs.NUM2[1][1]) === 8
+        ) {
+          b.inputs.NUM2 = [1, [4, '1']];
+          return;
+        }
+      }
+      throw new Error('bacura-tumbles-with-position negative: no mod-8 index block found to collapse');
+    },
+  },
+  {
     key: 'debug-key-cycles-families',
     behavior:
       'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',
@@ -2295,20 +2624,19 @@ export const SCENARIOS = [
   {
     key: 'ground-dispatch-spawns-scoped',
     behavior:
-      'Playing area 1 spawns the built ground families (Barra 0x1E, Garu Barra 0x20, Logram 0x26) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
+      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Live pacing (like area-clock-scheduler / fire-permission-masks): as area 1 scrolls it consumes
-      // add_ground_object records. Only the families built this PR spawn; Barra (0x1E), Garu Barra
-      // (0x20) and Logram (0x26) all appear in area 1, interleaved with out-of-scope ground types
-      // (0x53/0x1F/0x1D/0x2C/0x2D) that must never reach a slot. A ground object survives the pump it
-      // spawns in (it scrolls < 40 rows before the pump settles), so scanning the ground band after each
-      // pump catches it. The Logram fire mask (record 2, value 0x25) is set before the first Logram
-      // (record 17), so a spawned Logram captures it; read the slot mask and the Stage mask in the SAME
-      // settled sample so the compare is consistent even as later areas re-set the mask. Garu Barra
-      // spawns two adjacent slots sharing type 0x20 — the destructible node (ACTIVE) and the
-      // indestructible base (state sentinel SLOT_GARU_BASE = 3); both are in-scope here.
+      // Live free-run across the opening areas (like area-clock-scheduler / fire-permission-masks): as
+      // each area scrolls it consumes add_ground_object records. The families built this PR first spawn
+      // in different areas — Barra (0x1E) in area 1, Logram (0x26) in area 2, Garu Barra (0x20) in
+      // area 3 — interleaved with out-of-scope ground types (0x53/0x1F/0x1D/0x2C/0x2D) that must never
+      // reach a slot. The Logram fire mask (record 2, value 0x25) is set before the first Logram, so a
+      // spawned Logram captures it; read the slot mask and the Stage mask in the SAME settled sample so
+      // the compare is consistent even as later areas re-set the mask. Garu Barra spawns two adjacent
+      // slots sharing type 0x20 — the destructible node (ACTIVE) and the indestructible base (state
+      // sentinel SLOT_GARU_BASE = 3); both are in-scope here.
       let barraSeen = false;
       let logramSeen = false;
       let garuSeen = false;
@@ -2321,7 +2649,17 @@ export const SCENARIOS = [
       const states = readVar(vm, 'slot-state');
       const pts = readVar(vm, 'slot-pts');
       const fmask = readVar(vm, 'slot-fire-mask');
-      for (let i = 0; i < 90; i += 1) {
+      // Pace-invariant termination. The harness pumps by wall-clock budget, so a fixed pump count is a
+      // machine-speed-dependent proxy for scroll depth — on a slower or more heavily loaded runner each
+      // pump advances less game, so a fixed budget can stop before the deeper areas (and the area-3 Garu
+      // spawn) are reached. Instead: scan until every in-scope family has been seen (early exit on a fast
+      // machine) or until the run has advanced past area 3 (area number >= 5, so area 3 was fully
+      // traversed on ANY machine), whichever comes first. HARD_CAP only guards a build that never
+      // advances the area; the negative fixture's broken dispatch stamps nothing but still lets the area
+      // clock run, so it exits at the area bound with nothing seen and the assertions below fail, as they
+      // must.
+      const HARD_CAP = 5000;
+      for (let i = 0; i < HARD_CAP; i += 1) {
         step(vm, 1);
         for (let s = 0; s < 16; s += 1) {
           // ground band = Scratch slots 1..16 -> JS indices 0..15
@@ -2346,6 +2684,8 @@ export const SCENARIOS = [
             onlyHandledTypes = false;
           }
         }
+        if (barraSeen && garuSeen && logramSeen && barraOk && logramOk) break;
+        if (readVar(vm, 'area-number') >= 5) break;
       }
       return {
         barraSeen,

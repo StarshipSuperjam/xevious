@@ -494,6 +494,94 @@
       "duration_frames": 1
     },
     {
+      "name": "bacura/slab/01",
+      "sheet": "aerial_enemies",
+      "rect": [5, 246, 32, 4],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
+      "name": "bacura/slab/02",
+      "sheet": "aerial_enemies",
+      "rect": [46, 245, 30, 8],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
+      "name": "bacura/slab/03",
+      "sheet": "aerial_enemies",
+      "rect": [84, 243, 28, 12],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
+      "name": "bacura/slab/04",
+      "sheet": "aerial_enemies",
+      "rect": [118, 241, 26, 14],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
+      "name": "bacura/slab/05",
+      "sheet": "aerial_enemies",
+      "rect": [151, 240, 24, 16],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
+      "name": "bacura/slab/06",
+      "sheet": "aerial_enemies",
+      "rect": [183, 241, 26, 14],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
+      "name": "bacura/slab/07",
+      "sheet": "aerial_enemies",
+      "rect": [218, 243, 28, 12],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
+      "name": "bacura/slab/08",
+      "sheet": "aerial_enemies",
+      "rect": [256, 244, 30, 8],
+      "canvas": [32, 16],
+      "anchor": [16, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bacura",
+      "animation": "slab",
+      "duration_frames": 1
+    },
+    {
       "name": "barra/idle/01",
       "sheet": "ground_enemies",
       "rect": [8, 33, 14, 14],
