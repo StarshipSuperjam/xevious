@@ -184,8 +184,9 @@ in the reference's comment has no code path; recorded uncertain.)
 **Sheonite (AIR-09).** The indestructible escort pair around the Andor Genesis encounter: born in the
 benign state, never hit-tested, started and ended by their schedule records. Each homes at 4 px/frame on
 a point straddling the craft, then locks rigidly to a ±16-pixel offset from the craft's live position,
-holds through an asymmetric docking phase (224 frames right, 32 frames left — recorded as coded), after
-which the right one retreats at 6 px/frame and the left simply vanishes (4052–4245).
+holds through a 32-frame docking phase on both sides (the right side counts up from `0xe0` to a byte-wrap
+and the left counts down from `0x20` — both 32 frames), after which the right one retreats at 6 px/frame
+and the left simply vanishes; the asymmetry is retreat-versus-vanish, not the dwell length (4052–4245).
 
 **Giddo Spario and Brag Spario (AIR-10).** Giddo Spario is the fast flyby: aimed once at spawn at
 4 px/frame — the fastest tier — with no firing and its own short ~8-frame hit explosion (5219–5257).
@@ -211,6 +212,6 @@ which patterns.
 | Each family plays its recorded pattern — approach, trigger, fire rule, exit | Play scheduled waves of each family in the built `.sb3` against this document's descriptions | operator |
 | A Zakato that fires its shot self-destructs scoring nothing; one killed first scores | Play: let one fire, kill one early | operator |
 | A Garu Zakato left alone rings 16 bullets and releases four Brag Sparios | Play (or seeded fixture) the detonation | operator |
-| Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern | Play the boss approach | operator |
+| Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern | Play the area-9 Sheonite spawn (or the T-key debug spawn) in the built `.sb3` | operator |
 | All families share one blaster hit window and one explosion; Giddo Spario's short variant excepted | Structural fixture over the build's collision and animation data | engine |
 | Fire timing draws from the shared stream under the family mask (seeded waves repeat exactly) | Seeded fixture: identical seeds reproduce identical wave behavior | engine |
