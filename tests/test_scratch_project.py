@@ -228,21 +228,24 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 32: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # 33: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
         # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, the
         # slice-11 zakato renderer (AIR-07; the two Brag Zakato variants fold into it) + the giddo-spario +
         # brag-spario renderers (AIR-10) + the garu-zakato renderer (AIR-08; all three Spario-style pools
         # reuse the zakato body stand-in by ref) + the bacura renderer (AIR-11; its own reserved band, a
-        # single static slab costume with no burst), and the slice-9 barra + garu + logram ground renderers
-        # (all reuse proof costumes by ref).
-        self.assertEqual(32, len(project["targets"]))
-        # 146: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # single static slab costume with no burst) + the sheonite renderer (AIR-09; the inert escort pair
+        # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
+        # ground renderers (all reuse proof costumes by ref).
+        self.assertEqual(33, len(project["targets"]))
+        # 156: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
         # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
-        # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 9 ground-frame PNGs
-        # (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base pulse frames).
-        self.assertEqual(146, len(assets))
+        # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 10 Sheonite
+        # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 9
+        # ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base
+        # pulse frames).
+        self.assertEqual(156, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1008,6 +1011,13 @@ class ScratchProjectTests(unittest.TestCase):
             "bacura inc cnt",
             "one second cntr",
             "bacura seed slot",
+            # AIR-09 (slice 11): the Sheonite escort's schedule on/off flag (Stage-written by
+            # sheonite_start/end, read by the walk, cleared per area) plus the two per-tick update
+            # temps (the phase snapshot that keeps a mid-tick transition from cascading, and the
+            # resolved lateral lock cell). Transient spawn/working machinery, never sprite-written.
+            "sheonite end flag",
+            "sheonite phase",
+            "sheonite lock col",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1228,6 +1238,11 @@ class ScratchProjectTests(unittest.TestCase):
             director.EXPLODE_GIDDO_SPARIO_PROCCODE,
             director.INIT_BRAG_SPARIO_PROCCODE,
             director.UPDATE_BRAG_SPARIO_PROCCODE,
+            # AIR-09 (slice 11) air.sheonite: the escort pair's ONE shared per-tick home->lock->combine->
+            # retreat/vanish update over both types (0x31 right / 0x32 left), warp, dispatched from the walk.
+            # It writes only the slot's own phase machine plus the stage-owned sheonite scratch vars, and
+            # deliberately makes NO CHECK_AIR_HIT call and drives no craft detector — the pair is wholly inert.
+            director.UPDATE_SHEONITE_PROCCODE,
             # AIR-08 (slice 11) air.special-pairs: the two Brag Zakato variants (rnd/closeY) share one
             # teleport->active->self-destruct update ending in a 5-bullet radiating fan (`brag zakato
             # shoot`); the Garu Zakato has its own no-teleport straight update whose fuse detonates into a
@@ -11609,7 +11624,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "b3176ec87dfa1f195ffc2dad8b2133574831a0a1220f4b61a7105ec63632ddb5",
+            "03f7fcd290b58bc0ae496cd1a18d17b82ab5444090dc3eedf66f167b7e0f9996",
             build_hash,
         )
 

@@ -23,9 +23,10 @@ class SpriteExtractorTests(unittest.TestCase):
         # 51: the historical 10 (3 solvalou + 7 toroid), the 7 Terrazi roll frames (AIR-06),
         # the 7 Kapi dive frames (AIR-05), the 6 Torkan roll frames (AIR-02), the 4 Zoshi
         # spin frames (AIR-03), the 6 Jara spin frames (AIR-04), the 1 Zakato body frame (AIR-07),
-        # the 8 Bacura slab tumble frames (AIR-11), and the 9 ground frames (GND: 1 Barra idle, 4 Logram
-        # open stages, 2 crater variants, 2 Garu base pulse frames).
-        self.assertEqual(58, count)
+        # the 8 Bacura slab tumble frames (AIR-11), the 10 Sheonite escort frames (AIR-09: 4 spin
+        # codes 0x30-0x33 + 6 combine codes 0x34-0x39), and the 9 ground frames (GND: 1 Barra idle,
+        # 4 Logram open stages, 2 crater variants, 2 Garu base pulse frames).
+        self.assertEqual(68, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -176,7 +177,9 @@ class SpriteExtractorTests(unittest.TestCase):
             + ["barra/idle/01"]
             + [f"logram/open/{index:02d}" for index in range(1, 5)]
             + [f"crater/idle/{index:02d}" for index in range(1, 3)]
-            + [f"garu/base/{index:02d}" for index in range(1, 3)],
+            + [f"garu/base/{index:02d}" for index in range(1, 3)]
+            + [f"sheonite/spin/{index:02d}" for index in range(1, 5)]
+            + [f"sheonite/combine/{index:02d}" for index in range(1, 7)],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])
