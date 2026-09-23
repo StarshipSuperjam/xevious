@@ -28,9 +28,10 @@ helicopter, the tank, and the bridge are never scheduled or built.
 ## Behavior
 
 **Shared ground rules.** Terrain-fixed objects move only with the map's scroll. Firing families take
-their fire-permission mask at spawn and reload their shot timers from the shared random stream masked by
+their fire-frequency mask at spawn — a cadence mask that scales the reload, not a permission gate (there
+is no "mask ⇒ don't fire" branch) — and reload their shot timers from the shared random stream masked by
 it, ticking every 8th arcade frame; each family also stops arming once it scrolls past the area's
-stop-firing row (both values per area in the schedule data). Every ground shot is an aimed bullet per
+stop-firing row, which is the only on/off gate on firing (both values per area in the schedule data). Every ground shot is an aimed bullet per
 the bullet rules. Bombed land objects play the shared explosion and leave a permanent crater that
 remains in the object's slot, scrolling with the terrain until culled (`handle_bomb_explosion`
 4904–4941); bombed water objects and composite scoring nodes vanish completely instead
