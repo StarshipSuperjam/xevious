@@ -194,6 +194,11 @@
       "name": "clone slot",
       "scope": "blaster"
     },
+    "boza-clone-slot": {
+      "kind": "variable",
+      "name": "boza clone slot",
+      "scope": "boza"
+    },
     "brag-spario-clone-slot": {
       "kind": "variable",
       "name": "brag spario clone slot",
@@ -612,6 +617,11 @@
     "slot-index": {
       "kind": "variable",
       "name": "slot index",
+      "scope": "Stage"
+    },
+    "slot-link": {
+      "kind": "list",
+      "name": "slot link",
       "scope": "Stage"
     },
     "slot-pts": {

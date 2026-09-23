@@ -236,8 +236,9 @@ class ScratchProjectTests(unittest.TestCase):
         # single static slab costume with no burst) + the sheonite renderer (AIR-09; the inert escort pair
         # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
         # ground renderers (all reuse proof costumes by ref), and the slice-12 zolbak + derota + garu-derota
-        # ground renderers (GND-02/GND-04; all reuse proof costumes by ref).
-        self.assertEqual(36, len(project["targets"]))
+        # ground renderers (GND-02/GND-04; all reuse proof costumes by ref), and the slice-13 boza renderer
+        # (GND-05; the four outers reuse the Logram proof costumes by ref, the centre adds its own core costume).
+        self.assertEqual(37, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -1117,6 +1118,9 @@ class ScratchProjectTests(unittest.TestCase):
                 "slot code",
                 "slot pts",
                 "slot flag",
+                # GND-05 Boza composite: each outer slot stores the field index of its centre slot, so an
+                # outer hit can downgrade the centre's value and the centre hit can cascade the outers.
+                "slot link",
                 # AIR-06 fire-permission per-slot fields (the shared gate): captured mask + countdown.
                 "slot fire mask",
                 "slot fire timer",
@@ -1330,6 +1334,12 @@ class ScratchProjectTests(unittest.TestCase):
             # row), a HIT node runs the explode-and-remove clock then removes the slot, and base/active delegate
             # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu Derota slot.
             director.UPDATE_GARU_DEROTA_PROCCODE,
+            # GND-05 (slice 13) ground.boza-logram: the Boza composite's per-tick wrapper, dispatched per
+            # OCCUPIED Boza slot. An outer dome runs the shared Logram open/close + single-shot cycle (gated by
+            # the stop-firing row) and, on hit, downgrades its linked centre's value; the centre never fires and,
+            # on hit, cascades all four outers to HIT directly (the arcade `destroy_all_outer_lograms`); both
+            # delegate the terrain scroll+cull to `advance ground`. Warp.
+            director.UPDATE_BOZA_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -9062,6 +9072,13 @@ class ScratchProjectTests(unittest.TestCase):
 
         def wrong_pts(target_pts):
             def _do(p):
+                # Corrupt EVERY spawn write of this value-table position, not just the first. Two reasons:
+                # (1) _proc_body_blocks returns blocks in set-iteration order, so "first match" is not source
+                # order; (2) as of slice 13 the Garu Derota node and the Boza centre share value-table
+                # position 19 (both 2,000 pts), so a single-match mutation could corrupt the boza centre and
+                # leave the garu-derota node intact, and this negative would not bite. Corrupting all writes
+                # of the value is order-independent and still guarantees the garu-derota node is corrupted;
+                # _gnd04_failures inspects only the derota/garu-derota writes, so the boza centre is moot here.
                 for b in _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE):
                     if (
                         b["opcode"] == "data_replaceitemoflist"
@@ -9071,7 +9088,6 @@ class ScratchProjectTests(unittest.TestCase):
                         and str(b["inputs"]["ITEM"][1][1]) == str(target_pts)
                     ):
                         b["inputs"]["ITEM"] = [1, [4, str(target_pts + 1)]]
-                        return
 
             return _do
 
@@ -9318,7 +9334,17 @@ class ScratchProjectTests(unittest.TestCase):
             and b["fields"]["LIST"][0] == "slot state"
             and b["inputs"].get("ITEM") == [1, [4, director.SLOT_HIT]]
         ]
-        if len(hit_writes) != 1 or hit_writes[0] not in resolve_body:
+        # The bomb-resolution path still resolves a hit through exactly one HIT write, inside `resolve hit`.
+        # GND-05 adds one deliberate exception: the Boza centre, when bombed, cascades by setting its four
+        # outer slots to HIT directly (faithful to the arcade `destroy_all_outer_lograms`, which bulk-sets the
+        # outer state and bypasses the per-slot award path — this is exactly why a cascaded outer scores
+        # nothing). Those cascade writes live inside UPDATE_BOZA's body. So the invariant is: exactly one HIT
+        # write in the resolver, and every other HIT write on the Stage is a Boza-cascade write — nothing stray.
+        boza_body_ids = {id(b) for b in _proc_body_blocks(stage, director.UPDATE_BOZA_PROCCODE)}
+        resolver_hits = [bid for bid in hit_writes if bid in resolve_body]
+        non_resolver_hits = [bid for bid in hit_writes if bid not in resolve_body]
+        cascade_only = all(id(blocks[bid]) in boza_body_ids for bid in non_resolver_hits)
+        if len(resolver_hits) != 1 or not cascade_only:
             failures.add("single-hit-resolver")
         # SYS-03's guarantee: a resolved hit scores exactly once — the `score` call lives in
         # the resolver body, once. (The one `score` PROC is the single scoring path; ECO-01's
@@ -13022,7 +13048,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "1811c2b830a7a68b2ea6547de6ca8fd9c59a87057474ff08a3d684844e4d9403",
+            "7207ee7c757735026bdcfb2fa43d1e9800c75bc2e499a84d1170b89a2a9a3616",
             build_hash,
         )
 

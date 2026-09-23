@@ -127,6 +127,13 @@ SLOT_FLAG_ID = "slot-flag"  # per-type sub-state (Toroid swing: 0 none / 1 right
 # writes them at spawn.
 SLOT_FIRE_MASK_ID = "slot-fire-mask"  # captured fire-permission mask (_FFREQ)
 SLOT_FIRE_TIMER_ID = "slot-fire-timer"  # per-slot fire countdown byte (_TIMER)
+# GND-05 (ground.boza-logram #87) cross-slot link (the reference's per-object `_EXTRA` pointer, port as a
+# slot index rather than a RAM pointer). A Boza Logram is a five-slot composite: the four outer domes each
+# carry the 1-based ground-slot index of their shared centre here, and the centre carries 0. So `slot link`
+# doubles as the outer/centre discriminator (>0 = outer, 0 = centre) AND the address an outer writes to when
+# it downgrades the centre's point value on being hit (update_centre_points_value $1E1E). It stays 0 for
+# every non-Boza occupant (clear-slots zeroes it), so it is inert unless spawn_boza writes it.
+SLOT_LINK_ID = "slot-link"  # cross-slot link (Boza outer -> centre slot index; _EXTRA)
 # Every position/motion list, paired (id, display name), so clear-slots and the registration
 # stay in lockstep — adding a field here is the single edit that flows to both.
 SLOT_FIELD_LISTS = (
@@ -140,6 +147,7 @@ SLOT_FIELD_LISTS = (
     (SLOT_FLAG_ID, "slot flag"),
     (SLOT_FIRE_MASK_ID, "slot fire mask"),
     (SLOT_FIRE_TIMER_ID, "slot fire timer"),
+    (SLOT_LINK_ID, "slot link"),
 )
 
 # SYS-04 centralized ordered update (architecture.md key decision): the Stage walks the
@@ -579,6 +587,11 @@ FIRE_MASK_LOGRAM_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "logram")
 FIRE_MASK_DEROTA_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "derota")
 FIRE_MASK_DEROTA_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "derota")
 
+# GND-05 (ground.boza-logram #87): the Boza Logram outer domes fire on the same shared gate under their own
+# captured mask (ffreq_mask_boza_logram, handle_boza_logram_outer). Derived from FIRE_MASK_FAMILIES too.
+FIRE_MASK_BOZA_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "boza_logram")
+FIRE_MASK_BOZA_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "boza_logram")
+
 # Project-defined cabinet difficulty DIP index (four-marker placeholder; the spec records
 # no arcade power-on default, like RNG_COLD_START_SEED). Index 0 selects increment +2 —
 # the LOWEST setting that still PROGRESSES (index 1 = +0 would make every raise inert and
@@ -766,6 +779,14 @@ UPDATE_DEROTA_PROCCODE = "update derota"
 # single Derota) and, once bombed (HIT), plays the SHORTER explode-and-remove burst and VANISHES (no
 # crater), exactly like the Garu Barra node.
 UPDATE_GARU_DEROTA_PROCCODE = "update garu derota"
+# GND-05 (ground.boza-logram #87): the per-tick update for one slot of a Boza Logram composite
+# (handle_2D_Boza_Logram $1CDE). All five slots share BOZA_LOGRAM_TYPE, so this ONE proc branches on
+# `slot link`: an OUTER (link > 0) is a full Logram (open/close + one aimed shot on the same masked-random
+# cycle) that, once bombed, downgrades its linked centre's point value to 600 (update_centre_points_value
+# $1E1E) and then craters; the CENTRE (link == 0) never fires, and when bombed it cascades — setting its four
+# outers HIT directly (destroy_all_outer_lograms $1D8A), which clears them WITHOUT scoring — before it craters.
+# Both roles scroll + cull via `advance ground`.
+UPDATE_BOZA_PROCCODE = "update boza"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -1204,8 +1225,9 @@ GARU_BARRA_TYPE = 32  # 0x20, handle_20_Garu_Barra: indestructible base + destru
 LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at full-open (Commit 7)
 DEROTA_TYPE = 27  # 0x1B, handle_1B_Derota: periodic aimed turret, craters on death, 1000 pts (GND-04)
 GARU_DEROTA_TYPE = 33  # 0x21, handle_21_Garu_Derota: indestructible base + firing destructible node (GND-04)
+BOZA_LOGRAM_TYPE = 45  # 0x2D, handle_2D_Boza_Logram: 5-slot composite (4 outer Lograms + 1 centre), GND-05
 # Every ground type this project SPAWNS from an add_ground_object schedule record. Barra/Garu Barra/Logram
-# shipped in slice 9; slice 12 adds Zolbak, Derota, and Garu Derota.
+# shipped in slice 9; slice 12 adds Zolbak, Derota, and Garu Derota; slice 13 adds the Boza Logram.
 GROUND_HANDLED_TYPES = (
     BARRA_TYPE,
     ZOLBAK_TYPE,
@@ -1213,6 +1235,7 @@ GROUND_HANDLED_TYPES = (
     LOGRAM_TYPE,
     DEROTA_TYPE,
     GARU_DEROTA_TYPE,
+    BOZA_LOGRAM_TYPE,
 )
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
@@ -1220,6 +1243,26 @@ LOGRAM_PTS = 10  # 1-based value-table position of 300 points (handle_logram_ini
 GARU_BARRA_PTS = 10  # 1-based value-table position of 300 points (handle_20_Garu_Barra node _PTS=27)
 DEROTA_PTS = 17  # 1-based value-table position of 1,000 points (handle_1B_Derota init _PTS=48)
 GARU_DEROTA_PTS = 19  # 1-based value-table position of 2,000 points (handle_21_Garu_Derota node _PTS=54)
+# GND-05 (ground.boza-logram #87) point values (1-based value-table positions; VALUE_TABLE_POINTS). The five
+# slots score type-agnostically through the shared ground hit sweep off each slot's own `slot pts`:
+#   * each OUTER dome: 300 pts (handle_boza_logram_outer _PTS=27 -> position 10, the same as a lone Logram);
+#   * the CENTRE: 2,000 pts (handle_boza_logram_centre _PTS=54 -> position 19) — but the instant ANY outer is
+#     hit, that outer downgrades the centre to 600 pts (update_centre_points_value _PTS=36 -> position 13).
+# The scoring asymmetry ("2,000 if the centre is bombed first, else 600; 300 per directly-bombed outer") falls
+# out of the shared sweep for free: the centre-first cascade sets the outers HIT directly (bypassing the award
+# path), so only a DIRECTLY bombed slot ever scores. See install_update_boza.
+BOZA_OUTER_PTS = 10  # 1-based value-table position of 300 points (outer _PTS=27)
+BOZA_CENTRE_PTS = 19  # 1-based value-table position of 2,000 points (centre _PTS=54, before any outer hit)
+BOZA_CENTRE_DOWNGRADED_PTS = 13  # 1-based value-table position of 600 points (centre _PTS=36, after an outer hit)
+# The 5-slot composite geometry (handle_2D_Boza_Logram $1CDE). Slots 0..3 are the four outer domes; slot 4 is
+# the centre. `slot x` (scroll/depth axis) offsets copy boza_logram_spriteX_tbl {0, 0x180, 0x180, 0x300,
+# 0x180}; `slot y` (lateral axis) offsets copy the _Y adjust {+0, +0x180, -0x180, +0, +0}. 0x180 = 384 units =
+# 12 px and 0x300 = 768 units = 24 px at SLOT_UNITS_PER_PIXEL (arcade and port share the 32-units/px scale, as
+# the Garu's 0x100 = 8-px cell offset already established). Expressed in px here, scaled at spawn.
+BOZA_SLOT_COUNT = 5
+BOZA_CENTRE_OFFSET = 4  # the centre is the 5th slot (base + 4); outers are base + 0..3
+BOZA_DEPTH_OFFSETS_PX = (0, 12, 12, 24, 12)  # slot x offsets (boza_logram_spriteX_tbl / SLOT_UNITS_PER_PIXEL)
+BOZA_LATERAL_OFFSETS_PX = (0, 12, -12, 0, 0)  # slot y offsets (the _Y adjust / SLOT_UNITS_PER_PIXEL)
 # GND-02 (ground.zolbak #85): a bombed Zolbak reduces the adaptive enemy AI level by 2, floored at 0
 # (handle_1F_Zolbak -> reduce_enemy_ai_by_2 $1B1F: `subq #2,d0; jcc; moveq #0`). This eases subsequent
 # formation pressure — the whole point of the family. It is the ONE post-hit global side-effect any ground
@@ -1722,6 +1765,23 @@ GARU_DEROTA_BASE_PULSE_FRAMES = 2  # the base alternates its two pulse frames
 GARU_DEROTA_BASE_PULSE_TICKS = 4  # ticks per pulse frame (8 arcade frames, the global-animation phase)
 GARU_DEROTA_NODE_IDLE_ORDINAL = 3  # costume 3: the node turret (garu-derota/node, mirrored from derota/idle)
 GARU_DEROTA_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared burst the node plays before removal
+
+# GND-05 (ground.boza-logram #87) renderer constants. One `boza` target's clone pool covers the ground band
+# (1..16); each clone branches on its slot's `slot link` — an OUTER (link > 0) renders the open/close dome
+# frame `update boza` wrote into `slot code` (ordinals 1..4, the SAME logram/open frames mirrored in by ref),
+# and the CENTRE (link == 0) renders its one bullseye frame (ordinal 5). Both crater IDENTICALLY to the Barra
+# once HIT (handle_bomb_explosion). Costume layout:
+#   1..4   logram/open/01..04 (the outer dome open/close frames; an outer's `slot code` indexes them directly);
+#   5      boza-centre/core/01 (the centre's red/black bullseye, arcade code 0x3a — the one new crop);
+#   6..13  the shared solv_death explosion burst (the ground bomb-burst is the deferred cosmetic stand-in);
+#   14..15 the two crater frames the HIT renderer flickers between once the burst finishes.
+# The four outer domes reuse the Logram crops by ref; only the centre is a new sheet crop.
+BOZA_TARGET = "boza"
+BOZA_CLONE_SLOT_ID = "boza-clone-slot"  # sprite-local: which ground slot this clone renders
+BOZA_OUTER_CLOSED_ORDINAL = 1  # costume 1: the closed outer dome (0x2C), the spawn + wait-phase frame
+BOZA_CENTRE_ORDINAL = 5  # costume 5: the centre bullseye (boza-centre/core/01)
+BOZA_EXPLODE_BASE_ORDINAL = BOZA_CENTRE_ORDINAL + 1  # 6: shared explosion burst follows the dome + centre
+BOZA_CRATER_BASE_ORDINAL = BOZA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 14: crater frames last
 
 
 def _schedule_arg(record: dict) -> int:
@@ -2858,7 +2918,13 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_DEROTA_TYPE)),
         [blocks.call_proc(UPDATE_GARU_DEROTA_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch])
+    # GND-05 (#87): all five slots of a Boza Logram composite share BOZA_LOGRAM_TYPE and ONE update proc,
+    # which branches internally on `slot link` (outer dome vs centre bullseye) — a single-type branch.
+    boza_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BOZA_LOGRAM_TYPE)),
+        [blocks.call_proc(UPDATE_BOZA_PROCCODE, warp=True)],
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -3698,6 +3764,166 @@ def install_update_garu_derota(blocks: Blocks) -> None:
     blocks.substack(
         top, [node_fire, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
     )
+    blocks.chain(definition, [top])
+
+
+def install_update_boza(blocks: Blocks) -> None:
+    # GND-05 / ground.boza-logram (#87): one tick of a single slot of a Boza Logram composite
+    # (handle_2D_Boza_Logram $1CDE). All five slots share BOZA_LOGRAM_TYPE and THIS one proc, which branches
+    # on `slot link` — the port of the arcade's per-object `_EXTRA` pointer (memory: the cross-slot link):
+    #   * an OUTER dome (link > 0, holding the CENTRE's slot index) behaves EXACTLY like a lone Logram
+    #     (install_update_logram / handle_boza_logram_outer $1F..): the arm+cadence-gated open/close/fire
+    #     cycle on its captured mask, cratering PERSISTENTLY once bombed. Its ONE extra behaviour, on HIT, is
+    #     to rewrite the CENTRE slot's `slot pts` to the 600-point position (update_centre_points_value: the
+    #     arcade writes `_EXTRA->_PTS` every hit frame, so this unguarded idempotent write is faithful). The
+    #     centre was already scored at its full/current value when the bomb resolved, so this only lowers what
+    #     a LATER bomb on the centre would award.
+    #   * the CENTRE (link == 0) never fires (handle_boza_logram_centre): ACTIVE it only scrolls; bombed it
+    #     craters PERSISTENTLY like the Barra AND cascades — destroy_all_outer_lograms sets every outer's
+    #     state directly to HIT, BYPASSING the award sweep, so a centre-first bomb clears the outers for NO
+    #     score (the type-agnostic `check ground hit` only awards an ACTIVE slot; a cascaded outer is already
+    #     HIT). The cascade addresses the four outer slots directly (centre index - 1..-4 — the outers are
+    #     stamped at base+0..3, the centre at base+4), the port of the arcade walking `_EXTRA`. It is
+    #     idempotent (an already-HIT outer keeps its own crater clock — no timer touch), matching the arcade
+    #     routine, so it runs every centre-HIT tick with no guard.
+    # The walk sweeps ascending slot index, so the outers (base+0..3) update BEFORE the centre (base+4): a
+    # centre-first cascade marks the outers this same tick and their crater clocks (timer 0 from spawn) begin
+    # cleanly on the next tick.
+    definition = _install_warp_proc(blocks, UPDATE_BOZA_PROCCODE)
+    fire_timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+
+    # ---- OUTER (link > 0): the Logram open/close/fire cycle + the centre-value downgrade on HIT. ----
+    def animate_step() -> list[str]:
+        # One ANIMATE-phase step, built FRESH each call (used at the WAIT->ANIMATE fall-through and in the
+        # steady ANIMATE branch), identical in shape to install_update_logram.animate_step so an outer Boza
+        # dome animates and fires exactly like a lone Logram. No reporter/statement is shared between parents.
+        inc = _set_cur_item(
+            blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(fire_timer(), number(1))
+        )
+        fire = blocks.if_reporter(
+            blocks.op_eq(fire_timer(), number(LOGRAM_FIRE_TIMER)), _fire_aimed_bullet(blocks)
+        )
+        stage = lambda: blocks.op_mod(
+            blocks.op_floor(blocks.op_div(fire_timer(), number(LOGRAM_STAGE_PHASE))),
+            number(LOGRAM_STAGE_MOD),
+        )
+        recycle = blocks.add("control_if_else")
+        at_recycle = blocks.op_eq(stage(), number(LOGRAM_RECYCLE_STAGE))
+        blocks.blocks[recycle]["inputs"]["CONDITION"] = [2, at_recycle]
+        blocks.blocks[at_recycle]["parent"] = recycle
+        blocks.substack(
+            recycle,
+            [
+                blocks.call_proc(RNG_PROCCODE, warp=True),
+                _set_cur_item(
+                    blocks,
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                _cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                ),
+                _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(LOGRAM_WAIT_PHASE)),
+            ],
+        )
+        dome_ordinal = blocks.op_sub(
+            number(LOGRAM_OPEN_FRAME_COUNT),
+            blocks.op_abs(blocks.op_sub(stage(), number(LOGRAM_STAGE_PEAK))),
+        )
+        blocks.substack(
+            recycle, [_set_cur_item(blocks, "slot code", SLOT_CODE_ID, dome_ordinal)], name="SUBSTACK2"
+        )
+        return [inc, fire, recycle]
+
+    phase = blocks.add("control_if_else")
+    in_wait = blocks.op_eq(_cur_item(blocks, "slot flag", SLOT_FLAG_ID), number(LOGRAM_WAIT_PHASE))
+    blocks.blocks[phase]["inputs"]["CONDITION"] = [2, in_wait]
+    blocks.blocks[in_wait]["parent"] = phase
+    dec = _set_cur_item(
+        blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_sub(fire_timer(), number(1))
+    )
+    transition = blocks.if_reporter(
+        blocks.op_eq(fire_timer(), number(0)),
+        [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(LOGRAM_ANIMATE_PHASE)), *animate_step()],
+    )
+    blocks.substack(phase, [dec, transition])
+    blocks.substack(phase, animate_step(), name="SUBSTACK2")
+
+    armed = blocks.op_not(
+        blocks.op_gt(_cur_row(blocks), variable("ground stop firing row", GROUND_STOP_FIRING_ROW_ID))
+    )
+    on_phase = blocks.op_eq(
+        blocks.op_mod(variable("tick", TICK_ID), number(FIRE_GATE_PHASE_TICKS)), number(0)
+    )
+    arm = blocks.if_reporter(blocks.op_and(armed, on_phase), [phase])
+
+    # HIT: rewrite the linked centre slot's value to the 600-point position (`slot link` holds that index),
+    # then the Barra crater clock; else the ACTIVE arm/animate. Both then scroll + cull via advance ground.
+    downgrade = blocks.list_replace(
+        "slot pts",
+        SLOT_PTS_ID,
+        _cur_item(blocks, "slot link", SLOT_LINK_ID),
+        number(BOZA_CENTRE_DOWNGRADED_PTS),
+    )
+    outer_tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    outer = blocks.add("control_if_else")
+    outer_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[outer]["inputs"]["CONDITION"] = [2, outer_hit]
+    blocks.blocks[outer_hit]["parent"] = outer
+    blocks.substack(
+        outer,
+        [downgrade, outer_tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)],
+    )
+    blocks.substack(
+        outer, [arm, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+
+    # ---- CENTRE (link == 0): never fires; on HIT craters + cascades all four outers to HIT. ----
+    cascade = [
+        blocks.list_replace(
+            "slot state",
+            SLOT_STATE_ID,
+            blocks.op_sub(variable("slot index", SLOT_INDEX_ID), number(k)),
+            number(SLOT_HIT),
+        )
+        for k in range(1, BOZA_CENTRE_OFFSET + 1)
+    ]
+    centre_tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    centre = blocks.add("control_if_else")
+    centre_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[centre]["inputs"]["CONDITION"] = [2, centre_hit]
+    blocks.blocks[centre_hit]["parent"] = centre
+    blocks.substack(
+        centre,
+        [*cascade, centre_tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)],
+    )
+    blocks.substack(
+        centre, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+
+    # ---- Top: branch on `slot link` (0 = centre, >0 = outer). ----
+    top = blocks.add("control_if_else")
+    at_centre = blocks.op_eq(_cur_item(blocks, "slot link", SLOT_LINK_ID), number(0))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, at_centre]
+    blocks.blocks[at_centre]["parent"] = top
+    blocks.substack(top, [centre])
+    blocks.substack(top, [outer], name="SUBSTACK2")
     blocks.chain(definition, [top])
 
 
@@ -6505,6 +6731,103 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             ),
         ),
     ]
+    # GND-05 (ground.boza-logram #87): a Boza Logram is a FIVE-slot composite (handle_2D_Boza_Logram $1CDE
+    # stamps 5 objects), so it does not fit the single-slot spawn_ground OR the two-slot Garu shape. The four
+    # OUTER domes (base+0..3) and the CENTRE (base+4) each become their own ground slot, positioned by the
+    # arcade's per-object tables written straight into `_X`/`_Y`: depth (slot x) = boza_logram_spriteX_tbl
+    # {0,0x180,0x180,0x300,0x180} and lateral (slot y) = base_Y + {0,+0x180,-0x180,0,0}, i.e. the px offsets
+    # BOZA_DEPTH_OFFSETS_PX / BOZA_LATERAL_OFFSETS_PX scaled by SLOT_UNITS_PER_PIXEL. All five start ACTIVE
+    # with `slot timer` 0 (a clean crater/burst clock; cull clears only type/state, so seed it). Each OUTER
+    # is a lone Logram (300 pts, closed dome, WAIT phase, captured Boza mask + masked-random initial delay —
+    # handle_boza_logram_outer's once-only init) and stores the CENTRE's slot index in `slot link` (the port
+    # of the arcade `_EXTRA` pointer). The CENTRE (2,000 pts) never fires and stores `slot link` 0, which both
+    # marks it as the centre for the walk's branch and holds its full value until an outer hit downgrades it.
+    def boza_slot(i: int) -> str:
+        # FRESH reporter per call: band base + record slot + the part offset i (0..4).
+        return blocks.op_add(number(GROUND_SLOTS[0] + i), ground_slot_at_cursor())
+
+    spawn_boza: list[str] = []
+    for i in range(BOZA_SLOT_COUNT):
+        depth_units = BOZA_DEPTH_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
+        lateral_units = BOZA_LATERAL_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
+        spawn_boza.append(
+            blocks.list_replace("slot type", SLOT_TYPE_ID, boza_slot(i), ground_type_at_cursor())
+        )
+        spawn_boza.append(
+            blocks.list_replace("slot state", SLOT_STATE_ID, boza_slot(i), number(SLOT_ACTIVE))
+        )
+        spawn_boza.append(
+            blocks.list_replace("slot x", SLOT_X_ID, boza_slot(i), number(depth_units))
+        )
+        spawn_boza.append(
+            blocks.list_replace(
+                "slot y",
+                SLOT_Y_ID,
+                boza_slot(i),
+                blocks.op_add(
+                    blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
+                    number(lateral_units),
+                ),
+            )
+        )
+        spawn_boza.append(
+            blocks.list_replace("slot timer", SLOT_TIMER_ID, boza_slot(i), number(0))
+        )
+        if i == BOZA_CENTRE_OFFSET:
+            # CENTRE (handle_boza_logram_centre): 2,000 pts, never fires, `slot link` 0 (the centre marker).
+            spawn_boza.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, boza_slot(i), number(BOZA_CENTRE_PTS))
+            )
+            spawn_boza.append(
+                blocks.list_replace("slot link", SLOT_LINK_ID, boza_slot(i), number(0))
+            )
+        else:
+            # OUTER dome (handle_boza_logram_outer): 300 pts, the Logram open/close/fire machine, and a
+            # `slot link` back to the centre slot (base+4). Seed the closed dome, WAIT phase, captured mask,
+            # and the masked-random initial delay `_TIMER=(rand & mask)+1` — the once-only arcade init.
+            spawn_boza.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, boza_slot(i), number(BOZA_OUTER_PTS))
+            )
+            spawn_boza.append(
+                blocks.list_replace(
+                    "slot link", SLOT_LINK_ID, boza_slot(i), boza_slot(BOZA_CENTRE_OFFSET)
+                )
+            )
+            spawn_boza.append(
+                blocks.list_replace(
+                    "slot fire mask",
+                    SLOT_FIRE_MASK_ID,
+                    boza_slot(i),
+                    variable(FIRE_MASK_BOZA_NAME, FIRE_MASK_BOZA_ID),
+                )
+            )
+            spawn_boza.append(
+                blocks.list_replace(
+                    "slot code", SLOT_CODE_ID, boza_slot(i), number(BOZA_OUTER_CLOSED_ORDINAL)
+                )
+            )
+            spawn_boza.append(
+                blocks.list_replace(
+                    "slot flag", SLOT_FLAG_ID, boza_slot(i), number(LOGRAM_WAIT_PHASE)
+                )
+            )
+            spawn_boza.append(blocks.call_proc(RNG_PROCCODE, warp=True))
+            spawn_boza.append(
+                blocks.list_replace(
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    boza_slot(i),
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                variable(FIRE_MASK_BOZA_NAME, FIRE_MASK_BOZA_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                )
+            )
     add_ground_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
         [
@@ -6514,6 +6837,9 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             ),
             blocks.if_reporter(
                 blocks.op_eq(ground_type_at_cursor(), number(GARU_DEROTA_TYPE)), spawn_garu_derota
+            ),
+            blocks.if_reporter(
+                blocks.op_eq(ground_type_at_cursor(), number(BOZA_LOGRAM_TYPE)), spawn_boza
             ),
         ],
     )
@@ -6757,6 +7083,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_zolbak(blocks)
     install_update_derota(blocks)
     install_update_garu_derota(blocks)
+    install_update_boza(blocks)
     install_explode_toroid_tick(blocks)
     install_explode_giddo_spario_tick(blocks)
     install_update_bullet(blocks)
@@ -8414,6 +8741,130 @@ def logram_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def boza_blocks() -> dict[str, dict[str, Any]]:
+    # GND-05 (ground.boza-logram #87) renderer (game_director owns these blocks; sprite_extractor owns the
+    # costumes). One persistent clone per GROUND slot (1..16), the same terrain-band clone pool as every
+    # ground family, each a pure per-tick function of its slot's live state. All five composite parts share
+    # BOZA_LOGRAM_TYPE, so the clone branches on `slot link` (the outer/centre discriminator, mirroring the
+    # walk's own branch):
+    #   OUTER (link > 0)  ACTIVE -> the open/close dome frame `update boza` wrote into `slot code` (ordinals
+    #                              1..4 = logram/open/01..04, REUSED for the identical arcade sprites 0x2C..0x2F).
+    #   CENTRE (link == 0) ACTIVE -> the fixed bullseye costume BOZA_CENTRE_ORDINAL (5 = boza-centre/core/01,
+    #                              arcade code 0x3a); the centre never animates, so `slot code` is not read.
+    #   EITHER            HIT    -> IDENTICAL to the Barra/Logram crater (handle_bomb_explosion): the shared
+    #                              burst for the first GROUND_CRATER_START_FRAMES (floor(timer/8)), then the
+    #                              PERSISTENT two-frame flickering crater (floor(timer/4) mod 2), scrolling
+    #                              until it culls. No free-on-clock. The clone writes no state.
+    blocks = Blocks(BOZA_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("boza clone slot", BOZA_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("boza clone slot", BOZA_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_boza = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(BOZA_LOGRAM_TYPE)
+    )
+    # Terrain-locked position — identical cell->stage mapping to every family renderer.
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # HIT costume: explosion burst until the crater begins, then the flickering crater (Barra-identical).
+    explode_ordinal = blocks.op_add(
+        number(BOZA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(BOZA_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    hit_costume = blocks.add("control_if_else")
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
+    blocks.blocks[cratered]["parent"] = hit_costume
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
+
+    # ACTIVE costume: the CENTRE (link == 0) shows the fixed bullseye; an OUTER mirrors its `slot code` dome.
+    active_costume = blocks.add("control_if_else")
+    is_centre = blocks.op_eq(blocks.list_item("slot link", SLOT_LINK_ID, slotvar()), number(0))
+    blocks.blocks[active_costume]["inputs"]["CONDITION"] = [2, is_centre]
+    blocks.blocks[is_centre]["parent"] = active_costume
+    # The centre's bullseye is a single fixed costume (BOZA_CENTRE_ORDINAL = 5), so select it by name.
+    blocks.substack(active_costume, [blocks.switch_costume("boza-centre/core/01")])
+    blocks.substack(
+        active_costume,
+        [blocks.switch_costume_expr(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()))],
+        name="SUBSTACK2",
+    )
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [hit_costume])
+    blocks.substack(state_render, [active_costume], name="SUBSTACK2")
+
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_boza]
+    blocks.blocks[is_boza]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            # WPN-04 layering: like the Barra/Logram, the Boza dome/bullseye/crater stays on the terrain,
+            # under the craft and the bomb sight — its static layerOrder is already above the (never-fronting)
+            # terrain, so it is left unfronted. See barra_blocks.
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def _passive_ground_blocks(
     target: str,
     clone_slot_name: str,
@@ -9736,6 +10187,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, ZOLBAK_TARGET)
     _ensure_gameplay_target(result, DEROTA_TARGET)
     _ensure_gameplay_target(result, GARU_DEROTA_TARGET)
+    _ensure_gameplay_target(result, BOZA_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -9907,6 +10359,20 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if death is not None:
             garu_derota["costumes"].extend(copy.deepcopy(death["costumes"]))
         garu_derota["currentCostume"] = 0
+    # GND-05 (ground.boza-logram #87): the Boza renderer mirrors the 4 Logram open/close dome frames (ordinals
+    # 1..4 — the outer domes REUSE the identical arcade sprites 0x2C..0x2F, so they reference the same crops),
+    # then the single centre bullseye frame (ordinal 5 = boza-centre/, arcade code 0x3a), then the shared
+    # explosion burst (ordinals 6..13) and the two crater frames (ordinals 14..15) — the SAME crater as the
+    # Barra, since both an outer and the centre run handle_bomb_explosion on a bomb hit. Idempotent; a no-op
+    # when any source is absent (generation runs to a fixpoint).
+    boza = next((t for t in result["targets"] if t.get("name") == BOZA_TARGET), None)
+    if proof is not None and boza is not None:
+        boza["costumes"] = proof_by_family("logram/")
+        boza["costumes"].extend(proof_by_family("boza-centre/"))
+        if death is not None:
+            boza["costumes"].extend(copy.deepcopy(death["costumes"]))
+        boza["costumes"].extend(proof_by_family("crater/"))
+        boza["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -10266,6 +10732,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "zolbak": zolbak_blocks(),
         "derota": derota_blocks(),
         "garu derota": garu_derota_blocks(),
+        "boza": boza_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -10410,6 +10877,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # each clone draws; the base pulse and node frames live in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 GARU_DEROTA_CLONE_SLOT_ID: ["garu derota clone slot", 0],
+            }
+        elif target["name"] == BOZA_TARGET:
+            # GND-05 (ground.boza-logram #87): likewise, the only Boza render state is which GROUND slot each
+            # clone draws; the dome frame, centre discriminator, and crater clock live in the Stage slot lists
+            # the clone reads (branching on `slot link` for the outer-dome vs centre-bullseye costume).
+            target["variables"] = target["variables"] | {
+                BOZA_CLONE_SLOT_ID: ["boza clone slot", 0],
             }
     return result
 
