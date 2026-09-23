@@ -2853,15 +2853,17 @@ export const SCENARIOS = [
   {
     key: 'ground-dispatch-spawns-scoped',
     behavior:
-      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every other scheduled ground type is scoped out (never stamped into a slot)',
+      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every ground type still out of scope (the slice-13 roster) is scoped out (never stamped into a slot). Zolbak 0x1F, Derota 0x1B and Garu Derota 0x21 are now built (slice 12), so they legitimately reach slots too and are in scope here.',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // Live free-run across the opening areas (like area-clock-scheduler / fire-permission-masks): as
-      // each area scrolls it consumes add_ground_object records. The families built this PR first spawn
-      // in different areas — Barra (0x1E) in area 1, Logram (0x26) in area 2, Garu Barra (0x20) in
-      // area 3 — interleaved with out-of-scope ground types (0x53/0x1F/0x1D/0x2C/0x2D) that must never
-      // reach a slot. The Logram fire mask (record 2, value 0x25) is set before the first Logram, so a
+      // each area scrolls it consumes add_ground_object records. The families this scenario asserts on
+      // first spawn in different areas — Barra (0x1E) in area 1, Logram (0x26) in area 2, Garu Barra
+      // (0x20) in area 3 — interleaved with the now-built slice-12 turret/dome families (Zolbak 0x1F,
+      // Derota 0x1B, Garu Derota 0x21), which are in scope, and with the still-out-of-scope slice-13
+      // roster (0x53/0x1D/0x2C/0x2D) that must never reach a slot. The Logram fire mask (record 2,
+      // value 0x25) is set before the first Logram, so a
       // spawned Logram captures it; read the slot mask and the Stage mask in the SAME settled sample so
       // the compare is consistent even as later areas re-set the mask. Garu Barra spawns two adjacent
       // slots sharing type 0x20 — the destructible node (ACTIVE) and the indestructible base (state
@@ -2909,6 +2911,12 @@ export const SCENARIOS = [
                 logramStageMask = readVar(vm, 'fire-mask-logram');
               }
             }
+          } else if (t === 31 || t === 27 || t === 33) {
+            // Zolbak (0x1F), Derota (0x1B), Garu Derota (0x21) are the slice-12 ground families built
+            // this PR — they are now handled types that legitimately reach a slot, so seeing them is
+            // in scope (not a "scoped out" violation). Their own behaviour is proved by the dedicated
+            // zolbak-/derota-/garu-derota-* scenarios; here we only assert they are not treated as
+            // unhandled leakage.
           } else {
             onlyHandledTypes = false;
           }
@@ -2936,7 +2944,7 @@ export const SCENARIOS = [
       assert.equal(
         obs.onlyHandledTypes,
         true,
-        'no out-of-scope ground type is ever stamped into a slot (only the built families spawn)',
+        'no still-out-of-scope ground type (the slice-13 roster) is ever stamped into a slot (only built families spawn)',
       );
       assert.ok(obs.logramStageMask > 0, 'the schedule set a live Logram fire mask before the spawn');
       assert.equal(
@@ -3491,6 +3499,440 @@ export const SCENARIOS = [
     // Sever the Logram's whole per-tick update: with `update logram` neutralized, a struck Logram neither
     // advances its crater clock nor scrolls → the [32,64,96] drift and the clock-advance assertions fail.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update logram'),
+  },
+  {
+    key: 'zolbak-craters-and-reduces-ai',
+    behavior:
+      "A Zolbak (0x1F) is the Barra crater model with ONE extra behaviour: a bomb on an ACTIVE Zolbak scores its 200-pt value once through the shared ground detector, and once struck (state HIT) `update zolbak` — on the FIRST HIT tick only (uniquely marked by `slot timer == 0`, since the detector zeroed the clock and the update only climbs it afterwards) — reduces the adaptive enemy AI level by EXACTLY 2 (handle_1F_Zolbak -> reduce_enemy_ai_by_2), then craters PERSISTENTLY exactly like a Barra (scrolls 32/tick, clock counts 2/tick, never freed on the clock). The AI drop happens ONCE per kill, never again on the crater ticks",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Freeze the walk so each manual call is exactly one tick (a settling pump would run the walk ~220
+      // iterations and the live spawner would stamp other ground objects mid-step; see the Barra crater
+      // scenario for the identical isolation).
+      writeVar(vm, 'game-director-state', 'frozen');
+      const clearBand = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      // --- Scoring: an ACTIVE Zolbak (type 31, pts pos 8 -> 200) under the locked bomb target scores 200.
+      clearBand();
+      put('slot-type', 15, 31); // Zolbak (0x1F)
+      put('slot-state', 15, 1); // ACTIVE (destructible)
+      put('slot-pts', 15, 8); // 1-based value-table position of 200
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120); // locked bomb target (Scratch slot 33 -> JS index 32), same cell
+      put('slot-y', 32, 4096);
+      const award = readVar(vm, 'eco-value-table')[7]; // value-table position 8 -> JS index 7 = 200
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const scoreDelta = readVar(vm, 'eco-score') - score0;
+      // --- AI reduction + crater: a struck Zolbak drops the AI level once, then craters persistently.
+      clearBand();
+      writeVar(vm, 'difficulty-ai-level', 6); // a known live AI level to watch fall
+      put('slot-type', 15, 31);
+      put('slot-state', 15, 2); // HIT — the detector zeroed the clock on the hit tick
+      put('slot-pts', 15, 8);
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 4096);
+      put('slot-timer', 15, 0);
+      writeVar(vm, 'slot-index', 16); // Scratch 1-based slot 16 -> the seeded Zolbak
+      const xs = [];
+      const N = 30; // 30 ticks -> clock 60 frames: past the 20-frame flying free AND the 56-frame crater start
+      let aiAfterFirst = null;
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update zolbak');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+        if (t === 0) aiAfterFirst = readVar(vm, 'difficulty-ai-level');
+      }
+      return {
+        award,
+        scoreDelta,
+        aiBefore: 6,
+        aiAfterFirst,
+        aiAfterAll: readVar(vm, 'difficulty-ai-level'),
+        xs,
+        n: N,
+        persistedType: readVar(vm, 'slot-type')[15],
+        persistedState: readVar(vm, 'slot-state')[15],
+        persistedTimer: readVar(vm, 'slot-timer')[15],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 200, 'a Zolbak (pts position 8) is worth its 200-pt value-table entry');
+      assert.equal(obs.scoreDelta, obs.award, 'a bomb on the Zolbak cell scores exactly 200 once (shared ground detector)');
+      assert.equal(obs.aiAfterFirst, 4, 'the FIRST HIT tick reduces the AI level by exactly 2 (6 -> 4)');
+      assert.equal(obs.aiAfterAll, 4, 'the drop happens ONCE per kill — it never fires again on the crater ticks (still 4 after 30 ticks)');
+      assert.deepEqual(
+        obs.xs.slice(0, 3),
+        [32, 64, 96],
+        'the struck Zolbak craters and keeps scrolling DOWN by exactly 32 units/tick (terrain-locked)',
+      );
+      assert.equal(obs.persistedType, 31, 'the crater stays OCCUPIED on its clock (never freed like a flying kill)');
+      assert.equal(obs.persistedState, 2, 'the crater stays HIT (a persistent crater, like the Barra — not a vanishing Garu node)');
+      assert.equal(obs.persistedTimer, obs.n * 2, 'the crater clock keeps counting (2 frames/tick) and is never reset');
+    },
+    // Freeze the `change ai level by` block (its VALUE -> 0) so a bombed Zolbak no longer reduces the AI
+    // level → aiAfterFirst stays 6 → the "6 -> 4" assertion fails. The crater still scrolls, so this
+    // isolates the AI-reduction seam (the one genuinely novel behaviour) from the shared crater model.
+    negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'ai level'),
+  },
+  {
+    key: 'zolbak-ai-reduction-floors-at-zero',
+    behavior:
+      "The Zolbak AI reduction floors at zero: reduce_enemy_ai_by_2 does `subq #2; jcc; moveq #0` — subtract 2, but clamp the unsigned underflow to 0. So bombing a Zolbak when the AI level is 1 leaves it at 0, NOT -1, while bombing one at a comfortable level 5 drops it the full 2 to 3 (the clamp only catches the underflow, it is not a blanket zero)",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen'); // isolate each manual call (see the crater scenarios)
+      const seedStruckZolbak = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        put('slot-type', 15, 31); // Zolbak (0x1F)
+        put('slot-state', 15, 2); // HIT — first HIT tick (slot timer 0) runs the reduction
+        put('slot-pts', 15, 8);
+        put('slot-x', 15, 0);
+        put('slot-y', 15, 4096);
+        put('slot-timer', 15, 0);
+        writeVar(vm, 'slot-index', 16);
+      };
+      // --- Floor: AI level 1 -> a -2 drop underflows and CLAMPS to 0 (not -1).
+      seedStruckZolbak();
+      writeVar(vm, 'difficulty-ai-level', 1);
+      callProc(vm, 'Stage', 'update zolbak');
+      step(vm, 1);
+      const floored = readVar(vm, 'difficulty-ai-level');
+      // --- Normal: AI level 5 -> a full -2 drop to 3 (no clamp; proves the floor is not a blanket zero).
+      seedStruckZolbak();
+      writeVar(vm, 'difficulty-ai-level', 5);
+      callProc(vm, 'Stage', 'update zolbak');
+      step(vm, 1);
+      const normalDrop = readVar(vm, 'difficulty-ai-level');
+      return { floored, normalDrop };
+    },
+    assert(obs) {
+      assert.equal(obs.floored, 0, 'reducing an AI level of 1 by 2 CLAMPS to 0 (the unsigned underflow is floored, not -1)');
+      assert.equal(obs.normalDrop, 3, 'reducing an AI level of 5 by 2 lands at 3 — the clamp only catches the underflow, it is not a blanket zero');
+    },
+    // Pin every `set ai level` to 5: the floor clamp's `set ai level = 0` (the ONLY set that runs here, on
+    // the underflow path) now sets 5 instead of 0 → the floored assertion (== 0) fails. The normal-drop path
+    // never reaches a set (3 is not < 0), so it still lands at 3 — biting the floor specifically.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'ai level', 5),
+  },
+  {
+    key: 'derota-fires-when-armed-silent-past-stop-row',
+    behavior:
+      "A Derota (0x1B) is a plain periodic aimed turret (NO Logram open/close dome): each active tick it drives the SHARED fire-permission gate (chk_timer_fire_bullet_reinit_timer) to fire one aimed bullet per masked reload — but ONLY while still high enough on the field. The arcade gates the fire on `gnd_stop_firing_row` (handle_1B_Derota): it fires only while `cur_row <= ground stop firing row`, and is SILENT (the gate never even runs, so its fire countdown is untouched) once it has scrolled past that row",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      const pc = readVar(vm, 'player-col');
+      const seedActiveDerota = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        writeVar(vm, 'tick', 0); // on-phase (tick mod 4 == 0): the shared gate's 8-frame cadence passes
+        put('slot-type', 15, 27); // Derota (0x1B)
+        put('slot-state', 15, 1); // ACTIVE
+        put('slot-pts', 15, 17); // 1-based value-table position of 1000
+        put('slot-x', 15, 20 * 256); // row 20
+        put('slot-y', 15, pc * 256);
+        put('slot-fire-mask', 15, 0); // reload => (rng mod 1) + 1 = 1 (deterministic)
+        put('slot-fire-timer', 15, 1); // one on-phase decrement -> 0 -> fire this tick
+        writeVar(vm, 'slot-index', 16);
+        writeVar(vm, 'bullet-alloc-result', 0);
+      };
+      // --- Armed: the stop-firing row is BELOW the object's row (20 <= 30) -> it fires.
+      seedActiveDerota();
+      writeVar(vm, 'ground-stop-firing-row', 30);
+      callProc(vm, 'Stage', 'update derota');
+      step(vm, 1);
+      const firedArmed = readVar(vm, 'bullet-alloc-result');
+      // --- Past the row: the stop-firing row is ABOVE the object's row (20 > 10) -> it is silent.
+      seedActiveDerota();
+      writeVar(vm, 'ground-stop-firing-row', 10);
+      callProc(vm, 'Stage', 'update derota');
+      step(vm, 1);
+      const firedPast = readVar(vm, 'bullet-alloc-result');
+      const fireTimerPast = readVar(vm, 'slot-fire-timer')[15];
+      return { firedArmed, firedPast, fireTimerPast };
+    },
+    assert(obs) {
+      assert.ok(obs.firedArmed > 0, 'an armed Derota (row <= stop-firing row) fires an aimed bullet through the shared gate');
+      assert.equal(obs.firedPast, 0, 'past the stop-firing row the Derota is SILENT — the arm gate blocks the fire');
+      assert.equal(obs.fireTimerPast, 1, 'past the row the shared gate never runs: the fire countdown is left untouched (still 1)');
+    },
+    // Sever the Derota's whole per-tick update: with `update derota` neutralized, the armed probe no longer
+    // fires → firedArmed drops to 0 → the "armed fires" assertion fails, proving the silent-past-row result
+    // is measured against a genuinely live turret (not a dead seed).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update derota'),
+  },
+  {
+    key: 'derota-craters-when-bombed',
+    behavior:
+      'A bombed Derota (state HIT) craters PERSISTENTLY exactly like a Barra (handle_bomb_explosion, NOT the Garu node explode-and-remove): `update derota` advances the crater clock (2 frames/tick) AND keeps scrolling it with the terrain (32/tick), never freeing it on the clock, removed only when it culls off the bottom of the field',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      put('slot-type', 15, 27); // Derota (0x1B)
+      put('slot-state', 15, 2); // HIT — the crater clock starts here
+      put('slot-pts', 15, 17);
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 4096);
+      put('slot-timer', 15, 0);
+      writeVar(vm, 'slot-index', 16);
+      const xs = [];
+      const N = 30; // 30 ticks -> clock 60 frames: past the flying free AND the crater start
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update derota');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+      }
+      const persisted = {
+        type: readVar(vm, 'slot-type')[15],
+        state: readVar(vm, 'slot-state')[15],
+        timer: readVar(vm, 'slot-timer')[15],
+      };
+      // Cull: re-seed one scroll step short of the bottom row so the next tick scrolls it to row 40 and frees it.
+      put('slot-type', 15, 27);
+      put('slot-state', 15, 2);
+      put('slot-x', 15, 40 * 256 - 32);
+      writeVar(vm, 'slot-index', 16);
+      callProc(vm, 'Stage', 'update derota');
+      step(vm, 1);
+      return {
+        xs,
+        persisted,
+        n: N,
+        culledType: readVar(vm, 'slot-type')[15],
+        culledState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.xs.slice(0, 3),
+        [32, 64, 96],
+        'a struck Derota keeps scrolling DOWN by exactly 32 units/tick (the crater is terrain-locked)',
+      );
+      const monotonic = obs.xs.every((x, i) => i === 0 || x === obs.xs[i - 1] + 32);
+      assert.equal(monotonic, true, 'the crater scrolls a steady 32/tick for the whole run');
+      assert.equal(obs.persisted.timer, obs.n * 2, 'the crater clock keeps counting (2 frames/tick) and is never reset');
+      assert.ok(obs.persisted.timer > 56, 'the clock runs past the 56-frame crater start without freeing (persistent, like the Barra)');
+      assert.equal(obs.persisted.type, 27, 'the crater stays OCCUPIED on its clock (never freed like a flying kill or the Garu node)');
+      assert.equal(obs.persisted.state, 2, 'the crater stays HIT (a persistent crater, not a vanishing burst)');
+      assert.equal(obs.culledType, 0, 'a crater scrolled off the bottom (row >= 40) is finally culled (type cleared)');
+      assert.equal(obs.culledState, 0, 'the culled crater slot is freed (state cleared) so it can be reused');
+    },
+    // Sever the Derota's whole per-tick update: a struck Derota neither advances its crater clock nor
+    // scrolls → the [32,64,96] drift and the clock-advance assertions fail.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update derota'),
+  },
+  {
+    key: 'garu-derota-base-indestructible',
+    behavior:
+      "A Garu Derota base is the indestructible half: like the Garu Barra base it carries a non-ACTIVE sentinel state (SLOT_GARU_BASE) that the ground detector's `== ACTIVE` gate rejects, so a bomb dead on the base scores NOTHING and never marks it struck — while the SAME bomb on the SAME cell destroys an ACTIVE node for its 2000-pt value, proving the detector is live and it is specifically the base's sentinel that is immune. On its own tick the base just scrolls with the terrain, persisting (never HIT, never clock-removed)",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const clearBand = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      writeVar(vm, 'game-director-state', 'frozen'); // isolate each manual call (see the ground scenarios)
+      // --- Immunity: the base (state SLOT_GARU_BASE = 3) dead on the bomb target scores nothing.
+      clearBand();
+      put('slot-type', 15, 33); // Garu Derota (0x21); the base half carries the sentinel state
+      put('slot-state', 15, 3); // SLOT_GARU_BASE — the detector's `== ACTIVE (1)` gate excludes it
+      put('slot-pts', 15, 19);
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120); // locked bomb target on the exact base cell
+      put('slot-y', 32, 4096);
+      const baseScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const baseDelta = readVar(vm, 'eco-score') - baseScore0;
+      const baseState = readVar(vm, 'slot-state')[15];
+      // --- Live control: an ACTIVE node on the identical cell DOES score 2000.
+      clearBand();
+      put('slot-type', 15, 33);
+      put('slot-state', 15, 1); // ACTIVE node
+      put('slot-pts', 15, 19); // value-table position 19 -> 2000
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const nodeScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const nodeDelta = readVar(vm, 'eco-score') - nodeScore0;
+      // --- Persistence: the base's own tick just scrolls it (never HIT, never removed on a clock).
+      clearBand();
+      put('slot-type', 15, 33);
+      put('slot-state', 15, 3); // SLOT_GARU_BASE
+      put('slot-x', 15, 0);
+      put('slot-y', 15, 4096);
+      writeVar(vm, 'slot-index', 16);
+      const xs = [];
+      for (let t = 0; t < 3; t += 1) {
+        callProc(vm, 'Stage', 'update garu derota');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+      }
+      return {
+        baseDelta,
+        baseState,
+        nodeDelta,
+        award: readVar(vm, 'eco-value-table')[18], // value-table position 19 -> JS index 18 = 2000
+        xs,
+        persistType: readVar(vm, 'slot-type')[15],
+        persistState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.baseDelta, 0, 'a bomb dead on the Garu Derota base scores NOTHING (its sentinel state fails the ACTIVE gate)');
+      assert.equal(obs.baseState, 3, 'the base is never marked struck — it keeps its SLOT_GARU_BASE sentinel');
+      assert.equal(obs.award, 2000, 'the control node is worth a positive 2000-pt value');
+      assert.equal(obs.nodeDelta, obs.award, 'control: the SAME bomb on the SAME cell destroys+scores an ACTIVE node for 2000');
+      assert.deepEqual(obs.xs, [32, 64, 96], 'the base scrolls DOWN with the terrain (32/tick) on its own tick');
+      assert.equal(obs.persistType, 33, 'the base persists OCCUPIED (never consumed by a bomb)');
+      assert.equal(obs.persistState, 3, 'the base persists as the sentinel (never flips to HIT)');
+    },
+    // Empty the ground detector: the control node no longer scores (nodeDelta 0) → the control assertion
+    // fails, proving the base's zero is measured against a genuinely live detector (not a dead seed).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
+  },
+  {
+    key: 'garu-derota-node-fires-scores-and-vanishes',
+    behavior:
+      "A Garu Derota node is the destructible FIRING half (worth 2000): a bomb on its cell resolves through the shared ground detector for exactly 2000; while ACTIVE it fires one aimed bullet per masked reload through the shared gate UNCONDITIONALLY — with NO stop-firing-row gate (unlike the single Derota, garu_derota_handler omits the row check) — so it fires even below a stop-firing row that would silence a Derota; and once struck (state HIT) `update garu derota` runs the node's burst clock and REMOVES the node when the burst finishes (timer >= GARU_REMOVE_FRAMES = 28, frame 7), mirroring explode_and_remove_object — it VANISHES leaving no persistent crater",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      const pc = readVar(vm, 'player-col');
+      const clearBand = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      // --- Scoring: an ACTIVE node (type 33, pts pos 19 -> 2000) under the locked bomb target scores 2000.
+      clearBand();
+      put('slot-type', 15, 33); // Garu Derota (0x21); the node half is state ACTIVE
+      put('slot-state', 15, 1); // ACTIVE (destructible)
+      put('slot-pts', 15, 19);
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const award = readVar(vm, 'eco-value-table')[18];
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const scoreDelta = readVar(vm, 'eco-score') - score0;
+      const nodeState = readVar(vm, 'slot-state')[15];
+      // --- Unconditional fire: an ACTIVE node fires even BELOW a stop-firing row that would silence a Derota.
+      clearBand();
+      writeVar(vm, 'tick', 0); // on-phase for the shared gate's 8-frame cadence
+      put('slot-type', 15, 33);
+      put('slot-state', 15, 1); // ACTIVE node
+      put('slot-pts', 15, 19);
+      put('slot-x', 15, 20 * 256); // row 20
+      put('slot-y', 15, pc * 256);
+      put('slot-fire-mask', 15, 0); // reload => (rng mod 1) + 1 = 1
+      put('slot-fire-timer', 15, 1); // one on-phase decrement -> 0 -> fire
+      writeVar(vm, 'slot-index', 16);
+      writeVar(vm, 'ground-stop-firing-row', 10); // row 20 > 10: a single Derota WOULD be silent here
+      writeVar(vm, 'bullet-alloc-result', 0);
+      callProc(vm, 'Stage', 'update garu derota');
+      step(vm, 1);
+      const firedNode = readVar(vm, 'bullet-alloc-result');
+      // --- Death: a struck node (state HIT) bursts, scrolls, then REMOVES itself at frame 7 (no crater).
+      clearBand();
+      put('slot-type', 15, 33);
+      put('slot-state', 15, 2); // HIT — the detector zeroed the burst clock on the hit tick
+      put('slot-pts', 15, 19);
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 4096);
+      put('slot-timer', 15, 0);
+      writeVar(vm, 'slot-index', 16);
+      const snaps = [];
+      const N = 14; // 14 ticks -> clock 28 (= GARU_REMOVE_FRAMES): the burst finishes and the node is removed
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update garu derota');
+        step(vm, 1);
+        snaps.push({
+          x: readVar(vm, 'slot-x')[15],
+          type: readVar(vm, 'slot-type')[15],
+          state: readVar(vm, 'slot-state')[15],
+          timer: readVar(vm, 'slot-timer')[15],
+        });
+      }
+      return { award, scoreDelta, nodeState, firedNode, snaps };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 2000, 'a Garu Derota node (pts position 19) is worth its 2000-pt value-table entry');
+      assert.equal(obs.scoreDelta, obs.award, 'a bomb on the node cell scores exactly 2000 once (shared ground detector)');
+      assert.equal(obs.nodeState, 2, 'the struck node is marked HIT (state 2), so it cannot re-score');
+      assert.ok(obs.firedNode > 0, 'the ACTIVE node fires UNCONDITIONALLY — even below a stop-firing row that would silence a single Derota');
+      assert.deepEqual(
+        obs.snaps.slice(0, 3).map((s) => s.x),
+        [32, 64, 96],
+        'the bursting node scrolls DOWN with the terrain (32/tick) while its burst plays',
+      );
+      const mid = obs.snaps[12]; // 13th tick: timer 26, still mid-burst
+      assert.equal(mid.type, 33, 'mid-burst the node is still present (type held)');
+      assert.equal(mid.state, 2, 'mid-burst the node is still HIT (bursting, not yet removed)');
+      assert.equal(mid.timer, 26, 'the burst clock counts 2 frames/tick');
+      const gone = obs.snaps[13]; // 14th tick: timer 28 = GARU_REMOVE_FRAMES -> removed
+      assert.equal(gone.timer, 28, 'the node is removed exactly when its burst finishes (frame 7 = 28 frames)');
+      assert.equal(gone.type, 0, 'the node VANISHES (type cleared) — no persistent crater, unlike the Derota');
+      assert.equal(gone.state, 0, 'the removed node slot is freed (state cleared) so it can be reused');
+    },
+    // Sever the Garu Derota's whole per-tick update: the ACTIVE node no longer fires (firedNode 0) and a
+    // struck node neither bursts nor removes itself → the unconditional-fire and frame-7 removal assertions
+    // both go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update garu derota'),
   },
   {
     key: 'craft-collision-is-single-cell',

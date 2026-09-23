@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "e86b96f89288f5b98f0793f8bbb86c6472551ebf8fb55862eaa228ee0a058223",
+  "manifest_sha256": "131c69524cc61cb76a7b50080aec7bdda3167f4227506d68f8fbd26af7541541",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1395,6 +1395,102 @@
       ],
       "generator_version": 1
     },
+    "62d84e6886f83ec37d2c8dd0b9976bbc.png": {
+      "frame": "zolbak/idle/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        8,
+        8,
+        15,
+        15
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "d2713336361bd222147ed8e0ae5312cd.png": {
+      "frame": "derota/idle/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        10,
+        138,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "347fba15f7c4f3b4bb16b9f514a6bd3b.png": {
+      "frame": "garu-derota/base/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        13,
+        276,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "5e0acce8da1c06564016041ccc01591c.png": {
+      "frame": "garu-derota/base/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        50,
+        276,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
     "9ec456d6b2498070bb77dac293955c1b.png": {
       "frame": "sheonite/spin/01",
       "target": "toroid_sprite_proof",
@@ -1638,7 +1734,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "4ed921d6c1ebcdbf583b415d05da31e0d1391b9af5d4640c3ee86501567ff25b",
+    "sha256": "c283bc36d29d64b71b941cf77526dd951bf0bd49f5d6dbeab518293c6f93ed5a",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -1698,6 +1794,10 @@
       "crater/idle/02",
       "garu/base/01",
       "garu/base/02",
+      "zolbak/idle/01",
+      "derota/idle/01",
+      "garu-derota/base/01",
+      "garu-derota/base/02",
       "sheonite/spin/01",
       "sheonite/spin/02",
       "sheonite/spin/03",

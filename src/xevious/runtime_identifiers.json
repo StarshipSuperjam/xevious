@@ -214,6 +214,11 @@
       "name": "debug spawn index",
       "scope": "Stage"
     },
+    "derota-clone-slot": {
+      "kind": "variable",
+      "name": "derota clone slot",
+      "scope": "derota"
+    },
     "difficulty-ai-adjust": {
       "kind": "variable",
       "name": "ai adjust",
@@ -398,6 +403,11 @@
       "kind": "variable",
       "name": "garu clone slot",
       "scope": "garu"
+    },
+    "garu-derota-clone-slot": {
+      "kind": "variable",
+      "name": "garu derota clone slot",
+      "scope": "garu derota"
     },
     "garu-det-slot": {
       "kind": "variable",
@@ -718,6 +728,11 @@
       "kind": "variable",
       "name": "zakato clone slot",
       "scope": "zakato"
+    },
+    "zolbak-clone-slot": {
+      "kind": "variable",
+      "name": "zolbak clone slot",
+      "scope": "zolbak"
     },
     "zoshi-clone-slot": {
       "kind": "variable",
