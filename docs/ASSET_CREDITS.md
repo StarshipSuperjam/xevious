@@ -86,6 +86,35 @@ Spriters Resource sprite sheets above: recording provenance is not a claim
 that credit grants permission, and no ownership of the Xevious audio is
 claimed.
 
+## Arcade gameplay sound effects (Sounds Spriters Resource)
+
+Six of the arcade's gameplay sound effects, supplied by the repository operator
+from local staging and committed here byte-for-byte. Each is attached unmodified
+as a Stage sound by `tools/hud_glyphs.py` under its content-hash filename in
+`src/xevious/assets/`, and played at the arcade play point cited in
+`docs/mechanics/040-arcade-sound-cues.md`. The provenance manifest is
+`assets/game-sounds/manifest.json`.
+
+| Supplied file | Cue (arcade sound) | Plays when | License | SHA-256 |
+| --- | --- | --- | --- | --- |
+| `air_destroy.wav` | Flying-enemy hit (`FLYING_ENEMY_HIT_SND`, 0x05) | A shot destroys a flying enemy | No reusable license specified by source; third-party copyrighted material | `148f712ea61692a6feb45b20e25ca20a5416c5328a83e1e58245a1621c3765e9` |
+| `ground_destroy.wav` | Ground explosion (`GROUND_EXPLOSION_SND`, 0x11) | A ground target is destroyed | No reusable license specified by source; third-party copyrighted material | `e2058ecc5e0ba28f7893b1c4fb8128853e1308e6820b3b0f75ba98ce4d53924a` |
+| `zakato.wav` | Teleport (`TELEPORT_SND`, 0x09) | A Zakato / Brag Zakato teleports in | No reusable license specified by source; third-party copyrighted material | `e3fc46a9810c18dfc8a7162b5495d88a77bbdc50ce195d418e45d598f60d2035` |
+| `garu_zakato.wav` | Garu Zakato (`GARU_ZAKATO_SND`, 0x06) | A Garu Zakato detonates | No reusable license specified by source; third-party copyrighted material | `782ba3a40112a60c55999d1dacfcd4ec014b964208c9d66bf9c7b7830e6b8a35` |
+| `bacura.wav` | Bacura hit (`BACURA_HIT_SND`, 0x0a) | A shot bounces off a Bacura slab | No reusable license specified by source; third-party copyrighted material | `87ec0bcf2b770f94de03c7dc90e375bf20318d3abab9f868df842777627badcd` |
+| `sheonite.wav` | Sheonite retreat (`SHEONITE_SND`, 0x08) | The right Sheonite peels off and retreats | No reusable license specified by source; third-party copyrighted material | `e78543787183a8d7b34740255b7a02c08b319a954e9240acab6273c50a6f7bd4` |
+
+Each raw wav is committed byte-for-byte to `src/xevious/assets/` under its
+content-hash filename and to `assets/game-sounds/` under the readable name above.
+No individual contributor credit was listed, and the exact upstream page was not
+recorded, so no per-file URL is asserted; the family matches the Sounds Spriters
+Resource Xevious audio (asset 449687). These carry the same rights-status caveat
+as the material above: recording provenance is not a claim that credit grants
+permission, this is Namco copyrighted audio, and no ownership is claimed. Several
+other staged wavs duplicate sounds already in the base project (music,
+game-start, player-death, blaster fire) and are intentionally left on those base
+sounds rather than re-committed.
+
 ## Terrain area map (reference source, not yet ingested)
 
 Operator-supplied source art for the upcoming terrain/area slice (Part of #17).

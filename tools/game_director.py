@@ -1812,6 +1812,10 @@ MESSAGES = {
     # sprite's bounds broadcasts (target-bounds-*) are gone: the crosshair is a pure renderer now.
     "bomb": "broadcastMsgId-bomb-release",
     "bomb landed": "broadcastMsgId-bomb-landed",
+    # AUDIO: the shot×Bacura bounce runs on a blaster clone, which cannot play a Stage-owned
+    # sound directly; it broadcasts this and the Stage plays BACURA_HIT_SND (src deactivate_shot
+    # xevious_main.68k:2559). All other arcade SFX play from Stage-thread procs directly.
+    "sfx bacura": "broadcastMsgId-sfx-bacura",
 }
 
 PROCCODE = "transition to %s reset %s"
@@ -3049,6 +3053,9 @@ def install_check_air_hit(blocks: Blocks) -> None:
                         ),
                     ),
                     blocks.call_proc(RESOLVE_HIT_PROCCODE, warp=True),
+                    # AUDIO: FLYING_ENEMY_HIT_SND on a scored flying kill (src xevious_main.68k:2537,
+                    # check_shot_hit_flying_enemy). Stage-owned sound, played on the Stage thread.
+                    blocks.play_sound("air_destroy"),
                     _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
                     blocks.list_replace("slot state", SLOT_STATE_ID, number(s), number(SHOT_SPENT)),
                 ],
@@ -3123,6 +3130,9 @@ def install_check_ground_hit(blocks: Blocks) -> None:
                         ),
                     ),
                     blocks.call_proc(RESOLVE_HIT_PROCCODE, warp=True),
+                    # AUDIO: GROUND_EXPLOSION_SND on a scored ground kill (src xevious_main.68k:2615).
+                    # Stage-owned sound, played on the Stage thread.
+                    blocks.play_sound("ground_destroy"),
                     # `resolve hit` marks the slot HIT and scores but does NOT touch the slot timer.
                     # Reset it here (mirroring the air detector at install_check_air_hit) so the ground
                     # explosion clock — floor(slot timer / 8) through the 7 burst frames, then the
@@ -4468,6 +4478,8 @@ def install_init_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(ZAKATO_MAIN_CODE)),
             *pts_stamps,
+            # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004).
+            blocks.play_sound("zakato"),
         ],
     )
     blocks.chain(definition, [*reset, draw_loop, stamp])
@@ -5165,6 +5177,10 @@ def install_update_sheonite(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
             _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(SHEONITE_PHASE_RETREAT)),
+            # AUDIO: SHEONITE_SND on the RIGHT half's retreat only (src r_sheonite_retreat
+            # xevious_main.68k:4128, after _dX=0xFFA0). The left half (SUBSTACK2) vanishes silently
+            # (l_sheonite_remove main:4232 plays no sound).
+            blocks.play_sound("sheonite"),
         ],
     )
     blocks.substack(combine_exit, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)], name="SUBSTACK2")
@@ -5223,6 +5239,9 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(BRAG_ZAKATO_MAIN_CODE)),
             *pts_stamps,
+            # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004),
+            # shared with the base Zakato — same teleport cue.
+            blocks.play_sound("zakato"),
         ],
     )
     blocks.chain(definition, [*reset, draw_loop, stamp])
@@ -5506,7 +5525,9 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
         _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(0)),
         _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(0)),
     ]
-    blocks.chain(definition, [*capture, set_ring_angle, ring, *spawn_body, *free])
+    # AUDIO: GARU_ZAKATO_SND on the detonation (src garu_zakato_explode xevious_main.68k:4033).
+    detonate_sound = blocks.play_sound("garu_zakato")
+    blocks.chain(definition, [*capture, detonate_sound, set_ring_angle, ring, *spawn_body, *free])
 
 
 def install_fire_permission_gate(blocks: Blocks) -> None:
@@ -6464,6 +6485,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     space = blocks.key("space")
     blocks.chain(space, [blocks.if_state("title", [blocks.call_transition("ready", "new-game")])])
 
+    # AUDIO: sound-only receiver for the shot×Bacura bounce. The bounce runs on a blaster clone
+    # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
+    # and the Stage plays BACURA_HIT_SND here (src deactivate_shot xevious_main.68k:2559).
+    blocks.chain(blocks.receive("sfx bacura"), [blocks.play_sound("bacura")])
+
     # (The D/G debug death keys are retired in slice 8: a real attacker now kills the craft — a flying
     # enemy or an enemy bullet touching the craft's cell raises `player hit`, and the walk thread runs
     # the player-dead transition, spending a craft. The death-complete handler still decides respawn vs
@@ -7178,8 +7204,9 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     # the reference's BACURA_BOUNCE_FRAMES (8) costume frames in place, then fall through to the shared
     # free+delete below. The Bacura is untouched; only the shot animates away. Ordinary air-kill spends
     # (SHOT_SPENT) and top-expiry (still ACTIVE) skip this branch and delete at once as before. The
-    # BACURA_HIT_SND has no ripped asset, so the "blaster" sound stands in (matching the Zakato/Spario
-    # stand-in precedent; recorded in docs/mechanics/038).
+    # real BACURA_HIT_SND now plays (src deactivate_shot xevious_main.68k:2559): this branch runs on a
+    # blaster clone, which cannot play the Stage-owned `bacura` sound directly, so it broadcasts
+    # `sfx bacura` and the Stage's receiver plays it.
     bounce_anim = blocks.add("control_repeat", inputs={"TIMES": number(BACURA_BOUNCE_FRAMES)})
     blocks.substack(
         bounce_anim,
@@ -7193,7 +7220,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.list_item("slot state", SLOT_STATE_ID, variable("clone slot", CLONE_SLOT_ID)),
             number(SHOT_BOUNCE),
         ),
-        [blocks.play_sound("blaster"), bounce_anim],
+        [blocks.send("sfx bacura"), bounce_anim],
     )
     # The clone snapshots `alloc result` (its allocated index) into its own `clone slot`
     # at birth, and frees that slot on expiry — so every delete path returns the slot to

@@ -378,6 +378,36 @@
       "kind": "sound",
       "name": "extend",
       "generator_version": 1
+    },
+    "a9fb984e02299e273f1d5e38f2d8c898.wav": {
+      "kind": "game_sound",
+      "name": "air_destroy",
+      "generator_version": 1
+    },
+    "57fc7f1fc0968d5bb0ca08ccbef35740.wav": {
+      "kind": "game_sound",
+      "name": "bacura",
+      "generator_version": 1
+    },
+    "16c42ba9bdcbdb001971e90d341a6382.wav": {
+      "kind": "game_sound",
+      "name": "garu_zakato",
+      "generator_version": 1
+    },
+    "cf0da6ef637845d87ed79274159b8cdd.wav": {
+      "kind": "game_sound",
+      "name": "ground_destroy",
+      "generator_version": 1
+    },
+    "53c4552f29ecb3bf31211d23a382fa39.wav": {
+      "kind": "game_sound",
+      "name": "sheonite",
+      "generator_version": 1
+    },
+    "69c1e82bac42ff81d7af0124a69990a2.wav": {
+      "kind": "game_sound",
+      "name": "zakato",
+      "generator_version": 1
     }
   }
 }

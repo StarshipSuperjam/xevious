@@ -237,15 +237,17 @@ class ScratchProjectTests(unittest.TestCase):
         # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
         # ground renderers (all reuse proof costumes by ref).
         self.assertEqual(33, len(project["targets"]))
-        # 156: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
         # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
         # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 10 Sheonite
         # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 9
         # ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base
-        # pulse frames).
-        self.assertEqual(156, len(assets))
+        # pulse frames) + the 6 arcade gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy /
+        # zakato-teleport / garu_zakato / bacura / sheonite cues, committed under assets/game-sounds/ and
+        # attached to the Stage by tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
+        self.assertEqual(162, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -298,11 +300,14 @@ class ScratchProjectTests(unittest.TestCase):
                 for key in ("variables", "lists", "broadcasts"):
                     expected.pop(key)
                     actual.pop(key)
-                # hud_glyphs.py appends one new "extend" sound on top of the
-                # historical two (docs/mechanics/010); verify it precisely, then
-                # drop sounds from the general preserved-content comparison.
+                # hud_glyphs.py appends its added Stage sounds on top of the historical
+                # two (docs/mechanics/010): first the "extend" cue, then the six arcade
+                # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040). Verify the
+                # exact list, then drop sounds from the general preserved-content comparison.
                 self.assertEqual(
-                    [sound["name"] for sound in expected["sounds"]] + ["extend"],
+                    [sound["name"] for sound in expected["sounds"]]
+                    + ["extend", "air_destroy", "bacura", "garu_zakato",
+                       "ground_destroy", "sheonite", "zakato"],
                     [sound["name"] for sound in actual["sounds"]],
                 )
                 expected.pop("sounds")
@@ -6644,6 +6649,113 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._air09_failures(project), label)
 
     @staticmethod
+    def _audio_failures(project: dict) -> set:
+        """AUDIO cross-cutting contract (docs/mechanics/040-arcade-sound-cues.md) — violated labels.
+
+        Each of the six real arcade gameplay-SFX cues committed under assets/game-sounds/ must be
+        actually PLAYED (a sound_play, whose only builder is Blocks.play_sound, emits a
+        sound_sounds_menu naming the sound) at its verified play point. The five Stage-thread cues
+        (air_destroy / ground_destroy / zakato-teleport / garu_zakato / sheonite) play from the Stage,
+        whose walk/detector procs own those seams. The Bacura-bounce cue is special: the bounce runs on
+        a blaster CLONE, which cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
+        and the Stage plays BACURA_HIT_SND on a matching receiver — the cue must NOT be played on the
+        cloning blaster target."""
+        failures = set()
+        targets = {t.get("name"): t for t in project["targets"]}
+        stage = next(t for t in project["targets"] if t.get("isStage"))
+
+        def menu_names(target):
+            return {
+                b["fields"]["SOUND_MENU"][0]
+                for b in target.get("blocks", {}).values()
+                if b["opcode"] == "sound_sounds_menu" and "SOUND_MENU" in b.get("fields", {})
+            }
+
+        all_played = set()
+        for t in project["targets"]:
+            all_played |= menu_names(t)
+        for name in ("air_destroy", "ground_destroy", "zakato", "garu_zakato", "sheonite", "bacura"):
+            if name not in all_played:
+                failures.add(f"cue-missing:{name}")
+
+        stage_played = menu_names(stage)
+        for name in ("air_destroy", "ground_destroy", "zakato", "garu_zakato", "sheonite"):
+            if name not in stage_played:
+                failures.add(f"stage-cue-missing:{name}")
+
+        # Bacura routing: on the Stage via a `sfx bacura` receiver; the blaster broadcasts it and
+        # never plays the Stage-owned sound on the clone.
+        if "bacura" not in stage_played:
+            failures.add("bacura-not-on-stage")
+
+        def has_receive(target, message):
+            return any(
+                b["opcode"] == "event_whenbroadcastreceived"
+                and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == message
+                for b in target.get("blocks", {}).values()
+            )
+
+        def has_broadcast(target, message):
+            return any(
+                b["opcode"] in ("event_broadcast", "event_broadcastandwait")
+                and isinstance(b.get("inputs", {}).get("BROADCAST_INPUT"), list)
+                and b["inputs"]["BROADCAST_INPUT"][1][1] == message
+                for b in target.get("blocks", {}).values()
+            )
+
+        if not has_receive(stage, "sfx bacura"):
+            failures.add("bacura-no-stage-receiver")
+        blaster = targets.get("blaster")
+        if blaster is None or not has_broadcast(blaster, "sfx bacura"):
+            failures.add("bacura-no-blaster-broadcast")
+        if blaster is not None and "bacura" in menu_names(blaster):
+            failures.add("bacura-played-on-clone")
+        return failures
+
+    def test_audio_cues_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._audio_failures(project))
+
+    def test_audio_cues_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._audio_failures(base))
+
+        def drop_menu(name):
+            # Rename every sound_sounds_menu naming `name` on the Stage (turns off that cue's play).
+            def _mut(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t.get("isStage"))
+                for b in stage["blocks"].values():
+                    if (
+                        b["opcode"] == "sound_sounds_menu"
+                        and b.get("fields", {}).get("SOUND_MENU", [None])[0] == name
+                    ):
+                        b["fields"]["SOUND_MENU"][0] = "wrong"
+            return _mut
+
+        def drop_bacura_receiver(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t.get("isStage"))
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "event_whenbroadcastreceived"
+                    and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == "sfx bacura"
+                ):
+                    b["fields"]["BROADCAST_OPTION"][0] = "wrong"
+
+        cases = [
+            ("stage-cue-missing:air_destroy", drop_menu("air_destroy")),
+            ("stage-cue-missing:ground_destroy", drop_menu("ground_destroy")),
+            ("stage-cue-missing:zakato", drop_menu("zakato")),
+            ("stage-cue-missing:garu_zakato", drop_menu("garu_zakato")),
+            ("stage-cue-missing:sheonite", drop_menu("sheonite")),
+            ("bacura-not-on-stage", drop_menu("bacura")),
+            ("bacura-no-stage-receiver", drop_bacura_receiver),
+        ]
+        for label, mutate in cases:
+            project = load_source(scratch.SOURCE_DIR)
+            mutate(project)
+            self.assertIn(label, self._audio_failures(project), label)
+
+    @staticmethod
     def _wpn01_failures(project: dict) -> set:
         """WPN-01 player.bacura-bounce contract — violated labels. A player shot that overlaps a Bacura is
         REFLECTED, not consumed: the slab is indestructible and worthless, so the only consequence is the
@@ -12196,7 +12308,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "03f7fcd290b58bc0ae496cd1a18d17b82ab5444090dc3eedf66f167b7e0f9996",
+            "f1790d235c4730422a6993c1942bd36d981e662c4247e779605be224efd703b9",
             build_hash,
         )
 

@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "note": "Arcade Xevious sound effects, supplied by the repository operator from local staging and committed here byte-for-byte. Each is attached unmodified as a Stage sound by tools/hud_glyphs.py under its content-hash filename in src/xevious/assets/, and played at the arcade play point cited below. Provenance is recorded honestly: the operator did not create these; they carry the same rights status as the other ripped Xevious assets in this repository (Namco copyrighted material; no reusable license). No per-file upstream URL is asserted because the exact source page was not recorded; the family matches the Sounds Spriters Resource Xevious audio (asset 449687).",
+  "rights": "No reusable license specified by source; third-party copyrighted material (Namco). Recording provenance is not a claim that credit grants permission, and no ownership of the Xevious audio is claimed.",
+  "sounds": [
+    {
+      "name": "air_destroy",
+      "file": "air_destroy.wav",
+      "arcade_sound": "FLYING_ENEMY_HIT_SND",
+      "arcade_id": "0x05",
+      "play_point": "check_shot_hit_flying_enemy, xevious_main.68k:2537 — a shot destroys a flying enemy",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "148f712ea61692a6feb45b20e25ca20a5416c5328a83e1e58245a1621c3765e9"
+    },
+    {
+      "name": "ground_destroy",
+      "file": "ground_destroy.wav",
+      "arcade_sound": "GROUND_EXPLOSION_SND",
+      "arcade_id": "0x11",
+      "play_point": "check_shot_hit / ground kill, xevious_main.68k:2615 — a ground target is destroyed",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "e2058ecc5e0ba28f7893b1c4fb8128853e1308e6820b3b0f75ba98ce4d53924a"
+    },
+    {
+      "name": "zakato",
+      "file": "zakato.wav",
+      "arcade_sound": "TELEPORT_SND",
+      "arcade_id": "0x09",
+      "play_point": "init_teleport, xevious_main.68k:4004 — a Zakato / Brag Zakato teleports in",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "e3fc46a9810c18dfc8a7162b5495d88a77bbdc50ce195d418e45d598f60d2035"
+    },
+    {
+      "name": "garu_zakato",
+      "file": "garu_zakato.wav",
+      "arcade_sound": "GARU_ZAKATO_SND",
+      "arcade_id": "0x06",
+      "play_point": "garu_zakato_explode, xevious_main.68k:4033 — a Garu Zakato detonates",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "782ba3a40112a60c55999d1dacfcd4ec014b964208c9d66bf9c7b7830e6b8a35"
+    },
+    {
+      "name": "bacura",
+      "file": "bacura.wav",
+      "arcade_sound": "BACURA_HIT_SND",
+      "arcade_id": "0x0a",
+      "play_point": "deactivate_shot, xevious_main.68k:2559 — a shot bounces off a Bacura slab",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "87ec0bcf2b770f94de03c7dc90e375bf20318d3abab9f868df842777627badcd"
+    },
+    {
+      "name": "sheonite",
+      "file": "sheonite.wav",
+      "arcade_sound": "SHEONITE_SND",
+      "arcade_id": "0x08",
+      "play_point": "r_sheonite_retreat, xevious_main.68k:4128 — the right Sheonite peels off and retreats",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "e78543787183a8d7b34740255b7a02c08b319a954e9240acab6273c50a6f7bd4"
+    }
+  ]
+}

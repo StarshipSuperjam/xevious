@@ -66,8 +66,10 @@
   (`SHEONITE_PHASE_HOME`/`LOCK`/`COMBINE`/`RETREAT` = 0/1/2/3): HOME homes toward
   `(player row − SHEONITE_LOCK_LEAD, player col ∓ SHEONITE_LOCK_FLANK)`; LOCK recomputes that offset from the
   live craft each tick and waits; COMBINE docks for `SHEONITE_COMBINE_DWELL_FRAMES` (32) gated on the end-flag;
-  and at dwell-end the **right** half writes `slot dx = SHEONITE_RETREAT_DX` (−96) and moves to RETREAT while
-  the **left** half culls (its `slot type`/`slot state` cleared) — the retreat-versus-vanish asymmetry. Two
+  and at dwell-end the **right** half writes `slot dx = SHEONITE_RETREAT_DX` (−96), plays the real
+  `SHEONITE_SND` cue (the committed `sheonite` Stage sound; see [record 040](040-arcade-sound-cues.md)) and
+  moves to RETREAT while the **left** half culls (its `slot type`/`slot state` cleared) — the
+  retreat-versus-vanish asymmetry, and the sound-on-retreat-only asymmetry, both preserved. Two
   facts make the pair distinct from every other flyer, and both are **structural**:
   - **Indestructible by omission.** `update sheonite` deliberately **omits** the `check air shot hit` call that
     every killable flyer makes, stamps **no** `slot pts`, runs **no** explosion and never writes `SLOT_HIT`,
@@ -81,7 +83,7 @@
     `check_bacura_hit_solvalou`; a Sheonite at `_STATE == 3` is skipped by every test, so cloning that death
     onto it would have been a fidelity bug.)
 
-  `install_init_sheonite` stamps each half `slot state = SLOT_ACTIVE` (1 — the port image of the arcade's active
+  `_stamp_sheonite` stamps each half `slot state = SLOT_ACTIVE` (1 — the port image of the arcade's active
   registration; the indestructible `_STATE == 3` is expressed as the *absence* of every hit path, not a port
   state value) at `slot flag = SHEONITE_PHASE_HOME`, and clears `sheonite end flag`. The schedule wires
   `sheonite_start` (op `0x33`) and `sheonite_end` (op `0x34`) into `_consume_schedule` beside the ground and
@@ -91,7 +93,7 @@
   pair clearing (the pair pre-arms the end-flag so it self-culls). `sheonite_blocks` renders the pair over the
   two flying slots under the same two-type OR, cycling the ten frames (`sheonite/spin/01`…`04` while homing and
   locked, `sheonite/combine/01`…`06` while docking and retreating).
-- Scratch evidence: `install_init_sheonite` and `install_update_sheonite` (the lifecycle + phase machine), the
+- Scratch evidence: `_stamp_sheonite` and `install_update_sheonite` (the lifecycle + phase machine), the
   **two-type OR** Sheonite branch in `install_advance_slots` (dispatched by `walk type == RIGHT_SHEONITE_TYPE`
   OR `== LEFT_SHEONITE_TYPE`, calling `UPDATE_SHEONITE_PROCCODE` and **never** `CHECK_AIR_HIT`), the
   `sheonite_start` / `sheonite_end` schedule branches in `_consume_schedule`, the `sheonite end flag` /
