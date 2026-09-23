@@ -7963,6 +7963,380 @@ class ScratchProjectTests(unittest.TestCase):
 
         return failures
 
+    @staticmethod
+    def _gnd02_failures(project: dict) -> set:
+        """GND-02 ground.zolbak (#85) authoring contract — violated labels. The Zolbak (handle_1F_Zolbak)
+        IS the Barra crater model: it never fires, scrolls with the terrain while ACTIVE, and once bombed
+        craters PERSISTENTLY (the SAME handle_bomb_explosion, never freed on its own clock). Its ONE extra
+        behaviour is on the FIRST HIT tick only — uniquely marked by `slot timer == 0`, since the detector
+        zeroed the crater clock at the hit and `update zolbak` only climbs it afterwards — it reduces the
+        adaptive enemy AI level by EXACTLY 2 (reduce_enemy_ai_by_2 $1B1F: `subq #2; jcc; moveq #0`),
+        clamped to 0 on the unsigned underflow, reading and writing the SAME `ai level` the difficulty
+        director grows. The reduction runs ONCE per kill, never again on the later crater ticks."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def rref(inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def var_id(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 3
+                and inp[1][0] == 12
+            ):
+                return inp[1][2]
+            return None
+
+        def calls(body, proccode):
+            return any(
+                b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+                for b in body
+            )
+
+        def advances_clock(body):
+            return any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                and (item := rref(b["inputs"].get("ITEM"))) is not None
+                and item["opcode"] == "operator_add"
+                and (base := rref(item["inputs"].get("NUM1"))) is not None
+                and base["opcode"] == "data_itemoflist"
+                and base["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                for b in body
+            )
+
+        def enclosing_cond(bid, pred):
+            # Walk the block's parent chain (which threads back through the enclosing if/if-else) and test
+            # each control condition — used to prove a statement sits inside a specific guard.
+            cur = blocks.get(bid)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = parent["inputs"].get("CONDITION")
+                    cb = (
+                        blocks.get(cond[1])
+                        if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                        else None
+                    )
+                    if pred(cb):
+                        return True
+                cur = parent
+            return False
+
+        def is_timer_zero(cb):
+            return (
+                cb is not None
+                and cb["opcode"] == "operator_equals"
+                and (lhs := rref(cb["inputs"].get("OPERAND1"))) is not None
+                and lhs["opcode"] == "data_itemoflist"
+                and lhs["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                and _num_operand(cb["inputs"].get("OPERAND2")) == 0
+            )
+
+        def is_ai_below_zero(cb):
+            return (
+                cb is not None
+                and cb["opcode"] == "operator_lt"
+                and var_id(cb["inputs"].get("OPERAND1")) == director.AI_LEVEL_ID
+                and _num_operand(cb["inputs"].get("OPERAND2")) == 0
+            )
+
+        body = _proc_body_blocks(stage, director.UPDATE_ZOLBAK_PROCCODE)
+        spawn_body = _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE)
+
+        # (1) `update zolbak` exists and is warp (atomic).
+        p = proto(director.UPDATE_ZOLBAK_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("zolbak-warp")
+
+        # (2) THE ZOLBAK NEVER FIRES — no bullet allocation and no fire gate (the passive dome).
+        if calls(body, director.ALLOC_BULLET_PROCCODE) or calls(body, director.FIRE_GATE_PROCCODE):
+            failures.add("zolbak-never-fires")
+
+        # (3) CRATERS PERSISTENTLY like the Barra: advances the crater clock (`slot timer + step`) and
+        # scrolls via `advance ground`, and (4) is NEVER freed on its own clock (no `cull slot` inside
+        # `update zolbak` — the only removal path is `advance ground`'s off-field cull).
+        if not (advances_clock(body) and calls(body, director.ADVANCE_GROUND_PROCCODE)):
+            failures.add("zolbak-craters-and-scrolls")
+        if calls(body, director.CULL_SLOT_PROCCODE):
+            failures.add("zolbak-crater-persists")
+
+        # (5) REDUCES THE AI LEVEL BY EXACTLY 2, ONCE PER KILL: a `change ai level by -2` that sits inside a
+        # `slot timer == 0` guard (the first-HIT-tick marker), reading/writing the difficulty director's
+        # `ai level`. The guard is what makes the drop fire once per kill, not on every crater tick.
+        reduces = any(
+            b["opcode"] == "data_changevariableby"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+            and _num_operand(b["inputs"].get("VALUE")) == -director.AI_LEVEL_ZOLBAK_DROP
+            and enclosing_cond(id_of[id(b)], is_timer_zero)
+            for b in body
+        )
+        if not reduces:
+            failures.add("zolbak-reduces-ai")
+
+        # (6) FLOORED AT ZERO: a `set ai level = 0` clamp gated by `ai level < 0` (the arcade `jcc; moveq #0`
+        # underflow clamp). Without it, a kill at level 1 would leave the AI level negative.
+        floored = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+            and _num_operand(b["inputs"].get("VALUE")) == 0
+            and enclosing_cond(id_of[id(b)], is_ai_below_zero)
+            for b in body
+        )
+        if not floored:
+            failures.add("zolbak-ai-floored")
+
+        # (7) AWARDS 200 (spawn fact): the spawn stamps `slot pts` = ZOLBAK_PTS.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and _num_operand(b["inputs"].get("ITEM")) == director.ZOLBAK_PTS
+            for b in spawn_body
+        ):
+            failures.add("zolbak-awards-200")
+
+        return failures
+
+    @staticmethod
+    def _gnd04_failures(project: dict) -> set:
+        """GND-04 ground.derota (#86) authoring contract — the firing turret and the firing pair. The Derota
+        (handle_1B_Derota) is a plain periodic aimed turret: NO open/close dome (unlike the Logram), it
+        drives the SHARED fire-permission gate (chk_timer_fire_bullet_reinit_timer) one aimed bullet per
+        masked reload, but ONLY while still high enough on the field — armed by `cur_row <= gnd_stop_firing_row`
+        — and once bombed craters PERSISTENTLY like the Barra. The Garu Derota (handle_21_Garu_Derota) is the
+        Garu Barra's two-slot shape (indestructible SLOT_GARU_BASE base + destructible node) with ONE
+        difference: the node FIRES the shared gate UNCONDITIONALLY of the row (garu_derota_handler omits the
+        stop-firing-row gate), scores 2000, and on death explode-and-removes (vanishes at GARU_REMOVE_FRAMES,
+        no crater); the base never scores."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def rref(inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def var_id(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 3
+                and inp[1][0] == 12
+            ):
+                return inp[1][2]
+            return None
+
+        def num(inp):
+            return _num_operand(inp)
+
+        def calls(body, proccode):
+            return any(
+                b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+                for b in body
+            )
+
+        def advances_clock(body):
+            return any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                and (item := rref(b["inputs"].get("ITEM"))) is not None
+                and item["opcode"] == "operator_add"
+                and (base := rref(item["inputs"].get("NUM1"))) is not None
+                and base["opcode"] == "data_itemoflist"
+                and base["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                for b in body
+            )
+
+        def fire_ids(body):
+            return [
+                id_of[id(b)]
+                for b in body
+                if b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+            ]
+
+        def subtree_has(cid, pred):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if pred(b):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def enclosing_cond_id(bid, pred):
+            cur = blocks.get(bid)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = parent["inputs"].get("CONDITION")
+                    cid = (
+                        cond[1]
+                        if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                        else None
+                    )
+                    if cid and pred(cid):
+                        return True
+                cur = parent
+            return False
+
+        def is_stoprow_gt(b):
+            return (
+                b["opcode"] == "operator_gt"
+                and var_id(b["inputs"].get("OPERAND2")) == director.GROUND_STOP_FIRING_ROW_ID
+            )
+
+        def is_state_active(cid):
+            c = blocks.get(cid)
+            return (
+                c is not None
+                and c["opcode"] == "operator_equals"
+                and (lhs := rref(c["inputs"].get("OPERAND1"))) is not None
+                and lhs["opcode"] == "data_itemoflist"
+                and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                and num(c["inputs"].get("OPERAND2")) == director.SLOT_ACTIVE
+            )
+
+        def preceding_type_gate(bid, typ):
+            # A spawn stamp is Garu-Derota-specific when its enclosing `ground type == GARU_DEROTA_TYPE`
+            # gate is on the parent chain (the Garu Barra base carries only GARU_BARRA_TYPE, never 0x21).
+            cur = blocks.get(bid)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = parent["inputs"].get("CONDITION")
+                    cb = (
+                        blocks.get(cond[1])
+                        if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                        else None
+                    )
+                    if cb is not None and cb["opcode"] == "operator_equals" and num(cb["inputs"].get("OPERAND2")) == typ:
+                        return True
+                cur = parent
+            return False
+
+        derota_body = _proc_body_blocks(stage, director.UPDATE_DEROTA_PROCCODE)
+        garu_body = _proc_body_blocks(stage, director.UPDATE_GARU_DEROTA_PROCCODE)
+        spawn_body = _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE)
+
+        # ---- Derota (single-slot firing turret) ----
+        # (1) `update derota` exists and is warp (atomic).
+        p = proto(director.UPDATE_DEROTA_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("derota-warp")
+
+        # (2) FIRES THROUGH THE SHARED GATE (the periodic masked turret, unlike the Logram's direct one-shot).
+        d_fire = fire_ids(derota_body)
+        if not d_fire:
+            failures.add("derota-fires-via-gate")
+
+        # (3) FIRE IS ARM-GATED ON THE STOP-FIRING ROW: every fire-gate call sits inside a guard whose
+        # condition references `ground stop firing row` (armed = NOT cur_row > row). Below the row the Derota
+        # is silent — the gate never even runs, so its countdown is untouched.
+        if not (
+            d_fire and all(enclosing_cond_id(f, lambda cid: subtree_has(cid, is_stoprow_gt)) for f in d_fire)
+        ):
+            failures.add("derota-fire-arm-gated")
+
+        # (4) CRATERS PERSISTENTLY on HIT: advances the crater clock and scrolls, and (5) is never freed on
+        # its own clock (no `cull slot` inside `update derota`).
+        if not (advances_clock(derota_body) and calls(derota_body, director.ADVANCE_GROUND_PROCCODE)):
+            failures.add("derota-hit-craters")
+        if calls(derota_body, director.CULL_SLOT_PROCCODE):
+            failures.add("derota-crater-persists")
+
+        # (6) AWARDS 1000 (spawn fact): the spawn stamps `slot pts` = DEROTA_PTS.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and num(b["inputs"].get("ITEM")) == director.DEROTA_PTS
+            for b in spawn_body
+        ):
+            failures.add("derota-awards-1000")
+
+        # ---- Garu Derota (indestructible base + firing node) ----
+        # (7) `update garu derota` exists and is warp (atomic).
+        pg = proto(director.UPDATE_GARU_DEROTA_PROCCODE)
+        if pg is None or pg["mutation"].get("warp") != "true":
+            failures.add("garu-derota-warp")
+
+        # (8) THE NODE FIRES UNCONDITIONALLY OF THE ROW: a fire-gate call gated only on `slot state == ACTIVE`
+        # (so the base never fires), and — the one difference from the single Derota — NO stop-firing-row gate
+        # anywhere in the wrapper, so the node fires even below a row that would silence a Derota.
+        g_fire = fire_ids(garu_body)
+        node_fires = bool(g_fire) and all(enclosing_cond_id(f, is_state_active) for f in g_fire)
+        no_row_gate = not any(is_stoprow_gt(b) for b in garu_body)
+        if not (node_fires and no_row_gate):
+            failures.add("garu-derota-node-fires")
+
+        # (9) THE NODE EXPLODES-AND-REMOVES (like the Garu Barra node): advances the burst clock and CULLS at
+        # GARU_REMOVE_FRAMES — it vanishes, no persistent crater.
+        g_bounded_cull = calls(garu_body, director.CULL_SLOT_PROCCODE) and any(
+            b["opcode"] == "operator_lt" and num(b["inputs"].get("OPERAND2")) == director.GARU_REMOVE_FRAMES
+            for b in garu_body
+        )
+        if not (advances_clock(garu_body) and g_bounded_cull):
+            failures.add("garu-derota-node-removes")
+
+        # (10) THE BASE IS INDESTRUCTIBLE (spawn fact): under the GARU_DEROTA_TYPE gate the base slot is
+        # stamped the SLOT_GARU_BASE sentinel (not ACTIVE), so the detector's ==ACTIVE gate never scores it.
+        base_ok = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and num(b["inputs"].get("ITEM")) == director.SLOT_GARU_BASE
+            and preceding_type_gate(id_of[id(b)], director.GARU_DEROTA_TYPE)
+            for b in spawn_body
+        )
+        if not base_ok:
+            failures.add("garu-derota-base-indestructible")
+
+        # (11) THE NODE AWARDS 2000 (spawn fact): the node slot is stamped `slot pts` = GARU_DEROTA_PTS.
+        if not any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and num(b["inputs"].get("ITEM")) == director.GARU_DEROTA_PTS
+            for b in spawn_body
+        ):
+            failures.add("garu-derota-node-awards-2000")
+
+        return failures
+
     # Roadmap closure evidence for leaf `area.ground-dispatch` (AREA-02): the terrain-locked ground
     # substrate — `advance ground` scrolls every ground object DOWN the field by the fixed terrain step and
     # culls it off the bottom; the ordered walk routes each built ground type to its wrapper; and
@@ -8444,6 +8818,326 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._gnd03_failures(project), label)
+
+    # Roadmap closure evidence for leaf `ground.barra-variants` (GND-01.variants, #84): the Barra family's
+    # only variant object codes at the pin are base Barra 0x1E and Garu Barra 0x20 (src/xevious_main.68k
+    # 2644-2852 — there is no other Barra-family code), and the Garu Barra was already built and delivered in
+    # slice 9 (PR #128, record GND-01). This leaf is closed as ALREADY-DELIVERED: the variant contract is the
+    # two-slot Garu Barra authoring the `_gnd01_failures` guard already pins (indestructible SLOT_GARU_BASE
+    # base + destructible node that explode-and-removes). The live proof is the slice-9 harness
+    # `garu-node-scores-and-vanishes` / `garu-base-is-indestructible`. No new gameplay code is added for #84.
+    # roadmap-evidence: GND-01 success  (test_barra_variants_closure_present — the delivered Garu Barra variant authoring is intact: node explode-and-removes, base indestructible sentinel)
+    # roadmap-evidence: GND-01 failure  (test_barra_variants_closure_negative — corrupting the Garu variant authoring bites)
+    def test_barra_variants_closure_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        # GND-01.variants closes against the already-built Garu Barra: the variant clauses of the GND-01
+        # guard hold on the delivered project.
+        failures = self._gnd01_failures(project)
+        self.assertNotIn("garu-node-explodes-and-removes", failures)
+        self.assertNotIn("garu-base-indestructible", failures)
+
+    def test_barra_variants_closure_negative(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd01_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def garu_never_removes(p):
+            for b in _proc_body_blocks(_stage(p), director.UPDATE_GARU_PROCCODE):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def garu_base_active(p):
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and isinstance(b["inputs"].get("ITEM"), list)
+                    and isinstance(b["inputs"]["ITEM"][1], list)
+                    and str(b["inputs"]["ITEM"][1][1]) == str(director.SLOT_GARU_BASE)
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.SLOT_ACTIVE)]]
+
+        cases = [
+            ("garu-node-explodes-and-removes", garu_never_removes),
+            ("garu-base-indestructible", garu_base_active),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._gnd01_failures(project), label)
+
+    # Roadmap closure evidence for leaf `ground.zolbak` (GND-02, #85): the Zolbak is the Barra crater model
+    # with one extra behaviour — it never fires, scores 200 through the shared ground detector, craters
+    # persistently on a bomb, and on the first HIT tick reduces the adaptive enemy AI level by 2, floored at
+    # 0. The live proof (bomb craters + scores 200 + drops the AI level once, floored at 0) is the harness
+    # `zolbak-craters-and-reduces-ai` / `zolbak-ai-reduction-floors-at-zero`.
+    # roadmap-evidence: GND-02 success  (test_zolbak_slice_authoring_present — update zolbak warp, never fires, craters persistently + scrolls, reduces the AI level by 2 once per kill, floored at 0, awards 200)
+    # roadmap-evidence: GND-02 failure  (test_zolbak_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_zolbak_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd02_failures(project))
+
+    def test_zolbak_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd02_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def body(p):
+            return _proc_body_blocks(_stage(p), director.UPDATE_ZOLBAK_PROCCODE)
+
+        def unwarp(p):
+            for b in _stage(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_ZOLBAK_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def make_zolbak_fire(p):
+            # Turn one `advance ground` call in `update zolbak` into a bullet allocation -> the Zolbak now
+            # fires: the never-fires clause bites (the other advance-ground keeps it scrolling).
+            for b in body(p):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.ALLOC_BULLET_PROCCODE
+                    return
+
+        def freeze_clock(p):
+            for b in body(p):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+        def culls_on_clock(p):
+            for b in body(p):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+                    return
+
+        def weaken_drop(p):
+            # Change the `-2` AI-level drop to 0 -> the reduction no longer eases pressure: the reduces-ai
+            # clause bites (mirrors the harness freezeVariableChange negative).
+            for b in body(p):
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, "0"]]
+
+        def unfloor(p):
+            # Change the `set ai level = 0` clamp to a nonzero literal -> the underflow is no longer floored:
+            # the ai-floored clause bites (mirrors the harness pinVariableSet negative).
+            for b in body(p):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, "9"]]
+
+        def wrong_pts(p):
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and isinstance(b["inputs"].get("ITEM"), list)
+                    and isinstance(b["inputs"]["ITEM"][1], list)
+                    and str(b["inputs"]["ITEM"][1][1]) == str(director.ZOLBAK_PTS)
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.ZOLBAK_PTS + 1)]]
+
+        cases = [
+            ("zolbak-warp", unwarp),
+            ("zolbak-never-fires", make_zolbak_fire),
+            ("zolbak-craters-and-scrolls", freeze_clock),
+            ("zolbak-crater-persists", culls_on_clock),
+            ("zolbak-reduces-ai", weaken_drop),
+            ("zolbak-ai-floored", unfloor),
+            ("zolbak-awards-200", wrong_pts),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._gnd02_failures(project), label)
+
+    # Roadmap closure evidence for leaf `ground.derota` (GND-04, #86): the Derota is a plain periodic aimed
+    # turret (1000 pts) that fires the shared gate only while armed above the stop-firing row and craters when
+    # bombed; the Garu Derota is the Garu Barra's two-slot shape (2000 pts) whose node fires the shared gate
+    # unconditionally of the row and explode-and-removes, while its base is indestructible. The live proof is
+    # the harness `derota-fires-when-armed-silent-past-stop-row` / `derota-craters-when-bombed` /
+    # `garu-derota-base-indestructible` / `garu-derota-node-fires-scores-and-vanishes`.
+    # roadmap-evidence: GND-04 success  (test_derota_slice_authoring_present — derota warp, fires via the shared gate arm-gated on the stop-firing row, craters persistently, awards 1000; garu derota warp, node fires unconditionally under state==ACTIVE, explode-and-removes, base indestructible, node awards 2000)
+    # roadmap-evidence: GND-04 failure  (test_derota_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_derota_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd04_failures(project))
+
+    def test_derota_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd04_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def dbody(p):
+            return _proc_body_blocks(_stage(p), director.UPDATE_DEROTA_PROCCODE)
+
+        def gbody(p):
+            return _proc_body_blocks(_stage(p), director.UPDATE_GARU_DEROTA_PROCCODE)
+
+        def unwarp(proccode):
+            def _do(p):
+                for b in _stage(p)["blocks"].values():
+                    if (
+                        b["opcode"] == "procedures_prototype"
+                        and b.get("mutation", {}).get("proccode") == proccode
+                    ):
+                        b["mutation"]["warp"] = "false"
+
+            return _do
+
+        def neutralize_fire(body_fn):
+            def _do(p):
+                for b in body_fn(p):
+                    if (
+                        b["opcode"] == "procedures_call"
+                        and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE
+                    ):
+                        b["mutation"]["proccode"] = "noop"
+                        return
+
+            return _do
+
+        def break_arming(p):
+            # Replace the arm gate's `ground stop firing row` variable operand with a literal -> the fire is
+            # no longer row-gated, so the arm clause bites (mirrors the Logram break_arming negative).
+            for b in dbody(p):
+                if b["opcode"] != "operator_gt":
+                    continue
+                o2 = b["inputs"].get("OPERAND2")
+                if (
+                    isinstance(o2, list)
+                    and len(o2) >= 2
+                    and isinstance(o2[1], list)
+                    and len(o2[1]) >= 3
+                    and o2[1][0] == 12
+                    and o2[1][2] == director.GROUND_STOP_FIRING_ROW_ID
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        def freeze_clock(body_fn):
+            def _do(p):
+                for b in body_fn(p):
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                    ):
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+            return _do
+
+        def culls_on_clock(p):
+            for b in dbody(p):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+                    return
+
+        def wrong_pts(target_pts):
+            def _do(p):
+                for b in _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE):
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                        and isinstance(b["inputs"].get("ITEM"), list)
+                        and isinstance(b["inputs"]["ITEM"][1], list)
+                        and str(b["inputs"]["ITEM"][1][1]) == str(target_pts)
+                    ):
+                        b["inputs"]["ITEM"] = [1, [4, str(target_pts + 1)]]
+                        return
+
+            return _do
+
+        def garu_never_removes(p):
+            for b in gbody(p):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def garu_base_active(p):
+            # Flip the Garu Derota base sentinel (the SLOT_GARU_BASE stamp under the GARU_DEROTA_TYPE gate) to
+            # ACTIVE -> the indestructible outer would score: the base-indestructible clause bites. The Garu
+            # Barra base (under GARU_BARRA_TYPE) is left untouched, so only the Garu Derota base is affected.
+            blocks = _stage(p)["blocks"]
+
+            def under_derota_gate(bid):
+                cur = blocks.get(bid)
+                while cur is not None:
+                    parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                    if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                        cond = parent["inputs"].get("CONDITION")
+                        cb = (
+                            blocks.get(cond[1])
+                            if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                            else None
+                        )
+                        if (
+                            cb is not None
+                            and cb["opcode"] == "operator_equals"
+                            and _num_operand(cb["inputs"].get("OPERAND2")) == director.GARU_DEROTA_TYPE
+                        ):
+                            return True
+                    cur = parent
+                return False
+
+            id_of = {id(b): bid for bid, b in blocks.items()}
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and isinstance(b["inputs"].get("ITEM"), list)
+                    and isinstance(b["inputs"]["ITEM"][1], list)
+                    and str(b["inputs"]["ITEM"][1][1]) == str(director.SLOT_GARU_BASE)
+                    and under_derota_gate(id_of[id(b)])
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.SLOT_ACTIVE)]]
+                    return
+
+        cases = [
+            ("derota-warp", unwarp(director.UPDATE_DEROTA_PROCCODE)),
+            ("derota-fires-via-gate", neutralize_fire(dbody)),
+            ("derota-fire-arm-gated", break_arming),
+            ("derota-hit-craters", freeze_clock(dbody)),
+            ("derota-crater-persists", culls_on_clock),
+            ("derota-awards-1000", wrong_pts(director.DEROTA_PTS)),
+            ("garu-derota-warp", unwarp(director.UPDATE_GARU_DEROTA_PROCCODE)),
+            ("garu-derota-node-fires", neutralize_fire(gbody)),
+            ("garu-derota-node-removes", garu_never_removes),
+            ("garu-derota-base-indestructible", garu_base_active),
+            ("garu-derota-node-awards-2000", wrong_pts(director.GARU_DEROTA_PTS)),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._gnd04_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
