@@ -235,19 +235,22 @@ class ScratchProjectTests(unittest.TestCase):
         # reuse the zakato body stand-in by ref) + the bacura renderer (AIR-11; its own reserved band, a
         # single static slab costume with no burst) + the sheonite renderer (AIR-09; the inert escort pair
         # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
-        # ground renderers (all reuse proof costumes by ref).
-        self.assertEqual(33, len(project["targets"]))
+        # ground renderers (all reuse proof costumes by ref), and the slice-12 zolbak + derota + garu-derota
+        # ground renderers (GND-02/GND-04; all reuse proof costumes by ref).
+        self.assertEqual(36, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
         # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
         # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 10 Sheonite
-        # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 9
+        # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 13
         # ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base
-        # pulse frames) + the 6 arcade gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy /
-        # zakato-teleport / garu_zakato / bacura / sheonite cues, committed under assets/game-sounds/ and
-        # attached to the Stage by tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(162, len(assets))
+        # pulse frames + the slice-12 additions: 1 Zolbak idle dome (GND-02) + 1 Derota idle turret + 2 Garu
+        # Derota base pulse frames (GND-04)) + the 6 arcade gameplay-SFX wavs (AUDIO: the real air_destroy /
+        # ground_destroy / zakato-teleport / garu_zakato / bacura / sheonite cues, committed under
+        # assets/game-sounds/ and attached to the Stage by tools/hud_glyphs.py; see
+        # docs/mechanics/040-arcade-sound-cues.md).
+        self.assertEqual(166, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1310,6 +1313,22 @@ class ScratchProjectTests(unittest.TestCase):
             # crater clock; an ACTIVE one runs the gated open/close + single-shot cycle; both delegate the
             # terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Logram slot.
             director.UPDATE_LOGRAM_PROCCODE,
+            # GND-02 (slice 12) ground.zolbak: the passive dome's per-tick wrapper — a HIT Zolbak reduces the
+            # adaptive AI level by 2 (floored at 0) exactly once, then runs the Barra crater clock; an ACTIVE
+            # one just delegates the terrain scroll+cull to `advance ground`. It never fires. Warp, dispatched
+            # per OCCUPIED Zolbak slot.
+            director.UPDATE_ZOLBAK_PROCCODE,
+            # GND-04 (slice 12) ground.derota: the firing turret's per-tick wrapper — a HIT Derota runs the
+            # Barra crater clock; an ACTIVE one, only once scrolled past the ground stop-firing row, fires one
+            # aimed bullet per masked reload through the shared `fire permission gate`; both delegate the
+            # terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Derota slot.
+            director.UPDATE_DEROTA_PROCCODE,
+            # GND-04 (slice 12) ground.derota: the Garu Derota's per-tick wrapper — like the Garu Barra it has
+            # an indestructible base and a destructible node, but the node FIRES: an ACTIVE node fires one aimed
+            # bullet per masked reload through the shared `fire permission gate` (unconditionally, no stop-firing
+            # row), a HIT node runs the explode-and-remove clock then removes the slot, and base/active delegate
+            # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu Derota slot.
+            director.UPDATE_GARU_DEROTA_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -12308,7 +12327,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f1790d235c4730422a6993c1942bd36d981e662c4247e779605be224efd703b9",
+            "1811c2b830a7a68b2ea6547de6ca8fd9c59a87057474ff08a3d684844e4d9403",
             build_hash,
         )
 

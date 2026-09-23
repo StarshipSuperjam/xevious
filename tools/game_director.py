@@ -573,6 +573,11 @@ GROUND_STOP_FIRING_ROW_ID = "ground-stop-firing-row"
 # never drift if a family's id is renamed.
 FIRE_MASK_LOGRAM_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "logram")
 FIRE_MASK_LOGRAM_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "logram")
+# The Derota fire-mask display name + id, captured into a spawned Derota / Garu Derota node's
+# `slot fire mask` at dispatch (GND-04) and consumed by the shared fire-permission gate. Derived from
+# FIRE_MASK_FAMILIES so the two never drift if a family's id is renamed.
+FIRE_MASK_DEROTA_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "derota")
+FIRE_MASK_DEROTA_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "derota")
 
 # Project-defined cabinet difficulty DIP index (four-marker placeholder; the spec records
 # no arcade power-on default, like RNG_COLD_START_SEED). Index 0 selects increment +2 —
@@ -741,6 +746,26 @@ UPDATE_GARU_PROCCODE = "update garu"
 # ACTIVE behaviour is a two-phase fire timer (a wait countdown, then an open/close count-up with a single
 # shot at the midpoint); both states share the terrain scroll + off-field cull of `advance ground`.
 UPDATE_LOGRAM_PROCCODE = "update logram"
+# GND-02 (ground.zolbak #85): the per-tick update for a Zolbak — a passive dome that NEVER fires. It is
+# the Barra crater model (terrain scroll while ACTIVE; a persistent crater once bombed) plus ONE extra
+# behaviour on the first HIT tick: reduce the enemy AI level by 2, floored at 0 (handle_1F_Zolbak ->
+# reduce_enemy_ai_by_2). Guarded on `slot timer == 0` so it fires exactly once per kill, never every
+# crater tick.
+UPDATE_ZOLBAK_PROCCODE = "update zolbak"
+# GND-04 (ground.derota #86): the per-tick update for a Derota — a plain periodic aimed turret (NO
+# open/close dome cycle, unlike the Logram). While ACTIVE and still high enough on the field (arm gate
+# `cur_row <= ground stop firing row`, arcade `gnd_stop_firing_row` compare) it drives the SHARED
+# fire-permission gate (chk_timer_fire_bullet_reinit_timer): one aimed bullet per masked-random reload.
+# Once bombed (HIT) it craters PERSISTENTLY exactly like the Barra (handle_bomb_explosion). Both states
+# scroll + cull via `advance ground`.
+UPDATE_DEROTA_PROCCODE = "update derota"
+# GND-04 (ground.derota #86): the per-tick update for a Garu Derota part — a two-slot object (like the
+# Garu Barra) but with a FIRING node. The indestructible 2x2 base (state SLOT_GARU_BASE) only ever
+# scrolls; the destructible node (state ACTIVE) drives the shared fire-permission gate EVERY active tick
+# (garu_derota_handler calls chk_timer_fire_bullet_reinit_timer with NO stop-firing-row gate, unlike the
+# single Derota) and, once bombed (HIT), plays the SHORTER explode-and-remove burst and VANISHES (no
+# crater), exactly like the Garu Barra node.
+UPDATE_GARU_DEROTA_PROCCODE = "update garu derota"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -1174,12 +1199,33 @@ TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during t
 # codes present in the schedules (Zolbak 0x1F, Derota 0x2C/0x2D, ...) stay on the empty seam for their
 # own slices, so an add_ground_object record for an unbuilt type advances the cursor without spawning.
 BARRA_TYPE = 30  # 0x1E, handle_1E_Barra: passive terrain target, never fires, crater on death
+ZOLBAK_TYPE = 31  # 0x1F, handle_1F_Zolbak: passive dome; on death reduces the enemy AI level by 2 (GND-02)
 GARU_BARRA_TYPE = 32  # 0x20, handle_20_Garu_Barra: indestructible base + destructible node (Commit 6)
 LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at full-open (Commit 7)
-GROUND_HANDLED_TYPES = (BARRA_TYPE, GARU_BARRA_TYPE, LOGRAM_TYPE)  # spawned by this PR
+DEROTA_TYPE = 27  # 0x1B, handle_1B_Derota: periodic aimed turret, craters on death, 1000 pts (GND-04)
+GARU_DEROTA_TYPE = 33  # 0x21, handle_21_Garu_Derota: indestructible base + firing destructible node (GND-04)
+# Every ground type this project SPAWNS from an add_ground_object schedule record. Barra/Garu Barra/Logram
+# shipped in slice 9; slice 12 adds Zolbak, Derota, and Garu Derota.
+GROUND_HANDLED_TYPES = (
+    BARRA_TYPE,
+    ZOLBAK_TYPE,
+    GARU_BARRA_TYPE,
+    LOGRAM_TYPE,
+    DEROTA_TYPE,
+    GARU_DEROTA_TYPE,
+)
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
+ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
 LOGRAM_PTS = 10  # 1-based value-table position of 300 points (handle_logram_init _PTS=27)
 GARU_BARRA_PTS = 10  # 1-based value-table position of 300 points (handle_20_Garu_Barra node _PTS=27)
+DEROTA_PTS = 17  # 1-based value-table position of 1,000 points (handle_1B_Derota init _PTS=48)
+GARU_DEROTA_PTS = 19  # 1-based value-table position of 2,000 points (handle_21_Garu_Derota node _PTS=54)
+# GND-02 (ground.zolbak #85): a bombed Zolbak reduces the adaptive enemy AI level by 2, floored at 0
+# (handle_1F_Zolbak -> reduce_enemy_ai_by_2 $1B1F: `subq #2,d0; jcc; moveq #0`). This eases subsequent
+# formation pressure — the whole point of the family. It is the ONE post-hit global side-effect any ground
+# family has; `update zolbak` runs it exactly once per kill (guarded on the first HIT tick, `slot timer`
+# still 0 from the detector) so a persistent crater does not re-trigger it every tick.
+AI_LEVEL_ZOLBAK_DROP = 2
 
 # GND crater/explosion (handle_bomb_explosion $3186 / bomb_explosion_finished $31D7): a bombed passive
 # ground object (Barra) plays the shared bomb-explosion animation, then becomes a PERSISTENT scrolling
@@ -1604,6 +1650,16 @@ BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
 BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
 BARRA_CRATER_BASE_ORDINAL = BARRA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
 
+# GND-02 (ground.zolbak #85) renderer constants. A Zolbak renders EXACTLY like a Barra — an idle dome
+# that craters on a bomb hit — so its costume layout mirrors the Barra target: 1 = the idle dome
+# (zolbak/idle/01), 2.. = the shared solv_death explosion burst, then the two crater frames last. The
+# AI-level side-effect lives in `update zolbak`, not here; the renderer is a pure function of slot state.
+ZOLBAK_TARGET = "zolbak"
+ZOLBAK_CLONE_SLOT_ID = "zolbak-clone-slot"  # sprite-local: which ground slot this clone renders
+ZOLBAK_IDLE_ORDINAL = 1  # costume 1: the Zolbak idle dome (zolbak/idle/01)
+ZOLBAK_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
+ZOLBAK_CRATER_BASE_ORDINAL = ZOLBAK_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
+
 # GND (ground.barra #70) Garu Barra renderer constants. The Garu is TWO objects in adjacent ground slots
 # sharing one type (GARU_BARRA_TYPE): a 2x2 indestructible base (state SLOT_GARU_BASE) and a 1x1
 # destructible node (state ACTIVE/HIT). One `garu` target's clone pool covers the ground band; each clone
@@ -1636,6 +1692,36 @@ LOGRAM_OPEN_FRAME_COUNT = 4  # logram/open/01..04 (the dome open/close cycle, ar
 LOGRAM_CLOSED_ORDINAL = 1  # costume 1: the closed dome (0x2C), the spawn + wait-phase frame
 LOGRAM_EXPLODE_BASE_ORDINAL = LOGRAM_OPEN_FRAME_COUNT + 1  # 5: shared explosion burst follows the dome frames
 LOGRAM_CRATER_BASE_ORDINAL = LOGRAM_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 13: crater frames last
+
+# GND-04 (ground.derota #86) Derota renderer constants. A Derota renders like a Barra — one idle turret
+# frame that craters on a bomb hit (handle_1B_Derota craters via handle_bomb_explosion, NOT the Garu
+# node's explode-and-remove) — so its costume layout mirrors the Barra target: 1 = the idle turret
+# (derota/idle/01), 2.. = the shared solv_death burst, then the two crater frames. The firing is in
+# `update derota`; the renderer is a pure function of slot state.
+DEROTA_TARGET = "derota"
+DEROTA_CLONE_SLOT_ID = "derota-clone-slot"  # sprite-local: which ground slot this clone renders
+DEROTA_IDLE_ORDINAL = 1  # costume 1: the Derota idle turret (derota/idle/01)
+DEROTA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
+DEROTA_CRATER_BASE_ORDINAL = DEROTA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
+
+# GND-04 (ground.derota #86) Garu Derota renderer constants. Like the Garu Barra it is TWO slots sharing
+# one type (GARU_DEROTA_TYPE): a 2x2 indestructible base (state SLOT_GARU_BASE) and a 1x1 FIRING
+# destructible node (state ACTIVE/HIT). Costume layout mirrors the Garu Barra:
+#   1..2  garu-derota/base pulse frames (the two 32x32 sheet frames — closed centre / open firing centre —
+#         alternated on the global `tick`, standing in for the arcade's pulsing_colour_1 base);
+#   3     the node turret (garu-derota/node reuses the single Derota turret, derota/idle);
+#   4..11 the shared solv_death burst the node's explode-and-remove plays before it vanishes.
+# The base is a 32-px canvas vs the node's 16-px, so the SAME GROUND_RENDER_SIZE yields the arcade's 2x2
+# base over the 1x1 node with no extra scaling. PORT NOTE (recorded in mechanics 041): the sheet has no
+# separate small Garu-Derota node bitmap, so the node reuses the Derota turret — faithful, since the arcade
+# node carries the same code 0x27 as the single Derota and fires the same masked aimed bullet.
+GARU_DEROTA_TARGET = "garu derota"
+GARU_DEROTA_CLONE_SLOT_ID = "garu-derota-clone-slot"  # sprite-local: which ground slot this clone renders
+GARU_DEROTA_BASE_IDLE_ORDINAL = 1  # costumes 1..2: the 2x2 base pulse frames (garu-derota/base/01..02)
+GARU_DEROTA_BASE_PULSE_FRAMES = 2  # the base alternates its two pulse frames
+GARU_DEROTA_BASE_PULSE_TICKS = 4  # ticks per pulse frame (8 arcade frames, the global-animation phase)
+GARU_DEROTA_NODE_IDLE_ORDINAL = 3  # costume 3: the node turret (garu-derota/node, mirrored from derota/idle)
+GARU_DEROTA_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared burst the node plays before removal
 
 
 def _schedule_arg(record: dict) -> int:
@@ -2760,7 +2846,19 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_LOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
+    zolbak_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ZOLBAK_TYPE)),
+        [blocks.call_proc(UPDATE_ZOLBAK_PROCCODE, warp=True)],
+    )
+    derota_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(DEROTA_TYPE)),
+        [blocks.call_proc(UPDATE_DEROTA_PROCCODE, warp=True)],
+    )
+    garu_derota_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_DEROTA_TYPE)),
+        [blocks.call_proc(UPDATE_GARU_DEROTA_PROCCODE, warp=True)],
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -3479,6 +3577,126 @@ def install_update_logram(blocks: Blocks) -> None:
     blocks.substack(top, [tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)])
     blocks.substack(
         top, [arm, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    blocks.chain(definition, [top])
+
+
+def install_update_zolbak(blocks: Blocks) -> None:
+    # GND-02 / ground.zolbak (#85): one tick of a Zolbak. It IS the Barra crater model — a passive dome
+    # that never fires, scrolls with the terrain while ACTIVE, and craters PERSISTENTLY once bombed
+    # (handle_bomb_explosion, the SAME routine the Barra uses, NOT the Garu node's explode-and-remove) —
+    # with ONE extra behaviour on the FIRST HIT tick: reduce the enemy AI level by 2, floored at 0
+    # (handle_1F_Zolbak -> reduce_enemy_ai_by_2 $1B1F). The detector zeroed `slot timer` at the hit, so
+    # `slot timer == 0` uniquely marks that first HIT tick (the crater clock only climbs afterwards) — the
+    # reduction runs EXACTLY ONCE per kill, never on every crater tick. Faithful to the arcade
+    # `subq #2,d0; jcc; moveq #0` (subtract 2, clamp the unsigned underflow to 0), reading and writing the
+    # SAME `ai level` the difficulty director grows and folds.
+    definition = _install_warp_proc(blocks, UPDATE_ZOLBAK_PROCCODE)
+    reduce_ai = blocks.if_reporter(
+        blocks.op_eq(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(0)),
+        [
+            blocks.change_var("ai level", AI_LEVEL_ID, -AI_LEVEL_ZOLBAK_DROP),
+            blocks.if_reporter(
+                blocks.op_lt(variable("ai level", AI_LEVEL_ID), number(0)),
+                [blocks.set_var("ai level", AI_LEVEL_ID, number(0))],
+            ),
+        ],
+    )
+    tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    # HIT: reduce the AI level once (guarded), advance the crater clock, then scroll + cull.
+    blocks.substack(
+        top, [reduce_ai, tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)]
+    )
+    # ACTIVE: just the shared terrain scroll + off-field cull (a Zolbak never fires).
+    blocks.substack(
+        top, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    blocks.chain(definition, [top])
+
+
+def install_update_derota(blocks: Blocks) -> None:
+    # GND-04 / ground.derota (#86): one tick of a Derota — a plain periodic aimed turret. There is NO
+    # open/close dome cycle (unlike the Logram): once bombed (HIT) it craters PERSISTENTLY like the Barra
+    # (handle_bomb_explosion), and while ACTIVE it drives the SHARED fire-permission gate
+    # (chk_timer_fire_bullet_reinit_timer) — one aimed bullet per masked-random reload — but ONLY while
+    # still high enough on the field. The arcade skips the fire when `gnd_stop_firing_row < _X` (the row
+    # MSB): it fires only while `cur_row <= ground stop firing row`, the same arm gate the Logram uses.
+    # The shared gate owns the 8-arcade-frame (every-4th-tick) cadence, so the arm gate here is just the
+    # row test — no extra phase wrap. `advance ground` (scroll + off-field cull) runs every tick.
+    definition = _install_warp_proc(blocks, UPDATE_DEROTA_PROCCODE)
+    armed = blocks.op_not(
+        blocks.op_gt(_cur_row(blocks), variable("ground stop firing row", GROUND_STOP_FIRING_ROW_ID))
+    )
+    fire = blocks.if_reporter(armed, [blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)])
+    tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    # HIT: the Barra crater clock, then scroll + cull.
+    blocks.substack(top, [tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)])
+    # ACTIVE: fire (if armed) via the shared gate, then scroll + cull.
+    blocks.substack(
+        top, [fire, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    blocks.chain(definition, [top])
+
+
+def install_update_garu_derota(blocks: Blocks) -> None:
+    # GND-04 / ground.derota (#86): one tick of a Garu Derota part. Like the Garu Barra it is two adjacent
+    # slots sharing GARU_DEROTA_TYPE: the indestructible 2x2 base (state SLOT_GARU_BASE) and the
+    # destructible node (state ACTIVE, then HIT once bombed). The ONE difference from the Garu Barra is
+    # that the node FIRES: garu_derota_handler ($1CBE) calls chk_timer_fire_bullet_reinit_timer every
+    # active tick with NO stop-firing-row gate (unlike the single Derota). So an ACTIVE node drives the
+    # shared fire-permission gate unconditionally; the base (sentinel state) never fires and only scrolls.
+    # The node's death mirrors the Garu Barra node exactly (explode_and_remove_object $3216): a HIT node
+    # advances its burst clock and REMOVES itself once the burst finishes (timer >= GARU_REMOVE_FRAMES) —
+    # it vanishes with no crater. The base is never hit (the detector's ==ACTIVE gate rejects the
+    # sentinel), so it only ever scrolls until it culls off-field.
+    definition = _install_warp_proc(blocks, UPDATE_GARU_DEROTA_PROCCODE)
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    tick_clock = _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    done = blocks.op_not(
+        blocks.op_lt(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(GARU_REMOVE_FRAMES))
+    )
+    finish = blocks.add("control_if_else")
+    blocks.blocks[finish]["inputs"]["CONDITION"] = [2, done]
+    blocks.blocks[done]["parent"] = finish
+    blocks.substack(finish, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.substack(
+        finish, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+    )
+    # HIT node: advance the burst clock, then either remove (burst done) or keep scrolling.
+    blocks.substack(top, [tick_clock, finish])
+    # Base (sentinel) or ACTIVE node: an ACTIVE node fires the shared gate; both then scroll + cull.
+    node_fire = blocks.if_reporter(
+        blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE)),
+        [blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)],
+    )
+    blocks.substack(
+        top, [node_fire, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
     )
     blocks.chain(definition, [top])
 
@@ -6120,6 +6338,13 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             [blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot(), number(BARRA_PTS))],
         ),
         blocks.if_reporter(
+            # GND-02 (ground.zolbak #85): a passive dome — like the Barra it only needs its point value at
+            # spawn (200 pts); it never fires, so no fire mask / timer. The crater clock is zeroed by the
+            # detector at the hit, and `update zolbak` runs the AI-level reduction there, not here.
+            blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
+            [blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot(), number(ZOLBAK_PTS))],
+        ),
+        blocks.if_reporter(
             blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
             [
                 blocks.list_replace(
@@ -6158,10 +6383,49 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
                 ),
             ],
         ),
+        blocks.if_reporter(
+            # GND-04 (ground.derota #86): a periodic aimed turret (1000 pts). Unlike the Logram it has NO
+            # dome cycle, so it needs only its point value, the captured Derota fire mask, and a
+            # masked-random initial reload for the shared fire-permission gate (init_derota $1C1C:
+            # `_TIMER=(rand & mask)+1`). cull clears only type/state, so seed the mask + timer explicitly.
+            blocks.op_eq(ground_type_at_cursor(), number(DEROTA_TYPE)),
+            [
+                blocks.list_replace(
+                    "slot pts", SLOT_PTS_ID, ground_target_slot(), number(DEROTA_PTS)
+                ),
+                blocks.list_replace(
+                    "slot fire mask",
+                    SLOT_FIRE_MASK_ID,
+                    ground_target_slot(),
+                    variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID),
+                ),
+                blocks.call_proc(RNG_PROCCODE, warp=True),
+                blocks.list_replace(
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    ground_target_slot(),
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                ),
+            ],
+        ),
     ]
-    is_barra_or_logram = blocks.op_or(
-        blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
-        blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
+    is_single_slot_ground = blocks.op_or(
+        blocks.op_or(
+            blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
+            blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
+        ),
+        blocks.op_or(
+            blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
+            blocks.op_eq(ground_type_at_cursor(), number(DEROTA_TYPE)),
+        ),
     )
     # GND (ground.barra #70): the Garu Barra is a TWO-slot object (handle_20_Garu_Barra $1A89), so it does
     # not fit the single-slot spawn_ground. Base @ N: the indestructible 2x2 (state SLOT_GARU_BASE, so the
@@ -6193,12 +6457,63 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         ),
         blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot_next(), number(GARU_BARRA_PTS)),
     ]
+    # GND-04 (ground.derota #86): the Garu Derota is the Garu Barra's two-slot shape (indestructible 2x2
+    # base @ N, destructible node @ N+1) but the node FIRES (handle_21_Garu_Derota $1C61). Base and node
+    # placement are identical to the Garu Barra; the node additionally gets 2000 pts, the captured Derota
+    # fire mask, and a masked-random initial reload for the shared fire-permission gate
+    # (`_TIMER=(rand & mask)+1` on the node object). cull clears only type/state, so seed mask + timer.
+    spawn_garu_derota = [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot(), ground_type_at_cursor()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot(), number(SLOT_GARU_BASE)),
+        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot(), number(0)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            ground_target_slot(),
+            blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
+        ),
+        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot_next(), ground_type_at_cursor()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot_next(), number(SLOT_ACTIVE)),
+        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot_next(), number(SLOT_UNITS_PER_CELL)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            ground_target_slot_next(),
+            blocks.op_sub(
+                blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
+                number(SLOT_UNITS_PER_CELL),
+            ),
+        ),
+        blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot_next(), number(GARU_DEROTA_PTS)),
+        blocks.list_replace(
+            "slot fire mask",
+            SLOT_FIRE_MASK_ID,
+            ground_target_slot_next(),
+            variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID),
+        ),
+        blocks.call_proc(RNG_PROCCODE, warp=True),
+        blocks.list_replace(
+            "slot fire timer",
+            SLOT_FIRE_TIMER_ID,
+            ground_target_slot_next(),
+            blocks.op_add(
+                blocks.op_mod(
+                    variable("rng out", RNG_OUT_ID),
+                    blocks.op_add(variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID), number(1)),
+                ),
+                number(1),
+            ),
+        ),
+    ]
     add_ground_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
         [
-            blocks.if_reporter(is_barra_or_logram, spawn_ground),
+            blocks.if_reporter(is_single_slot_ground, spawn_ground),
             blocks.if_reporter(
                 blocks.op_eq(ground_type_at_cursor(), number(GARU_BARRA_TYPE)), spawn_garu
+            ),
+            blocks.if_reporter(
+                blocks.op_eq(ground_type_at_cursor(), number(GARU_DEROTA_TYPE)), spawn_garu_derota
             ),
         ],
     )
@@ -6439,6 +6754,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_barra(blocks)
     install_update_garu(blocks)
     install_update_logram(blocks)
+    install_update_zolbak(blocks)
+    install_update_derota(blocks)
+    install_update_garu_derota(blocks)
     install_explode_toroid_tick(blocks)
     install_explode_giddo_spario_tick(blocks)
     install_update_bullet(blocks)
@@ -8096,6 +8414,238 @@ def logram_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def _passive_ground_blocks(
+    target: str,
+    clone_slot_name: str,
+    clone_slot_id: str,
+    slot_type: int,
+    idle_costume: str,
+    explode_base: int,
+    crater_base: int,
+) -> dict[str, dict[str, Any]]:
+    # GND shared renderer for a single-slot passive-or-crater ground family (Barra crater model): one
+    # persistent clone per GROUND slot (1..16), a pure per-tick function of its slot's live state — an idle
+    # costume while ACTIVE; while HIT the bomb-explosion clock (slot timer, zeroed by the detector) plays
+    # the shared solv_death burst (floor(timer/8)) then a PERSISTENT flickering crater. Identical to
+    # barra_blocks except target / clone-slot var / type / idle costume / costume ordinals — the Zolbak and
+    # Derota renderers are this same model (a Zolbak's AI-level side-effect and a Derota's firing both live
+    # in their update procs, not in the pure renderer). See barra_blocks for the layering rationale.
+    blocks = Blocks(target)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable(clone_slot_name, clone_slot_id)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var(clone_slot_name, clone_slot_id, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_family = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(slot_type)
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    explode_ordinal = blocks.op_add(
+        number(explode_base),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(crater_base),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    hit_costume = blocks.add("control_if_else")
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
+    blocks.blocks[cratered]["parent"] = hit_costume
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [hit_costume])
+    blocks.substack(state_render, [blocks.switch_costume(idle_costume)], name="SUBSTACK2")
+
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_family]
+    blocks.blocks[is_family]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
+def zolbak_blocks() -> dict[str, dict[str, Any]]:
+    # GND-02 (ground.zolbak #85) renderer — the Barra crater model with the Zolbak dome costume. The
+    # AI-level reduction on death is in `update zolbak`; the renderer is a pure function of slot state.
+    return _passive_ground_blocks(
+        ZOLBAK_TARGET,
+        "zolbak clone slot",
+        ZOLBAK_CLONE_SLOT_ID,
+        ZOLBAK_TYPE,
+        "zolbak/idle/01",
+        ZOLBAK_EXPLODE_BASE_ORDINAL,
+        ZOLBAK_CRATER_BASE_ORDINAL,
+    )
+
+
+def derota_blocks() -> dict[str, dict[str, Any]]:
+    # GND-04 (ground.derota #86) renderer — the Barra crater model with the Derota turret costume. A Derota
+    # craters on a bomb hit exactly like the Barra; its periodic firing is in `update derota`.
+    return _passive_ground_blocks(
+        DEROTA_TARGET,
+        "derota clone slot",
+        DEROTA_CLONE_SLOT_ID,
+        DEROTA_TYPE,
+        "derota/idle/01",
+        DEROTA_EXPLODE_BASE_ORDINAL,
+        DEROTA_CRATER_BASE_ORDINAL,
+    )
+
+
+def garu_derota_blocks() -> dict[str, dict[str, Any]]:
+    # GND-04 (ground.derota #86) Garu Derota renderer (game_director owns these blocks; sprite_extractor
+    # owns the costumes). Structurally identical to the Garu Barra renderer — one clone per GROUND slot,
+    # branching on the slot's STATE because base and node share GARU_DEROTA_TYPE:
+    #   SLOT_GARU_BASE -> the 2x2 indestructible base, pulsing its two 32-px frames on the global tick
+    #                     (closed / open-firing centre; stands in for the arcade's pulsing_colour_1 base).
+    #   SLOT_ACTIVE    -> the destructible FIRING node's turret (garu-derota/node, reused from derota/idle).
+    #   SLOT_HIT       -> the node's explode-and-remove burst (floor(timer/4)); `update garu derota` removes
+    #                     the slot when the burst finishes, so the clone hides next tick — no crater.
+    # The node's firing is in `update garu derota`; the renderer is a pure function of slot state.
+    blocks = Blocks(GARU_DEROTA_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("garu derota clone slot", GARU_DEROTA_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("garu derota clone slot", GARU_DEROTA_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_garu = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(GARU_DEROTA_TYPE)
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    burst_ordinal = blocks.op_add(
+        number(GARU_DEROTA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GARU_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    base_ordinal = blocks.op_add(
+        number(GARU_DEROTA_BASE_IDLE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(variable("tick", TICK_ID), number(GARU_DEROTA_BASE_PULSE_TICKS))
+            ),
+            number(GARU_DEROTA_BASE_PULSE_FRAMES),
+        ),
+    )
+    base_or_node = blocks.add("control_if_else")
+    is_base = blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_GARU_BASE)
+    )
+    blocks.blocks[base_or_node]["inputs"]["CONDITION"] = [2, is_base]
+    blocks.blocks[is_base]["parent"] = base_or_node
+    blocks.substack(base_or_node, [blocks.switch_costume_expr(base_ordinal)])
+    blocks.substack(base_or_node, [blocks.switch_costume("derota/idle/01")], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [blocks.switch_costume_expr(burst_ordinal)])
+    blocks.substack(state_render, [base_or_node], name="SUBSTACK2")
+
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_garu]
+    blocks.blocks[is_garu]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def terrazi_blocks() -> dict[str, dict[str, Any]]:
     # AIR-06 Terrazi renderer (game_director owns these blocks; sprite_extractor owns the costumes).
     # One persistent clone per flying slot (59..64), the same pool pattern as the Toroid: shown and
@@ -9183,6 +9733,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
+    _ensure_gameplay_target(result, ZOLBAK_TARGET)
+    _ensure_gameplay_target(result, DEROTA_TARGET)
+    _ensure_gameplay_target(result, GARU_DEROTA_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -9319,6 +9872,41 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             logram["costumes"].extend(copy.deepcopy(death["costumes"]))
         logram["costumes"].extend(proof_by_family("crater/"))
         logram["currentCostume"] = 0
+    # GND-02 (ground.zolbak #85): the Zolbak renderer mirrors its single idle dome frame (ordinal 1), then the
+    # shared explosion burst (ordinals 2..9) and the two crater frames (ordinals 10..11) — the SAME crater as
+    # the Barra, since a bombed Zolbak runs the shared ground bomb pipeline. Zolbak never fires; its only
+    # distinction is the on-death AI-level reduction, which lives in install_update_zolbak, not the renderer.
+    # Idempotent; a no-op when any source is absent (generation runs to a fixpoint).
+    zolbak = next((t for t in result["targets"] if t.get("name") == ZOLBAK_TARGET), None)
+    if proof is not None and zolbak is not None:
+        zolbak["costumes"] = proof_by_family("zolbak/")
+        if death is not None:
+            zolbak["costumes"].extend(copy.deepcopy(death["costumes"]))
+        zolbak["costumes"].extend(proof_by_family("crater/"))
+        zolbak["currentCostume"] = 0
+    # GND-04 (ground.derota #86): the Derota renderer mirrors its single idle turret frame (ordinal 1), then the
+    # shared explosion burst (ordinals 2..9) and the two crater frames (ordinals 10..11) — the SAME crater as
+    # the Barra. Derota is a plain periodic turret (no open/close dome cycle); its firing lives in
+    # install_update_derota. Idempotent; a no-op when any source is absent (generation runs to a fixpoint).
+    derota = next((t for t in result["targets"] if t.get("name") == DEROTA_TARGET), None)
+    if proof is not None and derota is not None:
+        derota["costumes"] = proof_by_family("derota/")
+        if death is not None:
+            derota["costumes"].extend(copy.deepcopy(death["costumes"]))
+        derota["costumes"].extend(proof_by_family("crater/"))
+        derota["currentCostume"] = 0
+    # GND-04 (ground.derota #86): the Garu Derota renderer mirrors its two 2x2 base pulse frames (ordinals
+    # 1..2), then the node turret frame (ordinal 3 — the node reuses the Derota turret bitmap, a documented
+    # port necessity: the sheet has no separate small node cell and the node carries turret code 0x27), then
+    # the shared explosion burst (ordinals 4..11) the node plays before it vanishes. The base is indestructible;
+    # the node fires (install_update_garu_derota). Idempotent; a no-op when any source is absent.
+    garu_derota = next((t for t in result["targets"] if t.get("name") == GARU_DEROTA_TARGET), None)
+    if proof is not None and garu_derota is not None:
+        garu_derota["costumes"] = proof_by_family("garu-derota/")
+        garu_derota["costumes"].extend(proof_by_family("derota/"))
+        if death is not None:
+            garu_derota["costumes"].extend(copy.deepcopy(death["costumes"]))
+        garu_derota["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -9675,6 +10263,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "barra": barra_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
+        "zolbak": zolbak_blocks(),
+        "derota": derota_blocks(),
+        "garu derota": garu_derota_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -9801,6 +10392,24 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # clone draws; the dome frame and crater clock live in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 LOGRAM_CLONE_SLOT_ID: ["logram clone slot", 0],
+            }
+        elif target["name"] == ZOLBAK_TARGET:
+            # GND-02 (ground.zolbak #85): likewise, the only Zolbak render state is which GROUND slot each
+            # clone draws; the idle/crater frame lives in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                ZOLBAK_CLONE_SLOT_ID: ["zolbak clone slot", 0],
+            }
+        elif target["name"] == DEROTA_TARGET:
+            # GND-04 (ground.derota #86): likewise, the only Derota render state is which GROUND slot each
+            # clone draws; the idle/crater frame lives in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                DEROTA_CLONE_SLOT_ID: ["derota clone slot", 0],
+            }
+        elif target["name"] == GARU_DEROTA_TARGET:
+            # GND-04 (ground.derota #86): likewise, the only Garu Derota render state is which GROUND slot
+            # each clone draws; the base pulse and node frames live in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                GARU_DEROTA_CLONE_SLOT_ID: ["garu derota clone slot", 0],
             }
     return result
 
