@@ -24,9 +24,10 @@ class SpriteExtractorTests(unittest.TestCase):
         # the 7 Kapi dive frames (AIR-05), the 6 Torkan roll frames (AIR-02), the 4 Zoshi
         # spin frames (AIR-03), the 6 Jara spin frames (AIR-04), the 1 Zakato body frame (AIR-07),
         # the 8 Bacura slab tumble frames (AIR-11), the 10 Sheonite escort frames (AIR-09: 4 spin
-        # codes 0x30-0x33 + 6 combine codes 0x34-0x39), and the 9 ground frames (GND: 1 Barra idle,
-        # 4 Logram open stages, 2 crater variants, 2 Garu base pulse frames).
-        self.assertEqual(68, count)
+        # codes 0x30-0x33 + 6 combine codes 0x34-0x39), and the 13 ground frames (GND: 1 Barra idle,
+        # 4 Logram open stages, 2 crater variants, 2 Garu base pulse frames, and the slice-12 additions
+        # — 1 Zolbak idle dome (GND-02), 1 Derota idle turret + 2 Garu Derota base pulse frames (GND-04)).
+        self.assertEqual(72, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -178,6 +179,9 @@ class SpriteExtractorTests(unittest.TestCase):
             + [f"logram/open/{index:02d}" for index in range(1, 5)]
             + [f"crater/idle/{index:02d}" for index in range(1, 3)]
             + [f"garu/base/{index:02d}" for index in range(1, 3)]
+            + ["zolbak/idle/01"]
+            + ["derota/idle/01"]
+            + [f"garu-derota/base/{index:02d}" for index in range(1, 3)]
             + [f"sheonite/spin/{index:02d}" for index in range(1, 5)]
             + [f"sheonite/combine/{index:02d}" for index in range(1, 7)],
             [costume["name"] for costume in toroid["costumes"]],
@@ -189,7 +193,9 @@ class SpriteExtractorTests(unittest.TestCase):
             # Every 1x1 sprite is centred at (8,8); the 2x2 Garu Barra base (32x32 canvas) at (16,16);
             # the Bacura slab tumble frames share one 32x16 canvas (wide enough for the widest edge-on
             # frame) with a common (16,8) anchor, so each frame registers about that centre as it tumbles.
-            if costume["name"].startswith("garu/"):
+            if costume["name"].startswith("garu/") or costume["name"].startswith(
+                "garu-derota/"
+            ):
                 expected_center = (16, 16)
             elif costume["name"].startswith("bacura/"):
                 expected_center = (16, 8)

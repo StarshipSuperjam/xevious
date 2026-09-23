@@ -156284,6 +156284,42 @@
           "rotationCenterY": 16
         },
         {
+          "name": "zolbak/idle/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "62d84e6886f83ec37d2c8dd0b9976bbc",
+          "md5ext": "62d84e6886f83ec37d2c8dd0b9976bbc.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "derota/idle/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "d2713336361bd222147ed8e0ae5312cd",
+          "md5ext": "d2713336361bd222147ed8e0ae5312cd.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "garu-derota/base/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "347fba15f7c4f3b4bb16b9f514a6bd3b",
+          "md5ext": "347fba15f7c4f3b4bb16b9f514a6bd3b.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "garu-derota/base/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5e0acce8da1c06564016041ccc01591c",
+          "md5ext": "5e0acce8da1c06564016041ccc01591c.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
           "name": "sheonite/spin/01",
           "bitmapResolution": 1,
           "dataFormat": "png",
