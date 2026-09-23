@@ -43,7 +43,9 @@
   at once). The port **inverts the sweep direction** relative to the arcade (it tests shots per Bacura, where
   the arcade tests Bacura per shot) — functionally identical, and it matches the per-slot warp-proc shape of the
   other detectors. The blaster clone's travel loop already exits the instant its slot leaves `SLOT_ACTIVE`; the
-  port adds a branch after that exit: when the slot's state is `SHOT_BOUNCE`, play the hit sound and run a
+  port adds a branch after that exit: when the slot's state is `SHOT_BOUNCE`, it **broadcasts** the Bacura hit
+  cue `sfx bacura` — a blaster clone cannot play a Stage-owned sound, so a Stage receiver plays the real
+  `bacura` sound (the audio pass, [record 040](040-arcade-sound-cues.md)) — and runs a
   `control_repeat` of `BACURA_BOUNCE_FRAMES` (8) that reverses the shot `BACURA_BOUNCE_DY` (−5 stage-px/frame)
   and steps the costume each frame, then falls through to the shared free+delete. Top-expiry (state still
   `SLOT_ACTIVE`) and air-kill spend (`SHOT_SPENT`) skip the branch and delete at once, exactly as before.
@@ -68,8 +70,10 @@
   behavior matches the reference within the recorded deviations below.
 - License status: The reference states no reusable license; only instruction-derived behavior and numeric
   constants are transferred (recorded in [the index](../spec/index.md) and the data files). No source text is
-  reproduced. No new art is added: the bounce reuses the existing shot costume's `nextcostume` cadence, and
-  `BACURA_HIT_SND` has no ripped asset so the existing "blaster" sound stands in (recorded below).
+  reproduced. No new art is added: the bounce reuses the existing shot costume's `nextcostume` cadence. The
+  `BACURA_HIT_SND` cue now plays the real `bacura` sound committed by the audio pass
+  ([record 040](040-arcade-sound-cues.md)); the audio itself carries the same no-reusable-license rights status
+  as the other ripped Xevious assets and is recorded in `src/xevious/assets/provenance.json`.
 - Known deviations or uncertainty: (1) **Reflected speed derived from the arcade ratio, not copied literally.**
   The arcade reflects at `_dX = 24` = ¼ of the normal `96`, reversed; the port applies the same ¼-and-reverse
   to its own forward step (`changeyby 20` → `changeyby −5`), rather than importing the raw arcade velocity —
@@ -87,9 +91,10 @@
   than a global two-frame tick. (5) **Bounce animation is a stand-in.** The arcade reflection uses a dedicated
   4-code sprite sequence (`0x18 + ((TIMER>>1) & 3)`); no such rip exists, so the port reuses the shot costume's
   `nextcostume` cadence over the 8 frames — the same stand-in precedent as the Zakato/Spario bursts. (6)
-  **`BACURA_HIT_SND` stand-in.** No bacura-hit audio asset exists; the existing "blaster" sound plays on the
-  bounce as a documented stand-in (matching the Zakato/Spario sound stand-ins). Acceptance is "the shot
-  visibly bounces back," met by the reversal + visible travel.
+  **`BACURA_HIT_SND` now uses the real cue.** The earlier "blaster" stand-in has been replaced: the audio pass
+  ([record 040](040-arcade-sound-cues.md)) commits the real `bacura` sound and the bounce broadcasts `sfx
+  bacura` to a Stage receiver that plays it (a blaster clone cannot play a Stage-owned sound directly).
+  Acceptance is "the shot visibly bounces back," met by the reversal + visible travel.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

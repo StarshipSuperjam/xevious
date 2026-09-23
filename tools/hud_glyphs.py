@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate deterministic Scratch costumes for the HUD glyph set and life icon,
-and attach the extend/1UP sound to the Stage.
+and attach the added Stage sounds (the extend/1UP cue and the arcade gameplay SFX).
 
 Media (docs/mechanics/010-hud-glyph-assets.md, docs/mechanics/012-hud.md): this
 generator owns the `hud` target's costumes — the white digit/glyph set every
@@ -17,8 +17,12 @@ for a monospace glyph cell rather than per-animation sprite frames.
 
 Ownership (see tools/game_director.py HUD_TARGET comment): tools/game_director.py
 owns the `hud` target's EXISTENCE and BLOCKS. This module owns that target's
-COSTUMES only, and separately owns the Stage's `extend` sound entry. Every other
-target, and every other field of the `hud` target and the Stage, is left untouched.
+COSTUMES only, and separately owns the Stage's ADDED sounds — the `extend` cue and
+the arcade gameplay SFX committed under assets/game-sounds/ (see load_game_sounds_
+manifest / render_game_sounds). Those SFX are gameplay sounds, not HUD glyphs; they
+live here only because this module is already the single writer of project.json and
+the overlay provenance, and game_director's play points reference them by name. The
+base music/start sounds and every other target and field are left untouched.
 """
 
 from __future__ import annotations
@@ -48,6 +52,12 @@ PROJECT_PATH = ROOT / "src" / "xevious" / "project.json"
 GENERATOR_VERSION = 1
 HUD_TARGET = "hud"
 SOUND_NAME = "extend"
+# AUDIO: the arcade gameplay sound effects, committed byte-for-byte under assets/game-sounds/ and
+# attached (unmodified) as additional Stage sounds. This module already owns the Stage's single added
+# sound (`extend`) plus the final project.json / overlay-provenance write, so it is the natural single
+# writer for these too. They are gameplay SFX, not HUD glyphs — kept here only to preserve one writer.
+GAME_SOUNDS_DIR = ROOT / "assets" / "game-sounds"
+GAME_SOUNDS_MANIFEST_PATH = GAME_SOUNDS_DIR / "manifest.json"
 GLYPH_NAME = re.compile(r"^(?:digit|glyph)/[0-9A-Z]$")
 
 # Fixed monospace cell every glyph is centered on before downscaling, and the
@@ -98,6 +108,15 @@ class LifeIconOutput:
     png: bytes
     canvas: tuple[int, int]
     anchor: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class GameSoundOutput:
+    name: str  # Stage sound name, referenced by tools/game_director.py play points
+    filename: str  # content-hash <md5>.wav under src/xevious/assets/
+    sound: dict  # the Scratch sound dict attached to the Stage
+    wav: bytes  # the committed source bytes, copied unmodified
+    record: dict  # the assets/game-sounds/manifest.json entry (provenance)
 
 
 def _require_keys(value: dict, expected: set[str], label: str) -> None:
@@ -408,6 +427,101 @@ def render_extend_sound(manifest: dict) -> tuple[dict, bytes, str]:
     return sound, data, filename
 
 
+_GAME_SOUND_KEYS = {
+    "name", "file", "arcade_sound", "arcade_id", "play_point",
+    "source", "credit", "license", "sha256",
+}
+
+
+def load_game_sounds_manifest() -> dict:
+    try:
+        manifest = json.loads(GAME_SOUNDS_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise HudGlyphsError(
+            f"cannot read game-sounds manifest {GAME_SOUNDS_MANIFEST_PATH}: {exc}"
+        ) from exc
+    if manifest.get("version") != 1 or not isinstance(manifest.get("sounds"), list):
+        raise HudGlyphsError("game-sounds manifest must be version 1 with a sounds list")
+    seen: set[str] = set()
+    for entry in manifest["sounds"]:
+        if not isinstance(entry, dict) or set(entry) != _GAME_SOUND_KEYS:
+            raise HudGlyphsError(
+                f"game-sounds entry must have exactly keys {sorted(_GAME_SOUND_KEYS)}"
+            )
+        if entry["name"] in seen:
+            raise HudGlyphsError(f"duplicate game sound name: {entry['name']}")
+        seen.add(entry["name"])
+    return manifest
+
+
+def render_game_sounds() -> list[GameSoundOutput]:
+    """Return one GameSoundOutput per assets/game-sounds/ entry, sorted by name.
+
+    Each wav is verified against its recorded SHA-256 and attached UNMODIFIED — the
+    committed bytes are the Stage sound's bytes, addressed by their own md5.
+    """
+    manifest = load_game_sounds_manifest()
+    outputs: list[GameSoundOutput] = []
+    for record in manifest["sounds"]:
+        source = GAME_SOUNDS_DIR / record["file"]
+        try:
+            data = source.read_bytes()
+        except OSError as exc:
+            raise HudGlyphsError(f"cannot read game sound {source}: {exc}") from exc
+        actual_hash = se._sha256(data)
+        if actual_hash != record["sha256"]:
+            raise HudGlyphsError(
+                f"game sound {record['name']} hash changed: expected {record['sha256']}, "
+                f"found {actual_hash}"
+            )
+        if not (data.startswith(b"RIFF") and data[8:12] == b"WAVE"):
+            raise HudGlyphsError(f"game sound {record['name']} is not a RIFF/WAVE file")
+        try:
+            with wave.open(io.BytesIO(data)) as handle:
+                frame_count = handle.getnframes()
+                rate = handle.getframerate()
+                channels = handle.getnchannels()
+        except wave.Error as exc:
+            raise HudGlyphsError(
+                f"cannot parse game sound {record['name']} WAV header: {exc}"
+            ) from exc
+        if channels not in (1, 2):
+            raise HudGlyphsError(
+                f"game sound {record['name']} has an unexpected channel count: {channels}"
+            )
+        asset_id = se._md5(data)
+        filename = f"{asset_id}.wav"
+        sound = {
+            "name": record["name"],
+            "assetId": asset_id,
+            "dataFormat": "wav",
+            "format": "",
+            "rate": rate,
+            "sampleCount": frame_count,
+            "md5ext": filename,
+        }
+        outputs.append(GameSoundOutput(record["name"], filename, sound, data, record))
+    outputs.sort(key=lambda output: output.name)
+    return outputs
+
+
+def _overlay_game_sound_record(output: GameSoundOutput) -> dict:
+    record = output.record
+    return {
+        "origin": (
+            f"Unmodified copy of {record['source']}; committed at "
+            f"assets/game-sounds/{record['file']} and attached as the Stage "
+            f"'{output.name}' sound (arcade {record['arcade_sound']} {record['arcade_id']}, "
+            f"played at {record['play_point']})"
+        ),
+        "license": record["license"],
+        "notes": (
+            f"Credit: {record['credit']}. The repository operator did not create this "
+            f"asset. Source SHA-256 {record['sha256']}; no audio transformation applied."
+        ),
+    }
+
+
 def _glyph_costume(output: GlyphOutput, manifest: dict) -> dict:
     factor = manifest["downscale"]
     anchor = manifest["cell_anchor"]
@@ -442,6 +556,7 @@ def expected_project(
     life_output: LifeIconOutput,
     manifest: dict,
     sound: dict,
+    game_sounds: list[GameSoundOutput] | None = None,
 ) -> dict:
     result = copy.deepcopy(project)
     hud = next((target for target in result["targets"] if target.get("name") == HUD_TARGET), None)
@@ -456,9 +571,16 @@ def expected_project(
         raise HudGlyphsError(f"missing rendered costumes: {', '.join(sorted(missing))}")
     hud["costumes"] = [costumes_by_name[name] for name in COSTUME_ORDER]
     stage = next(target for target in result["targets"] if target.get("isStage"))
-    stage["sounds"] = [
-        entry for entry in stage["sounds"] if entry.get("name") != SOUND_NAME
-    ] + [sound]
+    # Rebuild the Stage's added sounds deterministically: keep the base music/start sounds, then
+    # `extend`, then the gameplay SFX in name order. Filtering by name first keeps this idempotent
+    # (a re-run drops the prior copies before re-appending), so the order never drifts.
+    game_sounds = game_sounds or []
+    added_names = {SOUND_NAME} | {output.name for output in game_sounds}
+    stage["sounds"] = (
+        [entry for entry in stage["sounds"] if entry.get("name") not in added_names]
+        + [sound]
+        + [output.sound for output in game_sounds]
+    )
     return result
 
 
@@ -540,6 +662,7 @@ def _derivative_provenance(
     glyph_outputs: list[GlyphOutput],
     life_output: LifeIconOutput,
     sound_filename: str,
+    game_sounds: list[GameSoundOutput] | None = None,
 ) -> dict:
     outputs = {}
     for output in glyph_outputs:
@@ -562,6 +685,12 @@ def _derivative_provenance(
         "name": SOUND_NAME,
         "generator_version": GENERATOR_VERSION,
     }
+    for output in game_sounds or []:
+        outputs[output.filename] = {
+            "kind": "game_sound",
+            "name": output.name,
+            "generator_version": GENERATOR_VERSION,
+        }
     return {
         "version": 1,
         "generator_version": GENERATOR_VERSION,
@@ -579,15 +708,19 @@ def _expected_state() -> tuple[
     bytes,
     bytes,
     set[str],
+    list[GameSoundOutput],
 ]:
     manifest, manifest_bytes = load_manifest()
     glyph_outputs = render_glyphs(manifest)
     life_output = render_life_icon(manifest)
     sound, sound_bytes, sound_filename = render_extend_sound(manifest)
+    game_sounds = render_game_sounds()
     prior_outputs = set(_prior_output_records())
     current_project = _read_json(PROJECT_PATH)
     project_bytes = se._ordered_json_bytes(
-        expected_project(current_project, glyph_outputs, life_output, manifest, sound)
+        expected_project(
+            current_project, glyph_outputs, life_output, manifest, sound, game_sounds
+        )
     )
     overlay = _read_json(OVERLAY_PROVENANCE_PATH)
     if overlay.get("version") != 1 or not isinstance(overlay.get("assets"), dict):
@@ -619,10 +752,14 @@ def _expected_state() -> tuple[
     else:
         assets[life_output.filename] = _overlay_life_record(manifest, life_output)
     assets[sound_filename] = _overlay_sound_record(manifest, sound_filename)
+    for output in game_sounds:
+        assets[output.filename] = _overlay_game_sound_record(output)
     assets = dict(sorted(assets.items()))
     overlay_bytes = se._ordered_json_bytes({"version": 1, "assets": assets})
     derivative_provenance_bytes = se._ordered_json_bytes(
-        _derivative_provenance(manifest, manifest_bytes, glyph_outputs, life_output, sound_filename)
+        _derivative_provenance(
+            manifest, manifest_bytes, glyph_outputs, life_output, sound_filename, game_sounds
+        )
     )
     return (
         glyph_outputs,
@@ -633,6 +770,7 @@ def _expected_state() -> tuple[
         derivative_provenance_bytes,
         sound_bytes,
         prior_outputs,
+        game_sounds,
     )
 
 
@@ -646,11 +784,12 @@ def generate() -> None:
         derivative_provenance_bytes,
         sound_bytes,
         prior_outputs,
+        game_sounds,
     ) = _expected_state()
     expected_names = {output.filename for output in glyph_outputs} | {
         life_output.filename,
         sound_info["filename"],
-    }
+    } | {output.filename for output in game_sounds}
     for stale in sorted(prior_outputs - expected_names):
         stale_path = ASSET_DIR / stale
         if stale_path.is_file() and not stale_path.is_symlink():
@@ -659,6 +798,8 @@ def generate() -> None:
         (ASSET_DIR / output.filename).write_bytes(output.png)
     (ASSET_DIR / life_output.filename).write_bytes(life_output.png)
     (ASSET_DIR / sound_info["filename"]).write_bytes(sound_bytes)
+    for output in game_sounds:
+        (ASSET_DIR / output.filename).write_bytes(output.wav)
     PROJECT_PATH.write_bytes(project_bytes)
     OVERLAY_PROVENANCE_PATH.write_bytes(overlay_bytes)
     DERIVATIVE_PROVENANCE_PATH.write_bytes(derivative_provenance_bytes)
@@ -686,11 +827,12 @@ def check_repository() -> int:
         derivative_provenance_bytes,
         sound_bytes,
         prior_outputs,
+        game_sounds,
     ) = _expected_state()
     expected_names = {output.filename for output in glyph_outputs} | {
         life_output.filename,
         sound_info["filename"],
-    }
+    } | {output.filename for output in game_sounds}
     stale = prior_outputs - expected_names
     if stale:
         raise HudGlyphsError("stale generated HUD assets: " + ", ".join(sorted(stale)))
@@ -698,6 +840,8 @@ def check_repository() -> int:
         _require_bytes(ASSET_DIR / output.filename, output.png)
     _require_bytes(ASSET_DIR / life_output.filename, life_output.png)
     _require_bytes(ASSET_DIR / sound_info["filename"], sound_bytes)
+    for output in game_sounds:
+        _require_bytes(ASSET_DIR / output.filename, output.wav)
     _require_bytes(PROJECT_PATH, project_bytes)
     _require_bytes(OVERLAY_PROVENANCE_PATH, overlay_bytes)
     _require_bytes(DERIVATIVE_PROVENANCE_PATH, derivative_provenance_bytes)

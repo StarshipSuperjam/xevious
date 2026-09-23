@@ -119,11 +119,18 @@ class HudGlyphsTests(unittest.TestCase):
         life_costume = next(c for c in hud["costumes"] if c["name"] == "life/ship")
         self.assertEqual(1, life_costume["bitmapResolution"])
 
-    def test_stage_carries_the_extend_sound_alongside_historical_sounds(self) -> None:
+    def test_stage_carries_the_added_sounds_alongside_historical_sounds(self) -> None:
+        # The Stage carries the two historical base sounds, then hud_glyphs.py's added
+        # sounds: the "extend" cue, then the six arcade gameplay-SFX cues in name order
+        # (AUDIO; docs/mechanics/040-arcade-sound-cues.md).
         project = json.loads(hg.PROJECT_PATH.read_text(encoding="utf-8"))
         stage = next(target for target in project["targets"] if target["isStage"])
         names = [sound["name"] for sound in stage["sounds"]]
-        self.assertEqual(["Game Start.mp3", "BGM.mp3", "extend"], names)
+        self.assertEqual(
+            ["Game Start.mp3", "BGM.mp3", "extend", "air_destroy", "bacura",
+             "garu_zakato", "ground_destroy", "sheonite", "zakato"],
+            names,
+        )
 
     def test_every_derivative_has_complete_provenance(self) -> None:
         provenance = json.loads(
@@ -135,10 +142,11 @@ class HudGlyphsTests(unittest.TestCase):
         glyphs = hg.render_glyphs(self.manifest)
         life = hg.render_life_icon(self.manifest)
         _sound, _data, sound_filename = hg.render_extend_sound(self.manifest)
+        game_sounds = hg.render_game_sounds()
         expected_filenames = {output.filename for output in glyphs} | {
             life.filename,
             sound_filename,
-        }
+        } | {output.filename for output in game_sounds}
         self.assertEqual(expected_filenames, set(provenance["outputs"]))
         for filename in expected_filenames:
             self.assertIn(filename, overlay)

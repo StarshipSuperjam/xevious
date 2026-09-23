@@ -239,3 +239,47 @@ export function neutralizeProc(project, spriteName, proccode) {
   }
   throw new Error(`mutate: no procedures_definition for '${proccode}' on ${spriteName}`);
 }
+
+/**
+ * Splice a `set <varName> = <constValue>` block onto the FRONT of a proc's body. Used to bite an
+ * omission-based invariant: some contracts are realized by NOT writing a variable (the Sheonite is inert
+ * because `update sheonite` writes no `player hit`), so there is no existing block to neutralize — the
+ * negative must GRAFT the forbidden write, which then makes the inertness assertion go red.
+ */
+export function graftVariableSetOnProc(project, spriteName, proccode, varName, constValue) {
+  const t = target(project, spriteName);
+  const varId = variableId(t, varName);
+  let prototypeId = null;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode === 'procedures_prototype' && b.mutation && b.mutation.proccode === proccode) {
+      prototypeId = id;
+      break;
+    }
+  }
+  if (!prototypeId) throw new Error(`mutate: no procedures_prototype '${proccode}' on ${spriteName}`);
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (
+      b.opcode === 'procedures_definition' &&
+      b.inputs &&
+      b.inputs.custom_block &&
+      b.inputs.custom_block[1] === prototypeId
+    ) {
+      const graftId = `graft_${proccode.replace(/\s+/g, '_')}_${varName.replace(/\s+/g, '_')}`;
+      t.blocks[graftId] = {
+        opcode: 'data_setvariableto',
+        next: b.next,
+        parent: id,
+        inputs: { VALUE: [1, [4, String(constValue)]] },
+        fields: { VARIABLE: [varName, varId] },
+        shadow: false,
+        topLevel: false,
+      };
+      if (b.next && t.blocks[b.next]) t.blocks[b.next].parent = graftId;
+      b.next = graftId;
+      return;
+    }
+  }
+  throw new Error(`mutate: no procedures_definition for '${proccode}' on ${spriteName}`);
+}

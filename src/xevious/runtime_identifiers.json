@@ -549,6 +549,26 @@
       "name": "rng state",
       "scope": "Stage"
     },
+    "sheonite-clone-slot": {
+      "kind": "variable",
+      "name": "sheonite clone slot",
+      "scope": "sheonite"
+    },
+    "sheonite-end-flag": {
+      "kind": "variable",
+      "name": "sheonite end flag",
+      "scope": "Stage"
+    },
+    "sheonite-lock-col": {
+      "kind": "variable",
+      "name": "sheonite lock col",
+      "scope": "Stage"
+    },
+    "sheonite-phase": {
+      "kind": "variable",
+      "name": "sheonite phase",
+      "scope": "Stage"
+    },
     "slot-code": {
       "kind": "list",
       "name": "slot code",

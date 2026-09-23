@@ -1158,11 +1158,28 @@ export const SCENARIOS = [
       // (the debug wave clears its own slots; a manual clear would drive the normal spawner and leak
       // debug-only families, breaking the negative). The negative neutralizes the SHARED `init zoshi
       // bottom` (used by both the debug and normal spawn paths, game_director.py install_spawn_flying), so
-      // no path can stamp a type-14 slot and the negative cannot be masked by normal-play leakage. Budget
-      // 100 gives generous margin for the bottom variant to be cycled in.
+      // no path can stamp a type-14 slot and the negative cannot be masked by normal-play leakage.
+      //
+      // Robustness (contention): `step()` bounds each settling pump by WALL CLOCK (loadBuild sets
+      // currentStepTime; harness.js header), so under full-suite CPU load a single pump advances far fewer
+      // internal ticks. The debug cursor's per-family dwell has grown every slice (Zakato, Bacura, and now
+      // the Sheonite escort, whose homing pair holds the field for a long bounded lifecycle at the tail of
+      // the cycle), so a free-galloping cursor completes fewer full cycles per budget and the bottom
+      // variant's brief live window can fall between two observed pumps — an intermittent false-fail. So
+      // rather than wait for the cursor to WANDER to the bottom variant, PIN the debug spawn cursor to its
+      // family index each pump: the debug gate then spawns the bottom variant (through the same shared debug
+      // spawn path this scenario is about) as soon as the field is clear and keeps re-spawning it, so a live
+      // type-14 slot is reliably present to observe. This removes the timing race while still proving
+      // reachability VIA THE DEBUG CYCLE (the gate, not a hand-called init). ZOSHI_BOTTOM is index 4 in
+      // game_director.py DEBUG_SPAWN_FAMILIES (terrazi, kapi, torkan, zoshi-top, zoshi-bottom, ...); a
+      // family reorder makes the POSITIVE fail loudly here rather than silently drift. The negative still
+      // bites: neutralizing `init zoshi bottom` (the shared initializer that stamps the type-14 slot on both
+      // the debug and normal paths) means no type-14 slot is ever stamped, even with the cursor pinned.
+      const ZOSHI_BOTTOM_DEBUG_INDEX = 4;
       keyDown(vm, 't');
       const seen = new Set();
       for (let i = 0; i < 100; i += 1) {
+        writeVar(vm, 'debug-spawn-index', ZOSHI_BOTTOM_DEBUG_INDEX);
         step(vm, 1);
         const type = readVar(vm, 'slot-type');
         for (const s of FLYING_SLOT_INDICES) if (type[s] !== 0) seen.add(type[s]);
@@ -2215,6 +2232,218 @@ export const SCENARIOS = [
       }
       throw new Error('bacura-tumbles-with-position negative: no mod-8 index block found to collapse');
     },
+  },
+  {
+    key: 'sheonite-homes-onto-the-craft-and-locks',
+    behavior:
+      'AIR-09 (.play): a homing Sheonite half aims onto its lock target beside the craft at the shared 64-tier, advances DOWN the scroll axis toward it each tick, and flips to LOCK once it reaches the lock line (player row - 2) — the pair flies in and docks rather than drifting straight past',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // warm the walk once live before isolating (the aim tables must be built)
+      // Freeze the walk so only our seeded half is advanced by the hand-called updater, and clear the
+      // shared flying band so nothing else is offered to it (the flying-pool isolation the Jara/Spario
+      // scenarios use). The Sheonite dispatches by `walk type` from this same band.
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 58; s <= 63; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 63; // JS; SHEONITE_RIGHT_SLOT 0x3f (Scratch 1-based 64)
+      const pr = Number(readVar(vm, 'player-row'));
+      const pc = Number(readVar(vm, 'player-col'));
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 49); // RIGHT_SHEONITE_TYPE
+      put('slot-state', 1); // SLOT_ACTIVE
+      put('slot-x', 0); // start at the top of the field, well up-field of the lock line
+      put('slot-y', pc * 256);
+      put('slot-dx', 0);
+      put('slot-dy', 0);
+      put('slot-flag', 0); // SHEONITE_PHASE_HOME
+      put('slot-timer', 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const lockRow = pr - 2; // SHEONITE_LOCK_LEAD = 2
+      const rows = [];
+      const dxs = [];
+      let flag = 0;
+      for (let t = 0; t < lockRow + 40 && flag !== 1; t += 1) {
+        callProc(vm, 'Stage', 'update sheonite');
+        step(vm, 1);
+        rows.push(Math.floor(Number(readVar(vm, 'slot-x')[slot]) / 256));
+        dxs.push(Number(readVar(vm, 'slot-dx')[slot]));
+        flag = Number(readVar(vm, 'slot-flag')[slot]);
+      }
+      return {
+        firstDx: dxs[0],
+        finalRow: rows[rows.length - 1],
+        lockRow,
+        monotonic: rows.every((v, i) => i === 0 || v >= rows[i - 1]),
+        lockedFlag: flag,
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.firstDx > 0, 'the homing half aims DOWN the scroll axis toward the craft (positive scroll-axis velocity)');
+      assert.equal(obs.monotonic, true, 'it advances toward the lock line every tick — never retreating while homing');
+      assert.ok(obs.finalRow >= obs.lockRow, 'it reaches the lock line (player row - 2)');
+      assert.equal(obs.lockedFlag, 1, 'on reaching the lock line it flips to LOCK — it docks rather than flying past');
+    },
+    // Empty `update sheonite` so the half never aims or advances → firstDx 0, never reaches the lock line,
+    // never flips to LOCK → the home/lock assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update sheonite'),
+  },
+  {
+    key: 'sheonite-lock-holds-until-the-end-flag-then-combines',
+    behavior:
+      'AIR-09 (.play): a Sheonite in LOCK holds beside the craft while the end-flag is clear and only flips to COMBINE (resetting its dwell clock) once sheonite_end raises the end-flag — the release waits on the flag, it is not immediate',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 58; s <= 63; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 63;
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 49); // RIGHT_SHEONITE_TYPE
+      put('slot-state', 1);
+      put('slot-flag', 1); // SHEONITE_PHASE_LOCK
+      put('slot-timer', 10);
+      writeVar(vm, 'slot-index', slot + 1);
+      // End-flag clear: LOCK holds across several ticks.
+      writeVar(vm, 'sheonite-end-flag', 0);
+      for (let t = 0; t < 4; t += 1) {
+        callProc(vm, 'Stage', 'update sheonite');
+        step(vm, 1);
+      }
+      const heldFlag = Number(readVar(vm, 'slot-flag')[slot]);
+      // Raise the end-flag: the next tick flips LOCK -> COMBINE and resets the dwell clock.
+      writeVar(vm, 'sheonite-end-flag', 1);
+      callProc(vm, 'Stage', 'update sheonite');
+      step(vm, 1);
+      const afterFlag = Number(readVar(vm, 'slot-flag')[slot]);
+      const afterTimer = Number(readVar(vm, 'slot-timer')[slot]);
+      return { heldFlag, afterFlag, afterTimer };
+    },
+    assert(obs) {
+      assert.equal(obs.heldFlag, 1, 'while the end-flag is clear the pair holds in LOCK (does not advance to COMBINE)');
+      assert.equal(obs.afterFlag, 2, 'once sheonite_end raises the end-flag the pair flips to COMBINE');
+      assert.equal(obs.afterTimer, 0, 'the dwell clock is reset on entering COMBINE so the dock dwell counts from 0');
+    },
+    // Empty `update sheonite` so the LOCK->COMBINE transition never fires → afterFlag stays LOCK → bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update sheonite'),
+  },
+  {
+    key: 'sheonite-combine-exit-retreats-the-right-and-vanishes-the-left',
+    behavior:
+      'AIR-09 (.play): when the dock dwell completes the right half takes the retreat velocity and enters RETREAT (drifting up the scroll axis away from the craft) while the left half is culled (vanishes) — the pair peels off asymmetrically',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 58; s <= 63; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const RIGHT = 63; // SHEONITE_RIGHT_SLOT 0x3f
+      const LEFT = 62; // SHEONITE_LEFT_SLOT 0x3e
+      const seed = (slot, type) => {
+        const put = (id, v) => {
+          readVar(vm, id)[slot] = v;
+        };
+        put('slot-type', type);
+        put('slot-state', 1);
+        put('slot-flag', 2); // SHEONITE_PHASE_COMBINE
+        put('slot-timer', 32); // >= SHEONITE_COMBINE_DWELL_FRAMES (the dwell is complete)
+        put('slot-dx', 0);
+        put('slot-dy', 0);
+      };
+      seed(RIGHT, 49);
+      seed(LEFT, 50);
+      // Advance the right half one tick past the dwell.
+      writeVar(vm, 'slot-index', RIGHT + 1);
+      callProc(vm, 'Stage', 'update sheonite');
+      step(vm, 1);
+      const rightFlag = Number(readVar(vm, 'slot-flag')[RIGHT]);
+      const rightDx = Number(readVar(vm, 'slot-dx')[RIGHT]);
+      // Advance the left half one tick past the dwell.
+      writeVar(vm, 'slot-index', LEFT + 1);
+      callProc(vm, 'Stage', 'update sheonite');
+      step(vm, 1);
+      const leftType = Number(readVar(vm, 'slot-type')[LEFT]);
+      const leftState = Number(readVar(vm, 'slot-state')[LEFT]);
+      return { rightFlag, rightDx, leftType, leftState };
+    },
+    assert(obs) {
+      assert.equal(obs.rightFlag, 3, 'the right half enters RETREAT when the dwell completes');
+      assert.equal(obs.rightDx, -96, 'the right half takes the retreat velocity (SHEONITE_RETREAT_DX = -96 -> -6 px/frame up the scroll axis, away from the craft)');
+      assert.equal(obs.leftType, 0, 'the left half is culled at dwell end — its slot type cleared, so it vanishes');
+      assert.equal(obs.leftState, 0, 'the culled left half is no longer active');
+    },
+    // Empty `update sheonite` so neither half exits COMBINE → right never retreats, left never culls → bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update sheonite'),
+  },
+  {
+    key: 'sheonite-is-inert-on-the-craft-cell',
+    behavior:
+      'AIR-09 (.play): the Sheonite is wholly inert — a half sitting on the craft cell across HOME/LOCK/COMBINE raises NO player-hit death signal, is never hit-marked or scored, and stays a live escort (the corrected no-collision-of-any-kind contract: the arcade STATE=3 handlers are skipped by every hit test, so the port omits the craft detector entirely)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 58; s <= 63; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 63; // right half
+      const pr = Number(readVar(vm, 'player-row'));
+      const pc = Number(readVar(vm, 'player-col'));
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 49); // RIGHT_SHEONITE_TYPE
+      put('slot-state', 1); // SLOT_ACTIVE
+      put('slot-dx', 0);
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const score0 = Number(readVar(vm, 'eco-score'));
+      let maxHit = 0;
+      // Park the half exactly on the craft cell through each phase and advance it; the craft never dies.
+      for (const phase of [0, 1, 2]) {
+        put('slot-flag', phase);
+        put('slot-timer', 0);
+        put('slot-x', pr * 256);
+        put('slot-y', pc * 256);
+        writeVar(vm, 'player-hit', 0);
+        callProc(vm, 'Stage', 'update sheonite');
+        step(vm, 1);
+        maxHit = Math.max(maxHit, Number(readVar(vm, 'player-hit')));
+      }
+      return {
+        maxHit,
+        aliveType: Number(readVar(vm, 'slot-type')[slot]),
+        aliveState: Number(readVar(vm, 'slot-state')[slot]),
+        scoreDelta: Number(readVar(vm, 'eco-score')) - score0,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.maxHit, 0, 'a Sheonite on the craft cell raises NO player-hit death signal in any phase — it is inert');
+      assert.equal(obs.aliveType, 49, 'the escort is never hit-marked or removed by a collision (its type is unchanged)');
+      assert.equal(obs.aliveState, 1, 'the escort stays active — no hit test ever marks it');
+      assert.equal(obs.scoreDelta, 0, 'the inert escort is never scored');
+    },
+    // Inertness is realized by OMISSION (update sheonite writes no `player hit`), so there is no block to
+    // neutralize — the negative must GRAFT the forbidden write. A `set player hit = 1` spliced onto the
+    // updater is exactly the regression class (wrongly cloning Bacura's craft-death onto the inert pair):
+    // now the craft dies while a Sheonite is advanced, so the inertness assertion bites.
+    negativeMutation: (p) => mutate.graftVariableSetOnProc(p, 'Stage', 'update sheonite', 'player hit', 1),
   },
   {
     key: 'debug-key-cycles-families',

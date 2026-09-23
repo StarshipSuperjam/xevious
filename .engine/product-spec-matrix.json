@@ -36,7 +36,7 @@
       "criterion": "Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern",
       "digest": "sha256:8a1731e28a20e35ba929b89dd0295b72a06be7c05ea5fc6d422ccc7e104e5563",
       "doc": "docs/spec/aerial-enemies.md",
-      "how_verified": "Play the boss approach",
+      "how_verified": "Play the area-9 Sheonite spawn (or the T-key debug spawn) in the built `.sb3`",
       "position": 4,
       "who": "operator"
     },

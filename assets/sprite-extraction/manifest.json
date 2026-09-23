@@ -679,6 +679,116 @@
       "family": "garu",
       "animation": "base",
       "duration_frames": 1
+    },
+    {
+      "name": "sheonite/spin/01",
+      "sheet": "aerial_enemies",
+      "rect": [5, 211, 12, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/spin/02",
+      "sheet": "aerial_enemies",
+      "rect": [37, 209, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/spin/03",
+      "sheet": "aerial_enemies",
+      "rect": [56, 209, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/spin/04",
+      "sheet": "aerial_enemies",
+      "rect": [77, 209, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "spin",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/combine/01",
+      "sheet": "aerial_enemies",
+      "rect": [117, 209, 14, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "combine",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/combine/02",
+      "sheet": "aerial_enemies",
+      "rect": [134, 209, 14, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "combine",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/combine/03",
+      "sheet": "aerial_enemies",
+      "rect": [153, 209, 11, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "combine",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/combine/04",
+      "sheet": "aerial_enemies",
+      "rect": [167, 209, 11, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "combine",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/combine/05",
+      "sheet": "aerial_enemies",
+      "rect": [183, 209, 8, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "combine",
+      "duration_frames": 1
+    },
+    {
+      "name": "sheonite/combine/06",
+      "sheet": "aerial_enemies",
+      "rect": [194, 209, 8, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sheonite",
+      "animation": "combine",
+      "duration_frames": 1
     }
   ]
 }

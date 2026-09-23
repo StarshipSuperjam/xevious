@@ -228,21 +228,26 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_current_source_validates(self) -> None:
         project, _project_bytes, assets = scratch.validate_source()
-        # 32: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
+        # 33: the historical 15 + the generated hud, the sprite-extraction proof, the slice-8 toroid +
         # enemy-bullet renderers, the slice-10 terrazi + kapi + torkan + zoshi + jara renderers, the
         # slice-11 zakato renderer (AIR-07; the two Brag Zakato variants fold into it) + the giddo-spario +
         # brag-spario renderers (AIR-10) + the garu-zakato renderer (AIR-08; all three Spario-style pools
         # reuse the zakato body stand-in by ref) + the bacura renderer (AIR-11; its own reserved band, a
-        # single static slab costume with no burst), and the slice-9 barra + garu + logram ground renderers
-        # (all reuse proof costumes by ref).
-        self.assertEqual(32, len(project["targets"]))
-        # 146: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
+        # single static slab costume with no burst) + the sheonite renderer (AIR-09; the inert escort pair
+        # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
+        # ground renderers (all reuse proof costumes by ref).
+        self.assertEqual(33, len(project["targets"]))
+        # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
         # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
-        # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 9 ground-frame PNGs
-        # (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base pulse frames).
-        self.assertEqual(146, len(assets))
+        # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 10 Sheonite
+        # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 9
+        # ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base
+        # pulse frames) + the 6 arcade gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy /
+        # zakato-teleport / garu_zakato / bacura / sheonite cues, committed under assets/game-sounds/ and
+        # attached to the Stage by tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
+        self.assertEqual(162, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -295,11 +300,14 @@ class ScratchProjectTests(unittest.TestCase):
                 for key in ("variables", "lists", "broadcasts"):
                     expected.pop(key)
                     actual.pop(key)
-                # hud_glyphs.py appends one new "extend" sound on top of the
-                # historical two (docs/mechanics/010); verify it precisely, then
-                # drop sounds from the general preserved-content comparison.
+                # hud_glyphs.py appends its added Stage sounds on top of the historical
+                # two (docs/mechanics/010): first the "extend" cue, then the six arcade
+                # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040). Verify the
+                # exact list, then drop sounds from the general preserved-content comparison.
                 self.assertEqual(
-                    [sound["name"] for sound in expected["sounds"]] + ["extend"],
+                    [sound["name"] for sound in expected["sounds"]]
+                    + ["extend", "air_destroy", "bacura", "garu_zakato",
+                       "ground_destroy", "sheonite", "zakato"],
                     [sound["name"] for sound in actual["sounds"]],
                 )
                 expected.pop("sounds")
@@ -1008,6 +1016,13 @@ class ScratchProjectTests(unittest.TestCase):
             "bacura inc cnt",
             "one second cntr",
             "bacura seed slot",
+            # AIR-09 (slice 11): the Sheonite escort's schedule on/off flag (Stage-written by
+            # sheonite_start/end, read by the walk, cleared per area) plus the two per-tick update
+            # temps (the phase snapshot that keeps a mid-tick transition from cascading, and the
+            # resolved lateral lock cell). Transient spawn/working machinery, never sprite-written.
+            "sheonite end flag",
+            "sheonite phase",
+            "sheonite lock col",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1228,6 +1243,11 @@ class ScratchProjectTests(unittest.TestCase):
             director.EXPLODE_GIDDO_SPARIO_PROCCODE,
             director.INIT_BRAG_SPARIO_PROCCODE,
             director.UPDATE_BRAG_SPARIO_PROCCODE,
+            # AIR-09 (slice 11) air.sheonite: the escort pair's ONE shared per-tick home->lock->combine->
+            # retreat/vanish update over both types (0x31 right / 0x32 left), warp, dispatched from the walk.
+            # It writes only the slot's own phase machine plus the stage-owned sheonite scratch vars, and
+            # deliberately makes NO CHECK_AIR_HIT call and drives no craft detector — the pair is wholly inert.
+            director.UPDATE_SHEONITE_PROCCODE,
             # AIR-08 (slice 11) air.special-pairs: the two Brag Zakato variants (rnd/closeY) share one
             # teleport->active->self-destruct update ending in a 5-bullet radiating fan (`brag zakato
             # shoot`); the Garu Zakato has its own no-teleport straight update whose fuse detonates into a
@@ -6055,6 +6075,685 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air11_failures(project), label)
+
+    @staticmethod
+    def _air09_failures(project: dict) -> set:
+        """AIR-09 Sheonite authoring contract — violated labels. Pins the indestructible escort PAIR
+        (right 0x31 / left 0x32) as an occupant of the SHARED flying pool (FLYING_SLOTS 59-64), dispatched
+        by `walk type` like every flyer, but WHOLLY INERT — the corrected no-collision-of-any-kind contract.
+
+        LIFECYCLE. One warp `update sheonite` shared by both halves; the ordered walk dispatches it under a
+        SINGLE OR over BOTH types (right retreats / left vanishes, but the machine is one). The pair is
+        stamped by the area scheduler's `sheonite_start` branch into the two fixed flying slots (0x31 ->
+        SHEONITE_RIGHT_SLOT, 0x32 -> SHEONITE_LEFT_SLOT) with the end-flag cleared; `sheonite_end` raises the
+        end-flag, releasing the pair from LOCK into the dock/peel-off.
+
+        INERTNESS (the distinctive contract, and the guardrail-relevant invariant B1). Both arcade handlers
+        set _STATE=3 (indestructible), which every hit test skips (STATE==2 gate) — the shot/score test AND
+        the craft-collision test. So the faithful port has NO collision interaction of ANY kind: `update
+        sheonite` DELIBERATELY OMITS the `check air shot hit` call (no shot ever hit-tests it -> no HIT, no
+        `explode toroid tick`, no SLOT_HIT), stamps NO `slot pts` and calls no `resolve hit`/`score` (never
+        scored), and writes NO `player hit` and drives no craft-overlap reporter (NO craft-death — the key
+        contrast with the Bacura, which IS craft-tested because it runs at STATE=2). Omission IS the inertness.
+
+        STATE MACHINE (phase in `slot flag`, snapshotted at the tick top). HOME aims on the shared 64-tier and
+        transitions to LOCK; LOCK holds beside the live craft until the end-flag is raised, then -> COMBINE;
+        COMBINE docks for SHEONITE_COMBINE_DWELL_FRAMES, then the right half sets SHEONITE_RETREAT_DX and ->
+        RETREAT while the left half culls; RETREAT drifts up the scroll axis and culls off the top.
+
+        RENDERER. The Sheonite target carries the ten costumes spin/01..04 + combine/01..06 (no
+        death/explosion frame — the pair is inert), shown when its slot holds EITHER type (an OR gate), with a
+        position/phase-driven dynamic costume switch."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def calls(proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in blocks.values()
+            )
+
+        def calls_in(body, proccode):
+            return any(
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == proccode
+                for b in body
+            )
+
+        def ref(inp):
+            return inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def cond_has_num(cond_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                for key, v in b.get("inputs", {}).items():
+                    if _num_operand(v) == value:
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def ancestor_if(node_id, pred):
+            cur = blocks.get(node_id)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    if pred(ref(parent["inputs"].get("CONDITION"))):
+                        return True
+                cur = parent
+            return False
+
+        def writes_at(body, list_id, index_val, item_val):
+            # a `data_replaceitemoflist` on list_id whose INDEX literal == index_val and ITEM literal ==
+            # item_val (the pair stamp writes each field at a FIXED slot number, unlike the per-slot walk).
+            return any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == list_id
+                and _num_operand(b["inputs"].get("INDEX")) == index_val
+                and _num_operand(b["inputs"].get("ITEM")) == item_val
+                for b in body
+            )
+
+        def writes_list(body, list_id):
+            return any(
+                b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == list_id
+                for b in body
+            )
+
+        def text_operand(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 2
+                and inp[1][0] == 10
+            ):
+                return inp[1][1]
+            return None
+
+        def branch_blocks(host_body, handler_text):
+            # The blocks reachable from the SUBSTACK of the `if handler_at_cursor()==handler_text` branch in
+            # host_body (the schedule dispatch's on/off flag branches).
+            for b in host_body:
+                if b["opcode"] != "operator_equals":
+                    continue
+                if not any(text_operand(b["inputs"].get(k)) == handler_text for k in ("OPERAND1", "OPERAND2")):
+                    continue
+                eq_id = id_of[id(b)]
+                for c in host_body:
+                    if c["opcode"] not in ("control_if", "control_if_else"):
+                        continue
+                    if ref(c["inputs"].get("CONDITION")) != eq_id:
+                        continue
+                    seen, frontier, out = set(), [ref(c["inputs"].get("SUBSTACK"))], []
+                    while frontier:
+                        sid = frontier.pop()
+                        if not sid or sid in seen or sid not in blocks:
+                            continue
+                        seen.add(sid)
+                        sb = blocks[sid]
+                        out.append(sb)
+                        frontier.append(sb.get("next"))
+                        for v in sb.get("inputs", {}).values():
+                            if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                                frontier.append(v[1])
+                    return out
+            return []
+
+        def sets_var(body, var_id, value):
+            return any(
+                b["opcode"] == "data_setvariableto"
+                and b.get("fields", {}).get("VARIABLE", [None, None])[1] == var_id
+                and _num_operand(b["inputs"].get("VALUE")) == value
+                for b in body
+            )
+
+        update = _proc_body_blocks(stage, director.UPDATE_SHEONITE_PROCCODE)
+        adv_body = _proc_body_blocks(stage, director.ADVANCE_SLOTS_PROCCODE)
+        adv_area = _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE)
+
+        # (1) The shared updater exists and is warp — a non-warp proc would yield mid-tick, letting a
+        # half-advanced half render or double-advance.
+        p = proto(director.UPDATE_SHEONITE_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("sheonite-update-proc-warp")
+
+        # (2) The ordered walk dispatches the updater.
+        if not calls(director.UPDATE_SHEONITE_PROCCODE):
+            failures.add("dispatch-updates-sheonite")
+
+        # (3) DISPATCHED FOR BOTH TYPES BY ONE OR. The `update sheonite` call in the walk is gated by a
+        # condition carrying BOTH RIGHT_SHEONITE_TYPE and LEFT_SHEONITE_TYPE (the single OR branch). Strip
+        # either type and only one half of the pair would ever walk.
+        sheo_calls = [
+            id_of[id(b)]
+            for b in adv_body
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.UPDATE_SHEONITE_PROCCODE
+        ]
+        if not any(
+            ancestor_if(
+                c,
+                lambda cond: cond_has_num(cond, director.RIGHT_SHEONITE_TYPE)
+                and cond_has_num(cond, director.LEFT_SHEONITE_TYPE),
+            )
+            for c in sheo_calls
+        ):
+            failures.add("sheonite-dispatched-both-types")
+
+        # (4) NO SHOT DETECTOR — the shot-invulnerability. The update must NOT call `check air shot hit`.
+        if calls_in(update, director.CHECK_AIR_HIT_PROCCODE):
+            failures.add("sheonite-no-air-hit-detector")
+
+        # (5) NO EXPLOSION. With no detector there is no HIT path: no `explode toroid tick`, never SLOT_HIT.
+        if calls_in(update, director.EXPLODE_TICK_PROCCODE) or writes_list(update, director.SLOT_STATE_ID) and any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and _num_operand(b["inputs"].get("ITEM")) == director.SLOT_HIT
+            for b in update
+        ):
+            failures.add("sheonite-no-explosion")
+
+        # (6) NEVER SCORED. The update calls no `resolve hit`/`score`, and the `sheonite_start` stamp writes
+        # no `slot pts` (the pair yields no points — it is never offered to the shared detector).
+        start_body = branch_blocks(adv_area, director.SHEONITE_START_HANDLER)
+        if (
+            calls_in(update, director.RESOLVE_HIT_PROCCODE)
+            or calls_in(update, director.SCORE_PROCCODE)
+            or writes_list(start_body, director.SLOT_PTS_ID)
+        ):
+            failures.add("sheonite-never-scored")
+
+        # (7) INERT — NO CRAFT-DEATH. The update writes NO `player hit` and drives no craft-overlap reporter.
+        # This is the corrected contract's keystone: the Sheonite is craft-inert (STATE=3 skips the craft
+        # collision test too), unlike the Bacura, which DOES kill on touch because it runs at STATE=2.
+        if any(
+            b["opcode"] == "data_setvariableto"
+            and b.get("fields", {}).get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+            for b in update
+        ):
+            failures.add("sheonite-inert-no-craft-death")
+
+        # (8) START STAMPS THE PAIR. `sheonite_start` stamps the right type at SHEONITE_RIGHT_SLOT and the
+        # left type at SHEONITE_LEFT_SLOT, each SLOT_ACTIVE and phase HOME (arcade never SLOT_HIT — inert).
+        if not (
+            writes_at(start_body, director.SLOT_TYPE_ID, director.SHEONITE_RIGHT_SLOT, director.RIGHT_SHEONITE_TYPE)
+            and writes_at(start_body, director.SLOT_TYPE_ID, director.SHEONITE_LEFT_SLOT, director.LEFT_SHEONITE_TYPE)
+            and writes_at(start_body, director.SLOT_STATE_ID, director.SHEONITE_RIGHT_SLOT, director.SLOT_ACTIVE)
+            and writes_at(start_body, director.SLOT_FLAG_ID, director.SHEONITE_RIGHT_SLOT, director.SHEONITE_PHASE_HOME)
+        ):
+            failures.add("sheonite-start-stamps-pair")
+
+        # (9) START CLEARS THE END-FLAG (the pair holds in LOCK until sheonite_end).
+        if not sets_var(start_body, director.SHEONITE_END_FLAG_ID, 0):
+            failures.add("sheonite-start-clears-end-flag")
+
+        # (10) END RAISES THE END-FLAG (releasing the pair from LOCK into dock/peel-off).
+        end_body = branch_blocks(adv_area, director.SHEONITE_END_HANDLER)
+        if not sets_var(end_body, director.SHEONITE_END_FLAG_ID, 1):
+            failures.add("sheonite-end-raises-flag")
+
+        # (11) HOME AIMS AND LOCKS. The update aims on the shared quantizer (`compute aim index`) and writes
+        # phase LOCK — the HOME->LOCK transition.
+        if not (
+            calls_in(update, director.COMPUTE_AIM_PROCCODE)
+            and any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                and _num_operand(b["inputs"].get("ITEM")) == director.SHEONITE_PHASE_LOCK
+                for b in update
+            )
+        ):
+            failures.add("sheonite-home-aims-and-locks")
+
+        # (12) LOCK WAITS ON THE END-FLAG. The update reads `sheonite end flag` and writes phase COMBINE — the
+        # LOCK->COMBINE transition is gated by the end-flag, not immediate. Variable reads are INLINE operands
+        # ([12, name, id]) in this generator, not standalone data_variable blocks, so scan the input trees.
+        def reads_var(body, var_id):
+            def walk(v):
+                if isinstance(v, list):
+                    if len(v) >= 3 and v[0] == 12 and v[2] == var_id:
+                        return True
+                    return any(walk(x) for x in v)
+                return False
+            return any(walk(v) for b in body for v in b.get("inputs", {}).values())
+
+        reads_end_flag = reads_var(update, director.SHEONITE_END_FLAG_ID)
+        writes_combine = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and _num_operand(b["inputs"].get("ITEM")) == director.SHEONITE_PHASE_COMBINE
+            for b in update
+        )
+        if not (reads_end_flag and writes_combine):
+            failures.add("sheonite-lock-waits-end-flag")
+
+        # (13) COMBINE EXIT — right retreats, left culls. After the dwell the update writes SHEONITE_RETREAT_DX
+        # and phase RETREAT (right) and calls `cull slot` (left vanishes / right off-top).
+        writes_retreat_dx = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+            and _num_operand(b["inputs"].get("ITEM")) == director.SHEONITE_RETREAT_DX
+            for b in update
+        )
+        writes_retreat_phase = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and _num_operand(b["inputs"].get("ITEM")) == director.SHEONITE_PHASE_RETREAT
+            for b in update
+        )
+        if not (writes_retreat_dx and writes_retreat_phase and calls_in(update, director.CULL_SLOT_PROCCODE)):
+            failures.add("sheonite-combine-exit")
+
+        # (14) RENDERER FRAMES — the ten inert escort costumes, no death frame.
+        target = next((t for t in project["targets"] if t.get("name") == director.SHEONITE_TARGET), None)
+        names = [c.get("name") for c in target["costumes"]] if target else []
+        expected = (
+            [f"sheonite/spin/0{i}" for i in range(1, director.SHEONITE_SPIN_FRAMES + 1)]
+            + [f"sheonite/combine/0{i}" for i in range(1, 2 * director.SHEONITE_COMBINE_ANIM_FRAMES + 1)]
+        )
+        if names != expected:
+            failures.add("sheonite-renderer-frames")
+
+        tblocks = target["blocks"] if target else {}
+        # (15) RENDERER SHOWS BOTH TYPES on ONE OR. An `operator_or` whose subtree references BOTH type codes.
+        def or_covers_both():
+            for b in tblocks.values():
+                if b.get("opcode") != "operator_or":
+                    continue
+                seen, frontier, nums = set(), [id for id in (ref(b["inputs"].get("OPERAND1")), ref(b["inputs"].get("OPERAND2"))) if id], set()
+                while frontier:
+                    cid = frontier.pop()
+                    if not cid or cid in seen or cid not in tblocks:
+                        continue
+                    seen.add(cid)
+                    bb = tblocks[cid]
+                    for v in bb.get("inputs", {}).values():
+                        n = _num_operand(v)
+                        if n is not None:
+                            nums.add(n)
+                        if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                            frontier.append(v[1])
+                if director.RIGHT_SHEONITE_TYPE in nums and director.LEFT_SHEONITE_TYPE in nums:
+                    return True
+            return False
+
+        if not or_covers_both():
+            failures.add("sheonite-renderer-both-types")
+
+        # (16) RENDERER IS POSITION/PHASE-DRIVEN. A `looks_switchcostumeto` whose COSTUME input OBSCURES its
+        # shadow with a reporter ([3, reporter, shadow]) — the runtime computes the costume from the slot's
+        # phase/clock — not a static menu; else the pair would show one fixed frame instead of animating.
+        if not any(
+            b.get("opcode") == "looks_switchcostumeto"
+            and isinstance(b.get("inputs", {}).get("COSTUME"), list)
+            and b["inputs"]["COSTUME"][0] == 3
+            for b in tblocks.values()
+        ):
+            failures.add("sheonite-renderer-dynamic-costume")
+
+        return failures
+
+    # Roadmap closure evidence for leaf `air.sheonite` (AIR-09): the indestructible escort PAIR shares the
+    # flying pool (59-64), dispatched by ONE OR over both types (right 0x31 / left 0x32), and is WHOLLY INERT —
+    # the corrected no-collision contract. `update sheonite` omits the shot detector (no shot, no HIT, no
+    # explosion), stamps no points and calls no resolve-hit/score (never scored), and writes no `player hit`
+    # (NO craft-death — the keystone contrast with the STATE=2 Bacura). It runs the shared home->lock->combine
+    # ->retreat/vanish machine; the area scheduler's sheonite_start stamps the pair + clears the end-flag and
+    # sheonite_end raises it. The live proof is the harness Sheonite home/lock/dock/peel-off + inertness
+    # scenarios (area 9 natural spawn, or the T-key).
+    # roadmap-evidence: AIR-09 success  (test_sheonite_slice_authoring_present — the shared updater is warp and dispatched under one OR over both types; it omits the shot detector, runs no explosion and never SLOT_HIT, stamps no points and calls no resolve-hit/score, and writes NO player hit so the pair is craft-inert; sheonite_start stamps both fixed slots ACTIVE/HOME and clears the end-flag while sheonite_end raises it; the machine aims+locks, waits on the end-flag to combine, and on dwell-end the right retreats on SHEONITE_RETREAT_DX while the pair culls; the renderer carries the ten inert costumes shown on an OR over both types with a dynamic costume switch)
+    # roadmap-evidence: AIR-09 failure  (test_sheonite_slice_negative_fixtures — each contract clause corrupted bites, above all the inertness clauses: grafting a shot detector, an explosion, a score path or a `player hit` write each trips its own label)
+    def test_sheonite_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air09_failures(project))
+
+    def test_sheonite_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._air09_failures(base))
+
+        def _body(p, proccode):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            return stage, _proc_body_blocks(stage, proccode)
+
+        def unwarp(proccode):
+            def _mut(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in stage["blocks"].values():
+                    if (
+                        b["opcode"] == "procedures_prototype"
+                        and b.get("mutation", {}).get("proccode") == proccode
+                    ):
+                        b["mutation"]["warp"] = "false"
+            return _mut
+
+        def drop_call_in(host, target):
+            def _mut(p: dict) -> None:
+                stage, body = _body(p, host)
+                for b in body:
+                    if (
+                        b["opcode"] == "procedures_call"
+                        and b.get("mutation", {}).get("proccode") == target
+                    ):
+                        b["mutation"]["proccode"] = "noop"
+                        return
+            return _mut
+
+        def graft_call(host_proccode, target_proccode):
+            def _mut(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                blocks = stage["blocks"]
+                proto_id = next(
+                    bid for bid, b in blocks.items()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == host_proccode
+                )
+                definition = next(
+                    b for b in blocks.values()
+                    if b["opcode"] == "procedures_definition"
+                    and b.get("inputs", {}).get("custom_block", [None, None])[1] == proto_id
+                )
+                call_id = f"graft_{target_proccode.replace(' ', '_')}"
+                blocks[call_id] = {
+                    "opcode": "procedures_call", "next": definition.get("next"), "parent": None,
+                    "inputs": {}, "fields": {}, "shadow": False, "topLevel": False,
+                    "mutation": {
+                        "tagName": "mutation", "children": [], "proccode": target_proccode,
+                        "argumentids": "[]", "warp": "true",
+                    },
+                }
+                definition["next"] = call_id
+            return _mut
+
+        def graft_player_hit(p: dict) -> None:
+            # Splice a `set player hit = 1` onto the update's definition `next` → the pair now kills on touch,
+            # violating the corrected craft-inert contract.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks = stage["blocks"]
+            proto_id = next(
+                bid for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.UPDATE_SHEONITE_PROCCODE
+            )
+            definition = next(
+                b for b in blocks.values()
+                if b["opcode"] == "procedures_definition"
+                and b.get("inputs", {}).get("custom_block", [None, None])[1] == proto_id
+            )
+            blocks["graft_player_hit"] = {
+                "opcode": "data_setvariableto", "next": definition.get("next"), "parent": None,
+                "inputs": {"VALUE": [1, [4, "1"]]},
+                "fields": {"VARIABLE": ["player hit", director.PLAYER_HIT_ID]},
+                "shadow": False, "topLevel": False,
+            }
+            definition["next"] = "graft_player_hit"
+
+        def add_pts_to_start(p: dict) -> None:
+            # Repoint the right-slot `slot timer` stamp in sheonite_start to `slot pts` → the pair is scored.
+            stage, body = _body(p, director.ADVANCE_AREA_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == director.SHEONITE_RIGHT_SLOT
+                ):
+                    b["fields"]["LIST"] = ["slot pts", director.SLOT_PTS_ID]
+                    return
+
+        def strip_left_from_dispatch(p: dict) -> None:
+            # Replace LEFT_SHEONITE_TYPE with a bogus code wherever it appears in the walk dispatch → only the
+            # right half dispatches. dispatch-updates-sheonite still passes (right still matches).
+            stage, body = _body(p, director.ADVANCE_SLOTS_PROCCODE)
+            for b in body:
+                for key, v in list(b.get("inputs", {}).items()):
+                    if _num_operand(v) == director.LEFT_SHEONITE_TYPE:
+                        b["inputs"][key] = [1, [4, "999"]]
+
+        def corrupt_start_type(p: dict) -> None:
+            # Corrupt the right-slot type stamp in sheonite_start off RIGHT_SHEONITE_TYPE.
+            stage, body = _body(p, director.ADVANCE_AREA_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == director.SHEONITE_RIGHT_SLOT
+                    and _num_operand(b["inputs"].get("ITEM")) == director.RIGHT_SHEONITE_TYPE
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "999"]]
+                    return
+
+        def rebrand_handler(handler_text):
+            def _mut(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in stage["blocks"].values():
+                    if b["opcode"] != "operator_equals":
+                        continue
+                    for k in ("OPERAND1", "OPERAND2"):
+                        v = b["inputs"].get(k)
+                        if (
+                            isinstance(v, list)
+                            and len(v) >= 2
+                            and isinstance(v[1], list)
+                            and len(v[1]) >= 2
+                            and v[1][0] == 10
+                            and v[1][1] == handler_text
+                        ):
+                            v[1][1] = "noop_" + handler_text
+            return _mut
+
+        def break_home_aim(p: dict) -> None:
+            # Drop the `compute aim index` call from the update → HOME no longer aims.
+            stage, body = _body(p, director.UPDATE_SHEONITE_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.COMPUTE_AIM_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+                    return
+
+        def break_lock_end_flag(p: dict) -> None:
+            # Repoint every inline `sheonite end flag` READ ([12, name, id]) in the update to another var →
+            # LOCK no longer waits on it.
+            stage, body = _body(p, director.UPDATE_SHEONITE_PROCCODE)
+
+            def repoint(v):
+                if isinstance(v, list):
+                    if len(v) >= 3 and v[0] == 12 and v[2] == director.SHEONITE_END_FLAG_ID:
+                        v[1] = "sheonite phase"
+                        v[2] = director.SHEONITE_PHASE_TMP_ID
+                    else:
+                        for x in v:
+                            repoint(x)
+
+            for b in body:
+                for v in b.get("inputs", {}).values():
+                    repoint(v)
+
+        def break_retreat_dx(p: dict) -> None:
+            # Corrupt the retreat `slot dx` write off SHEONITE_RETREAT_DX → the right half no longer retreats.
+            stage, body = _body(p, director.UPDATE_SHEONITE_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.SHEONITE_RETREAT_DX
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "0"]]
+                    return
+
+        def strip_render_frames(p: dict) -> None:
+            target = next(t for t in p["targets"] if t.get("name") == director.SHEONITE_TARGET)
+            target["costumes"] = target["costumes"][:1]
+
+        def strip_left_from_render(p: dict) -> None:
+            target = next(t for t in p["targets"] if t.get("name") == director.SHEONITE_TARGET)
+            for b in target["blocks"].values():
+                for key, v in list(b.get("inputs", {}).items()):
+                    if _num_operand(v) == director.LEFT_SHEONITE_TYPE:
+                        b["inputs"][key] = [1, [4, "999"]]
+
+        def pin_render_costume(p: dict) -> None:
+            # Replace every dynamic costume switch with a static menu → the pair shows one fixed frame.
+            target = next(t for t in p["targets"] if t.get("name") == director.SHEONITE_TARGET)
+            for b in target["blocks"].values():
+                if (
+                    b.get("opcode") == "looks_switchcostumeto"
+                    and isinstance(b.get("inputs", {}).get("COSTUME"), list)
+                    and b["inputs"]["COSTUME"][0] == 3
+                ):
+                    b["inputs"]["COSTUME"] = [1, "static_menu"]
+
+        cases = [
+            ("sheonite-update-proc-warp", unwarp(director.UPDATE_SHEONITE_PROCCODE)),
+            ("dispatch-updates-sheonite", drop_call_in(director.ADVANCE_SLOTS_PROCCODE, director.UPDATE_SHEONITE_PROCCODE)),
+            ("sheonite-dispatched-both-types", strip_left_from_dispatch),
+            ("sheonite-no-air-hit-detector", graft_call(director.UPDATE_SHEONITE_PROCCODE, director.CHECK_AIR_HIT_PROCCODE)),
+            ("sheonite-no-explosion", graft_call(director.UPDATE_SHEONITE_PROCCODE, director.EXPLODE_TICK_PROCCODE)),
+            ("sheonite-never-scored", graft_call(director.UPDATE_SHEONITE_PROCCODE, director.RESOLVE_HIT_PROCCODE)),
+            ("sheonite-never-scored", add_pts_to_start),
+            ("sheonite-inert-no-craft-death", graft_player_hit),
+            ("sheonite-start-stamps-pair", corrupt_start_type),
+            ("sheonite-start-clears-end-flag", rebrand_handler(director.SHEONITE_START_HANDLER)),
+            ("sheonite-end-raises-flag", rebrand_handler(director.SHEONITE_END_HANDLER)),
+            ("sheonite-home-aims-and-locks", break_home_aim),
+            ("sheonite-lock-waits-end-flag", break_lock_end_flag),
+            ("sheonite-combine-exit", break_retreat_dx),
+            ("sheonite-renderer-frames", strip_render_frames),
+            ("sheonite-renderer-both-types", strip_left_from_render),
+            ("sheonite-renderer-dynamic-costume", pin_render_costume),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._air09_failures(project), label)
+
+    @staticmethod
+    def _audio_failures(project: dict) -> set:
+        """AUDIO cross-cutting contract (docs/mechanics/040-arcade-sound-cues.md) — violated labels.
+
+        Each of the six real arcade gameplay-SFX cues committed under assets/game-sounds/ must be
+        actually PLAYED (a sound_play, whose only builder is Blocks.play_sound, emits a
+        sound_sounds_menu naming the sound) at its verified play point. The five Stage-thread cues
+        (air_destroy / ground_destroy / zakato-teleport / garu_zakato / sheonite) play from the Stage,
+        whose walk/detector procs own those seams. The Bacura-bounce cue is special: the bounce runs on
+        a blaster CLONE, which cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
+        and the Stage plays BACURA_HIT_SND on a matching receiver — the cue must NOT be played on the
+        cloning blaster target."""
+        failures = set()
+        targets = {t.get("name"): t for t in project["targets"]}
+        stage = next(t for t in project["targets"] if t.get("isStage"))
+
+        def menu_names(target):
+            return {
+                b["fields"]["SOUND_MENU"][0]
+                for b in target.get("blocks", {}).values()
+                if b["opcode"] == "sound_sounds_menu" and "SOUND_MENU" in b.get("fields", {})
+            }
+
+        all_played = set()
+        for t in project["targets"]:
+            all_played |= menu_names(t)
+        for name in ("air_destroy", "ground_destroy", "zakato", "garu_zakato", "sheonite", "bacura"):
+            if name not in all_played:
+                failures.add(f"cue-missing:{name}")
+
+        stage_played = menu_names(stage)
+        for name in ("air_destroy", "ground_destroy", "zakato", "garu_zakato", "sheonite"):
+            if name not in stage_played:
+                failures.add(f"stage-cue-missing:{name}")
+
+        # Bacura routing: on the Stage via a `sfx bacura` receiver; the blaster broadcasts it and
+        # never plays the Stage-owned sound on the clone.
+        if "bacura" not in stage_played:
+            failures.add("bacura-not-on-stage")
+
+        def has_receive(target, message):
+            return any(
+                b["opcode"] == "event_whenbroadcastreceived"
+                and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == message
+                for b in target.get("blocks", {}).values()
+            )
+
+        def has_broadcast(target, message):
+            return any(
+                b["opcode"] in ("event_broadcast", "event_broadcastandwait")
+                and isinstance(b.get("inputs", {}).get("BROADCAST_INPUT"), list)
+                and b["inputs"]["BROADCAST_INPUT"][1][1] == message
+                for b in target.get("blocks", {}).values()
+            )
+
+        if not has_receive(stage, "sfx bacura"):
+            failures.add("bacura-no-stage-receiver")
+        blaster = targets.get("blaster")
+        if blaster is None or not has_broadcast(blaster, "sfx bacura"):
+            failures.add("bacura-no-blaster-broadcast")
+        if blaster is not None and "bacura" in menu_names(blaster):
+            failures.add("bacura-played-on-clone")
+        return failures
+
+    def test_audio_cues_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._audio_failures(project))
+
+    def test_audio_cues_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._audio_failures(base))
+
+        def drop_menu(name):
+            # Rename every sound_sounds_menu naming `name` on the Stage (turns off that cue's play).
+            def _mut(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t.get("isStage"))
+                for b in stage["blocks"].values():
+                    if (
+                        b["opcode"] == "sound_sounds_menu"
+                        and b.get("fields", {}).get("SOUND_MENU", [None])[0] == name
+                    ):
+                        b["fields"]["SOUND_MENU"][0] = "wrong"
+            return _mut
+
+        def drop_bacura_receiver(p: dict) -> None:
+            stage = next(t for t in p["targets"] if t.get("isStage"))
+            for b in stage["blocks"].values():
+                if (
+                    b["opcode"] == "event_whenbroadcastreceived"
+                    and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == "sfx bacura"
+                ):
+                    b["fields"]["BROADCAST_OPTION"][0] = "wrong"
+
+        cases = [
+            ("stage-cue-missing:air_destroy", drop_menu("air_destroy")),
+            ("stage-cue-missing:ground_destroy", drop_menu("ground_destroy")),
+            ("stage-cue-missing:zakato", drop_menu("zakato")),
+            ("stage-cue-missing:garu_zakato", drop_menu("garu_zakato")),
+            ("stage-cue-missing:sheonite", drop_menu("sheonite")),
+            ("bacura-not-on-stage", drop_menu("bacura")),
+            ("bacura-no-stage-receiver", drop_bacura_receiver),
+        ]
+        for label, mutate in cases:
+            project = load_source(scratch.SOURCE_DIR)
+            mutate(project)
+            self.assertIn(label, self._audio_failures(project), label)
 
     @staticmethod
     def _wpn01_failures(project: dict) -> set:
@@ -11609,7 +12308,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "b3176ec87dfa1f195ffc2dad8b2133574831a0a1220f4b61a7105ec63632ddb5",
+            "f1790d235c4730422a6993c1942bd36d981e662c4247e779605be224efd703b9",
             build_hash,
         )
 

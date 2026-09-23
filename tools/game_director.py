@@ -978,6 +978,16 @@ GIDDO_SPARIO_FORMATION_OFFSET = 39
 BRAG_ZAKATO_RND_TYPE = 22  # 0x16, handle_16_Brag_Zakato_rnd: teleport in, random 1-64 fuse, terminal fan
 BRAG_ZAKATO_CLOSEY_TYPE = 23  # 0x17, handle_17_Brag_Zakato_closeY: teleport in, fires level-in-Y, terminal fan
 GARU_ZAKATO_TYPE = 24  # 0x18, handle_18_Garu_Zakato: no teleport, straight 3 px/f, fuse -> ring + 4 Sparios
+# AIR-09 Sheonite (indestructible escort PAIR). The two arcade object codes handle_31_right_sheonite (0x31,
+# main:4052) and handle_32_left_sheonite (0x32, main:4162). Both set _STATE=3 (indestructible) on their
+# first walk, so EVERY hit test — the shot/score test AND the craft-collision test — skips them (all gate
+# STATE==2). The port realizes that total inertness structurally: the Sheonite walk branch OMITS the
+# CHECK_AIR_HIT call (like the Bacura), AND no craft-overlap detector targets its slots. The pair collides
+# with nothing (no shot, no score, no bomb, no craft-death — confirmed at the pin + operator). Unlike the
+# Bacura, its codes never collide with SHOT_TYPE, so it lives in the shared flying pool and dispatches by
+# `walk type` (the Jara two-type OR model), needing no reserved band.
+RIGHT_SHEONITE_TYPE = 49  # 0x31, handle_31_right_sheonite: homes, docks, then retreats along the scroll axis
+LEFT_SHEONITE_TYPE = 50  # 0x32, handle_32_left_sheonite: homes, docks, then vanishes
 BRAG_ZAKATO_TYPES = (BRAG_ZAKATO_RND_TYPE, BRAG_ZAKATO_CLOSEY_TYPE)
 # Points are 1-based value-table positions (VALUE_TABLE_POINTS): rnd 600 -> 13, closeY 1500 -> 18, Garu
 # 1000 -> 17 (arcade _PTS bytes 36/51/48 name those arcade-table slots; same decoded remap as the base
@@ -1032,6 +1042,8 @@ FLYING_HANDLED_TYPES = (
     BRAG_ZAKATO_RND_TYPE,
     BRAG_ZAKATO_CLOSEY_TYPE,
     GARU_ZAKATO_TYPE,
+    RIGHT_SHEONITE_TYPE,
+    LEFT_SHEONITE_TYPE,
 )
 # AIR-11 Bacura (indestructible slab). Arcade code 0x01 (main_fn_3__init_bacura 5188 writes _TYPE=1 into
 # the 0x10-0x1F object band). BACURA_TYPE keeps that arcade value, but the port must NOT dispatch it by
@@ -1061,6 +1073,53 @@ ONE_SECOND_CNTR_ID = "one-second-cntr"  # frames until the next increment (main_
 BACURA_SEED_SLOT_ID = "bacura-seed-slot"  # init-pump loop cursor (0-based offset into the band)
 BACURA_BAND_SIZE = BACURA_SLOTS[1] - BACURA_SLOTS[0] + 1  # 16 reserved slots (0x10-0x1F)
 BACURA_INC_PERIOD_FRAMES = 60  # main_fn_5 sets one_second_cntr=60; counted down TICK_TIMER_STEP/tick
+# AIR-09 Sheonite escort-pair port model. The pair lives in the shared flying pool (two fixed adjacent
+# slots) and runs an explicit phase machine carried in `slot flag` (slot state stays SLOT_ACTIVE; the
+# renderer reads slot flag + slot type + slot timer). Phases: HOME (home onto the craft at the shared
+# 64-magnitude aim tier, 4 px/frame, re-aimed each tick) -> LOCK (track a fixed offset beside the live
+# craft, recomputed each tick) -> COMBINE (dock: a 32-frame dwell) -> RETREAT (right only: drift away along
+# the scroll axis at 6 px/frame; the left side vanishes at combine end). Never hit-tested (see the type
+# note above): the walk branch omits CHECK_AIR_HIT and no craft-overlap detector targets these slots.
+SHEONITE_TARGET = "sheonite"
+SHEONITE_CLONE_SLOT_ID = "sheonite-clone-slot"  # sprite-local: which flying slot this clone renders
+UPDATE_SHEONITE_PROCCODE = "update sheonite"
+SHEONITE_RIGHT_SLOT = FLYING_SLOTS[1]  # 0x3f, the arcade's right-Sheonite object slot
+SHEONITE_LEFT_SLOT = FLYING_SLOTS[1] - 1  # 0x3e, the arcade's left-Sheonite object slot
+# Phase constants (carried in `slot flag`).
+SHEONITE_PHASE_HOME = 0
+SHEONITE_PHASE_LOCK = 1
+SHEONITE_PHASE_COMBINE = 2
+SHEONITE_PHASE_RETREAT = 3
+# Lock offset from the live craft cell: 2 cells ahead on the scroll axis (arcade _X-0x200) and 2 cells to
+# either lateral side (right _Y-0x200, left _Y+0x200; 0x200 = 2 cells of 256 units).
+SHEONITE_LOCK_LEAD = 2  # cells ahead of the craft on the scroll axis (toward the top of the field)
+SHEONITE_LOCK_FLANK = 2  # cells to the side (right locks -flank, left +flank)
+# Retreat is the arcade _dX=0xFFA0 = -96 raw (=> 4*-96 units/tick / 32 units-px / 2 frames = -6 px/frame,
+# away from the craft along the scroll axis); homing reuses the live 64-magnitude aim tier (4 px/frame).
+SHEONITE_RETREAT_DX = -96
+SHEONITE_COMBINE_DWELL_FRAMES = 32  # dock dwell (arcade r/l_sheonite_combining: 0xe0->wrap up / 0x20->0 down = 32)
+# Render-only animation (like the Jara). Costume ordinals 1..10 == arcade sprite codes 0x30..0x39:
+# spin/01..04 (0x30-0x33) in HOME/LOCK/RETREAT, then combine/01..03 (right, 0x34-0x36) and combine/04..06
+# (left, 0x37-0x39) in COMBINE. The exact per-side arcade code-table permutation is a cosmetic simplified
+# to a plain cycle (recorded as a port note); the behaviour it drives is faithful.
+SHEONITE_ANIM_PERIOD = 2  # arcade-frames per animation step (slot timer advances TICK_TIMER_STEP=2/tick)
+SHEONITE_SPIN_FRAMES = 4  # spin costume count (ordinals 1..4)
+SHEONITE_COMBINE_ANIM_FRAMES = 3  # combine costume count per side (right 5..7, left 8..10)
+SHEONITE_SPIN_BASE_ORDINAL = 1  # spin costumes start at ordinal 1
+SHEONITE_RIGHT_COMBINE_BASE_ORDINAL = SHEONITE_SPIN_FRAMES + 1  # 5
+SHEONITE_LEFT_COMBINE_BASE_ORDINAL = SHEONITE_SPIN_FRAMES + SHEONITE_COMBINE_ANIM_FRAMES + 1  # 8
+SHEONITE_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+# Stage-written escort state. `sheonite end flag` is the schedule on/off flag (sheonite_start clears it,
+# sheonite_end raises it); the pair only leaves LOCK once it is set. The two temps are per-tick machinery:
+# a phase snapshot (so a mid-tick transition does not cascade into a later branch this tick) and the
+# resolved lateral lock cell (right vs left).
+SHEONITE_END_FLAG_ID = "sheonite-end-flag"
+SHEONITE_PHASE_TMP_ID = "sheonite-phase"
+SHEONITE_LOCK_COL_ID = "sheonite-lock-col"
+# AIR-09 schedule handlers (area-schedules.json opcodes 0x33/0x34, sub_2_fn_18/19 sheonite_start/end).
+# start stamps the pair and clears the end-flag; end raises it. On/off flags, not a per-second pump.
+SHEONITE_START_HANDLER = "sheonite_start"
+SHEONITE_END_HANDLER = "sheonite_end"
 # DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
 # (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
 # whose count is how many to bring in as one group (almost always 1). T brings in the entry at `debug
@@ -1101,6 +1160,11 @@ DEBUG_SPAWN_FAMILIES = (
     # (the formation spawner brings in nothing) and a dedicated direct-stamp branch stamps one slab into
     # BACURA_SLOTS[0] instead. Offset is immaterial at count 0.
     (BACURA_TYPE, 0, 0),
+    # AIR-09: the Sheonite is a schedule-spawned PAIR (sheonite_start/end), not a formation type, so its
+    # count is 0 and a dedicated direct-stamp branch stamps BOTH slots (right + left). The debug stamp also
+    # pre-arms the end-flag so the pair completes its lifecycle and self-culls (so holding T does not stall
+    # the cursor on an escort that would otherwise lock beside the craft forever). Keyed on the right type.
+    (RIGHT_SHEONITE_TYPE, 0, 0),
 )
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
@@ -1748,6 +1812,10 @@ MESSAGES = {
     # sprite's bounds broadcasts (target-bounds-*) are gone: the crosshair is a pure renderer now.
     "bomb": "broadcastMsgId-bomb-release",
     "bomb landed": "broadcastMsgId-bomb-landed",
+    # AUDIO: the shot×Bacura bounce runs on a blaster clone, which cannot play a Stage-owned
+    # sound directly; it broadcasts this and the Stage plays BACURA_HIT_SND (src deactivate_shot
+    # xevious_main.68k:2559). All other arcade SFX play from Stage-thread procs directly.
+    "sfx bacura": "broadcastMsgId-sfx-bacura",
 }
 
 PROCCODE = "transition to %s reset %s"
@@ -2646,6 +2714,17 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_ZAKATO_TYPE)),
         [blocks.call_proc(UPDATE_GARU_ZAKATO_PROCCODE, warp=True)],
     )
+    # AIR-09: the two Sheonite object types (right 0x31 / left 0x32) share ONE update proc — both run the
+    # same home/lock/combine machine, branching inside on `slot type` for the lateral flank (right -flank,
+    # left +flank) and the exit (right retreats, left vanishes). Dispatch with a single OR branch, like the
+    # Jara/Zakato. `update sheonite` NEVER calls CHECK_AIR_HIT and raises no craft-hit: the pair is inert.
+    is_sheonite = blocks.op_or(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(RIGHT_SHEONITE_TYPE)),
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LEFT_SHEONITE_TYPE)),
+    )
+    sheonite_branch = blocks.if_reporter(
+        is_sheonite, [blocks.call_proc(UPDATE_SHEONITE_PROCCODE, warp=True)]
+    )
     # AIR-11: the Bacura is the one occupant dispatched by BAND MEMBERSHIP rather than by `walk type`. Its
     # slot type (BACURA_TYPE=1) collides with SHOT_TYPE — the shot slots (37-39) also carry type 1 — so a
     # `walk type == 1` branch would run the Bacura handler over live shots. The Bacura band (17-32) only
@@ -2681,7 +2760,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(LOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_LOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -2974,6 +3053,9 @@ def install_check_air_hit(blocks: Blocks) -> None:
                         ),
                     ),
                     blocks.call_proc(RESOLVE_HIT_PROCCODE, warp=True),
+                    # AUDIO: FLYING_ENEMY_HIT_SND on a scored flying kill (src xevious_main.68k:2537,
+                    # check_shot_hit_flying_enemy). Stage-owned sound, played on the Stage thread.
+                    blocks.play_sound("air_destroy"),
                     _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
                     blocks.list_replace("slot state", SLOT_STATE_ID, number(s), number(SHOT_SPENT)),
                 ],
@@ -3048,6 +3130,9 @@ def install_check_ground_hit(blocks: Blocks) -> None:
                         ),
                     ),
                     blocks.call_proc(RESOLVE_HIT_PROCCODE, warp=True),
+                    # AUDIO: GROUND_EXPLOSION_SND on a scored ground kill (src xevious_main.68k:2615).
+                    # Stage-owned sound, played on the Stage thread.
+                    blocks.play_sound("ground_destroy"),
                     # `resolve hit` marks the slot HIT and scores but does NOT touch the slot timer.
                     # Reset it here (mirroring the air detector at install_check_air_hit) so the ground
                     # explosion clock — floor(slot timer / 8) through the 7 burst frames, then the
@@ -4393,6 +4478,8 @@ def install_init_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(ZAKATO_MAIN_CODE)),
             *pts_stamps,
+            # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004).
+            blocks.play_sound("zakato"),
         ],
     )
     blocks.chain(definition, [*reset, draw_loop, stamp])
@@ -4954,6 +5041,171 @@ def install_update_brag_spario(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def _stamp_sheonite(blocks: Blocks, slot_number: int, type_number: int, flank_sign: int) -> list[str]:
+    # AIR-09: stamp one half of the Sheonite escort pair into a fixed flying slot. The arcade
+    # sheonite_start (sub_2_fn_18 sub:530-537) writes only `_TYPE` (0x31 -> slot 0x3f, 0x32 -> 0x3e) and
+    # clears the end-flag; each object's handler sets its own STATE/position on its first walk (main:4052
+    # right / 4162 left). The port folds that first-call setup into the stamp so the slot is renderable and
+    # walkable immediately: state ACTIVE (the pair is never SLOT_HIT — it is inert), phase HOME in `slot
+    # flag`, velocity 0 (HOME re-aims it on its first tick), clock 0.
+    #
+    # PORT NECESSITY (entry position): the arcade right half enters at the fixed lateral _Y=0x30 (48 cells),
+    # off the port's 0..31 lateral field (the port compresses the arcade's wider internal lateral
+    # coordinate). Rather than an off-field entry that would cull instantly, the port enters each half at
+    # the top row directly above its own dock cell (player col +/- flank), so the pair descends from ahead
+    # and docks beside the craft. The observable behaviour (a pair homing onto the craft, docking, peeling
+    # off) is preserved; the absolute arcade entry column is not portable. Recorded in the mechanics record.
+    return [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot_number), number(type_number)),
+        blocks.list_replace("slot state", SLOT_STATE_ID, number(slot_number), number(SLOT_ACTIVE)),
+        blocks.list_replace("slot flag", SLOT_FLAG_ID, number(slot_number), number(SHEONITE_PHASE_HOME)),
+        blocks.list_replace("slot x", SLOT_X_ID, number(slot_number), number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            number(slot_number),
+            blocks.op_mul(
+                blocks.op_add(variable("player col", PLAYER_COL_ID), number(flank_sign * SHEONITE_LOCK_FLANK)),
+                number(SLOT_UNITS_PER_CELL),
+            ),
+        ),
+        blocks.list_replace("slot dx", SLOT_DX_ID, number(slot_number), number(0)),
+        blocks.list_replace("slot dy", SLOT_DY_ID, number(slot_number), number(0)),
+        blocks.list_replace("slot timer", SLOT_TIMER_ID, number(slot_number), number(0)),
+    ]
+
+
+def install_update_sheonite(blocks: Blocks) -> None:
+    # AIR-09: advance the Sheonite at `slot index` by one tick — the shared home/lock/combine/exit machine
+    # for BOTH the right (0x31, handle_31_right_sheonite main:4052) and left (0x32, handle_32_left_sheonite
+    # main:4162) escort. The phase lives in `slot flag`; a snapshot (`sheonite phase`) taken at the top of
+    # the tick drives the branch ladder, so a transition written this tick does not cascade into a later
+    # branch. The proc NEVER calls CHECK_AIR_HIT and raises NO craft-hit: both arcade handlers set _STATE=3
+    # (indestructible), which every hit test skips (STATE==2 gate) — the pair is wholly inert (no shot, no
+    # score, no bomb, no craft-death). The omission here IS that inertness (see the type note ~:1076).
+    definition = _install_warp_proc(blocks, UPDATE_SHEONITE_PROCCODE)
+
+    # Fresh reporters per use: a reporter attaches to only one parent, so reusing one would let the second
+    # consumer steal it from the first (silent empty operand). Every helper rebuilds its subtree.
+    is_right = lambda: blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(RIGHT_SHEONITE_TYPE))
+    phase = lambda: variable("sheonite phase", SHEONITE_PHASE_TMP_ID)
+    lock_row = lambda: blocks.op_sub(variable("player row", PLAYER_ROW_ID), number(SHEONITE_LOCK_LEAD))
+    lock_col = lambda: variable("sheonite lock col", SHEONITE_LOCK_COL_ID)
+
+    def step_timer() -> str:
+        return _set_cur_item(
+            blocks, "slot timer", SLOT_TIMER_ID,
+            blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+        )
+
+    def move_by_velocity() -> list[str]:
+        return [
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+            _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
+        ]
+
+    def snap_to_lock() -> list[str]:
+        # LOCK/COMBINE hold a fixed offset beside the LIVE craft, recomputed each tick (arcade
+        # set_r/l_sheonite_above_solvalou main:4140/4237: (_X-0x200, _Y-/+0x200) = 2 cells ahead, 2 aside).
+        return [
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_mul(lock_row(), number(SLOT_UNITS_PER_CELL))),
+            _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_mul(lock_col(), number(SLOT_UNITS_PER_CELL))),
+        ]
+
+    # --- setup: resolve this side's lateral lock cell, then snapshot the phase ---
+    lock_col_setup = blocks.add("control_if_else")
+    setup_cond = is_right()
+    blocks.blocks[lock_col_setup]["inputs"]["CONDITION"] = [2, setup_cond]
+    blocks.blocks[setup_cond]["parent"] = lock_col_setup
+    blocks.substack(
+        lock_col_setup,
+        [blocks.set_var_expr("sheonite lock col", SHEONITE_LOCK_COL_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), number(SHEONITE_LOCK_FLANK)))],
+    )
+    blocks.substack(
+        lock_col_setup,
+        [blocks.set_var_expr("sheonite lock col", SHEONITE_LOCK_COL_ID, blocks.op_add(variable("player col", PLAYER_COL_ID), number(SHEONITE_LOCK_FLANK)))],
+        name="SUBSTACK2",
+    )
+    snapshot = blocks.set_var_expr("sheonite phase", SHEONITE_PHASE_TMP_ID, _cur_item(blocks, "slot flag", SLOT_FLAG_ID))
+
+    # --- HOME: fly onto the lock target at the shared 64-magnitude aim tier (4 px/frame), re-aimed each
+    # tick (main:4057-4066 / 4166-4175). Switch to LOCK once the scroll axis reaches the lock line
+    # (arcade compares solvalou_X-2 == sheonite_X, main:4067-4069 / 4176-4178; port uses >= so a 4-px step
+    # cannot skip the exact cell). ---
+    home_aim = [
+        blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(lock_row(), _cur_row(blocks))),
+        blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(lock_col(), _cur_col(blocks))),
+        blocks.call_proc(COMPUTE_AIM_PROCCODE, warp=True),
+        _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 64", AIM_DX_64_ID, variable("aim index", AIM_INDEX_ID))),
+        _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 64", AIM_DY_64_ID, variable("aim index", AIM_INDEX_ID))),
+    ]
+    reached = blocks.op_not(blocks.op_lt(_cur_row(blocks), lock_row()))  # slot row >= lock_row
+    to_lock = blocks.if_reporter(reached, [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(SHEONITE_PHASE_LOCK))])
+    home_branch = blocks.if_reporter(
+        blocks.op_eq(phase(), number(SHEONITE_PHASE_HOME)),
+        [*home_aim, *move_by_velocity(), step_timer(), to_lock],
+    )
+
+    # --- LOCK: hold the offset beside the live craft, advancing the spin clock. The pair only leaves LOCK
+    # once sheonite_end has raised the end-flag (arcade waits on sheonite_end_flag, main:4074 / 4187); on
+    # that transition reset the clock so COMBINE's dwell counts from 0. ---
+    end_set = blocks.op_not(blocks.op_eq(variable("sheonite end flag", SHEONITE_END_FLAG_ID), number(0)))
+    to_combine = blocks.if_reporter(
+        end_set,
+        [
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(SHEONITE_PHASE_COMBINE)),
+        ],
+    )
+    lock_branch = blocks.if_reporter(
+        blocks.op_eq(phase(), number(SHEONITE_PHASE_LOCK)),
+        [*snap_to_lock(), step_timer(), to_combine],
+    )
+
+    # --- COMBINE: dock beside the craft for SHEONITE_COMBINE_DWELL_FRAMES (arcade r/l_sheonite_combining
+    # main:4102/4215: 32 frames each side). When the dwell completes the right half retreats (arcade
+    # r_sheonite_retreat main:4120: _dX=-96 -> -6 px/frame away up the scroll axis) and the left half
+    # vanishes (arcade l_sheonite_remove main:4232: clears _TYPE/_STATE -> cull). ---
+    combine_exit = blocks.add("control_if_else")
+    exit_cond = is_right()
+    blocks.blocks[combine_exit]["inputs"]["CONDITION"] = [2, exit_cond]
+    blocks.blocks[exit_cond]["parent"] = combine_exit
+    blocks.substack(
+        combine_exit,
+        [
+            _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(SHEONITE_RETREAT_DX)),
+            _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(SHEONITE_PHASE_RETREAT)),
+            # AUDIO: SHEONITE_SND on the RIGHT half's retreat only (src r_sheonite_retreat
+            # xevious_main.68k:4128, after _dX=0xFFA0). The left half (SUBSTACK2) vanishes silently
+            # (l_sheonite_remove main:4232 plays no sound).
+            blocks.play_sound("sheonite"),
+        ],
+    )
+    blocks.substack(combine_exit, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)], name="SUBSTACK2")
+    dwell_done = blocks.op_not(blocks.op_lt(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(SHEONITE_COMBINE_DWELL_FRAMES)))
+    combine_done = blocks.if_reporter(dwell_done, [combine_exit])
+    combine_branch = blocks.if_reporter(
+        blocks.op_eq(phase(), number(SHEONITE_PHASE_COMBINE)),
+        [*snap_to_lock(), step_timer(), combine_done],
+    )
+
+    # --- RETREAT (right only): drift up the scroll axis on the retreat velocity until it clears the top of
+    # the field, then cull. The left half never reaches this phase (it culls at combine end). ---
+    retreat_move = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
+    ]
+    off_top = blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MIN + 1))
+    retreat_cull = blocks.if_reporter(off_top, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    retreat_branch = blocks.if_reporter(
+        blocks.op_eq(phase(), number(SHEONITE_PHASE_RETREAT)),
+        [*retreat_move, step_timer(), retreat_cull],
+    )
+
+    blocks.chain(definition, [lock_col_setup, snapshot, home_branch, lock_branch, combine_branch, retreat_branch])
+
+
 def install_init_brag_zakato(blocks: Blocks) -> None:
     # AIR-08: shared teleport-in init for the two Brag Zakato variants (handle_16/17 3863/3893, via the
     # shared init_teleport 3994). Identical to the base Zakato init — same ~20-frame teleport-in sparkle,
@@ -4987,6 +5239,9 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(BRAG_ZAKATO_MAIN_CODE)),
             *pts_stamps,
+            # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004),
+            # shared with the base Zakato — same teleport cue.
+            blocks.play_sound("zakato"),
         ],
     )
     blocks.chain(definition, [*reset, draw_loop, stamp])
@@ -5270,7 +5525,9 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
         _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(0)),
         _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(0)),
     ]
-    blocks.chain(definition, [*capture, set_ring_angle, ring, *spawn_body, *free])
+    # AUDIO: GARU_ZAKATO_SND on the detonation (src garu_zakato_explode xevious_main.68k:4033).
+    detonate_sound = blocks.play_sound("garu_zakato")
+    blocks.chain(definition, [*capture, detonate_sound, set_ring_angle, ring, *spawn_body, *free])
 
 
 def install_fire_permission_gate(blocks: Blocks) -> None:
@@ -5562,9 +5819,28 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
             blocks.call_proc(INIT_BACURA_PROCCODE, warp=True),
         ],
     )
+    # AIR-09: the Sheonite is a schedule-spawned PAIR, not a formation type, so its count is 0 and the
+    # formation spawner brings it in nothing. Stamp BOTH halves directly (right into 0x3f, left into 0x3e)
+    # — the same slots the natural sheonite_start uses — so holding T shows the escort pair on demand. The
+    # debug stamp ALSO pre-arms the end-flag (=1) so the pair completes its whole lifecycle and self-culls
+    # (dock -> right retreats off the top, left vanishes); without it the pair would lock beside the craft
+    # forever and stall the T cursor (the PR-A homer-stall trap). The `clear` step above has already wiped
+    # the flying slots this fresh-spawn tick, so the two stamps land in freshly-empty slots. Guarded on the
+    # right family index; runs on the fresh spawn only, before the index advances.
+    sheonite_debug_index = next(
+        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == RIGHT_SHEONITE_TYPE
+    )
+    sheonite_stamp = blocks.if_reporter(
+        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(sheonite_debug_index)),
+        [
+            *_stamp_sheonite(blocks, SHEONITE_RIGHT_SLOT, RIGHT_SHEONITE_TYPE, -1),
+            *_stamp_sheonite(blocks, SHEONITE_LEFT_SLOT, LEFT_SHEONITE_TYPE, +1),
+            blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1)),
+        ],
+    )
     blocks.substack(
         branch,
-        [*clear, *set_count, garu_stamp, bacura_stamp, advance_index],
+        [*clear, *set_count, garu_stamp, bacura_stamp, sheonite_stamp, advance_index],
         name="SUBSTACK2",
     )
     blocks.substack(gate, [*set_offset, branch])
@@ -5626,6 +5902,10 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
         blocks.set_var("num bacura", NUM_BACURA_ID, number(0)),
         blocks.set_var("bacura inc cnt", BACURA_INC_CNT_ID, number(0)),
         blocks.set_var("one second cntr", ONE_SECOND_CNTR_ID, number(0)),
+        # AIR-09: clear the Sheonite end-flag at each area entry so a raised flag never bleeds across an
+        # area boundary or a respawn (the natural sheonite_start also clears it, but a debug pre-arm or a
+        # partial run must not carry a stuck "time to leave" into the next area).
+        blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(0)),
     ]
 
 
@@ -5939,8 +6219,26 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         blocks.op_eq(handler_at_cursor(), text(RESET_BACURA_COUNT_HANDLER)),
         [blocks.set_var("num bacura", NUM_BACURA_ID, number(0))],
     )
+    # AIR-09 (air.sheonite #79): sheonite_start (op 0x33, sub_2_fn_18 sub:530-537) stamps the escort PAIR
+    # into the two fixed flying slots (0x31 -> 0x3f right, 0x32 -> 0x3e left) and clears the end-flag;
+    # sheonite_end (op 0x34, sub_2_fn_19 sub:539-542) raises the end-flag, releasing the pair from LOCK
+    # into the dock/peel-off. On/off flags, not a per-second pump. These records already live in the loaded
+    # area schedules (area 9 spawns the pair at row 179 and ends it at 159); wiring the branches makes them
+    # spawn. The pair is inert, so nothing here touches the hit/score/bomb path.
+    sheonite_start_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(SHEONITE_START_HANDLER)),
+        [
+            *_stamp_sheonite(blocks, SHEONITE_RIGHT_SLOT, RIGHT_SHEONITE_TYPE, -1),
+            *_stamp_sheonite(blocks, SHEONITE_LEFT_SLOT, LEFT_SHEONITE_TYPE, +1),
+            blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(0)),
+        ],
+    )
+    sheonite_end_branch = blocks.if_reporter(
+        blocks.op_eq(handler_at_cursor(), text(SHEONITE_END_HANDLER)),
+        [blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1))],
+    )
     # ENGINE-TODO: the remaining spawn / boss handler dispatch (add_domogram_with_path, add_object,
-    # andor_genesis_*, sheonite_*) lands with the later enemy slices. The DIF/FORM handlers
+    # andor_genesis_*) lands with the later enemy slices. The DIF/FORM handlers
     # (raise, adjust, set/reset formation, the 8 fire masks, ground-stop) and add_ground_object (the
     # two built ground families) are wired above; the still-unhandled spawn/boss records advance the
     # cursor and count the fire only.
@@ -5956,6 +6254,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             add_ground_branch,
             set_bacura_branch,
             reset_bacura_branch,
+            sheonite_start_branch,
+            sheonite_end_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -6158,6 +6458,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_check_shot_bacura(blocks)
     install_update_bacura(blocks)
     install_pump_bacura(blocks)
+    install_update_sheonite(blocks)  # AIR-09
     install_fire_permission_gate(blocks)
     install_cull_slot(blocks)
     install_advance_slots(blocks)
@@ -6183,6 +6484,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
 
     space = blocks.key("space")
     blocks.chain(space, [blocks.if_state("title", [blocks.call_transition("ready", "new-game")])])
+
+    # AUDIO: sound-only receiver for the shot×Bacura bounce. The bounce runs on a blaster clone
+    # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
+    # and the Stage plays BACURA_HIT_SND here (src deactivate_shot xevious_main.68k:2559).
+    blocks.chain(blocks.receive("sfx bacura"), [blocks.play_sound("bacura")])
 
     # (The D/G debug death keys are retired in slice 8: a real attacker now kills the craft — a flying
     # enemy or an enemy bullet touching the craft's cell raises `player hit`, and the walk thread runs
@@ -6898,8 +7204,9 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     # the reference's BACURA_BOUNCE_FRAMES (8) costume frames in place, then fall through to the shared
     # free+delete below. The Bacura is untouched; only the shot animates away. Ordinary air-kill spends
     # (SHOT_SPENT) and top-expiry (still ACTIVE) skip this branch and delete at once as before. The
-    # BACURA_HIT_SND has no ripped asset, so the "blaster" sound stands in (matching the Zakato/Spario
-    # stand-in precedent; recorded in docs/mechanics/038).
+    # real BACURA_HIT_SND now plays (src deactivate_shot xevious_main.68k:2559): this branch runs on a
+    # blaster clone, which cannot play the Stage-owned `bacura` sound directly, so it broadcasts
+    # `sfx bacura` and the Stage's receiver plays it.
     bounce_anim = blocks.add("control_repeat", inputs={"TIMES": number(BACURA_BOUNCE_FRAMES)})
     blocks.substack(
         bounce_anim,
@@ -6913,7 +7220,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.list_item("slot state", SLOT_STATE_ID, variable("clone slot", CLONE_SLOT_ID)),
             number(SHOT_BOUNCE),
         ),
-        [blocks.play_sound("blaster"), bounce_anim],
+        [blocks.send("sfx bacura"), bounce_anim],
     )
     # The clone snapshots `alloc result` (its allocated index) into its own `clone slot`
     # at birth, and frees that slot on expiry — so every delete path returns the slot to
@@ -8663,6 +8970,94 @@ def bacura_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def sheonite_blocks() -> dict[str, dict[str, Any]]:
+    # AIR-09 Sheonite renderer (game_director owns the blocks; the ten costumes are mirrored on in
+    # expected_project). One persistent clone per flying slot (59..64), the same pool pattern as the Jara,
+    # shown and positioned when its slot holds EITHER Sheonite type (0x31 right / 0x32 left), hidden
+    # otherwise. The clone writes no state. There is NO hit/explosion phase — the pair is inert, never
+    # SLOT_HIT — so unlike the killable flyers this has no burst branch. Animation is render-only, driven by
+    # the slot's `slot flag` (phase) and `slot timer` (clock): in HOME/LOCK/RETREAT it cycles the 4 spin
+    # frames (ordinals 1..4); while COMBINE (docking) it cycles the 3 combine frames for its side (right
+    # ordinals 5..7, left 8..10). Costume ordinals 1..10 == arcade sprite codes 0x30..0x39; the exact
+    # per-side arcade code permutation is a cosmetic simplified to a plain cycle (recorded as a port note).
+    blocks = Blocks(SHEONITE_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("sheonite clone slot", SHEONITE_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("sheonite clone slot", SHEONITE_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_sheonite = blocks.op_or(
+        blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(RIGHT_SHEONITE_TYPE)),
+        blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(LEFT_SHEONITE_TYPE)),
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Render-only animation clock. A fresh reporter per read (a reporter cannot be shared across parents —
+    # the first parent steals it).
+    spin_phase = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(SHEONITE_ANIM_PERIOD))),
+        number(SHEONITE_SPIN_FRAMES),
+    )
+    combine_phase = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(SHEONITE_ANIM_PERIOD))),
+        number(SHEONITE_COMBINE_ANIM_FRAMES),
+    )
+    # Combine costume: the base ordinal depends on the side (right 5..7 / left 8..10).
+    combine_costume = blocks.add("control_if_else")
+    is_right = blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(RIGHT_SHEONITE_TYPE))
+    blocks.blocks[combine_costume]["inputs"]["CONDITION"] = [2, is_right]
+    blocks.blocks[is_right]["parent"] = combine_costume
+    blocks.substack(combine_costume, [blocks.switch_costume_expr(blocks.op_add(combine_phase(), number(SHEONITE_RIGHT_COMBINE_BASE_ORDINAL)))])
+    blocks.substack(combine_costume, [blocks.switch_costume_expr(blocks.op_add(combine_phase(), number(SHEONITE_LEFT_COMBINE_BASE_ORDINAL)))], name="SUBSTACK2")
+    # Phase select: COMBINE (slot flag == 2) shows the combine cycle; every other phase shows the spin cycle.
+    costume_sel = blocks.add("control_if_else")
+    is_combine = blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(SHEONITE_PHASE_COMBINE))
+    blocks.blocks[costume_sel]["inputs"]["CONDITION"] = [2, is_combine]
+    blocks.blocks[is_combine]["parent"] = costume_sel
+    blocks.substack(costume_sel, [combine_costume])
+    blocks.substack(costume_sel, [blocks.switch_costume_expr(blocks.op_add(spin_phase(), number(SHEONITE_SPIN_BASE_ORDINAL)))], name="SUBSTACK2")
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_sheonite]
+    blocks.blocks[is_sheonite]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            costume_sel,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(SHEONITE_RENDER_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
     # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
     # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
@@ -8784,6 +9179,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, BRAG_SPARIO_TARGET)
     _ensure_gameplay_target(result, GARU_ZAKATO_TARGET)
     _ensure_gameplay_target(result, BACURA_TARGET)
+    _ensure_gameplay_target(result, SHEONITE_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
@@ -8880,6 +9276,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     if proof is not None and bacura is not None:
         bacura["costumes"] = proof_by_family("bacura/")
         bacura["currentCostume"] = 0
+    # AIR-09: the Sheonite renderer mirrors its ten frames (sheonite/spin/01..04 then sheonite/combine/01..06,
+    # ordinals 1..10 == arcade codes 0x30..0x39) — and NOTHING else. Like the Bacura the pair is inert (never
+    # destroyed), so it appends NO shared solv_death burst (it has no HIT/explosion phase). The renderer picks
+    # the spin cycle (1..4) or the per-side combine cycle (right 5..7 / left 8..10) by phase + clock.
+    # Idempotent; a no-op when the proof source is absent (generation runs to a fixpoint).
+    sheonite = next((t for t in result["targets"] if t.get("name") == SHEONITE_TARGET), None)
+    if proof is not None and sheonite is not None:
+        sheonite["costumes"] = proof_by_family("sheonite/")
+        sheonite["currentCostume"] = 0
     # GND-01: the Barra renderer mirrors its single idle pyramid frame (ordinal 1), then the shared
     # explosion burst (the same solv_death frames, ordinals 2..9 — the ground bomb-burst is a deferred
     # cosmetic, so the aerial burst stands in), then the two crater frames (ordinals 10..11) that the
@@ -8989,6 +9394,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         BACURA_INC_CNT_ID,
         ONE_SECOND_CNTR_ID,
         BACURA_SEED_SLOT_ID,
+        # AIR-09: the Sheonite escort's schedule on/off flag plus the two per-tick update temps (phase
+        # snapshot + resolved lateral lock cell).
+        SHEONITE_END_FLAG_ID,
+        SHEONITE_PHASE_TMP_ID,
+        SHEONITE_LOCK_COL_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -9099,6 +9509,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         BACURA_INC_CNT_ID: ["bacura inc cnt", 0],
         ONE_SECOND_CNTR_ID: ["one second cntr", 0],
         BACURA_SEED_SLOT_ID: ["bacura seed slot", 0],
+        # AIR-09: the Sheonite escort's schedule on/off flag (cleared per area in _enter_area_top) and its
+        # two per-tick update temps (phase snapshot + resolved lateral lock cell).
+        SHEONITE_END_FLAG_ID: ["sheonite end flag", 0],
+        SHEONITE_PHASE_TMP_ID: ["sheonite phase", 0],
+        SHEONITE_LOCK_COL_ID: ["sheonite lock col", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -9256,6 +9671,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "brag-spario": brag_spario_blocks(),
         "garu-zakato": garu_zakato_blocks(),
         "bacura": bacura_blocks(),
+        "sheonite": sheonite_blocks(),
         "barra": barra_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
@@ -9357,6 +9773,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # slab has no phases at all, so there is nothing else to track.
             target["variables"] = target["variables"] | {
                 BACURA_CLONE_SLOT_ID: ["bacura clone slot", 0],
+            }
+        elif target["name"] == SHEONITE_TARGET:
+            # AIR-09: likewise, the only Sheonite render state is which flying slot each clone draws; the
+            # phase (home/lock/combine/retreat) and clock live in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                SHEONITE_CLONE_SLOT_ID: ["sheonite clone slot", 0],
             }
         elif target["name"] == ENEMY_BULLET_TARGET:
             # AIR-12: likewise, the only enemy-bullet render state is which bullet slot each clone draws.
