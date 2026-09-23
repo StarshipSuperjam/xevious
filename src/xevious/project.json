@@ -165095,6 +165095,15 @@
           "md5ext": "04b6d70d62b27157939de90757eff09b.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
+        },
+        {
+          "name": "boza-centre/core/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "7b9b4b7c2c032e152d2cc0bfac70e75f",
+          "md5ext": "7b9b4b7c2c032e152d2cc0bfac70e75f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         }
       ],
       "sounds": [],

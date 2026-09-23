@@ -243,14 +243,15 @@ class ScratchProjectTests(unittest.TestCase):
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
         # the 4 Zoshi spin-frame PNGs (AIR-03) + the 6 Jara spin-frame PNGs (AIR-04) + the 1 Zakato
         # body-frame PNG (AIR-07) + the 8 Bacura slab tumble-frame PNGs (AIR-11) + the 10 Sheonite
-        # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 13
+        # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 14
         # ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base
         # pulse frames + the slice-12 additions: 1 Zolbak idle dome (GND-02) + 1 Derota idle turret + 2 Garu
-        # Derota base pulse frames (GND-04)) + the 6 arcade gameplay-SFX wavs (AUDIO: the real air_destroy /
-        # ground_destroy / zakato-teleport / garu_zakato / bacura / sheonite cues, committed under
-        # assets/game-sounds/ and attached to the Stage by tools/hud_glyphs.py; see
-        # docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(166, len(assets))
+        # Derota base pulse frames (GND-04) + the slice-13 addition: 1 Boza centre core (GND-05; the four
+        # outer domes reuse the Logram open frames by ref, so only the centre is a new crop)) + the 6 arcade
+        # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
+        # bacura / sheonite cues, committed under assets/game-sounds/ and attached to the Stage by
+        # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
+        self.assertEqual(167, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
