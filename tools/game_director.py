@@ -6397,6 +6397,295 @@ def _select_formation(blocks: Blocks, index_value: Any) -> list[str]:
     return [set_index, guard]
 
 
+# GND ground-object seed builders — the block sequences that stamp a ground family into its band slot(s).
+# Shared by the schedule ingest (`_consume_schedule`, driven by the area-schedule cursor) and the debug
+# ground key (`install_debug_ground_spawn`, driven by fixed debug constants), so both paths seed a family
+# identically. Each takes zero-arg callables that return a FRESH reporter per call — a reporter attaches to
+# only one parent, so reusing one would silently steal it (the same rule the cursor accessors follow):
+# `slot`/`slot_next`/`slot_at(i)` give the ground-band target slot(s), `type_val` the object type, and
+# `sprite_y` the lateral sprite row. The schedule ingest passes its cursor accessors; the debug key passes
+# `lambda`s over debug constants. Emitted block order matches the former inline lists, so the schedule
+# path's generated blocks are unchanged by this extraction.
+def _ground_seed_single(blocks: Blocks, *, slot, type_val, sprite_y) -> list[str]:
+    # GND (area.ground-dispatch #69): a single-slot ground object (Barra 0x1E, Zolbak 0x1F, Logram 0x26,
+    # Derota 0x1B). Mirrors sub_2_fn_1__ground_object ($073F: it sets only _TYPE and _Y, leaving _X = 0 at
+    # the top of the field) plus the per-family init the arcade runs on the object handler's first coroutine
+    # step, relocated to spawn time in the port: _PTS by family, and (Logram/Derota) the captured fire mask
+    # + masked-random initial reload. slot y = sprite_y << 5 (x32); slot x starts at 0 (top-of-field) and
+    # `advance ground` scrolls it DOWN each tick. Each column reader and target-slot index is rebuilt fresh.
+    return [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, slot(), type_val()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, slot(), number(SLOT_ACTIVE)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot(), number(0)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            slot(),
+            blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+        ),
+        blocks.if_reporter(
+            blocks.op_eq(type_val(), number(BARRA_TYPE)),
+            [blocks.list_replace("slot pts", SLOT_PTS_ID, slot(), number(BARRA_PTS))],
+        ),
+        blocks.if_reporter(
+            # GND-02 (ground.zolbak #85): a passive dome — like the Barra it only needs its point value at
+            # spawn (200 pts); it never fires, so no fire mask / timer. The crater clock is zeroed by the
+            # detector at the hit, and `update zolbak` runs the AI-level reduction there, not here.
+            blocks.op_eq(type_val(), number(ZOLBAK_TYPE)),
+            [blocks.list_replace("slot pts", SLOT_PTS_ID, slot(), number(ZOLBAK_PTS))],
+        ),
+        blocks.if_reporter(
+            blocks.op_eq(type_val(), number(LOGRAM_TYPE)),
+            [
+                blocks.list_replace(
+                    "slot pts", SLOT_PTS_ID, slot(), number(LOGRAM_PTS)
+                ),
+                blocks.list_replace(
+                    "slot fire mask",
+                    SLOT_FIRE_MASK_ID,
+                    slot(),
+                    variable(FIRE_MASK_LOGRAM_NAME, FIRE_MASK_LOGRAM_ID),
+                ),
+                # Seed the open/close cycle (handle_logram_init $1B49): closed dome (_CODE=0x2C), WAIT phase,
+                # and a masked-random initial delay (_TIMER=(rand & mask)+1). A ground slot is only ever a
+                # ground object, but cull only clears type/state, so a slot reused from a prior Logram can
+                # hold a stale flag/timer/code — seed all three explicitly rather than trust the cleared slot.
+                blocks.list_replace(
+                    "slot code", SLOT_CODE_ID, slot(), number(LOGRAM_CLOSED_ORDINAL)
+                ),
+                blocks.list_replace(
+                    "slot flag", SLOT_FLAG_ID, slot(), number(LOGRAM_WAIT_PHASE)
+                ),
+                blocks.call_proc(RNG_PROCCODE, warp=True),
+                blocks.list_replace(
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    slot(),
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                variable(FIRE_MASK_LOGRAM_NAME, FIRE_MASK_LOGRAM_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                ),
+            ],
+        ),
+        blocks.if_reporter(
+            # GND-04 (ground.derota #86): a periodic aimed turret (1000 pts). Unlike the Logram it has NO
+            # dome cycle, so it needs only its point value, the captured Derota fire mask, and a
+            # masked-random initial reload for the shared fire-permission gate (init_derota $1C1C:
+            # `_TIMER=(rand & mask)+1`). cull clears only type/state, so seed the mask + timer explicitly.
+            blocks.op_eq(type_val(), number(DEROTA_TYPE)),
+            [
+                blocks.list_replace(
+                    "slot pts", SLOT_PTS_ID, slot(), number(DEROTA_PTS)
+                ),
+                blocks.list_replace(
+                    "slot fire mask",
+                    SLOT_FIRE_MASK_ID,
+                    slot(),
+                    variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID),
+                ),
+                blocks.call_proc(RNG_PROCCODE, warp=True),
+                blocks.list_replace(
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    slot(),
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                ),
+            ],
+        ),
+    ]
+
+
+def _ground_seed_garu(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) -> list[str]:
+    # GND (ground.barra #70): the Garu Barra is a TWO-slot object (handle_20_Garu_Barra $1A89). Base @ N:
+    # the indestructible 2x2 (state SLOT_GARU_BASE, so the detector's ==ACTIVE gate rejects it), at slot x = 0
+    # (top of field) and the record's lateral sprite_y. Node @ N+1: the destructible core (state ACTIVE, 300
+    # pts), at the arcade's absolute offsets — slot x = 1 cell (_X = 0x0100) and slot y = base_y - 1 cell
+    # (_Y = base_Y - 0x0100, the verified 8-px LATERAL offset, GND-01). Both scroll at the shared terrain rate.
+    return [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, slot(), type_val()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, slot(), number(SLOT_GARU_BASE)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot(), number(0)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            slot(),
+            blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+        ),
+        blocks.list_replace("slot type", SLOT_TYPE_ID, slot_next(), type_val()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, slot_next(), number(SLOT_ACTIVE)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(SLOT_UNITS_PER_CELL)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            slot_next(),
+            blocks.op_sub(
+                blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+                number(SLOT_UNITS_PER_CELL),
+            ),
+        ),
+        blocks.list_replace("slot pts", SLOT_PTS_ID, slot_next(), number(GARU_BARRA_PTS)),
+    ]
+
+
+def _ground_seed_garu_derota(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) -> list[str]:
+    # GND-04 (ground.derota #86): the Garu Derota is the Garu Barra's two-slot shape (indestructible 2x2
+    # base @ N, destructible node @ N+1) but the node FIRES (handle_21_Garu_Derota $1C61). Base and node
+    # placement are identical to the Garu Barra; the node additionally gets 2000 pts, the captured Derota
+    # fire mask, and a masked-random initial reload for the shared fire-permission gate
+    # (`_TIMER=(rand & mask)+1` on the node object). cull clears only type/state, so seed mask + timer.
+    return [
+        blocks.list_replace("slot type", SLOT_TYPE_ID, slot(), type_val()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, slot(), number(SLOT_GARU_BASE)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot(), number(0)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            slot(),
+            blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+        ),
+        blocks.list_replace("slot type", SLOT_TYPE_ID, slot_next(), type_val()),
+        blocks.list_replace("slot state", SLOT_STATE_ID, slot_next(), number(SLOT_ACTIVE)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(SLOT_UNITS_PER_CELL)),
+        blocks.list_replace(
+            "slot y",
+            SLOT_Y_ID,
+            slot_next(),
+            blocks.op_sub(
+                blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+                number(SLOT_UNITS_PER_CELL),
+            ),
+        ),
+        blocks.list_replace("slot pts", SLOT_PTS_ID, slot_next(), number(GARU_DEROTA_PTS)),
+        blocks.list_replace(
+            "slot fire mask",
+            SLOT_FIRE_MASK_ID,
+            slot_next(),
+            variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID),
+        ),
+        blocks.call_proc(RNG_PROCCODE, warp=True),
+        blocks.list_replace(
+            "slot fire timer",
+            SLOT_FIRE_TIMER_ID,
+            slot_next(),
+            blocks.op_add(
+                blocks.op_mod(
+                    variable("rng out", RNG_OUT_ID),
+                    blocks.op_add(variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID), number(1)),
+                ),
+                number(1),
+            ),
+        ),
+    ]
+
+
+def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[str]:
+    # GND-05 (ground.boza-logram #87): a FIVE-slot composite (handle_2D_Boza_Logram $1CDE). The four OUTER
+    # domes (base+0..3) and the CENTRE (base+4) each become their own ground slot, positioned by the arcade's
+    # per-object tables (BOZA_DEPTH_OFFSETS_PX / BOZA_LATERAL_OFFSETS_PX scaled by SLOT_UNITS_PER_PIXEL). All
+    # five start ACTIVE with `slot timer` 0 (a clean crater/burst clock; cull clears only type/state). Each
+    # OUTER is a lone Logram (300 pts, closed dome, WAIT phase, captured Boza mask + masked-random initial
+    # delay) and stores the CENTRE's slot index in `slot link` (the port of the arcade `_EXTRA` pointer). The
+    # CENTRE (2,000 pts) never fires and stores `slot link` 0, which marks it as the centre for the walk's
+    # branch and holds its full value until an outer hit downgrades it. `slot_at(i)` returns a FRESH reporter.
+    seed: list[str] = []
+    for i in range(BOZA_SLOT_COUNT):
+        depth_units = BOZA_DEPTH_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
+        lateral_units = BOZA_LATERAL_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
+        seed.append(
+            blocks.list_replace("slot type", SLOT_TYPE_ID, slot_at(i), type_val())
+        )
+        seed.append(
+            blocks.list_replace("slot state", SLOT_STATE_ID, slot_at(i), number(SLOT_ACTIVE))
+        )
+        seed.append(
+            blocks.list_replace("slot x", SLOT_X_ID, slot_at(i), number(depth_units))
+        )
+        seed.append(
+            blocks.list_replace(
+                "slot y",
+                SLOT_Y_ID,
+                slot_at(i),
+                blocks.op_add(
+                    blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+                    number(lateral_units),
+                ),
+            )
+        )
+        seed.append(
+            blocks.list_replace("slot timer", SLOT_TIMER_ID, slot_at(i), number(0))
+        )
+        if i == BOZA_CENTRE_OFFSET:
+            # CENTRE (handle_boza_logram_centre): 2,000 pts, never fires, `slot link` 0 (the centre marker).
+            seed.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, slot_at(i), number(BOZA_CENTRE_PTS))
+            )
+            seed.append(
+                blocks.list_replace("slot link", SLOT_LINK_ID, slot_at(i), number(0))
+            )
+        else:
+            # OUTER dome (handle_boza_logram_outer): 300 pts, the Logram open/close/fire machine, and a
+            # `slot link` back to the centre slot (base+4). Seed the closed dome, WAIT phase, captured mask,
+            # and the masked-random initial delay `_TIMER=(rand & mask)+1` — the once-only arcade init.
+            seed.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, slot_at(i), number(BOZA_OUTER_PTS))
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot link", SLOT_LINK_ID, slot_at(i), slot_at(BOZA_CENTRE_OFFSET)
+                )
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot fire mask",
+                    SLOT_FIRE_MASK_ID,
+                    slot_at(i),
+                    variable(FIRE_MASK_BOZA_NAME, FIRE_MASK_BOZA_ID),
+                )
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot code", SLOT_CODE_ID, slot_at(i), number(BOZA_OUTER_CLOSED_ORDINAL)
+                )
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot flag", SLOT_FLAG_ID, slot_at(i), number(LOGRAM_WAIT_PHASE)
+                )
+            )
+            seed.append(blocks.call_proc(RNG_PROCCODE, warp=True))
+            seed.append(
+                blocks.list_replace(
+                    "slot fire timer",
+                    SLOT_FIRE_TIMER_ID,
+                    slot_at(i),
+                    blocks.op_add(
+                        blocks.op_mod(
+                            variable("rng out", RNG_OUT_ID),
+                            blocks.op_add(
+                                variable(FIRE_MASK_BOZA_NAME, FIRE_MASK_BOZA_ID), number(1)
+                            ),
+                        ),
+                        number(1),
+                    ),
+                )
+            )
+    return seed
+
+
 def _consume_schedule(blocks: Blocks) -> list[str]:
     # AREA-02 ordered dispatch: consume every record at the cursor whose trigger row equals the
     # current scroll row, in order, advancing the cursor. Fire-once is guaranteed by the monotonic
@@ -6540,109 +6829,17 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         blocks.op_eq(handler_at_cursor(), text(GROUND_STOP_FIRING_HANDLER)),
         [blocks.set_var_expr("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, arg_at_cursor())],
     )
-    # GND (area.ground-dispatch #69): add_ground_object spawns a terrain-locked ground object into its
-    # ground-band slot. Mirrors sub_2_fn_1__ground_object ($073F: it sets only _TYPE and _Y, leaving
-    # _X = 0 at the top of the field) plus the per-family init the arcade runs on the object handler's
-    # first coroutine step, relocated to spawn time in the port: _PTS by family, and (Logram) the
-    # captured fire mask. slot y = sprite_y << 5 (x32), matching the arcade lsl #5; slot x starts at 0
-    # (top-of-field) and `advance ground` scrolls it DOWN each tick. Only the two families built this
-    # PR (Barra 0x1E, Logram 0x26) spawn; every other add_ground_object record (Zolbak, Garu Barra
-    # until Commit 6, Domogram, ...) advances the cursor WITHOUT stamping a slot, so no unbuilt family
-    # renders a live-but-inert object. Each column reader and target-slot index is rebuilt fresh per use.
-    spawn_ground = [
-        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot(), ground_type_at_cursor()),
-        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot(), number(SLOT_ACTIVE)),
-        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot(), number(0)),
-        blocks.list_replace(
-            "slot y",
-            SLOT_Y_ID,
-            ground_target_slot(),
-            blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
-        ),
-        blocks.if_reporter(
-            blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
-            [blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot(), number(BARRA_PTS))],
-        ),
-        blocks.if_reporter(
-            # GND-02 (ground.zolbak #85): a passive dome — like the Barra it only needs its point value at
-            # spawn (200 pts); it never fires, so no fire mask / timer. The crater clock is zeroed by the
-            # detector at the hit, and `update zolbak` runs the AI-level reduction there, not here.
-            blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
-            [blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot(), number(ZOLBAK_PTS))],
-        ),
-        blocks.if_reporter(
-            blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
-            [
-                blocks.list_replace(
-                    "slot pts", SLOT_PTS_ID, ground_target_slot(), number(LOGRAM_PTS)
-                ),
-                blocks.list_replace(
-                    "slot fire mask",
-                    SLOT_FIRE_MASK_ID,
-                    ground_target_slot(),
-                    variable(FIRE_MASK_LOGRAM_NAME, FIRE_MASK_LOGRAM_ID),
-                ),
-                # Seed the open/close cycle (handle_logram_init $1B49): closed dome (_CODE=0x2C), WAIT phase,
-                # and a masked-random initial delay (_TIMER=(rand & mask)+1). A ground slot is only ever a
-                # ground object, but cull only clears type/state, so a slot reused from a prior Logram can
-                # hold a stale flag/timer/code — seed all three explicitly rather than trust the cleared slot.
-                blocks.list_replace(
-                    "slot code", SLOT_CODE_ID, ground_target_slot(), number(LOGRAM_CLOSED_ORDINAL)
-                ),
-                blocks.list_replace(
-                    "slot flag", SLOT_FLAG_ID, ground_target_slot(), number(LOGRAM_WAIT_PHASE)
-                ),
-                blocks.call_proc(RNG_PROCCODE, warp=True),
-                blocks.list_replace(
-                    "slot fire timer",
-                    SLOT_FIRE_TIMER_ID,
-                    ground_target_slot(),
-                    blocks.op_add(
-                        blocks.op_mod(
-                            variable("rng out", RNG_OUT_ID),
-                            blocks.op_add(
-                                variable(FIRE_MASK_LOGRAM_NAME, FIRE_MASK_LOGRAM_ID), number(1)
-                            ),
-                        ),
-                        number(1),
-                    ),
-                ),
-            ],
-        ),
-        blocks.if_reporter(
-            # GND-04 (ground.derota #86): a periodic aimed turret (1000 pts). Unlike the Logram it has NO
-            # dome cycle, so it needs only its point value, the captured Derota fire mask, and a
-            # masked-random initial reload for the shared fire-permission gate (init_derota $1C1C:
-            # `_TIMER=(rand & mask)+1`). cull clears only type/state, so seed the mask + timer explicitly.
-            blocks.op_eq(ground_type_at_cursor(), number(DEROTA_TYPE)),
-            [
-                blocks.list_replace(
-                    "slot pts", SLOT_PTS_ID, ground_target_slot(), number(DEROTA_PTS)
-                ),
-                blocks.list_replace(
-                    "slot fire mask",
-                    SLOT_FIRE_MASK_ID,
-                    ground_target_slot(),
-                    variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID),
-                ),
-                blocks.call_proc(RNG_PROCCODE, warp=True),
-                blocks.list_replace(
-                    "slot fire timer",
-                    SLOT_FIRE_TIMER_ID,
-                    ground_target_slot(),
-                    blocks.op_add(
-                        blocks.op_mod(
-                            variable("rng out", RNG_OUT_ID),
-                            blocks.op_add(
-                                variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID), number(1)
-                            ),
-                        ),
-                        number(1),
-                    ),
-                ),
-            ],
-        ),
-    ]
+    # GND (area.ground-dispatch #69) + GND-01..05: stamp a ground family into its band slot(s) via the
+    # shared seed builders (_ground_seed_single / _garu / _garu_derota / _boza). The schedule ingest drives
+    # them with the cursor accessors; the debug ground key (install_debug_ground_spawn) drives the same
+    # builders with fixed debug constants. Only families built to date stamp; every other add_ground_object
+    # record advances the cursor WITHOUT stamping a slot, so no unbuilt family renders a live-but-inert object.
+    spawn_ground = _ground_seed_single(
+        blocks,
+        slot=ground_target_slot,
+        type_val=ground_type_at_cursor,
+        sprite_y=ground_sprite_y_at_cursor,
+    )
     is_single_slot_ground = blocks.op_or(
         blocks.op_or(
             blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
@@ -6659,78 +6856,25 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # Node @ N+1: the destructible core (state ACTIVE, 300 pts), placed at the arcade's absolute offsets —
     # slot x = 1 cell (_X = 0x0100) and slot y = base_y - 1 cell (_Y = base_Y - 0x0100, the verified 8-px
     # LATERAL offset, GND-01). Both scroll together at the shared terrain rate. slot y = sprite_y << 5 (x32).
-    spawn_garu = [
-        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot(), ground_type_at_cursor()),
-        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot(), number(SLOT_GARU_BASE)),
-        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot(), number(0)),
-        blocks.list_replace(
-            "slot y",
-            SLOT_Y_ID,
-            ground_target_slot(),
-            blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
-        ),
-        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot_next(), ground_type_at_cursor()),
-        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot_next(), number(SLOT_ACTIVE)),
-        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot_next(), number(SLOT_UNITS_PER_CELL)),
-        blocks.list_replace(
-            "slot y",
-            SLOT_Y_ID,
-            ground_target_slot_next(),
-            blocks.op_sub(
-                blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
-                number(SLOT_UNITS_PER_CELL),
-            ),
-        ),
-        blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot_next(), number(GARU_BARRA_PTS)),
-    ]
+    spawn_garu = _ground_seed_garu(
+        blocks,
+        slot=ground_target_slot,
+        slot_next=ground_target_slot_next,
+        type_val=ground_type_at_cursor,
+        sprite_y=ground_sprite_y_at_cursor,
+    )
     # GND-04 (ground.derota #86): the Garu Derota is the Garu Barra's two-slot shape (indestructible 2x2
     # base @ N, destructible node @ N+1) but the node FIRES (handle_21_Garu_Derota $1C61). Base and node
     # placement are identical to the Garu Barra; the node additionally gets 2000 pts, the captured Derota
     # fire mask, and a masked-random initial reload for the shared fire-permission gate
     # (`_TIMER=(rand & mask)+1` on the node object). cull clears only type/state, so seed mask + timer.
-    spawn_garu_derota = [
-        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot(), ground_type_at_cursor()),
-        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot(), number(SLOT_GARU_BASE)),
-        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot(), number(0)),
-        blocks.list_replace(
-            "slot y",
-            SLOT_Y_ID,
-            ground_target_slot(),
-            blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
-        ),
-        blocks.list_replace("slot type", SLOT_TYPE_ID, ground_target_slot_next(), ground_type_at_cursor()),
-        blocks.list_replace("slot state", SLOT_STATE_ID, ground_target_slot_next(), number(SLOT_ACTIVE)),
-        blocks.list_replace("slot x", SLOT_X_ID, ground_target_slot_next(), number(SLOT_UNITS_PER_CELL)),
-        blocks.list_replace(
-            "slot y",
-            SLOT_Y_ID,
-            ground_target_slot_next(),
-            blocks.op_sub(
-                blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
-                number(SLOT_UNITS_PER_CELL),
-            ),
-        ),
-        blocks.list_replace("slot pts", SLOT_PTS_ID, ground_target_slot_next(), number(GARU_DEROTA_PTS)),
-        blocks.list_replace(
-            "slot fire mask",
-            SLOT_FIRE_MASK_ID,
-            ground_target_slot_next(),
-            variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID),
-        ),
-        blocks.call_proc(RNG_PROCCODE, warp=True),
-        blocks.list_replace(
-            "slot fire timer",
-            SLOT_FIRE_TIMER_ID,
-            ground_target_slot_next(),
-            blocks.op_add(
-                blocks.op_mod(
-                    variable("rng out", RNG_OUT_ID),
-                    blocks.op_add(variable(FIRE_MASK_DEROTA_NAME, FIRE_MASK_DEROTA_ID), number(1)),
-                ),
-                number(1),
-            ),
-        ),
-    ]
+    spawn_garu_derota = _ground_seed_garu_derota(
+        blocks,
+        slot=ground_target_slot,
+        slot_next=ground_target_slot_next,
+        type_val=ground_type_at_cursor,
+        sprite_y=ground_sprite_y_at_cursor,
+    )
     # GND-05 (ground.boza-logram #87): a Boza Logram is a FIVE-slot composite (handle_2D_Boza_Logram $1CDE
     # stamps 5 objects), so it does not fit the single-slot spawn_ground OR the two-slot Garu shape. The four
     # OUTER domes (base+0..3) and the CENTRE (base+4) each become their own ground slot, positioned by the
@@ -6742,92 +6886,12 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # handle_boza_logram_outer's once-only init) and stores the CENTRE's slot index in `slot link` (the port
     # of the arcade `_EXTRA` pointer). The CENTRE (2,000 pts) never fires and stores `slot link` 0, which both
     # marks it as the centre for the walk's branch and holds its full value until an outer hit downgrades it.
-    def boza_slot(i: int) -> str:
-        # FRESH reporter per call: band base + record slot + the part offset i (0..4).
-        return blocks.op_add(number(GROUND_SLOTS[0] + i), ground_slot_at_cursor())
-
-    spawn_boza: list[str] = []
-    for i in range(BOZA_SLOT_COUNT):
-        depth_units = BOZA_DEPTH_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
-        lateral_units = BOZA_LATERAL_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
-        spawn_boza.append(
-            blocks.list_replace("slot type", SLOT_TYPE_ID, boza_slot(i), ground_type_at_cursor())
-        )
-        spawn_boza.append(
-            blocks.list_replace("slot state", SLOT_STATE_ID, boza_slot(i), number(SLOT_ACTIVE))
-        )
-        spawn_boza.append(
-            blocks.list_replace("slot x", SLOT_X_ID, boza_slot(i), number(depth_units))
-        )
-        spawn_boza.append(
-            blocks.list_replace(
-                "slot y",
-                SLOT_Y_ID,
-                boza_slot(i),
-                blocks.op_add(
-                    blocks.op_mul(ground_sprite_y_at_cursor(), number(SLOT_UNITS_PER_PIXEL)),
-                    number(lateral_units),
-                ),
-            )
-        )
-        spawn_boza.append(
-            blocks.list_replace("slot timer", SLOT_TIMER_ID, boza_slot(i), number(0))
-        )
-        if i == BOZA_CENTRE_OFFSET:
-            # CENTRE (handle_boza_logram_centre): 2,000 pts, never fires, `slot link` 0 (the centre marker).
-            spawn_boza.append(
-                blocks.list_replace("slot pts", SLOT_PTS_ID, boza_slot(i), number(BOZA_CENTRE_PTS))
-            )
-            spawn_boza.append(
-                blocks.list_replace("slot link", SLOT_LINK_ID, boza_slot(i), number(0))
-            )
-        else:
-            # OUTER dome (handle_boza_logram_outer): 300 pts, the Logram open/close/fire machine, and a
-            # `slot link` back to the centre slot (base+4). Seed the closed dome, WAIT phase, captured mask,
-            # and the masked-random initial delay `_TIMER=(rand & mask)+1` — the once-only arcade init.
-            spawn_boza.append(
-                blocks.list_replace("slot pts", SLOT_PTS_ID, boza_slot(i), number(BOZA_OUTER_PTS))
-            )
-            spawn_boza.append(
-                blocks.list_replace(
-                    "slot link", SLOT_LINK_ID, boza_slot(i), boza_slot(BOZA_CENTRE_OFFSET)
-                )
-            )
-            spawn_boza.append(
-                blocks.list_replace(
-                    "slot fire mask",
-                    SLOT_FIRE_MASK_ID,
-                    boza_slot(i),
-                    variable(FIRE_MASK_BOZA_NAME, FIRE_MASK_BOZA_ID),
-                )
-            )
-            spawn_boza.append(
-                blocks.list_replace(
-                    "slot code", SLOT_CODE_ID, boza_slot(i), number(BOZA_OUTER_CLOSED_ORDINAL)
-                )
-            )
-            spawn_boza.append(
-                blocks.list_replace(
-                    "slot flag", SLOT_FLAG_ID, boza_slot(i), number(LOGRAM_WAIT_PHASE)
-                )
-            )
-            spawn_boza.append(blocks.call_proc(RNG_PROCCODE, warp=True))
-            spawn_boza.append(
-                blocks.list_replace(
-                    "slot fire timer",
-                    SLOT_FIRE_TIMER_ID,
-                    boza_slot(i),
-                    blocks.op_add(
-                        blocks.op_mod(
-                            variable("rng out", RNG_OUT_ID),
-                            blocks.op_add(
-                                variable(FIRE_MASK_BOZA_NAME, FIRE_MASK_BOZA_ID), number(1)
-                            ),
-                        ),
-                        number(1),
-                    ),
-                )
-            )
+    spawn_boza = _ground_seed_boza(
+        blocks,
+        slot_at=lambda i: blocks.op_add(number(GROUND_SLOTS[0] + i), ground_slot_at_cursor()),
+        type_val=ground_type_at_cursor,
+        sprite_y=ground_sprite_y_at_cursor,
+    )
     add_ground_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
         [
