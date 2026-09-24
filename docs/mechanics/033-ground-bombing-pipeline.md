@@ -116,18 +116,20 @@
   - **The Garu node's 8-px offset is lateral, and its row is set absolutely.** The source sets the node
     `_Y = base_Y − 0x100` (an 8-px offset on the lateral axis) and its `_X` (row) to an absolute value, not
     a base-relative row offset; the locked spec was corrected to say "8-px lateral" at settle time
-    ([ground objects](../spec/ground-objects.md)), and the build follows the source. The on-screen
-    direction of the node is a point for the operator playtest to confirm.
-  - **Port necessity — the node's one-cell depth offset is scaled to the anamorphic render map.** Beyond the
-    8-px lateral offset, the node also sits one cell behind its base in `slot x` (depth). The ground render
-    map is anamorphic — depth renders at `RENDER_ROW_STAGE=8` stage-px/cell versus `RENDER_COL_STAGE=15`
-    laterally — while sprites are drawn isotropically, so an unscaled one-cell (`SLOT_UNITS_PER_CELL`) depth
-    gap rendered ≈1.9× too tight and the node visually doubled over its base. The node's depth offset is
-    written as `GARU_NODE_DEPTH_UNITS = SLOT_UNITS_PER_CELL * RENDER_COL_STAGE // RENDER_ROW_STAGE` (= 480
-    units) so the depth gap matches the lateral scale. Because `slot x` is both the drawn and the bomb-hit
-    position, render and hitbox move together (bomb-aim stays true), and the base↔node linkage is by slot
-    **index** (N+1), not coordinate. Same anamorphic correction as the Boza composite — see
-    [042](042-boza-logram.md) (`GROUND_DEPTH_UNITS_PER_PX`), lifted into a shared constant this pass.
+    ([ground objects](../spec/ground-objects.md)). That arcade offset exists to centre a corner-anchored 1×1
+    node inside a corner-anchored 2×2 base; the port centre-anchors both frames, so it achieves the same
+    visual centring differently — see the port-necessity note below.
+  - **Port necessity — the node reuses the base's own frame, centred on the base's cell.** An early port
+    drew the node as a *separate, smaller* sprite offset off the base, which read as a **second** mound in the
+    PR #139 playtest (the "doubling"). Because both port costumes are centre-anchored 32-px frames and the two
+    sheet frames are just the two states of one mound (bare vs cored / closed vs open turret), the base clone
+    now draws frame 01 and the node clone draws frame 02 **centred on the same cell** (zero relative offset),
+    reading as one cored mound; bombing the node reveals the bare base. Because `slot x`/`slot y` are both the
+    drawn and the bomb-hit position, the hit cell sits under the visible core (bomb-aim improves), and the
+    base↔node linkage is by slot **index** (N+1), not coordinate. (An earlier attempt to scale the depth
+    offset by the anamorphic ratio, `GARU_NODE_DEPTH_UNITS = 480`, only slid the second sprite and was
+    reverted.) The Boza composite keeps its own anamorphic spacing — see
+    [042](042-boza-logram.md) (`GROUND_DEPTH_UNITS_PER_PX`).
   - **Logram cadence is scaled from arcade frames to ticks.** The arcade animates on every 8th arcade
     frame; the once-per-tick walk is two arcade frames, so a stage advances every 4th tick, landing the
     single full-open shot at tick 12 of the 28-tick cycle. The mechanism (one aimed shot at full open, one

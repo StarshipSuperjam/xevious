@@ -31,8 +31,8 @@
     that row it is silent, and the gate never even runs, so its countdown is untouched. A bomb hit craters
     persistently like a Barra.
   - **Garu Derota (GND-04) — a firing base+node pair, 2000 pts.** The Garu Derota is the Garu Barra's
-    two-slot shape (indestructible `SLOT_GARU_BASE` double-size base plus a destructible node offset 8 px
-    to the side) with one difference: the node **fires**. Its node drives the same shared fire-permission
+    two-slot shape (indestructible `SLOT_GARU_BASE` double-size base plus a destructible node centred on it)
+    with one difference: the node **fires**. Its node drives the same shared fire-permission
     gate every active tick, but — unlike the single Derota — **unconditionally of the row** (the arcade
     `garu_derota_handler` omits the stop-firing-row skip), so it fires even below a row that would silence
     a Derota. The node scores 2000 and, when bombed, explode-and-removes (vanishes at `GARU_REMOVE_FRAMES`,
@@ -135,17 +135,23 @@
   - **The Garu Derota node's felt fire cadence is an operator observation.** The node fires one aimed
     bullet per masked reload with no row gate; the mechanism is proven in the harness, but the exact
     on-screen rhythm relative to a Derota is a point for the operator playtest to confirm.
-  - **Port necessity — the node's one-cell depth offset is scaled to the anamorphic render map.** The
-    base+node pair sits one cell apart in `slot x` (depth). The ground render map is anamorphic — depth
-    renders at `RENDER_ROW_STAGE=8` stage-px/cell while the lateral axis renders at `RENDER_COL_STAGE=15`
-    stage-px/cell — but the sprites are drawn isotropically, so an unscaled one-cell (`SLOT_UNITS_PER_CELL`)
-    depth gap rendered ≈1.9× too tight and the node visually doubled over its base. The node's depth offset
-    is therefore written as `GARU_NODE_DEPTH_UNITS = SLOT_UNITS_PER_CELL * RENDER_COL_STAGE // RENDER_ROW_STAGE`
-    (= 480 units) so the on-screen depth gap matches the lateral scale. This shifts the node's *logical*
-    depth from its exact arcade cell; because `slot x` is both the drawn position and the bomb-hit position,
-    render and hitbox move together and bomb-aim stays true, and the base↔node linkage is by slot **index**
-    (N+1), not coordinate, so it is unaffected. Same anamorphic correction as the Boza composite — see
-    [042](042-boza-logram.md) (`GROUND_DEPTH_UNITS_PER_PX`), lifted into a shared constant this pass.
+  - **Port necessity — the node reuses the base's own frame and is centred on it, not drawn as a separate
+    offset sprite.** The arcade Garu is a 2×2 base plus a small 1×1 node; it offsets the node by +1 cell on
+    each axis (`_X = 0x0100`, `_Y = base_Y - 0x0100`) to centre a **corner-anchored** node inside a
+    corner-anchored base. An early port copied that offset literally while drawing the node as a *separate,
+    smaller* sprite (the Barra idle pyramid / a lone Derota turret) on top of the full base — so the node
+    read as a **second** pyramid/turret poking out of a corner (the "doubling" the operator saw in the PR
+    #139 playtest). In the port both costumes are **centre-anchored** 32-px frames, and the two sheet frames
+    are simply the two game states of the one mound: `garu/base/01` is the bare pyramid (Barra) /
+    `garu-derota/base/01` the closed turret, and `.../02` is the same mound *with* its live core/open turret.
+    So the base clone draws frame 01 and the node clone draws frame 02 **centred on the very same cell**
+    (zero relative offset) — together they read as one cored mound, and bombing the node reveals the bare
+    base. The node's `slot x`/`slot y` therefore equal the base's; because `slot x`/`slot y` are both the
+    drawn position and the bomb-hit position, the hit cell now sits under the visible core (bomb-aim
+    *improves*), and the base↔node linkage is by slot **index** (N+1), not coordinate, so it is unaffected.
+    (The earlier attempt to instead scale the depth offset by the anamorphic ratio, `GARU_NODE_DEPTH_UNITS`,
+    only slid the second sprite and was reverted.) The Boza composite keeps its own anamorphic spacing —
+    see [042](042-boza-logram.md) (`GROUND_DEPTH_UNITS_PER_PX`).
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
