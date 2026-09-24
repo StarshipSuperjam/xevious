@@ -124,12 +124,17 @@
 - Known deviations or uncertainty: no locked-spec correction to the Boza *behaviour* this leaf — the source
   and the settled [ground objects](../spec/ground-objects.md) spec already agree on the Boza composite. This PR
   does, however, carry a `guardrail-ack`, for a separate reason: to make this and the other ground families
-  reachable for the operator playtest, it adds a **temporary `G` ground-debug key** (the ground analog of the
-  `T` aerial-debug key — while held it cycles one built ground family at a time into the band from the top of
-  the field), which amends the LOCKED control mapping in
-  [core-game-systems.md](../spec/core-game-systems.md); that amendment is the guardrail-ack surface. The key is
-  a dev tool tracked for removal once every ground family is built and playtested (issue #119), not a GND-05
-  behaviour or a change to the Boza. The three port necessities above (one update proc branching on `slot link`; the centre
+  reachable for the operator playtest, it amends the LOCKED control mapping in
+  [core-game-systems.md](../spec/core-game-systems.md) with temporary playtest-only debug keys — that amendment
+  is the guardrail-ack surface. It adds a **temporary `G` ground-debug key** (the ground analog of the `T`
+  aerial-debug key — while held it cycles one built ground family at a time into the band from the top of the
+  field) and a **temporary `P` freeze/resume toggle** (a tap freezes the tick so the operator can screenshot a
+  problem, a second tap resumes). Following operator feedback that holding `G` still let normal enemies pour in,
+  `G` (like `T`) now also **isolates** the family under test while held — the normal enemy stream is suppressed
+  (the flying-formation count is pinned at 0 and the flying/Bacura bands cleared each tick, and the schedule's
+  own ground stamps are withheld) so only the debug family is on screen. All three keys are dev tools tracked for
+  removal once every ground family is built and playtested (issue #119), not a GND-05 behaviour or a change to
+  the Boza. The three port necessities above (one update proc branching on `slot link`; the centre
   downgrade and the cascade addressing slots by index/offset rather than following the arcade `_EXTRA`
   pointer / object walk) are structural translations of pointer-based code into Scratch's flat slot lists, not
   behavioural changes. The exact on-screen rhythm of the outer fire cycle relative to a lone Logram, and the

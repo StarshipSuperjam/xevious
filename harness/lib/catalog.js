@@ -2574,6 +2574,95 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
   },
   {
+    key: 'debug-ground-key-isolates-normal-enemies',
+    behavior:
+      'While the temporary debug ground key (G) is held it isolates the ground family under test (parity with the T aerial key): the normal flying-formation stream is suppressed — the formation-wave count is pinned at 0 and the flying band is cleared every tick — so no normal enemies enter the screen and the operator can focus on the ground family alone (tracked for removal, #119)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The operator's report: holding G still let normal flying waves pour in. The fix makes the G proc
+      // suppress the flying stream every tick it is held (game_director.py install_debug_ground_spawn: zero
+      // `formation count`, clear the flying band) so the spawner below it brings in nothing. Prove it by
+      // holding G through a long window in which normal play WOULD spawn flying enemies — the T-key scenario
+      // (debug-key-cycles-families) measures every flying type appearing within ~80 settling steps with no key
+      // held — and asserting the flying band NEVER populates. We clear the GROUND band each frame only so the
+      // debug tool keeps cycling; that never drives the flying spawner (only the schedule/spawner does, and G
+      // pins its count to 0). Deliberately NO suppressGroundSpawns: the normal stream must stay live so the
+      // negative (which strips the suppression) actually spawns and the assertion can bite.
+      keyDown(vm, 'g');
+      let anyFlying = false;
+      for (let i = 0; i < 140; i += 1) {
+        const slotType = readVar(vm, 'slot-type');
+        const slotState = readVar(vm, 'slot-state');
+        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
+      }
+      const formationCount = readVar(vm, 'formation-count');
+      keyUp(vm, 'g');
+      return { anyFlying, formationCount };
+    },
+    assert(obs) {
+      assert.equal(
+        obs.anyFlying,
+        false,
+        'while G is held no normal flying enemy ever enters the flying band (the normal stream is isolated)',
+      );
+      assert.equal(
+        obs.formationCount,
+        0,
+        'while G is held the formation-wave count is pinned at 0 so the flying spawner brings in nothing',
+      );
+    },
+    // Empty `debug ground spawn` so the flying-stream suppression that lives inside it (the formation-count
+    // zero + flying-band clear) is gone → the normal schedule spawns flying formations again within the
+    // window → anyFlying becomes true → the isolation assertion bites. Normal play never suppresses the
+    // stream, so nothing masks the mutation.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
+  },
+  {
+    key: 'debug-pause-key-freezes-and-resumes-the-walk',
+    behavior:
+      'The temporary debug pause key (P) is a freeze/resume TOGGLE: a tap freezes the whole tick so the walk stops advancing (letting the operator screenshot a ground-enemy issue), and a second tap resumes it (tracked for removal, #119)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // warm the walk live once so `tick` is advancing
+      // `tick` advances only inside ADVANCE_SLOTS, which runs only while NOT paused (game_director.py wraps
+      // the whole walk-loop body in `if debug paused == 0`, with the pause toggle running first and OUTSIDE
+      // that gate). So a frozen `tick` == a frozen screen. P is a rising-edge TAP toggle, so tapKey (one down
+      // pump, one up pump) flips it exactly once.
+      tapKey(vm, 'p'); // first tap -> paused
+      const paused = readVar(vm, 'debug-paused');
+      const tickAtPause = readVar(vm, 'tick');
+      step(vm, 5); // P no longer held; the walk must stay frozen across every pump
+      const tickWhilePaused = readVar(vm, 'tick');
+      tapKey(vm, 'p'); // second tap -> resume
+      const resumed = readVar(vm, 'debug-paused');
+      step(vm, 3);
+      const tickAfterResume = readVar(vm, 'tick');
+      return { paused, tickAtPause, tickWhilePaused, resumed, tickAfterResume };
+    },
+    assert(obs) {
+      assert.equal(obs.paused, 1, 'a tap of P engages the freeze (debug paused == 1)');
+      assert.equal(
+        obs.tickWhilePaused,
+        obs.tickAtPause,
+        'while frozen the walk does not advance (tick is held across the paused pumps)',
+      );
+      assert.equal(obs.resumed, 0, 'a second tap of P releases the freeze (debug paused == 0)');
+      assert.ok(
+        obs.tickAfterResume > obs.tickAtPause,
+        'after the resume tap the walk advances again (tick climbs)',
+      );
+    },
+    // Empty `debug pause toggle` so a P tap never flips `debug paused` → it stays 0 → the walk runs through
+    // the "paused" pumps → tick advances while we expect it frozen → the freeze assertion bites. (The resume
+    // path is vacuously fine because the walk was never frozen; the freeze assertion is the one that catches.)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug pause toggle'),
+  },
+  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',

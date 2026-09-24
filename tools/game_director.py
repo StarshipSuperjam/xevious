@@ -850,6 +850,17 @@ DEBUG_GROUND_SPAWN_PROCCODE = "debug ground spawn"
 DEBUG_GROUND_KEY = "g"  # G = cycle a single debug GROUND family (G for ground; freed when the death fixtures went)
 DEBUG_GROUND_INDEX_ID = "debug-ground-index"  # which DEBUG_GROUND_FAMILIES entry G brings in next
 DEBUG_GROUND_SPRITE_Y = 112  # lateral column for the debug spawn — a central, common column (schedule median)
+# DEBUG (temporary playtest tool, tracked for removal #119): a PAUSE/FREEZE key so the operator can stop the
+# action on a single frame and take an OS screenshot of a ground- or air-enemy issue to report. It is a TOGGLE
+# on the P key (tap to freeze, tap again to resume) — deliberately a toggle, not a hold, so the operator has
+# both hands free to drive the OS screenshot tool while the frame is held. While paused, the whole per-tick
+# walk (input, area clock, object walk, bomb, spawns, death) is skipped; only the toggle's own rising-edge
+# detector runs each tick, so a second tap resumes. It amends the LOCKED control mapping (needs guardrail-ack)
+# and is never pressed by the headless harness (`debug paused` defaults 0), so automated play is unaffected.
+DEBUG_PAUSE_PROCCODE = "debug pause toggle"
+DEBUG_PAUSE_KEY = "p"  # P = pause/resume (toggle) for the playtest
+PAUSED_ID = "debug-paused"  # 1 while frozen, 0 while running; the walk body is gated on == 0
+PAUSE_KEY_HELD_ID = "debug-pause-key-held"  # previous-tick P sample, for a rising-edge (tap) toggle
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -6381,7 +6392,77 @@ def install_debug_ground_spawn(blocks: Blocks) -> None:
         ),
     )
     spawn = blocks.if_reporter(field_empty, [*clear, *stamps, advance_index])
-    blocks.substack(gate, [spawn])
+    # ISOLATION (parity with the T key): while G is held, suppress the normal enemy stream so ONLY the debug
+    # ground family is on screen — otherwise the operator cannot focus on the family under test. Three sources
+    # feed the field, so all three are stopped while G is held: (a) the flying formation spawner — zero
+    # `formation count` (SPAWN_FLYING runs right after this in the walk and brings in nothing) and clear the
+    # flying band so any in-flight wave vanishes; (b) the Bacura pump — its walk call is gated on G-not-held
+    # (see the tick loop), and the band is cleared here so any drifting slab goes; (c) the area schedule's own
+    # add_ground_object stamps — gated on G-not-held in `_consume_schedule`, so the debug family is the sole
+    # ground object. The clears drop live enemies with no explosion or score, the intended cost of the
+    # one-at-a-time isolation (the checklist notes it so it does not read as a bug). All of this is scoped to
+    # the key-held gate, so normal play is untouched when G is not held.
+    suppress_air = [
+        blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
+        *[
+            block
+            for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
+            for block in (
+                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
+                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
+            )
+        ],
+        *[
+            block
+            for slot in range(BACURA_SLOTS[0], BACURA_SLOTS[1] + 1)
+            for block in (
+                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
+                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
+            )
+        ],
+    ]
+    blocks.substack(gate, [*suppress_air, spawn])
+    blocks.chain(definition, [gate])
+
+
+def install_debug_pause(blocks: Blocks) -> None:
+    # ENGINE-TODO(#119): remove this temporary debug pause key (and its locked-spec control-mapping amendment)
+    # once the ground families are built and playtested, alongside the T and G debug keys.
+    # DEBUG / TEMPORARY (tracked for removal): a freeze/resume TOGGLE on the pause key (P) so the operator can
+    # stop the screen and take a screenshot of a ground-enemy issue without playing on. It is a TAP toggle, not
+    # hold-to-pause, so both hands are free for an OS screenshot: each tick this proc samples P and flips
+    # `debug paused` on the RISING edge only (P down now, up last tick), tracked via `debug pause key held`.
+    # `debug paused` gates the walk-loop body (the body runs only while it is 0), and this toggle proc is called
+    # in the walk OUTSIDE that gate so a second tap can always resume. Both new vars default to 0, and the
+    # harness never presses P, so `debug paused` stays 0 there and the build stays deterministic. It amends the
+    # locked control mapping — see core-game-systems.md and issue #119.
+    definition = _install_warp_proc(blocks, DEBUG_PAUSE_PROCCODE)
+    gate = blocks.add("control_if_else")
+    pressed = blocks.key_pressed(gate, DEBUG_PAUSE_KEY)
+    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
+
+    # P held down this tick: on the RISING edge only (held == 0 last tick) flip paused (1 - paused), then
+    # remember P is down so holding it does not re-toggle every tick.
+    rising = blocks.if_reporter(
+        blocks.op_eq(variable("debug pause key held", PAUSE_KEY_HELD_ID), number(0)),
+        [
+            blocks.set_var_expr(
+                "debug paused",
+                PAUSED_ID,
+                blocks.op_sub(number(1), variable("debug paused", PAUSED_ID)),
+            )
+        ],
+    )
+    blocks.substack(
+        gate,
+        [rising, blocks.set_var("debug pause key held", PAUSE_KEY_HELD_ID, number(1))],
+    )
+    # P up: clear the held sample so the next press is a fresh rising edge.
+    blocks.substack(
+        gate,
+        [blocks.set_var("debug pause key held", PAUSE_KEY_HELD_ID, number(0))],
+        name="SUBSTACK2",
+    )
     blocks.chain(definition, [gate])
 
 
@@ -7022,8 +7103,16 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         type_val=ground_type_at_cursor,
         sprite_y=ground_sprite_y_at_cursor,
     )
+    # DEBUG / TEMPORARY (tracked for removal, #119): while the G ground-debug key is held, do NOT stamp the
+    # schedule's own add_ground_object records — the debug key owns the ground band so the operator sees one
+    # built family at a time, isolated from normal play. The cursor still advances at the loop's end regardless,
+    # so no schedule record is skipped or replayed; only the stamp is withheld while G is held. When G is not
+    # held this is exactly the original condition, so normal play is untouched.
     add_ground_branch = blocks.if_reporter(
-        blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
+        blocks.op_and(
+            blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
+            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+        ),
         [
             blocks.if_reporter(is_single_slot_ground, spawn_ground),
             blocks.if_reporter(
@@ -7304,6 +7393,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_spawn_flying(blocks)
     install_debug_spawn_wave(blocks)  # DEBUG / temporary (tracked for removal)
     install_debug_ground_spawn(blocks)  # DEBUG / temporary (tracked for removal, #119)
+    install_debug_pause(blocks)  # DEBUG / temporary (tracked for removal, #119)
     install_advance_area(blocks)
     install_score(blocks)
     install_check_bonus_life(blocks)
@@ -7443,34 +7533,58 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.call_transition("player-dead", "none"),
         ],
     )
-    blocks.substack(
-        walk_loop,
+    # DEBUG (temporary, tracked for removal #119): while G is held, the Bacura pump is suppressed too, so no
+    # slabs drift in during ground isolation (parity with the T key). The G proc already zeros `formation count`
+    # and clears the flying/bacura bands each tick; gating the pump call stops it re-admitting. When G is not
+    # held this is exactly the original unconditional call.
+    pump_bacura = blocks.if_reporter(
+        blocks.op_not(blocks.key_pressed(walk_loop, DEBUG_GROUND_KEY)),
         [
-            blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
-            # WPN-04: the bomb sight leads the craft (needs the just-cached player cell).
-            blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True),
-            blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
-            blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
-            # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
-            # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
-            blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
-            # DEBUG (temporary, tracked for removal #119): while G is held, cycle one built GROUND family
-            # into the band. Placed after the ground walk (ADVANCE_SLOTS) so the field-empty gate reads the
-            # fully-settled post-cull band, and outside the ADVANCE_AREA -> ADVANCE_SLOTS pair the area clock
-            # requires be adjacent. The stamp scrolls on the NEXT walk, then travels down to the craft — a
-            # one-tick delay that is immaterial for a top-of-field spawn. Self-gated on the key; no effect on
-            # normal play, and it defers to any scheduled ground object (only fills a genuinely empty field).
-            blocks.call_proc(DEBUG_GROUND_SPAWN_PROCCODE, warp=True),
-            # DEBUG (temporary, tracked for removal): overrides the scheduled formation to a Terrazi
-            # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
-            blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
-            blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
             # AIR-11: the Bacura live-spawn pump runs in the spawn phase, after ADVANCE_AREA has loaded
             # this tick's set/reset_bacura_count records and after the walk — so a freshly-stamped slab
             # first drifts on the NEXT tick, matching the arcade's handle_01_Bacura (init, then yield)
             # and the flying spawner above (spawn late, drive next tick).
             blocks.call_proc(PUMP_BACURA_PROCCODE, warp=True),
-            death_check,
+        ],
+    )
+    # The whole tick — read, area clock, walk, bomb, spawns, death — runs only while NOT paused. The
+    # ADVANCE_AREA -> ADVANCE_SLOTS pair stays adjacent inside this body, so the area-clock adjacency contract
+    # holds; the pause gate merely wraps the body.
+    tick_body = [
+        blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
+        # WPN-04: the bomb sight leads the craft (needs the just-cached player cell).
+        blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True),
+        blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
+        blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
+        # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
+        # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
+        blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
+        # DEBUG (temporary, tracked for removal #119): while G is held, cycle one built GROUND family
+        # into the band. Placed after the ground walk (ADVANCE_SLOTS) so the field-empty gate reads the
+        # fully-settled post-cull band, and outside the ADVANCE_AREA -> ADVANCE_SLOTS pair the area clock
+        # requires be adjacent. The stamp scrolls on the NEXT walk, then travels down to the craft — a
+        # one-tick delay that is immaterial for a top-of-field spawn. Self-gated on the key; no effect on
+        # normal play, and it defers to any scheduled ground object (only fills a genuinely empty field).
+        blocks.call_proc(DEBUG_GROUND_SPAWN_PROCCODE, warp=True),
+        # DEBUG (temporary, tracked for removal): overrides the scheduled formation to a Terrazi
+        # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
+        blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
+        blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
+        pump_bacura,
+        death_check,
+    ]
+    run_when_unpaused = blocks.if_reporter(
+        blocks.op_eq(variable("debug paused", PAUSED_ID), number(0)),
+        tick_body,
+    )
+    # DEBUG (temporary, tracked for removal #119): the pause TOGGLE runs FIRST and OUTSIDE the freeze gate, so a
+    # tap of P can always flip `debug paused` back to 0 and resume. The harness never presses P, so `debug
+    # paused` stays 0 there and the full tick runs every frame as before — the build stays deterministic.
+    blocks.substack(
+        walk_loop,
+        [
+            blocks.call_proc(DEBUG_PAUSE_PROCCODE, warp=True),
+            run_when_unpaused,
         ],
     )
     blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
@@ -10647,6 +10761,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         DEBUG_SPAWN_INDEX_ID,
         # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor.
         DEBUG_GROUND_INDEX_ID,
+        # DEBUG (tracked for removal, #119): the P-key freeze/resume toggle and its rising-edge sample.
+        PAUSED_ID,
+        PAUSE_KEY_HELD_ID,
         # AIR-11: the live Bacura spawn pump's state (main_fn_5 inc counter + main_fn_3 init loop).
         NUM_BACURA_ID,
         BACURA_INC_CNT_ID,
@@ -10765,6 +10882,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor (0-based into
         # DEBUG_GROUND_FAMILIES); starts at the first family.
         DEBUG_GROUND_INDEX_ID: ["debug ground index", 0],
+        # DEBUG (tracked for removal, #119): the P-key freeze toggle (1 = frozen) and its previous-tick
+        # P sample for rising-edge detection; both start at 0 so the walk runs and the harness is unaffected.
+        PAUSED_ID: ["debug paused", 0],
+        PAUSE_KEY_HELD_ID: ["debug pause key held", 0],
         # AIR-11: Bacura live-spawn pump state (re-topped per area in _enter_area_top).
         NUM_BACURA_ID: ["num bacura", 0],
         BACURA_INC_CNT_ID: ["bacura inc cnt", 0],

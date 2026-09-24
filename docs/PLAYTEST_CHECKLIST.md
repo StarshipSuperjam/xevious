@@ -26,14 +26,20 @@ above so a build that adapted to a wrong spec never reaches the playtest.) Contr
 also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
 (there is no separate crosshair control). The temporary **D**, **G**, and **S** debug keys are **gone** —
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to
-score, let one (or its bullet) touch you to die. Two **temporary** debug keys are present. Holding **T**
+score, let one (or its bullet) touch you to die. Three **temporary** debug keys are present. Holding **T**
 during play brings in one debug **aerial** enemy at a time and **cycles through the built firing families** as the
 field clears — **Terrazi** first (step 4b), then **Kapi** (step 4c), then **Torkan** (step 4d), then wrapping — so families
 unreachable in early play can be tested. Holding **G** does the same for the built **ground** families
 (step 4e) — it stamps one ground family into the band from the top of the field and advances to the next only
 after the current one scrolls off or is bombed — so a ground family (a multi-slot composite especially),
 which otherwise only appears in the narrow window when the area schedule happens to scroll it up, can be
-bomb-tested on demand. Both are dev tools tracked for removal (issue #119), not part of the finished game.
+bomb-tested on demand. **While you hold `T` or `G` the normal enemy stream is suppressed** — no normal
+flying waves or Bacura arrive and the schedule's own ground objects are withheld — so **only** the debug
+family under test is on screen (this isolation is the tool doing its job, not a bug; normal play resumes the
+instant you release the key). The third key, **P**, is a **freeze/resume toggle**: **tap `P`** to freeze the
+whole screen so you can take a screenshot of anything that looks wrong, and **tap `P` again** to resume — you
+do not need to hold it, so both hands are free for the screenshot. All three are dev tools tracked for removal
+(issue #119), not part of the finished game.
 
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a

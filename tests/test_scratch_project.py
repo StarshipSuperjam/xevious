@@ -1012,6 +1012,11 @@ class ScratchProjectTests(unittest.TestCase):
             # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor — the ground analog
             # of the T-key cursor, likewise a transient dev-tool register, not durable Stage state.
             "debug ground index",
+            # DEBUG (tracked for removal, #119): the P-key freeze/resume TOGGLE (1 = frozen) and its
+            # previous-tick P sample for rising-edge detection — transient dev-tool registers, not durable
+            # Stage state (both default 0; the harness never presses P, so the walk runs every tick).
+            "debug paused",
+            "debug pause key held",
             # WPN-04 (slice 9): the in-flight bomb's accelerating scroll-axis velocity — a transient
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
@@ -1291,6 +1296,8 @@ class ScratchProjectTests(unittest.TestCase):
             director.DEBUG_SPAWN_PROCCODE,
             # DEBUG / temporary (tracked for removal, #119): the playtest cycle-a-ground-family tool.
             director.DEBUG_GROUND_SPAWN_PROCCODE,
+            # DEBUG / temporary (tracked for removal, #119): the playtest freeze/resume (P) toggle.
+            director.DEBUG_PAUSE_PROCCODE,
             director.CULL_SLOT_PROCCODE,
             # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
             director.CHECK_AIR_HIT_PROCCODE,
@@ -13218,9 +13225,10 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(
             set(), sensed & arrow_keys, "the Stage walk must not steer the bomb sight by arrow keys"
         )
-        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, and the debug-ground 'g' poll are expected
-        # Stage key reads ('t'/'g' are temporary dev tools tracked for removal, #119).
-        self.assertLessEqual(sensed, {"b", "t", "g"}, sensed)
+        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, the debug-ground 'g' poll, and the
+        # debug-pause 'p' poll are expected Stage key reads ('t'/'g'/'p' are temporary dev tools tracked
+        # for removal, #119).
+        self.assertLessEqual(sensed, {"b", "t", "g", "p"}, sensed)
 
         # Negative: re-add an arrow-key branch (an arrow-key poll on the Stage) → the guard fires.
         corrupt = copy.deepcopy(project)
@@ -13562,7 +13570,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "eb11cb0a5523917912e6e9abd05cfbbda22a84b96eda1fa3e1d46c5966c7835e",
+            "0af2191c54da0bb8d94ac231d3f8a07c8c82419b75e577a35abb53854c766196",
             build_hash,
         )
 
