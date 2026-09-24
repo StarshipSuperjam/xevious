@@ -77,11 +77,16 @@ the start key; READY, player-dead, respawning, and game-over accept no gameplay 
 movement, fire, and bomb. (Earlier slices carried two temporary keyboard fixtures — `D` to request
 respawn and `G` to request terminal death — solely to exercise the death paths before any enemy could
 kill the craft; now that live flying enemies and their bullets deal real lethal contact, those fixtures
-are removed.) One temporary keyboard fixture is present again: while playing, holding `T` brings in a
-single debug enemy at a time (the next only after the current one leaves or dies), cycling through the
+are removed.) Two temporary keyboard fixtures are present again: while playing, holding `T` brings in a
+single debug **aerial** enemy at a time (the next only after the current one leaves or dies), cycling through the
 built aerial families as the field clears (Terrazi → Kapi → wrap), so an aerial family that
-only spawns at high AI levels is reachable for the operator playtest; it is inert when the key is not
-held, and is tracked for removal once every aerial family is built and playtested (issue #119). Repeated keys can never duplicate transitions,
+only spawns at high AI levels is reachable for the operator playtest; and holding `G` does the same for the
+built **ground** families (Barra → Zolbak → … → Boza Logram → wrap), stamping one ground family into the
+band from the top of the field and advancing to the next only after the current one scrolls off or is bombed,
+because a ground family — a multi-slot composite especially — otherwise only appears in the narrow,
+non-repeatable window when the area schedule happens to scroll it up. Both are inert when their key is not
+held, and both are tracked for removal once every family (aerial and ground) is built and playtested (issue
+#119). Repeated keys can never duplicate transitions,
 loops, shots, or bombs; the green flag from any state performs the cold-start reset; stop halts the
 project.
 
@@ -153,10 +158,12 @@ reticle reads the same movement input as the craft, and when it reaches the top 
 and backs the craft down with it — so the reticle can never leave the top of the screen and the craft stops
 with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
-port's own: arrow keys move, Space fires, B bombs, and a temporary `T` (playtest-only, issue #119)
-cycles a single debug enemy through the built aerial families one at a time — holding it brings in one
-enemy, and each time the field clears it advances to the next family (Terrazi → Kapi → wrap); a
-rebinding is a spec amendment.
+port's own: arrow keys move, Space fires, B bombs, a temporary `T` (playtest-only, issue #119)
+cycles a single debug aerial enemy through the built aerial families one at a time — holding it brings in one
+enemy, and each time the field clears it advances to the next family (Terrazi → Kapi → wrap) — and a
+temporary `G` (playtest-only, issue #119) does the same for the built ground families, stamping one into the
+band from the top and advancing to the next only after the current one scrolls off or is bombed (Barra →
+Zolbak → … → Boza Logram → wrap); a rebinding is a spec amendment.
 
 ## Acceptance criteria
 

@@ -26,11 +26,14 @@ above so a build that adapted to a wrong spec never reaches the playtest.) Contr
 also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
 (there is no separate crosshair control). The temporary **D**, **G**, and **S** debug keys are **gone** —
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to
-score, let one (or its bullet) touch you to die. One new **temporary** key is present: holding **T**
-during play brings in one debug enemy at a time and **cycles through the built firing families** as the
+score, let one (or its bullet) touch you to die. Two **temporary** debug keys are present. Holding **T**
+during play brings in one debug **aerial** enemy at a time and **cycles through the built firing families** as the
 field clears — **Terrazi** first (step 4b), then **Kapi** (step 4c), then **Torkan** (step 4d), then wrapping — so families
-unreachable in early play can be tested. A dev tool tracked for removal (issue #119), not part of the
-finished game.
+unreachable in early play can be tested. Holding **G** does the same for the built **ground** families
+(step 4e) — it stamps one ground family into the band from the top of the field and advances to the next only
+after the current one scrolls off or is bombed — so a ground family (a multi-slot composite especially),
+which otherwise only appears in the narrow window when the area schedule happens to scroll it up, can be
+bomb-tested on demand. Both are dev tools tracked for removal (issue #119), not part of the finished game.
 
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a
@@ -154,6 +157,23 @@ so area position is read from the `area progress`/`area number` variable watcher
    **Shoot one:** it explodes and the score rises by **50** (the HUD digits are the definitive signal), the
    wreck clears. The shared explosion is the same placeholder burst as the Toroid (note, do not fail). Release
    `T` and confirm normal Toroid waves resume.
+4e. **Ground families — the debug ground cycle (temporary `G` key).** Ground objects only enter by scrolling
+   up from the area schedule — a narrow, one-shot window — so this build carries a **temporary ground playtest
+   key**: while playing, **hold `G`** to stamp one built ground family into the field from the top. The tool
+   **cycles through the built ground families** — **Barra**, **Zolbak**, **Garu Barra**, **Logram**, **Derota**,
+   **Garu Derota**, then the **Boza Logram** — advancing to the next only once the current one has **scrolled
+   off the bottom or been bombed**, then wrapping. It is a dev tool tracked for removal (issue #119) — not part
+   of the finished game. **Note:** to isolate one family, engaging `G` **clears the whole ground band first** —
+   any ground object already scrolling simply vanishes (no crater, no score) as the family comes in; that is the
+   tool doing its job, **not** a bug, and scheduled ground traffic resumes once you release `G`. As each family
+   enters at the top and scrolls down toward the craft, confirm it looks right and **bomb it** to check its
+   death and score against the mechanics catalog (land families **crater** and persist; the firing families —
+   Logram, Derota, Garu Derota — open/aim on their timer before you bomb them). **This PR's family is the Boza
+   Logram** (the five-part composite): hold `G` until it appears (last in the cycle), then — **bomb one outer
+   dome:** it craters and scores **300**, and the centre's value drops to **600** (a later bomb on the centre now
+   scores 600, not 2,000); on a fresh Boza, **bomb the centre first:** it scores **2,000** and the four
+   surrounding outer domes clear in cascade for **no extra score**. Release `G` and confirm scheduled ground
+   traffic resumes.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row by letting a Toroid or its
    bullet touch the craft (once ground objects and Bacura exist, exercise those too): the full death
    presentation and sound complete uncut, the craft respawns **immediately vulnerable** (fly into an enemy

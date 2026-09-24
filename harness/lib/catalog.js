@@ -2514,6 +2514,66 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
   },
   {
+    key: 'debug-ground-key-cycles-families',
+    behavior:
+      'The temporary debug ground key (G) stamps a built GROUND family into the band through the shared ground seed builders and, spawn by spawn, advances its family cursor through every built ground family (self-extending as later ground families are built), so each can be cycled to for a bomb playtest (tracked for removal, #119)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The G key is the ground analog of the T key. Family PRESENCE alone cannot make the negative bite — the
+      // area schedule scrolls ground families in on its own — so isolate the debug tool two ways: (1) suppress
+      // every SCHEDULED ground spawn (empty the schedule's ground-type column) so the ONLY ground objects that
+      // can appear are the debug key's, and (2) watch the debug-specific, pacing-invariant signal —
+      // `debug ground index`, which advances one step per FRESH debug ground spawn and wraps mod
+      // len(DEBUG_GROUND_FAMILIES) (game_director.py install_debug_ground_spawn); normal play never touches it.
+      // The exact residue→family binding is pinned in game_director.py (DEBUG_GROUND_FAMILIES); this scenario
+      // proves the cursor drives the whole cycle at runtime and that a fresh spawn actually stamps the band.
+      //
+      // The cursor only advances on a FRESH spawn — i.e. when the ground band is empty (the tool stamps one
+      // family, then defers until it scrolls off). Ground objects always scroll DOWN and cull off the field, so
+      // this never stalls; but to sweep the whole cycle quickly we clear the ground band (JS slots 0..15)
+      // ourselves each frame to reopen the field-empty gate. That does NOT drive the schedule (suppressed
+      // above): only the debug tool ever stamps ground or writes the cursor. How far the cursor jumps between
+      // samples varies (a family may cull within one settling), so we loop until the residues form a complete
+      // contiguous run 0..max that reaches the last built family; a new family just pushes max up, no threshold
+      // to re-tune.
+      suppressGroundSpawns(vm);
+      keyDown(vm, 'g');
+      const cursors = new Set([readVar(vm, 'debug-ground-index')]);
+      let anyGround = false;
+      let maxCursor = 0;
+      const LAST = 6; // Boza Logram is the 7th built ground family (index 6); self-extends as more are built
+      for (let i = 0; i < 600; i += 1) {
+        const slotType = readVar(vm, 'slot-type');
+        const slotState = readVar(vm, 'slot-state');
+        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
+        step(vm, 1);
+        const cursor = readVar(vm, 'debug-ground-index');
+        cursors.add(cursor);
+        if (cursor > maxCursor) maxCursor = cursor;
+        const type = readVar(vm, 'slot-type');
+        for (let s = 0; s < 16; s += 1) if (type[s] !== 0) anyGround = true;
+        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>= 6).
+        if (cursors.size === maxCursor + 1 && maxCursor >= LAST) break;
+      }
+      keyUp(vm, 'g');
+      const contiguous = cursors.size === maxCursor + 1;
+      return { distinctCursors: cursors.size, maxCursor, contiguous, anyGround };
+    },
+    assert(obs) {
+      assert.equal(obs.anyGround, true, 'holding the debug ground key stamps a ground family into the band');
+      assert.ok(obs.contiguous, `the debug ground cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
+      assert.ok(
+        obs.maxCursor >= 6,
+        `the debug ground cycle self-extends through every built ground family (residues 0..6: Barra, Zolbak, Garu Barra, Logram, Derota, Garu Derota, Boza Logram); reached ${obs.maxCursor}`,
+      );
+    },
+    // Empty `debug ground spawn` so the key never stamps or advances → `debug ground index` stays 0 →
+    // maxCursor == 0 and no ground ever appears (the schedule is suppressed) → both the self-extension
+    // (>= 6) and the anyGround assertions bite (normal play never touches the cursor, so nothing masks it).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
+  },
+  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',

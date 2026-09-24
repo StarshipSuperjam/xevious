@@ -839,6 +839,17 @@ CULL_SLOT_PROCCODE = "cull slot"
 DEBUG_SPAWN_PROCCODE = "debug spawn wave"
 DEBUG_SPAWN_KEY = "t"  # T = cycle a single debug enemy through the buildable families
 DEBUG_SPAWN_INDEX_ID = "debug-spawn-index"  # which DEBUG_SPAWN_FAMILIES entry T brings in next
+# DEBUG (temporary playtest tool, tracked for removal #119): the GROUND analog of the T key. Ground objects
+# only enter by scrolling up from the area schedule — a narrow, one-shot, non-repeatable window — so a
+# specific ground family (a five-slot Boza composite especially) is impractical to reach for a bomb test.
+# While the debug ground key (G) is held, CYCLE the built ground families one at a time into the ground band
+# from the top of the field, so each family's whole lifecycle (enter, scroll, fire if it fires, bomb ->
+# crater/score) is reachable in isolation and repeatably. Like the T key it self-gates on the key (normal
+# play untouched) and amends the LOCKED control mapping (docs/spec/core-game-systems.md; needs guardrail-ack).
+DEBUG_GROUND_SPAWN_PROCCODE = "debug ground spawn"
+DEBUG_GROUND_KEY = "g"  # G = cycle a single debug GROUND family (G for ground; freed when the death fixtures went)
+DEBUG_GROUND_INDEX_ID = "debug-ground-index"  # which DEBUG_GROUND_FAMILIES entry G brings in next
+DEBUG_GROUND_SPRITE_Y = 112  # lateral column for the debug spawn — a central, common column (schedule median)
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -1236,6 +1247,19 @@ GROUND_HANDLED_TYPES = (
     DEROTA_TYPE,
     GARU_DEROTA_TYPE,
     BOZA_LOGRAM_TYPE,
+)
+# DEBUG (tracked for removal #119): the families the ground debug key (G) cycles through, one at a time, in
+# roadmap order. Each entry is (object type, seed shape); the shape picks the shared seed builder
+# (_ground_seed_single / _garu / _garu_derota / _boza) so the debug spawn is the scheduled spawn's exact shape.
+# Extended as later ground families are built (Grobda, Domogram in slice 13's second build PR) — no new key.
+DEBUG_GROUND_FAMILIES = (
+    (BARRA_TYPE, "single"),
+    (ZOLBAK_TYPE, "single"),
+    (GARU_BARRA_TYPE, "garu"),
+    (LOGRAM_TYPE, "single"),
+    (DEROTA_TYPE, "single"),
+    (GARU_DEROTA_TYPE, "garu_derota"),
+    (BOZA_LOGRAM_TYPE, "boza"),
 )
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
@@ -6291,6 +6315,76 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
     blocks.chain(definition, [gate])
 
 
+def install_debug_ground_spawn(blocks: Blocks) -> None:
+    # ENGINE-TODO(#119): remove this temporary debug ground key (and its locked-spec control-mapping amendment)
+    # once every ground family is built and playtested, so reachability no longer needs it.
+    # DEBUG / TEMPORARY (tracked for removal): the ground analog of the T key. Ground objects only enter by
+    # scrolling up from the area schedule — a narrow, one-shot, non-repeatable window — so a specific ground
+    # family (a five-slot Boza composite especially) is impractical to reach for a bomb test. While the debug
+    # ground key (G) is held, CYCLE through the built ground families ONE AT A TIME: each tick, if any ground
+    # slot is occupied, stamp nothing (let the current family scroll down / crater / cull); otherwise clear the
+    # ground band, stamp the CURRENT family (`debug ground index` selects the DEBUG_GROUND_FAMILIES entry) at the
+    # band base in a central lateral column via the SHARED seed builders, and ADVANCE the index (mod len) so the
+    # next fresh spawn is the next family — holding G walks Barra -> ... -> Boza -> (wrap). It self-gates on the
+    # key, so normal play is untouched when G is not held. Called in the walk AFTER the ground walk (so the
+    # field-empty gate reads the fully-settled post-cull band) and outside the ADVANCE_AREA -> ADVANCE_SLOTS
+    # pair the area clock requires stay adjacent; a fresh stamp scrolls on the NEXT walk (an immaterial one-tick
+    # delay for a top-of-field spawn) and then travels toward the craft to be bombed. It defers to any scheduled
+    # ground object (only fills a genuinely empty field). Ground objects always scroll down and cull off the
+    # field (a crater too), so the "let it live" wait is BOUNDED — the cursor never stalls. Reachability recurs for every
+    # future ground family (each just appends one DEBUG_GROUND_FAMILIES entry, no new key), so this stays a dev
+    # tool until they are all built and playtested, then it is removed (it amends the locked control mapping —
+    # see core-game-systems.md and issue #119).
+    definition = _install_warp_proc(blocks, DEBUG_GROUND_SPAWN_PROCCODE)
+    gate = blocks.add("control_if")
+    pressed = blocks.key_pressed(gate, DEBUG_GROUND_KEY)
+    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
+
+    # Any ground object already on the field? (OR over the whole ground band — family-agnostic, so whatever
+    # family is spawned lives out its scroll/crater before the next arrives. A bombed family keeps a non-zero
+    # `slot type` while its crater scrolls, so it too holds the cursor until it culls — a bounded wait.)
+    present = None
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        occupied = blocks.op_not(
+            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
+        )
+        present = occupied if present is None else blocks.op_or(present, occupied)
+    field_empty = blocks.op_not(present)
+
+    # Field empty: free the whole ground band the same way `cull slot` does — BOTH `slot type` and `slot state`
+    # to 0 — so no slot is left type-empty but state-stale (a half-freed slot the walk could misread). The
+    # field-empty gate means nothing live is wiped; this is belt-and-suspenders against a stale state byte,
+    # matching the T-key tool.
+    clear = [
+        block
+        for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1)
+        for block in (
+            blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
+            blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
+        )
+    ]
+    # One stamp branch per family, guarded on the current index; exactly one runs on a fresh spawn. Each uses the
+    # SAME seed builders as the schedule ingest (via _debug_ground_seed), so the debug spawn is faithful.
+    stamps = [
+        blocks.if_reporter(
+            blocks.op_eq(variable("debug ground index", DEBUG_GROUND_INDEX_ID), number(index)),
+            _debug_ground_seed(blocks, family_type, shape),
+        )
+        for index, (family_type, shape) in enumerate(DEBUG_GROUND_FAMILIES)
+    ]
+    advance_index = blocks.set_var_expr(
+        "debug ground index",
+        DEBUG_GROUND_INDEX_ID,
+        blocks.op_mod(
+            blocks.op_add(variable("debug ground index", DEBUG_GROUND_INDEX_ID), number(1)),
+            number(len(DEBUG_GROUND_FAMILIES)),
+        ),
+    )
+    spawn = blocks.if_reporter(field_empty, [*clear, *stamps, advance_index])
+    blocks.substack(gate, [spawn])
+    blocks.chain(definition, [gate])
+
+
 def _advance_area_number(blocks: Blocks) -> str:
     # AREA-01 area increment with the 16 -> 7 loop (completing area 16 continues at area 7).
     # One source, called from both the completion branch and the near-end checkpoint. Returns
@@ -6684,6 +6778,42 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
                 )
             )
     return seed
+
+
+def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str]:
+    # DEBUG (tracked for removal #119): build ONE ground family's spawn from fixed debug constants — the band
+    # base slot and a central lateral column (DEBUG_GROUND_SPRITE_Y) — through the SAME shared seed builders the
+    # area schedule uses, so a debug-stamped family is the scheduled family's exact shape (only the slot and
+    # column are fixed, not the behaviour). `shape` picks the builder. Each factory returns a FRESH reporter per
+    # call (a reporter attaches to one parent only — reuse silently steals it), exactly as the cursor accessors do.
+    base = GROUND_SLOTS[0]
+    type_val = lambda: number(family_type)
+    sprite_y = lambda: number(DEBUG_GROUND_SPRITE_Y)
+    if shape == "single":
+        return _ground_seed_single(
+            blocks, slot=lambda: number(base), type_val=type_val, sprite_y=sprite_y
+        )
+    if shape == "garu":
+        return _ground_seed_garu(
+            blocks,
+            slot=lambda: number(base),
+            slot_next=lambda: number(base + 1),
+            type_val=type_val,
+            sprite_y=sprite_y,
+        )
+    if shape == "garu_derota":
+        return _ground_seed_garu_derota(
+            blocks,
+            slot=lambda: number(base),
+            slot_next=lambda: number(base + 1),
+            type_val=type_val,
+            sprite_y=sprite_y,
+        )
+    if shape == "boza":
+        return _ground_seed_boza(
+            blocks, slot_at=lambda i: number(base + i), type_val=type_val, sprite_y=sprite_y
+        )
+    raise ValueError(f"unknown debug ground seed shape: {shape!r}")
 
 
 def _consume_schedule(blocks: Blocks) -> list[str]:
@@ -7173,6 +7303,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_advance_slots(blocks)
     install_spawn_flying(blocks)
     install_debug_spawn_wave(blocks)  # DEBUG / temporary (tracked for removal)
+    install_debug_ground_spawn(blocks)  # DEBUG / temporary (tracked for removal, #119)
     install_advance_area(blocks)
     install_score(blocks)
     install_check_bonus_life(blocks)
@@ -7323,6 +7454,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
             # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
             blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
+            # DEBUG (temporary, tracked for removal #119): while G is held, cycle one built GROUND family
+            # into the band. Placed after the ground walk (ADVANCE_SLOTS) so the field-empty gate reads the
+            # fully-settled post-cull band, and outside the ADVANCE_AREA -> ADVANCE_SLOTS pair the area clock
+            # requires be adjacent. The stamp scrolls on the NEXT walk, then travels down to the craft — a
+            # one-tick delay that is immaterial for a top-of-field spawn. Self-gated on the key; no effect on
+            # normal play, and it defers to any scheduled ground object (only fills a genuinely empty field).
+            blocks.call_proc(DEBUG_GROUND_SPAWN_PROCCODE, warp=True),
             # DEBUG (temporary, tracked for removal): overrides the scheduled formation to a Terrazi
             # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
             blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
@@ -10507,6 +10645,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         INVULN_ID,
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
         DEBUG_SPAWN_INDEX_ID,
+        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor.
+        DEBUG_GROUND_INDEX_ID,
         # AIR-11: the live Bacura spawn pump's state (main_fn_5 inc counter + main_fn_3 init loop).
         NUM_BACURA_ID,
         BACURA_INC_CNT_ID,
@@ -10622,6 +10762,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor (0-based into
         # DEBUG_SPAWN_FAMILIES); starts at the first family.
         DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
+        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor (0-based into
+        # DEBUG_GROUND_FAMILIES); starts at the first family.
+        DEBUG_GROUND_INDEX_ID: ["debug ground index", 0],
         # AIR-11: Bacura live-spawn pump state (re-topped per area in _enter_area_top).
         NUM_BACURA_ID: ["num bacura", 0],
         BACURA_INC_CNT_ID: ["bacura inc cnt", 0],

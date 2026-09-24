@@ -214,6 +214,11 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "debug-ground-index": {
+      "kind": "variable",
+      "name": "debug ground index",
+      "scope": "Stage"
+    },
     "debug-spawn-index": {
       "kind": "variable",
       "name": "debug spawn index",

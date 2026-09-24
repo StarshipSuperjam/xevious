@@ -121,9 +121,15 @@
   (https://www.spriters-resource.com/arcade/xevious/); the four outer domes reuse the Logram crops and only
   the Boza centre core adds a new proof crop.
 
-- Known deviations or uncertainty: no locked-spec correction this leaf — the source and the settled
-  [ground objects](../spec/ground-objects.md) spec already agree on the Boza composite, so there is no
-  `guardrail-ack`. The three port necessities above (one update proc branching on `slot link`; the centre
+- Known deviations or uncertainty: no locked-spec correction to the Boza *behaviour* this leaf — the source
+  and the settled [ground objects](../spec/ground-objects.md) spec already agree on the Boza composite. This PR
+  does, however, carry a `guardrail-ack`, for a separate reason: to make this and the other ground families
+  reachable for the operator playtest, it adds a **temporary `G` ground-debug key** (the ground analog of the
+  `T` aerial-debug key — while held it cycles one built ground family at a time into the band from the top of
+  the field), which amends the LOCKED control mapping in
+  [core-game-systems.md](../spec/core-game-systems.md); that amendment is the guardrail-ack surface. The key is
+  a dev tool tracked for removal once every ground family is built and playtested (issue #119), not a GND-05
+  behaviour or a change to the Boza. The three port necessities above (one update proc branching on `slot link`; the centre
   downgrade and the cascade addressing slots by index/offset rather than following the arcade `_EXTRA`
   pointer / object walk) are structural translations of pointer-based code into Scratch's flat slot lists, not
   behavioural changes. The exact on-screen rhythm of the outer fire cycle relative to a lone Logram, and the
