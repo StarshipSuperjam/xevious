@@ -119,17 +119,21 @@
     ([ground objects](../spec/ground-objects.md)). That arcade offset exists to centre a corner-anchored 1×1
     node inside a corner-anchored 2×2 base; the port centre-anchors both frames, so it achieves the same
     visual centring differently — see the port-necessity note below.
-  - **Port necessity — the node reuses the base's own frame, centred on the base's cell.** An early port
-    drew the node as a *separate, smaller* sprite offset off the base, which read as a **second** mound in the
-    PR #139 playtest (the "doubling"). Because both port costumes are centre-anchored 32-px frames and the two
-    sheet frames are just the two states of one mound (bare vs cored / closed vs open turret), the base clone
-    now draws frame 01 and the node clone draws frame 02 **centred on the same cell** (zero relative offset),
-    reading as one cored mound; bombing the node reveals the bare base. Because `slot x`/`slot y` are both the
-    drawn and the bomb-hit position, the hit cell sits under the visible core (bomb-aim improves), and the
-    base↔node linkage is by slot **index** (N+1), not coordinate. (An earlier attempt to scale the depth
-    offset by the anamorphic ratio, `GARU_NODE_DEPTH_UNITS = 480`, only slid the second sprite and was
-    reverted.) The Boza composite keeps its own anamorphic spacing — see
-    [042](042-boza-logram.md) (`GROUND_DEPTH_UNITS_PER_PX`).
+  - **Port necessity — the destructible top is centred on the flashing base.** The faithful structure (the
+    appearance the operator approved) is: **bomb the pyramid top to expose the flashing base beneath.** The
+    node draws its own top sprite (the `barra/idle` pyramid); the indestructible base colour-pulses, so the
+    port flashes it by alternating its two frames on the tick (`garu/base/01`↔`02`), which differ only in the
+    centre — while the top covers that centre the object reads as a solid pyramid, and once the top is bombed
+    the exposed base flashes there. The top must be **centred** on the base (node `slot x`/`slot y` = the
+    base's): the arcade's `_X`/`_Y` cell offset is corner-centring for a corner-anchored 2×2 base, but the
+    port places sprites by their centre, so it becomes a zero relative offset. An early port copied that offset
+    literally and the top slid out of a corner as a **second** mound (the "doubling" the operator first saw);
+    a later attempt drew the base's own second frame as the node centred on it, which merged them and removed
+    the destructible top. Because `slot x`/`slot y` are both the drawn and bomb-hit position, the hit cell sits
+    under the visible top, and the base↔node linkage is by slot **index** (N+1), not coordinate. (An earlier
+    attempt to scale the depth offset by the anamorphic ratio, `GARU_NODE_DEPTH_UNITS = 480`, only slid the
+    sprite and was reverted.) The Boza composite keeps its own anamorphic spacing — see
+    [042](042-boza-logram.md).
   - **Logram cadence is scaled from arcade frames to ticks.** The arcade animates on every 8th arcade
     frame; the once-per-tick walk is two arcade frames, so a stage advances every 4th tick, landing the
     single full-open shot at tick 12 of the 28-tick cycle. The mechanism (one aimed shot at full open, one

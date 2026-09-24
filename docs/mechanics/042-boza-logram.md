@@ -155,14 +155,16 @@
   structural translations into Scratch's flat slot lists and anamorphic render map, not behavioural changes.
   The operator playtest surfaced one visual defect — the five isotropic dome sprites, placed through the
   anamorphic cell→stage map, collapsed vertically into a single blob — fixed by that depth-offset scaling;
-  render == logical, so aim and scoring are unaffected. This `GROUND_DEPTH_UNITS_PER_PX` factor is specific to
-  the Boza's five domes spread across distinct cells. The two OTHER multi-slot ground composites — the Garu
-  Barra and Garu Derota — had a different "doubled" defect with a different fix: their node was drawn as a
-  *separate, smaller* sprite offset off the base, so it read as a second mound. That is fixed in
-  [ground domes and turrets](041-ground-domes-and-turrets.md) by centring the node's own frame on the base's
-  cell (not by depth-offset scaling — an attempt to scale the Garu node offset, `GARU_NODE_DEPTH_UNITS`, only
-  slid the second sprite and was reverted). The exact on-screen rhythm of the outer fire cycle relative to a
-  lone Logram, and the corrected composite's visual read, remain for the operator playtest to confirm.
+  render == logical, so aim and scoring are unaffected. This depth-per-pixel factor
+  (`SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE // RENDER_ROW_STAGE` in `_ground_seed_boza`) is specific to the
+  Boza's five domes spread across distinct cells. The two OTHER multi-slot ground composites — the Garu Barra
+  and Garu Derota — had a different "doubled" defect with a different fix: their destructible top was offset
+  by a cell off the base, so it read as a second mound poking out of a corner. That is fixed in
+  [ground domes and turrets](041-ground-domes-and-turrets.md) by **centring** the top on the base's cell so
+  bombing the top exposes the flashing base beneath — not by depth-offset scaling (an attempt to scale the
+  Garu node offset, `GARU_NODE_DEPTH_UNITS`, only slid the sprite and was reverted). The exact on-screen
+  rhythm of the outer fire cycle relative to a lone Logram, and the corrected composite's visual read, remain
+  for the operator playtest to confirm.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

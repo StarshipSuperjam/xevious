@@ -166152,7 +166152,7 @@
         },
         "gd-garu-057": {
           "opcode": "control_start_as_clone",
-          "next": "gd-garu-092",
+          "next": "gd-garu-096",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -166164,7 +166164,7 @@
         "gd-garu-058": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-garu-092",
+          "parent": "gd-garu-096",
           "inputs": {
             "CONDITION": [
               2,
@@ -166172,7 +166172,7 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-garu-087"
+              "gd-garu-091"
             ]
           },
           "fields": {},
@@ -166252,7 +166252,7 @@
         "gd-garu-062": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-garu-087",
+          "parent": "gd-garu-091",
           "inputs": {
             "OPERAND1": [
               2,
@@ -166342,7 +166342,7 @@
         "gd-garu-066": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-garu-088",
+          "parent": "gd-garu-092",
           "inputs": {
             "NUM1": [
               2,
@@ -166432,7 +166432,7 @@
         "gd-garu-070": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-garu-088",
+          "parent": "gd-garu-092",
           "inputs": {
             "NUM1": [
               1,
@@ -166520,13 +166520,13 @@
         "gd-garu-074": {
           "opcode": "operator_add",
           "next": null,
-          "parent": "gd-garu-086",
+          "parent": "gd-garu-090",
           "inputs": {
             "NUM1": [
               1,
               [
                 4,
-                3
+                4
               ]
             ],
             "NUM2": [
@@ -166539,21 +166539,28 @@
           "topLevel": false
         },
         "gd-garu-075": {
-          "opcode": "control_if_else",
+          "opcode": "operator_divide",
           "next": null,
-          "parent": "gd-garu-082",
+          "parent": "gd-garu-076",
           "inputs": {
-            "CONDITION": [
-              2,
-              "gd-garu-077"
+            "NUM1": [
+              3,
+              [
+                12,
+                "tick",
+                "tick"
+              ],
+              [
+                10,
+                ""
+              ]
             ],
-            "SUBSTACK": [
-              2,
-              "gd-garu-079"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-garu-081"
+            "NUM2": [
+              1,
+              [
+                4,
+                4
+              ]
             ]
           },
           "fields": {},
@@ -166561,9 +166568,92 @@
           "topLevel": false
         },
         "gd-garu-076": {
-          "opcode": "data_itemoflist",
+          "opcode": "operator_mathop",
           "next": null,
           "parent": "gd-garu-077",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-garu-075"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-077": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-garu-078",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-garu-076"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-078": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-garu-083",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                1
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-garu-077"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-079": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-garu-086",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-garu-081"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-garu-083"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-garu-085"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-080": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-garu-081",
           "inputs": {
             "INDEX": [
               3,
@@ -166587,14 +166677,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-077": {
+        "gd-garu-081": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-garu-075",
+          "parent": "gd-garu-079",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-garu-076"
+              "gd-garu-080"
             ],
             "OPERAND2": [
               1,
@@ -166608,88 +166698,89 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-078": {
-          "opcode": "looks_costume",
-          "next": null,
-          "parent": "gd-garu-079",
-          "inputs": {},
-          "fields": {
-            "COSTUME": [
-              "garu/base/01",
-              null
-            ]
-          },
-          "shadow": true,
-          "topLevel": false
-        },
-        "gd-garu-079": {
-          "opcode": "looks_switchcostumeto",
-          "next": null,
-          "parent": "gd-garu-075",
-          "inputs": {
-            "COSTUME": [
-              1,
-              "gd-garu-078"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-garu-080": {
-          "opcode": "looks_costume",
-          "next": null,
-          "parent": "gd-garu-081",
-          "inputs": {},
-          "fields": {
-            "COSTUME": [
-              "garu/base/02",
-              null
-            ]
-          },
-          "shadow": true,
-          "topLevel": false
-        },
-        "gd-garu-081": {
-          "opcode": "looks_switchcostumeto",
-          "next": null,
-          "parent": "gd-garu-075",
-          "inputs": {
-            "COSTUME": [
-              1,
-              "gd-garu-080"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
         "gd-garu-082": {
-          "opcode": "control_if_else",
-          "next": "gd-garu-089",
-          "parent": "gd-garu-088",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-garu-084"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-garu-086"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-garu-075"
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-garu-083",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
             ]
           },
-          "fields": {},
-          "shadow": false,
+          "shadow": true,
           "topLevel": false
         },
         "gd-garu-083": {
+          "opcode": "looks_switchcostumeto",
+          "next": null,
+          "parent": "gd-garu-079",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-garu-078",
+              "gd-garu-082"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-084": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-garu-085",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "barra/idle/01",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-garu-085": {
+          "opcode": "looks_switchcostumeto",
+          "next": null,
+          "parent": "gd-garu-079",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-garu-084"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-086": {
+          "opcode": "control_if_else",
+          "next": "gd-garu-093",
+          "parent": "gd-garu-092",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-garu-088"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-garu-090"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-garu-079"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-087": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-garu-084",
+          "parent": "gd-garu-088",
           "inputs": {
             "INDEX": [
               3,
@@ -166713,14 +166804,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-084": {
+        "gd-garu-088": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-garu-082",
+          "parent": "gd-garu-086",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-garu-083"
+              "gd-garu-087"
             ],
             "OPERAND2": [
               1,
@@ -166734,10 +166825,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-085": {
+        "gd-garu-089": {
           "opcode": "looks_costume",
           "next": null,
-          "parent": "gd-garu-086",
+          "parent": "gd-garu-090",
           "inputs": {},
           "fields": {
             "COSTUME": [
@@ -166748,22 +166839,22 @@
           "shadow": true,
           "topLevel": false
         },
-        "gd-garu-086": {
+        "gd-garu-090": {
           "opcode": "looks_switchcostumeto",
           "next": null,
-          "parent": "gd-garu-082",
+          "parent": "gd-garu-086",
           "inputs": {
             "COSTUME": [
               3,
               "gd-garu-074",
-              "gd-garu-085"
+              "gd-garu-089"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-087": {
+        "gd-garu-091": {
           "opcode": "control_if_else",
           "next": null,
           "parent": "gd-garu-058",
@@ -166774,21 +166865,21 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-garu-088"
+              "gd-garu-092"
             ],
             "SUBSTACK2": [
               2,
-              "gd-garu-091"
+              "gd-garu-095"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-088": {
+        "gd-garu-092": {
           "opcode": "motion_gotoxy",
-          "next": "gd-garu-082",
-          "parent": "gd-garu-087",
+          "next": "gd-garu-086",
+          "parent": "gd-garu-091",
           "inputs": {
             "X": [
               2,
@@ -166803,10 +166894,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-089": {
+        "gd-garu-093": {
           "opcode": "looks_setsizeto",
-          "next": "gd-garu-090",
-          "parent": "gd-garu-082",
+          "next": "gd-garu-094",
+          "parent": "gd-garu-086",
           "inputs": {
             "SIZE": [
               1,
@@ -166820,25 +166911,25 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-090": {
+        "gd-garu-094": {
           "opcode": "looks_show",
           "next": null,
-          "parent": "gd-garu-089",
+          "parent": "gd-garu-093",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-091": {
+        "gd-garu-095": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-garu-087",
+          "parent": "gd-garu-091",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-092": {
+        "gd-garu-096": {
           "opcode": "looks_hide",
           "next": "gd-garu-058",
           "parent": "gd-garu-057",
@@ -166868,6 +166959,15 @@
           "md5ext": "7ff54915a7cabf7f0f5e6f603f944f61.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
+        },
+        {
+          "name": "barra/idle/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b6046906d12c01313304fd68d214d56f",
+          "md5ext": "b6046906d12c01313304fd68d214d56f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "explode_01",
@@ -182858,7 +182958,7 @@
               1,
               [
                 4,
-                3
+                4
               ]
             ],
             "NUM2": [
@@ -182942,7 +183042,7 @@
         "gd-garu derota-078": {
           "opcode": "operator_add",
           "next": null,
-          "parent": "gd-garu derota-085",
+          "parent": "gd-garu derota-083",
           "inputs": {
             "NUM1": [
               1,
@@ -183037,7 +183137,7 @@
           "inputs": {},
           "fields": {
             "COSTUME": [
-              "garu-derota/base/01",
+              "digit/0",
               null
             ]
           },
@@ -183050,7 +183150,8 @@
           "parent": "gd-garu derota-079",
           "inputs": {
             "COSTUME": [
-              1,
+              3,
+              "gd-garu derota-078",
               "gd-garu derota-082"
             ]
           },
@@ -183065,7 +183166,7 @@
           "inputs": {},
           "fields": {
             "COSTUME": [
-              "digit/0",
+              "derota/idle/01",
               null
             ]
           },
@@ -183078,8 +183179,7 @@
           "parent": "gd-garu derota-079",
           "inputs": {
             "COSTUME": [
-              3,
-              "gd-garu derota-078",
+              1,
               "gd-garu derota-084"
             ]
           },
@@ -183291,6 +183391,15 @@
           "md5ext": "5e0acce8da1c06564016041ccc01591c.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
+        },
+        {
+          "name": "derota/idle/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "d2713336361bd222147ed8e0ae5312cd",
+          "md5ext": "d2713336361bd222147ed8e0ae5312cd.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "explode_01",
