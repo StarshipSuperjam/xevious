@@ -1582,6 +1582,17 @@ RENDER_COL_STAGE = 15
 RENDER_COL_OFFSET = 240
 RENDER_ROW_TOP = 155
 RENDER_ROW_STAGE = 8
+# Multi-slot ground objects (the Boza domes; the Garu base->node) place their sub-parts by writing per-slot
+# offsets that then pass through the anamorphic map above. Because lateral draws 15 stage-px/cell but depth
+# only 8, an offset the arcade makes SYMMETRIC (equal px on both axes) renders ~1.9x too tight in depth, so
+# the parts collapse together and misalign — the operator-caught Boza "blob" and the Garu base/node
+# "doubling". The fix stretches only the DEPTH offset by RENDER_COL_STAGE/RENDER_ROW_STAGE so it renders at
+# the same stage scale as the lateral offset; lateral offsets keep the plain per-pixel/per-cell scale. render
+# == logical here (slot x/y are BOTH the drawn position and the bomb-hit position), so the hit window moves
+# with the sprite and bomb-aim stays true — a port necessity recorded in docs/mechanics/041 (Garu) and 042
+# (Boza).
+GROUND_DEPTH_UNITS_PER_PX = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE // RENDER_ROW_STAGE  # 32*15//8 = 60
+GARU_NODE_DEPTH_UNITS = SLOT_UNITS_PER_CELL * RENDER_COL_STAGE // RENDER_ROW_STAGE       # 256*15//8 = 480
 TOROID_RENDER_SIZE = 225  # 16-px sprite at ~2.25 stage px/px, matching solvalou's on-screen scale
 # WPN-02 hit/explosion state (`flying_enemy_hit` 4865–4902): a struck flying enemy explodes over 20
 # arcade frames = 10 ticks, five 4-frame phases, still drifting on its velocity; at arcade frame 8 the
@@ -6697,7 +6708,10 @@ def _ground_seed_garu(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) ->
     # the indestructible 2x2 (state SLOT_GARU_BASE, so the detector's ==ACTIVE gate rejects it), at slot x = 0
     # (top of field) and the record's lateral sprite_y. Node @ N+1: the destructible core (state ACTIVE, 300
     # pts), at the arcade's absolute offsets — slot x = 1 cell (_X = 0x0100) and slot y = base_y - 1 cell
-    # (_Y = base_Y - 0x0100, the verified 8-px LATERAL offset, GND-01). Both scroll at the shared terrain rate.
+    # (_Y = base_Y - 0x0100, the verified 8-px LATERAL offset, GND-01). The arcade offset is symmetric (1 cell
+    # each axis), so the DEPTH slot x is written as GARU_NODE_DEPTH_UNITS (1 cell scaled by the anamorphic
+    # ratio) so the node renders centred on the base instead of pulled off-centre — see GARU_NODE_DEPTH_UNITS.
+    # Both scroll at the shared terrain rate.
     return [
         blocks.list_replace("slot type", SLOT_TYPE_ID, slot(), type_val()),
         blocks.list_replace("slot state", SLOT_STATE_ID, slot(), number(SLOT_GARU_BASE)),
@@ -6710,7 +6724,7 @@ def _ground_seed_garu(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) ->
         ),
         blocks.list_replace("slot type", SLOT_TYPE_ID, slot_next(), type_val()),
         blocks.list_replace("slot state", SLOT_STATE_ID, slot_next(), number(SLOT_ACTIVE)),
-        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(SLOT_UNITS_PER_CELL)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(GARU_NODE_DEPTH_UNITS)),
         blocks.list_replace(
             "slot y",
             SLOT_Y_ID,
@@ -6727,7 +6741,8 @@ def _ground_seed_garu(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) ->
 def _ground_seed_garu_derota(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) -> list[str]:
     # GND-04 (ground.derota #86): the Garu Derota is the Garu Barra's two-slot shape (indestructible 2x2
     # base @ N, destructible node @ N+1) but the node FIRES (handle_21_Garu_Derota $1C61). Base and node
-    # placement are identical to the Garu Barra; the node additionally gets 2000 pts, the captured Derota
+    # placement are identical to the Garu Barra — including the GARU_NODE_DEPTH_UNITS anamorphic depth scale
+    # that keeps the node centred on the base; the node additionally gets 2000 pts, the captured Derota
     # fire mask, and a masked-random initial reload for the shared fire-permission gate
     # (`_TIMER=(rand & mask)+1` on the node object). cull clears only type/state, so seed mask + timer.
     return [
@@ -6742,7 +6757,7 @@ def _ground_seed_garu_derota(blocks: Blocks, *, slot, slot_next, type_val, sprit
         ),
         blocks.list_replace("slot type", SLOT_TYPE_ID, slot_next(), type_val()),
         blocks.list_replace("slot state", SLOT_STATE_ID, slot_next(), number(SLOT_ACTIVE)),
-        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(SLOT_UNITS_PER_CELL)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(GARU_NODE_DEPTH_UNITS)),
         blocks.list_replace(
             "slot y",
             SLOT_Y_ID,
@@ -6785,14 +6800,13 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
     # CENTRE (2,000 pts) never fires and stores `slot link` 0, which marks it as the centre for the walk's
     # branch and holds its full value until an outer hit downgrades it. `slot_at(i)` returns a FRESH reporter.
     seed: list[str] = []
-    # Depth offsets carry an extra isotropic factor so the composite renders as the arcade's square diamond
-    # rather than a vertically-collapsed blob: the anamorphic cell->stage map spaces lateral at RENDER_COL_STAGE
-    # px/cell but depth at only RENDER_ROW_STAGE px/cell, so a raw depth offset renders RENDER_COL_STAGE/
-    # RENDER_ROW_STAGE too tight for the isotropic dome sprites. Lateral is already at the sprite scale, so it
-    # keeps the plain per-pixel scale. (See the BOZA_DEPTH_OFFSETS_PX note; port necessity in docs/mechanics/042.)
-    depth_units_per_px = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE // RENDER_ROW_STAGE  # 32 * 15 // 8 = 60
+    # Depth offsets carry the shared anamorphic factor so the composite renders as the arcade's square diamond
+    # rather than a vertically-collapsed blob (the same GROUND_DEPTH_UNITS_PER_PX correction the Garu base/node
+    # uses): the anamorphic cell->stage map spaces lateral at RENDER_COL_STAGE px/cell but depth at only
+    # RENDER_ROW_STAGE px/cell, so a raw depth offset renders too tight for the isotropic dome sprites. Lateral
+    # is already at the sprite scale, so it keeps the plain per-pixel scale. (Port necessity, docs/mechanics/042.)
     for i in range(BOZA_SLOT_COUNT):
-        depth_units = BOZA_DEPTH_OFFSETS_PX[i] * depth_units_per_px
+        depth_units = BOZA_DEPTH_OFFSETS_PX[i] * GROUND_DEPTH_UNITS_PER_PX
         lateral_units = BOZA_LATERAL_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
         seed.append(
             blocks.list_replace("slot type", SLOT_TYPE_ID, slot_at(i), type_val())

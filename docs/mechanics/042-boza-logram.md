@@ -155,8 +155,15 @@
   structural translations into Scratch's flat slot lists and anamorphic render map, not behavioural changes.
   The operator playtest surfaced one visual defect — the five isotropic dome sprites, placed through the
   anamorphic cell→stage map, collapsed vertically into a single blob — fixed by that depth-offset scaling;
-  render == logical, so aim and scoring are unaffected. The exact on-screen rhythm of the outer fire cycle
-  relative to a lone Logram, and the corrected diamond's visual read, remain for the operator playtest to confirm.
+  render == logical, so aim and scoring are unaffected. A follow-up operator playtest confirmed the Boza now
+  reads as the diamond but flagged the same misalignment on the two OTHER multi-slot ground composites — the
+  Garu Barra and Garu Derota, whose destructible node sits at a symmetric one-cell depth+lateral offset from
+  the indestructible base. The identical anamorphic squeeze pulled the node off-centre from the base (a
+  "doubled" look). The depth-offset scaling was therefore lifted into a shared `GROUND_DEPTH_UNITS_PER_PX`
+  factor (with a `GARU_NODE_DEPTH_UNITS` for the node's one-cell depth) and applied to all three composites,
+  so a node renders centred on its base and the Boza domes keep their diamond; see also
+  [ground domes and turrets](041-ground-domes-and-turrets.md). The exact on-screen rhythm of the outer fire
+  cycle relative to a lone Logram, and the corrected composites' visual read, remain for the operator playtest to confirm.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

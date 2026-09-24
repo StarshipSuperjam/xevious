@@ -135,6 +135,17 @@
   - **The Garu Derota node's felt fire cadence is an operator observation.** The node fires one aimed
     bullet per masked reload with no row gate; the mechanism is proven in the harness, but the exact
     on-screen rhythm relative to a Derota is a point for the operator playtest to confirm.
+  - **Port necessity — the node's one-cell depth offset is scaled to the anamorphic render map.** The
+    base+node pair sits one cell apart in `slot x` (depth). The ground render map is anamorphic — depth
+    renders at `RENDER_ROW_STAGE=8` stage-px/cell while the lateral axis renders at `RENDER_COL_STAGE=15`
+    stage-px/cell — but the sprites are drawn isotropically, so an unscaled one-cell (`SLOT_UNITS_PER_CELL`)
+    depth gap rendered ≈1.9× too tight and the node visually doubled over its base. The node's depth offset
+    is therefore written as `GARU_NODE_DEPTH_UNITS = SLOT_UNITS_PER_CELL * RENDER_COL_STAGE // RENDER_ROW_STAGE`
+    (= 480 units) so the on-screen depth gap matches the lateral scale. This shifts the node's *logical*
+    depth from its exact arcade cell; because `slot x` is both the drawn position and the bomb-hit position,
+    render and hitbox move together and bomb-aim stays true, and the base↔node linkage is by slot **index**
+    (N+1), not coordinate, so it is unaffected. Same anamorphic correction as the Boza composite — see
+    [042](042-boza-logram.md) (`GROUND_DEPTH_UNITS_PER_PX`), lifted into a shared constant this pass.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

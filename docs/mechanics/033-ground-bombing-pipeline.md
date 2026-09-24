@@ -118,6 +118,16 @@
     a base-relative row offset; the locked spec was corrected to say "8-px lateral" at settle time
     ([ground objects](../spec/ground-objects.md)), and the build follows the source. The on-screen
     direction of the node is a point for the operator playtest to confirm.
+  - **Port necessity — the node's one-cell depth offset is scaled to the anamorphic render map.** Beyond the
+    8-px lateral offset, the node also sits one cell behind its base in `slot x` (depth). The ground render
+    map is anamorphic — depth renders at `RENDER_ROW_STAGE=8` stage-px/cell versus `RENDER_COL_STAGE=15`
+    laterally — while sprites are drawn isotropically, so an unscaled one-cell (`SLOT_UNITS_PER_CELL`) depth
+    gap rendered ≈1.9× too tight and the node visually doubled over its base. The node's depth offset is
+    written as `GARU_NODE_DEPTH_UNITS = SLOT_UNITS_PER_CELL * RENDER_COL_STAGE // RENDER_ROW_STAGE` (= 480
+    units) so the depth gap matches the lateral scale. Because `slot x` is both the drawn and the bomb-hit
+    position, render and hitbox move together (bomb-aim stays true), and the base↔node linkage is by slot
+    **index** (N+1), not coordinate. Same anamorphic correction as the Boza composite — see
+    [042](042-boza-logram.md) (`GROUND_DEPTH_UNITS_PER_PX`), lifted into a shared constant this pass.
   - **Logram cadence is scaled from arcade frames to ticks.** The arcade animates on every 8th arcade
     frame; the once-per-tick walk is two arcade frames, so a stage advances every 4th tick, landing the
     single full-open shot at tick 12 of the 28-tick cycle. The mechanism (one aimed shot at full open, one
