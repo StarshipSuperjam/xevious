@@ -8348,6 +8348,274 @@ class ScratchProjectTests(unittest.TestCase):
 
         return failures
 
+    @staticmethod
+    def _gnd05_failures(project: dict) -> set:
+        """GND-05 ground.boza-logram (#87) authoring contract — the FIVE-slot composite (handle_2D_Boza_Logram
+        $1CDE): four OUTER domes (base+0..3) + one CENTRE (base+4), all sharing BOZA_LOGRAM_TYPE and ONE update
+        proc that branches on `slot link` (the port of the arcade `_EXTRA` pointer; the centre stores 0).
+          * An OUTER (link > 0) is a lone Logram: the arm+cadence-gated open/close/fire cycle firing ONE aimed
+            bullet at the full-open midpoint through the DIRECT `_fire_aimed_bullet` (an `alloc bullet slot`
+            call, NOT the shared fire-permission gate), armed by `cur_row <= gnd_stop_firing_row`, and cratering
+            PERSISTENTLY on HIT. Its one extra behaviour on HIT is to rewrite the linked CENTRE slot's
+            `slot pts` to the 600-point position (update_centre_points_value: the arcade's `_EXTRA->_PTS`).
+          * The CENTRE (link == 0) never fires (handle_boza_logram_centre); on HIT it craters persistently AND
+            cascades — destroy_all_outer_lograms sets all four outer slots' state DIRECTLY to HIT (index =
+            slot index - 1..-4), bypassing the per-slot award sweep. So a centre-first bomb clears the outers
+            for NO score (only a directly-bombed OUTER is still ACTIVE when `check ground hit` runs, so only it
+            scores and downgrades the centre) — the "only a directly-bombed outer scores" asymmetry falls out
+            of the direct cascade write, no per-family scoring special case.
+        Spawn facts (add_ground_object consume, under the BOZA_LOGRAM_TYPE gate): five ACTIVE slots; the four
+        outers stamped 300 pts + a `slot link` to the centre; the centre stamped 2,000 pts + `slot link` 0."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def rref(inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def var_id(inp):
+            if (
+                isinstance(inp, list)
+                and len(inp) >= 2
+                and isinstance(inp[1], list)
+                and len(inp[1]) >= 3
+                and inp[1][0] == 12
+            ):
+                return inp[1][2]
+            return None
+
+        def num(inp):
+            return _num_operand(inp)
+
+        def branch_ids(block, key):
+            # Every block reachable from a control block's SUBSTACK/SUBSTACK2 (following `next` and every
+            # nested input), so a check can inspect exactly one branch of the link discriminator.
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def subtree_has(cid, pred):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if pred(b):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def enclosing_cond_has(bid, pred):
+            cur = blocks.get(bid)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = parent["inputs"].get("CONDITION")
+                    cid = (
+                        cond[1]
+                        if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                        else None
+                    )
+                    if cid and subtree_has(cid, pred):
+                        return True
+                cur = parent
+            return False
+
+        def is_stoprow_gt(b):
+            return (
+                b["opcode"] == "operator_gt"
+                and var_id(b["inputs"].get("OPERAND2")) == director.GROUND_STOP_FIRING_ROW_ID
+            )
+
+        def calls(idset, proccode):
+            return any(
+                blocks[x]["opcode"] == "procedures_call"
+                and blocks[x].get("mutation", {}).get("proccode") == proccode
+                for x in idset
+            )
+
+        def alloc_ids_of(idset):
+            return [
+                x
+                for x in idset
+                if blocks[x]["opcode"] == "procedures_call"
+                and blocks[x].get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+            ]
+
+        def advances_clock(idset):
+            # A `slot timer` write whose value is `slot timer + N` (the crater/burst clock advance) — NOT the
+            # fired bullet's `slot timer = 0` reset, which is indexed by the bullet slot, so this stays specific.
+            for x in idset:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                    and (item := rref(b["inputs"].get("ITEM"))) is not None
+                    and item["opcode"] == "operator_add"
+                    and (base := rref(item["inputs"].get("NUM1"))) is not None
+                    and base["opcode"] == "data_itemoflist"
+                    and base["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                ):
+                    return True
+            return False
+
+        boza_body = _proc_body_blocks(stage, director.UPDATE_BOZA_PROCCODE)
+        spawn_body = _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE)
+
+        # (1) `update boza` exists and is warp (atomic).
+        p = proto(director.UPDATE_BOZA_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("boza-warp")
+
+        # (2) THE LINK DISCRIMINATOR: one `if slot link == 0 / else` splits the CENTRE branch (then) from the
+        # OUTER branch (else) — the port of the arcade dispatch on the object's role.
+        def is_link_zero(cid):
+            c = blocks.get(cid)
+            return (
+                c is not None
+                and c["opcode"] == "operator_equals"
+                and (lhs := rref(c["inputs"].get("OPERAND1"))) is not None
+                and lhs["opcode"] == "data_itemoflist"
+                and lhs["fields"]["LIST"][1] == director.SLOT_LINK_ID
+                and num(c["inputs"].get("OPERAND2")) == 0
+            )
+
+        top = None
+        for b in boza_body:
+            if b["opcode"] == "control_if_else":
+                cond = b["inputs"].get("CONDITION")
+                cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
+                if cid and is_link_zero(cid):
+                    top = b
+                    break
+        centre_ids = branch_ids(top, "SUBSTACK") if top else set()
+        outer_ids = branch_ids(top, "SUBSTACK2") if top else set()
+        if top is None or not centre_ids or not outer_ids:
+            failures.add("boza-link-branch")
+
+        # ---- OUTER (link > 0): the lone-Logram machine + the centre-value downgrade on HIT ----
+        # (3) FIRES the direct aimed one-shot (an `alloc bullet slot` call — NOT the shared gate).
+        outer_alloc = alloc_ids_of(outer_ids)
+        if not outer_alloc:
+            failures.add("boza-outer-fires")
+        # (4) THE FIRE IS ARM-GATED ON THE STOP-FIRING ROW: every fire sits inside a guard referencing
+        # `ground stop firing row` (armed = NOT cur_row > row). Below the row the dome is silent.
+        if not (outer_alloc and all(enclosing_cond_has(x, is_stoprow_gt) for x in outer_alloc)):
+            failures.add("boza-outer-arm-gated")
+        # (5) CRATERS PERSISTENTLY on HIT: advances the crater clock and scrolls, and (6) never frees itself.
+        if not (advances_clock(outer_ids) and calls(outer_ids, director.ADVANCE_GROUND_PROCCODE)):
+            failures.add("boza-outer-craters")
+        if calls(outer_ids, director.CULL_SLOT_PROCCODE):
+            failures.add("boza-outer-crater-persists")
+        # (7) DOWNGRADES THE LINKED CENTRE on HIT: writes the centre slot (indexed by `slot link`) `slot pts`
+        # to the 600-point position.
+        if not any(
+            blocks[x]["opcode"] == "data_replaceitemoflist"
+            and blocks[x]["fields"]["LIST"][1] == director.SLOT_PTS_ID
+            and num(blocks[x]["inputs"].get("ITEM")) == director.BOZA_CENTRE_DOWNGRADED_PTS
+            and (idx := rref(blocks[x]["inputs"].get("INDEX"))) is not None
+            and idx["opcode"] == "data_itemoflist"
+            and idx["fields"]["LIST"][1] == director.SLOT_LINK_ID
+            for x in outer_ids
+        ):
+            failures.add("boza-outer-downgrades-centre")
+
+        # ---- CENTRE (link == 0): never fires; on HIT craters + cascades all four outers to HIT ----
+        # (8) NEVER FIRES: no `alloc bullet slot` anywhere in the centre branch.
+        if alloc_ids_of(centre_ids):
+            failures.add("boza-centre-never-fires")
+        # (9) CASCADES: exactly BOZA_CENTRE_OFFSET (4) direct `slot state = HIT` writes, each indexed by
+        # `slot index - k` (k = 1..4) — the four outer slots, set directly (bypassing the award sweep).
+        cascade = [
+            x
+            for x in centre_ids
+            if blocks[x]["opcode"] == "data_replaceitemoflist"
+            and blocks[x]["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and num(blocks[x]["inputs"].get("ITEM")) == director.SLOT_HIT
+        ]
+
+        def indexed_by_offset(x):
+            idx = rref(blocks[x]["inputs"].get("INDEX"))
+            return (
+                idx is not None
+                and idx["opcode"] == "operator_subtract"
+                and var_id(idx["inputs"].get("NUM1")) == director.SLOT_INDEX_ID
+                and 1 <= (num(idx["inputs"].get("NUM2")) or 0) <= director.BOZA_CENTRE_OFFSET
+            )
+
+        if not (len(cascade) == director.BOZA_CENTRE_OFFSET and all(indexed_by_offset(x) for x in cascade)):
+            failures.add("boza-centre-cascades")
+        # (10) CENTRE also craters PERSISTENTLY on HIT: advances the crater clock and scrolls.
+        if not (advances_clock(centre_ids) and calls(centre_ids, director.ADVANCE_GROUND_PROCCODE)):
+            failures.add("boza-centre-craters")
+
+        # ---- Spawn facts (add_ground_object consume, under the BOZA_LOGRAM_TYPE gate) ----
+        boza_spawn = set()
+        for b in spawn_body:
+            if b["opcode"] == "control_if":
+                c = rref(b["inputs"].get("CONDITION"))
+                if c is not None and c["opcode"] == "operator_equals" and num(c["inputs"].get("OPERAND2")) == director.BOZA_LOGRAM_TYPE:
+                    boza_spawn = branch_ids(b, "SUBSTACK")
+                    break
+
+        def spawn_writes(list_id, value):
+            return [
+                x
+                for x in boza_spawn
+                if blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                and num(blocks[x]["inputs"].get("ITEM")) == value
+            ]
+
+        # (11) FIVE ACTIVE SLOTS.
+        if len(spawn_writes(director.SLOT_STATE_ID, director.SLOT_ACTIVE)) != director.BOZA_SLOT_COUNT:
+            failures.add("boza-five-slots")
+        # (12) THE FOUR OUTERS STAMPED 300 PTS.
+        if len(spawn_writes(director.SLOT_PTS_ID, director.BOZA_OUTER_PTS)) != director.BOZA_CENTRE_OFFSET:
+            failures.add("boza-outer-awards-300")
+        # (13) THE CENTRE STAMPED 2,000 PTS.
+        if len(spawn_writes(director.SLOT_PTS_ID, director.BOZA_CENTRE_PTS)) != 1:
+            failures.add("boza-centre-awards-2000")
+        # (14) THE LINK STAMPS: five `slot link` writes, exactly one 0 (the centre marker; the four outers link
+        # to the non-zero centre index).
+        link_writes = [
+            x
+            for x in boza_spawn
+            if blocks[x]["opcode"] == "data_replaceitemoflist"
+            and blocks[x]["fields"]["LIST"][1] == director.SLOT_LINK_ID
+        ]
+        if len(link_writes) != director.BOZA_SLOT_COUNT or len([x for x in link_writes if num(blocks[x]["inputs"].get("ITEM")) == 0]) != 1:
+            failures.add("boza-outer-links-centre")
+
+        return failures
+
     # Roadmap closure evidence for leaf `area.ground-dispatch` (AREA-02): the terrain-locked ground
     # substrate — `advance ground` scrolls every ground object DOWN the field by the fixed terrain step and
     # culls it off the bottom; the ordered walk routes each built ground type to its wrapper; and
@@ -9155,6 +9423,246 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._gnd04_failures(project), label)
+
+    # Roadmap closure evidence for leaf ground.boza-logram (GND-05, #87): the five-slot Boza Logram composite
+    # (handle_2D_Boza_Logram) — four outer domes that each behave as a lone Logram (arm/cadence-gated
+    # open/close cycle, one direct aimed shot at the full-open midpoint, persistent crater on bomb, 300 pts)
+    # and, on hit, downgrade the shared centre's value to 600; plus a centre that never fires, scores 2,000,
+    # craters persistently, and on hit cascades — setting all four outer slots to HIT directly, which bypasses
+    # the award sweep so a centre-first bomb clears the outers for free (only a directly-bombed outer scores).
+    # The live proof is the harness boza scenarios (an outer scores 300 and downgrades the centre to 600; the
+    # centre scores 2,000 and its cascade clears the outers for no score).
+    # roadmap-evidence: GND-05 success  (test_boza_slice_authoring_present — boza warp; the link discriminator splits centre/outer; outers fire the direct aimed shot arm-gated on the stop-firing row, crater persistently, and downgrade the linked centre to 600; the centre never fires, craters persistently, and cascades all four outers to HIT directly; spawn stamps five ACTIVE slots — four outers at 300 linked to the centre, the centre at 2,000 with link 0)
+    # roadmap-evidence: GND-05 failure  (test_boza_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_boza_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd05_failures(project))
+
+    def test_boza_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd05_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _rref(blocks, inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def _reach(blocks, start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def _branches(p):
+            # (blocks, centre-branch ids, outer-branch ids) for the `slot link == 0` discriminator.
+            stage = _stage(p)
+            blocks = stage["blocks"]
+            top = None
+            for b in _proc_body_blocks(stage, director.UPDATE_BOZA_PROCCODE):
+                if b["opcode"] == "control_if_else":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := _rref(blocks, c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_LINK_ID
+                        and _num_operand(c["inputs"].get("OPERAND2")) == 0
+                    ):
+                        top = b
+                        break
+
+            def side(key):
+                sub = top["inputs"].get(key) if top else None
+                start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+                return _reach(blocks, start)
+
+            return blocks, side("SUBSTACK"), side("SUBSTACK2")
+
+        def _boza_spawn(p):
+            stage = _stage(p)
+            blocks = stage["blocks"]
+            for b in _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE):
+                if b["opcode"] == "control_if":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and _num_operand(c["inputs"].get("OPERAND2")) == director.BOZA_LOGRAM_TYPE
+                    ):
+                        sub = b["inputs"].get("SUBSTACK")
+                        start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+                        return blocks, _reach(blocks, start)
+            return blocks, set()
+
+        def unwarp(p):
+            for b in _stage(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_BOZA_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def break_link_branch(p):
+            # Change the discriminator from `slot link == 0` to `== 99`: the centre/outer split no longer keys
+            # on the link, so the branch-shape clause bites.
+            stage = _stage(p)
+            blocks = stage["blocks"]
+            for b in _proc_body_blocks(stage, director.UPDATE_BOZA_PROCCODE):
+                if b["opcode"] == "control_if_else":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := _rref(blocks, c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_LINK_ID
+                        and _num_operand(c["inputs"].get("OPERAND2")) == 0
+                    ):
+                        c["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                        return
+
+        def neutralize_outer_fire(p):
+            # The dome fires from BOTH the WAIT->ANIMATE fall-through and the steady ANIMATE branch, so neutralize
+            # every `alloc bullet slot` call in the outer branch, not just the first.
+            blocks, _centre, outer = _branches(p)
+            for x in outer:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+
+        def break_arming(p):
+            # Replace the arm gate's `ground stop firing row` operand with a literal -> the fire is no longer
+            # row-gated (mirrors the Derota break_arming negative).
+            blocks, _centre, outer = _branches(p)
+            for x in outer:
+                b = blocks[x]
+                if b["opcode"] != "operator_gt":
+                    continue
+                o2 = b["inputs"].get("OPERAND2")
+                if (
+                    isinstance(o2, list)
+                    and len(o2) >= 2
+                    and isinstance(o2[1], list)
+                    and len(o2[1]) >= 3
+                    and o2[1][0] == 12
+                    and o2[1][2] == director.GROUND_STOP_FIRING_ROW_ID
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        def freeze_clock(side):
+            def _do(p):
+                blocks = _branches(p)[0]
+                ids = _branches(p)[1] if side == "centre" else _branches(p)[2]
+                for x in ids:
+                    b = blocks[x]
+                    if b["opcode"] != "data_replaceitemoflist" or b["fields"]["LIST"][1] != director.SLOT_TIMER_ID:
+                        continue
+                    item = b["inputs"].get("ITEM")
+                    it = blocks.get(item[1]) if isinstance(item, list) and len(item) >= 2 and isinstance(item[1], str) else None
+                    if it is not None and it["opcode"] == "operator_add":
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+            return _do
+
+        def cull_outer(p):
+            blocks, _centre, outer = _branches(p)
+            for x in outer:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+                    return
+
+        def drop_downgrade(p):
+            blocks, _centre, outer = _branches(p)
+            for x in outer:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.BOZA_CENTRE_DOWNGRADED_PTS
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.BOZA_CENTRE_PTS)]]
+                    return
+
+        def make_centre_fire(p):
+            # Retarget a centre `advance ground` call to `alloc bullet slot`: the centre now fires -> bites.
+            blocks, centre, _outer = _branches(p)
+            for x in centre:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.ALLOC_BULLET_PROCCODE
+                    return
+
+        def break_cascade(p):
+            # Flip one cascade `slot state = HIT` write to ACTIVE -> fewer than four outers cascade.
+            blocks, centre, _outer = _branches(p)
+            for x in centre:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.SLOT_HIT
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.SLOT_ACTIVE)]]
+                    return
+
+        def spawn_wrong(list_id, value, new_value):
+            def _do(p):
+                blocks, ids = _boza_spawn(p)
+                for x in ids:
+                    b = blocks[x]
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == list_id
+                        and _num_operand(b["inputs"].get("ITEM")) == value
+                    ):
+                        b["inputs"]["ITEM"] = [1, [4, str(new_value)]]
+                        return
+
+            return _do
+
+        cases = [
+            ("boza-warp", unwarp),
+            ("boza-link-branch", break_link_branch),
+            ("boza-outer-fires", neutralize_outer_fire),
+            ("boza-outer-arm-gated", break_arming),
+            ("boza-outer-craters", freeze_clock("outer")),
+            ("boza-outer-crater-persists", cull_outer),
+            ("boza-outer-downgrades-centre", drop_downgrade),
+            ("boza-centre-never-fires", make_centre_fire),
+            ("boza-centre-cascades", break_cascade),
+            ("boza-centre-craters", freeze_clock("centre")),
+            ("boza-five-slots", spawn_wrong(director.SLOT_STATE_ID, director.SLOT_ACTIVE, director.SLOT_HIT)),
+            ("boza-outer-awards-300", spawn_wrong(director.SLOT_PTS_ID, director.BOZA_OUTER_PTS, director.BOZA_OUTER_PTS + 1)),
+            ("boza-centre-awards-2000", spawn_wrong(director.SLOT_PTS_ID, director.BOZA_CENTRE_PTS, director.BOZA_CENTRE_PTS + 1)),
+            ("boza-outer-links-centre", spawn_wrong(director.SLOT_LINK_ID, 0, 1)),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._gnd05_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
