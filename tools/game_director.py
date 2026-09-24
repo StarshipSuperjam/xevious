@@ -1294,6 +1294,14 @@ BOZA_CENTRE_DOWNGRADED_PTS = 13  # 1-based value-table position of 600 points (c
 # 0x180}; `slot y` (lateral axis) offsets copy the _Y adjust {+0, +0x180, -0x180, +0, +0}. 0x180 = 384 units =
 # 12 px and 0x300 = 768 units = 24 px at SLOT_UNITS_PER_PIXEL (arcade and port share the 32-units/px scale, as
 # the Garu's 0x100 = 8-px cell offset already established). Expressed in px here, scaled at spawn.
+# PORT NECESSITY (composite render fidelity, docs/mechanics/042): the ground cell->stage map is ANAMORPHIC
+# (RENDER_COL_STAGE 15 px/cell laterally vs RENDER_ROW_STAGE 8 px/cell in depth), but a dome sprite is
+# isotropic. Feeding the raw depth offsets through the depth scale renders the five equal-size domes ~1.9x
+# closer vertically than laterally, collapsing top/middle/bottom into one blob. So the DEPTH offsets are
+# scaled by RENDER_COL_STAGE/RENDER_ROW_STAGE at spawn (see _ground_seed_boza) — vertical dome spacing then
+# renders at the same px/arcade-px as lateral, so the composite reads as the arcade's isotropic diamond.
+# `slot x` == the rendered position == the bomb-hit position, so aim and the index-addressed cascade are
+# unchanged; only the composite's internal depth spacing widens (a first-ever multi-slot-composite concern).
 BOZA_SLOT_COUNT = 5
 BOZA_CENTRE_OFFSET = 4  # the centre is the 5th slot (base + 4); outers are base + 0..3
 BOZA_DEPTH_OFFSETS_PX = (0, 12, 12, 24, 12)  # slot x offsets (boza_logram_spriteX_tbl / SLOT_UNITS_PER_PIXEL)
@@ -6777,8 +6785,14 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
     # CENTRE (2,000 pts) never fires and stores `slot link` 0, which marks it as the centre for the walk's
     # branch and holds its full value until an outer hit downgrades it. `slot_at(i)` returns a FRESH reporter.
     seed: list[str] = []
+    # Depth offsets carry an extra isotropic factor so the composite renders as the arcade's square diamond
+    # rather than a vertically-collapsed blob: the anamorphic cell->stage map spaces lateral at RENDER_COL_STAGE
+    # px/cell but depth at only RENDER_ROW_STAGE px/cell, so a raw depth offset renders RENDER_COL_STAGE/
+    # RENDER_ROW_STAGE too tight for the isotropic dome sprites. Lateral is already at the sprite scale, so it
+    # keeps the plain per-pixel scale. (See the BOZA_DEPTH_OFFSETS_PX note; port necessity in docs/mechanics/042.)
+    depth_units_per_px = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE // RENDER_ROW_STAGE  # 32 * 15 // 8 = 60
     for i in range(BOZA_SLOT_COUNT):
-        depth_units = BOZA_DEPTH_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
+        depth_units = BOZA_DEPTH_OFFSETS_PX[i] * depth_units_per_px
         lateral_units = BOZA_LATERAL_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
         seed.append(
             blocks.list_replace("slot type", SLOT_TYPE_ID, slot_at(i), type_val())

@@ -13570,7 +13570,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "0af2191c54da0bb8d94ac231d3f8a07c8c82419b75e577a35abb53854c766196",
+            "e9b13124f133f041e4c1a68726a88c6902b840c99213c03189cd17c698f3c19b",
             build_hash,
         )
 

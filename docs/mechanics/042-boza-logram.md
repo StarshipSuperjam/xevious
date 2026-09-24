@@ -76,6 +76,21 @@
     keeps its own crater clock — no timer touch), so it runs every centre-hit tick with no guard, matching the
     arcade. The walk sweeps ascending slot index, so the outers update before the centre: a centre-first
     cascade marks the outers this same tick and their crater clocks begin cleanly next tick.
+  - **Port necessity — the composite's depth offsets are scaled to the port's isotropic sprite scale.** The
+    Boza is the port's first multi-slot *composite*, so it is the first structure whose parts sit at
+    sub-sprite offsets from one another — which exposes a standing mismatch the single-slot families never
+    could. The shared ground cell→stage map is **anamorphic** (`RENDER_COL_STAGE` 15 px/cell laterally vs
+    `RENDER_ROW_STAGE` 8 px/cell in depth), but the dome sprites are **isotropic**. Feeding the arcade's raw
+    depth offsets (12/24 px) through the depth scale renders the five equal-size domes ~1.9× closer vertically
+    than laterally, collapsing top/middle/bottom into a single blob (confirmed on the operator playtest). So at
+    spawn the **depth** offsets are multiplied by `RENDER_COL_STAGE/RENDER_ROW_STAGE` (`SLOT_UNITS_PER_PIXEL ×
+    15 // 8 = 60` units/px instead of 32); the lateral offsets already render at the sprite scale and keep the
+    plain 32 units/px. Vertical dome spacing then renders at the same px/arcade-px as lateral, so the composite
+    reads as the arcade's square diamond of five distinct domes. Because `slot x`/`slot y` are *both* the
+    rendered position and the bomb-hit position, render == logical: bomb-aim stays aligned (each dome is still
+    individually bombable — the ±5 px depth bomb window is far smaller than the ~22 px inter-dome spacing) and
+    the index-addressed cascade/downgrade are untouched. Only the composite's internal depth footprint widens
+    from the raw arcade 24 px; nothing about a single dome, the fire cycle, scoring, or the cascade changes.
   - **State mapping.** The arcade's active `_STATE=2` and hit `_STATE=3` map to the port's `SLOT_ACTIVE=1` and
     `SLOT_HIT=2` — the same mapping the shared ground detector already uses; the centre value positions 19
     (2,000) and 13 (600) are the port's 1-based indices into the shared value table for the arcade `_PTS` bytes
@@ -134,11 +149,14 @@
   (the flying-formation count is pinned at 0 and the flying/Bacura bands cleared each tick, and the schedule's
   own ground stamps are withheld) so only the debug family is on screen. All three keys are dev tools tracked for
   removal once every ground family is built and playtested (issue #119), not a GND-05 behaviour or a change to
-  the Boza. The three port necessities above (one update proc branching on `slot link`; the centre
+  the Boza. The four port necessities above (one update proc branching on `slot link`; the centre
   downgrade and the cascade addressing slots by index/offset rather than following the arcade `_EXTRA`
-  pointer / object walk) are structural translations of pointer-based code into Scratch's flat slot lists, not
-  behavioural changes. The exact on-screen rhythm of the outer fire cycle relative to a lone Logram, and the
-  visual read of the diamond composite, are points for the operator playtest to confirm.
+  pointer / object walk; and the composite's depth offsets scaled to the isotropic sprite scale) are
+  structural translations into Scratch's flat slot lists and anamorphic render map, not behavioural changes.
+  The operator playtest surfaced one visual defect — the five isotropic dome sprites, placed through the
+  anamorphic cell→stage map, collapsed vertically into a single blob — fixed by that depth-offset scaling;
+  render == logical, so aim and scoring are unaffected. The exact on-screen rhythm of the outer fire cycle
+  relative to a lone Logram, and the corrected diamond's visual read, remain for the operator playtest to confirm.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
