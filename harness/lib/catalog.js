@@ -4353,6 +4353,429 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot link', 0, 999),
   },
   {
+    key: 'grobda-moves-by-its-own-velocity-no-double-scroll',
+    behavior:
+      "A Grobda is the FIRST ground object that moves under its OWN velocity (`advance ground moving`, the Commit-1 seam) rather than the fixed terrain scroll: each ACTIVE tick its `slot x` advances by exactly TICK_VELOCITY_SCALE (4) * `slot dx`, with NO separate AREA_PROGRESS_STEP scroll baseline added — the scroll is BAKED INTO the stored delta (raw dX 8 = scroll-matched, so a 'stopped' 0x2C still drifts DOWN at exactly 32/tick, and a forward 0x35 with raw dX 14 moves at 56/tick). Adding a baseline would double the stopped drift to 64 — the plan-review MAJOR trap this pins. It moves scroll-axis-only (`slot dy` 0, so `slot y` never moves), and it NEVER fires",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      writeVar(vm, 'bullet-alloc-result', 0);
+      const seedGrobda = (type, dx0) => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        put('slot-type', 15, type);
+        put('slot-state', 15, 1); // ACTIVE
+        put('slot-x', 15, 0); // top of the field
+        put('slot-y', 15, 8 * 256); // an arbitrary lateral column, held fixed
+        put('slot-dx', 15, dx0); // the raw handler dX (scroll baked in)
+        put('slot-dy', 15, 0); // Grobda clears _dY: scroll-axis-only motion
+        put('slot-flag', 15, 0); // PRETRIGGER (a non-reacting variant never leaves it)
+        put('slot-timer', 15, 0);
+        writeVar(vm, 'slot-index', 16);
+      };
+      const runDeltas = (type, dx0, n) => {
+        seedGrobda(type, dx0);
+        const xs = [];
+        const ys = [];
+        for (let t = 0; t < n; t += 1) {
+          callProc(vm, 'Stage', 'update grobda');
+          step(vm, 1);
+          xs.push(readVar(vm, 'slot-x')[15]);
+          ys.push(readVar(vm, 'slot-y')[15]);
+        }
+        return { xs, ys };
+      };
+      // Stationary 0x2C (raw dX 8, 200 pts): scroll-matched -> exactly +32/tick, NEVER +64.
+      const stopped = runDeltas(0x2c, 8, 3);
+      // Forward 0x35 (raw dX 14, 400 pts): 4*14 = +56/tick.
+      const forward = runDeltas(0x35, 14, 3);
+      const fired = readVar(vm, 'bullet-alloc-result');
+      return { stopped, forward, fired };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.stopped.xs,
+        [32, 64, 96],
+        "a 'stopped' Grobda (raw dX 8) drifts DOWN at exactly 32/tick — the scroll is baked into the delta, NOT added on top (double-scroll would read 64,128,192)",
+      );
+      assert.equal(
+        obs.stopped.xs[0],
+        32,
+        'the first stopped step is exactly 32, never the 64 a doubled scroll baseline would produce (the plan-review MAJOR trap)',
+      );
+      assert.deepEqual(
+        obs.stopped.ys,
+        [2048, 2048, 2048],
+        'a Grobda moves scroll-axis-only: `slot dy` is 0, so `slot y` never moves',
+      );
+      assert.deepEqual(
+        obs.forward.xs,
+        [56, 112, 168],
+        'a forward Grobda (raw dX 14) moves at 4*14 = 56/tick through the velocity-only seam',
+      );
+      assert.equal(obs.fired, 0, 'a Grobda NEVER fires — no bullet is ever allocated on its tick');
+    },
+    // Sever the shared velocity seam itself: with `advance ground moving` a no-op, neither Grobda moves at
+    // all -> the stopped deltas collapse to [0,0,0] and the first deepEqual goes red, proving the drift is
+    // produced by the live per-slot mover (not the terrain scroll, which `update grobda` does NOT call while ACTIVE).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'advance ground moving'),
+  },
+  {
+    key: 'grobda-reacts-to-reticle-only-inside-the-band',
+    behavior:
+      "A reticle-reactive Grobda (0x38: forward -> crosshairs -> stop 48f -> resume) arms its reaction ONLY when the craft's crosshair (reads the shared `slot x/y[35]`, the CROSSHAIR reticle) lands inside its [-2,+1] per-axis alignment band (check_grobda_in_crosshairs): aligned, it commits react_dX (8 = stop), latches the 48-frame reaction (`slot flag` -> REACTING, `slot timer` 48 counted down one frame-step the same tick), and stops rolling forward. One cell too far away on the depth axis, it does NOT arm — it holds its forward velocity and PRETRIGGER flag. Either way it never fires",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      writeVar(vm, 'bullet-alloc-result', 0);
+      const seedForwardGrobda = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        put('slot-type', 15, 0x38); // forward -> crosshairs -> stop -> resume (1000 pts)
+        put('slot-state', 15, 1); // ACTIVE
+        put('slot-x', 15, 10 * 256); // row 10
+        put('slot-y', 15, 8 * 256); // col 8
+        put('slot-dx', 15, 14); // rolling forward (raw dX 14)
+        put('slot-dy', 15, 0);
+        put('slot-flag', 15, 0); // PRETRIGGER (waiting for the reticle)
+        put('slot-timer', 15, 0);
+        writeVar(vm, 'slot-index', 16);
+      };
+      const setCrosshair = (row, col) => {
+        // CROSSHAIR_SLOT is Scratch item 35 -> JS index 34 (a reserved high slot, outside the 0..15 band).
+        put('slot-x', 34, row * 256);
+        put('slot-y', 34, col * 256);
+      };
+      const react = () => ({
+        dx: readVar(vm, 'slot-dx')[15],
+        flag: readVar(vm, 'slot-flag')[15],
+        timer: readVar(vm, 'slot-timer')[15],
+      });
+      // --- Aligned: the crosshair sits on the Grobda's exact cell (d = 0 on both axes, inside [-2,+1]).
+      seedForwardGrobda();
+      setCrosshair(10, 8);
+      callProc(vm, 'Stage', 'update grobda');
+      step(vm, 1);
+      const aligned = react();
+      // --- Out of band: the crosshair is 10 rows ahead (d_row = +10, well past +1) -> no arm.
+      seedForwardGrobda();
+      setCrosshair(20, 8);
+      callProc(vm, 'Stage', 'update grobda');
+      step(vm, 1);
+      const outOfBand = react();
+      const fired = readVar(vm, 'bullet-alloc-result');
+      return { aligned, outOfBand, fired };
+    },
+    assert(obs) {
+      assert.equal(obs.aligned.dx, 8, 'aligned in the crosshair band, the Grobda commits react_dX = 8 (stops rolling forward)');
+      assert.equal(obs.aligned.flag, 1, 'aligned, the reaction latches: `slot flag` -> REACTING (1)');
+      assert.equal(obs.aligned.timer, 46, 'aligned, the 48-frame reaction is armed AND counted down one frame-step the same tick (48 -> 46)');
+      assert.equal(obs.outOfBand.dx, 14, 'one cell too far on the depth axis, the Grobda does NOT arm — it holds its forward velocity (14)');
+      assert.equal(obs.outOfBand.flag, 0, 'out of band, the flag stays PRETRIGGER (0): the reaction never triggered');
+      assert.equal(obs.fired, 0, 'a Grobda NEVER fires, aligned or not');
+    },
+    // Sever the Grobda update: the aligned probe no longer arms -> its dx stays 14 (the seed), so the
+    // aligned `dx == 8` assertion goes red — proving the reaction is measured against a live updater, and
+    // that it is specifically alignment (not the seed) that drops the velocity to the stop value.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update grobda'),
+  },
+  {
+    key: 'grobda-land-craters-water-vanishes',
+    behavior:
+      'A bombed LAND Grobda (0x2C) craters PERSISTENTLY like a Barra (handle_bomb_explosion — terrain-locked, so its HIT branch scrolls with the terrain via `advance ground` and is removed only by the bottom-edge cull), while a bombed WATER Grobda (0x3D) plays the explode-and-remove burst and VANISHES mid-field on its own clock after GARU_REMOVE_FRAMES (28) frames, exactly like a Garu node — it never becomes a lasting crater',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      const seedHit = (type, x) => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        put('slot-type', 15, type);
+        put('slot-state', 15, 2); // HIT
+        put('slot-x', 15, x);
+        put('slot-y', 15, 8 * 256);
+        put('slot-timer', 15, 0); // the detector zeroed the clock on the hit tick
+        writeVar(vm, 'slot-index', 16);
+      };
+      // --- LAND 0x2C: a persistent crater. Scrolls a steady 32/tick and never frees on its clock.
+      seedHit(0x2c, 0);
+      const landXs = [];
+      const N = 20; // 20 ticks -> clock 40 frames, past the 28-frame burst window without vanishing
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update grobda');
+        step(vm, 1);
+        landXs.push(readVar(vm, 'slot-x')[15]);
+      }
+      const landPersist = {
+        type: readVar(vm, 'slot-type')[15],
+        state: readVar(vm, 'slot-state')[15],
+        timer: readVar(vm, 'slot-timer')[15],
+      };
+      // Cull: one scroll step short of the bottom -> the next tick scrolls it to row 40 and frees it.
+      seedHit(0x2c, 40 * 256 - 32);
+      callProc(vm, 'Stage', 'update grobda');
+      step(vm, 1);
+      const landCulled = readVar(vm, 'slot-type')[15];
+      // --- WATER 0x3D: explode-and-remove. Vanishes on its clock at frame 28, well short of the bottom.
+      seedHit(0x3d, 0);
+      let waterCullTick = -1;
+      let waterCullRow = -1;
+      for (let t = 1; t <= 16; t += 1) {
+        callProc(vm, 'Stage', 'update grobda');
+        step(vm, 1);
+        if (readVar(vm, 'slot-type')[15] === 0 && waterCullTick === -1) {
+          waterCullTick = t;
+          waterCullRow = readVar(vm, 'slot-x')[15] / 256;
+        }
+      }
+      return { landXs, landPersist, landCulled, n: N, waterCullTick, waterCullRow };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.landXs.slice(0, 3),
+        [32, 64, 96],
+        'a struck LAND Grobda keeps scrolling DOWN 32/tick (the crater is terrain-locked, like a Barra)',
+      );
+      assert.equal(obs.landPersist.timer, obs.n * 2, 'the land crater clock keeps counting (2 frames/tick) and is never reset');
+      assert.ok(obs.landPersist.timer > 28, 'the land crater persists past the 28-frame burst window (it is NOT an explode-and-remove burst)');
+      assert.equal(obs.landPersist.type, 0x2c, 'the land crater stays OCCUPIED on its clock');
+      assert.equal(obs.landPersist.state, 2, 'the land crater stays HIT (a persistent crater)');
+      assert.equal(obs.landCulled, 0, 'a land crater scrolled off the bottom (row >= 40) is finally culled');
+      assert.equal(obs.waterCullTick, 14, 'a struck WATER Grobda VANISHES on its clock at frame 28 (tick 14: timer 2*14 = 28 >= GARU_REMOVE_FRAMES)');
+      assert.ok(obs.waterCullRow < 5, 'the water Grobda vanishes MID-FIELD (row < 5), on its clock — NOT by scrolling off the bottom');
+    },
+    // Sever the Grobda update: the land crater neither scrolls nor advances its clock (the [32,64,96] drift
+    // and clock assertions go red) AND the water Grobda never reaches its remove frame (waterCullTick stays -1),
+    // proving both crater/vanish paths are driven by the live updater.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update grobda'),
+  },
+  {
+    key: 'domogram-follows-scripted-path-then-holds-last-vector',
+    behavior:
+      "A Domogram follows a SCRIPTED path (handle_2E_Domogram's path coroutine): each vector is held for its `duration` frames, then the next step loads a (dY,dX) velocity from the 32-entry vector table by its stored 0-based index. When the path is EXHAUSTED (_NVEC hits 0) it HOLDS the last vector FOREVER — no further loads. This is the first ground payload beyond the three scalar columns: the step columns (`domogram path vector` / `domogram path duration`) are decoded into the runtime `slot dx/dy` through `slot flag` (_VECLEN), `slot link` (_EXTRA pointer) and `slot vec left` (_NVEC)",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      // Author a tiny 2-step path in the shared step columns (JS 0,1 <-> Scratch pointer 1,2):
+      //   step 1: vector index 8 -> table (dY,dX) = (8,8), held 6 frames
+      //   step 2: vector index 0 -> table (dY,dX) = (0,16), held long (the LAST vector, then held forever)
+      put('domogram-path-vector', 0, 8);
+      put('domogram-path-duration', 0, 6);
+      put('domogram-path-vector', 1, 0);
+      put('domogram-path-duration', 1, 100);
+      put('slot-type', 15, 46); // Domogram (0x2E)
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-x', 15, 0);
+      put('slot-y', 15, 8 * 256);
+      put('slot-flag', 15, 1); // _VECLEN = 1: the first tick loads the first vector (DOMOGRAM_VECLEN_INIT)
+      put('slot-link', 15, 1); // _EXTRA: 1-based pointer at step 1
+      put('slot-vec-left', 15, 2); // _NVEC: two scripted steps
+      put('slot-dx', 15, 0);
+      put('slot-dy', 15, 0);
+      put('slot-timer', 15, 999); // shot timer high: no fire during the path probe
+      put('slot-fire-timer', 15, 0);
+      writeVar(vm, 'ground-stop-firing-row', -1); // disarm the fire gate (row 0 > -1) so the path is isolated
+      writeVar(vm, 'slot-index', 16);
+      const dxs = [];
+      const dys = [];
+      for (let t = 0; t < 7; t += 1) {
+        callProc(vm, 'Stage', 'update domogram');
+        step(vm, 1);
+        dxs.push(readVar(vm, 'slot-dx')[15]);
+        dys.push(readVar(vm, 'slot-dy')[15]);
+      }
+      const nvec = readVar(vm, 'slot-vec-left')[15];
+      return { dxs, dys, nvec };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.dxs,
+        [8, 8, 8, 16, 16, 16, 16],
+        'the follower loads step 1 (dX 8) held for its 6-frame duration (3 ticks at 2 frames/tick), then step 2 (dX 16) — and HOLDS 16 forever once the path is exhausted',
+      );
+      assert.deepEqual(
+        obs.dys,
+        [8, 8, 8, 0, 0, 0, 0],
+        'the paired dY decodes from the same vector table (8 then 0), held past path exhaustion',
+      );
+      assert.equal(obs.nvec, 0, 'the path is exhausted (_NVEC 2 -> 0): the last vector is then held with no further loads');
+    },
+    // Sever the Domogram update: the path never decodes, so `slot dx` stays at its seeded 0 -> the dxs
+    // deepEqual ([8,8,8,8,...]) goes red, proving the decoded velocities come from the live path follower.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update domogram'),
+  },
+  {
+    key: 'domogram-fires-one-aimed-shot-at-anim-midpoint-gated',
+    behavior:
+      "A Domogram fires exactly ONE aimed bullet per shot cycle at its animation MIDPOINT (domogram_shooting): when its masked shot timer expires it starts a 24-frame animation (_TYPE = 24) and fires a single aimed shot the frame the animation reaches 12 (the midpoint). Firing is gated like every ground turret — only while still armed (`cur_row <= ground stop firing row`); past the stop-firing row it is SILENT and its shot countdown is never even touched",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      const pc = readVar(vm, 'player-col');
+      const seedActiveDomogram = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        writeVar(vm, 'tick', 0); // on-phase (tick mod 4 == 0): the shot-start phase gate passes
+        put('slot-type', 15, 46); // Domogram (0x2E)
+        put('slot-state', 15, 1); // ACTIVE
+        put('slot-pts', 15, 15); // 800 pts (DOMOGRAM_PTS)
+        put('slot-x', 15, 20 * 256); // row 20
+        put('slot-y', 15, pc * 256);
+        put('slot-fire-mask', 15, 0); // reload => (rng mod 1) + 1 = 1 (deterministic)
+        put('slot-timer', 15, 1); // shot timer: one on-phase decrement -> 0 -> start the animation
+        put('slot-fire-timer', 15, 0); // anim idle
+        put('slot-dx', 15, 0);
+        put('slot-dy', 15, 0);
+        put('slot-vec-left', 15, 0); // path exhausted: it stays put (no drift) during the fire probe
+        writeVar(vm, 'slot-index', 16);
+        writeVar(vm, 'bullet-alloc-result', 0);
+      };
+      // --- Armed: stop-firing row BELOW the object (20 <= 30). Drive until the aimed shot fires at frame 12.
+      seedActiveDomogram();
+      writeVar(vm, 'ground-stop-firing-row', 30);
+      let fireTick = -1;
+      let animAtFire = -1;
+      for (let t = 1; t <= 8; t += 1) {
+        writeVar(vm, 'bullet-alloc-result', 0);
+        callProc(vm, 'Stage', 'update domogram');
+        step(vm, 1);
+        if (readVar(vm, 'bullet-alloc-result') > 0 && fireTick === -1) {
+          fireTick = t;
+          animAtFire = readVar(vm, 'slot-fire-timer')[15];
+        }
+      }
+      // --- Past the row: stop-firing row ABOVE the object (20 > 10) -> silent, shot countdown untouched.
+      seedActiveDomogram();
+      writeVar(vm, 'ground-stop-firing-row', 10);
+      let firedPast = 0;
+      for (let t = 1; t <= 8; t += 1) {
+        callProc(vm, 'Stage', 'update domogram');
+        step(vm, 1);
+        firedPast += readVar(vm, 'bullet-alloc-result') > 0 ? 1 : 0;
+      }
+      const shotTimerPast = readVar(vm, 'slot-timer')[15];
+      const animPast = readVar(vm, 'slot-fire-timer')[15];
+      return { fireTick, animAtFire, firedPast, shotTimerPast, animPast };
+    },
+    assert(obs) {
+      assert.equal(obs.fireTick, 6, 'the aimed shot fires on tick 6: start (anim 24 -> 22) + five steps to 12 (the 24-frame animation midpoint)');
+      assert.equal(obs.animAtFire, 12, 'it fires exactly at the animation midpoint (_TYPE decremented to 12)');
+      assert.equal(obs.firedPast, 0, 'past the stop-firing row the Domogram is SILENT — no aimed shot is ever fired');
+      assert.equal(obs.shotTimerPast, 1, 'past the row the fire gate never runs: the shot countdown is left untouched (still 1)');
+      assert.equal(obs.animPast, 0, 'past the row no animation ever starts (_TYPE stays idle)');
+    },
+    // Sever the Domogram update: the armed probe never starts its animation, so it never fires -> fireTick
+    // stays -1 (!= 6), proving the midpoint fire is measured against a genuinely live shooter.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update domogram'),
+  },
+  {
+    key: 'domogram-craters-when-bombed',
+    behavior:
+      'A bombed Domogram (state HIT) craters PERSISTENTLY exactly like a Barra (handle_bomb_explosion, NOT explode-and-remove): its HIT branch advances the crater clock (2 frames/tick) AND keeps scrolling with the terrain (32/tick via `advance ground`, NOT the velocity mover), never freeing on the clock — removed only when it culls off the bottom of the field',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      put('slot-type', 15, 46); // Domogram (0x2E)
+      put('slot-state', 15, 2); // HIT — the crater clock starts here
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 8 * 256);
+      put('slot-timer', 15, 0);
+      put('slot-dx', 15, 99); // a nonzero leftover velocity: the HIT branch must IGNORE it (scroll, not move)
+      put('slot-dy', 15, 99);
+      writeVar(vm, 'slot-index', 16);
+      const xs = [];
+      const N = 30;
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update domogram');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+      }
+      const persisted = {
+        type: readVar(vm, 'slot-type')[15],
+        state: readVar(vm, 'slot-state')[15],
+        timer: readVar(vm, 'slot-timer')[15],
+        y: readVar(vm, 'slot-y')[15],
+      };
+      put('slot-type', 15, 46);
+      put('slot-state', 15, 2);
+      put('slot-x', 15, 40 * 256 - 32);
+      writeVar(vm, 'slot-index', 16);
+      callProc(vm, 'Stage', 'update domogram');
+      step(vm, 1);
+      return {
+        xs,
+        persisted,
+        n: N,
+        culledType: readVar(vm, 'slot-type')[15],
+        culledState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.xs.slice(0, 3),
+        [32, 64, 96],
+        'a struck Domogram scrolls DOWN by exactly 32/tick via the terrain scroll — its own (leftover) velocity is IGNORED while HIT',
+      );
+      assert.equal(obs.persisted.y, 8 * 256, 'the HIT branch does NOT run the velocity mover: `slot y` never moves despite the nonzero leftover dy');
+      const monotonic = obs.xs.every((x, i) => i === 0 || x === obs.xs[i - 1] + 32);
+      assert.equal(monotonic, true, 'the crater scrolls a steady 32/tick for the whole run');
+      assert.equal(obs.persisted.timer, obs.n * 2, 'the crater clock keeps counting (2 frames/tick) and is never reset');
+      assert.ok(obs.persisted.timer > 56, 'the clock runs past the 56-frame crater start without freeing (persistent, like the Barra)');
+      assert.equal(obs.persisted.type, 46, 'the crater stays OCCUPIED on its clock (never freed like a flying kill)');
+      assert.equal(obs.persisted.state, 2, 'the crater stays HIT (a persistent crater, not a vanishing burst)');
+      assert.equal(obs.culledType, 0, 'a crater scrolled off the bottom (row >= 40) is finally culled');
+      assert.equal(obs.culledState, 0, 'the culled crater slot is freed so it can be reused');
+    },
+    // Sever the Domogram update: a struck Domogram neither advances its crater clock nor scrolls -> the
+    // [32,64,96] drift and clock assertions go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update domogram'),
+  },
+  {
     key: 'craft-collision-is-single-cell',
     behavior:
       'A Toroid raises player-hit ONLY on the craft’s exact cell: one column off or one row off does not — the collision box is a single cell, not the quadrant above/beside the craft',
