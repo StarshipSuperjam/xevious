@@ -38,7 +38,7 @@
     {"key": "difficulty", "title": "Build: difficulty and formations to their settled description", "issue": 18, "spec": "docs/spec/difficulty-and-formations.md", "spec_status": "locked"},
     {"key": "air", "title": "Capability: aerial enemies", "spec": "docs/spec/aerial-enemies.md", "spec_status": "locked"},
     {"key": "ground", "title": "Capability: ground objects", "spec": "docs/spec/ground-objects.md", "spec_status": "locked"},
-    {"key": "secrets", "title": "Capability: secrets", "spec": "docs/spec/secrets.md", "spec_status": "draft"},
+    {"key": "secrets", "title": "Capability: secrets", "spec": "docs/spec/secrets.md", "spec_status": "locked"},
     {"key": "andor", "title": "Capability: Andor Genesis", "spec": "docs/spec/andor-genesis.md", "spec_status": "draft"},
     {"key": "cabinet", "title": "Capability: cabinet flow", "spec": "docs/spec/cabinet-flow.md", "spec_status": "draft"},
     {"key": "presentation", "title": "Capability: audio and presentation", "spec": "docs/spec/audio-and-presentation.md", "spec_status": "draft"},
@@ -99,10 +99,10 @@
     {"key":"ground.grobda","parent":"ground","title":"Grobda variants, reactions, and water cleanup","slice":"13","milestone":"Enemies","status":"history","delivered_by":140,"blocked_by":["ground.barra"],"criteria":["GND-06.grobda"],"proof":"playable","records":["GND-06"]},
     {"key":"ground.domogram","parent":"ground","title":"Domogram patrol paths, fire, and cleanup","slice":"13","milestone":"Enemies","status":"history","delivered_by":140,"blocked_by":["ground.barra"],"criteria":["GND-07.domogram"],"proof":"playable","records":["GND-07"]},
 
-    {"key":"secrets.sol-tower","parent":"secrets","title":"Sol Tower reveal, rise, destruction, and rewards","slice":"14","milestone":"Boss and secrets","status":"provisional","criteria":["SEC-01.sol-tower"],"proof":"playable","records":["SEC-01"]},
-    {"key":"secrets.bonus-flag","parent":"secrets","title":"Bonus Flag reveal, random placement, collection, and award","slice":"14","milestone":"Boss and secrets","status":"provisional","criteria":["SEC-02.bonus-flag"],"proof":"playable","records":["SEC-02"]},
+    {"key":"secrets.sol-tower","parent":"secrets","title":"Sol Tower reveal, rise, destruction, and rewards","slice":"14","milestone":"Boss and secrets","status":"planned","criteria":["SEC-01.sol-tower"],"proof":"playable","records":["SEC-01"]},
+    {"key":"secrets.bonus-flag","parent":"secrets","title":"Bonus Flag reveal, random placement, collection, and award","slice":"14","milestone":"Boss and secrets","status":"planned","criteria":["SEC-02.bonus-flag"],"proof":"playable","records":["SEC-02"]},
     {"key":"economy.bonus-flag-award","parent":"economy","title":"Complete configured Bonus Flag life award","slice":"14","milestone":"Boss and secrets","status":"planned","blocked_by":["secrets.bonus-flag"],"criteria":["ECO-03.bonus-flag"],"proof":"playable","records":["ECO-03"]},
-    {"key":"secrets.hidden-credit","parent":"secrets","title":"Hidden credit event trigger and presentation","slice":"14","milestone":"Boss and secrets","status":"provisional","criteria":["SEC-03.hidden-credit"],"proof":"playable","records":["SEC-03"]},
+    {"key":"secrets.hidden-credit","parent":"secrets","title":"Hidden credit event trigger and presentation","slice":"14","milestone":"Boss and secrets","status":"planned","criteria":["SEC-03.hidden-credit"],"proof":"playable","records":["SEC-03"]},
 
     {"key":"andor.lifecycle","parent":"andor","title":"Andor composite lifecycle, alignment, arrival, and departure","slice":"15","milestone":"Boss and secrets","status":"provisional","criteria":["BOSS-01.lifecycle"],"proof":"playable","records":["BOSS-01"]},
     {"key":"andor.defenses","parent":"andor","title":"Andor ports, armor, Bragza, and fire permissions","slice":"16","milestone":"Boss and secrets","status":"provisional","blocked_by":["andor.lifecycle"],"criteria":["BOSS-02.defenses"],"proof":"playable","records":["BOSS-02"]},

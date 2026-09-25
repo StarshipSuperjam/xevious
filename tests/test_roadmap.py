@@ -39,10 +39,10 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("assigned to both" in item for item in roadmap.validate_manifest(changed)))
 
     def test_unsettled_spec_cannot_gain_executable_leaf(self) -> None:
-        # `ground` is settled as of slice 9; `secrets` is still a draft spec, so a leaf under it
+        # `secrets` is settled as of slice 14; `andor` is still a draft spec, so a leaf under it
         # must stay provisional until its own slice settles the description.
         changed = copy.deepcopy(self.manifest)
-        leaf = next(item for item in changed["leaves"] if item["key"] == "secrets.sol-tower")
+        leaf = next(item for item in changed["leaves"] if item["key"] == "andor.lifecycle")
         leaf["status"] = "planned"
         self.assertTrue(any("must be provisional" in item for item in roadmap.validate_manifest(changed)))
 
@@ -55,12 +55,12 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("blocker cycle" in item for item in roadmap.validate_manifest(changed)))
 
     def test_issue_body_carries_stable_identity_and_closure_contract(self) -> None:
-        # `secrets` is still a draft spec, so its leaves render "Executable now: no" —
-        # `ground.barra` became executable when slice 9 settled the ground-objects description.
-        parent = next(item for item in self.manifest["parents"] if item["key"] == "secrets")
-        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "secrets.sol-tower")
+        # `andor` is still a draft spec, so its leaves render "Executable now: no" —
+        # `secrets.sol-tower` became executable when slice 14 settled the secrets description.
+        parent = next(item for item in self.manifest["parents"] if item["key"] == "andor")
+        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "andor.lifecycle")
         body = roadmap.leaf_body(leaf, parent)
-        self.assertIn("<!-- roadmap-key: secrets.sol-tower -->", body)
+        self.assertIn("<!-- roadmap-key: andor.lifecycle -->", body)
         self.assertIn("Executable now: **no**", body)
         self.assertIn("## Closure rule", body)
 
