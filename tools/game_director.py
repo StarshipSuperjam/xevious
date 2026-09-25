@@ -740,6 +740,15 @@ ADVANCE_BOMB_PROCCODE = "advance bomb"
 # scroll_delta doubled, +16 units/arcade-frame = +32/tick) and is culled once it scrolls off the bottom
 # of the field. Per-family behaviour (Barra crater, Logram open/fire) layers on this in later commits.
 ADVANCE_GROUND_PROCCODE = "advance ground"
+# GND-06/07 (ground.grobda #88 / ground.domogram #89): the per-tick motion for a SELF-MOVING ground object —
+# the first ground slot that moves under its own velocity rather than being glued to the terrain scroll. It
+# mirrors the source's move_object_dX / move_object_dX_dY (xevious_main.68k 4817-4846): move by
+# TICK_VELOCITY_SCALE * (slot dx, slot dy), then the SAME off-bottom cull `advance ground` uses. There is NO
+# AREA_PROGRESS_STEP scroll baseline added here: the source has no separate scroll term for a moving object —
+# the terrain scroll is BAKED INTO the stored delta (raw 8 = scroll-matched, TICK_VELOCITY_SCALE*8 = 32 =
+# AREA_PROGRESS_STEP), so adding a baseline would DOUBLE the along-scroll speed. Static families keep
+# `advance ground`; a Grobda leaves `slot dy` 0 (scroll-axis-only) and a Domogram drives both axes.
+ADVANCE_GROUND_MOVING_PROCCODE = "advance ground moving"
 # GND (ground.barra #70): the per-tick update for a Barra — the passive terrain target. It scrolls while
 # ACTIVE and, once bombed (state HIT), advances the crater/explosion clock (slot timer) while continuing
 # to scroll, converting to a persistent crater. Mirrors the flying families' per-family `update <family>`
@@ -3506,6 +3515,42 @@ def install_advance_ground(blocks: Blocks) -> None:
     off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
     cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     blocks.chain(definition, [scroll, cull])
+
+
+def install_advance_ground_moving(blocks: Blocks) -> None:
+    # GND-06/07 (ground.grobda #88 / ground.domogram #89): one tick of a SELF-MOVING ground object at
+    # `slot index` — the first ground slot that moves by its OWN velocity instead of the fixed terrain
+    # scroll. Mirrors the source's move_object_dX / move_object_dX_dY (xevious_main.68k 4817-4846): the
+    # scroll-axis position (`slot x`) advances by TICK_VELOCITY_SCALE * `slot dx` and the lateral position
+    # (`slot y`) by TICK_VELOCITY_SCALE * `slot dy`, then the SAME bottom-edge cull `advance ground` uses.
+    # There is NO AREA_PROGRESS_STEP scroll baseline: the source applies no separate scroll term to a moving
+    # object, so the terrain scroll is baked into the stored delta (raw 8 = scroll-matched, so a "stopped"
+    # object still drifts DOWN the field at the scroll rate and eventually culls). A Grobda leaves `slot dy`
+    # 0 (it moves scroll-axis-only, `activate_and_set_grobda_dX` 4574-4579 clears _dY); a Domogram drives
+    # both axes from its path vector. Culling stays bottom-only, like `advance ground`: even a backward
+    # Grobda (raw dX 2 -> +8/tick absolute) still creeps down the field, never off the top or sides.
+    definition = _install_warp_proc(blocks, ADVANCE_GROUND_MOVING_PROCCODE)
+    move_x = _set_cur_item(
+        blocks,
+        "slot x",
+        SLOT_X_ID,
+        blocks.op_add(
+            _cur_item(blocks, "slot x", SLOT_X_ID),
+            blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)),
+        ),
+    )
+    move_y = _set_cur_item(
+        blocks,
+        "slot y",
+        SLOT_Y_ID,
+        blocks.op_add(
+            _cur_item(blocks, "slot y", SLOT_Y_ID),
+            blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)),
+        ),
+    )
+    off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
+    cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    blocks.chain(definition, [move_x, move_y, cull])
 
 
 def install_update_barra(blocks: Blocks) -> None:
@@ -7380,6 +7425,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_track_crosshair(blocks)
     install_advance_bomb(blocks)
     install_advance_ground(blocks)
+    install_advance_ground_moving(blocks)
     install_update_barra(blocks)
     install_update_garu(blocks)
     install_update_logram(blocks)
