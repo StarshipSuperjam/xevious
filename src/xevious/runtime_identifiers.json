@@ -109,6 +109,16 @@
       "name": "schedule cursor",
       "scope": "Stage"
     },
+    "area-schedule-domogram-path-count": {
+      "kind": "list",
+      "name": "schedule domogram path count",
+      "scope": "Stage"
+    },
+    "area-schedule-domogram-path-start": {
+      "kind": "list",
+      "name": "schedule domogram path start",
+      "scope": "Stage"
+    },
     "area-schedule-end": {
       "kind": "list",
       "name": "area schedule end",
@@ -252,6 +262,31 @@
     "difficulty-increment": {
       "kind": "list",
       "name": "difficulty increment",
+      "scope": "Stage"
+    },
+    "domogram-frame-ord": {
+      "kind": "list",
+      "name": "domogram frame ord",
+      "scope": "Stage"
+    },
+    "domogram-path-duration": {
+      "kind": "list",
+      "name": "domogram path duration",
+      "scope": "Stage"
+    },
+    "domogram-path-vector": {
+      "kind": "list",
+      "name": "domogram path vector",
+      "scope": "Stage"
+    },
+    "domogram-vector-dx": {
+      "kind": "list",
+      "name": "domogram vector dx",
+      "scope": "Stage"
+    },
+    "domogram-vector-dy": {
+      "kind": "list",
+      "name": "domogram vector dy",
       "scope": "Stage"
     },
     "eco-award-value": {
@@ -657,6 +692,11 @@
     "slot-type": {
       "kind": "list",
       "name": "slot type",
+      "scope": "Stage"
+    },
+    "slot-vec-left": {
+      "kind": "list",
+      "name": "slot vec left",
       "scope": "Stage"
     },
     "slot-x": {

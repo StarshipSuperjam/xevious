@@ -888,6 +888,50 @@
       "family": "boza-centre",
       "animation": "core",
       "duration_frames": 1
+    },
+    {
+      "name": "domogram/idle/01",
+      "sheet": "ground_enemies",
+      "rect": [10, 109, 15, 15],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "domogram",
+      "animation": "idle",
+      "duration_frames": 1
+    },
+    {
+      "name": "domogram/idle/02",
+      "sheet": "ground_enemies",
+      "rect": [28, 109, 15, 15],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "domogram",
+      "animation": "idle",
+      "duration_frames": 1
+    },
+    {
+      "name": "domogram/idle/03",
+      "sheet": "ground_enemies",
+      "rect": [46, 109, 15, 15],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "domogram",
+      "animation": "idle",
+      "duration_frames": 1
+    },
+    {
+      "name": "domogram/idle/04",
+      "sheet": "ground_enemies",
+      "rect": [64, 109, 15, 15],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "domogram",
+      "animation": "idle",
+      "duration_frames": 1
     }
   ]
 }

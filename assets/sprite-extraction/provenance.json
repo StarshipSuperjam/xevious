@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "0cd6070c257235235c9c0a3eb78b0918980645f9981127e658cd73b967a59e3e",
+  "manifest_sha256": "38788e0ed4fe370e3b99cc9c922950fe9abc7369bc0ec645b4c4d4003bc90d70",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1850,11 +1850,107 @@
         8
       ],
       "generator_version": 1
+    },
+    "71b2918752d41314b99134958fba5797.png": {
+      "frame": "domogram/idle/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        10,
+        109,
+        15,
+        15
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "6f106c53ae98aa99d5f2fd6276bc5c4c.png": {
+      "frame": "domogram/idle/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        28,
+        109,
+        15,
+        15
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "68d60474555b462ee07ea423e86a0cd8.png": {
+      "frame": "domogram/idle/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        46,
+        109,
+        15,
+        15
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "5d44fbc83355d425bde0e73b67569ff7.png": {
+      "frame": "domogram/idle/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        109,
+        15,
+        15
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "c8a31d8987be089e22df3c19c3aa7af322579023029a29b89e470088267c3bc0",
+    "sha256": "02af5ec07ff1432cf7383784ee381ff059c46a1eac68d788f2e974d340767ab4",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -1932,7 +2028,11 @@
       "sheonite/combine/04",
       "sheonite/combine/05",
       "sheonite/combine/06",
-      "boza-centre/core/01"
+      "boza-centre/core/01",
+      "domogram/idle/01",
+      "domogram/idle/02",
+      "domogram/idle/03",
+      "domogram/idle/04"
     ]
   }
 }

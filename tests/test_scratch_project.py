@@ -239,8 +239,10 @@ class ScratchProjectTests(unittest.TestCase):
         # ground renderers (GND-02/GND-04; all reuse proof costumes by ref), and the slice-13 boza renderer
         # (GND-05; the four outers reuse the Logram proof costumes by ref, the centre adds its own core costume),
         # and the slice-13 grobda renderer (GND-06; the 12 variants share one tank costume set, reusing the
-        # shared burst + crater proof costumes by ref, plus 4 new tank tread frames).
-        self.assertEqual(38, len(project["targets"]))
+        # shared burst + crater proof costumes by ref, plus 4 new tank tread frames), and the slice-13
+        # domogram renderer (GND-07; the scripted-path shooter, its own idle sprite set reusing the shared
+        # burst + crater proof costumes by ref, plus 4 new idle frames).
+        self.assertEqual(39, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -251,11 +253,12 @@ class ScratchProjectTests(unittest.TestCase):
         # pulse frames + the slice-12 additions: 1 Zolbak idle dome (GND-02) + 1 Derota idle turret + 2 Garu
         # Derota base pulse frames (GND-04) + the slice-13 additions: 1 Boza centre core (GND-05; the four
         # outer domes reuse the Logram open frames by ref, so only the centre is a new crop) + 4 Grobda tank
-        # tread frames (GND-06; the 12 variants share one tread set and reuse the burst + crater crops by ref)) + the 6 arcade
+        # tread frames (GND-06; the 12 variants share one tread set and reuse the burst + crater crops by ref)
+        # + 4 Domogram idle frames (GND-07; the scripted-path shooter reuses the burst + crater crops by ref)) + the 6 arcade
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
         # bacura / sheonite cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(171, len(assets))
+        self.assertEqual(175, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1132,6 +1135,8 @@ class ScratchProjectTests(unittest.TestCase):
                 # GND-05 Boza composite: each outer slot stores the field index of its centre slot, so an
                 # outer hit can downgrade the centre's value and the centre hit can cascade the outers.
                 "slot link",
+                # GND-07 Domogram: the per-slot count of scripted path vectors still to load (_NVEC).
+                "slot vec left",
                 # AIR-06 fire-permission per-slot fields (the shared gate): captured mask + countdown.
                 "slot fire mask",
                 "slot fire timer",
@@ -1164,6 +1169,15 @@ class ScratchProjectTests(unittest.TestCase):
                 "schedule ground type",
                 "schedule ground slot",
                 "schedule ground sprite y",
+                # GND-07 Domogram: the two per-schedule path columns (1-based start into the flattened path
+                # lists + step count) and the four decoded path/vector data tables + the render frame table.
+                "schedule domogram path start",
+                "schedule domogram path count",
+                "domogram path duration",
+                "domogram path vector",
+                "domogram vector dx",
+                "domogram vector dy",
+                "domogram frame ord",
                 "area schedule start",
                 "area schedule end",
                 "difficulty increment",
@@ -1366,6 +1380,12 @@ class ScratchProjectTests(unittest.TestCase):
             # its per-variant reticle reaction then moves through `advance ground moving`. Warp, dispatched per
             # OCCUPIED Grobda slot from the walk.
             director.UPDATE_GROBDA_PROCCODE,
+            # GND-07 (slice 13) ground.domogram: the scripted-path shooter's per-tick wrapper. An ACTIVE
+            # Domogram advances its path follower (holding the last vector when the path ends) and runs its
+            # fire logic (a 24-arcade-frame animation firing one aimed shot at the midpoint, gated by the
+            # stop-firing row), then moves through `advance ground moving`; a HIT Domogram runs the Barra
+            # crater clock. Warp, dispatched per OCCUPIED Domogram slot from the walk.
+            director.UPDATE_DOMOGRAM_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -13584,7 +13604,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "fa433e3b329a1ff912aaedce17ae9c33ed06680316a5a287b548ef59a6382404",
+            "45ea53cd653a450c0fa394160c056800283852b7d5ddd823b17b1d86677b9c6e",
             build_hash,
         )
 

@@ -523,11 +523,13 @@ class GeneratedAreaClock(unittest.TestCase):
                 return params["count"]
             return 0
 
-        # GND: the three add_ground_object scalars, re-decoded INDEPENDENTLY here — object_type
+        # GND: the three ground-placement scalars, re-decoded INDEPENDENTLY here — object_type
         # (the ground dispatch discriminator), slot (0-15), sprite_y (0-255); (0, 0, 0) for every
-        # other handler. A mis-populated or misaligned ground column fails here, not at play.
+        # other handler. BOTH ground-placement handlers carry them at the same JSON locations:
+        # add_ground_object (the static + Grobda families) and GND-07 add_domogram_with_path (the
+        # Domogram). A mis-populated or misaligned ground column fails here, not at play.
         def expected_ground(record):
-            if record["handler"] != "add_ground_object":
+            if record["handler"] not in ("add_ground_object", "add_domogram_with_path"):
                 return 0, 0, 0
             params = record.get("params", {})
             return record["object_type"], params["slot"], params["sprite_y"]
