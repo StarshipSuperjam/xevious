@@ -815,6 +815,16 @@ UPDATE_SOL_TOWER_PROCCODE = "update sol tower"
 # NOT a weapon — check_flag_collected), which awards the cabinet's choice (an extra craft OR 10,000 points),
 # plays the flag sound, and removes it. Delegates to the shared `advance ground` scroller in every phase.
 UPDATE_BONUS_FLAG_PROCCODE = "update bonus flag"
+# SEC-03 (secrets.hidden-credit #93): the per-tick update for the Hidden Credit ("Easter Egg") — an invisible
+# scheduled ground object that, when bombed, holds a two-line original credit overlay for ~2 seconds and scores
+# the minimum 10 points. While HIDDEN it is an invisible ACTIVE idle that just scrolls; a bomb (the SHARED
+# ground detector -> HIT, scoring its 10 via `slot pts`) reveals it. The port keeps it in the HIT state (so the
+# ACTIVE-only detector never re-scores it — the arcade `_STATE==3` dodging the `==2` gate) and flips `slot flag`
+# HIDDEN -> SHOWING, raising the Stage `easter egg showing` signal the overlay target reads. Unlike every other
+# ground family it draws NO sprite (arcade _CODE=0), so it has no per-slot renderer clone; and, mirroring the
+# source's scroll-only-on-non-hit branch, the bombed egg FREEZES (no scroll) while the credit holds. When the
+# ~128-frame display clock expires it clears the signal and culls the slot.
+UPDATE_EASTER_EGG_PROCCODE = "update easter egg"
 # GND (ground.barra #70): the per-tick update for a Garu Barra — a two-slot object. Both the
 # indestructible 2x2 base (state sentinel SLOT_GARU_BASE) and the destructible node (state ACTIVE)
 # scroll with the terrain; the ONLY per-state difference is the node's death: when the node is bombed
@@ -1323,6 +1333,7 @@ TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during t
 BARRA_TYPE = 30  # 0x1E, handle_1E_Barra: passive terrain target, never fires, crater on death
 SOL_TOWER_TYPE = 29  # 0x1D, handle_1D_Sol_Tower: hidden citadel — reveal, rise, destroy; 2 scoring stages (SEC-01)
 BONUS_FLAG_TYPE = 84  # 0x54, handle_54_Bonus_Flag: hidden Special Flag — bomb to reveal (+1000), fly over to collect (SEC-02)
+EASTER_EGG_TYPE = 83  # 0x53, handle_53_Easter_Egg: hidden credit — bomb to reveal a ~2s original credit overlay, scores 10 (SEC-03)
 ZOLBAK_TYPE = 31  # 0x1F, handle_1F_Zolbak: passive dome; on death reduces the enemy AI level by 2 (GND-02)
 GARU_BARRA_TYPE = 32  # 0x20, handle_20_Garu_Barra: indestructible base + destructible node (Commit 6)
 LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at full-open (Commit 7)
@@ -1397,6 +1408,7 @@ GROUND_HANDLED_TYPES = (
     *GROBDA_TYPES,
     DOMOGRAM_TYPE,
     BONUS_FLAG_TYPE,
+    EASTER_EGG_TYPE,
 )
 # GND-07 (ground.domogram #89): the path-driven "Defence Site/Slider" — the first ground family that BOTH
 # moves under its own velocity AND fires. All source-exact from handle_2E_Domogram (xevious_main.68k 4620-4692):
@@ -1462,6 +1474,11 @@ DEBUG_GROUND_FAMILIES = (
     # shape, so the seeded-placement behaviour is exercised. The full add_object schedule path is a documented
     # follow-up (like the Garu Zakato) — the debug key is the flag's playtest path this slice.
     (BONUS_FLAG_TYPE, "flag"),
+    # SEC-03 (secrets.hidden-credit #93): a single hidden Credit the operator can bomb to score the minimum 10
+    # points and watch the ~2 s original two-line credit overlay appear, then time out. It is an invisible
+    # single-slot add_ground_object (arcade _CODE=0), so it seeds through the shared single-slot shape exactly
+    # like the scheduled spawn — only its point value and hidden phase differ, seeded inside _ground_seed_single.
+    (EASTER_EGG_TYPE, "single"),
 )
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
@@ -1568,6 +1585,45 @@ FLAG_REVEALED_PHASE = 1  # `slot flag`: revealed, awaiting craft fly-over collec
 FLAG_AWARDS_CRAFT_ID = "eco-flag-awards-craft"
 FLAG_AWARDS_CRAFT_DEFAULT = 1  # placeholder DIP default: extra craft (dswb bit 1 set). NOT a fidelity claim.
 BONUS_FLAG_TANK_POINTS = 10000  # score_10000_for_bonus_flag_tank: the raw 10,000-point award (pts_10000, 3162)
+
+# SEC-03 Hidden Credit (secrets.hidden-credit #93; handle_53_Easter_Egg / check_copyright_strings /
+# display_easter_egg, xevious_main.68k 5989-6048). A scheduled INVISIBLE ground object (`_STATE=2`, `_ATTR=0`
+# 1x1, `_CODE=0` invisible) that scrolls hidden until BOMBED. Like every ground object it rides the shared
+# ground-bomb award loop, so a bomb sets `_STATE==3` and scores its value — which is the MINIMUM 10 points
+# because `_PTS` is zero (handle_53 falls through to the object value table's slot 0). handle_53 then sees
+# `_STATE==3` and jumps to check_copyright_strings: it sets `_TIMER=0x80` (128 arcade frames), draws the
+# credit ONCE (display_easter_egg), and counts the timer down; at 0 it wipes the credit and removes the object.
+# The original arcade routine here also checked whether the copyright strings had been tampered with — that
+# trigger was STUBBED by the disassembler (source lines 6003-6005, "obviously no point doing that now"), so
+# only the porter's own credit strings remain; the port shows this project's OWN original wording, never the
+# source strings (docs/REFERENCE_POLICY.md). The port carries the arcade saved-PC idle/showing continuation in
+# `slot flag` (EASTER_EGG_HIDDEN_PHASE / EASTER_EGG_SHOWING_PHASE) and keeps the bombed egg in the HIT state so
+# the ACTIVE-only ground detector never re-scores it (the arcade `_STATE==3` dodging the `==2` gate):
+#   HIDDEN (0) & ACTIVE -> invisible idle; the shared ground detector reveals+scores it (10 pts) on a bomb (-> HIT).
+#   HIDDEN (0) & HIT    -> the reveal tick: flip `slot flag` to SHOWING, raise the `easter egg showing` signal,
+#                          KEEP state HIT, and FREEZE (no scroll — the source scrolls only on its non-hit branch).
+#   SHOWING (1) & HIT   -> hold the credit: count `slot timer` up by TICK_TIMER_STEP; at >= the display window
+#                          clear the signal and cull the slot (arcade wipe_easter_egg -> remove_easter_egg).
+# The 10 points are scored by the shared detector from `slot pts` (EASTER_EGG_PTS) — the update adds no score.
+EASTER_EGG_PTS = 1  # 1-based value-table position of 10 points (handle_53 _PTS==0 -> master_value_table[0]; == GIDDO_SPARIO_PTS)
+EASTER_EGG_HIDDEN_PHASE = 0  # `slot flag`: hidden invisible idle (pre-bomb)
+EASTER_EGG_SHOWING_PHASE = 1  # `slot flag`: bombed, holding the credit overlay (kept in the HIT state)
+# Display window: the arcade `_TIMER=0x80` = 128 arcade frames. The port counts `slot timer` UP by
+# TICK_TIMER_STEP (2 arcade-frames/tick) like every other ground clock, so the credit holds ~64 ticks ≈ 2.1 s.
+EASTER_EGG_DISPLAY_FRAMES = 128
+# The Stage signal (0/1) the overlay target reads to show/hide the credit costume. The egg object itself never
+# draws (it is invisible), so the credit is a separate fixed-position FG overlay driven purely by this flag.
+EASTER_EGG_SHOWING_ID = "sec-easter-egg-showing"
+# SEC-03 credit overlay target + costume. The overlay draws ONE pre-composed two-line credit costume on the
+# target's ORIGINAL (zero clones — the ground clone bands already sit at scratch-vm's 300-clone ceiling; see the
+# GROUND renderer note), centred low in the play field like the arcade's FG credit lines. The costume is owned
+# by tools/hud_glyphs.py (this module owns the target's EXISTENCE + BLOCKS, that module owns its COSTUME), and
+# is rendered in a PORT-GENERATED pixel font — NOT the arcade HUD font, whose crop set lacks several letters the
+# original wording needs and whose crops are operator-verified. Recorded as a port necessity in docs/mechanics/044.
+EASTER_EGG_TARGET = "easter-egg"
+EASTER_EGG_CREDIT_COSTUME = "credit"
+EASTER_EGG_CREDIT_X = 0  # centred horizontally
+EASTER_EGG_CREDIT_Y = -48  # low in the play field, clear of the HUD and the craft's usual band
 
 # GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
 # SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
@@ -3321,6 +3377,13 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BONUS_FLAG_TYPE)),
         [blocks.call_proc(UPDATE_BONUS_FLAG_PROCCODE, warp=True)],
     )
+    # SEC-03 (secrets.hidden-credit #93): the hidden Credit wraps `advance ground` with its reveal (HIT while
+    # HIDDEN) and credit-hold (HIT while SHOWING) phase logic (`update easter egg`). It scrolls only while HIDDEN;
+    # once bombed it freezes and holds the overlay, mirroring the source's scroll-only-on-non-hit branch.
+    easter_egg_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(EASTER_EGG_TYPE)),
+        [blocks.call_proc(UPDATE_EASTER_EGG_PROCCODE, warp=True)],
+    )
     garu_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_BARRA_TYPE)),
         [blocks.call_proc(UPDATE_GARU_PROCCODE, warp=True)],
@@ -3364,7 +3427,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(DOMOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_DOMOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, easter_egg_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -4124,6 +4187,74 @@ def install_update_bonus_flag(blocks: Blocks) -> None:
     blocks.blocks[hit_inner]["inputs"]["CONDITION"] = [2, is_revealed]
     blocks.blocks[is_revealed]["parent"] = hit_inner
     blocks.substack(hit_inner, [collected_if])
+    blocks.substack(hit_inner, reveal_body, name="SUBSTACK2")
+
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [hit_inner])
+    # ACTIVE (HIDDEN invisible idle): just the shared terrain scroll + off-field cull.
+    blocks.substack(top, [advance()], name="SUBSTACK2")
+    blocks.chain(definition, [top])
+
+
+def install_update_easter_egg(blocks: Blocks) -> None:
+    # SEC-03 / secrets.hidden-credit (#93): one tick of the hidden Credit at `slot index`, mirroring
+    # handle_53_Easter_Egg / check_copyright_strings (xevious_main.68k 5989-6011). The arcade encodes the
+    # idle/showing re-entry as a saved PC; the port carries it in `slot flag` (EASTER_EGG_HIDDEN_PHASE /
+    # EASTER_EGG_SHOWING_PHASE). The egg NEVER draws a sprite (arcade _CODE=0), so there is no renderer and no
+    # per-slot clone — the visible credit is a separate fixed-position overlay driven by the Stage
+    # `easter egg showing` signal this proc raises and lowers.
+    #   * ACTIVE (not hit): a HIDDEN invisible idle — just scroll (the arcade's `scroll_sprite_X; add_obj_handler`
+    #     on the non-hit branch). The shared ground detector is what turns a bombed HIDDEN egg ACTIVE->HIT and
+    #     scores its 10 from `slot pts` — this update adds NO score of its own for the reveal.
+    #   * HIT: the egg was bombed. Two cases by `slot flag`:
+    #       - HIDDEN => the reveal tick (arcade handle_54... handle_53 sees `_STATE==3` and jumps to
+    #         check_copyright_strings): flip `slot flag` to SHOWING, raise `easter egg showing`, KEEP the slot in
+    #         the HIT state (so the ACTIVE-only detector never re-scores it), and DO NOT scroll — the source
+    #         scrolls only on its non-hit branch, so the bombed egg freezes in place while the credit holds.
+    #       - SHOWING => check_copyright_strings' per-tick body: count the display clock (`slot timer`) up by
+    #         TICK_TIMER_STEP; when it reaches the display window (EASTER_EGG_DISPLAY_FRAMES) lower the signal and
+    #         cull the slot (arcade wipe_easter_egg -> remove_easter_egg). Frozen — no scroll — the whole time.
+    definition = _install_warp_proc(blocks, UPDATE_EASTER_EGG_PROCCODE)
+    advance = lambda: blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)
+    tick_clock = lambda: _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+
+    # SHOWING & HIT: hold the credit. Advance the display clock; once it reaches the window, lower the signal
+    # and cull the slot. No scroll (the egg is frozen), matching the arcade's hit branch.
+    expire = blocks.if_reporter(
+        blocks.op_not(
+            blocks.op_lt(
+                _cur_item(blocks, "slot timer", SLOT_TIMER_ID),
+                number(EASTER_EGG_DISPLAY_FRAMES),
+            )
+        ),
+        [
+            blocks.set_var("easter egg showing", EASTER_EGG_SHOWING_ID, number(0)),
+            blocks.call_proc(CULL_SLOT_PROCCODE, warp=True),
+        ],
+    )
+    showing_body = [tick_clock(), expire]
+
+    # HIDDEN & HIT: the reveal tick — flip to SHOWING, raise the display signal, keep HIT, and freeze (no scroll).
+    reveal_body = [
+        _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(EASTER_EGG_SHOWING_PHASE)),
+        blocks.set_var("easter egg showing", EASTER_EGG_SHOWING_ID, number(1)),
+    ]
+
+    hit_inner = blocks.add("control_if_else")
+    is_showing = blocks.op_eq(
+        _cur_item(blocks, "slot flag", SLOT_FLAG_ID), number(EASTER_EGG_SHOWING_PHASE)
+    )
+    blocks.blocks[hit_inner]["inputs"]["CONDITION"] = [2, is_showing]
+    blocks.blocks[is_showing]["parent"] = hit_inner
+    blocks.substack(hit_inner, showing_body)
     blocks.substack(hit_inner, reveal_body, name="SUBSTACK2")
 
     top = blocks.add("control_if_else")
@@ -7520,6 +7651,18 @@ def _ground_seed_single(blocks: Blocks, *, slot, type_val, sprite_y) -> list[str
             ],
         ),
         blocks.if_reporter(
+            # SEC-03 (secrets.hidden-credit #93): the hidden Credit. Like the Sol Tower it is a hidden
+            # single-slot object, so it needs its minimum 10-point value plus its phase seed: the HIDDEN phase
+            # and a zeroed display clock. cull clears only type/state, so a slot reused from a prior Credit could
+            # carry a stale SHOWING flag or a non-zero timer — seed both explicitly so it spawns hidden, not showing.
+            blocks.op_eq(type_val(), number(EASTER_EGG_TYPE)),
+            [
+                blocks.list_replace("slot pts", SLOT_PTS_ID, slot(), number(EASTER_EGG_PTS)),
+                blocks.list_replace("slot flag", SLOT_FLAG_ID, slot(), number(EASTER_EGG_HIDDEN_PHASE)),
+                blocks.list_replace("slot timer", SLOT_TIMER_ID, slot(), number(0)),
+            ],
+        ),
+        blocks.if_reporter(
             # GND-02 (ground.zolbak #85): a passive dome — like the Barra it only needs its point value at
             # spawn (200 pts); it never fires, so no fire mask / timer. The crater clock is zeroed by the
             # detector at the hit, and `update zolbak` runs the AI-level reduction there, not here.
@@ -8129,9 +8272,12 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
                     blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
                     blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
                 ),
-                # SEC-01 (ground.sol-tower #90): the hidden citadel is a single-slot ground object
-                # (add_ground_object), seeded through the shared single-slot builder.
-                blocks.op_eq(ground_type_at_cursor(), number(SOL_TOWER_TYPE)),
+                # SEC-01/SEC-03 (secrets.sol-tower #90 / secrets.hidden-credit #93): the hidden citadel and the
+                # hidden Credit are both single-slot add_ground_object objects, seeded through the shared builder.
+                blocks.op_or(
+                    blocks.op_eq(ground_type_at_cursor(), number(SOL_TOWER_TYPE)),
+                    blocks.op_eq(ground_type_at_cursor(), number(EASTER_EGG_TYPE)),
+                ),
             ),
             blocks.op_or(
                 blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
@@ -8469,6 +8615,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_barra(blocks)
     install_update_sol_tower(blocks)
     install_update_bonus_flag(blocks)
+    install_update_easter_egg(blocks)
     install_update_garu(blocks)
     install_update_logram(blocks)
     install_update_zolbak(blocks)
@@ -8724,6 +8871,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # bomb/target/crosshair are already zeroed by `clear slots` above.
             blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
             blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
+            # SEC-03 (secrets.hidden-credit #93): lower the credit overlay signal on every reset scope, so a
+            # credit still holding when a death/transition/new-game clears the field (clear slots above frees the
+            # egg's slot without running `update easter egg`) can never linger into the next playing state.
+            blocks.set_var("easter egg showing", EASTER_EGG_SHOWING_ID, number(0)),
             reset_if(
                 blocks,
                 ("cold-start", "new-game"),
@@ -10152,6 +10303,49 @@ def bonus_flag_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
     blocks.substack(loop, [render])
     blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
+def easter_egg_blocks() -> dict[str, dict[str, Any]]:
+    # SEC-03 Hidden Credit overlay (game_director owns these blocks; hud_glyphs owns the credit costume). The
+    # egg object itself is ALWAYS invisible (arcade _CODE=0) and drives no renderer — this target is the separate
+    # fixed-position FG credit overlay the arcade draws with display_easter_egg (xevious_main.68k 6018-6048).
+    #
+    # It runs entirely on the sprite's ORIGINAL — it creates NO clones. That is deliberate: the port's ground
+    # families already sit at scratch-vm's hard 300-clone ceiling (see the GROUND renderer notes / the Bonus Flag
+    # header), so a per-character glyph-clone credit would breach it. Instead the credit is ONE pre-composed
+    # two-line costume the original shows at a fixed screen position while the Stage `easter egg showing` signal
+    # is raised (set by `update easter egg` on the reveal tick, lowered when the ~2 s display window expires or on
+    # any director reset), and hides otherwise. The credit is rendered in a PORT-GENERATED pixel font (not the
+    # arcade HUD font) and shows this project's OWN original wording — a recorded port necessity (docs/mechanics/044).
+    blocks = Blocks(EASTER_EGG_TARGET)
+    common_stop(blocks, hide=True)
+    reset = blocks.receive("director reset")
+    blocks.chain(reset, [blocks.hide()])
+
+    enter = blocks.receive("director enter")
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    showing = blocks.op_eq(
+        variable("easter egg showing", EASTER_EGG_SHOWING_ID), number(1)
+    )
+    show_if = blocks.add("control_if_else")
+    blocks.blocks[show_if]["inputs"]["CONDITION"] = [2, showing]
+    blocks.blocks[showing]["parent"] = show_if
+    blocks.substack(
+        show_if,
+        [
+            blocks.switch_costume(EASTER_EGG_CREDIT_COSTUME),
+            blocks.go(EASTER_EGG_CREDIT_X, EASTER_EGG_CREDIT_Y),
+            # The credit is an on-top FG overlay (the arcade draws it in the foreground char layer), so front it.
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(show_if, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [show_if])
+    blocks.chain(enter, [blocks.hide(), loop])
     return blocks.blocks
 
 
@@ -12075,6 +12269,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, SOL_TOWER_TARGET)
     _ensure_gameplay_target(result, BONUS_FLAG_TARGET)
+    _ensure_gameplay_target(result, EASTER_EGG_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
     _ensure_gameplay_target(result, ZOLBAK_TARGET)
@@ -12397,6 +12592,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_END_FLAG_ID,
         SHEONITE_PHASE_TMP_ID,
         SHEONITE_LOCK_COL_ID,
+        # SEC-03 (secrets.hidden-credit #93): the credit overlay's show/hide signal.
+        EASTER_EGG_SHOWING_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -12446,6 +12643,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # both arcade-real award arms stay live and the harness can flip it; default extra-craft is the
         # four-marker placeholder DIP position (FLAG_AWARDS_CRAFT_DEFAULT), not a fidelity claim.
         FLAG_AWARDS_CRAFT_ID: ["flag awards craft", FLAG_AWARDS_CRAFT_DEFAULT],
+        # SEC-03 (secrets.hidden-credit #93): the credit overlay signal (0/1). Raised by `update easter egg` on
+        # the reveal tick, lowered when the display window expires and on every director reset (transient state).
+        EASTER_EGG_SHOWING_ID: ["easter egg showing", 0],
         # ECO-04: the best-five verdict, recorded (never a sprite write) when the game over
         # complete receiver runs, and reset only on a world reset (cold-start/new-game).
         QUALIFIED_ID: ["qualified", 0],
@@ -12705,6 +12905,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "barra": barra_blocks(),
         "sol-tower": sol_tower_blocks(),
         "bonus-flag": bonus_flag_blocks(),
+        "easter-egg": easter_egg_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
         "zolbak": zolbak_blocks(),

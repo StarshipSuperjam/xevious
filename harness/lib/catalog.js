@@ -3118,6 +3118,12 @@ export const SCENARIOS = [
             // scripted path and fires), so seeing one in a slot is in scope. Its path-follow / midpoint-fire
             // behaviour is proved by the dedicated domogram-* scenarios; here we only assert it is not
             // treated as unhandled leakage. With it built, no slice-13 ground leaf remains out of scope.
+          } else if (t === 83) {
+            // SEC-03 (secrets.hidden-credit #93, slice 14): the hidden Credit (0x53) is now built and spawns
+            // from the schedule like a single-slot ground family (permanently invisible until bombed, then it
+            // reveals the ~2s credit overlay), so seeing one in a slot is in scope. Its bomb-to-reveal / hold /
+            // min-score behaviour is proved by the dedicated hidden-credit-* scenarios; here we only assert it
+            // is not treated as unhandled leakage.
           } else {
             onlyHandledTypes = false;
           }

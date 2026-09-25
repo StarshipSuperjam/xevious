@@ -624,6 +624,11 @@
       "name": "rng state",
       "scope": "Stage"
     },
+    "sec-easter-egg-showing": {
+      "kind": "variable",
+      "name": "easter egg showing",
+      "scope": "Stage"
+    },
     "sheonite-clone-slot": {
       "kind": "variable",
       "name": "sheonite clone slot",

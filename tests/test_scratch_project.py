@@ -250,8 +250,10 @@ class ScratchProjectTests(unittest.TestCase):
         # burst + crater proof costumes by ref, plus 4 new idle frames), and the slice-14 sol-tower renderer
         # (SEC-01; the hidden citadel's 7 rise frames plus the shared burst + crater proof costumes by ref),
         # and the slice-14 bonus-flag renderer (SEC-02; the hidden Special Flag, a single revealed-flag costume
-        # with no burst or crater — like the Bacura it is never destroyed on screen).
-        self.assertEqual(41, len(project["targets"]))
+        # with no burst or crater — like the Bacura it is never destroyed on screen), and the slice-14 easter-egg
+        # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
+        # renderer clone band since the egg draws no field sprite, holding a single generated credit costume).
+        self.assertEqual(42, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -269,8 +271,10 @@ class ScratchProjectTests(unittest.TestCase):
         # rendered from the pinned reference gfx since no Spriters Resource sheet breaks it out)) + the 7 arcade
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
         # bacura / sheonite / bonus_flag cues, committed under assets/game-sounds/ and attached to the Stage by
-        # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(185, len(assets))
+        # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md) + the 1 generated hidden-credit
+        # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
+        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset).
+        self.assertEqual(186, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1059,6 +1063,11 @@ class ScratchProjectTests(unittest.TestCase):
             "sheonite end flag",
             "sheonite phase",
             "sheonite lock col",
+            # SEC-03 (slice 14): the hidden-credit display signal. Stage-written by the `update easter
+            # egg` proc (1 while a bombed Credit's ~2s overlay is showing, else 0), read by the
+            # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
+            # Transient display machinery like `bomb dx`, never sprite-written and never durable state.
+            "easter egg showing",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1369,6 +1378,12 @@ class ScratchProjectTests(unittest.TestCase):
             # HIT flag tests the craft fly-over and, on collection, awards the DIP choice (extra craft or 10,000
             # via `score`), plays the flag sound, and culls the slot. Warp, dispatched per OCCUPIED flag slot.
             director.UPDATE_BONUS_FLAG_PROCCODE,
+            # SEC-03 (slice 14) secrets.hidden-credit: the hidden Credit's per-tick wrapper — an ACTIVE HIDDEN
+            # egg (invisible) and a just-revealed HIT egg delegate the terrain scroll+cull to `advance ground`;
+            # a REVEALED HIT egg counts up its ~2s display clock off `slot timer`, sets/clears the `easter egg
+            # showing` overlay signal, and culls the slot at expiry (it never scrolls once revealed, mirroring
+            # the arcade freeze-on-hit). Warp, dispatched per OCCUPIED Credit slot.
+            director.UPDATE_EASTER_EGG_PROCCODE,
             # GND-01 (slice 9) ground.barra: the Garu Barra's thin per-tick wrapper — for a HIT node it
             # advances the explode-and-remove clock then removes the slot; base and active node delegate
             # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu slot.
@@ -14748,7 +14763,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "5fe8542f4590e98cbd18349730c9570547192e257259a7241ecf17a42e541b97",
+            "8deba6b195a5e268e0844af180c06247ead1ec8f2067e5311741bfebb17d6ba0",
             build_hash,
         )
 

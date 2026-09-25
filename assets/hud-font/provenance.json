@@ -379,6 +379,15 @@
       "name": "extend",
       "generator_version": 1
     },
+    "dbf5ac47ae66759af3a212c0240c1c14.png": {
+      "kind": "credit",
+      "name": "credit",
+      "text": [
+        "XEVIOUS PORT",
+        "BY STARSHIP SUPERJAM"
+      ],
+      "generator_version": 1
+    },
     "a9fb984e02299e273f1d5e38f2d8c898.wav": {
       "kind": "game_sound",
       "name": "air_destroy",
