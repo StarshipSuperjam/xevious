@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "8060085b573f9aada89c010bed2e5535160c11be8824cf00502e97194dce8d46",
+  "manifest_sha256": "0cd6070c257235235c9c0a3eb78b0918980645f9981127e658cd73b967a59e3e",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1347,6 +1347,102 @@
       ],
       "generator_version": 1
     },
+    "ce71c72442510e905717891b79e76cb0.png": {
+      "frame": "grobda/roll/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        10,
+        82,
+        12,
+        14
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "8d0c1665497b7c1adee052e1a06053f0.png": {
+      "frame": "grobda/roll/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        26,
+        82,
+        12,
+        14
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "bc2df4c89351cfd81d348aedf2574253.png": {
+      "frame": "grobda/roll/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        42,
+        82,
+        12,
+        14
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "ea8f79fa22fb443d428f6f8b2ff6a604.png": {
+      "frame": "grobda/roll/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        58,
+        82,
+        12,
+        14
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
     "3c9a5fc3f0c459a57c78aceb4d9f3816.png": {
       "frame": "garu/base/01",
       "target": "toroid_sprite_proof",
@@ -1758,7 +1854,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "83392e52a710ccce8a29569b2ed8bee607e48ab6a0cbd31be62418247f1776ae",
+    "sha256": "c8a31d8987be089e22df3c19c3aa7af322579023029a29b89e470088267c3bc0",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -1816,6 +1912,10 @@
       "logram/open/04",
       "crater/idle/01",
       "crater/idle/02",
+      "grobda/roll/01",
+      "grobda/roll/02",
+      "grobda/roll/03",
+      "grobda/roll/04",
       "garu/base/01",
       "garu/base/02",
       "zolbak/idle/01",

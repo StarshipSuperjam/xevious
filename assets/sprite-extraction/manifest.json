@@ -659,6 +659,50 @@
       "duration_frames": 1
     },
     {
+      "name": "grobda/roll/01",
+      "sheet": "ground_enemies",
+      "rect": [10, 82, 12, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "grobda",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "grobda/roll/02",
+      "sheet": "ground_enemies",
+      "rect": [26, 82, 12, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "grobda",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "grobda/roll/03",
+      "sheet": "ground_enemies",
+      "rect": [42, 82, 12, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "grobda",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
+      "name": "grobda/roll/04",
+      "sheet": "ground_enemies",
+      "rect": [58, 82, 12, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "grobda",
+      "animation": "roll",
+      "duration_frames": 1
+    },
+    {
       "name": "garu/base/01",
       "sheet": "ground_enemies",
       "rect": [11, 168, 32, 32],

@@ -237,8 +237,10 @@ class ScratchProjectTests(unittest.TestCase):
         # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
         # ground renderers (all reuse proof costumes by ref), and the slice-12 zolbak + derota + garu-derota
         # ground renderers (GND-02/GND-04; all reuse proof costumes by ref), and the slice-13 boza renderer
-        # (GND-05; the four outers reuse the Logram proof costumes by ref, the centre adds its own core costume).
-        self.assertEqual(37, len(project["targets"]))
+        # (GND-05; the four outers reuse the Logram proof costumes by ref, the centre adds its own core costume),
+        # and the slice-13 grobda renderer (GND-06; the 12 variants share one tank costume set, reusing the
+        # shared burst + crater proof costumes by ref, plus 4 new tank tread frames).
+        self.assertEqual(38, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -247,12 +249,13 @@ class ScratchProjectTests(unittest.TestCase):
         # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 14
         # ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base
         # pulse frames + the slice-12 additions: 1 Zolbak idle dome (GND-02) + 1 Derota idle turret + 2 Garu
-        # Derota base pulse frames (GND-04) + the slice-13 addition: 1 Boza centre core (GND-05; the four
-        # outer domes reuse the Logram open frames by ref, so only the centre is a new crop)) + the 6 arcade
+        # Derota base pulse frames (GND-04) + the slice-13 additions: 1 Boza centre core (GND-05; the four
+        # outer domes reuse the Logram open frames by ref, so only the centre is a new crop) + 4 Grobda tank
+        # tread frames (GND-06; the 12 variants share one tread set and reuse the burst + crater crops by ref)) + the 6 arcade
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
         # bacura / sheonite cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(167, len(assets))
+        self.assertEqual(171, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1352,6 +1355,17 @@ class ScratchProjectTests(unittest.TestCase):
             # on hit, cascades all four outers to HIT directly (the arcade `destroy_all_outer_lograms`); both
             # delegate the terrain scroll+cull to `advance ground`. Warp.
             director.UPDATE_BOZA_PROCCODE,
+            # GND-06 (slice 13) area.ground-dispatch: the shared velocity-only mover for self-moving ground
+            # objects — moves `slot x`/`slot y` by TICK_VELOCITY_SCALE * the raw stored delta (NO terrain-scroll
+            # baseline; the scroll is baked into the delta), then runs the same off-field cull as `advance
+            # ground`. Called by a moving family's update proc in place of `advance ground`. Warp.
+            director.ADVANCE_GROUND_MOVING_PROCCODE,
+            # GND-06 (slice 13) ground.grobda: the reticle-reactive tank's per-tick wrapper, one proc for all 12
+            # variants (it branches internally on `slot type`). None fires; a HIT land Grobda runs the Barra
+            # crater clock while a HIT water Grobda runs the Garu-node explode-and-remove; an ACTIVE Grobda runs
+            # its per-variant reticle reaction then moves through `advance ground moving`. Warp, dispatched per
+            # OCCUPIED Grobda slot from the walk.
+            director.UPDATE_GROBDA_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -13570,7 +13584,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f6af1c6893572c8463e50642f5cb2079dfed88dad009eaadfb414d3f58feae21",
+            "fa433e3b329a1ff912aaedce17ae9c33ed06680316a5a287b548ef59a6382404",
             build_hash,
         )
 

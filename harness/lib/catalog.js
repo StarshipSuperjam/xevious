@@ -3002,7 +3002,7 @@ export const SCENARIOS = [
   {
     key: 'ground-dispatch-spawns-scoped',
     behavior:
-      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every ground type still out of scope (the slice-13 roster) is scoped out (never stamped into a slot). Zolbak 0x1F, Derota 0x1B and Garu Derota 0x21 are now built (slice 12), so they legitimately reach slots too and are in scope here.',
+      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while every ground type still out of scope (only the Domogram 0x2E remains for slice 13) is scoped out (never stamped into a slot). Zolbak 0x1F, Derota 0x1B and Garu Derota 0x21 (slice 12), the Boza Logram 0x2D (GND-05) and the Grobda roster 0x2C/0x35-0x40 (GND-06) are now built, so they legitimately reach slots too and are in scope here.',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3010,14 +3010,17 @@ export const SCENARIOS = [
       // each area scrolls it consumes add_ground_object records. The families this scenario asserts on
       // first spawn in different areas — Barra (0x1E) in area 1, Logram (0x26) in area 2, Garu Barra
       // (0x20) in area 3 — interleaved with the now-built slice-12 turret/dome families (Zolbak 0x1F,
-      // Derota 0x1B, Garu Derota 0x21) and the now-built Boza Logram (0x2D, GND-05), which are in scope,
-      // and with the still-out-of-scope slice-13 roster (Grobda 0x2C / Domogram 0x2E and their variants)
-      // that must never reach a slot. The Logram fire mask (record 2,
+      // Derota 0x1B, Garu Derota 0x21), the now-built Boza Logram (0x2D, GND-05) and the now-built Grobda
+      // roster (0x2C + 0x35-0x40, GND-06), which are all in scope, and with the still-out-of-scope Domogram
+      // (0x2E, the last slice-13 leaf) that must never reach a slot. The Logram fire mask (record 2,
       // value 0x25) is set before the first Logram, so a
       // spawned Logram captures it; read the slot mask and the Stage mask in the SAME settled sample so
       // the compare is consistent even as later areas re-set the mask. Garu Barra spawns two adjacent
       // slots sharing type 0x20 — the destructible node (ACTIVE) and the indestructible base (state
       // sentinel SLOT_GARU_BASE = 3); both are in-scope here.
+      // GND-06 (ground.grobda #88): the 12 live Grobda type codes (0x2C=44 + 0x35..0x40, skipping the null
+      // 0x37=55) — decimal, matching the readVar('slot-type') values. Kept local to this scope-gate scenario.
+      const GROBDA_TYPES = new Set([44, 53, 54, 56, 57, 58, 59, 60, 61, 62, 63, 64]);
       let barraSeen = false;
       let logramSeen = false;
       let garuSeen = false;
@@ -3063,11 +3066,17 @@ export const SCENARIOS = [
             }
           } else if (t === 31 || t === 27 || t === 33 || t === 45) {
             // Zolbak (0x1F), Derota (0x1B), Garu Derota (0x21) are the slice-12 ground families, and the
-            // Boza Logram (0x2D, GND-05) is the slice-13 family built this PR — they are all now handled
-            // types that legitimately reach a slot (the Boza stamps all five of its slots — four outers +
-            // one centre — under 0x2D), so seeing them is in scope (not a "scoped out" violation). Their
-            // own behaviour is proved by the dedicated zolbak-/derota-/garu-derota-/boza-* scenarios; here
-            // we only assert they are not treated as unhandled leakage.
+            // Boza Logram (0x2D, GND-05) is a slice-13 family built earlier this slice — they are all now
+            // handled types that legitimately reach a slot (the Boza stamps all five of its slots — four
+            // outers + one centre — under 0x2D), so seeing them is in scope (not a "scoped out" violation).
+            // Their own behaviour is proved by the dedicated zolbak-/derota-/garu-derota-/boza-* scenarios;
+            // here we only assert they are not treated as unhandled leakage.
+          } else if (GROBDA_TYPES.has(t)) {
+            // GND-06 (ground.grobda #88, this PR): the 12 Grobda variants (0x2C + 0x35-0x40, skipping the
+            // null 0x37) are now built and spawn from the schedule like any single-slot ground family, so
+            // seeing one in a slot is in scope. Their reticle reaction / motion / land-crater-vs-water-vanish
+            // behaviour is proved by the dedicated grobda-* scenarios; here we only assert they are not
+            // treated as unhandled leakage.
           } else {
             onlyHandledTypes = false;
           }
@@ -3095,7 +3104,7 @@ export const SCENARIOS = [
       assert.equal(
         obs.onlyHandledTypes,
         true,
-        'no still-out-of-scope ground type (the slice-13 roster) is ever stamped into a slot (only built families spawn)',
+        'no still-out-of-scope ground type (the Domogram 0x2E, the last slice-13 leaf) is ever stamped into a slot (only built families spawn)',
       );
       assert.ok(obs.logramStageMask > 0, 'the schedule set a live Logram fire mask before the spawn');
       assert.equal(

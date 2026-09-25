@@ -27,8 +27,9 @@ class SpriteExtractorTests(unittest.TestCase):
         # codes 0x30-0x33 + 6 combine codes 0x34-0x39), and the 14 ground frames (GND: 1 Barra idle,
         # 4 Logram open stages, 2 crater variants, 2 Garu base pulse frames, the slice-12 additions
         # — 1 Zolbak idle dome (GND-02), 1 Derota idle turret + 2 Garu Derota base pulse frames (GND-04) —
-        # and the slice-13 addition — 1 Boza centre core (GND-05; the four outers reuse the Logram crops)).
-        self.assertEqual(73, count)
+        # and the slice-13 additions — 1 Boza centre core (GND-05; the four outers reuse the Logram crops)
+        # and 4 Grobda tank tread frames (GND-06; the 12 variants share one tread set)).
+        self.assertEqual(77, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -179,6 +180,8 @@ class SpriteExtractorTests(unittest.TestCase):
             + ["barra/idle/01"]
             + [f"logram/open/{index:02d}" for index in range(1, 5)]
             + [f"crater/idle/{index:02d}" for index in range(1, 3)]
+            # GND-06 (slice 13) ground.grobda: the 12 variants share one tank tread set (4 frames).
+            + [f"grobda/roll/{index:02d}" for index in range(1, 5)]
             + [f"garu/base/{index:02d}" for index in range(1, 3)]
             + ["zolbak/idle/01"]
             + ["derota/idle/01"]

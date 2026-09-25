@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+from collections import namedtuple
 import copy
+import functools
 import hashlib
 import json
 from pathlib import Path
@@ -796,6 +798,10 @@ UPDATE_GARU_DEROTA_PROCCODE = "update garu derota"
 # outers HIT directly (destroy_all_outer_lograms $1D8A), which clears them WITHOUT scoring — before it craters.
 # Both roles scroll + cull via `advance ground`.
 UPDATE_BOZA_PROCCODE = "update boza"
+# GND-06 (ground.grobda #88): the tank/stingray family. One proc for all 12 live variants; it branches
+# internally on `slot type` for the per-variant reticle trigger + reaction, and on land-vs-water for the
+# death (crater vs vanish). Every variant moves by its own velocity through `advance ground moving`.
+UPDATE_GROBDA_PROCCODE = "update grobda"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -1257,8 +1263,61 @@ LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at f
 DEROTA_TYPE = 27  # 0x1B, handle_1B_Derota: periodic aimed turret, craters on death, 1000 pts (GND-04)
 GARU_DEROTA_TYPE = 33  # 0x21, handle_21_Garu_Derota: indestructible base + firing destructible node (GND-04)
 BOZA_LOGRAM_TYPE = 45  # 0x2D, handle_2D_Boza_Logram: 5-slot composite (4 outer Lograms + 1 centre), GND-05
+# GND-06 (ground.grobda #88): the tank/stingray family — the first SELF-MOVING ground object. 12 live
+# variants (handle_2C_Grobda_stationary + handle_35..40, skipping the unused 0x37 null slot). All share ONE
+# update proc and ONE tank costume set, differing only in reticle trigger, reaction, points, and land-crater
+# vs water-vanish death — decided inside `update grobda` on slot type. NONE fires. Every variant moves under
+# its own velocity through `advance ground moving` (dY cleared; scroll-axis only).
+#
+# The per-variant reaction is a single parameterized state machine keyed on `slot flag` (0 pre-trigger, 1
+# reacting, 2 latched). Fields (all source-exact, xevious_main.68k 4289-4611):
+#   type          the arcade object code
+#   pts           1-based VALUE_TABLE_POINTS position (200->8, 400->11, 600->13, 1000->17, 1500->18,
+#                 2000->19, 2500->20, 10000->22)
+#   dx0           initial stored velocity (raw): 8 = stop (scroll-matched, appears stationary), 14 = forward
+#   trigger       the reticle object slot to test, or None (never reacts): CROSSHAIR_SLOT (in-crosshairs) or
+#                 BOMB_TARGET_SLOT (targeted by a dropped bomb). Read UNCONDITIONALLY, matching the source
+#                 (check_grobda_in_crosshairs / check_targeted_and_init_timer read the object table with no
+#                 in-flight gate), so a targeted variant reacts to the frozen last-target cell between bombs.
+#   react_dx      velocity while reacting (14 fwd / 2 back / 22 dart), or None for a never-reacting variant
+#   end_dx        velocity after the 48-frame reaction timer expires, or None = hold react_dx permanently
+#                 (the crosshair->forward-forever variants, which have no timer)
+#   rearm         True: after the timer, return to `slot flag` 0 (repeatable — 0x3C darts each time it is
+#                 re-targeted); False: latch at `slot flag` 2
+#   water         True: on a bomb hit it VANISHES (explode_and_remove_object, like a Garu node); False: it
+#                 craters PERSISTENTLY (handle_bomb_explosion, like the Barra/Zolbak)
+GrobdaVariant = namedtuple(
+    "GrobdaVariant", "type pts dx0 trigger react_dx end_dx rearm water"
+)
+GROBDA_VARIANTS = (
+    GrobdaVariant(0x2C, 8, 8, None, None, None, False, False),  # stationary, 200
+    GrobdaVariant(0x35, 11, 14, None, None, None, False, False),  # forward, 400
+    GrobdaVariant(0x36, 13, 8, CROSSHAIR_SLOT, 14, None, False, False),  # crosshairs -> fwd forever, 600
+    GrobdaVariant(0x38, 17, 14, CROSSHAIR_SLOT, 8, 14, False, False),  # fwd, crosshairs -> stop 48f -> fwd, 1000
+    GrobdaVariant(0x39, 18, 8, BOMB_TARGET_SLOT, 2, 8, False, False),  # targeted -> back 48f -> stop, 1500
+    GrobdaVariant(0x3A, 19, 14, CROSSHAIR_SLOT, 22, 14, False, False),  # fwd, crosshairs -> dart 48f -> fwd, 2000
+    GrobdaVariant(0x3B, 20, 14, BOMB_TARGET_SLOT, 2, 14, False, False),  # fwd, targeted -> back 48f -> fwd, 2500
+    GrobdaVariant(0x3C, 22, 8, BOMB_TARGET_SLOT, 22, 8, True, False),  # targeted -> dart 48f -> stop -> rearm, 10000
+    GrobdaVariant(0x3D, 8, 8, None, None, None, False, True),  # stationary, water, 200
+    GrobdaVariant(0x3E, 11, 14, None, None, None, False, True),  # forward, water, 400
+    GrobdaVariant(0x3F, 13, 8, CROSSHAIR_SLOT, 14, None, False, True),  # crosshairs -> fwd forever, water, 600
+    GrobdaVariant(0x40, 20, 14, BOMB_TARGET_SLOT, 2, 14, False, True),  # fwd, targeted -> back 48f -> fwd, water, 2500
+)
+GROBDA_TYPES = tuple(v.type for v in GROBDA_VARIANTS)
+GROBDA_WATER_TYPES = tuple(v.type for v in GROBDA_VARIANTS if v.water)
+# The reticle alignment band (check_grobda_in_crosshairs 4589 / check_targeted_and_init_timer 4574): the
+# per-axis cell offset `target_cell - grobda_cell` lies in [-2,+1] on BOTH the depth (row) and lateral (col)
+# axes (the reference's `subq #2; addq #4; jcc` carry test on the position MSBs). True exactly inside the band.
+GROBDA_RETICLE_LOW = -2
+GROBDA_RETICLE_HIGH = 1
+# The reaction lasts 48 arcade-frames (check_grobda_in_crosshairs / check_targeted set _TIMER=48), counted
+# down by the frame-step convention (TICK_TIMER_STEP per tick), like every other ground/air timer.
+GROBDA_REACTION_FRAMES = 48
+GROBDA_FLAG_PRETRIGGER = 0  # slot flag: waiting for the reticle
+GROBDA_FLAG_REACTING = 1  # slot flag: counting the 48-frame reaction down
+GROBDA_FLAG_LATCHED = 2  # slot flag: reaction done, holding end_dx (non-repeatable variants)
 # Every ground type this project SPAWNS from an add_ground_object schedule record. Barra/Garu Barra/Logram
-# shipped in slice 9; slice 12 adds Zolbak, Derota, and Garu Derota; slice 13 adds the Boza Logram.
+# shipped in slice 9; slice 12 adds Zolbak, Derota, and Garu Derota; slice 13 adds the Boza Logram and Grobda.
 GROUND_HANDLED_TYPES = (
     BARRA_TYPE,
     ZOLBAK_TYPE,
@@ -1267,6 +1326,7 @@ GROUND_HANDLED_TYPES = (
     DEROTA_TYPE,
     GARU_DEROTA_TYPE,
     BOZA_LOGRAM_TYPE,
+    *GROBDA_TYPES,
 )
 # DEBUG (tracked for removal #119): the families the ground debug key (G) cycles through, one at a time, in
 # roadmap order. Each entry is (object type, seed shape); the shape picks the shared seed builder
@@ -1280,6 +1340,14 @@ DEBUG_GROUND_FAMILIES = (
     (DEROTA_TYPE, "single"),
     (GARU_DEROTA_TYPE, "garu_derota"),
     (BOZA_LOGRAM_TYPE, "boza"),
+    # GND-06 (ground.grobda #88): a representative spread the operator can cycle to verify the tank family —
+    # a stationary land tank, a crosshair-reactive mover, a bomb-targeted darter (the 10,000 tier), and a
+    # water variant that vanishes on a hit. Every Grobda uses the single-slot seed shape.
+    (0x2C, "single"),  # stationary (land)
+    (0x36, "single"),  # moves forward once in the crosshairs (land)
+    (0x39, "single"),  # darts back when targeted, then stops (land)
+    (0x3C, "single"),  # darts forward when targeted, re-arms — 10,000 pts (land)
+    (0x40, "single"),  # forward, darts back when targeted (water, vanishes on a hit)
 )
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
@@ -1835,6 +1903,24 @@ BOZA_OUTER_CLOSED_ORDINAL = 1  # costume 1: the closed outer dome (0x2C), the sp
 BOZA_CENTRE_ORDINAL = 5  # costume 5: the centre bullseye (boza-centre/core/01)
 BOZA_EXPLODE_BASE_ORDINAL = BOZA_CENTRE_ORDINAL + 1  # 6: shared explosion burst follows the dome + centre
 BOZA_CRATER_BASE_ORDINAL = BOZA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 14: crater frames last
+
+# GND-06 (ground.grobda #88) tank/stingray renderer. All 12 variants share ONE target and ONE costume set:
+# the four tank/roll frames (ordinals 1..4; the arcade rolls _CODE through 0x4c..0x4f), then the shared
+# solv_death burst (ordinals 5..12 — the ground bomb-burst is the deferred cosmetic stand-in every ground
+# family uses), then the two crater frames (ordinals 13..14) a LAND variant flickers between once the burst
+# finishes. A WATER variant's explode-and-remove burst draws the same ordinals 5.. and is culled before it
+# reaches a crater. The roll frame is a RENDER-ONLY function of the global tick + `slot dx` (the walk writes no
+# `slot code`), like the Terrazi roll: stopped (dx 8) holds frame 0, forward (14) cycles, back (2) reverses,
+# dart (22) cycles at double rate — mirroring animate_grobda_forwards/backwards/fast_forward (4297-4321).
+GROBDA_TARGET = "grobda"
+GROBDA_CLONE_SLOT_ID = "grobda-clone-slot"  # sprite-local: which ground slot this clone renders
+GROBDA_ROLL_FRAME_COUNT = 4  # tank/roll/01..04 (ordinals 1..4)
+GROBDA_EXPLODE_BASE_ORDINAL = GROBDA_ROLL_FRAME_COUNT + 1  # 5: shared explosion burst follows the roll frames
+GROBDA_CRATER_BASE_ORDINAL = GROBDA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 13: crater frames last
+GROBDA_STOPPED_DX = 8  # raw dx that reads as "stopped" (scroll-matched) — holds roll frame 0, no animation
+GROBDA_DART_DX = 22  # raw dx of a dart — the fast-forward animation cadence
+GROBDA_ROLL_PERIOD = 2  # ticks per tread frame while rolling (full 4-frame cycle every 8 ticks)
+GROBDA_ROLL_PERIOD_FAST = 1  # a darting Grobda rolls its tread one frame per tick
 
 
 def _schedule_arg(record: dict) -> int:
@@ -2977,7 +3063,18 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BOZA_LOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_BOZA_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch])
+    # GND-06 (#88): the 12 live Grobda variants each carry a distinct `slot type` (0x2C + 0x35..0x40) but
+    # share ONE update proc, which branches internally on `slot type` for the per-variant reaction. Dispatch
+    # them with a single folded-OR branch — a Grobda is the first ground family that MOVES under its own
+    # velocity, so `update grobda` routes motion through `advance ground moving` rather than `advance ground`.
+    is_grobda = functools.reduce(
+        blocks.op_or,
+        (blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(t)) for t in GROBDA_TYPES),
+    )
+    grobda_branch = blocks.if_reporter(
+        is_grobda, [blocks.call_proc(UPDATE_GROBDA_PROCCODE, warp=True)]
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -4031,6 +4128,152 @@ def install_explode_toroid_tick(blocks: Blocks) -> None:
     done = blocks.op_not(blocks.op_lt(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TOROID_HIT_DURATION_FRAMES)))
     free = blocks.if_reporter(done, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     blocks.chain(definition, [*move, free])
+
+
+def _grobda_reticle_hit(blocks: Blocks, slot_const: int) -> str:
+    """GND-06: boolean — is the current Grobda's cell inside the [-2,+1] alignment band of the reticle object
+    at `slot_const` (CROSSHAIR_SLOT or BOMB_TARGET_SLOT) on BOTH axes? Mirrors check_grobda_in_crosshairs
+    (4589) / check_targeted_and_init_timer (4574): `d = target_cell - grobda_cell` in [GROBDA_RETICLE_LOW,
+    GROBDA_RETICLE_HIGH] for the depth row (slot x MSB) and the lateral col (slot y MSB). The reticle object is
+    read UNCONDITIONALLY (the source has no in-flight gate), so a targeted variant reacts to the frozen
+    last-bomb-target cell between bombs. Each delta is rebuilt FRESH — a reporter attaches to one parent only,
+    so a shared subtree would be stolen by the second use, leaving the first compare with an empty operand."""
+    target_row = lambda: blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, number(slot_const)), number(SLOT_UNITS_PER_CELL))
+    )
+    target_col = lambda: blocks.op_floor(
+        blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, number(slot_const)), number(SLOT_UNITS_PER_CELL))
+    )
+    d_row = lambda: blocks.op_sub(target_row(), _cur_row(blocks))
+    d_col = lambda: blocks.op_sub(target_col(), _cur_col(blocks))
+    row_ok = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_row(), number(GROBDA_RETICLE_LOW))),
+        blocks.op_not(blocks.op_gt(d_row(), number(GROBDA_RETICLE_HIGH))),
+    )
+    col_ok = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_col(), number(GROBDA_RETICLE_LOW))),
+        blocks.op_not(blocks.op_gt(d_col(), number(GROBDA_RETICLE_HIGH))),
+    )
+    return blocks.op_and(row_ok, col_ok)
+
+
+def install_update_grobda(blocks: Blocks) -> None:
+    # GND-06 (ground.grobda #88): one tick of a Grobda tank at `slot index`, for all 12 live variants
+    # (handle_2C + handle_35..40, mirroring xevious_main.68k 4289-4611). A Grobda NEVER fires. Once bombed
+    # (state HIT) a LAND variant craters PERSISTENTLY like the Barra (handle_bomb_explosion — the crater is
+    # terrain-locked, so its HIT branch scrolls via `advance ground`, NOT the mover) and a WATER variant plays
+    # the explode-and-remove burst and VANISHES like a Garu node (explode_and_remove_object). While ACTIVE it
+    # moves under its own velocity through `advance ground moving` (Commit 1) and runs its per-variant reticle
+    # reaction. `slot timer` is reused across the two states — the reaction countdown while ACTIVE, the
+    # crater/burst clock while HIT — safely, because the ground detector zeroes it at the hit and the states
+    # are exclusive. `slot flag` is the reaction phase (0 pre-trigger, 1 reacting, 2 latched). The tank roll is
+    # a render-only function of the global tick + `slot dx` (grobda_blocks), so the walk writes no `slot code`.
+    definition = _install_warp_proc(blocks, UPDATE_GROBDA_PROCCODE)
+    cur_flag = lambda: _cur_item(blocks, "slot flag", SLOT_FLAG_ID)
+    set_dx = lambda v: _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(v))
+    set_flag = lambda v: _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(v))
+    set_timer = lambda v: _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(v))
+
+    def countdown_step(variant: GrobdaVariant) -> list[str]:
+        # One reaction-countdown step (the source's `subq #1,_TIMER` per frame): decrement by the frame-step;
+        # on reaching 0 apply end_dx and either RE-ARM (flag 0, repeatable 0x3C) or LATCH (flag 2). Built fresh
+        # each call — it runs both at the trigger-tick fall-through and on every steady reacting tick.
+        dec = _set_cur_item(
+            blocks,
+            "slot timer",
+            SLOT_TIMER_ID,
+            blocks.op_sub(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+        )
+        expired = blocks.op_not(
+            blocks.op_gt(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(0))
+        )
+        end_flag = GROBDA_FLAG_PRETRIGGER if variant.rearm else GROBDA_FLAG_LATCHED
+        finish = blocks.if_reporter(expired, [set_dx(variant.end_dx), set_flag(end_flag)])
+        return [dec, finish]
+
+    def active_reaction(variant: GrobdaVariant) -> list[str]:
+        # The per-variant reticle reaction (motion only). A never-reacting variant (stationary / forward)
+        # simply rides the velocity seeded at spawn — no statements. A reacting variant arms on `slot flag` 0.
+        if variant.trigger is None:
+            return []
+        if variant.end_dx is None:
+            # Permanent (crosshairs -> forward forever, 0x36/0x3F): commit react_dx and latch; no timer.
+            arm = blocks.if_reporter(
+                _grobda_reticle_hit(blocks, variant.trigger),
+                [set_dx(variant.react_dx), set_flag(GROBDA_FLAG_REACTING)],
+            )
+            return [
+                blocks.if_reporter(
+                    blocks.op_eq(cur_flag(), number(GROBDA_FLAG_PRETRIGGER)), [arm]
+                )
+            ]
+        # Timed: pre-trigger arms + counts down the SAME tick (the source jumps straight into the reaction
+        # label and decrements once); an if/else on `slot flag == 0` keeps the trigger tick from ALSO running
+        # the steady countdown branch, which would double-decrement.
+        phase = blocks.add("control_if_else")
+        is_pre = blocks.op_eq(cur_flag(), number(GROBDA_FLAG_PRETRIGGER))
+        blocks.blocks[phase]["inputs"]["CONDITION"] = [2, is_pre]
+        blocks.blocks[is_pre]["parent"] = phase
+        arm = blocks.if_reporter(
+            _grobda_reticle_hit(blocks, variant.trigger),
+            [
+                set_dx(variant.react_dx),
+                set_timer(GROBDA_REACTION_FRAMES),
+                set_flag(GROBDA_FLAG_REACTING),
+                *countdown_step(variant),
+            ],
+        )
+        blocks.substack(phase, [arm])
+        reacting = blocks.if_reporter(
+            blocks.op_eq(cur_flag(), number(GROBDA_FLAG_REACTING)), countdown_step(variant)
+        )
+        blocks.substack(phase, [reacting], name="SUBSTACK2")
+        return [phase]
+
+    def hit_branch(variant: GrobdaVariant) -> list[str]:
+        tick_clock = _set_cur_item(
+            blocks,
+            "slot timer",
+            SLOT_TIMER_ID,
+            blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+        )
+        if variant.water:
+            # Water: explode-and-remove burst, then VANISH (like a Garu node) — no persistent crater.
+            done = blocks.op_not(
+                blocks.op_lt(
+                    _cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(GARU_REMOVE_FRAMES)
+                )
+            )
+            finish = blocks.add("control_if_else")
+            blocks.blocks[finish]["inputs"]["CONDITION"] = [2, done]
+            blocks.blocks[done]["parent"] = finish
+            blocks.substack(finish, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+            blocks.substack(
+                finish, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
+            )
+            return [tick_clock, finish]
+        # Land: the Barra crater clock, then the terrain scroll + off-field cull.
+        return [tick_clock, blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)]
+
+    branches: list[str] = []
+    for variant in GROBDA_VARIANTS:
+        state = blocks.add("control_if_else")
+        is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+        blocks.blocks[state]["inputs"]["CONDITION"] = [2, is_hit]
+        blocks.blocks[is_hit]["parent"] = state
+        blocks.substack(state, hit_branch(variant))
+        blocks.substack(
+            state,
+            [*active_reaction(variant), blocks.call_proc(ADVANCE_GROUND_MOVING_PROCCODE, warp=True)],
+            name="SUBSTACK2",
+        )
+        branches.append(
+            blocks.if_reporter(
+                blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(variant.type)),
+                [state],
+            )
+        )
+    blocks.chain(definition, branches)
 
 
 def install_update_bullet(blocks: Blocks) -> None:
@@ -6735,6 +6978,33 @@ def _ground_seed_single(blocks: Blocks, *, slot, type_val, sprite_y) -> list[str
                 ),
             ],
         ),
+        # GND-06 (ground.grobda #88): a self-moving tank. Each of the 12 variants seeds its own value-table
+        # position and its initial scroll-axis velocity (activate_and_set_grobda_dX 4574-4579: raw 8 stop /
+        # 14 forward / 2 back / 22 dart); the shared branch clears the lateral velocity (Grobda moves
+        # scroll-axis-only — _dY is cleared), and zeroes the reaction phase + timer so a slot reused from a
+        # prior occupant carries no stale reaction. Motion runs through `advance ground moving`, not the
+        # terrain scroll. `slot dy` = 0 also makes the two-axis mover degrade to one axis for Grobda.
+        *[
+            blocks.if_reporter(
+                blocks.op_eq(type_val(), number(variant.type)),
+                [
+                    blocks.list_replace("slot pts", SLOT_PTS_ID, slot(), number(variant.pts)),
+                    blocks.list_replace("slot dx", SLOT_DX_ID, slot(), number(variant.dx0)),
+                ],
+            )
+            for variant in GROBDA_VARIANTS
+        ],
+        blocks.if_reporter(
+            functools.reduce(
+                blocks.op_or,
+                (blocks.op_eq(type_val(), number(t)) for t in GROBDA_TYPES),
+            ),
+            [
+                blocks.list_replace("slot dy", SLOT_DY_ID, slot(), number(0)),
+                blocks.list_replace("slot flag", SLOT_FLAG_ID, slot(), number(GROBDA_FLAG_PRETRIGGER)),
+                blocks.list_replace("slot timer", SLOT_TIMER_ID, slot(), number(0)),
+            ],
+        ),
     ]
 
 
@@ -7116,14 +7386,21 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         type_val=ground_type_at_cursor,
         sprite_y=ground_sprite_y_at_cursor,
     )
-    is_single_slot_ground = blocks.op_or(
+    # GND-06 (ground.grobda #88): all 12 Grobda variants are single-slot ground objects (a self-moving tank
+    # occupies one band slot), so they seed through the same spawn_ground/_ground_seed_single as the static
+    # single-slot families — the per-variant velocity + reaction phase is seeded inside that builder.
+    is_single_slot_ground = functools.reduce(
+        blocks.op_or,
+        (blocks.op_eq(ground_type_at_cursor(), number(t)) for t in GROBDA_TYPES),
         blocks.op_or(
-            blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
-            blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
-        ),
-        blocks.op_or(
-            blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
-            blocks.op_eq(ground_type_at_cursor(), number(DEROTA_TYPE)),
+            blocks.op_or(
+                blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
+                blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
+            ),
+            blocks.op_or(
+                blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
+                blocks.op_eq(ground_type_at_cursor(), number(DEROTA_TYPE)),
+            ),
         ),
     )
     # GND (ground.barra #70): the Garu Barra is a TWO-slot object (handle_20_Garu_Barra $1A89), so it does
@@ -7433,6 +7710,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_derota(blocks)
     install_update_garu_derota(blocks)
     install_update_boza(blocks)
+    install_update_grobda(blocks)
     install_explode_toroid_tick(blocks)
     install_explode_giddo_spario_tick(blocks)
     install_update_bullet(blocks)
@@ -9469,6 +9747,149 @@ def garu_derota_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def grobda_blocks() -> dict[str, dict[str, Any]]:
+    # GND-06 (ground.grobda #88) renderer (game_director owns these blocks; sprite_extractor owns the
+    # costumes). One persistent clone per GROUND slot (1..16), a pure per-tick function of the slot's live
+    # state — the 12 variants share ONE tank costume set. While ACTIVE the tread ROLL is a render-only
+    # function of the GLOBAL tick + `slot dx` (the walk never writes `slot code`, and `slot timer` is busy
+    # with the reaction countdown): a stopped tank (dx == GROBDA_STOPPED_DX) holds roll frame 1; a forward
+    # tank cycles the 4 tread frames, a darting tank cycles them faster, and a reversing tank cycles them
+    # backward. While HIT a LAND Grobda plays the shared solv_death burst then a PERSISTENT flickering crater
+    # (the Barra model); a WATER Grobda plays the burst at the Garu-node cadence and VANISHES (the slot is
+    # culled by `update grobda`, so the clone hides next tick — no crater). Position/scale match every other
+    # ground family.
+    blocks = Blocks(GROBDA_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("grobda clone slot", GROBDA_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("grobda clone slot", GROBDA_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_grobda = functools.reduce(
+        blocks.op_or,
+        (blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(t)) for t in GROBDA_TYPES),
+    )
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    cur_dx = lambda: blocks.list_item("slot dx", SLOT_DX_ID, slotvar())
+    # A forward tread phase at `period`: (floor(tick/period) mod FRAMES) + 1 -> ordinal 1..4. A reverse phase
+    # runs the same cycle backward. Each reporter is rebuilt fresh (a reporter binds to one parent only).
+    fwd_ordinal = lambda period: blocks.op_add(
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(period))),
+            number(GROBDA_ROLL_FRAME_COUNT),
+        ),
+        number(1),
+    )
+    reverse_ordinal = blocks.op_sub(
+        number(GROBDA_ROLL_FRAME_COUNT),
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(GROBDA_ROLL_PERIOD))),
+            number(GROBDA_ROLL_FRAME_COUNT),
+        ),
+    )
+    # ACTIVE tread costume: stopped -> hold frame 1; dart -> fast forward; back -> reverse; else forward.
+    def _if_else(cond: str, then_body: list[str], else_body: list[str]) -> str:
+        node = blocks.add("control_if_else")
+        blocks.blocks[node]["inputs"]["CONDITION"] = [2, cond]
+        blocks.blocks[cond]["parent"] = node
+        blocks.substack(node, then_body)
+        blocks.substack(node, else_body, name="SUBSTACK2")
+        return node
+    roll_costume = _if_else(
+        blocks.op_eq(cur_dx(), number(GROBDA_STOPPED_DX)),
+        [blocks.switch_costume("grobda/roll/01")],
+        [
+            _if_else(
+                blocks.op_eq(cur_dx(), number(GROBDA_DART_DX)),
+                [blocks.switch_costume_expr(fwd_ordinal(GROBDA_ROLL_PERIOD_FAST))],
+                [
+                    _if_else(
+                        blocks.op_lt(cur_dx(), number(GROBDA_STOPPED_DX)),
+                        [blocks.switch_costume_expr(reverse_ordinal)],
+                        [blocks.switch_costume_expr(fwd_ordinal(GROBDA_ROLL_PERIOD))],
+                    )
+                ],
+            )
+        ],
+    )
+    # HIT costume: land craters (burst -> persistent flicker), water bursts at the Garu-node cadence & vanishes.
+    is_water = functools.reduce(
+        blocks.op_or,
+        (blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(t)) for t in GROBDA_WATER_TYPES),
+    )
+    land_explode = blocks.op_add(
+        number(GROBDA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_EXPLOSION_PHASE_FRAMES))
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(GROBDA_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_CRATER_FLICKER_FRAMES))
+            ),
+            number(2),
+        ),
+    )
+    cratered = blocks.op_not(
+        blocks.op_lt(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_CRATER_START_FRAMES))
+    )
+    land_costume = _if_else(cratered, [blocks.switch_costume_expr(crater_ordinal)], [blocks.switch_costume_expr(land_explode)])
+    water_explode = blocks.op_add(
+        number(GROBDA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GARU_EXPLOSION_PHASE_FRAMES))
+        ),
+    )
+    hit_costume = _if_else(is_water, [blocks.switch_costume_expr(water_explode)], [land_costume])
+
+    state_render = _if_else(
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+        [hit_costume],
+        [roll_costume],
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_grobda]
+    blocks.blocks[is_grobda]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
 def terrazi_blocks() -> dict[str, dict[str, Any]]:
     # AIR-06 Terrazi renderer (game_director owns these blocks; sprite_extractor owns the costumes).
     # One persistent clone per flying slot (59..64), the same pool pattern as the Toroid: shown and
@@ -10560,6 +10981,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, DEROTA_TARGET)
     _ensure_gameplay_target(result, GARU_DEROTA_TARGET)
     _ensure_gameplay_target(result, BOZA_TARGET)
+    _ensure_gameplay_target(result, GROBDA_TARGET)
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -10747,6 +11169,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             boza["costumes"].extend(copy.deepcopy(death["costumes"]))
         boza["costumes"].extend(proof_by_family("crater/"))
         boza["currentCostume"] = 0
+    # GND-06 (ground.grobda #88): the Grobda renderer mirrors its 4 tank tread frames (grobda/roll/01..04,
+    # ordinals 1..4 — the 12 variants share ONE tank costume set), then the shared explosion burst (ordinals
+    # 5..12) that BOTH the land crater and the water explode-and-remove draw from, then the two crater frames
+    # (ordinals 13..14) — the SAME crater as the Barra, since a bombed LAND Grobda runs handle_bomb_explosion
+    # (a water Grobda never shows them; it vanishes). Idempotent; a no-op when any source is absent (fixpoint).
+    grobda = next((t for t in result["targets"] if t.get("name") == GROBDA_TARGET), None)
+    if proof is not None and grobda is not None:
+        grobda["costumes"] = proof_by_family("grobda/")
+        if death is not None:
+            grobda["costumes"].extend(copy.deepcopy(death["costumes"]))
+        grobda["costumes"].extend(proof_by_family("crater/"))
+        grobda["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -11119,6 +11553,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "derota": derota_blocks(),
         "garu derota": garu_derota_blocks(),
         "boza": boza_blocks(),
+        "grobda": grobda_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
