@@ -1025,51 +1025,72 @@ export const SCENARIOS = [
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Seed one Torkan in APPROACH ten rows AHEAD of the craft in scroll and on its column, so its
-      // aimed approach velocity points TOWARD the craft (positive `slot dx`, larger row). A single pump
-      // settles the whole arc: it fires, hovers, then re-aims once and flees. Cull preserves
-      // `slot dx`/`slot dy`, so the committed FLEE velocity survives to read (the post-cull read the Kapi
-      // dive uses). A faithful retreat REVERSES the course (dx flips negative — AWAY) at the faster tier
-      // magnitude (48 vs the approach 32); a homing re-aim would keep dx positive, and the slow tier
-      // would leave |dx| at 32.
-      const slotType = readVar(vm, 'slot-type');
-      for (const s of FLYING_SLOT_INDICES) slotType[s] = 0;
-      const typeTable = readVar(vm, 'flying-type-table');
-      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 10;
-      const pr = readVar(vm, 'player-row');
-      const pc = readVar(vm, 'player-col');
-      const slot = 63;
+      // Freeze the walk so one callProc == one deterministic tick, then hand-drive the whole arc a tick at a
+      // time. The earlier version pumped a single `step()` and read `slot dx` once at settling; but `step()`
+      // runs the update a machine-speed-dependent number of times, and the HOVER phase ZEROES `slot dx`
+      // (game_director install_update_torkan) — so on slower CI the read landed mid-HOVER and flaked dx=0.
+      // Here we watch for the exact APPROACH -> HOVER -> FLEE transition and capture the committed FLEE
+      // velocity the tick `slot flag` first reaches FLEE, before any further move drifts the slot off-field.
+      writeVar(vm, 'game-director-state', 'frozen');
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
-      put('slot-type', slot, 15);
-      put('slot-state', slot, 1);
-      put('slot-x', slot, (pr - 10) * 256); // ahead in scroll => toward-aim is +dx (larger row)
-      put('slot-y', slot, pc * 256); // same column => the retreat rides the row axis, dy stays ~0
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      const slot = 63; // JS index; Scratch flying slot 64
+      // Seed one Torkan in APPROACH ten rows AHEAD of the craft on its column, so the aimed approach points
+      // TOWARD the craft (+dx, larger row). During HOVER it holds position (dx=0), so at re-aim the geometry
+      // is FIXED at (pr-10, pc) vs the craft at (pr, pc): a pure +row toward-vector whose 180-degree flip is
+      // a pure -row away-vector on the fast 48-tier (|dx| = 48 > the 32 approach). No settling, no drift.
+      put('slot-type', slot, 15); // TORKAN_TYPE
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      put('slot-x', slot, (pr - 10) * 256);
+      put('slot-y', slot, pc * 256);
       put('slot-dx', slot, 32); // seeded toward-approach velocity (positive); the retreat must reverse it
       put('slot-dy', slot, 0);
-      put('slot-flag', slot, 0); // APPROACH
-      put('slot-fire-timer', slot, 2); // fire promptly so the hover + re-aim complete within the pump
+      put('slot-flag', slot, 0); // TORKAN_FLAG_APPROACH
+      put('slot-fire-timer', slot, 2); // fire on the first tick -> HOVER
       put('slot-timer', slot, 0);
       put('slot-code', slot, 16);
-      step(vm, 1);
-      return {
-        dx: readVar(vm, 'slot-dx')[slot],
-        dy: readVar(vm, 'slot-dy')[slot],
-      };
+      writeVar(vm, 'slot-index', slot + 1); // Scratch 1-based
+      // APPROACH (fire) -> HOVER (hold, dx=0, ~14 ticks to the 28-frame window end) -> FLEE. Capture dx/dy
+      // the tick `slot flag` first reaches FLEE (2): the committed away velocity, constant thereafter.
+      let fleeTick = null;
+      let fleeDx = null;
+      let fleeDy = null;
+      for (let t = 1; t <= 40 && fleeTick === null; t += 1) {
+        callProc(vm, 'Stage', 'update torkan');
+        step(vm, 1);
+        if (readVar(vm, 'slot-flag')[slot] === 2) {
+          fleeTick = t;
+          fleeDx = readVar(vm, 'slot-dx')[slot];
+          fleeDy = readVar(vm, 'slot-dy')[slot];
+        }
+      }
+      return { fleeTick, dx: fleeDx, dy: fleeDy };
     },
     assert(obs) {
+      assert.notEqual(
+        obs.fleeTick,
+        null,
+        'the Torkan completes the arc and reaches the FLEE phase (slot flag 2) within the driven window',
+      );
       assert.ok(
         obs.dx < 0,
-        `a fleeing Torkan reverses its course AWAY from the craft (dx flips negative); got dx=${obs.dx}`,
+        `a fleeing Torkan reverses its course AWAY from the craft (dx flips negative from the +32 approach); got dx=${obs.dx}`,
       );
       assert.ok(
         Math.abs(obs.dx) > 32,
         `a fleeing Torkan flees on the FAST 3 px/frame tier (|dx| > the 32 approach magnitude); got dx=${obs.dx}`,
       );
     },
-    // Empty `update torkan` so the seeded approach never fires, hovers or re-aims → `slot dx` stays the
-    // seeded +32 (toward, slow tier) → both clauses (reversed, faster) bite.
+    // Empty `update torkan` so the seeded approach never fires, hovers or re-aims → `slot flag` never reaches
+    // FLEE → fleeTick stays null (the notEqual clause bites) and `slot dx` stays the seeded +32 (the reversed
+    // and faster-tier clauses would bite too).
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update torkan'),
   },
   {
