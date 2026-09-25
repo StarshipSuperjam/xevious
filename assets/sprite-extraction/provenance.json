@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "a236bf6afbf9835f7949477d3e8e6edb6b380d92c8e2d61c84bd992810a6b99a",
+  "manifest_sha256": "87beda6c39941500f142b30f9d69932b5b0f9246da8ac18ef8536b2355c1644e",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -2114,11 +2114,35 @@
         8
       ],
       "generator_version": 1
+    },
+    "042386e20c54dd20a2dc7542066c24d9.png": {
+      "frame": "bonus-flag/flag/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "6ca6cf679d389290d64bd6417973df2c.png",
+      "source_sha256": "eb9d6a5422d2904de86971a35b78e2eb04eaf0222f5b5a7705e21cfcc187c6c1",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c sprite index 287 (labelled 'flag' in sprite_config.json), rendered with sprite CLUT 0x0e — the _COLOUR value reveal_bonus_flag writes (xevious_main.68k 3148) — as a 16x16 cell on the sheet matte. The Special Flag bonus item; no Spriters Resource sheet breaks out this sprite, so it is taken from the pinned reference the build already grounds on.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        1,
+        1,
+        14,
+        11
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "a0e3e18a56270a17e50a0163fb9c435d90567d45b9f5b3ae3eaf50d87488e061",
+    "sha256": "5112381fb6b289c635968fc09dce4bf1ac9a1ae7c7499299093bbc6c2686fa47",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -2207,7 +2231,8 @@
       "domogram/idle/01",
       "domogram/idle/02",
       "domogram/idle/03",
-      "domogram/idle/04"
+      "domogram/idle/04",
+      "bonus-flag/flag/01"
     ]
   }
 }

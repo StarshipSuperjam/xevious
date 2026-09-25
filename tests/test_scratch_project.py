@@ -106,6 +106,12 @@ SPRITE_SHEET_HASHES = {
     "Aerial Enemies": (
         "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8"
     ),
+    # SEC-02 (slice 14): the Special Flag's own 16x16 source sheet. Unlike the Spriters Resource rips above,
+    # this one is decoded directly from the pinned arcade reference gfx (no Spriters Resource sheet breaks out
+    # this sprite), so its credited origin is the pin, not spriters-resource — see the credit check below.
+    "Bonus Flag": (
+        "eb9d6a5422d2904de86971a35b78e2eb04eaf0222f5b5a7705e21cfcc187c6c1"
+    ),
 }
 
 
@@ -242,8 +248,10 @@ class ScratchProjectTests(unittest.TestCase):
         # shared burst + crater proof costumes by ref, plus 4 new tank tread frames), and the slice-13
         # domogram renderer (GND-07; the scripted-path shooter, its own idle sprite set reusing the shared
         # burst + crater proof costumes by ref, plus 4 new idle frames), and the slice-14 sol-tower renderer
-        # (SEC-01; the hidden citadel's 7 rise frames plus the shared burst + crater proof costumes by ref).
-        self.assertEqual(40, len(project["targets"]))
+        # (SEC-01; the hidden citadel's 7 rise frames plus the shared burst + crater proof costumes by ref),
+        # and the slice-14 bonus-flag renderer (SEC-02; the hidden Special Flag, a single revealed-flag costume
+        # with no burst or crater — like the Bacura it is never destroyed on screen).
+        self.assertEqual(41, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -256,11 +264,13 @@ class ScratchProjectTests(unittest.TestCase):
         # outer domes reuse the Logram open frames by ref, so only the centre is a new crop) + 4 Grobda tank
         # tread frames (GND-06; the 12 variants share one tread set and reuse the burst + crater crops by ref)
         # + 4 Domogram idle frames (GND-07; the scripted-path shooter reuses the burst + crater crops by ref)
-        # + 7 Sol Tower rise-frame PNGs (SEC-01; the hidden citadel reuses the burst + crater crops by ref)) + the 6 arcade
+        # + 7 Sol Tower rise-frame PNGs (SEC-01; the hidden citadel reuses the burst + crater crops by ref)
+        # + 1 Bonus Flag revealed-flag PNG and its own 16x16 source sheet (SEC-02; the Special Flag sprite,
+        # rendered from the pinned reference gfx since no Spriters Resource sheet breaks it out)) + the 7 arcade
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
-        # bacura / sheonite cues, committed under assets/game-sounds/ and attached to the Stage by
+        # bacura / sheonite / bonus_flag cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(182, len(assets))
+        self.assertEqual(185, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -314,12 +324,13 @@ class ScratchProjectTests(unittest.TestCase):
                     expected.pop(key)
                     actual.pop(key)
                 # hud_glyphs.py appends its added Stage sounds on top of the historical
-                # two (docs/mechanics/010): first the "extend" cue, then the six arcade
-                # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040). Verify the
-                # exact list, then drop sounds from the general preserved-content comparison.
+                # two (docs/mechanics/010): first the "extend" cue, then the seven arcade
+                # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040 — bonus_flag added
+                # for SEC-02, slice 14). Verify the exact list, then drop sounds from the general
+                # preserved-content comparison.
                 self.assertEqual(
                     [sound["name"] for sound in expected["sounds"]]
-                    + ["extend", "air_destroy", "bacura", "garu_zakato",
+                    + ["extend", "air_destroy", "bacura", "bonus_flag", "garu_zakato",
                        "ground_destroy", "sheonite", "zakato"],
                     [sound["name"] for sound in actual["sounds"]],
                 )
@@ -831,7 +842,11 @@ class ScratchProjectTests(unittest.TestCase):
     def test_nonidentical_baseline_overlay_collision_is_rejected(self) -> None:
         source = self.copy_source()
         _project, _project_bytes, assets = scratch.validate_source(source)
-        name = next(iter(assets))
+        # The collision guard fires only when the overlay name shadows an IMMUTABLE BASELINE asset, so pick a
+        # referenced asset that actually comes from the baseline archive (not the first asset overall — a newer
+        # overlay-only asset can sort ahead of every baseline one, e.g. the slice-14 bonus-flag costume).
+        baseline = scratch._original_asset_base()
+        name = next(candidate for candidate in assets if candidate in baseline)
         add_overlay(source, name, b"different bytes")
         with (
             mock.patch.object(scratch, "_validate_asset"),
@@ -1052,6 +1067,10 @@ class ScratchProjectTests(unittest.TestCase):
             "high score",
             "craft",
             "next bonus",
+            # ECO-03 (slice 14): the Bonus Flag award selector — the port's runtime stand-in for the arcade
+            # `dswb` bit 1. Stage-owned (its power-on default is the placeholder DIP position; the harness flips
+            # it to exercise both award arms), read by the Stage `update bonus flag` proc, never sprite-written.
+            "flag awards craft",
         }
         # AREA-01/AREA-02 area state — durable Stage-owned position/schedule authority read
         # across ticks and across the death/reset boundary. It is NOT machinery (the
@@ -1345,6 +1364,11 @@ class ScratchProjectTests(unittest.TestCase):
             # the RISEN destroy crater delegate the terrain scroll+cull to `advance ground`, and the RISING
             # phase walks the 7 rise steps off `slot timer`. Warp, dispatched per OCCUPIED Sol Tower slot.
             director.UPDATE_SOL_TOWER_PROCCODE,
+            # SEC-02 (slice 14) secrets.bonus-flag: the hidden Special Flag's per-tick wrapper — an ACTIVE HIDDEN
+            # flag and a just-revealed HIT flag delegate the terrain scroll+cull to `advance ground`; a REVEALED
+            # HIT flag tests the craft fly-over and, on collection, awards the DIP choice (extra craft or 10,000
+            # via `score`), plays the flag sound, and culls the slot. Warp, dispatched per OCCUPIED flag slot.
+            director.UPDATE_BONUS_FLAG_PROCCODE,
             # GND-01 (slice 9) ground.barra: the Garu Barra's thin per-tick wrapper — for a HIT node it
             # advances the explode-and-remove clock then removes the slot; base and active node delegate
             # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu slot.
@@ -14687,10 +14711,15 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            self.assertIn(
-                "spriters-resource.com/arcade/xevious",
-                provenance[asset]["origin"],
-            )
+            if name == "Bonus Flag":
+                # SEC-02: the one reference-decoded sheet — credited to the pinned arcade reference (jotd666),
+                # not Spriters Resource, since no Spriters Resource sheet isolates the Special Flag sprite.
+                self.assertIn("jotd666/xevious", provenance[asset]["origin"])
+            else:
+                self.assertIn(
+                    "spriters-resource.com/arcade/xevious",
+                    provenance[asset]["origin"],
+                )
             self.assertIn(
                 "No reusable license specified",
                 provenance[asset]["license"],
@@ -14719,7 +14748,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "c50fd4b8926182c39dfde41f86dfbe1859517a5b4875ae96375f397771a9f0cf",
+            "5fe8542f4590e98cbd18349730c9570547192e257259a7241ecf17a42e541b97",
             build_hash,
         )
 

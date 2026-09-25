@@ -121,14 +121,14 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_stage_carries_the_added_sounds_alongside_historical_sounds(self) -> None:
         # The Stage carries the two historical base sounds, then hud_glyphs.py's added
-        # sounds: the "extend" cue, then the six arcade gameplay-SFX cues in name order
-        # (AUDIO; docs/mechanics/040-arcade-sound-cues.md).
+        # sounds: the "extend" cue, then the seven arcade gameplay-SFX cues in name order
+        # (AUDIO; docs/mechanics/040-arcade-sound-cues.md — bonus_flag added for SEC-02, slice 14).
         project = json.loads(hg.PROJECT_PATH.read_text(encoding="utf-8"))
         stage = next(target for target in project["targets"] if target["isStage"])
         names = [sound["name"] for sound in stage["sounds"]]
         self.assertEqual(
             ["Game Start.mp3", "BGM.mp3", "extend", "air_destroy", "bacura",
-             "garu_zakato", "ground_destroy", "sheonite", "zakato"],
+             "bonus_flag", "garu_zakato", "ground_destroy", "sheonite", "zakato"],
             names,
         )
 

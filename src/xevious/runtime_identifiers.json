@@ -204,6 +204,11 @@
       "name": "clone slot",
       "scope": "blaster"
     },
+    "bonus-flag-clone-slot": {
+      "kind": "variable",
+      "name": "bonus flag clone slot",
+      "scope": "bonus-flag"
+    },
     "boza-clone-slot": {
       "kind": "variable",
       "name": "boza clone slot",
@@ -307,6 +312,11 @@
     "eco-first-bonus-5": {
       "kind": "list",
       "name": "first bonus 5",
+      "scope": "Stage"
+    },
+    "eco-flag-awards-craft": {
+      "kind": "variable",
+      "name": "flag awards craft",
       "scope": "Stage"
     },
     "eco-high-score": {

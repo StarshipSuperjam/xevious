@@ -389,6 +389,11 @@
       "name": "bacura",
       "generator_version": 1
     },
+    "bc057a046ad0628da56171dda196976e.wav": {
+      "kind": "game_sound",
+      "name": "bonus_flag",
+      "generator_version": 1
+    },
     "16c42ba9bdcbdb001971e90d341a6382.wav": {
       "kind": "game_sound",
       "name": "garu_zakato",

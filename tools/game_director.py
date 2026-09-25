@@ -806,6 +806,15 @@ UPDATE_BARRA_PROCCODE = "update barra"
 # in the RISEN phase (a live 2x2 target). A second bomb (HIT while RISEN) craters PERSISTENTLY exactly like a
 # Barra (sol_tower_risen -> handle_bomb_explosion). Delegates to the shared `advance ground` scroller.
 UPDATE_SOL_TOWER_PROCCODE = "update sol tower"
+# SEC-02 (secrets.bonus-flag #91) + ECO-03 (economy.bonus-flag-award #92): the per-tick update for a Bonus
+# Flag — a hidden Special Flag scheduled invisible with a randomized lateral column. While HIDDEN it is an
+# invisible ACTIVE idle that just scrolls; a bomb (the SHARED ground detector -> HIT, scores its 1,000 via
+# `slot pts`, exactly like any bombed ground object) REVEALS it. The port keeps the revealed flag in the HIT
+# state (so the ACTIVE-only detector never re-scores it — the arcade's `_STATE==3` dodging the `==2` gate) and
+# flips `slot flag` HIDDEN -> REVEALED. Once revealed it is collected by flying the CRAFT over it (proximity,
+# NOT a weapon — check_flag_collected), which awards the cabinet's choice (an extra craft OR 10,000 points),
+# plays the flag sound, and removes it. Delegates to the shared `advance ground` scroller in every phase.
+UPDATE_BONUS_FLAG_PROCCODE = "update bonus flag"
 # GND (ground.barra #70): the per-tick update for a Garu Barra — a two-slot object. Both the
 # indestructible 2x2 base (state sentinel SLOT_GARU_BASE) and the destructible node (state ACTIVE)
 # scroll with the terrain; the ONLY per-state difference is the node's death: when the node is bombed
@@ -1313,6 +1322,7 @@ TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during t
 # own slices, so an add_ground_object record for an unbuilt type advances the cursor without spawning.
 BARRA_TYPE = 30  # 0x1E, handle_1E_Barra: passive terrain target, never fires, crater on death
 SOL_TOWER_TYPE = 29  # 0x1D, handle_1D_Sol_Tower: hidden citadel — reveal, rise, destroy; 2 scoring stages (SEC-01)
+BONUS_FLAG_TYPE = 84  # 0x54, handle_54_Bonus_Flag: hidden Special Flag — bomb to reveal (+1000), fly over to collect (SEC-02)
 ZOLBAK_TYPE = 31  # 0x1F, handle_1F_Zolbak: passive dome; on death reduces the enemy AI level by 2 (GND-02)
 GARU_BARRA_TYPE = 32  # 0x20, handle_20_Garu_Barra: indestructible base + destructible node (Commit 6)
 LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at full-open (Commit 7)
@@ -1386,6 +1396,7 @@ GROUND_HANDLED_TYPES = (
     BOZA_LOGRAM_TYPE,
     *GROBDA_TYPES,
     DOMOGRAM_TYPE,
+    BONUS_FLAG_TYPE,
 )
 # GND-07 (ground.domogram #89): the path-driven "Defence Site/Slider" — the first ground family that BOTH
 # moves under its own velocity AND fires. All source-exact from handle_2E_Domogram (xevious_main.68k 4620-4692):
@@ -1445,6 +1456,12 @@ DEBUG_GROUND_FAMILIES = (
     # shot per animation, then bomb for the land crater. The debug seed uses an empty path + a representative
     # diagonal vector (the scheduled path decode is exercised by the round-trip golden and the harness).
     (DOMOGRAM_TYPE, "domogram"),
+    # SEC-02 (secrets.bonus-flag #91): a single hidden Bonus Flag the operator can bomb to reveal (+1,000) and
+    # then collect by flying the craft over it (extra craft or 10,000 by the cabinet DIP). Its own "flag" shape
+    # draws the lateral column from the SHARED random stream (gen_rnd_spriteY), unlike the fixed-column single
+    # shape, so the seeded-placement behaviour is exercised. The full add_object schedule path is a documented
+    # follow-up (like the Garu Zakato) — the debug key is the flag's playtest path this slice.
+    (BONUS_FLAG_TYPE, "flag"),
 )
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
@@ -1520,6 +1537,37 @@ SOL_RISEN_PHASE = 2  # `slot flag`: fully risen, a live 2x2 bombable target (des
 SOL_RISE_PHASE_FRAMES = 16  # arcade frames per rise step (arcade `_TIMER >> 4`)
 SOL_RISE_STEP_COUNT = 7  # steps 0..6 render a rise frame; step 7 => risen (arcade `cmp #7,d0 -> sol_tower_risen`)
 SOL_RISE_BIG_STEP = 4  # size doubles to 2x2 from this step (arcade `cmp #4,d0 -> _ATTR=3`)
+
+# SEC-02 Bonus Flag (secrets.bonus-flag #91; handle_54_Bonus_Flag / reveal_bonus_flag / score_bonus_flag /
+# remove_bonus_flag / check_flag_collected, xevious_main.68k 3131-3188) + ECO-03 (economy.bonus-flag-award #92).
+# The hidden Special Flag: scheduled invisible (`_CODE=0`), 1x1, at a RANDOMIZED lateral column (gen_rnd_spriteY,
+# 3134), value 1,000 (`_PTS=48`). It stays an invisible ACTIVE idle that scrolls until BOMBED: the flag rides the
+# SAME ground-bomb award loop as every ground object (handle_bombed_obj_and_award_points 2597-2627 sweeps all 16
+# ground slots; check_object_on_target 2629-2640 gates on `_STATE==2`), so a bomb on the on-target flag scores
+# its 1,000 AND plays GROUND_EXPLOSION_SND AND sets `_STATE==3`, all one hit. The next tick handle_54 sees
+# `_STATE==3` and jumps to reveal_bonus_flag (3148: `_CODE=0x1f` visible). `_STATE==3` dodges the award loop's
+# `==2` gate, so a second bomb can NOT re-score it. The port carries the arcade's saved-PC idle/revealed
+# continuation explicitly in `slot flag` (FLAG_HIDDEN / FLAG_REVEALED) and keeps the revealed flag in the HIT
+# state so the port's ACTIVE-only ground detector likewise never re-scores it:
+#   HIDDEN (0) & ACTIVE -> invisible idle; the shared ground detector reveals+scores it on a bomb (-> HIT).
+#   HIDDEN (0) & HIT    -> the reveal tick: the update flips `slot flag` to REVEALED and KEEPS state HIT.
+#   REVEALED (1) & HIT  -> visible flag; each tick check the craft fly-over (check_flag_collected); collect awards
+#                          + plays the flag sound + removes it; else it scrolls on (and eventually culls uncaught).
+# The reveal's 1,000 is scored by the shared detector from `slot pts` (BONUS_FLAG_PTS) — the update adds no score.
+BONUS_FLAG_PTS = 17  # 1-based value-table position of 1,000 points (handle_54_Bonus_Flag _PTS=48; == DEROTA_PTS)
+FLAG_HIDDEN_PHASE = 0  # `slot flag`: hidden invisible idle (pre-reveal)
+FLAG_REVEALED_PHASE = 1  # `slot flag`: revealed, awaiting craft fly-over collection (held in the HIT state)
+# ECO-03 award (score_bonus_flag 3158): the cabinet DIP `dswb` bit 1 selects the collection award — set =>
+# inc_num_solvalou (an extra craft, NO score), clear => 10,000 points (score_10000_for_bonus_flag_tank via
+# pts_10000, a RAW value, not a value-table position). The port has no raw-DIP-bit model, so this is a RUNTIME
+# stage variable (`flag awards craft`, 0/1) — a runtime read of the DIP, faithful to the arcade `btst`, and it
+# keeps BOTH arcade-real award branches live in the build so each can be exercised (the harness flips it). Its
+# DEFAULT is a four-marker placeholder (like RNG_COLD_START_SEED / DIFFICULTY_DIP_INDEX): the arcade cabinet's
+# power-on DIP position is not attested, so only the MECHANISM (a DIP selecting one of the two awards) is a
+# fidelity claim, not which one a given cabinet defaults to. Recorded in docs/mechanics/044.
+FLAG_AWARDS_CRAFT_ID = "eco-flag-awards-craft"
+FLAG_AWARDS_CRAFT_DEFAULT = 1  # placeholder DIP default: extra craft (dswb bit 1 set). NOT a fidelity claim.
+BONUS_FLAG_TANK_POINTS = 10000  # score_10000_for_bonus_flag_tank: the raw 10,000-point award (pts_10000, 3162)
 
 # GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
 # SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
@@ -1948,6 +1996,16 @@ SOL_TOWER_RISE_BASE_ORDINAL = 1  # costume 1: rise step 0 (rise ordinal = base +
 SOL_TOWER_RISEN_ORDINAL = SOL_TOWER_RISE_FRAME_COUNT  # costume 7: the fully-risen citadel (rise step 6)
 SOL_TOWER_EXPLODE_BASE_ORDINAL = SOL_TOWER_RISE_FRAME_COUNT + 1  # 8..: the shared explosion burst
 SOL_TOWER_CRATER_BASE_ORDINAL = SOL_TOWER_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 16: crater frames follow
+
+# SEC-02 (secrets.bonus-flag #91) renderer constants. Like every ground family, one persistent clone per GROUND
+# slot (1..16), a pure per-tick function of its slot state. A Bonus Flag has NO explosion or crater: bombing it
+# REVEALS it (the flag stays whole and visible), and collecting it just removes it — so its target holds ONLY the
+# single flag costume (bonus-flag/flag/01, arcade sprite code 0x1f), no shared burst/crater append (the Bacura /
+# Sheonite mirror model). It is drawn only while REVEALED (`slot flag` == FLAG_REVEALED); a HIDDEN flag is
+# invisible, exactly the arcade's `_CODE=0` pre-reveal.
+BONUS_FLAG_TARGET = "bonus-flag"
+BONUS_FLAG_CLONE_SLOT_ID = "bonus-flag-clone-slot"  # sprite-local: which ground slot this clone renders
+BONUS_FLAG_ORDINAL = 1  # costume 1: the revealed flag (bonus-flag/flag/01)
 
 # GND-02 (ground.zolbak #85) renderer constants. A Zolbak renders EXACTLY like a Barra — an idle dome
 # that craters on a bomb hit — so its costume layout mirrors the Barra target: 1 = the idle dome
@@ -3256,6 +3314,13 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(SOL_TOWER_TYPE)),
         [blocks.call_proc(UPDATE_SOL_TOWER_PROCCODE, warp=True)],
     )
+    # SEC-02 (secrets.bonus-flag #91) + ECO-03 (#92): the hidden Special Flag wraps `advance ground` with its
+    # reveal (HIT while HIDDEN) and fly-over collection (HIT while REVEALED) phase logic (`update bonus flag`),
+    # scrolling with the terrain in every phase and culling off-field like any ground object.
+    bonus_flag_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BONUS_FLAG_TYPE)),
+        [blocks.call_proc(UPDATE_BONUS_FLAG_PROCCODE, warp=True)],
+    )
     garu_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_BARRA_TYPE)),
         [blocks.call_proc(UPDATE_GARU_PROCCODE, warp=True)],
@@ -3299,7 +3364,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(DOMOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_DOMOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -3323,13 +3388,23 @@ def _cur_col(blocks: Blocks) -> str:
     return blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot y", SLOT_Y_ID), number(SLOT_UNITS_PER_CELL)))
 
 
-def _craft_overlap_reporter(blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FLYING) -> str:
+def _craft_overlap_reporter(
+    blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FLYING, lateral_craft_minus_obj: bool = False
+) -> str:
     """PLY-02: boolean — does the current slot (`slot index`) overlap the craft's cell within `window`
     (default HIT_WINDOW_BULLET_FLYING, the shared flying/bullet box)? The craft is placed at player
     row/col scaled to shadow half-px (cell-quantized); the object is floored to its shadow MSB. Y is
     the scroll axis, X the lateral, matching the reference's byte compare. AIR-11 (air.bacura) passes
     the wider HIT_WINDOW_BACURA — the reference's `check_bacura_hit_solvalou` (2225-2237) uses the same
-    compare against a larger box than the flying/bullet check."""
+    compare against a larger box than the flying/bullet check.
+
+    The scroll-axis delta is always craft - obj. The lateral delta is obj - craft by DEFAULT, which is
+    what `check_bacura_hit_solvalou` (2233-2234, `objectX - solvalouX`) and the flying/bullet check use.
+    SEC-02 `check_flag_collected` (3184-3187) instead computes the lateral as `solvalouX - flagX` — craft
+    - obj — so the Bonus Flag passes `lateral_craft_minus_obj=True`. The window's asymmetric lateral bound
+    ([-x_bias, x_width-x_bias-1]) makes this sign matter, so the flag reproduces the reference exactly
+    rather than inheriting the Bacura sign (verified against the pinned source: the two routines genuinely
+    differ on the lateral direction)."""
     y_bias, y_width, x_bias, x_width = window
     dy_low, dy_high = -y_bias, y_width - y_bias - 1
     dx_low, dx_high = -x_bias, x_width - x_bias - 1
@@ -3342,10 +3417,12 @@ def _craft_overlap_reporter(blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FL
         blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SHADOW_PER_CELL)),
         sh(_cur_item(blocks, "slot x", SLOT_X_ID)),
     )
-    d_x = lambda: blocks.op_sub(
-        sh(_cur_item(blocks, "slot y", SLOT_Y_ID)),
-        blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SHADOW_PER_CELL)),
-    )
+    craft_col = lambda: blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SHADOW_PER_CELL))
+    obj_col = lambda: sh(_cur_item(blocks, "slot y", SLOT_Y_ID))
+    if lateral_craft_minus_obj:
+        d_x = lambda: blocks.op_sub(craft_col(), obj_col())
+    else:
+        d_x = lambda: blocks.op_sub(obj_col(), craft_col())
     hit_y = blocks.op_and(
         blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
         blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
@@ -3969,6 +4046,92 @@ def install_update_sol_tower(blocks: Blocks) -> None:
     blocks.blocks[is_hit]["parent"] = top
     blocks.substack(top, [hit_inner])
     # ACTIVE (HIDDEN idle or RISEN idle): just the shared terrain scroll + off-field cull.
+    blocks.substack(top, [advance()], name="SUBSTACK2")
+    blocks.chain(definition, [top])
+
+
+def install_update_bonus_flag(blocks: Blocks) -> None:
+    # SEC-02 / secrets.bonus-flag (#91) + ECO-03 / economy.bonus-flag-award (#92): one tick of a Bonus Flag at
+    # `slot index`, mirroring handle_54_Bonus_Flag / reveal_bonus_flag / score_bonus_flag / remove_bonus_flag /
+    # check_flag_collected (xevious_main.68k 3131-3188). The arcade encodes the idle/revealed re-entry as a
+    # saved PC; the port carries it in `slot flag` (FLAG_HIDDEN / FLAG_REVEALED). Like every ground family it
+    # always scrolls with the terrain and culls off-field (the shared `advance ground`); the reveal/collect
+    # logic layers on top:
+    #   * ACTIVE (not hit): a HIDDEN invisible idle — just scroll (the arcade's `scroll_sprite_X; add_obj_handler`
+    #     on a non-hit tick). The shared ground detector is what turns a bombed HIDDEN flag ACTIVE->HIT and scores
+    #     its 1,000 from `slot pts` — this update adds NO score of its own for the reveal.
+    #   * HIT: the flag was bombed. Two cases by `slot flag`:
+    #       - HIDDEN => the reveal tick (arcade handle_54 sees `_STATE==3` and jumps to reveal_bonus_flag): flip
+    #         `slot flag` to REVEALED and KEEP the slot in the HIT state, so the ACTIVE-only detector never scores
+    #         it again (the arcade's `_STATE==3` dodging the award loop's `==2` gate). Then scroll.
+    #       - REVEALED => reveal_bonus_flag's per-tick body: test the craft fly-over (check_flag_collected via
+    #         `_craft_overlap_reporter`, proximity NOT a weapon). Collected => award the DIP choice (ECO-03: an
+    #         extra craft OR 10,000 points), play BONUS_FLAG_SND, and remove the flag (cull the slot); else scroll
+    #         on (a revealed-but-uncollected flag keeps scrolling and eventually culls off-field, uncaught).
+    definition = _install_warp_proc(blocks, UPDATE_BONUS_FLAG_PROCCODE)
+    advance = lambda: blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)
+
+    # ECO-03 collection award (score_bonus_flag 3158): `dswb` bit 1 — the runtime `flag awards craft` flag —
+    # selects the award. Both arms then fall through to remove_bonus_flag (the flag sound + slot free).
+    #   craft: inc_num_solvalou (3166) adds a craft and refreshes the lives HUD; it plays NO score and NO jingle
+    #          (the "extend" jingle is the score-threshold bonus life only), so this is craft+1 + "craft changed".
+    #   points: score_10000_for_bonus_flag_tank (3161) adds the RAW 10,000 (pts_10000), routed through the single
+    #          `score` path so the cap / high-score / threshold-bonus-life checks all still apply.
+    award_craft = [
+        blocks.change_var("craft", LIVES_ID, 1),
+        blocks.send("craft changed"),
+    ]
+    award_points = [
+        blocks.set_var("award value", AWARD_VALUE_ID, number(BONUS_FLAG_TANK_POINTS)),
+        blocks.call_proc(SCORE_PROCCODE, warp=True),
+    ]
+    award = blocks.add("control_if_else")
+    awards_craft = blocks.op_eq(
+        variable("flag awards craft", FLAG_AWARDS_CRAFT_ID), number(1)
+    )
+    blocks.blocks[award]["inputs"]["CONDITION"] = [2, awards_craft]
+    blocks.blocks[awards_craft]["parent"] = award
+    blocks.substack(award, award_craft)
+    blocks.substack(award, award_points, name="SUBSTACK2")
+    collect = [
+        award,
+        # AUDIO: BONUS_FLAG_SND on collection (src xevious_main.68k:3174). Stage-owned sound.
+        blocks.play_sound("bonus_flag"),
+        blocks.call_proc(CULL_SLOT_PROCCODE, warp=True),
+    ]
+
+    # REVEALED & HIT: fly-over collection. check_flag_collected uses the craft-minus-obj lateral sign (see
+    # `_craft_overlap_reporter`), against HIT_WINDOW_BOMB_GROUND (10,20,5,10) — the flag's own proximity box.
+    collected_if = blocks.add("control_if_else")
+    overlap = _craft_overlap_reporter(
+        blocks, HIT_WINDOW_BOMB_GROUND, lateral_craft_minus_obj=True
+    )
+    blocks.blocks[collected_if]["inputs"]["CONDITION"] = [2, overlap]
+    blocks.blocks[overlap]["parent"] = collected_if
+    blocks.substack(collected_if, collect)
+    blocks.substack(collected_if, [advance()], name="SUBSTACK2")
+
+    # HIDDEN & HIT: the reveal tick — flip to REVEALED, keep HIT (no re-score), scroll.
+    reveal_body = [
+        _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(FLAG_REVEALED_PHASE)),
+        advance(),
+    ]
+
+    hit_inner = blocks.add("control_if_else")
+    is_revealed = blocks.op_eq(
+        _cur_item(blocks, "slot flag", SLOT_FLAG_ID), number(FLAG_REVEALED_PHASE)
+    )
+    blocks.blocks[hit_inner]["inputs"]["CONDITION"] = [2, is_revealed]
+    blocks.blocks[is_revealed]["parent"] = hit_inner
+    blocks.substack(hit_inner, [collected_if])
+    blocks.substack(hit_inner, reveal_body, name="SUBSTACK2")
+
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [hit_inner])
+    # ACTIVE (HIDDEN invisible idle): just the shared terrain scroll + off-field cull.
     blocks.substack(top, [advance()], name="SUBSTACK2")
     blocks.chain(definition, [top])
 
@@ -7756,6 +7919,35 @@ def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str
                 number(DOMOGRAM_VECTOR_DY[DOMOGRAM_DEBUG_VECTOR_INDEX]),
             ),
         ]
+    if shape == "flag":
+        # SEC-02 (secrets.bonus-flag #91): the Bonus Flag spawns through the arcade `add_object` path, not
+        # `add_ground_object`, so it has NO fixed lateral column. handle_54_Bonus_Flag ($1F5C) inits it via
+        # gen_rnd_spriteY — a craft-excluding random lateral, exactly _draw_spawn_column(exclude_craft=True) —
+        # then CODE=0 (invisible) and points to the reveal on the next tick. The port models it as a single
+        # ground slot that scrolls hidden until a bomb reveals+scores it (shared ground detector) and is then
+        # collected by fly-over (`update bonus flag`). Seed it here through the SAME bounded random-lateral draw
+        # the flying spawners use (writing `slot y` at `slot index`), then — ONLY if the draw accepted a column
+        # (`spawn found`, so a rejected/exhausted draw leaves the band empty to retry next tick) — stamp the
+        # slot ACTIVE + HIDDEN phase, x=0 (top of field, scrolled DOWN by `advance ground`), the 1,000-pt value
+        # the shared detector scores at reveal, timer zeroed. `slot index` is set here because _draw_spawn_column
+        # and the stamp both address the current slot; the walk has already finished when the debug spawn runs.
+        reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=True)
+        return [
+            blocks.set_var("slot index", SLOT_INDEX_ID, number(base)),
+            *reset,
+            draw_loop,
+            blocks.if_reporter(
+                blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+                [
+                    _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(family_type)),
+                    _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+                    _set_cur_item(blocks, "slot x", SLOT_X_ID, number(0)),
+                    _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(FLAG_HIDDEN_PHASE)),
+                    _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(BONUS_FLAG_PTS)),
+                    _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+                ],
+            ),
+        ]
     raise ValueError(f"unknown debug ground seed shape: {shape!r}")
 
 
@@ -8276,6 +8468,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_advance_ground_moving(blocks)
     install_update_barra(blocks)
     install_update_sol_tower(blocks)
+    install_update_bonus_flag(blocks)
     install_update_garu(blocks)
     install_update_logram(blocks)
     install_update_zolbak(blocks)
@@ -9871,6 +10064,88 @@ def sol_tower_blocks() -> dict[str, dict[str, Any]]:
             blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
             # WPN-04 layering: a ground object sits ON the terrain, under the craft and bomb sight — leave it
             # unfronted (its static layerOrder is already above the terrain strips) exactly like the Barra.
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
+def bonus_flag_blocks() -> dict[str, dict[str, Any]]:
+    # SEC-02 Bonus Flag renderer (game_director owns these blocks; sprite_extractor owns the costume). A
+    # SINGLE persistent clone bound to the one ground slot the flag ever occupies — GROUND_SLOTS[0], the
+    # arcade obj slot 0x00 — a pure per-tick function of that slot's live state. The clone writes no state.
+    #
+    # Unlike the full-band families (Sol Tower, Barra, ...), the Bonus Flag is NOT a per-slot pool: the
+    # arcade `add_object` handler (sub_2_fb_0__type_only, xevious_sub.68k:649) stamps the flag's _TYPE at a
+    # fixed obj offset, and every scheduled flag record targets obj slot 0x00 (area-schedules areas 1/3/5/7,
+    # one flag each, never concurrent); the debug seed stamps the same GROUND_SLOTS[0] slot. So one clone is
+    # both faithful (the flag can live nowhere else) and necessary: a 16-clone pool would reserve 15 clones
+    # for slots the flag never occupies, and the port's ground families already sit at scratch-vm's hard
+    # 300-clone ceiling — those 15 phantom clones starved the player blaster (harness `shot-cap-ceiling`).
+    #
+    # The flag has a single visible costume (bonus-flag/flag/01, the arcade CODE=0x1f sprite) and only ONE
+    # visible phase: `slot flag` == FLAG_REVEALED. handle_54_Bonus_Flag keeps the flag CODE=0 (invisible) while
+    # HIDDEN and only sets CODE=0x1f in reveal_bonus_flag once a bomb has hit it. `update bonus flag` flips
+    # HIDDEN -> REVEALED on the reveal tick BEFORE this renderer runs (same ordering the Sol Tower relies on),
+    # so a bombed flag is already REVEALED here; an un-bombed flag stays HIDDEN and invisible; a collected flag
+    # has had its slot culled (type 0). So the flag is drawn exactly when its slot holds a Bonus Flag in the
+    # REVEALED phase. No rise, no burst, no crater: reveal shows the whole flag, collection just removes it.
+    blocks = Blocks(BONUS_FLAG_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("bonus flag clone slot", BONUS_FLAG_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    # A single clone bound to GROUND_SLOTS[0] (the flag's only slot) — see the header note. The clone slot
+    # var is sprite-local, so the one clone captures GROUND_SLOTS[0] at clone time.
+    spawn_body = [
+        blocks.set_var("bonus flag clone slot", BONUS_FLAG_CLONE_SLOT_ID, number(GROUND_SLOTS[0])),
+        blocks.create_clone(),
+    ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    # Terrain-locked position — identical cell->stage mapping to every family renderer.
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # Drawn only for a Bonus Flag slot in the REVEALED phase (bombed, awaiting fly-over collection).
+    visible = blocks.op_and(
+        blocks.op_eq(
+            blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(BONUS_FLAG_TYPE)
+        ),
+        blocks.op_eq(
+            blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(FLAG_REVEALED_PHASE)
+        ),
+    )
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, visible]
+    blocks.blocks[visible]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            # A single fixed costume, so switch by name (the direct tool for a constant).
+            blocks.switch_costume("bonus-flag/flag/01"),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            # WPN-04 layering: sits ON the terrain, under the craft and bomb sight — leave it unfronted, its
+            # static layerOrder already above the terrain strips, exactly like the Sol Tower.
             blocks.show(),
         ],
     )
@@ -11799,6 +12074,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, SHEONITE_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
     _ensure_gameplay_target(result, SOL_TOWER_TARGET)
+    _ensure_gameplay_target(result, BONUS_FLAG_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
     _ensure_gameplay_target(result, ZOLBAK_TARGET)
@@ -11932,6 +12208,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             sol_tower["costumes"].extend(copy.deepcopy(death["costumes"]))
         sol_tower["costumes"].extend(proof_by_family("crater/"))
         sol_tower["currentCostume"] = 0
+    # SEC-02 (secrets.bonus-flag #91): the Bonus Flag renderer mirrors its single revealed-flag frame
+    # (ordinal 1; bonus-flag/flag/01, the arcade CODE=0x1f sprite) — and NOTHING else. Like the Bacura and
+    # Sheonite the flag is never destroyed on screen: a bomb REVEALS it whole (no burst) and a fly-over just
+    # removes it, so it appends NO shared solv_death burst and no crater. Idempotent; a no-op when the proof
+    # source is absent (generation runs to a fixpoint).
+    bonus_flag = next((t for t in result["targets"] if t.get("name") == BONUS_FLAG_TARGET), None)
+    if proof is not None and bonus_flag is not None:
+        bonus_flag["costumes"] = proof_by_family("bonus-flag/")
+        bonus_flag["currentCostume"] = 0
     # GND-01: the Garu Barra renderer mirrors its two 2x2 base frames (ordinals 1..2; the exposed base holds
     # ordinal 2, the red socket — ordinal 1 is retained as a crop but not rendered), then the node
     # idle pyramid (ordinal 3, "garu/node reuses the Barra pyramid" -> the barra/idle frame mirrored in),
@@ -12156,6 +12441,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # the DIP tables on a world reset).
         LIVES_ID: ["craft", 0],
         NEXT_BONUS_ID: ["next bonus", 0],
+        # ECO-03 (economy.bonus-flag-award #92): the Bonus Flag award selector — the port's stand-in for the
+        # arcade `dswb` bit 1 (score_bonus_flag 3159). A RUNTIME stage variable (not a build-time constant) so
+        # both arcade-real award arms stay live and the harness can flip it; default extra-craft is the
+        # four-marker placeholder DIP position (FLAG_AWARDS_CRAFT_DEFAULT), not a fidelity claim.
+        FLAG_AWARDS_CRAFT_ID: ["flag awards craft", FLAG_AWARDS_CRAFT_DEFAULT],
         # ECO-04: the best-five verdict, recorded (never a sprite write) when the game over
         # complete receiver runs, and reset only on a world reset (cold-start/new-game).
         QUALIFIED_ID: ["qualified", 0],
@@ -12414,6 +12704,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "sheonite": sheonite_blocks(),
         "barra": barra_blocks(),
         "sol-tower": sol_tower_blocks(),
+        "bonus-flag": bonus_flag_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
         "zolbak": zolbak_blocks(),
@@ -12543,6 +12834,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # clone draws; the phase, rise step and crater clock live in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 SOL_TOWER_CLONE_SLOT_ID: ["sol tower clone slot", 0],
+            }
+        elif target["name"] == BONUS_FLAG_TARGET:
+            # SEC-02 (secrets.bonus-flag #91): likewise, the only Bonus Flag render state is which GROUND slot
+            # each clone draws; the reveal phase lives in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                BONUS_FLAG_CLONE_SLOT_ID: ["bonus flag clone slot", 0],
             }
         elif target["name"] == GARU_TARGET:
             # GND-01: likewise, the only Garu render state is which GROUND slot each clone draws.

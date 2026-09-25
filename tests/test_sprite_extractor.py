@@ -29,9 +29,10 @@ class SpriteExtractorTests(unittest.TestCase):
         # — 1 Zolbak idle dome (GND-02), 1 Derota idle turret + 2 Garu Derota base pulse frames (GND-04) —
         # and the slice-13 additions — 1 Boza centre core (GND-05; the four outers reuse the Logram crops),
         # 4 Grobda tank tread frames (GND-06; the 12 variants share one tread set), and 4 Domogram idle
-        # frames (GND-07; the scripted-path shooter's own sprite set)), plus the slice-14 addition —
-        # 7 Sol Tower rise frames (SEC-01; the destroy stage reuses the shared explosion burst + crater).
-        self.assertEqual(88, count)
+        # frames (GND-07; the scripted-path shooter's own sprite set)), plus the slice-14 additions —
+        # 7 Sol Tower rise frames (SEC-01; the destroy stage reuses the shared explosion burst + crater) and
+        # 1 Bonus Flag revealed-flag frame (SEC-02; reveal shows the flag whole, so no burst crop of its own).
+        self.assertEqual(89, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -198,7 +199,10 @@ class SpriteExtractorTests(unittest.TestCase):
             # crops by ref, so only the centre core adds a new proof crop.
             + ["boza-centre/core/01"]
             # GND-07 (slice 13) ground.domogram: the scripted-path shooter's own idle sprite set (4 frames).
-            + [f"domogram/idle/{index:02d}" for index in range(1, 5)],
+            + [f"domogram/idle/{index:02d}" for index in range(1, 5)]
+            # SEC-02 (slice 14) secrets.bonus-flag: the Special Flag's single revealed-flag crop (the arcade
+            # CODE=0x1f sprite); reveal shows the flag whole and collection just removes it, so no burst crop.
+            + ["bonus-flag/flag/01"],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])
