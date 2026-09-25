@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "131c69524cc61cb76a7b50080aec7bdda3167f4227506d68f8fbd26af7541541",
+  "manifest_sha256": "8060085b573f9aada89c010bed2e5535160c11be8824cf00502e97194dce8d46",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1730,11 +1730,35 @@
         8
       ],
       "generator_version": 1
+    },
+    "7b9b4b7c2c032e152d2cc0bfac70e75f.png": {
+      "frame": "boza-centre/core/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        22,
+        230,
+        13,
+        13
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "c283bc36d29d64b71b941cf77526dd951bf0bd49f5d6dbeab518293c6f93ed5a",
+    "sha256": "83392e52a710ccce8a29569b2ed8bee607e48ab6a0cbd31be62418247f1776ae",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -1807,7 +1831,8 @@
       "sheonite/combine/03",
       "sheonite/combine/04",
       "sheonite/combine/05",
-      "sheonite/combine/06"
+      "sheonite/combine/06",
+      "boza-centre/core/01"
     ]
   }
 }

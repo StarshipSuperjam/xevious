@@ -833,6 +833,17 @@
       "family": "sheonite",
       "animation": "combine",
       "duration_frames": 1
+    },
+    {
+      "name": "boza-centre/core/01",
+      "sheet": "ground_enemies",
+      "rect": [22, 230, 13, 13],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "boza-centre",
+      "animation": "core",
+      "duration_frames": 1
     }
   ]
 }

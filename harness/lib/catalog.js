@@ -2514,6 +2514,155 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
   },
   {
+    key: 'debug-ground-key-cycles-families',
+    behavior:
+      'The temporary debug ground key (G) stamps a built GROUND family into the band through the shared ground seed builders and, spawn by spawn, advances its family cursor through every built ground family (self-extending as later ground families are built), so each can be cycled to for a bomb playtest (tracked for removal, #119)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The G key is the ground analog of the T key. Family PRESENCE alone cannot make the negative bite — the
+      // area schedule scrolls ground families in on its own — so isolate the debug tool two ways: (1) suppress
+      // every SCHEDULED ground spawn (empty the schedule's ground-type column) so the ONLY ground objects that
+      // can appear are the debug key's, and (2) watch the debug-specific, pacing-invariant signal —
+      // `debug ground index`, which advances one step per FRESH debug ground spawn and wraps mod
+      // len(DEBUG_GROUND_FAMILIES) (game_director.py install_debug_ground_spawn); normal play never touches it.
+      // The exact residue→family binding is pinned in game_director.py (DEBUG_GROUND_FAMILIES); this scenario
+      // proves the cursor drives the whole cycle at runtime and that a fresh spawn actually stamps the band.
+      //
+      // The cursor only advances on a FRESH spawn — i.e. when the ground band is empty (the tool stamps one
+      // family, then defers until it scrolls off). Ground objects always scroll DOWN and cull off the field, so
+      // this never stalls; but to sweep the whole cycle quickly we clear the ground band (JS slots 0..15)
+      // ourselves each frame to reopen the field-empty gate. That does NOT drive the schedule (suppressed
+      // above): only the debug tool ever stamps ground or writes the cursor. How far the cursor jumps between
+      // samples varies (a family may cull within one settling), so we loop until the residues form a complete
+      // contiguous run 0..max that reaches the last built family; a new family just pushes max up, no threshold
+      // to re-tune.
+      suppressGroundSpawns(vm);
+      keyDown(vm, 'g');
+      const cursors = new Set([readVar(vm, 'debug-ground-index')]);
+      let anyGround = false;
+      let maxCursor = 0;
+      const LAST = 6; // Boza Logram is the 7th built ground family (index 6); self-extends as more are built
+      for (let i = 0; i < 600; i += 1) {
+        const slotType = readVar(vm, 'slot-type');
+        const slotState = readVar(vm, 'slot-state');
+        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
+        step(vm, 1);
+        const cursor = readVar(vm, 'debug-ground-index');
+        cursors.add(cursor);
+        if (cursor > maxCursor) maxCursor = cursor;
+        const type = readVar(vm, 'slot-type');
+        for (let s = 0; s < 16; s += 1) if (type[s] !== 0) anyGround = true;
+        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>= 6).
+        if (cursors.size === maxCursor + 1 && maxCursor >= LAST) break;
+      }
+      keyUp(vm, 'g');
+      const contiguous = cursors.size === maxCursor + 1;
+      return { distinctCursors: cursors.size, maxCursor, contiguous, anyGround };
+    },
+    assert(obs) {
+      assert.equal(obs.anyGround, true, 'holding the debug ground key stamps a ground family into the band');
+      assert.ok(obs.contiguous, `the debug ground cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
+      assert.ok(
+        obs.maxCursor >= 6,
+        `the debug ground cycle self-extends through every built ground family (residues 0..6: Barra, Zolbak, Garu Barra, Logram, Derota, Garu Derota, Boza Logram); reached ${obs.maxCursor}`,
+      );
+    },
+    // Empty `debug ground spawn` so the key never stamps or advances → `debug ground index` stays 0 →
+    // maxCursor == 0 and no ground ever appears (the schedule is suppressed) → both the self-extension
+    // (>= 6) and the anyGround assertions bite (normal play never touches the cursor, so nothing masks it).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
+  },
+  {
+    key: 'debug-ground-key-isolates-normal-enemies',
+    behavior:
+      'While the temporary debug ground key (G) is held it isolates the ground family under test (parity with the T aerial key): the normal flying-formation stream is suppressed — the formation-wave count is pinned at 0 and the flying band is cleared every tick — so no normal enemies enter the screen and the operator can focus on the ground family alone (tracked for removal, #119)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // The operator's report: holding G still let normal flying waves pour in. The fix makes the G proc
+      // suppress the flying stream every tick it is held (game_director.py install_debug_ground_spawn: zero
+      // `formation count`, clear the flying band) so the spawner below it brings in nothing. Prove it by
+      // holding G through a long window in which normal play WOULD spawn flying enemies — the T-key scenario
+      // (debug-key-cycles-families) measures every flying type appearing within ~80 settling steps with no key
+      // held — and asserting the flying band NEVER populates. We clear the GROUND band each frame only so the
+      // debug tool keeps cycling; that never drives the flying spawner (only the schedule/spawner does, and G
+      // pins its count to 0). Deliberately NO suppressGroundSpawns: the normal stream must stay live so the
+      // negative (which strips the suppression) actually spawns and the assertion can bite.
+      keyDown(vm, 'g');
+      let anyFlying = false;
+      for (let i = 0; i < 140; i += 1) {
+        const slotType = readVar(vm, 'slot-type');
+        const slotState = readVar(vm, 'slot-state');
+        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
+        step(vm, 1);
+        const type = readVar(vm, 'slot-type');
+        if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
+      }
+      const formationCount = readVar(vm, 'formation-count');
+      keyUp(vm, 'g');
+      return { anyFlying, formationCount };
+    },
+    assert(obs) {
+      assert.equal(
+        obs.anyFlying,
+        false,
+        'while G is held no normal flying enemy ever enters the flying band (the normal stream is isolated)',
+      );
+      assert.equal(
+        obs.formationCount,
+        0,
+        'while G is held the formation-wave count is pinned at 0 so the flying spawner brings in nothing',
+      );
+    },
+    // Empty `debug ground spawn` so the flying-stream suppression that lives inside it (the formation-count
+    // zero + flying-band clear) is gone → the normal schedule spawns flying formations again within the
+    // window → anyFlying becomes true → the isolation assertion bites. Normal play never suppresses the
+    // stream, so nothing masks the mutation.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
+  },
+  {
+    key: 'debug-pause-key-freezes-and-resumes-the-walk',
+    behavior:
+      'The temporary debug pause key (P) is a freeze/resume TOGGLE: a tap freezes the whole tick so the walk stops advancing (letting the operator screenshot a ground-enemy issue), and a second tap resumes it (tracked for removal, #119)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // warm the walk live once so `tick` is advancing
+      // `tick` advances only inside ADVANCE_SLOTS, which runs only while NOT paused (game_director.py wraps
+      // the whole walk-loop body in `if debug paused == 0`, with the pause toggle running first and OUTSIDE
+      // that gate). So a frozen `tick` == a frozen screen. P is a rising-edge TAP toggle, so tapKey (one down
+      // pump, one up pump) flips it exactly once.
+      tapKey(vm, 'p'); // first tap -> paused
+      const paused = readVar(vm, 'debug-paused');
+      const tickAtPause = readVar(vm, 'tick');
+      step(vm, 5); // P no longer held; the walk must stay frozen across every pump
+      const tickWhilePaused = readVar(vm, 'tick');
+      tapKey(vm, 'p'); // second tap -> resume
+      const resumed = readVar(vm, 'debug-paused');
+      step(vm, 3);
+      const tickAfterResume = readVar(vm, 'tick');
+      return { paused, tickAtPause, tickWhilePaused, resumed, tickAfterResume };
+    },
+    assert(obs) {
+      assert.equal(obs.paused, 1, 'a tap of P engages the freeze (debug paused == 1)');
+      assert.equal(
+        obs.tickWhilePaused,
+        obs.tickAtPause,
+        'while frozen the walk does not advance (tick is held across the paused pumps)',
+      );
+      assert.equal(obs.resumed, 0, 'a second tap of P releases the freeze (debug paused == 0)');
+      assert.ok(
+        obs.tickAfterResume > obs.tickAtPause,
+        'after the resume tap the walk advances again (tick climbs)',
+      );
+    },
+    // Empty `debug pause toggle` so a P tap never flips `debug paused` → it stays 0 → the walk runs through
+    // the "paused" pumps → tick advances while we expect it frozen → the freeze assertion bites. (The resume
+    // path is vacuously fine because the walk was never frozen; the freeze assertion is the one that catches.)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug pause toggle'),
+  },
+  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',
@@ -2861,8 +3010,9 @@ export const SCENARIOS = [
       // each area scrolls it consumes add_ground_object records. The families this scenario asserts on
       // first spawn in different areas — Barra (0x1E) in area 1, Logram (0x26) in area 2, Garu Barra
       // (0x20) in area 3 — interleaved with the now-built slice-12 turret/dome families (Zolbak 0x1F,
-      // Derota 0x1B, Garu Derota 0x21), which are in scope, and with the still-out-of-scope slice-13
-      // roster (0x53/0x1D/0x2C/0x2D) that must never reach a slot. The Logram fire mask (record 2,
+      // Derota 0x1B, Garu Derota 0x21) and the now-built Boza Logram (0x2D, GND-05), which are in scope,
+      // and with the still-out-of-scope slice-13 roster (Grobda 0x2C / Domogram 0x2E and their variants)
+      // that must never reach a slot. The Logram fire mask (record 2,
       // value 0x25) is set before the first Logram, so a
       // spawned Logram captures it; read the slot mask and the Stage mask in the SAME settled sample so
       // the compare is consistent even as later areas re-set the mask. Garu Barra spawns two adjacent
@@ -2911,12 +3061,13 @@ export const SCENARIOS = [
                 logramStageMask = readVar(vm, 'fire-mask-logram');
               }
             }
-          } else if (t === 31 || t === 27 || t === 33) {
-            // Zolbak (0x1F), Derota (0x1B), Garu Derota (0x21) are the slice-12 ground families built
-            // this PR — they are now handled types that legitimately reach a slot, so seeing them is
-            // in scope (not a "scoped out" violation). Their own behaviour is proved by the dedicated
-            // zolbak-/derota-/garu-derota-* scenarios; here we only assert they are not treated as
-            // unhandled leakage.
+          } else if (t === 31 || t === 27 || t === 33 || t === 45) {
+            // Zolbak (0x1F), Derota (0x1B), Garu Derota (0x21) are the slice-12 ground families, and the
+            // Boza Logram (0x2D, GND-05) is the slice-13 family built this PR — they are all now handled
+            // types that legitimately reach a slot (the Boza stamps all five of its slots — four outers +
+            // one centre — under 0x2D), so seeing them is in scope (not a "scoped out" violation). Their
+            // own behaviour is proved by the dedicated zolbak-/derota-/garu-derota-/boza-* scenarios; here
+            // we only assert they are not treated as unhandled leakage.
           } else {
             onlyHandledTypes = false;
           }
@@ -3933,6 +4084,250 @@ export const SCENARIOS = [
     // struck node neither bursts nor removes itself → the unconditional-fire and frame-7 removal assertions
     // both go red.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update garu derota'),
+  },
+  {
+    key: 'boza-outer-scores-300-and-craters',
+    behavior:
+      'An OUTER Boza dome (type 0x2D, `slot link` > 0 pointing at its centre) is a lone Logram for scoring and death: a bomb on its cell resolves through the shared ground detector for exactly 300 (pts position 10), then `update boza` craters it PERSISTENTLY exactly like a Barra/Logram — the HIT branch scrolls it DOWN with the terrain (32/tick) and climbs its crater clock (2 frames/tick), never freeing it on the clock, removed only when it culls off the bottom of the field',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      // Freeze the walk so one `update boza` call is exactly one tick (see the Logram crater scenario for the
+      // identical isolation). All five Boza slots share type 0x2D and the one `update boza` proc; an outer is
+      // distinguished by `slot link` > 0 (the port of the arcade `_EXTRA` pointer, holding the centre's index).
+      writeVar(vm, 'game-director-state', 'frozen');
+      const clearBand = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      // --- Scoring: an ACTIVE outer dome (type 45, pts pos 10 -> 300) under the locked bomb target scores 300.
+      clearBand();
+      put('slot-type', 15, 45); // Boza Logram (0x2D)
+      put('slot-state', 15, 1); // ACTIVE (destructible)
+      put('slot-pts', 15, 10); // 1-based value-table position of 300
+      put('slot-link', 15, 16); // outer: points at a centre slot (link > 0)
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-x', 32, 5120); // locked bomb target (Scratch slot 33 -> JS index 32), same cell
+      put('slot-y', 32, 4096);
+      const award = readVar(vm, 'eco-value-table')[9]; // value-table position 10 -> JS index 9 = 300
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const scoreDelta = readVar(vm, 'eco-score') - score0;
+      const outerStateAfterBomb = readVar(vm, 'slot-state')[15];
+      // --- Crater: a struck outer (state HIT) craters PERSISTENTLY. Re-seed it at the top of the field
+      // (slot x 0) so the drift reads cleanly; its `slot link` points at a cleared slot (JS 0) so the
+      // idempotent per-tick centre-value downgrade write lands harmlessly (no centre in this isolation).
+      clearBand();
+      put('slot-type', 15, 45);
+      put('slot-state', 15, 2); // HIT — the detector zeroed the crater clock on the hit tick
+      put('slot-pts', 15, 10);
+      put('slot-link', 15, 1); // downgrade write targets the (empty) JS-0 slot: harmless in isolation
+      put('slot-x', 15, 0); // top of the field
+      put('slot-y', 15, 4096);
+      put('slot-timer', 15, 0);
+      writeVar(vm, 'slot-index', 16);
+      const xs = [];
+      const N = 30; // 30 ticks -> clock 60 frames: past the 20-frame flying free AND the 56-frame crater start
+      for (let t = 0; t < N; t += 1) {
+        callProc(vm, 'Stage', 'update boza');
+        step(vm, 1);
+        xs.push(readVar(vm, 'slot-x')[15]);
+      }
+      const persisted = {
+        type: readVar(vm, 'slot-type')[15],
+        state: readVar(vm, 'slot-state')[15],
+        timer: readVar(vm, 'slot-timer')[15],
+      };
+      // Cull: re-seed the crater one scroll step short of the bottom row, so the next `update boza` scrolls it
+      // to row 40 (>= CULL_ROW_MAX) and frees the slot — the crater's ONLY exit (as for the Logram/Barra).
+      put('slot-type', 15, 45);
+      put('slot-state', 15, 2);
+      put('slot-link', 15, 1);
+      put('slot-x', 15, 40 * 256 - 32);
+      writeVar(vm, 'slot-index', 16);
+      callProc(vm, 'Stage', 'update boza');
+      step(vm, 1);
+      return {
+        award,
+        scoreDelta,
+        outerStateAfterBomb,
+        xs,
+        persisted,
+        n: N,
+        culledType: readVar(vm, 'slot-type')[15],
+        culledState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 300, 'an outer Boza dome (pts position 10) is worth its 300-pt value-table entry');
+      assert.equal(obs.scoreDelta, obs.award, 'a bomb on the outer cell scores exactly 300 once (shared ground detector)');
+      assert.equal(obs.outerStateAfterBomb, 2, 'the struck outer is marked HIT (state 2), so it cannot re-score');
+      assert.deepEqual(
+        obs.xs.slice(0, 3),
+        [32, 64, 96],
+        'a struck outer keeps scrolling DOWN by exactly 32 units/tick (the crater is terrain-locked, like a Logram)',
+      );
+      const monotonic = obs.xs.every((x, i) => i === 0 || x === obs.xs[i - 1] + 32);
+      assert.equal(monotonic, true, 'the crater scrolls a steady 32/tick for the whole run');
+      assert.equal(obs.persisted.timer, obs.n * 2, 'the crater clock keeps counting (2 frames/tick) and is never reset');
+      assert.ok(obs.persisted.timer > 56, 'the clock runs past the 56-frame crater start without freeing (persistent, like the Barra)');
+      assert.equal(obs.persisted.type, 45, 'the crater stays OCCUPIED on its clock (never freed like a flying kill or the Garu node)');
+      assert.equal(obs.persisted.state, 2, 'the crater stays HIT on its clock (a persistent crater, not a vanishing burst)');
+      assert.equal(obs.culledType, 0, 'a crater scrolled off the bottom (row >= 40) is finally culled (type cleared)');
+      assert.equal(obs.culledState, 0, 'the culled crater slot is freed (state cleared) so it can be reused');
+    },
+    // Sever the Boza's whole per-tick update: a struck outer neither advances its crater clock nor scrolls →
+    // the [32,64,96] drift and the clock-advance assertions go red (the scoring is the shared detector's, so it
+    // still stands — the crater is what `update boza` owns).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update boza'),
+  },
+  {
+    key: 'boza-outer-hit-downgrades-centre-value',
+    behavior:
+      "Bombing an OUTER Boza dome downgrades its linked CENTRE's value from 2,000 to 600 (update_centre_points_value): while the outer is HIT, `update boza` rewrites the centre slot's `slot pts` (via the outer's `slot link`) to the 600-pt position, so a LATER bomb on the still-ACTIVE centre scores 600, not 2,000. The centre itself is untouched otherwise — only its future award drops",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      // Centre at JS 15 (Scratch 16), one outer at JS 14 linked to it. Different cells so each bomb resolves
+      // exactly one slot: the outer at x 6000, the centre at x 5120.
+      put('slot-type', 15, 45); // centre
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-pts', 15, 19); // full centre value: position 19 -> 2000
+      put('slot-link', 15, 0); // centre: link == 0
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-type', 14, 45); // outer
+      put('slot-state', 14, 1); // ACTIVE
+      put('slot-pts', 14, 10); // outer value: 300
+      put('slot-link', 14, 16); // points at the centre (Scratch index 16)
+      put('slot-x', 14, 6000);
+      put('slot-y', 14, 4096);
+      const full = readVar(vm, 'eco-value-table')[18]; // position 19 -> JS 18 = 2000
+      const downgraded = readVar(vm, 'eco-value-table')[12]; // position 13 -> JS 12 = 600
+      // --- Bomb the outer: it scores 300 and is marked HIT; the centre value is still full at this instant.
+      put('slot-x', 32, 6000);
+      put('slot-y', 32, 4096);
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const centrePtsBefore = readVar(vm, 'slot-pts')[15];
+      // --- Update the HIT outer: its HIT branch rewrites the linked centre's `slot pts` to the 600 position.
+      writeVar(vm, 'slot-index', 15); // Scratch index of the outer (JS 14)
+      callProc(vm, 'Stage', 'update boza');
+      step(vm, 1);
+      const centrePtsAfter = readVar(vm, 'slot-pts')[15];
+      // --- Now bomb the still-ACTIVE centre: it scores its DOWNGRADED value (600), not the original 2,000.
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const centreDelta = readVar(vm, 'eco-score') - score0;
+      return { full, downgraded, centrePtsBefore, centrePtsAfter, centreDelta };
+    },
+    assert(obs) {
+      assert.equal(obs.full, 2000, 'an undamaged centre (pts position 19) is worth 2,000');
+      assert.equal(obs.downgraded, 600, 'the downgraded position (13) is worth 600');
+      assert.equal(obs.centrePtsBefore, 19, 'the centre keeps its full value until the struck outer is updated');
+      assert.equal(obs.centrePtsAfter, 13, 'the HIT outer rewrites the linked centre to the 600-pt position');
+      assert.equal(obs.centreDelta, 600, 'a LATER bomb on the downgraded centre scores 600, NOT 2,000');
+    },
+    // Break the outer HIT gate (`item of slot state == 2` -> == 999): the struck outer takes the ACTIVE branch,
+    // so the downgrade never runs and the centre stays worth 2,000 -> the centreDelta assertion goes red.
+    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot state', 2, 999),
+  },
+  {
+    key: 'boza-centre-first-cascade-clears-outers-for-free',
+    behavior:
+      'Bombing the CENTRE Boza slot first clears its outers for NO score (destroy_all_outer_lograms): the centre scores its full 2,000 through the shared detector, then `update boza` cascades — it writes all four outer slots (centre index − 1..−4) directly to HIT, BYPASSING the award sweep. Because the type-agnostic ground detector only credits an ACTIVE slot, the cascaded outers are already HIT and can never be scored — a later bomb on one adds nothing',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      // Four outers at JS 11..14 (Scratch 12..15), the centre at JS 15 (Scratch 16). The cascade addresses
+      // centre-index − 1..−4 (Scratch 15..12 -> JS 14..11), so these four outers are exactly its targets.
+      for (let js = 11; js <= 14; js += 1) {
+        put('slot-type', js, 45);
+        put('slot-state', js, 1); // ACTIVE
+        put('slot-pts', js, 10); // 300 each — would score if the detector ever credited them
+        put('slot-link', js, 16); // point at the centre
+        put('slot-x', js, 6000); // OFF the centre's cell so the centre bomb resolves only the centre
+        put('slot-y', js, 4096);
+      }
+      put('slot-type', 15, 45); // centre
+      put('slot-state', 15, 1); // ACTIVE
+      put('slot-pts', 15, 19); // full 2,000
+      put('slot-link', 15, 0); // centre: link == 0
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      const full = readVar(vm, 'eco-value-table')[18]; // 2000
+      // --- Bomb the centre: it scores 2,000; the outers (off-cell) are NOT credited by the sweep.
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const centreDelta = readVar(vm, 'eco-score') - score0;
+      const outersBeforeCascade = [11, 12, 13, 14].map((js) => readVar(vm, 'slot-state')[js]);
+      // --- Update the HIT centre: it cascades all four outers directly to HIT, awarding NOTHING.
+      writeVar(vm, 'slot-index', 16); // Scratch index of the centre (JS 15)
+      const score1 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update boza');
+      step(vm, 1);
+      const cascadeDelta = readVar(vm, 'eco-score') - score1;
+      const outersAfterCascade = [11, 12, 13, 14].map((js) => readVar(vm, 'slot-state')[js]);
+      // --- Prove "for free": re-bomb a now-HIT outer's cell; a HIT slot is never credited -> no extra score.
+      put('slot-x', 32, 6000);
+      put('slot-y', 32, 4096);
+      const score2 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const freeloadDelta = readVar(vm, 'eco-score') - score2;
+      return {
+        full,
+        centreDelta,
+        outersBeforeCascade,
+        cascadeDelta,
+        outersAfterCascade,
+        freeloadDelta,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.full, 2000, 'the centre (pts position 19) is worth 2,000');
+      assert.equal(obs.centreDelta, 2000, 'a centre-first bomb scores exactly 2,000 once (shared ground detector)');
+      assert.deepEqual(obs.outersBeforeCascade, [1, 1, 1, 1], 'the four outers are still ACTIVE the instant the centre is struck');
+      assert.equal(obs.cascadeDelta, 0, 'the cascade awards NOTHING — it writes outer HIT state directly, bypassing the award sweep');
+      assert.deepEqual(obs.outersAfterCascade, [2, 2, 2, 2], 'the cascade marks all four outers HIT (destroy_all_outer_lograms)');
+      assert.equal(obs.freeloadDelta, 0, 'a later bomb on a cascaded (already-HIT) outer scores nothing — the outers were cleared for free');
+    },
+    // Break the top outer/centre discriminator (`item of slot link == 0` -> == 999): the centre (link 0) now
+    // takes the OUTER branch, so the cascade never runs and the four outers stay ACTIVE -> the outersAfter
+    // assertion goes red.
+    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot link', 0, 999),
   },
   {
     key: 'craft-collision-is-single-cell',

@@ -194,6 +194,11 @@
       "name": "clone slot",
       "scope": "blaster"
     },
+    "boza-clone-slot": {
+      "kind": "variable",
+      "name": "boza clone slot",
+      "scope": "boza"
+    },
     "brag-spario-clone-slot": {
       "kind": "variable",
       "name": "brag spario clone slot",
@@ -207,6 +212,21 @@
     "bullet-cursor": {
       "kind": "variable",
       "name": "bullet cursor",
+      "scope": "Stage"
+    },
+    "debug-ground-index": {
+      "kind": "variable",
+      "name": "debug ground index",
+      "scope": "Stage"
+    },
+    "debug-pause-key-held": {
+      "kind": "variable",
+      "name": "debug pause key held",
+      "scope": "Stage"
+    },
+    "debug-paused": {
+      "kind": "variable",
+      "name": "debug paused",
       "scope": "Stage"
     },
     "debug-spawn-index": {
@@ -612,6 +632,11 @@
     "slot-index": {
       "kind": "variable",
       "name": "slot index",
+      "scope": "Stage"
+    },
+    "slot-link": {
+      "kind": "list",
+      "name": "slot link",
       "scope": "Stage"
     },
     "slot-pts": {
