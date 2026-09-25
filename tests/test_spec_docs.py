@@ -523,11 +523,13 @@ class GeneratedAreaClock(unittest.TestCase):
                 return params["count"]
             return 0
 
-        # GND: the three add_ground_object scalars, re-decoded INDEPENDENTLY here — object_type
+        # GND: the three ground-placement scalars, re-decoded INDEPENDENTLY here — object_type
         # (the ground dispatch discriminator), slot (0-15), sprite_y (0-255); (0, 0, 0) for every
-        # other handler. A mis-populated or misaligned ground column fails here, not at play.
+        # other handler. BOTH ground-placement handlers carry them at the same JSON locations:
+        # add_ground_object (the static + Grobda families) and GND-07 add_domogram_with_path (the
+        # Domogram). A mis-populated or misaligned ground column fails here, not at play.
         def expected_ground(record):
-            if record["handler"] != "add_ground_object":
+            if record["handler"] not in ("add_ground_object", "add_domogram_with_path"):
                 return 0, 0, 0
             params = record.get("params", {})
             return record["object_type"], params["slot"], params["sprite_y"]
@@ -596,6 +598,81 @@ class GeneratedAreaClock(unittest.TestCase):
                 ),
                 f"area {area_number} sentinel ground scalars",
             )
+
+    def test_domogram_paths_round_trip_from_json(self):
+        # GND-07 (ground.domogram #89): the Domogram's scripted paths and its 32-entry vector table are a
+        # FAITHFUL, lossless decode of the committed data. Unlike the opaque payload column (which round-trips
+        # the path only as JSON text above), the runtime needs the path DECODED into flat numeric columns
+        # (Scratch cannot parse JSON at play). Here the vector table (domogram.json) and the flattened path
+        # columns + the two per-schedule index columns (re-flattened INDEPENDENTLY from the
+        # add_domogram_with_path records) are compared to the generator's decoded lists — never read back from
+        # the generator's own flattening — so a dropped step, a mis-decoded (dx,dy), or a start/count offset
+        # off-by-one fails here rather than shipping silently.
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+
+        # 1) the 32 live vector rows decode raw (dx, dy) in source order (json "dx"=source dX scroll axis,
+        #    "dy"=source dY lateral); the reference's trailing filler bytes are not vectors and are excluded.
+        vectors = json.loads((DATA / "domogram.json").read_text())["vector_table"]["vectors"]
+        self.assertEqual(32, len(vectors), "the vector table has exactly the 32 live entries")
+        self.assertEqual([v["index"] for v in vectors], list(range(32)), "vector rows are 0..31 in order")
+        self.assertEqual([v["dx"] for v in vectors], by_name["domogram vector dx"], "vector dx column")
+        self.assertEqual([v["dy"] for v in vectors], by_name["domogram vector dy"], "vector dy column")
+
+        # 2) re-flatten every instance's path INDEPENDENTLY in the SAME area/record order as the schedule
+        #    ingest (areas 1..16, each area's records then one materialized sentinel), so the per-record
+        #    columns line up 1:1 with `schedule handler`. path start is the 1-based index of the instance's
+        #    FIRST step; non-Domogram rows and sentinels carry (start, count) = (0, 0).
+        areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
+        by_area = {a["area"]: a for a in areas}
+        exp_starts, exp_counts, exp_durations, exp_vectors = [], [], [], []
+        for area_number in range(1, 17):
+            for record in by_area[area_number]["records"]:
+                if record["handler"] == "add_domogram_with_path":
+                    steps = record["params"]["path"]
+                    self.assertEqual(
+                        record["params"]["path_step_count"],
+                        len(steps),
+                        f"area {area_number} path_step_count matches len(path)",
+                    )
+                    exp_starts.append(len(exp_durations) + 1)
+                    exp_counts.append(len(steps))
+                    for step in steps:
+                        exp_durations.append(step["duration"])
+                        exp_vectors.append(step["vector_index"])
+                else:
+                    exp_starts.append(0)
+                    exp_counts.append(0)
+            exp_starts.append(0)  # materialized end sentinel row
+            exp_counts.append(0)
+
+        self.assertEqual(exp_durations, by_name["domogram path duration"], "flattened step duration column")
+        self.assertEqual(exp_vectors, by_name["domogram path vector"], "flattened step vector-index column")
+        self.assertEqual(
+            exp_starts, by_name["schedule domogram path start"], "per-schedule 1-based path start column"
+        )
+        self.assertEqual(
+            exp_counts, by_name["schedule domogram path count"], "per-schedule path count column"
+        )
+
+        # the per-schedule columns are exactly as long as the flattened schedule (no leaked/dropped rows).
+        self.assertEqual(
+            len(by_name["schedule handler"]),
+            len(exp_starts),
+            "path index columns align 1:1 with the schedule",
+        )
+        # every referenced vector index is a real table row, and every window lies inside the step columns.
+        for vi in exp_vectors:
+            self.assertTrue(0 <= vi < 32, f"path vector index {vi} is a real table row")
+        for start, count in zip(exp_starts, exp_counts):
+            if count:
+                self.assertTrue(
+                    1 <= start and start + count - 1 <= len(exp_durations),
+                    f"path window start={start} count={count} lies inside the step columns",
+                )
+        # there is at least one Domogram instance to prove the decode is exercised (108 in the reference).
+        self.assertEqual(108, sum(1 for c in exp_counts if c), "all 108 Domogram instances decode a path")
 
 
 class AimingTables(unittest.TestCase):

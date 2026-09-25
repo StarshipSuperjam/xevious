@@ -237,8 +237,12 @@ class ScratchProjectTests(unittest.TestCase):
         # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
         # ground renderers (all reuse proof costumes by ref), and the slice-12 zolbak + derota + garu-derota
         # ground renderers (GND-02/GND-04; all reuse proof costumes by ref), and the slice-13 boza renderer
-        # (GND-05; the four outers reuse the Logram proof costumes by ref, the centre adds its own core costume).
-        self.assertEqual(37, len(project["targets"]))
+        # (GND-05; the four outers reuse the Logram proof costumes by ref, the centre adds its own core costume),
+        # and the slice-13 grobda renderer (GND-06; the 12 variants share one tank costume set, reusing the
+        # shared burst + crater proof costumes by ref, plus 4 new tank tread frames), and the slice-13
+        # domogram renderer (GND-07; the scripted-path shooter, its own idle sprite set reusing the shared
+        # burst + crater proof costumes by ref, plus 4 new idle frames).
+        self.assertEqual(39, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -247,12 +251,14 @@ class ScratchProjectTests(unittest.TestCase):
         # frame PNGs (AIR-09; 10 distinct costumes for the 10 arcade sprite codes 0x30..0x39) + the 14
         # ground-frame PNGs (GND: 1 Barra idle + 4 Logram open stages + 2 crater variants + 2 Garu base
         # pulse frames + the slice-12 additions: 1 Zolbak idle dome (GND-02) + 1 Derota idle turret + 2 Garu
-        # Derota base pulse frames (GND-04) + the slice-13 addition: 1 Boza centre core (GND-05; the four
-        # outer domes reuse the Logram open frames by ref, so only the centre is a new crop)) + the 6 arcade
+        # Derota base pulse frames (GND-04) + the slice-13 additions: 1 Boza centre core (GND-05; the four
+        # outer domes reuse the Logram open frames by ref, so only the centre is a new crop) + 4 Grobda tank
+        # tread frames (GND-06; the 12 variants share one tread set and reuse the burst + crater crops by ref)
+        # + 4 Domogram idle frames (GND-07; the scripted-path shooter reuses the burst + crater crops by ref)) + the 6 arcade
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
         # bacura / sheonite cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(167, len(assets))
+        self.assertEqual(175, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1129,6 +1135,8 @@ class ScratchProjectTests(unittest.TestCase):
                 # GND-05 Boza composite: each outer slot stores the field index of its centre slot, so an
                 # outer hit can downgrade the centre's value and the centre hit can cascade the outers.
                 "slot link",
+                # GND-07 Domogram: the per-slot count of scripted path vectors still to load (_NVEC).
+                "slot vec left",
                 # AIR-06 fire-permission per-slot fields (the shared gate): captured mask + countdown.
                 "slot fire mask",
                 "slot fire timer",
@@ -1161,6 +1169,15 @@ class ScratchProjectTests(unittest.TestCase):
                 "schedule ground type",
                 "schedule ground slot",
                 "schedule ground sprite y",
+                # GND-07 Domogram: the two per-schedule path columns (1-based start into the flattened path
+                # lists + step count) and the four decoded path/vector data tables + the render frame table.
+                "schedule domogram path start",
+                "schedule domogram path count",
+                "domogram path duration",
+                "domogram path vector",
+                "domogram vector dx",
+                "domogram vector dy",
+                "domogram frame ord",
                 "area schedule start",
                 "area schedule end",
                 "difficulty increment",
@@ -1352,6 +1369,23 @@ class ScratchProjectTests(unittest.TestCase):
             # on hit, cascades all four outers to HIT directly (the arcade `destroy_all_outer_lograms`); both
             # delegate the terrain scroll+cull to `advance ground`. Warp.
             director.UPDATE_BOZA_PROCCODE,
+            # GND-06 (slice 13) area.ground-dispatch: the shared velocity-only mover for self-moving ground
+            # objects — moves `slot x`/`slot y` by TICK_VELOCITY_SCALE * the raw stored delta (NO terrain-scroll
+            # baseline; the scroll is baked into the delta), then runs the same off-field cull as `advance
+            # ground`. Called by a moving family's update proc in place of `advance ground`. Warp.
+            director.ADVANCE_GROUND_MOVING_PROCCODE,
+            # GND-06 (slice 13) ground.grobda: the reticle-reactive tank's per-tick wrapper, one proc for all 12
+            # variants (it branches internally on `slot type`). None fires; a HIT land Grobda runs the Barra
+            # crater clock while a HIT water Grobda runs the Garu-node explode-and-remove; an ACTIVE Grobda runs
+            # its per-variant reticle reaction then moves through `advance ground moving`. Warp, dispatched per
+            # OCCUPIED Grobda slot from the walk.
+            director.UPDATE_GROBDA_PROCCODE,
+            # GND-07 (slice 13) ground.domogram: the scripted-path shooter's per-tick wrapper. An ACTIVE
+            # Domogram advances its path follower (holding the last vector when the path ends) and runs its
+            # fire logic (a 24-arcade-frame animation firing one aimed shot at the midpoint, gated by the
+            # stop-firing row), then moves through `advance ground moving`; a HIT Domogram runs the Barra
+            # crater clock. Warp, dispatched per OCCUPIED Domogram slot from the walk.
+            director.UPDATE_DOMOGRAM_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -8628,6 +8662,575 @@ class ScratchProjectTests(unittest.TestCase):
 
         return failures
 
+    @staticmethod
+    def _gnd06_failures(project: dict) -> set:
+        """GND-06 ground.grobda (#88) authoring contract — the self-moving tank family (handle_2C + handle_35..40,
+        xevious_main.68k 4289-4611). Twelve live variants (0x2C + 0x35..0x40, skipping the null 0x37) share ONE
+        `update grobda` proc that dispatches on `slot type`. A Grobda NEVER fires. While ACTIVE it moves under its
+        OWN velocity through `advance ground moving` (the Commit-1 velocity-only seam, NO terrain baseline) and runs
+        its per-variant reticle reaction: a per-axis [GROBDA_RETICLE_LOW, GROBDA_RETICLE_HIGH] = [-2,+1] alignment
+        band around the crosshair object (slot 35) or the bomb-target object (slot 33) arms a 48-arcade-frame
+        reaction that swaps in the reaction velocity, then either LATCHES (slot flag 2) or (only 0x3C) RE-ARMS
+        (slot flag 0). On HIT a LAND variant craters PERSISTENTLY (advances the crater clock + scrolls via
+        `advance ground`, never culls) while a WATER variant plays the burst and VANISHES (`cull slot`, like a Garu
+        node). Spawn (in `advance area`, single-slot): each variant stamps its value-table position + initial raw
+        velocity; the shared branch clears the lateral velocity and zeroes the reaction phase + timer."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def rref(inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def num(inp):
+            return _num_operand(inp)
+
+        def reach(start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def branch_ids(block, key):
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return reach(start)
+
+        def calls(idset, proccode):
+            return any(
+                blocks[x]["opcode"] == "procedures_call"
+                and blocks[x].get("mutation", {}).get("proccode") == proccode
+                for x in idset
+            )
+
+        def slot_read_at(idset, list_id, index_value):
+            # A `data_itemoflist` on `list_id` whose INDEX is the numeric literal `index_value` — the reticle
+            # object read (the CURRENT-slot reads are indexed by the `slot index` VARIABLE, not a literal).
+            return any(
+                blocks[x]["opcode"] == "data_itemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                and num(blocks[x]["inputs"].get("INDEX")) == index_value
+                for x in idset
+            )
+
+        def writes_value(idset, list_id, value):
+            return any(
+                blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                and num(blocks[x]["inputs"].get("ITEM")) == value
+                for x in idset
+            )
+
+        def advances_clock(idset):
+            # A `slot timer` write whose value is `slot timer + N` (the crater/burst clock advance).
+            for x in idset:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                    and (item := rref(b["inputs"].get("ITEM"))) is not None
+                    and item["opcode"] == "operator_add"
+                    and (base := rref(item["inputs"].get("NUM1"))) is not None
+                    and base["opcode"] == "data_itemoflist"
+                    and base["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                ):
+                    return True
+            return False
+
+        def has_cmp(idset, opcode, value):
+            return any(
+                blocks[x]["opcode"] == opcode and num(blocks[x]["inputs"].get("OPERAND2")) == value
+                for x in idset
+            )
+
+        grobda_body = _proc_body_blocks(stage, director.UPDATE_GROBDA_PROCCODE)
+        spawn_body = _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE)
+
+        # (1) `update grobda` exists and is warp (atomic).
+        p = proto(director.UPDATE_GROBDA_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("grobda-warp")
+
+        def update_type_gate(vtype):
+            # The `if slot type == vtype` dispatch inside `update grobda` (LHS reads `slot type`).
+            for b in grobda_body:
+                if b["opcode"] != "control_if":
+                    continue
+                c = rref(b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := rref(c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                    and num(c["inputs"].get("OPERAND2")) == vtype
+                ):
+                    return b
+            return None
+
+        def variant_split(vtype):
+            gate = update_type_gate(vtype)
+            if gate is None:
+                return None, None
+            state = None
+            for x in branch_ids(gate, "SUBSTACK"):
+                b = blocks[x]
+                if b["opcode"] == "control_if_else":
+                    c = rref(b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := rref(c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                        and num(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                    ):
+                        state = b
+                        break
+            if state is None:
+                return None, None
+            return branch_ids(state, "SUBSTACK"), branch_ids(state, "SUBSTACK2")
+
+        # (2) TWELVE VARIANTS: every live type dispatches to a HIT/ACTIVE state split.
+        splits = {}
+        for v in director.GROBDA_VARIANTS:
+            hit_ids, active_ids = variant_split(v.type)
+            if hit_ids is None or active_ids is None:
+                failures.add("grobda-twelve-variants")
+            else:
+                splits[v.type] = (hit_ids, active_ids)
+
+        # (3) NONE FIRES: no `alloc bullet slot` anywhere in `update grobda`.
+        if any(
+            b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+            for b in grobda_body
+        ):
+            failures.add("grobda-none-fires")
+
+        for v in director.GROBDA_VARIANTS:
+            if v.type not in splits:
+                continue
+            hit_ids, active_ids = splits[v.type]
+
+            # (4) SEAM: the ACTIVE branch moves by its OWN velocity (`advance ground moving`), NOT the terrain
+            # scroll (`advance ground` is the HIT-only crater scroll).
+            if not calls(active_ids, director.ADVANCE_GROUND_MOVING_PROCCODE) or calls(
+                active_ids, director.ADVANCE_GROUND_PROCCODE
+            ):
+                failures.add("grobda-seam-moves")
+
+            # (5) HIT craters: advances the crater/burst clock.
+            if not advances_clock(hit_ids):
+                failures.add("grobda-hit-craters")
+
+            # (6) LAND vs WATER on HIT: a water variant culls (vanishes); a land variant scrolls persistently and
+            # never culls itself.
+            if v.water:
+                if not calls(hit_ids, director.CULL_SLOT_PROCCODE):
+                    failures.add("grobda-water-vanishes")
+            elif calls(hit_ids, director.CULL_SLOT_PROCCODE) or not calls(
+                hit_ids, director.ADVANCE_GROUND_PROCCODE
+            ):
+                failures.add("grobda-land-craters")
+
+            if v.trigger is None:
+                continue
+            # (7) RETICLE SLOT: reads the trigger object's slot x AND slot y at the fixed reticle index (33/35).
+            if not (
+                slot_read_at(active_ids, director.SLOT_X_ID, v.trigger)
+                and slot_read_at(active_ids, director.SLOT_Y_ID, v.trigger)
+            ):
+                failures.add("grobda-reticle-slot")
+            # (8) ALIGNMENT BAND: the per-axis compare is against [GROBDA_RETICLE_LOW, GROBDA_RETICLE_HIGH].
+            if not (
+                has_cmp(active_ids, "operator_lt", director.GROBDA_RETICLE_LOW)
+                and has_cmp(active_ids, "operator_gt", director.GROBDA_RETICLE_HIGH)
+            ):
+                failures.add("grobda-reticle-band")
+            # (9) REACTS: swaps in the reaction velocity.
+            if not writes_value(active_ids, director.SLOT_DX_ID, v.react_dx):
+                failures.add("grobda-reacts-dx")
+            if v.end_dx is not None:
+                # (10) TIMED reaction: arms the 48-arcade-frame reaction timer.
+                if not writes_value(active_ids, director.SLOT_TIMER_ID, director.GROBDA_REACTION_FRAMES):
+                    failures.add("grobda-reaction-timer")
+                # (11) RE-ARM vs LATCH: 0x3C returns to pre-trigger (repeatable); the rest latch.
+                end_flag = (
+                    director.GROBDA_FLAG_PRETRIGGER if v.rearm else director.GROBDA_FLAG_LATCHED
+                )
+                if not writes_value(active_ids, director.SLOT_FLAG_ID, end_flag):
+                    failures.add("grobda-rearm-vs-latch")
+
+        # ---- Spawn facts (advance area, single-slot; per-variant velocity + shared clear) ----
+        def spawn_type_gate(vtype):
+            # The spawn dispatch tests the schedule cursor (`ground type at cursor`), not `slot type`, so match
+            # on the numeric literal alone.
+            for b in spawn_body:
+                if b["opcode"] != "control_if":
+                    continue
+                c = rref(b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and num(c["inputs"].get("OPERAND2")) == vtype
+                ):
+                    return b
+            return None
+
+        for v in director.GROBDA_VARIANTS:
+            gate = spawn_type_gate(v.type)
+            ids = branch_ids(gate, "SUBSTACK") if gate else set()
+            if not (
+                writes_value(ids, director.SLOT_PTS_ID, v.pts)
+                and writes_value(ids, director.SLOT_DX_ID, v.dx0)
+            ):
+                failures.add("grobda-spawn-seeds")
+
+        # (13) The shared spawn branch (the OR of all 12 types) clears the lateral velocity + reaction phase +
+        # timer, so a slot reused from a prior occupant carries no stale motion or reaction.
+        grobda_clear = None
+        for b in spawn_body:
+            if b["opcode"] != "control_if":
+                continue
+            c = rref(b["inputs"].get("CONDITION"))
+            if c is not None and c["opcode"] == "operator_or":
+                sub = branch_ids(b, "SUBSTACK")
+                if (
+                    writes_value(sub, director.SLOT_DY_ID, 0)
+                    and writes_value(sub, director.SLOT_FLAG_ID, director.GROBDA_FLAG_PRETRIGGER)
+                    and writes_value(sub, director.SLOT_TIMER_ID, 0)
+                ):
+                    grobda_clear = b
+                    break
+        if grobda_clear is None:
+            failures.add("grobda-spawn-clears")
+
+        return failures
+
+    @staticmethod
+    def _gnd07_failures(project: dict) -> set:
+        """GND-07 ground.domogram (#89) authoring contract — the scripted-path shooter (handle_2E_Domogram $2ED6),
+        the FIRST ground family that both MOVES under its own velocity AND FIRES. One `update domogram` proc: on
+        HIT it craters PERSISTENTLY (advances the crater clock + scrolls via `advance ground`, never culls). While
+        ACTIVE, each tick runs, in the arcade's order: (1) the PATH FOLLOWER ($2F0E) — hold each step's vector for
+        `duration` ticks, reading the flattened path columns indexed by `slot link`, loading (dY,dX) from the
+        32-entry `domogram_vector_tbl`; when the scripted vectors are exhausted (`slot vec left` <= 0) it HOLDS the
+        last vector forever; (2) the FIRE logic ($2F54/$2F76) — start a 24-arcade-frame animation only while high
+        enough on the field (`cur_row <= ground stop firing row`) AND on the every-4th-tick phase, firing ONE aimed
+        bullet at the animation MIDPOINT (`slot fire timer` == 12); (3) the MOVE via `advance ground moving`
+        (velocity-only seam). Spawn (its own `add_domogram_with_path` handler): ACTIVE, 800 pts, and the path
+        coroutine primed (`slot flag` = 1, `slot link` = path start, `slot vec left` = step count)."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def rref(inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def num(inp):
+            return _num_operand(inp)
+
+        def reach(start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def branch_ids(block, key):
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return reach(start)
+
+        def subtree_has(cid, pred):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if pred(b):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def enclosing_cond_has(bid, pred):
+            cur = blocks.get(bid)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = parent["inputs"].get("CONDITION")
+                    cid = (
+                        cond[1]
+                        if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                        else None
+                    )
+                    if cid and subtree_has(cid, pred):
+                        return True
+                cur = parent
+            return False
+
+        def calls(idset, proccode):
+            return any(
+                blocks[x]["opcode"] == "procedures_call"
+                and blocks[x].get("mutation", {}).get("proccode") == proccode
+                for x in idset
+            )
+
+        def writes_value(idset, list_id, value):
+            return any(
+                blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                and num(blocks[x]["inputs"].get("ITEM")) == value
+                for x in idset
+            )
+
+        def writes_from_list(idset, list_id, src_list_id):
+            # A `data_replaceitemoflist` on `list_id` whose ITEM is a `data_itemoflist` read of `src_list_id`.
+            for x in idset:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == list_id
+                    and (item := rref(b["inputs"].get("ITEM"))) is not None
+                    and item["opcode"] == "data_itemoflist"
+                    and item["fields"]["LIST"][1] == src_list_id
+                ):
+                    return True
+            return False
+
+        def reads_list(idset, list_id):
+            return any(
+                blocks[x]["opcode"] == "data_itemoflist" and blocks[x]["fields"]["LIST"][1] == list_id
+                for x in idset
+            )
+
+        def has_list_write(idset, list_id):
+            return any(
+                blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                for x in idset
+            )
+
+        def advances_clock(idset):
+            for x in idset:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                    and (item := rref(b["inputs"].get("ITEM"))) is not None
+                    and item["opcode"] == "operator_add"
+                    and (base := rref(item["inputs"].get("NUM1"))) is not None
+                    and base["opcode"] == "data_itemoflist"
+                    and base["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                ):
+                    return True
+            return False
+
+        def is_stoprow_gt(b):
+            o2 = b["inputs"].get("OPERAND2") if b["opcode"] == "operator_gt" else None
+            return (
+                b["opcode"] == "operator_gt"
+                and isinstance(o2, list)
+                and len(o2) >= 2
+                and isinstance(o2[1], list)
+                and len(o2[1]) >= 3
+                and o2[1][0] == 12
+                and o2[1][2] == director.GROUND_STOP_FIRING_ROW_ID
+            )
+
+        def is_phase_mod(b):
+            return b["opcode"] == "operator_mod" and num(b["inputs"].get("NUM2")) == director.FIRE_GATE_PHASE_TICKS
+
+        dom_body = _proc_body_blocks(stage, director.UPDATE_DOMOGRAM_PROCCODE)
+        spawn_body = _proc_body_blocks(stage, director.ADVANCE_AREA_PROCCODE)
+
+        # (1) `update domogram` exists and is warp.
+        p = proto(director.UPDATE_DOMOGRAM_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("domogram-warp")
+
+        # (2) STATE SPLIT: one `if slot state == HIT / else` at the top — HIT crater vs ACTIVE path+fire+move.
+        top = None
+        for b in dom_body:
+            if b["opcode"] == "control_if_else":
+                c = rref(b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := rref(c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and num(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                ):
+                    top = b
+                    break
+        hit_ids = branch_ids(top, "SUBSTACK") if top else set()
+        active_ids = branch_ids(top, "SUBSTACK2") if top else set()
+        if top is None or not hit_ids or not active_ids:
+            failures.add("domogram-state-split")
+
+        # (3) HIT craters PERSISTENTLY: advances the crater clock + scrolls, and never culls.
+        if not (advances_clock(hit_ids) and calls(hit_ids, director.ADVANCE_GROUND_PROCCODE)):
+            failures.add("domogram-hit-craters")
+        if calls(hit_ids, director.CULL_SLOT_PROCCODE):
+            failures.add("domogram-crater-persists")
+
+        # (4) PATH DECODE: the follower reads the flattened path columns (indexed by `slot link`) and loads the
+        # velocity from the shared vector table into `slot dx`/`slot dy`, and the hold from the duration column.
+        if not (
+            reads_list(active_ids, director.DOMOGRAM_PATH_VECTOR_ID)
+            and writes_from_list(active_ids, director.SLOT_DX_ID, director.DOMOGRAM_VECTOR_DX_ID)
+            and writes_from_list(active_ids, director.SLOT_DY_ID, director.DOMOGRAM_VECTOR_DY_ID)
+            and writes_from_list(active_ids, director.SLOT_FLAG_ID, director.DOMOGRAM_PATH_DURATION_ID)
+        ):
+            failures.add("domogram-path-decode")
+
+        # (5) HOLDS THE LAST VECTOR: the whole load is guarded by `slot vec left > 0`, so an exhausted path
+        # never reloads — it holds the last vector forever.
+        holds = any(
+            blocks[x]["opcode"] == "operator_gt"
+            and (lhs := rref(blocks[x]["inputs"].get("OPERAND1"))) is not None
+            and lhs["opcode"] == "data_itemoflist"
+            and lhs["fields"]["LIST"][1] == director.SLOT_VEC_LEFT_ID
+            and num(blocks[x]["inputs"].get("OPERAND2")) == 0
+            for x in active_ids
+        )
+        if not holds:
+            failures.add("domogram-holds-last-vector")
+
+        # (6) VECLEN COUNTDOWN: `slot flag` (_VECLEN) is decremented by the frame-step each tick.
+        countdown = any(
+            blocks[x]["opcode"] == "data_replaceitemoflist"
+            and blocks[x]["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and (item := rref(blocks[x]["inputs"].get("ITEM"))) is not None
+            and item["opcode"] == "operator_subtract"
+            and (base := rref(item["inputs"].get("NUM1"))) is not None
+            and base["opcode"] == "data_itemoflist"
+            and base["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and num(item["inputs"].get("NUM2")) == director.TICK_TIMER_STEP
+            for x in active_ids
+        )
+        if not countdown:
+            failures.add("domogram-veclen-countdown")
+
+        # ---- FIRE logic ----
+        # (7) MIDPOINT FIRE: fires an aimed bullet, and every fire sits under a `slot fire timer == 12` guard.
+        def is_fire_frame_eq(b):
+            return (
+                b["opcode"] == "operator_equals"
+                and (lhs := rref(b["inputs"].get("OPERAND1"))) is not None
+                and lhs["opcode"] == "data_itemoflist"
+                and lhs["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+                and num(b["inputs"].get("OPERAND2")) == director.DOMOGRAM_FIRE_FRAME
+            )
+
+        allocs = [
+            x
+            for x in active_ids
+            if blocks[x]["opcode"] == "procedures_call"
+            and blocks[x].get("mutation", {}).get("proccode") == director.ALLOC_BULLET_PROCCODE
+        ]
+        if not allocs or not all(enclosing_cond_has(x, is_fire_frame_eq) for x in allocs):
+            failures.add("domogram-midpoint-fire")
+
+        # (8) ANIM START: a 24-arcade-frame shot animation is started (`slot fire timer` = 24), and (9)/(10) that
+        # start is gated on the stop-firing row AND the every-4th-tick phase (the arcade every-8th-frame gate).
+        anim_starts = [
+            x
+            for x in active_ids
+            if blocks[x]["opcode"] == "data_replaceitemoflist"
+            and blocks[x]["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+            and num(blocks[x]["inputs"].get("ITEM")) == director.DOMOGRAM_ANIM_FRAMES
+        ]
+        if not anim_starts:
+            failures.add("domogram-anim-24")
+        if not (anim_starts and all(enclosing_cond_has(x, is_stoprow_gt) for x in anim_starts)):
+            failures.add("domogram-fire-arm-gated")
+        if not (anim_starts and all(enclosing_cond_has(x, is_phase_mod) for x in anim_starts)):
+            failures.add("domogram-fire-phase-gated")
+
+        # (11) SEAM: the ACTIVE branch moves by its OWN velocity, NOT the terrain scroll.
+        if not calls(active_ids, director.ADVANCE_GROUND_MOVING_PROCCODE) or calls(
+            active_ids, director.ADVANCE_GROUND_PROCCODE
+        ):
+            failures.add("domogram-seam-moves")
+
+        # ---- Spawn facts (its own add_domogram_with_path handler, in `advance area`) ----
+        dom_spawn = set()
+        for b in spawn_body:
+            if b["opcode"] != "control_if":
+                continue
+            cond = b["inputs"].get("CONDITION")
+            cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
+            if cid and subtree_has(
+                cid,
+                lambda bl: bl["opcode"] == "operator_equals"
+                and num(bl["inputs"].get("OPERAND2")) == director.DOMOGRAM_TYPE,
+            ):
+                dom_spawn = branch_ids(b, "SUBSTACK")
+                break
+
+        # (12) Spawns ACTIVE, 800 pts, type stamped.
+        if not (
+            writes_value(dom_spawn, director.SLOT_TYPE_ID, director.DOMOGRAM_TYPE)
+            and writes_value(dom_spawn, director.SLOT_STATE_ID, director.SLOT_ACTIVE)
+            and writes_value(dom_spawn, director.SLOT_PTS_ID, director.DOMOGRAM_PTS)
+        ):
+            failures.add("domogram-spawn-active")
+        # (13) Primes the path coroutine: `slot flag` = VECLEN init (1), plus the start pointer + remaining count.
+        if not (
+            writes_value(dom_spawn, director.SLOT_FLAG_ID, director.DOMOGRAM_VECLEN_INIT)
+            and has_list_write(dom_spawn, director.SLOT_LINK_ID)
+            and has_list_write(dom_spawn, director.SLOT_VEC_LEFT_ID)
+        ):
+            failures.add("domogram-spawn-primes-path")
+
+        return failures
+
     # Roadmap closure evidence for leaf `area.ground-dispatch` (AREA-02): the terrain-locked ground
     # substrate — `advance ground` scrolls every ground object DOWN the field by the fixed terrain step and
     # culls it off the bottom; the ordered walk routes each built ground type to its wrapper; and
@@ -9675,6 +10278,546 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._gnd05_failures(project), label)
+
+    # Roadmap closure evidence for leaf `ground.grobda` (GND-06, #88): the self-moving reticle-reactive tank
+    # family — twelve variants dispatched by `update grobda`, none firing, each moving under its own velocity
+    # through the `advance ground moving` seam, reacting to the crosshair/bomb-target reticle inside the
+    # [-2,+1] alignment band with a 48-frame reaction, and cratering (land) or vanishing (water) on a bomb.
+    # roadmap-evidence: GND-06 success  (test_grobda_slice_authoring_present — grobda warp; twelve variant state-splits; none fires; the velocity-only seam moves each ACTIVE tank; the reticle band reads slots 33/35 and reacts with react_dx under a 48-frame timer that latches or re-arms (0x3C); land craters persistently, water vanishes; spawn seeds each variant's value + raw velocity and clears the shared reaction fields)
+    # roadmap-evidence: GND-06 failure  (test_grobda_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_grobda_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd06_failures(project))
+
+    def test_grobda_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd06_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _rref(blocks, inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def _upd(p):
+            return _proc_body_blocks(_stage(p), director.UPDATE_GROBDA_PROCCODE)
+
+        def _spawn(p):
+            return _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE)
+
+        def _reach(blocks, start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def _branch(blocks, block, key):
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return _reach(blocks, start)
+
+        def _variant(p, vtype):
+            # (blocks, hit_ids, active_ids) for the `update grobda` branch of `vtype`.
+            blocks = _stage(p)["blocks"]
+            gate = None
+            for b in _upd(p):
+                if b["opcode"] == "control_if":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := _rref(blocks, c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                        and _num_operand(c["inputs"].get("OPERAND2")) == vtype
+                    ):
+                        gate = b
+                        break
+            state = None
+            for x in _branch(blocks, gate, "SUBSTACK") if gate else set():
+                b = blocks[x]
+                if b["opcode"] == "control_if_else":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := _rref(blocks, c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                        and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                    ):
+                        state = b
+                        break
+            return blocks, _branch(blocks, state, "SUBSTACK"), _branch(blocks, state, "SUBSTACK2")
+
+        def unwarp(p):
+            for b in _stage(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_GROBDA_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def drop_variant(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] == "control_if":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := _rref(blocks, c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                        and _num_operand(c["inputs"].get("OPERAND2")) == director.GROBDA_VARIANTS[0].type
+                    ):
+                        c["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                        return
+
+        def retarget_first_moving(proc_to):
+            def _do(p):
+                for b in _upd(p):
+                    if (
+                        b["opcode"] == "procedures_call"
+                        and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_MOVING_PROCCODE
+                    ):
+                        b["mutation"]["proccode"] = proc_to
+                        return
+
+            return _do
+
+        def freeze_first_clock(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                    item = _rref(blocks, b["inputs"].get("ITEM"))
+                    if item is not None and item["opcode"] == "operator_add":
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def land_culls(p):
+            # A land variant (0x2C) should scroll on HIT; retarget its crater scroll to a cull -> it vanishes.
+            blocks, hit, _active = _variant(p, 0x2C)
+            for x in hit:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+                    return
+
+        def water_persists(p):
+            # A water variant (0x3D) should cull on HIT; neutralize its cull -> it no longer vanishes.
+            blocks, hit, _active = _variant(p, 0x3D)
+            for x in hit:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "noop"
+                    return
+
+        def break_reticle_slot(p):
+            # Move both of 0x36's crosshair (slot 35) reads off the reticle slot.
+            blocks, _hit, active = _variant(p, 0x36)
+            for x in active:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_itemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == director.CROSSHAIR_SLOT
+                ):
+                    b["inputs"]["INDEX"] = [1, [4, "999"]]
+
+        def break_reticle_band(p):
+            # Widen 0x36's upper band bound off GROBDA_RETICLE_HIGH.
+            blocks, _hit, active = _variant(p, 0x36)
+            for x in active:
+                b = blocks[x]
+                if b["opcode"] == "operator_gt" and _num_operand(b["inputs"].get("OPERAND2")) == director.GROBDA_RETICLE_HIGH:
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_reacts_dx(p):
+            # 0x3A is the only dart-forward (react_dx 22); corrupt its reaction velocity write.
+            blocks, _hit, active = _variant(p, 0x3A)
+            for x in active:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_DX_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == 22
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "999"]]
+                    return
+
+        def break_reaction_timer(p):
+            blocks, _hit, active = _variant(p, 0x38)
+            for x in active:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.GROBDA_REACTION_FRAMES
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "999"]]
+                    return
+
+        def break_rearm(p):
+            # 0x3C is the only re-arming variant (finish returns slot flag to PRETRIGGER 0); latch it instead.
+            # A timed variant runs its countdown finish from BOTH the trigger-tick fall-through and the steady
+            # reacting branch, so both PRETRIGGER writes must flip.
+            blocks, _hit, active = _variant(p, 0x3C)
+            for x in active:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.GROBDA_FLAG_PRETRIGGER
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.GROBDA_FLAG_LATCHED)]]
+
+        def break_spawn_seeds(p):
+            # 0x3C is the only 10,000-point variant (value position 22); corrupt its spawn value stamp.
+            blocks = _stage(p)["blocks"]
+            for b in _spawn(p):
+                if b["opcode"] == "control_if":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and _num_operand(c["inputs"].get("OPERAND2")) == 0x3C
+                    ):
+                        for x in _branch(blocks, b, "SUBSTACK"):
+                            bb = blocks[x]
+                            if (
+                                bb["opcode"] == "data_replaceitemoflist"
+                                and bb["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                            ):
+                                bb["inputs"]["ITEM"] = [1, [4, "999"]]
+                        return
+
+        def break_spawn_clears(p):
+            blocks = _stage(p)["blocks"]
+            for b in _spawn(p):
+                if b["opcode"] == "control_if":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if c is not None and c["opcode"] == "operator_or":
+                        for x in _branch(blocks, b, "SUBSTACK"):
+                            bb = blocks[x]
+                            if (
+                                bb["opcode"] == "data_replaceitemoflist"
+                                and bb["fields"]["LIST"][1] == director.SLOT_DY_ID
+                                and _num_operand(bb["inputs"].get("ITEM")) == 0
+                            ):
+                                bb["inputs"]["ITEM"] = [1, [4, "5"]]
+                                return
+
+        cases = [
+            ("grobda-warp", unwarp),
+            ("grobda-twelve-variants", drop_variant),
+            ("grobda-none-fires", retarget_first_moving(director.ALLOC_BULLET_PROCCODE)),
+            ("grobda-seam-moves", retarget_first_moving(director.ADVANCE_GROUND_PROCCODE)),
+            ("grobda-hit-craters", freeze_first_clock),
+            ("grobda-land-craters", land_culls),
+            ("grobda-water-vanishes", water_persists),
+            ("grobda-reticle-slot", break_reticle_slot),
+            ("grobda-reticle-band", break_reticle_band),
+            ("grobda-reacts-dx", break_reacts_dx),
+            ("grobda-reaction-timer", break_reaction_timer),
+            ("grobda-rearm-vs-latch", break_rearm),
+            ("grobda-spawn-seeds", break_spawn_seeds),
+            ("grobda-spawn-clears", break_spawn_clears),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._gnd06_failures(project), label)
+
+    # Roadmap closure evidence for leaf `ground.domogram` (GND-07, #89): the scripted-path shooter — the first
+    # ground family that both moves under its own velocity and fires. `update domogram` follows the flattened
+    # path columns (holding the last vector once exhausted), fires one aimed bullet at the 24-frame animation
+    # midpoint gated on the stop-firing row + the every-4th-tick phase, moves through the velocity-only seam,
+    # and craters persistently on a bomb.
+    # roadmap-evidence: GND-07 success  (test_domogram_slice_authoring_present — domogram warp; HIT/ACTIVE state split; HIT craters persistently and never culls; ACTIVE decodes the path columns into velocity + hold, holds the last vector when exhausted, decrements the veclen each tick, fires one aimed bullet at the 24-frame midpoint gated on the stop-firing row + every-4th-tick phase, and moves via the velocity-only seam; spawn seeds ACTIVE at 800 and primes the path coroutine)
+    # roadmap-evidence: GND-07 failure  (test_domogram_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_domogram_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd07_failures(project))
+
+    def test_domogram_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._gnd07_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _rref(blocks, inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def _upd(p):
+            return _proc_body_blocks(_stage(p), director.UPDATE_DOMOGRAM_PROCCODE)
+
+        def _spawn(p):
+            return _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE)
+
+        def _reach(blocks, start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def _subtree_has(blocks, cid, pred):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if pred(b):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def _dom_spawn(p):
+            blocks = _stage(p)["blocks"]
+            for b in _spawn(p):
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
+                if cid and _subtree_has(
+                    blocks,
+                    cid,
+                    lambda bl: bl["opcode"] == "operator_equals"
+                    and _num_operand(bl["inputs"].get("OPERAND2")) == director.DOMOGRAM_TYPE,
+                ):
+                    sub = b["inputs"].get("SUBSTACK")
+                    start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+                    return blocks, _reach(blocks, start)
+            return blocks, set()
+
+        def unwarp(p):
+            for b in _stage(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == director.UPDATE_DOMOGRAM_PROCCODE
+                ):
+                    b["mutation"]["warp"] = "false"
+
+        def break_state_split(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] == "control_if_else":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := _rref(blocks, c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                        and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                    ):
+                        c["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                        return
+
+        def freeze_clock(p):
+            # Freeze the HIT crater clock specifically (the `slot timer + step` advance), NOT the ACTIVE shot
+            # reload (also an operator_add, but on a masked-random value, not a slot-timer read).
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                    item = _rref(blocks, b["inputs"].get("ITEM"))
+                    base_read = _rref(blocks, item["inputs"].get("NUM1")) if item is not None and item["opcode"] == "operator_add" else None
+                    if base_read is not None and base_read["opcode"] == "data_itemoflist" and base_read["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def crater_culls(p):
+            # Retarget the HIT crater scroll to a cull -> the crater no longer persists.
+            blocks = _stage(p)["blocks"]
+            top = None
+            for b in _upd(p):
+                if b["opcode"] == "control_if_else":
+                    c = _rref(blocks, b["inputs"].get("CONDITION"))
+                    if (
+                        c is not None
+                        and c["opcode"] == "operator_equals"
+                        and (lhs := _rref(blocks, c["inputs"].get("OPERAND1"))) is not None
+                        and lhs["opcode"] == "data_itemoflist"
+                        and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                        and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                    ):
+                        top = b
+                        break
+            sub = top["inputs"].get("SUBSTACK")
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            for x in _reach(blocks, start):
+                b = blocks[x]
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+                    return
+
+        def break_path_decode(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_DX_ID:
+                    item = _rref(blocks, b["inputs"].get("ITEM"))
+                    if item is not None and item["opcode"] == "data_itemoflist" and item["fields"]["LIST"][1] == director.DOMOGRAM_VECTOR_DX_ID:
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def break_holds(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if (
+                    b["opcode"] == "operator_gt"
+                    and (lhs := _rref(blocks, b["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_VEC_LEFT_ID
+                    and _num_operand(b["inputs"].get("OPERAND2")) == 0
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                    return
+
+        def break_veclen_countdown(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID:
+                    item = _rref(blocks, b["inputs"].get("ITEM"))
+                    if item is not None and item["opcode"] == "operator_subtract":
+                        base_read = _rref(blocks, item["inputs"].get("NUM1"))
+                        if base_read is not None and base_read["opcode"] == "data_itemoflist" and base_read["fields"]["LIST"][1] == director.SLOT_FLAG_ID:
+                            b["inputs"]["ITEM"] = [1, [4, "0"]]
+                            return
+
+        def break_midpoint_fire(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and (lhs := _rref(blocks, b["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.DOMOGRAM_FIRE_FRAME
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                    return
+
+        def break_anim_24(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.DOMOGRAM_ANIM_FRAMES
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_arm_gate(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] != "operator_gt":
+                    continue
+                o2 = b["inputs"].get("OPERAND2")
+                if (
+                    isinstance(o2, list)
+                    and len(o2) >= 2
+                    and isinstance(o2[1], list)
+                    and len(o2[1]) >= 3
+                    and o2[1][0] == 12
+                    and o2[1][2] == director.GROUND_STOP_FIRING_ROW_ID
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        def break_phase_gate(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] == "operator_mod" and _num_operand(b["inputs"].get("NUM2")) == director.FIRE_GATE_PHASE_TICKS:
+                    b["inputs"]["NUM2"] = [1, [4, "1"]]
+                    return
+
+        def break_seam(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_MOVING_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = director.ADVANCE_GROUND_PROCCODE
+                    return
+
+        def break_spawn_active(p):
+            blocks, ids = _dom_spawn(p)
+            for x in ids:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.DOMOGRAM_PTS
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_spawn_primes(p):
+            blocks, ids = _dom_spawn(p)
+            for x in ids:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.DOMOGRAM_VECLEN_INIT
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "9"]]
+                    return
+
+        cases = [
+            ("domogram-warp", unwarp),
+            ("domogram-state-split", break_state_split),
+            ("domogram-hit-craters", freeze_clock),
+            ("domogram-crater-persists", crater_culls),
+            ("domogram-path-decode", break_path_decode),
+            ("domogram-holds-last-vector", break_holds),
+            ("domogram-veclen-countdown", break_veclen_countdown),
+            ("domogram-midpoint-fire", break_midpoint_fire),
+            ("domogram-anim-24", break_anim_24),
+            ("domogram-fire-arm-gated", break_arm_gate),
+            ("domogram-fire-phase-gated", break_phase_gate),
+            ("domogram-seam-moves", break_seam),
+            ("domogram-spawn-active", break_spawn_active),
+            ("domogram-spawn-primes-path", break_spawn_primes),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._gnd07_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -13570,7 +14713,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "ce3bb71f7b5e3f3b2fb28bfef571516c831ea989ccb1d01b6ce1408b0800dde7",
+            "45ea53cd653a450c0fa394160c056800283852b7d5ddd823b17b1d86677b9c6e",
             build_hash,
         )
 
