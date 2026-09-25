@@ -800,6 +800,12 @@ ADVANCE_GROUND_MOVING_PROCCODE = "advance ground moving"
 # to scroll, converting to a persistent crater. Mirrors the flying families' per-family `update <family>`
 # split (an active/hit control_if_else), calling the shared `advance ground` scroller for the motion.
 UPDATE_BARRA_PROCCODE = "update barra"
+# SEC-01 (ground.sol-tower #90): the per-tick update for a Sol Tower — a hidden citadel. While HIDDEN it is an
+# invisible ACTIVE idle that just scrolls; a bomb (detector -> HIT, timer 0, scores the reveal) begins the
+# RISING phase, whose 7 rise steps are walked off `slot timer`; on reaching step 7 the slot returns to ACTIVE
+# in the RISEN phase (a live 2x2 target). A second bomb (HIT while RISEN) craters PERSISTENTLY exactly like a
+# Barra (sol_tower_risen -> handle_bomb_explosion). Delegates to the shared `advance ground` scroller.
+UPDATE_SOL_TOWER_PROCCODE = "update sol tower"
 # GND (ground.barra #70): the per-tick update for a Garu Barra — a two-slot object. Both the
 # indestructible 2x2 base (state sentinel SLOT_GARU_BASE) and the destructible node (state ACTIVE)
 # scroll with the terrain; the ONLY per-state difference is the node's death: when the node is bombed
@@ -1306,6 +1312,7 @@ TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during t
 # codes present in the schedules (Zolbak 0x1F, Derota 0x2C/0x2D, ...) stay on the empty seam for their
 # own slices, so an add_ground_object record for an unbuilt type advances the cursor without spawning.
 BARRA_TYPE = 30  # 0x1E, handle_1E_Barra: passive terrain target, never fires, crater on death
+SOL_TOWER_TYPE = 29  # 0x1D, handle_1D_Sol_Tower: hidden citadel — reveal, rise, destroy; 2 scoring stages (SEC-01)
 ZOLBAK_TYPE = 31  # 0x1F, handle_1F_Zolbak: passive dome; on death reduces the enemy AI level by 2 (GND-02)
 GARU_BARRA_TYPE = 32  # 0x20, handle_20_Garu_Barra: indestructible base + destructible node (Commit 6)
 LOGRAM_TYPE = 38  # 0x26, handle_26_Logram: open/close dome, one aimed shot at full-open (Commit 7)
@@ -1370,6 +1377,7 @@ GROBDA_FLAG_LATCHED = 2  # slot flag: reaction done, holding end_dx (non-repeata
 # shipped in slice 9; slice 12 adds Zolbak, Derota, and Garu Derota; slice 13 adds the Boza Logram and Grobda.
 GROUND_HANDLED_TYPES = (
     BARRA_TYPE,
+    SOL_TOWER_TYPE,
     ZOLBAK_TYPE,
     GARU_BARRA_TYPE,
     LOGRAM_TYPE,
@@ -1415,6 +1423,10 @@ DOMOGRAM_DEBUG_VECTOR_INDEX = 8
 # Extended as later ground families are built (Grobda, Domogram in slice 13's second build PR) — no new key.
 DEBUG_GROUND_FAMILIES = (
     (BARRA_TYPE, "single"),
+    # SEC-01 (ground.sol-tower #90): a single hidden Sol Tower the operator can bomb to reveal (scores),
+    # watch rise through its 7 steps, then bomb again to destroy (scores again) for the persistent crater.
+    # Seeds through the single-slot shape, exactly like the scheduled add_ground_object spawn.
+    (SOL_TOWER_TYPE, "single"),
     (ZOLBAK_TYPE, "single"),
     (GARU_BARRA_TYPE, "garu"),
     (LOGRAM_TYPE, "single"),
@@ -1487,6 +1499,27 @@ GROUND_EXPLOSION_PHASE_FRAMES = 8  # animation frame = floor(slot timer / 8) (ar
 GROUND_EXPLOSION_FRAME_COUNT = 7  # animation frames 0..6 play, then the crater begins
 GROUND_CRATER_START_FRAMES = GROUND_EXPLOSION_PHASE_FRAMES * GROUND_EXPLOSION_FRAME_COUNT  # 56
 GROUND_CRATER_FLICKER_FRAMES = 4  # crater alternates 0xA6/0xA7 every 4 frames (arcade `countup >> 2`)
+
+# SEC-01 Sol Tower (ground.sol-tower #90; handle_1D_Sol_Tower / handle_sol_tower_rising / sol_tower_risen
+# xevious_main.68k 3013-3076). A hidden citadel scheduled as an invisible single-slot ground object. A bomb
+# on its hidden cell REVEALS it (scores 2,000, _PTS=54 -> value-table position 19); it then RISES through a
+# 7-step animation over ~112 arcade frames, growing to 2x2 partway; once risen it is an ordinary bombable
+# target whose destruction scores the SAME 2,000 again (two scoring stages) and leaves a persistent crater
+# (sol_tower_risen -> handle_bomb_explosion, the SAME routine the Barra uses). The reference's always-visible
+# switch (OPT_REVEAL_SOL_TOWER) is a development option, excluded. The port has no saved-PC continuation, so
+# the arcade's re-entry encoding of the three idle/rise/risen phases is carried explicitly in `slot flag`:
+#   HIDDEN (0) -> invisible ACTIVE idle; a bomb (detector -> HIT, timer 0, scores reveal) begins the rise.
+#   RISING (1) -> HIT while the timer walks the 7 rise steps; NOT re-scoreable (the detector gates on ACTIVE).
+#   RISEN  (2) -> visible 2x2 ACTIVE target; a second bomb scores destroy, then the shared crater burst plays.
+SOL_TOWER_PTS = 19  # 1-based value-table position of 2,000 points (handle_1D_Sol_Tower _PTS=54, normal cabinet)
+SOL_HIDDEN_PHASE = 0  # `slot flag`: hidden invisible idle (pre-reveal)
+SOL_RISING_PHASE = 1  # `slot flag`: the 7-step rise animation (HIT state; not re-scoreable)
+SOL_RISEN_PHASE = 2  # `slot flag`: fully risen, a live 2x2 bombable target (destroy stage craters like a Barra)
+# The rise clock: step = (slot timer >> 4) & 7, advancing TICK_TIMER_STEP arcade-frames/tick from 0 (the
+# detector zeroed it at the reveal). 7 steps x 16 frames = 112 frames (~1.9 s); size flips to 2x2 at step 4.
+SOL_RISE_PHASE_FRAMES = 16  # arcade frames per rise step (arcade `_TIMER >> 4`)
+SOL_RISE_STEP_COUNT = 7  # steps 0..6 render a rise frame; step 7 => risen (arcade `cmp #7,d0 -> sol_tower_risen`)
+SOL_RISE_BIG_STEP = 4  # size doubles to 2x2 from this step (arcade `cmp #4,d0 -> _ATTR=3`)
 
 # GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
 # SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
@@ -1897,6 +1930,24 @@ EXPLODE_COSTUME_COUNT = 8  # the shared solv_death burst is 8 costumes (explode_
 BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
 BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
 BARRA_CRATER_BASE_ORDINAL = BARRA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
+
+# SEC-01 (ground.sol-tower #90) renderer constants. Like every ground family, one persistent clone per GROUND
+# slot (1..16), a pure per-tick function of its slot state. Costume ordinals on the sol-tower target: 1..7 =
+# the 7 rise frames (sol-tower/rise/01..07, arcade sol_tower_animation_tbl A8,A9,AA,AB,AE,B2,B6), 8.. = the
+# shared solv_death explosion burst, then the two shared crater frames appended last (see expected_project's
+# mirror). Costume by phase (`slot flag`) + state: HIDDEN ACTIVE -> hidden; RISING (HIT) -> rise[step]; RISEN
+# ACTIVE -> the final rise frame (the risen citadel); RISEN HIT -> the shared burst->crater clock, identical
+# to the Barra. RENDERING NOTE (operator-verified at playtest): the "Sol Citadel (no shadow)" sheet draws the
+# rise at its FINAL on-screen sizes (the crops grow small->large), so the arcade's step-4 2x2 size flip is
+# reproduced by the crop sizes themselves and every frame renders at the one uniform GROUND_RENDER_SIZE — no
+# render-side size doubling, which would double-count the growth already in the artwork.
+SOL_TOWER_TARGET = "sol-tower"
+SOL_TOWER_CLONE_SLOT_ID = "sol-tower-clone-slot"  # sprite-local: which ground slot this clone renders
+SOL_TOWER_RISE_FRAME_COUNT = 7  # costumes 1..7: the 7 rise frames (sol-tower/rise/01..07)
+SOL_TOWER_RISE_BASE_ORDINAL = 1  # costume 1: rise step 0 (rise ordinal = base + step)
+SOL_TOWER_RISEN_ORDINAL = SOL_TOWER_RISE_FRAME_COUNT  # costume 7: the fully-risen citadel (rise step 6)
+SOL_TOWER_EXPLODE_BASE_ORDINAL = SOL_TOWER_RISE_FRAME_COUNT + 1  # 8..: the shared explosion burst
+SOL_TOWER_CRATER_BASE_ORDINAL = SOL_TOWER_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 16: crater frames follow
 
 # GND-02 (ground.zolbak #85) renderer constants. A Zolbak renders EXACTLY like a Barra — an idle dome
 # that craters on a bomb hit — so its costume layout mirrors the Barra target: 1 = the idle dome
@@ -3198,6 +3249,13 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BARRA_TYPE)),
         [blocks.call_proc(UPDATE_BARRA_PROCCODE, warp=True)],
     )
+    # SEC-01 (ground.sol-tower #90): the hidden citadel wraps `advance ground` with its reveal->rise->risen
+    # phase clock (`update sol tower`), branching internally on `slot state`/`slot flag`; it delegates to
+    # `advance ground` for the shared terrain scroll + off-field cull in every phase.
+    sol_tower_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(SOL_TOWER_TYPE)),
+        [blocks.call_proc(UPDATE_SOL_TOWER_PROCCODE, warp=True)],
+    )
     garu_branch = blocks.if_reporter(
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(GARU_BARRA_TYPE)),
         [blocks.call_proc(UPDATE_GARU_PROCCODE, warp=True)],
@@ -3241,7 +3299,7 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(DOMOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_DOMOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -3843,6 +3901,75 @@ def install_update_barra(blocks: Blocks) -> None:
     blocks.substack(
         top, [blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)], name="SUBSTACK2"
     )
+    blocks.chain(definition, [top])
+
+
+def install_update_sol_tower(blocks: Blocks) -> None:
+    # SEC-01 / ground.sol-tower (#90): one tick of a Sol Tower at `slot index`, mirroring handle_1D_Sol_Tower /
+    # handle_sol_tower_rising / sol_tower_risen (xevious_main.68k 3013-3076). The arcade encodes three idle/rise/
+    # risen phases as saved-PC continuations; the port carries them explicitly in `slot flag` (SOL_HIDDEN_PHASE /
+    # SOL_RISING_PHASE / SOL_RISEN_PHASE). Like every ground family it always scrolls with the terrain and culls
+    # off-field (the shared `advance ground`); the phase clock layers on top:
+    #   * ACTIVE (not hit): a HIDDEN invisible idle, or a RISEN live target — both just scroll (no timer advance),
+    #     exactly the arcade's `jbsr scroll_sprite_X; jra add_obj_handler` on a non-hit tick.
+    #   * HIT: the detector zeroed `slot timer` and scored (reveal if it was HIDDEN, destroy if RISEN). Two cases
+    #     by `slot flag`:
+    #       - RISEN => the second bomb: crater PERSISTENTLY like a Barra (sol_tower_risen -> handle_bomb_explosion,
+    #         the SAME routine) — advance the crater clock and scroll; the renderer walks burst->crater off the timer.
+    #       - HIDDEN/RISING => the rise: on the first tick (still HIDDEN) flip to RISING, then advance the timer and
+    #         compute the arcade step = (_TIMER >> 4) & 7. On reaching SOL_RISE_STEP_COUNT (step 7) the object
+    #         becomes a live target again — state back to ACTIVE, flag RISEN — so a second bomb scores the destroy
+    #         stage (the detector gates on ACTIVE, so RISING is never re-scored: two scoring stages, same 2,000).
+    definition = _install_warp_proc(blocks, UPDATE_SOL_TOWER_PROCCODE)
+    advance = lambda: blocks.call_proc(ADVANCE_GROUND_PROCCODE, warp=True)
+    tick_clock = lambda: _set_cur_item(
+        blocks,
+        "slot timer",
+        SLOT_TIMER_ID,
+        blocks.op_add(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(TICK_TIMER_STEP)),
+    )
+    # step = (slot timer >> 4) & 7 == (floor(timer / SOL_RISE_PHASE_FRAMES)) mod 8 (arcade `lsr #4; and #7`),
+    # read AFTER tick_clock advanced the timer, matching the arcade's increment-then-test order.
+    rise_step = lambda: blocks.op_mod(
+        blocks.op_floor(
+            blocks.op_div(
+                _cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(SOL_RISE_PHASE_FRAMES)
+            )
+        ),
+        number(8),
+    )
+
+    # HIT & RISEN: the destroy stage — advance the crater clock and scroll (Barra-identical).
+    destroy_body = [tick_clock(), advance()]
+    # HIT & (HIDDEN|RISING): the rise. Reveal (HIDDEN->RISING) once, advance the timer, then flip to RISEN
+    # once step 7 is reached; scroll every tick.
+    reveal = blocks.if_reporter(
+        blocks.op_eq(_cur_item(blocks, "slot flag", SLOT_FLAG_ID), number(SOL_HIDDEN_PHASE)),
+        [_set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(SOL_RISING_PHASE))],
+    )
+    risen = blocks.if_reporter(
+        blocks.op_not(blocks.op_lt(rise_step(), number(SOL_RISE_STEP_COUNT))),
+        [
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(SOL_RISEN_PHASE)),
+        ],
+    )
+    rise_body = [reveal, tick_clock(), risen, advance()]
+
+    hit_inner = blocks.add("control_if_else")
+    is_risen = blocks.op_eq(_cur_item(blocks, "slot flag", SLOT_FLAG_ID), number(SOL_RISEN_PHASE))
+    blocks.blocks[hit_inner]["inputs"]["CONDITION"] = [2, is_risen]
+    blocks.blocks[is_risen]["parent"] = hit_inner
+    blocks.substack(hit_inner, destroy_body)
+    blocks.substack(hit_inner, rise_body, name="SUBSTACK2")
+
+    top = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT))
+    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = top
+    blocks.substack(top, [hit_inner])
+    # ACTIVE (HIDDEN idle or RISEN idle): just the shared terrain scroll + off-field cull.
+    blocks.substack(top, [advance()], name="SUBSTACK2")
     blocks.chain(definition, [top])
 
 
@@ -7218,6 +7345,18 @@ def _ground_seed_single(blocks: Blocks, *, slot, type_val, sprite_y) -> list[str
             [blocks.list_replace("slot pts", SLOT_PTS_ID, slot(), number(BARRA_PTS))],
         ),
         blocks.if_reporter(
+            # SEC-01 (ground.sol-tower #90): a hidden citadel. It needs its 2,000-point value (scored at BOTH
+            # the reveal and the destroy stage) plus its phase seed: the HIDDEN phase and a zeroed rise clock.
+            # cull clears only type/state, so a slot reused from a prior Sol Tower could carry a stale RISEN
+            # flag or a non-zero timer — seed both explicitly so it spawns invisible and pre-reveal, not risen.
+            blocks.op_eq(type_val(), number(SOL_TOWER_TYPE)),
+            [
+                blocks.list_replace("slot pts", SLOT_PTS_ID, slot(), number(SOL_TOWER_PTS)),
+                blocks.list_replace("slot flag", SLOT_FLAG_ID, slot(), number(SOL_HIDDEN_PHASE)),
+                blocks.list_replace("slot timer", SLOT_TIMER_ID, slot(), number(0)),
+            ],
+        ),
+        blocks.if_reporter(
             # GND-02 (ground.zolbak #85): a passive dome — like the Barra it only needs its point value at
             # spawn (200 pts); it never fires, so no fire mask / timer. The crater clock is zeroed by the
             # detector at the hit, and `update zolbak` runs the AI-level reduction there, not here.
@@ -7794,8 +7933,13 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         (blocks.op_eq(ground_type_at_cursor(), number(t)) for t in GROBDA_TYPES),
         blocks.op_or(
             blocks.op_or(
-                blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
-                blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
+                blocks.op_or(
+                    blocks.op_eq(ground_type_at_cursor(), number(BARRA_TYPE)),
+                    blocks.op_eq(ground_type_at_cursor(), number(ZOLBAK_TYPE)),
+                ),
+                # SEC-01 (ground.sol-tower #90): the hidden citadel is a single-slot ground object
+                # (add_ground_object), seeded through the shared single-slot builder.
+                blocks.op_eq(ground_type_at_cursor(), number(SOL_TOWER_TYPE)),
             ),
             blocks.op_or(
                 blocks.op_eq(ground_type_at_cursor(), number(LOGRAM_TYPE)),
@@ -8131,6 +8275,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_advance_ground(blocks)
     install_advance_ground_moving(blocks)
     install_update_barra(blocks)
+    install_update_sol_tower(blocks)
     install_update_garu(blocks)
     install_update_logram(blocks)
     install_update_zolbak(blocks)
@@ -9599,6 +9744,133 @@ def barra_blocks() -> dict[str, dict[str, Any]]:
             # keeps it below the craft/crosshair/bomb-target (which do front every tick)
             # while staying above the ground. Fronting here is what put a Barra over the
             # sight the player was aiming with.
+            blocks.show(),
+        ],
+    )
+    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
+    blocks.substack(loop, [render])
+    blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
+def sol_tower_blocks() -> dict[str, dict[str, Any]]:
+    # SEC-01 Sol Tower renderer (game_director owns these blocks; sprite_extractor owns the costumes). One
+    # persistent clone per GROUND slot (1..16), the same terrain-band clone pool as the Barra, a pure per-tick
+    # function of its slot's live state. The clone writes no state.
+    #
+    # Visibility + costume by phase (`slot flag`) and state:
+    #   HIDDEN & ACTIVE -> invisible (the un-revealed citadel); the clone is hidden.
+    #   RISING (HIT)    -> the rise frame for the current step = (slot timer >> 4) & 7, costume ordinal
+    #                      SOL_TOWER_RISE_BASE_ORDINAL + step (sol_tower_animation_tbl A8,A9,AA,AB,AE,B2,B6).
+    #                      The rise crops grow small->large, so the arcade's step-4 2x2 size flip is carried by
+    #                      the artwork; every frame renders at the one uniform GROUND_RENDER_SIZE.
+    #   RISEN & ACTIVE  -> the fully-risen citadel (the last rise frame, sol-tower/rise/07), a live target.
+    #   RISEN & HIT     -> the destroy stage: the shared solv_death burst for the first GROUND_CRATER_START_FRAMES
+    #                      (floor(slot timer / 8)), then the flickering persistent crater — IDENTICAL to the Barra
+    #                      (sol_tower_risen -> handle_bomb_explosion, the same routine), scrolling until it culls.
+    blocks = Blocks(SOL_TOWER_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("sol tower clone slot", SOL_TOWER_CLONE_SLOT_ID)
+    slot_state = lambda: blocks.list_item("slot state", SLOT_STATE_ID, slotvar())
+    slot_flag = lambda: blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar())
+    slot_timer = lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("sol tower clone slot", SOL_TOWER_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+    is_sol = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(SOL_TOWER_TYPE)
+    )
+    # Terrain-locked position — identical cell->stage mapping to every family renderer.
+    stage_x = blocks.op_sub(
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_COL_STAGE),
+        ),
+        number(RENDER_COL_OFFSET),
+    )
+    stage_y = blocks.op_sub(
+        number(RENDER_ROW_TOP),
+        blocks.op_mul(
+            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
+            number(RENDER_ROW_STAGE),
+        ),
+    )
+    # RISING costume: rise frame for step = (slot timer >> 4) & 7.
+    rise_ordinal = blocks.op_add(
+        number(SOL_TOWER_RISE_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(slot_timer(), number(SOL_RISE_PHASE_FRAMES))),
+            number(8),
+        ),
+    )
+    # RISEN & HIT destroy costume: the shared burst until the crater begins, then the flickering crater.
+    explode_ordinal = blocks.op_add(
+        number(SOL_TOWER_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(blocks.op_div(slot_timer(), number(GROUND_EXPLOSION_PHASE_FRAMES))),
+    )
+    crater_ordinal = blocks.op_add(
+        number(SOL_TOWER_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(slot_timer(), number(GROUND_CRATER_FLICKER_FRAMES))),
+            number(2),
+        ),
+    )
+    destroy_costume = blocks.add("control_if_else")
+    cratered = blocks.op_not(
+        blocks.op_lt(slot_timer(), number(GROUND_CRATER_START_FRAMES))
+    )
+    blocks.blocks[destroy_costume]["inputs"]["CONDITION"] = [2, cratered]
+    blocks.blocks[cratered]["parent"] = destroy_costume
+    blocks.substack(destroy_costume, [blocks.switch_costume_expr(crater_ordinal)])
+    blocks.substack(destroy_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
+
+    # HIT: destroy (flag == RISEN) vs the rise animation (flag == RISING).
+    hit_costume = blocks.add("control_if_else")
+    is_risen = blocks.op_eq(slot_flag(), number(SOL_RISEN_PHASE))
+    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, is_risen]
+    blocks.blocks[is_risen]["parent"] = hit_costume
+    blocks.substack(hit_costume, [destroy_costume])
+    blocks.substack(hit_costume, [blocks.switch_costume_expr(rise_ordinal)], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(slot_state(), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [hit_costume])
+    # ACTIVE & visible => RISEN idle: the fully-risen citadel. A fixed costume, so switch by name (the direct
+    # tool for a constant; switch_costume_expr would obscure the menu with a runtime reporter).
+    blocks.substack(state_render, [blocks.switch_costume("sol-tower/rise/07")], name="SUBSTACK2")
+
+    # Visible unless it is a HIDDEN, un-revealed idle. HIDDEN only ever coincides with ACTIVE (the update flips
+    # it to RISING on the reveal tick before the renderer runs), so `HIDDEN && not hit` isolates the invisible
+    # pre-reveal citadel; every other phase (RISING/RISEN, idle or exploding) is drawn.
+    hidden_idle = blocks.op_and(
+        blocks.op_eq(slot_flag(), number(SOL_HIDDEN_PHASE)),
+        blocks.op_not(blocks.op_eq(slot_state(), number(SLOT_HIT))),
+    )
+    visible = blocks.op_and(is_sol, blocks.op_not(hidden_idle))
+    render = blocks.add("control_if_else")
+    blocks.blocks[render]["inputs"]["CONDITION"] = [2, visible]
+    blocks.blocks[visible]["parent"] = render
+    blocks.substack(
+        render,
+        [
+            blocks.go_expr(stage_x, stage_y),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            # WPN-04 layering: a ground object sits ON the terrain, under the craft and bomb sight — leave it
+            # unfronted (its static layerOrder is already above the terrain strips) exactly like the Barra.
             blocks.show(),
         ],
     )
@@ -11526,6 +11798,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, BACURA_TARGET)
     _ensure_gameplay_target(result, SHEONITE_TARGET)
     _ensure_gameplay_target(result, BARRA_TARGET)
+    _ensure_gameplay_target(result, SOL_TOWER_TARGET)
     _ensure_gameplay_target(result, GARU_TARGET)
     _ensure_gameplay_target(result, LOGRAM_TARGET)
     _ensure_gameplay_target(result, ZOLBAK_TARGET)
@@ -11648,6 +11921,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             barra["costumes"].extend(copy.deepcopy(death["costumes"]))
         barra["costumes"].extend(proof_by_family("crater/"))
         barra["currentCostume"] = 0
+    # SEC-01 (ground.sol-tower #90): the Sol Tower renderer mirrors its 7 rise frames (ordinals 1..7;
+    # sol-tower/rise/01..07), then the shared solv_death explosion burst (ordinals 8..15) and the two crater
+    # frames (ordinals 16..17) — the SAME crater as the Barra, since a risen Sol Tower's destruction runs
+    # handle_bomb_explosion. Idempotent; a no-op when any source is absent (generation runs to a fixpoint).
+    sol_tower = next((t for t in result["targets"] if t.get("name") == SOL_TOWER_TARGET), None)
+    if proof is not None and sol_tower is not None:
+        sol_tower["costumes"] = proof_by_family("sol-tower/")
+        if death is not None:
+            sol_tower["costumes"].extend(copy.deepcopy(death["costumes"]))
+        sol_tower["costumes"].extend(proof_by_family("crater/"))
+        sol_tower["currentCostume"] = 0
     # GND-01: the Garu Barra renderer mirrors its two 2x2 base frames (ordinals 1..2; the exposed base holds
     # ordinal 2, the red socket — ordinal 1 is retained as a crop but not rendered), then the node
     # idle pyramid (ordinal 3, "garu/node reuses the Barra pyramid" -> the barra/idle frame mirrored in),
@@ -12129,6 +12413,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "bacura": bacura_blocks(),
         "sheonite": sheonite_blocks(),
         "barra": barra_blocks(),
+        "sol-tower": sol_tower_blocks(),
         "garu": garu_blocks(),
         "logram": logram_blocks(),
         "zolbak": zolbak_blocks(),
@@ -12252,6 +12537,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # creation. All entity state lives in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 BARRA_CLONE_SLOT_ID: ["barra clone slot", 0],
+            }
+        elif target["name"] == SOL_TOWER_TARGET:
+            # SEC-01 (ground.sol-tower #90): likewise, the only Sol Tower render state is which GROUND slot each
+            # clone draws; the phase, rise step and crater clock live in the Stage slot lists the clone reads.
+            target["variables"] = target["variables"] | {
+                SOL_TOWER_CLONE_SLOT_ID: ["sol tower clone slot", 0],
             }
         elif target["name"] == GARU_TARGET:
             # GND-01: likewise, the only Garu render state is which GROUND slot each clone draws.

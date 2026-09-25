@@ -709,6 +709,11 @@
       "name": "slot y",
       "scope": "Stage"
     },
+    "sol-tower-clone-slot": {
+      "kind": "variable",
+      "name": "sol tower clone slot",
+      "scope": "sol-tower"
+    },
     "solv-death-director-entry-epoch": {
       "kind": "variable",
       "name": "entry epoch",

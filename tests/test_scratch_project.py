@@ -241,8 +241,9 @@ class ScratchProjectTests(unittest.TestCase):
         # and the slice-13 grobda renderer (GND-06; the 12 variants share one tank costume set, reusing the
         # shared burst + crater proof costumes by ref, plus 4 new tank tread frames), and the slice-13
         # domogram renderer (GND-07; the scripted-path shooter, its own idle sprite set reusing the shared
-        # burst + crater proof costumes by ref, plus 4 new idle frames).
-        self.assertEqual(39, len(project["targets"]))
+        # burst + crater proof costumes by ref, plus 4 new idle frames), and the slice-14 sol-tower renderer
+        # (SEC-01; the hidden citadel's 7 rise frames plus the shared burst + crater proof costumes by ref).
+        self.assertEqual(40, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -254,11 +255,12 @@ class ScratchProjectTests(unittest.TestCase):
         # Derota base pulse frames (GND-04) + the slice-13 additions: 1 Boza centre core (GND-05; the four
         # outer domes reuse the Logram open frames by ref, so only the centre is a new crop) + 4 Grobda tank
         # tread frames (GND-06; the 12 variants share one tread set and reuse the burst + crater crops by ref)
-        # + 4 Domogram idle frames (GND-07; the scripted-path shooter reuses the burst + crater crops by ref)) + the 6 arcade
+        # + 4 Domogram idle frames (GND-07; the scripted-path shooter reuses the burst + crater crops by ref)
+        # + 7 Sol Tower rise-frame PNGs (SEC-01; the hidden citadel reuses the burst + crater crops by ref)) + the 6 arcade
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
         # bacura / sheonite cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(175, len(assets))
+        self.assertEqual(182, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -1339,6 +1341,10 @@ class ScratchProjectTests(unittest.TestCase):
             # explosion/crater clock, then delegates the terrain scroll+cull to `advance ground`.
             # Warp, dispatched per OCCUPIED Barra slot from the walk.
             director.UPDATE_BARRA_PROCCODE,
+            # SEC-01 (slice 14) ground.sol-tower: the hidden citadel's per-tick wrapper — HIDDEN/RISEN idle and
+            # the RISEN destroy crater delegate the terrain scroll+cull to `advance ground`, and the RISING
+            # phase walks the 7 rise steps off `slot timer`. Warp, dispatched per OCCUPIED Sol Tower slot.
+            director.UPDATE_SOL_TOWER_PROCCODE,
             # GND-01 (slice 9) ground.barra: the Garu Barra's thin per-tick wrapper — for a HIT node it
             # advances the explode-and-remove clock then removes the slot; base and active node delegate
             # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu slot.
@@ -14713,7 +14719,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "45ea53cd653a450c0fa394160c056800283852b7d5ddd823b17b1d86677b9c6e",
+            "c50fd4b8926182c39dfde41f86dfbe1859517a5b4875ae96375f397771a9f0cf",
             build_hash,
         )
 

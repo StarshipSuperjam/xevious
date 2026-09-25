@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "38788e0ed4fe370e3b99cc9c922950fe9abc7369bc0ec645b4c4d4003bc90d70",
+  "manifest_sha256": "a236bf6afbf9835f7949477d3e8e6edb6b380d92c8e2d61c84bd992810a6b99a",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1203,6 +1203,174 @@
       ],
       "generator_version": 1
     },
+    "a5a02439b7f8b1b0e5a6639e13a34e45.png": {
+      "frame": "sol-tower/rise/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        18,
+        327,
+        2,
+        2
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "d3334453553eb37cc6c588bbf983f48b.png": {
+      "frame": "sol-tower/rise/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        29,
+        326,
+        4,
+        4
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f5a0f43baa81437d4727faec2ca8370d.png": {
+      "frame": "sol-tower/rise/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        40,
+        325,
+        6,
+        6
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f16fcbfb14916cb427039ce359fadd89.png": {
+      "frame": "sol-tower/rise/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        52,
+        324,
+        8,
+        8
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "7cda5f1d707240dc5e704ca275271a60.png": {
+      "frame": "sol-tower/rise/05",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        66,
+        323,
+        10,
+        10
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "c7e63a20afd78600d5231fe1a9ba3c2d.png": {
+      "frame": "sol-tower/rise/06",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        83,
+        322,
+        12,
+        12
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "fc50296cb3fe3d71a8fc7c05fb60d60d.png": {
+      "frame": "sol-tower/rise/07",
+      "target": "toroid_sprite_proof",
+      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
+      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
+      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        102,
+        321,
+        14,
+        14
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
     "04b454a1de49f48dbb3488395a234776.png": {
       "frame": "logram/open/01",
       "target": "toroid_sprite_proof",
@@ -1950,7 +2118,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "02af5ec07ff1432cf7383784ee381ff059c46a1eac68d788f2e974d340767ab4",
+    "sha256": "a0e3e18a56270a17e50a0163fb9c435d90567d45b9f5b3ae3eaf50d87488e061",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -2002,6 +2170,13 @@
       "bacura/slab/07",
       "bacura/slab/08",
       "barra/idle/01",
+      "sol-tower/rise/01",
+      "sol-tower/rise/02",
+      "sol-tower/rise/03",
+      "sol-tower/rise/04",
+      "sol-tower/rise/05",
+      "sol-tower/rise/06",
+      "sol-tower/rise/07",
       "logram/open/01",
       "logram/open/02",
       "logram/open/03",

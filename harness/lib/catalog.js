@@ -3031,7 +3031,7 @@ export const SCENARIOS = [
   {
     key: 'ground-dispatch-spawns-scoped',
     behavior:
-      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while any unhandled/unbuilt ground type is scoped out (never stamped into a slot). Zolbak 0x1F, Derota 0x1B and Garu Derota 0x21 (slice 12), the Boza Logram 0x2D (GND-05), the Grobda roster 0x2C/0x35-0x40 (GND-06) and the Domogram 0x2E (GND-07, via add_domogram_with_path) are now all built, so they legitimately reach slots too and are in scope here — no slice-13 ground leaf remains out of scope.',
+      'Playing through the opening areas spawns the built ground families (Barra 0x1E in area 1, Logram 0x26 in area 2, Garu Barra 0x20 in area 3) into the ground band (slots 1-16) via add_ground_object — ACTIVE, at the family score position, with the Logram capturing the live Logram fire mask — while any unhandled/unbuilt ground type is scoped out (never stamped into a slot). Zolbak 0x1F, Derota 0x1B and Garu Derota 0x21 (slice 12), the Boza Logram 0x2D (GND-05), the Grobda roster 0x2C/0x35-0x40 (GND-06) and the Domogram 0x2E (GND-07, via add_domogram_with_path) are now all built, so they legitimately reach slots too and are in scope here — no slice-13 ground leaf remains out of scope. The Sol Tower 0x1D (SEC-01, slice 14) is also built now and spawns from the schedule, so it too is in scope.',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3093,6 +3093,12 @@ export const SCENARIOS = [
                 logramStageMask = readVar(vm, 'fire-mask-logram');
               }
             }
+          } else if (t === 29) {
+            // SEC-01 (ground.sol-tower #90, slice 14): the hidden Sol Tower (0x1D) is now built and spawns
+            // from the schedule like a single-slot ground family (invisible until bombed, then it rises and
+            // becomes a bombable target), so seeing one in a slot is in scope. Its reveal / rise / two-stage
+            // scoring behaviour is proved by the dedicated sol-tower-* scenarios; here we only assert it is
+            // not treated as unhandled leakage.
           } else if (t === 31 || t === 27 || t === 33 || t === 45) {
             // Zolbak (0x1F), Derota (0x1B), Garu Derota (0x21) are the slice-12 ground families, and the
             // Boza Logram (0x2D, GND-05) is a slice-13 family built earlier this slice — they are all now
