@@ -4847,6 +4847,416 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update domogram'),
   },
   {
+    // SEC-01 / ground.sol-tower (#90): the hidden citadel's reveal -> 7-step rise -> two-stage scoring.
+    key: 'sol-tower-reveals-rises-then-a-second-bomb-craters-scoring-both-stages',
+    behavior:
+      'A hidden (ACTIVE, invisible) Sol Tower bombed scores its 2,000 and enters the 7-step rise (state HIT); while rising it is NOT re-scoreable; after the rise it returns to a live ACTIVE target (flag RISEN) so a SECOND bomb scores 2,000 AGAIN, then it craters PERSISTENTLY (stays HIT) — two scoring stages, the same value',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const SOL_TOWER_TYPE = 29; // 0x1D
+      const SOL_TOWER_PTS = 19; // 1-based value-table position of 2,000 (normal cabinet)
+      const SLOT_ACTIVE = 1;
+      const SOL_HIDDEN = 0;
+      const SOL_RISEN = 2;
+      // Freeze the walk so each manual callProc is exactly one tick and the live ground spawner cannot stamp
+      // OTHER objects into the band mid-step (see bomb-kills-ground-and-scores). Clear the band first.
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      writeVar(vm, 'slot-index', 16); // point the per-slot update cursor at the seeded tower (Scratch 16 -> JS 15)
+      const seedTower = (x, y) => {
+        put('slot-type', 15, SOL_TOWER_TYPE);
+        put('slot-state', 15, SLOT_ACTIVE); // ACTIVE but HIDDEN => invisible, still bombable/scoreable
+        put('slot-flag', 15, SOL_HIDDEN);
+        put('slot-pts', 15, SOL_TOWER_PTS);
+        put('slot-x', 15, x);
+        put('slot-y', 15, y);
+        put('slot-timer', 15, 0);
+      };
+      // Bomb target = Scratch slot 33 -> JS index 32 (the locked reticle the ground detector reads).
+      const aimBomb = (x, y) => {
+        put('slot-x', 32, x);
+        put('slot-y', 32, y);
+      };
+      const objX = () => readVar(vm, 'slot-x')[15];
+      const objY = () => readVar(vm, 'slot-y')[15];
+      seedTower(5120, 4096);
+      aimBomb(5120, 4096);
+      const award = readVar(vm, 'eco-value-table')[SOL_TOWER_PTS - 1];
+      // STAGE 1: bomb the hidden tower. The shared ACTIVE-only detector scores 2,000 and marks it HIT.
+      const s0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const stage1 = readVar(vm, 'eco-score') - s0;
+      const stateAfterBomb1 = readVar(vm, 'slot-state')[15];
+      // One update reveals the tower (flag HIDDEN -> RISING) and starts the rise clock; it stays HIT.
+      callProc(vm, 'Stage', 'update sol tower');
+      step(vm, 1);
+      // MID-RISE: a rising tower (state HIT, not ACTIVE) must NOT be re-scoreable. Re-aim at its scrolled cell.
+      aimBomb(objX(), objY());
+      const sMid = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const midRiseScore = readVar(vm, 'eco-score') - sMid;
+      // Drive the rise to completion: at step 7 (timer 112, 2 frames/tick) it flips back to ACTIVE + RISEN.
+      let risenTick = -1;
+      for (let t = 1; t <= 120; t += 1) {
+        callProc(vm, 'Stage', 'update sol tower');
+        step(vm, 1);
+        if (readVar(vm, 'slot-state')[15] === SLOT_ACTIVE) {
+          risenTick = t;
+          break;
+        }
+      }
+      const flagAfterRise = readVar(vm, 'slot-flag')[15];
+      // STAGE 2: the risen tower is a live ACTIVE target again -> a second bomb scores 2,000 AGAIN.
+      aimBomb(objX(), objY());
+      const s2 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const stage2 = readVar(vm, 'eco-score') - s2;
+      const stateAfterBomb2 = readVar(vm, 'slot-state')[15];
+      // The destroy stage craters PERSISTENTLY: one more update keeps it HIT (never ACTIVE again) and a THIRD
+      // bomb cannot re-score it.
+      callProc(vm, 'Stage', 'update sol tower');
+      step(vm, 1);
+      const stateAfterDestroyTick = readVar(vm, 'slot-state')[15];
+      aimBomb(objX(), objY());
+      const s3 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const thirdBombScore = readVar(vm, 'eco-score') - s3;
+      return {
+        award,
+        stage1,
+        stateAfterBomb1,
+        midRiseScore,
+        risenTick,
+        flagAfterRise,
+        stage2,
+        stateAfterBomb2,
+        stateAfterDestroyTick,
+        thirdBombScore,
+        SOL_RISEN,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 2000, 'the Sol Tower is worth its 2,000-pt value-table entry (normal cabinet)');
+      assert.equal(obs.stage1, 2000, 'STAGE 1: bombing the hidden tower scores its 2,000 once');
+      assert.equal(obs.stateAfterBomb1, 2, 'the bombed tower is marked HIT');
+      assert.equal(obs.midRiseScore, 0, 'a rising tower (HIT, not ACTIVE) is NOT re-scoreable between the two stages');
+      assert.ok(obs.risenTick > 0, 'the tower completes its rise and returns to a live target');
+      assert.ok(obs.risenTick <= 60, 'the rise completes on the ~56-tick clock (step 7 at timer 112, 2 frames/tick)');
+      assert.equal(obs.flagAfterRise, obs.SOL_RISEN, 'the risen tower carries the RISEN phase');
+      assert.equal(obs.stage2, 2000, 'STAGE 2: the risen ACTIVE target scores 2,000 AGAIN on the second bomb');
+      assert.equal(obs.stateAfterBomb2, 2, 'the second bomb marks the risen tower HIT');
+      assert.equal(obs.stateAfterDestroyTick, 2, 'the destroy stage craters PERSISTENTLY (stays HIT, never ACTIVE again)');
+      assert.equal(obs.thirdBombScore, 0, 'the persistent crater cannot be scored a third time');
+    },
+    // Sever the Sol Tower update: the bombed tower never reveals/rises, so it never returns to ACTIVE -> the
+    // rise-completion and second-stage-scoring assertions go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update sol tower'),
+  },
+  {
+    // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).
+    key: 'bonus-flag-revealed-by-bomb-scores-once-then-collected-by-flyover-not-a-weapon',
+    behavior:
+      'A hidden (ACTIVE) Bonus Flag bombed scores its 1,000 ONCE via the shared ground detector and is REVEALED (held HIT, so a second bomb never re-scores it); a revealed flag is then collected by the craft FLYING OVER it (proximity, NOT a weapon) — a bomb on a revealed flag does not collect it, and a flag the craft is not over is not collected',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const BONUS_FLAG_TYPE = 84; // 0x54
+      const BONUS_FLAG_PTS = 17; // 1-based value-table position of 1,000
+      const SLOT_ACTIVE = 1;
+      const SLOT_HIT = 2;
+      const FLAG_HIDDEN = 0;
+      const FLAG_REVEALED = 1;
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      writeVar(vm, 'slot-index', 16);
+      // Observe collection through the POINTS award arm (score += 10,000), so set the DIP marker to points.
+      writeVar(vm, 'eco-flag-awards-craft', 0);
+      const aimBomb = (x, y) => {
+        put('slot-x', 32, x);
+        put('slot-y', 32, y);
+      };
+      const flagValue = readVar(vm, 'eco-value-table')[BONUS_FLAG_PTS - 1];
+      // REVEAL: bomb the hidden flag. The shared ACTIVE-only detector scores its 1,000 and marks it HIT.
+      put('slot-type', 15, BONUS_FLAG_TYPE);
+      put('slot-state', 15, SLOT_ACTIVE);
+      put('slot-flag', 15, FLAG_HIDDEN);
+      put('slot-pts', 15, BONUS_FLAG_PTS);
+      put('slot-x', 15, 5120);
+      put('slot-y', 15, 4096);
+      put('slot-timer', 15, 0);
+      aimBomb(5120, 4096);
+      const s0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const revealScore = readVar(vm, 'eco-score') - s0;
+      const stateAfterBomb = readVar(vm, 'slot-state')[15];
+      // One update: HIT & HIDDEN -> flip to REVEALED, keep HIT (never ACTIVE again), scroll.
+      callProc(vm, 'Stage', 'update bonus flag');
+      step(vm, 1);
+      const flagAfterReveal = readVar(vm, 'slot-flag')[15];
+      const stateAfterReveal = readVar(vm, 'slot-state')[15];
+      // A SECOND bomb on the revealed (HIT) flag must NOT re-score it. Re-aim at its scrolled cell.
+      aimBomb(readVar(vm, 'slot-x')[15], readVar(vm, 'slot-y')[15]);
+      const s1 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const reBombScore = readVar(vm, 'eco-score') - s1;
+      // NOT COLLECTED when the craft is NOT over it: a revealed flag with the craft on a far lateral column is
+      // not collected by an update tick (proximity gate — and no weapon collects it) -> it stays occupied.
+      put('slot-type', 15, BONUS_FLAG_TYPE);
+      put('slot-state', 15, SLOT_HIT);
+      put('slot-flag', 15, FLAG_REVEALED);
+      put('slot-x', 15, 2 * 256); // row 2
+      put('slot-y', 15, 0); // column 0
+      writeVar(vm, 'player-row', 2);
+      writeVar(vm, 'player-col', 20); // craft 20 columns away laterally
+      const s2 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update bonus flag');
+      step(vm, 1);
+      const awayScore = readVar(vm, 'eco-score') - s2;
+      const typeAfterAway = readVar(vm, 'slot-type')[15];
+      // FLY OVER: the craft over the flag's cell collects it (proximity) -> the POINTS arm awards 10,000 and
+      // the flag is removed. Re-seed at a fresh cell dead-on the craft.
+      put('slot-type', 15, BONUS_FLAG_TYPE);
+      put('slot-state', 15, SLOT_HIT);
+      put('slot-flag', 15, FLAG_REVEALED);
+      put('slot-x', 15, 2 * 256); // row 2
+      put('slot-y', 15, 3 * 256); // column 3
+      writeVar(vm, 'player-row', 2);
+      writeVar(vm, 'player-col', 3); // dead-on overlap
+      const s3 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update bonus flag');
+      step(vm, 1);
+      const flyoverScore = readVar(vm, 'eco-score') - s3;
+      const typeAfterCollect = readVar(vm, 'slot-type')[15];
+      const stateAfterCollect = readVar(vm, 'slot-state')[15];
+      return {
+        flagValue,
+        revealScore,
+        stateAfterBomb,
+        flagAfterReveal,
+        stateAfterReveal,
+        reBombScore,
+        awayScore,
+        typeAfterAway,
+        flyoverScore,
+        typeAfterCollect,
+        stateAfterCollect,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.flagValue, 1000, 'the Bonus Flag is worth its 1,000-pt value-table entry');
+      assert.equal(obs.revealScore, 1000, 'bombing the hidden flag scores its 1,000 via the shared ground detector');
+      assert.equal(obs.stateAfterBomb, 2, 'the bombed flag is marked HIT');
+      assert.equal(obs.flagAfterReveal, 1, 'one update reveals the flag (flag -> REVEALED)');
+      assert.equal(obs.stateAfterReveal, 2, 'the revealed flag is held HIT (never ACTIVE again)');
+      assert.equal(obs.reBombScore, 0, 'a second bomb never re-scores the revealed flag (the reveal scores exactly once)');
+      assert.equal(obs.awayScore, 0, 'a revealed flag the craft is NOT over is not collected');
+      assert.equal(obs.typeAfterAway, 84, 'the un-flown-over flag stays on the field (no weapon collects it)');
+      assert.equal(obs.flyoverScore, 10000, 'flying the craft OVER the revealed flag collects it (proximity) -> the points arm awards 10,000');
+      assert.equal(obs.typeAfterCollect, 0, 'collection removes the flag from the field');
+      assert.equal(obs.stateAfterCollect, 0, 'the collected flag slot is freed');
+    },
+    // Sever the Bonus Flag update: the bombed flag never reveals and a fly-over never collects -> the reveal /
+    // fly-over-collection assertions go red (the shared-detector reveal score still lands, so only the update
+    // clauses bite, which is the point).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update bonus flag'),
+  },
+  {
+    // SEC-02 / ECO-03 (#91, #92): the collection award honours the DIP choice (extra craft vs 10,000 points).
+    key: 'bonus-flag-collection-award-honours-the-dip-choice',
+    behavior:
+      'Collecting a revealed Bonus Flag by fly-over awards the DIP-selected prize: with `flag awards craft` set it grants an EXTRA CRAFT (+1 life, no score); cleared it awards 10,000 POINTS instead (and no life) — never both',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const BONUS_FLAG_TYPE = 84;
+      const BONUS_FLAG_PTS = 17;
+      const SLOT_HIT = 2;
+      const FLAG_REVEALED = 1;
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      writeVar(vm, 'slot-index', 16);
+      // Isolate the FLAG'S award from the incidental score-threshold bonus life: push the next-bonus threshold
+      // far out of reach so the 10,000-point arm cannot trip an extend (that extend is a separate system, its
+      // own scenario) — this test asks only what the flag itself grants.
+      writeVar(vm, 'eco-next-bonus', 999999999);
+      const seedRevealedUnderCraft = () => {
+        put('slot-type', 15, BONUS_FLAG_TYPE);
+        put('slot-state', 15, SLOT_HIT);
+        put('slot-flag', 15, FLAG_REVEALED);
+        put('slot-pts', 15, BONUS_FLAG_PTS);
+        put('slot-x', 15, 2 * 256); // row 2
+        put('slot-y', 15, 3 * 256); // column 3
+        put('slot-timer', 15, 0);
+        writeVar(vm, 'player-row', 2);
+        writeVar(vm, 'player-col', 3); // dead-on overlap
+      };
+      // CRAFT arm: flag awards craft -> +1 life, no score.
+      writeVar(vm, 'eco-flag-awards-craft', 1);
+      seedRevealedUnderCraft();
+      const craft0 = readVar(vm, 'eco-craft');
+      const scoreC0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update bonus flag');
+      step(vm, 1);
+      const craftGain = readVar(vm, 'eco-craft') - craft0;
+      const scoreOnCraftArm = readVar(vm, 'eco-score') - scoreC0;
+      // POINTS arm: flag awards points -> +10,000 score, no life.
+      writeVar(vm, 'eco-flag-awards-craft', 0);
+      seedRevealedUnderCraft();
+      const craftP0 = readVar(vm, 'eco-craft');
+      const scoreP0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update bonus flag');
+      step(vm, 1);
+      const scoreGain = readVar(vm, 'eco-score') - scoreP0;
+      const craftOnPointsArm = readVar(vm, 'eco-craft') - craftP0;
+      return { craftGain, scoreOnCraftArm, scoreGain, craftOnPointsArm };
+    },
+    assert(obs) {
+      assert.equal(obs.craftGain, 1, 'the CRAFT arm grants exactly one extra craft');
+      assert.equal(obs.scoreOnCraftArm, 0, 'the CRAFT arm awards no points (the extra life is the whole prize)');
+      assert.equal(obs.scoreGain, 10000, 'the POINTS arm awards 10,000 points');
+      assert.equal(obs.craftOnPointsArm, 0, 'the POINTS arm grants no extra craft (never both)');
+    },
+    // Break the award selector: force the `flag awards craft == 1` gate to compare against a value it never
+    // holds, so the craft arm never runs -> the CRAFT-arm assertions (craft +1, no score) go red.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'flag awards craft', 1, 999),
+  },
+  {
+    // SEC-03 / secrets.hidden-credit (#93): bomb-to-reveal a held ~2s overlay, min score, self-removal.
+    key: 'hidden-credit-bomb-reveals-a-held-overlay-then-self-removes-for-the-min-score',
+    behavior:
+      'The hidden Credit is invisible and shows NOTHING until bombed; a bomb scores its 10 (minimum value) and, on the next update, raises the credit-overlay signal and FREEZES the egg in place (no scroll); the overlay holds ~2s (128 frames, 2/tick), then the egg lowers the signal and removes itself',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const EASTER_EGG_TYPE = 83; // 0x53
+      const EASTER_EGG_PTS = 1; // _PTS==0 -> value-table position 1 = 10 (the minimum)
+      const SLOT_ACTIVE = 1;
+      const EGG_HIDDEN = 0;
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      writeVar(vm, 'slot-index', 16);
+      writeVar(vm, 'sec-easter-egg-showing', 0);
+      const seedEgg = (x, y) => {
+        put('slot-type', 15, EASTER_EGG_TYPE);
+        put('slot-state', 15, SLOT_ACTIVE);
+        put('slot-flag', 15, EGG_HIDDEN);
+        put('slot-pts', 15, EASTER_EGG_PTS);
+        put('slot-x', 15, x);
+        put('slot-y', 15, y);
+        put('slot-timer', 15, 0);
+      };
+      const aimBomb = (x, y) => {
+        put('slot-x', 32, x);
+        put('slot-y', 32, y);
+      };
+      const eggValue = readVar(vm, 'eco-value-table')[EASTER_EGG_PTS - 1];
+      // TRIGGERS ONLY WHEN BOMBED: an un-bombed (ACTIVE) egg run through its update raises NO overlay signal
+      // and just scrolls with the terrain.
+      seedEgg(2 * 256, 2 * 256);
+      callProc(vm, 'Stage', 'update easter egg');
+      step(vm, 1);
+      const signalUnbombed = readVar(vm, 'sec-easter-egg-showing');
+      const xAfterActiveTick = readVar(vm, 'slot-x')[15];
+      // BOMB: the shared ACTIVE-only detector scores the egg's minimum 10 and marks it HIT — showing nothing yet.
+      seedEgg(5120, 4096);
+      aimBomb(5120, 4096);
+      const s0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const bombScore = readVar(vm, 'eco-score') - s0;
+      const stateAfterBomb = readVar(vm, 'slot-state')[15];
+      const signalAfterBomb = readVar(vm, 'sec-easter-egg-showing');
+      const xBeforeReveal = readVar(vm, 'slot-x')[15];
+      // REVEAL: one update raises the overlay signal and FREEZES the egg (no scroll on the hit branch).
+      callProc(vm, 'Stage', 'update easter egg');
+      step(vm, 1);
+      const signalAfterReveal = readVar(vm, 'sec-easter-egg-showing');
+      const xAfterReveal = readVar(vm, 'slot-x')[15];
+      const flagAfterReveal = readVar(vm, 'slot-flag')[15];
+      // HOLD: the overlay holds through its display window (128 frames, 2/tick => 64 showing ticks). After the
+      // reveal the clock is 0; 63 showing ticks reach frame 126 (< 128), so the signal is still up.
+      for (let t = 0; t < 63; t += 1) {
+        callProc(vm, 'Stage', 'update easter egg');
+        step(vm, 1);
+      }
+      const signalDuringHold = readVar(vm, 'sec-easter-egg-showing');
+      const xDuringHold = readVar(vm, 'slot-x')[15];
+      // EXPIRE: the next showing tick reaches frame 128 -> lower the signal and remove the egg.
+      callProc(vm, 'Stage', 'update easter egg');
+      step(vm, 1);
+      const signalAfterExpire = readVar(vm, 'sec-easter-egg-showing');
+      const typeAfterExpire = readVar(vm, 'slot-type')[15];
+      const stateAfterExpire = readVar(vm, 'slot-state')[15];
+      return {
+        eggValue,
+        signalUnbombed,
+        xAfterActiveTick,
+        bombScore,
+        stateAfterBomb,
+        signalAfterBomb,
+        xBeforeReveal,
+        signalAfterReveal,
+        xAfterReveal,
+        flagAfterReveal,
+        signalDuringHold,
+        xDuringHold,
+        signalAfterExpire,
+        typeAfterExpire,
+        stateAfterExpire,
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.eggValue, 10, 'the hidden Credit is worth the minimum 10-pt value-table entry');
+      assert.equal(obs.signalUnbombed, 0, 'an un-bombed egg shows NOTHING (the overlay signal stays down)');
+      assert.equal(obs.xAfterActiveTick, 2 * 256 + 32, 'an un-bombed egg just scrolls with the terrain (+32/tick)');
+      assert.equal(obs.bombScore, 10, 'bombing the egg scores its minimum 10 via the shared ground detector');
+      assert.equal(obs.stateAfterBomb, 2, 'the bombed egg is marked HIT');
+      assert.equal(obs.signalAfterBomb, 0, 'the bomb alone does not raise the overlay (the update does, next tick)');
+      assert.equal(obs.signalAfterReveal, 1, 'the reveal update raises the credit-overlay signal');
+      assert.equal(obs.xAfterReveal, obs.xBeforeReveal, 'the revealed egg FREEZES in place (no scroll on the hit branch)');
+      assert.equal(obs.flagAfterReveal, 1, 'the revealed egg carries the SHOWING phase');
+      assert.equal(obs.signalDuringHold, 1, 'the overlay holds up through its ~2s display window');
+      assert.equal(obs.xDuringHold, obs.xBeforeReveal, 'the egg stays frozen for the whole hold');
+      assert.equal(obs.signalAfterExpire, 0, 'at the end of the window the overlay signal is lowered');
+      assert.equal(obs.typeAfterExpire, 0, 'the egg removes itself from the field');
+      assert.equal(obs.stateAfterExpire, 0, 'the removed egg slot is freed');
+    },
+    // Sever the egg update: a bombed egg never raises the overlay, never holds, never self-removes, and an
+    // un-bombed egg never even scrolls -> the reveal / hold / removal / scroll assertions go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update easter egg'),
+  },
+  {
     key: 'craft-collision-is-single-cell',
     behavior:
       'A Toroid raises player-hit ONLY on the craft’s exact cell: one column off or one row off does not — the collision box is a single cell, not the quadrant above/beside the craft',
