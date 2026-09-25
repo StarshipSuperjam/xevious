@@ -463,6 +463,46 @@
       "how_verified": "Play: end games above and below fifth place",
       "position": 8,
       "who": "operator"
+    },
+    {
+      "criterion": "Every secret's scheduled position comes from the committed schedule data, never invented placements",
+      "digest": "sha256:1035f25104a4275fa2308396b41911ad2344d5e2199cbfdecb7f15a5bb0572b6",
+      "doc": "docs/spec/secrets.md",
+      "how_verified": "Data-comparison fixture: the build's secret placements equal the schedule records",
+      "position": 0,
+      "who": "engine"
+    },
+    {
+      "criterion": "A bomb on a hidden Sol Tower reveals it, it rises in stages, and a second bomb destroys it — scoring at both stages",
+      "digest": "sha256:8975f7d1e46bb7781e553e982ac772ac894660c8ed1f6b321b0bad4e79279f04",
+      "doc": "docs/spec/secrets.md",
+      "how_verified": "Play area 1's known tower position (per the committed schedule): reveal, then destroy",
+      "position": 1,
+      "who": "operator"
+    },
+    {
+      "criterion": "A revealed Bonus Flag is collected by fly-over, not by weapons, and awards per the configured setting",
+      "digest": "sha256:b3b40704a66c6f08d981657d30c510562003d543710c3115bc78619461a78f10",
+      "doc": "docs/spec/secrets.md",
+      "how_verified": "Play: reveal a flag, collect it, observe the award",
+      "position": 2,
+      "who": "operator"
+    },
+    {
+      "criterion": "The hidden credit event triggers only when bombed in a live game and holds ~2 seconds",
+      "digest": "sha256:2d03819a6c2f7fa6a44fc13a9ef3369fff9ff2520a3d9664aa487938016a97de",
+      "doc": "docs/spec/secrets.md",
+      "how_verified": "Play (or accelerated fixture) at its scheduled position",
+      "position": 3,
+      "who": "operator"
+    },
+    {
+      "criterion": "The Bonus Flag's vertical placement draws from the shared random stream (seeded runs repeat)",
+      "digest": "sha256:c2c8a0064054fca9b49df46020d73dbb9f0b91967855131018a58203c8f7d0dd",
+      "doc": "docs/spec/secrets.md",
+      "how_verified": "Seeded fixture: identical seeds place the flag identically",
+      "position": 4,
+      "who": "engine"
     }
   ],
   "schema_version": 1,

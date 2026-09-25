@@ -51,7 +51,7 @@ bind now; the delegated detail becomes binding when its document settles.
 | Difficulty and formations | settled | [Difficulty and formations](difficulty-and-formations.md) |
 | Aerial enemies | settled | [Aerial enemies](aerial-enemies.md) |
 | Ground objects | settled | [Ground objects](ground-objects.md) |
-| Secrets | in progress | [Secrets](secrets.md) |
+| Secrets | settled | [Secrets](secrets.md) |
 | Andor Genesis | in progress | [Andor Genesis](andor-genesis.md) |
 | Cabinet flow | in progress | [Cabinet flow](cabinet-flow.md) |
 | Audio and presentation | in progress | [Audio and presentation](audio-and-presentation.md) |
