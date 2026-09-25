@@ -1750,17 +1750,18 @@ ZOLBAK_CRATER_BASE_ORDINAL = ZOLBAK_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT
 # sharing one type (GARU_BARRA_TYPE): a 2x2 indestructible base (state SLOT_GARU_BASE) and a 1x1
 # destructible node (state ACTIVE/HIT). One `garu` target's clone pool covers the ground band; each clone
 # branches on its slot's STATE — base vs node — because both carry the same slot type. Costume layout:
-#   1..2  garu/base pulse frames (the arcade base cycles pulsing_colour_1; the two sheet frames — plain
-#         pyramid / red-glow core — stand in, alternated on the global `tick` like the Zoshi spin);
+#   1..2  garu/base frames (01 = closed pyramid, 02 = the red-socket base). The EXPOSED base holds frame
+#         02 (the lit red socket) statically. The arcade base colour-pulses pulsing_colour_1 — a red-light
+#         glow — but Scratch cannot pulse the red lights alone (a hue shift greens them; a brightness pulse
+#         flashes the whole base) and the crop-only sheet has no red-off cell, so the pulse is a recorded
+#         port necessity (operator decision 2026-09-24). Frame 01 is retained as a crop but not rendered;
 #   3     the node idle pyramid (garu/node reuses the Barra pyramid, mirrored from barra/idle);
 #   4..11 the shared solv_death burst the node's explode-and-remove plays before it vanishes.
 # The base is drawn TWICE the linear size of the node (arcade _ATTR=3, 2x2) — its costume is a 32-px
 # canvas vs the node's 16-px, so the SAME GROUND_RENDER_SIZE yields ~2x on screen (no extra scaling).
 GARU_TARGET = "garu"
 GARU_CLONE_SLOT_ID = "garu-clone-slot"  # sprite-local: which ground slot this clone renders
-GARU_BASE_IDLE_ORDINAL = 1  # costumes 1..2: the 2x2 base pulse frames (garu/base/01..02)
-GARU_BASE_PULSE_FRAMES = 2  # the base alternates its two pulse frames
-GARU_BASE_PULSE_TICKS = 4  # ticks per pulse frame (8 arcade frames, the arcade global-animation phase)
+GARU_BASE_EXPOSED_COSTUME = "garu/base/02"  # the exposed base holds the red-socket frame (02); no pulse (port necessity)
 GARU_NODE_IDLE_ORDINAL = 3  # costume 3: the node idle pyramid (garu/node, mirrored from barra/idle)
 GARU_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared explosion burst the node plays before removal
 
@@ -1793,8 +1794,10 @@ DEROTA_CRATER_BASE_ORDINAL = DEROTA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT
 # GND-04 (ground.derota #86) Garu Derota renderer constants. Like the Garu Barra it is TWO slots sharing
 # one type (GARU_DEROTA_TYPE): a 2x2 indestructible base (state SLOT_GARU_BASE) and a 1x1 FIRING
 # destructible node (state ACTIVE/HIT). Costume layout mirrors the Garu Barra:
-#   1..2  garu-derota/base pulse frames (the two 32x32 sheet frames — closed centre / open firing centre —
-#         alternated on the global `tick`, standing in for the arcade's pulsing_colour_1 base);
+#   1..2  garu-derota/base frames (01 = closed centre, 02 = the open red firing centre). The EXPOSED base
+#         holds frame 02 (the lit red centre) statically; the arcade's pulsing_colour_1 red-light glow is a
+#         recorded port necessity (Scratch cannot pulse the red alone; the crop-only sheet has no red-off
+#         cell; operator decision 2026-09-24). Frame 01 is retained as a crop but not rendered;
 #   3     the node turret (garu-derota/node reuses the single Derota turret, derota/idle);
 #   4..11 the shared solv_death burst the node's explode-and-remove plays before it vanishes.
 # The base is a 32-px canvas vs the node's 16-px, so the SAME GROUND_RENDER_SIZE yields the arcade's 2x2
@@ -1803,9 +1806,7 @@ DEROTA_CRATER_BASE_ORDINAL = DEROTA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT
 # node carries the same code 0x27 as the single Derota and fires the same masked aimed bullet.
 GARU_DEROTA_TARGET = "garu derota"
 GARU_DEROTA_CLONE_SLOT_ID = "garu-derota-clone-slot"  # sprite-local: which ground slot this clone renders
-GARU_DEROTA_BASE_IDLE_ORDINAL = 1  # costumes 1..2: the 2x2 base pulse frames (garu-derota/base/01..02)
-GARU_DEROTA_BASE_PULSE_FRAMES = 2  # the base alternates its two pulse frames
-GARU_DEROTA_BASE_PULSE_TICKS = 4  # ticks per pulse frame (8 arcade frames, the global-animation phase)
+GARU_DEROTA_BASE_EXPOSED_COSTUME = "garu-derota/base/02"  # exposed base holds the red firing-centre frame (02); no pulse (port necessity)
 GARU_DEROTA_NODE_IDLE_ORDINAL = 3  # costume 3: the node turret (garu-derota/node, mirrored from derota/idle)
 GARU_DEROTA_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared burst the node plays before removal
 
@@ -8913,16 +8914,6 @@ def garu_blocks() -> dict[str, dict[str, Any]]:
             )
         ),
     )
-    # The base pulse frame: alternate the two frames on the global tick (like the Zoshi lockstep spin).
-    base_ordinal = blocks.op_add(
-        number(GARU_BASE_IDLE_ORDINAL),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(variable("tick", TICK_ID), number(GARU_BASE_PULSE_TICKS))
-            ),
-            number(GARU_BASE_PULSE_FRAMES),
-        ),
-    )
     # State cascade: HIT (node exploding) -> base (sentinel) -> ACTIVE node.
     base_or_node = blocks.add("control_if_else")
     is_base = blocks.op_eq(
@@ -8930,7 +8921,12 @@ def garu_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.blocks[base_or_node]["inputs"]["CONDITION"] = [2, is_base]
     blocks.blocks[is_base]["parent"] = base_or_node
-    blocks.substack(base_or_node, [blocks.switch_costume_expr(base_ordinal)])
+    # The indestructible base holds the red-socket frame (02) statically: bomb the top and the lit red socket
+    # is what shows beneath. The arcade colour-pulses the base's red lights (pulsing_colour_1); Scratch can
+    # pulse neither the red lights alone (a hue shift greens them, a brightness pulse flashes the whole base)
+    # nor synthesise a red-off crop, so the red-light glow is a recorded port necessity (operator decision
+    # 2026-09-24) and the exposed base simply shows the steady lit red socket.
+    blocks.substack(base_or_node, [blocks.switch_costume(GARU_BASE_EXPOSED_COSTUME)])
     # ACTIVE node idle: the pyramid is a fixed costume (mirrored from the Barra), so select it by name —
     # switch_costume_expr obscures a menu with a runtime reporter; for a constant the by-name switch is direct.
     blocks.substack(base_or_node, [blocks.switch_costume("barra/idle/01")], name="SUBSTACK2")
@@ -9389,22 +9385,17 @@ def garu_derota_blocks() -> dict[str, dict[str, Any]]:
             )
         ),
     )
-    base_ordinal = blocks.op_add(
-        number(GARU_DEROTA_BASE_IDLE_ORDINAL),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(variable("tick", TICK_ID), number(GARU_DEROTA_BASE_PULSE_TICKS))
-            ),
-            number(GARU_DEROTA_BASE_PULSE_FRAMES),
-        ),
-    )
     base_or_node = blocks.add("control_if_else")
     is_base = blocks.op_eq(
         blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_GARU_BASE)
     )
     blocks.blocks[base_or_node]["inputs"]["CONDITION"] = [2, is_base]
     blocks.blocks[is_base]["parent"] = base_or_node
-    blocks.substack(base_or_node, [blocks.switch_costume_expr(base_ordinal)])
+    # The indestructible base holds the open red firing-centre frame (02) statically (see the Garu Barra
+    # renderer): the arcade's pulsing_colour_1 red-light glow is a recorded port necessity, not reproduced
+    # (Scratch cannot pulse the red alone; the crop-only sheet has no red-off cell; operator decision
+    # 2026-09-24).
+    blocks.substack(base_or_node, [blocks.switch_costume(GARU_DEROTA_BASE_EXPOSED_COSTUME)])
     blocks.substack(base_or_node, [blocks.switch_costume("derota/idle/01")], name="SUBSTACK2")
 
     state_render = blocks.add("control_if_else")
@@ -10637,7 +10628,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             barra["costumes"].extend(copy.deepcopy(death["costumes"]))
         barra["costumes"].extend(proof_by_family("crater/"))
         barra["currentCostume"] = 0
-    # GND-01: the Garu Barra renderer mirrors its two 2x2 base pulse frames (ordinals 1..2), then the node
+    # GND-01: the Garu Barra renderer mirrors its two 2x2 base frames (ordinals 1..2; the exposed base holds
+    # ordinal 2, the red socket — ordinal 1 is retained as a crop but not rendered), then the node
     # idle pyramid (ordinal 3, "garu/node reuses the Barra pyramid" -> the barra/idle frame mirrored in),
     # then the shared explosion burst (ordinals 4..11) the node plays before it vanishes. Idempotent; a
     # no-op when any source is absent (generation runs to a fixpoint).
@@ -10682,8 +10674,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             derota["costumes"].extend(copy.deepcopy(death["costumes"]))
         derota["costumes"].extend(proof_by_family("crater/"))
         derota["currentCostume"] = 0
-    # GND-04 (ground.derota #86): the Garu Derota renderer mirrors its two 2x2 base pulse frames (ordinals
-    # 1..2), then the node turret frame (ordinal 3 — the node reuses the Derota turret bitmap, a documented
+    # GND-04 (ground.derota #86): the Garu Derota renderer mirrors its two 2x2 base frames (ordinals
+    # 1..2; the exposed base holds ordinal 2, the red firing centre — ordinal 1 is retained as a crop but not
+    # rendered), then the node turret frame (ordinal 3 — the node reuses the Derota turret bitmap, a documented
     # port necessity: the sheet has no separate small node cell and the node carries turret code 0x27), then
     # the shared explosion burst (ordinals 4..11) the node plays before it vanishes. The base is indestructible;
     # the node fires (install_update_garu_derota). Idempotent; a no-op when any source is absent.

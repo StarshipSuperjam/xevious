@@ -161,7 +161,8 @@
   and Garu Derota — had a different "doubled" defect with a different fix: their destructible top was offset
   by a cell off the base, so it read as a second mound poking out of a corner. That is fixed in
   [ground domes and turrets](041-ground-domes-and-turrets.md) by **centring** the top on the base's cell so
-  bombing the top exposes the flashing base beneath — not by depth-offset scaling (an attempt to scale the
+  bombing the top exposes the base beneath (which holds its lit red-socket frame; the arcade red-light pulse is
+  a recorded port necessity, not reproduced) — not by depth-offset scaling (an attempt to scale the
   Garu node offset, `GARU_NODE_DEPTH_UNITS`, only slid the sprite and was reverted). The exact on-screen
   rhythm of the outer fire cycle relative to a lone Logram, and the corrected composite's visual read, remain
   for the operator playtest to confirm.

@@ -119,12 +119,17 @@
     ([ground objects](../spec/ground-objects.md)). That arcade offset exists to centre a corner-anchored 1×1
     node inside a corner-anchored 2×2 base; the port centre-anchors both frames, so it achieves the same
     visual centring differently — see the port-necessity note below.
-  - **Port necessity — the destructible top is centred on the flashing base.** The faithful structure (the
-    appearance the operator approved) is: **bomb the pyramid top to expose the flashing base beneath.** The
-    node draws its own top sprite (the `barra/idle` pyramid); the indestructible base colour-pulses, so the
-    port flashes it by alternating its two frames on the tick (`garu/base/01`↔`02`), which differ only in the
-    centre — while the top covers that centre the object reads as a solid pyramid, and once the top is bombed
-    the exposed base flashes there. The top must be **centred** on the base (node `slot x`/`slot y` = the
+  - **Port necessity — the destructible top is centred on the exposed base.** The faithful structure (the
+    appearance the operator approved) is: **bomb the pyramid top to expose the base beneath.** The
+    node draws its own top sprite (the `barra/idle` pyramid); the indestructible base **holds its red-socket
+    frame** (`garu/base/02`) — while the top covers the centre the object reads as a solid pyramid, and once
+    the top is bombed the exposed base shows the lit red socket there. **The base's red-light pulse is not
+    reproduced (port necessity):** the arcade base colour-pulses `pulsing_colour_1` (a red glow), but Scratch
+    cannot pulse the red lights alone (`color` rotates their hue to green, `brightness` flashes the whole base)
+    and the crop-only pipeline has no red-off cell; an earlier port alternated the two base frames (`01`↔`02`),
+    but they differ mostly in the black socket (172 of 196 px), so it read as the whole sprite flipping
+    pyramid↔socket rather than the red flashing. Per the operator (2026-09-24) the exposed base holds frame
+    `02` statically. The top must be **centred** on the base (node `slot x`/`slot y` = the
     base's): the arcade's `_X`/`_Y` cell offset is corner-centring for a corner-anchored 2×2 base, but the
     port places sprites by their centre, so it becomes a zero relative offset. An early port copied that offset
     literally and the top slid out of a corner as a **second** mound (the "doubling" the operator first saw);

@@ -135,15 +135,22 @@
   - **The Garu Derota node's felt fire cadence is an operator observation.** The node fires one aimed
     bullet per masked reload with no row gate; the mechanism is proven in the harness, but the exact
     on-screen rhythm relative to a Derota is a point for the operator playtest to confirm.
-  - **Port necessity — the destructible top is centred on the flashing base, not offset by a cell.** The
+  - **Port necessity — the destructible top is centred on the exposed base, not offset by a cell.** The
     faithful structure (source-confirmed, and the appearance the operator approved in the PR #139 playtest)
-    is: you **bomb the pyramid/turret top to expose the flashing base beneath it.** The destructible node is
+    is: you **bomb the pyramid/turret top to expose the base beneath it.** The destructible node is
     the arcade's small top object — Barra `_CODE=0x17` (the `barra/idle` pyramid) / Derota `_CODE=0x27` (the
     `derota/idle` turret) — and it is drawn as its own sprite. The indestructible base — Barra `_CODE=0x48` /
-    Derota `_CODE=0x44` — **colour-pulses**, so the port flashes it by alternating its two sheet frames on
-    the global tick (`garu/base/01`↔`02`, `garu-derota/base/01`↔`02`); the frames differ only in the centre
-    (core off↔on / turret closed↔open), so while the top covers that centre the object reads as a solid
-    top, and once the top is bombed the exposed base **flashes** there. That is why the node must be
+    Derota `_CODE=0x44` — **holds its red-socket frame** (`garu/base/02`, `garu-derota/base/02`): while the
+    top covers the centre the object reads as a solid top, and once the top is bombed the exposed base shows
+    the lit red socket / open red firing centre there. **Port necessity — the base's red-light pulse is not
+    reproduced.** The arcade base colour-pulses `pulsing_colour_1` (a red-light glow on a single bitmap), but
+    Scratch cannot pulse the red lights alone — a `color` graphic effect rotates their hue (red→green) and a
+    `brightness` effect flashes the whole base — and the crop-only sprite pipeline has no red-off cell to
+    alternate to. An earlier port stood the pulse in by alternating the two base frames (`01`↔`02`), but the
+    frames differ by 196 px of which only 24 are the red lights (the other 172 are the black socket), so that
+    read as the **whole sprite flipping pyramid↔socket**, not the red lights flashing. Per the operator's
+    decision (2026-09-24) the exposed base therefore holds frame `02` statically with the red lit; frame `01`
+    is retained as a crop but not rendered. That is why the node must be
     **centred** on the base rather than offset: the arcade offsets the node by +1 cell on each axis
     (`_X = 0x0100`, `_Y = base_Y - 0x0100`) only to re-centre a **corner-anchored** node inside a
     corner-anchored 2×2 base, but the port's `go_expr` places every sprite by its **centre**, so that
