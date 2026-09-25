@@ -1355,7 +1355,7 @@ GROBDA_VARIANTS = (
 )
 GROBDA_TYPES = tuple(v.type for v in GROBDA_VARIANTS)
 GROBDA_WATER_TYPES = tuple(v.type for v in GROBDA_VARIANTS if v.water)
-# The reticle alignment band (check_grobda_in_crosshairs 4589 / check_targeted_and_init_timer 4574): the
+# The reticle alignment band (check_grobda_in_crosshairs 4597 / check_targeted_and_init_timer 4581): the
 # per-axis cell offset `target_cell - grobda_cell` lies in [-2,+1] on BOTH the depth (row) and lateral (col)
 # axes (the reference's `subq #2; addq #4; jcc` carry test on the position MSBs). True exactly inside the band.
 GROBDA_RETICLE_LOW = -2
@@ -4300,7 +4300,7 @@ def install_explode_toroid_tick(blocks: Blocks) -> None:
 def _grobda_reticle_hit(blocks: Blocks, slot_const: int) -> str:
     """GND-06: boolean — is the current Grobda's cell inside the [-2,+1] alignment band of the reticle object
     at `slot_const` (CROSSHAIR_SLOT or BOMB_TARGET_SLOT) on BOTH axes? Mirrors check_grobda_in_crosshairs
-    (4589) / check_targeted_and_init_timer (4574): `d = target_cell - grobda_cell` in [GROBDA_RETICLE_LOW,
+    (4597) / check_targeted_and_init_timer (4581): `d = target_cell - grobda_cell` in [GROBDA_RETICLE_LOW,
     GROBDA_RETICLE_HIGH] for the depth row (slot x MSB) and the lateral col (slot y MSB). The reticle object is
     read UNCONDITIONALLY (the source has no in-flight gate), so a targeted variant reacts to the frozen
     last-bomb-target cell between bombs. Each delta is rebuilt FRESH — a reporter attaches to one parent only,

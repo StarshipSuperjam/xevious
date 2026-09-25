@@ -18,7 +18,7 @@
     at the scroll rate), so adding a separate scroll baseline would double the along-scroll speed. The off-field
     cull is unchanged from the terrain scroller.
   - **The Grobda: twelve variants, none fires, all react to the reticle.** A Grobda arms a 48-frame reaction
-    only while the craft's reticle sits inside a ±2/−… **[−2, +1]** per-axis alignment band of its cell, on
+    only while the craft's reticle sits inside a **[−2, +1]** per-axis alignment band of its cell, on
     both the depth and lateral axes. Two reticle windows drive it: the moving **crosshair** (led ahead of the
     craft) for the "in-crosshairs" variants, and the frozen **bomb target** cell for the "targeted" variants.
     The twelve variants span: stationary; forward; crosshairs→forward-forever; forward→crosshairs-stop-48f→

@@ -4430,7 +4430,7 @@ export const SCENARIOS = [
   {
     key: 'grobda-reacts-to-reticle-only-inside-the-band',
     behavior:
-      "A reticle-reactive Grobda (0x38: forward -> crosshairs -> stop 48f -> resume) arms its reaction ONLY when the craft's crosshair (reads the shared `slot x/y[35]`, the CROSSHAIR reticle) lands inside its [-2,+1] per-axis alignment band (check_grobda_in_crosshairs): aligned, it commits react_dX (8 = stop), latches the 48-frame reaction (`slot flag` -> REACTING, `slot timer` 48 counted down one frame-step the same tick), and stops rolling forward. One cell too far away on the depth axis, it does NOT arm — it holds its forward velocity and PRETRIGGER flag. Either way it never fires",
+      "A reticle-reactive Grobda arms its reaction ONLY inside its [-2,+1] per-axis alignment band, on BOTH the depth (row) and lateral (col) axes, and does so from EITHER reticle window: the moving CROSSHAIR (slot 35, JS 34) for the 0x38 crosshairs variant (forward -> stop 48f -> resume) and the frozen BOMB TARGET (slot 33, JS 32) for the 0x3B targeted variant (forward -> back 48f -> resume). Aligned it commits react_dX, latches the 48-frame reaction (`slot flag` -> REACTING, `slot timer` 48 counted down one frame-step the same tick) and drops its forward roll; on the LOW bound (d = -2) it still arms; one past the HIGH bound (d = +2) or off the OTHER axis it does NOT arm (holds forward velocity + PRETRIGGER). A sign flip, a widened band, or a dropped axis would wrongly arm one of these boundary probes. Either way it never fires",
     playtestStep: 7,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -4440,57 +4440,77 @@ export const SCENARIOS = [
       };
       writeVar(vm, 'game-director-state', 'frozen');
       writeVar(vm, 'bullet-alloc-result', 0);
-      const seedForwardGrobda = () => {
+      const seedGrobda = (type, dx0) => {
         for (let s = 0; s < 16; s += 1) {
           put('slot-type', s, 0);
           put('slot-state', s, 0);
         }
-        put('slot-type', 15, 0x38); // forward -> crosshairs -> stop -> resume (1000 pts)
+        put('slot-type', 15, type);
         put('slot-state', 15, 1); // ACTIVE
         put('slot-x', 15, 10 * 256); // row 10
         put('slot-y', 15, 8 * 256); // col 8
-        put('slot-dx', 15, 14); // rolling forward (raw dX 14)
+        put('slot-dx', 15, dx0); // rolling forward (raw dX)
         put('slot-dy', 15, 0);
         put('slot-flag', 15, 0); // PRETRIGGER (waiting for the reticle)
         put('slot-timer', 15, 0);
         writeVar(vm, 'slot-index', 16);
       };
-      const setCrosshair = (row, col) => {
-        // CROSSHAIR_SLOT is Scratch item 35 -> JS index 34 (a reserved high slot, outside the 0..15 band).
-        put('slot-x', 34, row * 256);
-        put('slot-y', 34, col * 256);
+      // The two reticle windows live in reserved high slots outside the 0..15 ground band: CROSSHAIR_SLOT 35
+      // -> JS index 34, BOMB_TARGET_SLOT 33 -> JS index 32. For each probe the NON-trigger reticle is parked
+      // far away, so only the window under test is ever in range.
+      const CROSS = 34;
+      const BOMB = 32;
+      const setReticle = (jsIndex, row, col) => {
+        put('slot-x', jsIndex, row * 256);
+        put('slot-y', jsIndex, col * 256);
       };
       const react = () => ({
         dx: readVar(vm, 'slot-dx')[15],
         flag: readVar(vm, 'slot-flag')[15],
         timer: readVar(vm, 'slot-timer')[15],
       });
-      // --- Aligned: the crosshair sits on the Grobda's exact cell (d = 0 on both axes, inside [-2,+1]).
-      seedForwardGrobda();
-      setCrosshair(10, 8);
-      callProc(vm, 'Stage', 'update grobda');
-      step(vm, 1);
-      const aligned = react();
-      // --- Out of band: the crosshair is 10 rows ahead (d_row = +10, well past +1) -> no arm.
-      seedForwardGrobda();
-      setCrosshair(20, 8);
-      callProc(vm, 'Stage', 'update grobda');
-      step(vm, 1);
-      const outOfBand = react();
+      // Fresh-seed a Grobda of `type` (rolling at dx0), place its trigger reticle at cell (row,col) and the
+      // OTHER reticle out of range, run one live update tick, read the reaction. The tank sits at cell (10, 8),
+      // so the alignment delta is d = reticle_cell - (10, 8), and the band is [-2,+1] on BOTH axes.
+      const probe = (type, dx0, triggerSlot, parkSlot, row, col) => {
+        seedGrobda(type, dx0);
+        setReticle(parkSlot, 99, 99);
+        setReticle(triggerSlot, row, col);
+        callProc(vm, 'Stage', 'update grobda');
+        step(vm, 1);
+        return react();
+      };
+      // --- Crosshair window (slot 35), 0x38: react_dX = 8 (stop). Four probes pin the band geometry.
+      const aligned = probe(0x38, 14, CROSS, BOMB, 10, 8); // d = (0, 0): deep inside the band -> arms
+      const lowEdge = probe(0x38, 14, CROSS, BOMB, 8, 8); // d_row = -2: inclusive LOW bound -> still arms
+      const highEdgeOut = probe(0x38, 14, CROSS, BOMB, 12, 8); // d_row = +2: one past +1 -> NO arm (pins the sign)
+      const offAxis = probe(0x38, 14, CROSS, BOMB, 10, 20); // d_row = 0 (in) but d_col = +12 (out) -> NO arm
+      // --- Bomb-target window (slot 33), 0x3B: react_dX = 2 (back). Proves the OTHER reticle slot drives a
+      // live reaction (not only the crosshair) and that its band gates the same way.
+      const targetedAligned = probe(0x3B, 14, BOMB, CROSS, 10, 8); // bomb target on the tank's cell -> arms
+      const targetedOut = probe(0x3B, 14, BOMB, CROSS, 22, 8); // bomb target 12 rows away -> NO arm
       const fired = readVar(vm, 'bullet-alloc-result');
-      return { aligned, outOfBand, fired };
+      return { aligned, lowEdge, highEdgeOut, offAxis, targetedAligned, targetedOut, fired };
     },
     assert(obs) {
-      assert.equal(obs.aligned.dx, 8, 'aligned in the crosshair band, the Grobda commits react_dX = 8 (stops rolling forward)');
+      assert.equal(obs.aligned.dx, 8, 'crosshair aligned (d = 0,0), the 0x38 Grobda commits react_dX = 8 (stops rolling forward)');
       assert.equal(obs.aligned.flag, 1, 'aligned, the reaction latches: `slot flag` -> REACTING (1)');
       assert.equal(obs.aligned.timer, 46, 'aligned, the 48-frame reaction is armed AND counted down one frame-step the same tick (48 -> 46)');
-      assert.equal(obs.outOfBand.dx, 14, 'one cell too far on the depth axis, the Grobda does NOT arm — it holds its forward velocity (14)');
-      assert.equal(obs.outOfBand.flag, 0, 'out of band, the flag stays PRETRIGGER (0): the reaction never triggered');
-      assert.equal(obs.fired, 0, 'a Grobda NEVER fires, aligned or not');
+      assert.equal(obs.lowEdge.dx, 8, 'd_row = -2 is the inclusive LOW bound of [-2,+1] -> the Grobda still arms (react_dX = 8)');
+      assert.equal(obs.lowEdge.flag, 1, 'd_row = -2 (inclusive) -> the reaction latches');
+      assert.equal(obs.highEdgeOut.dx, 14, 'd_row = +2 is one past the +1 high bound -> NO arm; holds forward velocity (14). A sign flip would misread this as -2 and wrongly arm');
+      assert.equal(obs.highEdgeOut.flag, 0, 'd_row = +2 out of band -> the flag stays PRETRIGGER (0)');
+      assert.equal(obs.offAxis.dx, 14, 'd_col = +12 out of band (with d_row in band) -> NO arm; proves BOTH axes gate the reaction (a dropped column check would arm here)');
+      assert.equal(obs.offAxis.flag, 0, 'off the lateral axis, the flag stays PRETRIGGER (0)');
+      assert.equal(obs.targetedAligned.dx, 2, 'the 0x3B targeted variant reads the BOMB TARGET slot (33) and, aligned, commits its react_dX = 2 (reverses)');
+      assert.equal(obs.targetedAligned.flag, 1, 'bomb-target aligned -> the targeted reaction latches (REACTING)');
+      assert.equal(obs.targetedOut.dx, 14, 'bomb target 12 rows away -> the targeted variant does NOT arm (holds forward velocity 14)');
+      assert.equal(obs.targetedOut.flag, 0, 'bomb target out of band -> the flag stays PRETRIGGER (0)');
+      assert.equal(obs.fired, 0, 'a Grobda NEVER fires, in band or out, from either reticle window');
     },
-    // Sever the Grobda update: the aligned probe no longer arms -> its dx stays 14 (the seed), so the
-    // aligned `dx == 8` assertion goes red — proving the reaction is measured against a live updater, and
-    // that it is specifically alignment (not the seed) that drops the velocity to the stop value.
+    // Sever the Grobda update: no probe arms -> aligned.dx stays 14 (the seed), so `aligned.dx == 8` goes red,
+    // proving every reaction is measured against a live updater and that it is alignment (not the seed) that
+    // drops the velocity to the reaction value.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update grobda'),
   },
   {
@@ -4636,7 +4656,7 @@ export const SCENARIOS = [
   {
     key: 'domogram-fires-one-aimed-shot-at-anim-midpoint-gated',
     behavior:
-      "A Domogram fires exactly ONE aimed bullet per shot cycle at its animation MIDPOINT (domogram_shooting): when its masked shot timer expires it starts a 24-frame animation (_TYPE = 24) and fires a single aimed shot the frame the animation reaches 12 (the midpoint). Firing is gated like every ground turret — only while still armed (`cur_row <= ground stop firing row`); past the stop-firing row it is SILENT and its shot countdown is never even touched",
+      "A Domogram fires exactly ONE aimed bullet per shot cycle at its animation MIDPOINT (domogram_shooting): when its masked shot timer expires it starts a 24-frame animation (_TYPE = 24) and fires a single aimed shot the frame the animation reaches 12 (the midpoint). Starting a shot is gated TWO ways (domogram_main): only while still armed (`cur_row <= ground stop firing row`) AND only on the every-4th-tick fire phase (`tick mod 4 == 0`, the arcade's `countup_timer_1 & 7` every-8th-frame cadence). Past the stop-firing row it is SILENT and its shot countdown is never even touched; off the fire phase the shot-start gate never opens, so the countdown is likewise never decremented and no animation begins (once an animation IS running the phase is ignored by design). It never fires more than one shot per cycle",
     playtestStep: 7,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -4691,7 +4711,22 @@ export const SCENARIOS = [
       }
       const shotTimerPast = readVar(vm, 'slot-timer')[15];
       const animPast = readVar(vm, 'slot-fire-timer')[15];
-      return { fireTick, animAtFire, firedPast, shotTimerPast, animPast };
+      // --- Off the fire phase: armed (row 20 <= 30) but the tick is frozen OFF the every-4th-tick phase, so
+      // the shot-start gate (armed AND tick mod 4 == 0) never opens: the countdown is never decremented and no
+      // animation ever begins. This is the ONLY place the phase can be shown to discriminate — once running,
+      // the animation steps every tick regardless of phase. Dropping the phase gate would fire here.
+      seedActiveDomogram();
+      writeVar(vm, 'ground-stop-firing-row', 30);
+      writeVar(vm, 'tick', 1); // 1 mod 4 != 0 -> off-phase, and frozen there for the whole probe
+      let firedOffPhase = 0;
+      for (let t = 1; t <= 8; t += 1) {
+        callProc(vm, 'Stage', 'update domogram');
+        step(vm, 1);
+        firedOffPhase += readVar(vm, 'bullet-alloc-result') > 0 ? 1 : 0;
+      }
+      const shotTimerOffPhase = readVar(vm, 'slot-timer')[15];
+      const animOffPhase = readVar(vm, 'slot-fire-timer')[15];
+      return { fireTick, animAtFire, firedPast, shotTimerPast, animPast, firedOffPhase, shotTimerOffPhase, animOffPhase };
     },
     assert(obs) {
       assert.equal(obs.fireTick, 6, 'the aimed shot fires on tick 6: start (anim 24 -> 22) + five steps to 12 (the 24-frame animation midpoint)');
@@ -4699,6 +4734,9 @@ export const SCENARIOS = [
       assert.equal(obs.firedPast, 0, 'past the stop-firing row the Domogram is SILENT — no aimed shot is ever fired');
       assert.equal(obs.shotTimerPast, 1, 'past the row the fire gate never runs: the shot countdown is left untouched (still 1)');
       assert.equal(obs.animPast, 0, 'past the row no animation ever starts (_TYPE stays idle)');
+      assert.equal(obs.firedOffPhase, 0, 'off the every-4th-tick fire phase the shot-start gate never opens -> no shot is ever fired');
+      assert.equal(obs.shotTimerOffPhase, 1, 'off-phase the fire gate never runs: the shot countdown is left untouched (still 1) — proving the phase gate discriminates, not just the row gate');
+      assert.equal(obs.animOffPhase, 0, 'off-phase no animation ever starts (_TYPE stays idle)');
     },
     // Sever the Domogram update: the armed probe never starts its animation, so it never fires -> fireTick
     // stays -1 (!= 6), proving the midpoint fire is measured against a genuinely live shooter.
