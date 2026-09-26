@@ -57,6 +57,70 @@
       "who": "engine"
     },
     {
+      "criterion": "The build's boss layout equals the committed layout list",
+      "digest": "sha256:b78ab844d8efaab8cca2659595c7e07d3e98677e6a51d5c79eab542e5831c413",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Data comparison against [data/andor-genesis.json](data/andor-genesis.json)",
+      "position": 0,
+      "who": "engine"
+    },
+    {
+      "criterion": "The boss arrives at its scheduled rows as one composite",
+      "digest": "sha256:5e1cc42167527e9e8c21f53abd2344aaa1da7733cb159cc203234944c0fbd527",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Play a boss area and watch the arrival",
+      "position": 1,
+      "who": "operator"
+    },
+    {
+      "criterion": "Armor plates never die; ports are individually bombable; only the core ends the encounter",
+      "digest": "sha256:8820fdb388f687dc375f83dca972d101910eb11cc2b0190a9379830890d66d90",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Play a boss encounter exercising all three",
+      "position": 2,
+      "who": "operator"
+    },
+    {
+      "criterion": "Core destruction cascades the surviving ports and awards through the single scoring path once each",
+      "digest": "sha256:6f0ea518fee73bb0924ff8e4f6916c567bdb909ad9beb10fc8675c1a02879f7d",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Deterministic fixture over the destruction sequence",
+      "position": 3,
+      "who": "engine"
+    },
+    {
+      "criterion": "The schedule data carries the boss's end record at its recorded row",
+      "digest": "sha256:fdd67c5db13a2683a3bca50eed47fdba3a0bfc8fafdcc7126c9fe6cfc3a623c1",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Schedule-trace fixture over the committed data",
+      "position": 4,
+      "who": "engine"
+    },
+    {
+      "criterion": "An undamaged boss visibly departs rather than timing out",
+      "digest": "sha256:27d0177cdc7f159b0d971ea88247cff9ad92eac12bc705819538aa3e951ff022",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Play a boss encounter without bombing the core",
+      "position": 5,
+      "who": "operator"
+    },
+    {
+      "criterion": "Port fire obeys the boss's fire-permission mask from the schedule",
+      "digest": "sha256:8f4b6eae8cec349d51c31610979228a8487e489d7e1b257397816e30be152971",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Seeded fixture: port fire patterns follow the recorded mask",
+      "position": 6,
+      "who": "engine"
+    },
+    {
+      "criterion": "The composite stays within the entity budget with all fifteen parts plus normal traffic live",
+      "digest": "sha256:4e2df0cc4b2cedbcc512a0922d1f1b143f5ae90501309d309580ad75bd2c7c31",
+      "doc": "docs/spec/andor-genesis.md",
+      "how_verified": "Play an extended boss encounter on the built `.sb3` watching for missing spawns or slowdown",
+      "position": 7,
+      "who": "operator"
+    },
+    {
       "criterion": "All 16 schedule tables decode exactly, with no Super-table content (the sentinel is recorded as each area's `end_sentinel` field, outside the records list)",
       "digest": "sha256:1c629a9f0c4b701eac8609c1dc3f57656654ed1c071edd5f743336ff420f3ba3",
       "doc": "docs/spec/area-progression-and-terrain.md",

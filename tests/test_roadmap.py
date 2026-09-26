@@ -39,10 +39,10 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("assigned to both" in item for item in roadmap.validate_manifest(changed)))
 
     def test_unsettled_spec_cannot_gain_executable_leaf(self) -> None:
-        # `secrets` is settled as of slice 14; `andor` is still a draft spec, so a leaf under it
+        # `andor` is locked as of slice 15; `cabinet` is still a draft spec, so a leaf under it
         # must stay provisional until its own slice settles the description.
         changed = copy.deepcopy(self.manifest)
-        leaf = next(item for item in changed["leaves"] if item["key"] == "andor.lifecycle")
+        leaf = next(item for item in changed["leaves"] if item["key"] == "cabinet.attract-credits")
         leaf["status"] = "planned"
         self.assertTrue(any("must be provisional" in item for item in roadmap.validate_manifest(changed)))
 
@@ -55,12 +55,12 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("blocker cycle" in item for item in roadmap.validate_manifest(changed)))
 
     def test_issue_body_carries_stable_identity_and_closure_contract(self) -> None:
-        # `andor` is still a draft spec, so its leaves render "Executable now: no" —
-        # `secrets.sol-tower` became executable when slice 14 settled the secrets description.
-        parent = next(item for item in self.manifest["parents"] if item["key"] == "andor")
-        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "andor.lifecycle")
+        # `cabinet` is still a draft spec, so its leaves render "Executable now: no" —
+        # `andor.lifecycle` became executable when slice 15 locked the Andor description.
+        parent = next(item for item in self.manifest["parents"] if item["key"] == "cabinet")
+        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "cabinet.attract-credits")
         body = roadmap.leaf_body(leaf, parent)
-        self.assertIn("<!-- roadmap-key: andor.lifecycle -->", body)
+        self.assertIn("<!-- roadmap-key: cabinet.attract-credits -->", body)
         self.assertIn("Executable now: **no**", body)
         self.assertIn("## Closure rule", body)
 
