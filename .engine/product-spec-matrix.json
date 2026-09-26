@@ -481,11 +481,19 @@
       "who": "operator"
     },
     {
+      "criterion": "Bombing a hidden Bonus Flag reveals it and scores 1,000 points once; a second bomb does not re-score it",
+      "digest": "sha256:acb84d7cde03685fe132a491f05a74dffc179df1a0b0a2d28803f8603b311271",
+      "doc": "docs/spec/secrets.md",
+      "how_verified": "Fixture: bomb the flag's slot, assert a single +1,000 award and that it becomes visible",
+      "position": 2,
+      "who": "engine"
+    },
+    {
       "criterion": "A revealed Bonus Flag is collected by fly-over, not by weapons, and awards per the configured setting",
       "digest": "sha256:b3b40704a66c6f08d981657d30c510562003d543710c3115bc78619461a78f10",
       "doc": "docs/spec/secrets.md",
       "how_verified": "Play: reveal a flag, collect it, observe the award",
-      "position": 2,
+      "position": 3,
       "who": "operator"
     },
     {
@@ -493,7 +501,7 @@
       "digest": "sha256:2d03819a6c2f7fa6a44fc13a9ef3369fff9ff2520a3d9664aa487938016a97de",
       "doc": "docs/spec/secrets.md",
       "how_verified": "Play (or accelerated fixture) at its scheduled position",
-      "position": 3,
+      "position": 4,
       "who": "operator"
     },
     {
@@ -501,7 +509,7 @@
       "digest": "sha256:c2c8a0064054fca9b49df46020d73dbb9f0b91967855131018a58203c8f7d0dd",
       "doc": "docs/spec/secrets.md",
       "how_verified": "Seeded fixture: identical seeds place the flag identically",
-      "position": 4,
+      "position": 5,
       "who": "engine"
     }
   ],

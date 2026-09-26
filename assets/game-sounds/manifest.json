@@ -68,6 +68,17 @@
       "credit": "Namco (arcade audio); rip uploader not individually recorded",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "sha256": "e78543787183a8d7b34740255b7a02c08b319a954e9240acab6273c50a6f7bd4"
+    },
+    {
+      "name": "bonus_flag",
+      "file": "bonus_flag.wav",
+      "arcade_sound": "BONUS_FLAG_SND",
+      "arcade_id": "0x0d",
+      "play_point": "remove_bonus_flag, xevious_main.68k:3174 — a revealed Bonus Flag is collected by fly-over (both the extra-craft and 10,000-point award paths fall through to remove_bonus_flag, which plays this sound)",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/sounds/bonus_flag.wav — the canonical named source sound the reference feeds to its Amiga sound converter (convert_sounds.py maps it to BONUS_FLAG_SND index 0x0d). Taken directly from the pin the build already grounds on, matching the flag SPRITE sourcing; committed unmodified. This is a different upstream than the other game sounds here (operator-staged Sounds Resource rips, 48 kHz): the reference source sound is 44.1 kHz mono, attached as-is with no resampling.",
+      "credit": "Namco (arcade audio); decoded/committed in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "9840624569987af8022e8fb09c73de63298c7dfe6f97d4dee5767445975678f2"
     }
   ]
 }

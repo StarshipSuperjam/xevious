@@ -39,6 +39,14 @@
         [206, 46, 64, 16],
         [80, 360, 205, 45]
       ]
+    },
+    "bonus_flag": {
+      "asset": "6ca6cf679d389290d64bd6417973df2c.png",
+      "sha256": "eb9d6a5422d2904de86971a35b78e2eb04eaf0222f5b5a7705e21cfcc187c6c1",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c sprite index 287 (labelled 'flag' in sprite_config.json), rendered with sprite CLUT 0x0e — the _COLOUR value reveal_bonus_flag writes (xevious_main.68k 3148) — as a 16x16 cell on the sheet matte. The Special Flag bonus item; no Spriters Resource sheet breaks out this sprite, so it is taken from the pinned reference the build already grounds on.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "excluded_rects": []
     }
   },
   "frames": [
@@ -593,6 +601,83 @@
       "duration_frames": 1
     },
     {
+      "name": "sol-tower/rise/01",
+      "sheet": "ground_enemies",
+      "rect": [18, 327, 2, 2],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sol-tower",
+      "animation": "rise",
+      "duration_frames": 1
+    },
+    {
+      "name": "sol-tower/rise/02",
+      "sheet": "ground_enemies",
+      "rect": [29, 326, 4, 4],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sol-tower",
+      "animation": "rise",
+      "duration_frames": 1
+    },
+    {
+      "name": "sol-tower/rise/03",
+      "sheet": "ground_enemies",
+      "rect": [40, 325, 6, 6],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sol-tower",
+      "animation": "rise",
+      "duration_frames": 1
+    },
+    {
+      "name": "sol-tower/rise/04",
+      "sheet": "ground_enemies",
+      "rect": [52, 324, 8, 8],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sol-tower",
+      "animation": "rise",
+      "duration_frames": 1
+    },
+    {
+      "name": "sol-tower/rise/05",
+      "sheet": "ground_enemies",
+      "rect": [66, 323, 10, 10],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sol-tower",
+      "animation": "rise",
+      "duration_frames": 1
+    },
+    {
+      "name": "sol-tower/rise/06",
+      "sheet": "ground_enemies",
+      "rect": [83, 322, 12, 12],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sol-tower",
+      "animation": "rise",
+      "duration_frames": 1
+    },
+    {
+      "name": "sol-tower/rise/07",
+      "sheet": "ground_enemies",
+      "rect": [102, 321, 14, 14],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "sol-tower",
+      "animation": "rise",
+      "duration_frames": 1
+    },
+    {
       "name": "logram/open/01",
       "sheet": "ground_enemies",
       "rect": [9, 58, 13, 13],
@@ -931,6 +1016,17 @@
       "target": "toroid_sprite_proof",
       "family": "domogram",
       "animation": "idle",
+      "duration_frames": 1
+    },
+    {
+      "name": "bonus-flag/flag/01",
+      "sheet": "bonus_flag",
+      "rect": [1, 1, 14, 11],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "bonus-flag",
+      "animation": "flag",
       "duration_frames": 1
     }
   ]

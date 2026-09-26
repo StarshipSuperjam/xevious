@@ -30,12 +30,17 @@ the same value again — two scoring stages, reveal and destroy. (The reference'
 a development option, excluded.)
 
 **Bonus Flags (SEC-02).** A Bonus Flag is scheduled invisible with a randomized vertical placement drawn
-from the shared random stream. A bomb reveals it; revealing scores nothing by itself. Collection is by
-flying the craft over the revealed flag — proximity of the craft, not a weapon. Collecting always plays
-the flag sound and removes the flag, and awards per the cabinet DIP switch: an extra craft, or 10,000
-points (`handle_54_Bonus_Flag`, `reveal_bonus_flag`, `score_bonus_flag`, `check_flag_collected`
-3131–3188). The flag's vestigial internal point index is dead data in the reference and is not carried
-into the build.
+from the shared random stream. It is revealed by bombing it: a bomb landing on the still-hidden flag sets
+it hit and, exactly like any bombed ground object, both makes it visible and scores its point value —
+1,000 points. The reveal and its award are that one bomb hit, not two events, and once revealed the flag
+sits in the hit state, so a second bomb cannot re-score it. Collection is then by flying the craft over
+the revealed flag — proximity of the craft, not a weapon. Collecting always plays the flag sound and
+removes the flag, and awards per the cabinet DIP switch: an extra craft, or 10,000 points
+(`handle_54_Bonus_Flag`, `reveal_bonus_flag`, `score_bonus_flag`, `check_flag_collected` 3131–3188). The
+flag rides the shared ground-bomb award loop, which sweeps all sixteen ground object slots — the flag
+occupies one — and awards each active on-target object its point value
+(`handle_bombed_obj_and_award_points` 2597–2627, `check_object_on_target` 2629–2640); the flag's point
+index (`_PTS`=48, the value table's 1,000-point entry) is live data awarded on the reveal, not dead data.
 
 **Hidden credit message (SEC-03).** One scheduled invisible object, when bombed, displays a hidden
 message for 128 frames (~2.1 s) and awards the scoring table's minimum value; in attract mode the
@@ -52,6 +57,7 @@ confirms the trigger's presentation details.
 | --- | --- | --- |
 | Every secret's scheduled position comes from the committed schedule data, never invented placements | Data-comparison fixture: the build's secret placements equal the schedule records | engine |
 | A bomb on a hidden Sol Tower reveals it, it rises in stages, and a second bomb destroys it — scoring at both stages | Play area 1's known tower position (per the committed schedule): reveal, then destroy | operator |
+| Bombing a hidden Bonus Flag reveals it and scores 1,000 points once; a second bomb does not re-score it | Fixture: bomb the flag's slot, assert a single +1,000 award and that it becomes visible | engine |
 | A revealed Bonus Flag is collected by fly-over, not by weapons, and awards per the configured setting | Play: reveal a flag, collect it, observe the award | operator |
 | The hidden credit event triggers only when bombed in a live game and holds ~2 seconds | Play (or accelerated fixture) at its scheduled position | operator |
 | The Bonus Flag's vertical placement draws from the shared random stream (seeded runs repeat) | Seeded fixture: identical seeds place the flag identically | engine |

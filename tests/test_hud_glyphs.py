@@ -20,7 +20,7 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count = hg.check_repository()
-        self.assertEqual(32, count)
+        self.assertEqual(33, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -121,14 +121,14 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_stage_carries_the_added_sounds_alongside_historical_sounds(self) -> None:
         # The Stage carries the two historical base sounds, then hud_glyphs.py's added
-        # sounds: the "extend" cue, then the six arcade gameplay-SFX cues in name order
-        # (AUDIO; docs/mechanics/040-arcade-sound-cues.md).
+        # sounds: the "extend" cue, then the seven arcade gameplay-SFX cues in name order
+        # (AUDIO; docs/mechanics/040-arcade-sound-cues.md — bonus_flag added for SEC-02, slice 14).
         project = json.loads(hg.PROJECT_PATH.read_text(encoding="utf-8"))
         stage = next(target for target in project["targets"] if target["isStage"])
         names = [sound["name"] for sound in stage["sounds"]]
         self.assertEqual(
             ["Game Start.mp3", "BGM.mp3", "extend", "air_destroy", "bacura",
-             "garu_zakato", "ground_destroy", "sheonite", "zakato"],
+             "bonus_flag", "garu_zakato", "ground_destroy", "sheonite", "zakato"],
             names,
         )
 
@@ -143,9 +143,11 @@ class HudGlyphsTests(unittest.TestCase):
         life = hg.render_life_icon(self.manifest)
         _sound, _data, sound_filename = hg.render_extend_sound(self.manifest)
         game_sounds = hg.render_game_sounds()
+        credit = hg.render_credit()
         expected_filenames = {output.filename for output in glyphs} | {
             life.filename,
             sound_filename,
+            credit.filename,
         } | {output.filename for output in game_sounds}
         self.assertEqual(expected_filenames, set(provenance["outputs"]))
         for filename in expected_filenames:
@@ -153,7 +155,14 @@ class HudGlyphsTests(unittest.TestCase):
             record = overlay[filename]
             self.assertTrue(record["origin"].strip())
             self.assertTrue(record["license"].strip())
-            self.assertIn("did not create", record["notes"])
+            if filename == credit.filename:
+                # SEC-03: the hidden-credit overlay is the port's OWN original content, so it does
+                # NOT carry the third-party "did not create" disclaimer — it must instead declare
+                # its port-original provenance and that it is not arcade art.
+                self.assertIn("operator's own content", record["notes"])
+                self.assertIn("NOT arcade art", record["notes"])
+            else:
+                self.assertIn("did not create", record["notes"])
 
     def test_glyph_and_digit_zero_may_legitimately_share_one_asset(self) -> None:
         # The source font draws the letter O and the digit 0 identically, so
@@ -229,8 +238,9 @@ class HudGlyphsTests(unittest.TestCase):
         glyphs = hg.render_glyphs(self.manifest)
         life = hg.render_life_icon(self.manifest)
         sound, _data, _filename = hg.render_extend_sound(self.manifest)
+        credit = hg.render_credit()
         with self.assertRaisesRegex(hg.HudGlyphsError, "no hud target"):
-            hg.expected_project(project, glyphs, life, self.manifest, sound)
+            hg.expected_project(project, glyphs, life, self.manifest, sound, credit)
 
 
 if __name__ == "__main__":

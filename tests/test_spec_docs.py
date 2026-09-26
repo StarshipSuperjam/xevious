@@ -599,6 +599,45 @@ class GeneratedAreaClock(unittest.TestCase):
                 f"area {area_number} sentinel ground scalars",
             )
 
+    # roadmap-evidence: SEC-01 success  (test_secret_object_types_ride_the_schedule — 0x1D via add_ground_object)
+    # roadmap-evidence: SEC-02 success  (test_secret_object_types_ride_the_schedule — 0x54 via add_object)
+    # roadmap-evidence: SEC-03 success  (test_secret_object_types_ride_the_schedule — 0x53 via add_ground_object)
+    def test_secret_object_types_ride_the_schedule(self):
+        # SEC-01/02/03: the three slice-14 secret objects are scheduled from the SAME committed
+        # area-schedules.json the round-trip above proves lossless — no new data file. This focused check
+        # pins that each secret type reaches the build's flattened schedule columns under its EXPECTED
+        # spawn handler: the Sol Tower (0x1D) and the Hidden Credit (0x53) as ground objects
+        # (add_ground_object, carried in the ground-type scalar column), and the Bonus Flag (0x54) as an
+        # add_object placement (carried in the opaque payload column, not the ground scalars). A secret
+        # dropped from the schedule, or wired to the wrong spawn path, fails here rather than at play.
+        SOL_TOWER, EASTER_EGG, BONUS_FLAG = 0x1D, 0x53, 0x54
+
+        # the source of truth is the committed schedule data (the round-trip above proves the build's
+        # columns equal it record-for-record); assert presence + handler independently from the JSON.
+        areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
+        handler_by_type = {}
+        for area in areas:
+            for record in area["records"]:
+                handler_by_type.setdefault(record.get("object_type"), set()).add(record["handler"])
+        self.assertIn(SOL_TOWER, handler_by_type, "Sol Tower 0x1D absent from the schedule")
+        self.assertIn(EASTER_EGG, handler_by_type, "Hidden Credit 0x53 absent from the schedule")
+        self.assertIn(BONUS_FLAG, handler_by_type, "Bonus Flag 0x54 absent from the schedule")
+        self.assertEqual({"add_ground_object"}, handler_by_type[SOL_TOWER], "Sol Tower spawn handler")
+        self.assertEqual({"add_ground_object"}, handler_by_type[EASTER_EGG], "Hidden Credit spawn handler")
+        self.assertEqual({"add_object"}, handler_by_type[BONUS_FLAG], "Bonus Flag spawn handler")
+
+        # and the build materialized them into its columns: the two ground objects into the ground-type
+        # scalar column, the flag into the payload column as an add_object record.
+        project = json.loads(PROJECT_JSON.read_text())
+        stage = next(t for t in project["targets"] if t["isStage"])
+        by_name = {value[0]: value[1] for value in stage["lists"].values()}
+        ground_types = by_name["schedule ground type"]
+        self.assertIn(SOL_TOWER, ground_types, "Sol Tower 0x1D missing from the ground-type column")
+        self.assertIn(EASTER_EGG, ground_types, "Hidden Credit 0x53 missing from the ground-type column")
+        payloads = [json.loads(p) for p in by_name["schedule payload"] if p]
+        flag_payloads = [p for p in payloads if p.get("object_type") == BONUS_FLAG]
+        self.assertTrue(flag_payloads, "Bonus Flag 0x54 missing from the payload column")
+
     def test_domogram_paths_round_trip_from_json(self):
         # GND-07 (ground.domogram #89): the Domogram's scripted paths and its 32-entry vector table are a
         # FAITHFUL, lossless decode of the committed data. Unlike the opaque payload column (which round-trips

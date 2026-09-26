@@ -119,6 +119,57 @@ class GameSoundOutput:
     record: dict  # the assets/game-sounds/manifest.json entry (provenance)
 
 
+# SEC-03 hidden-credit overlay (secrets.hidden-credit #93; game_director.py easter_egg_blocks / display_easter_egg
+# xevious_main.68k 6018-6048). game_director owns the `easter-egg` target's existence + blocks; this module owns
+# its single COSTUME — a pre-composed two-line credit bitmap the overlay shows for ~2 s when the hidden Credit is
+# bombed. It is rendered here (not by the arcade HUD/sprite pipeline) in a PORT-GENERATED pixel font, NOT the
+# arcade font: the arcade HUD font manifest crops only the letters the HUD readouts use (it lacks X/T/Y/J/B that
+# the wording needs), and its crops are operator-verified. Since the credit is this project's OWN original content
+# (never the arcade str_program_by_EVEZOO text — docs/REFERENCE_POLICY.md), a self-contained generated font is
+# both honest and unblocked. Recorded as a port necessity in docs/mechanics/044.
+CREDIT_TARGET = "easter-egg"
+CREDIT_COSTUME_NAME = "credit"
+# This project's own original placeholder wording (operator's choice), uppercase, two lines.
+CREDIT_TEXT_LINES = ("XEVIOUS PORT", "BY STARSHIP SUPERJAM")
+CREDIT_INK = (255, 255, 255, 255)  # white, legible over the play field
+CREDIT_TRANSPARENT = (0, 0, 0, 0)
+CREDIT_SCALE = 3  # nearest-neighbor upscale of the 5x7 cells (keeps the widest line within the 480px stage)
+CREDIT_GLYPH_W = 5
+CREDIT_GLYPH_H = 7
+CREDIT_GLYPH_GAP = 1  # blank columns between glyphs
+CREDIT_LINE_GAP = 2  # blank rows between the two lines
+# A compact 5x7 uppercase pixel font, defined only for the glyphs the wording uses (a guard rejects any character
+# without an entry, so a reworded credit fails loudly rather than dropping letters). '#': ink, '.': transparent.
+CREDIT_FONT = {
+    " ": (".....", ".....", ".....", ".....", ".....", ".....", "....."),
+    "A": (".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
+    "B": ("####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."),
+    "E": ("#####", "#....", "#....", "####.", "#....", "#....", "#####"),
+    "H": ("#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
+    "I": ("#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####"),
+    "J": ("..###", "...#.", "...#.", "...#.", "#..#.", "#..#.", ".##.."),
+    "M": ("#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"),
+    "O": (".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."),
+    "P": ("####.", "#...#", "#...#", "####.", "#....", "#....", "#...."),
+    "R": ("####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"),
+    "S": (".####", "#....", "#....", ".###.", "....#", "....#", "####."),
+    "T": ("#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."),
+    "U": ("#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."),
+    "V": ("#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."),
+    "X": ("#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"),
+    "Y": ("#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."),
+}
+
+
+@dataclass(frozen=True)
+class CreditOutput:
+    name: str
+    filename: str  # content-hash <md5>.png under src/xevious/assets/
+    png: bytes
+    width: int
+    height: int
+
+
 def _require_keys(value: dict, expected: set[str], label: str) -> None:
     actual = set(value)
     if actual != expected:
@@ -384,6 +435,89 @@ def render_life_icon(manifest: dict) -> LifeIconOutput:
     return LifeIconOutput(life_icon["name"], f"{se._md5(png)}.png", png, canvas, anchor)
 
 
+def _upscale_nearest(image: se.Image, factor: int) -> se.Image:
+    if factor < 1:
+        raise HudGlyphsError("upscale factor must be >= 1")
+    new_width = image.width * factor
+    new_height = image.height * factor
+    pixels = [
+        image.pixel(x // factor, y // factor)
+        for y in range(new_height)
+        for x in range(new_width)
+    ]
+    return se.Image(new_width, new_height, tuple(pixels))
+
+
+def render_credit() -> CreditOutput:
+    """Compose the two-line hidden-credit overlay bitmap from the built-in port font.
+
+    This is the port's OWN original content (CREDIT_TEXT_LINES), rendered in a
+    self-contained pixel font — NOT arcade art and NOT the arcade HUD font crops. See
+    the CREDIT_* block above for why the arcade font can't supply these letters."""
+    cell_w = CREDIT_GLYPH_W + CREDIT_GLYPH_GAP
+    line_h = CREDIT_GLYPH_H + CREDIT_LINE_GAP
+    for line in CREDIT_TEXT_LINES:
+        for char in line:
+            if char not in CREDIT_FONT:
+                raise HudGlyphsError(
+                    f"credit text needs glyph {char!r}, which has no CREDIT_FONT entry"
+                )
+
+    def line_width(line: str) -> int:
+        # each glyph occupies its 5 columns plus a trailing gap, minus the final gap
+        return max(0, len(line) * cell_w - CREDIT_GLYPH_GAP)
+
+    base_width = max(line_width(line) for line in CREDIT_TEXT_LINES)
+    base_height = len(CREDIT_TEXT_LINES) * line_h - CREDIT_LINE_GAP
+    pixels = [CREDIT_TRANSPARENT] * (base_width * base_height)
+    for row, line in enumerate(CREDIT_TEXT_LINES):
+        x_start = (base_width - line_width(line)) // 2  # center each line horizontally
+        y_start = row * line_h
+        for col, char in enumerate(line):
+            glyph = CREDIT_FONT[char]
+            gx = x_start + col * cell_w
+            for gy in range(CREDIT_GLYPH_H):
+                pattern = glyph[gy]
+                for px in range(CREDIT_GLYPH_W):
+                    if pattern[px] == "#":
+                        pixels[(y_start + gy) * base_width + (gx + px)] = CREDIT_INK
+    base = se.Image(base_width, base_height, tuple(pixels))
+    scaled = _upscale_nearest(base, CREDIT_SCALE)
+    png = se.encode_png(scaled)
+    return CreditOutput(
+        CREDIT_COSTUME_NAME, f"{se._md5(png)}.png", png, scaled.width, scaled.height
+    )
+
+
+def _credit_costume(output: CreditOutput) -> dict:
+    return {
+        "name": output.name,
+        "bitmapResolution": 1,
+        "dataFormat": "png",
+        "assetId": output.filename.removesuffix(".png"),
+        "md5ext": output.filename,
+        "rotationCenterX": output.width // 2,
+        "rotationCenterY": output.height // 2,
+    }
+
+
+def _overlay_credit_record(output: CreditOutput) -> dict:
+    return {
+        "origin": (
+            "Original two-line hidden-credit overlay rendered by tools/hud_glyphs.py "
+            "in a port-generated 5x7 pixel font (render_credit); not derived from any "
+            "third-party source"
+        ),
+        "license": "Project-original (no third-party source)",
+        "notes": (
+            f"The repository operator's own content: {' / '.join(CREDIT_TEXT_LINES)}. "
+            "NOT arcade art and NOT the arcade str_program_by_EVEZOO credit; the port's "
+            f"own placeholder wording. {CREDIT_SCALE}x nearest-neighbor upscale of the "
+            "built-in CREDIT_FONT, white ink on transparent, bitmapResolution 1."
+        ),
+    }
+
+
 def _read_sound_source() -> bytes:
     try:
         data = SOUND_SOURCE_PATH.read_bytes()
@@ -556,6 +690,7 @@ def expected_project(
     life_output: LifeIconOutput,
     manifest: dict,
     sound: dict,
+    credit_output: CreditOutput,
     game_sounds: list[GameSoundOutput] | None = None,
 ) -> dict:
     result = copy.deepcopy(project)
@@ -570,6 +705,17 @@ def expected_project(
     if missing:
         raise HudGlyphsError(f"missing rendered costumes: {', '.join(sorted(missing))}")
     hud["costumes"] = [costumes_by_name[name] for name in COSTUME_ORDER]
+    # SEC-03: attach the single generated credit costume to game_director's easter-egg target,
+    # whose blocks switch to it while the hidden credit is revealed (game_director owns the target
+    # + its empty-costume placeholder; this module fills the one costume).
+    egg = next(
+        (target for target in result["targets"] if target.get("name") == CREDIT_TARGET), None
+    )
+    if egg is None:
+        raise HudGlyphsError(
+            f"Scratch project has no {CREDIT_TARGET} target; run tools/game_director.py generate first"
+        )
+    egg["costumes"] = [_credit_costume(credit_output)]
     stage = next(target for target in result["targets"] if target.get("isStage"))
     # Rebuild the Stage's added sounds deterministically: keep the base music/start sounds, then
     # `extend`, then the gameplay SFX in name order. Filtering by name first keeps this idempotent
@@ -662,6 +808,7 @@ def _derivative_provenance(
     glyph_outputs: list[GlyphOutput],
     life_output: LifeIconOutput,
     sound_filename: str,
+    credit_output: CreditOutput,
     game_sounds: list[GameSoundOutput] | None = None,
 ) -> dict:
     outputs = {}
@@ -683,6 +830,12 @@ def _derivative_provenance(
     outputs[sound_filename] = {
         "kind": "sound",
         "name": SOUND_NAME,
+        "generator_version": GENERATOR_VERSION,
+    }
+    outputs[credit_output.filename] = {
+        "kind": "credit",
+        "name": credit_output.name,
+        "text": list(CREDIT_TEXT_LINES),
         "generator_version": GENERATOR_VERSION,
     }
     for output in game_sounds or []:
@@ -709,17 +862,20 @@ def _expected_state() -> tuple[
     bytes,
     set[str],
     list[GameSoundOutput],
+    CreditOutput,
 ]:
     manifest, manifest_bytes = load_manifest()
     glyph_outputs = render_glyphs(manifest)
     life_output = render_life_icon(manifest)
     sound, sound_bytes, sound_filename = render_extend_sound(manifest)
     game_sounds = render_game_sounds()
+    credit_output = render_credit()
     prior_outputs = set(_prior_output_records())
     current_project = _read_json(PROJECT_PATH)
     project_bytes = se._ordered_json_bytes(
         expected_project(
-            current_project, glyph_outputs, life_output, manifest, sound, game_sounds
+            current_project, glyph_outputs, life_output, manifest, sound,
+            credit_output, game_sounds,
         )
     )
     overlay = _read_json(OVERLAY_PROVENANCE_PATH)
@@ -754,11 +910,13 @@ def _expected_state() -> tuple[
     assets[sound_filename] = _overlay_sound_record(manifest, sound_filename)
     for output in game_sounds:
         assets[output.filename] = _overlay_game_sound_record(output)
+    assets[credit_output.filename] = _overlay_credit_record(credit_output)
     assets = dict(sorted(assets.items()))
     overlay_bytes = se._ordered_json_bytes({"version": 1, "assets": assets})
     derivative_provenance_bytes = se._ordered_json_bytes(
         _derivative_provenance(
-            manifest, manifest_bytes, glyph_outputs, life_output, sound_filename, game_sounds
+            manifest, manifest_bytes, glyph_outputs, life_output, sound_filename,
+            credit_output, game_sounds,
         )
     )
     return (
@@ -771,6 +929,7 @@ def _expected_state() -> tuple[
         sound_bytes,
         prior_outputs,
         game_sounds,
+        credit_output,
     )
 
 
@@ -785,10 +944,12 @@ def generate() -> None:
         sound_bytes,
         prior_outputs,
         game_sounds,
+        credit_output,
     ) = _expected_state()
     expected_names = {output.filename for output in glyph_outputs} | {
         life_output.filename,
         sound_info["filename"],
+        credit_output.filename,
     } | {output.filename for output in game_sounds}
     for stale in sorted(prior_outputs - expected_names):
         stale_path = ASSET_DIR / stale
@@ -798,6 +959,7 @@ def generate() -> None:
         (ASSET_DIR / output.filename).write_bytes(output.png)
     (ASSET_DIR / life_output.filename).write_bytes(life_output.png)
     (ASSET_DIR / sound_info["filename"]).write_bytes(sound_bytes)
+    (ASSET_DIR / credit_output.filename).write_bytes(credit_output.png)
     for output in game_sounds:
         (ASSET_DIR / output.filename).write_bytes(output.wav)
     PROJECT_PATH.write_bytes(project_bytes)
@@ -828,10 +990,12 @@ def check_repository() -> int:
         sound_bytes,
         prior_outputs,
         game_sounds,
+        credit_output,
     ) = _expected_state()
     expected_names = {output.filename for output in glyph_outputs} | {
         life_output.filename,
         sound_info["filename"],
+        credit_output.filename,
     } | {output.filename for output in game_sounds}
     stale = prior_outputs - expected_names
     if stale:
@@ -840,12 +1004,13 @@ def check_repository() -> int:
         _require_bytes(ASSET_DIR / output.filename, output.png)
     _require_bytes(ASSET_DIR / life_output.filename, life_output.png)
     _require_bytes(ASSET_DIR / sound_info["filename"], sound_bytes)
+    _require_bytes(ASSET_DIR / credit_output.filename, credit_output.png)
     for output in game_sounds:
         _require_bytes(ASSET_DIR / output.filename, output.wav)
     _require_bytes(PROJECT_PATH, project_bytes)
     _require_bytes(OVERLAY_PROVENANCE_PATH, overlay_bytes)
     _require_bytes(DERIVATIVE_PROVENANCE_PATH, derivative_provenance_bytes)
-    return len(glyph_outputs) + 1
+    return len(glyph_outputs) + 2
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -204,6 +204,11 @@
       "name": "clone slot",
       "scope": "blaster"
     },
+    "bonus-flag-clone-slot": {
+      "kind": "variable",
+      "name": "bonus flag clone slot",
+      "scope": "bonus-flag"
+    },
     "boza-clone-slot": {
       "kind": "variable",
       "name": "boza clone slot",
@@ -307,6 +312,11 @@
     "eco-first-bonus-5": {
       "kind": "list",
       "name": "first bonus 5",
+      "scope": "Stage"
+    },
+    "eco-flag-awards-craft": {
+      "kind": "variable",
+      "name": "flag awards craft",
       "scope": "Stage"
     },
     "eco-high-score": {
@@ -614,6 +624,11 @@
       "name": "rng state",
       "scope": "Stage"
     },
+    "sec-easter-egg-showing": {
+      "kind": "variable",
+      "name": "easter egg showing",
+      "scope": "Stage"
+    },
     "sheonite-clone-slot": {
       "kind": "variable",
       "name": "sheonite clone slot",
@@ -708,6 +723,11 @@
       "kind": "list",
       "name": "slot y",
       "scope": "Stage"
+    },
+    "sol-tower-clone-slot": {
+      "kind": "variable",
+      "name": "sol tower clone slot",
+      "scope": "sol-tower"
     },
     "solv-death-director-entry-epoch": {
       "kind": "variable",

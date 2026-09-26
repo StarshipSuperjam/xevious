@@ -82,6 +82,18 @@ def _const_item(block):
     return _num_operand(block["inputs"].get("ITEM"))
 
 
+def _is_walk_type(operand):
+    """True when a reporter input is the compact `walk type` variable primitive `[3, [12, .., 'walk-type'], ..]`."""
+    return (
+        isinstance(operand, list)
+        and len(operand) >= 2
+        and isinstance(operand[1], list)
+        and len(operand[1]) >= 3
+        and operand[1][0] == 12
+        and operand[1][2] == "walk-type"
+    )
+
+
 ASSET_ONE = (
     b"\x89PNG\r\n\x1a\n"
     b"project-test-asset-one"
@@ -105,6 +117,12 @@ SPRITE_SHEET_HASHES = {
     ),
     "Aerial Enemies": (
         "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8"
+    ),
+    # SEC-02 (slice 14): the Special Flag's own 16x16 source sheet. Unlike the Spriters Resource rips above,
+    # this one is decoded directly from the pinned arcade reference gfx (no Spriters Resource sheet breaks out
+    # this sprite), so its credited origin is the pin, not spriters-resource — see the credit check below.
+    "Bonus Flag": (
+        "eb9d6a5422d2904de86971a35b78e2eb04eaf0222f5b5a7705e21cfcc187c6c1"
     ),
 }
 
@@ -241,8 +259,13 @@ class ScratchProjectTests(unittest.TestCase):
         # and the slice-13 grobda renderer (GND-06; the 12 variants share one tank costume set, reusing the
         # shared burst + crater proof costumes by ref, plus 4 new tank tread frames), and the slice-13
         # domogram renderer (GND-07; the scripted-path shooter, its own idle sprite set reusing the shared
-        # burst + crater proof costumes by ref, plus 4 new idle frames).
-        self.assertEqual(39, len(project["targets"]))
+        # burst + crater proof costumes by ref, plus 4 new idle frames), and the slice-14 sol-tower renderer
+        # (SEC-01; the hidden citadel's 7 rise frames plus the shared burst + crater proof costumes by ref),
+        # and the slice-14 bonus-flag renderer (SEC-02; the hidden Special Flag, a single revealed-flag costume
+        # with no burst or crater — like the Bacura it is never destroyed on screen), and the slice-14 easter-egg
+        # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
+        # renderer clone band since the egg draws no field sprite, holding a single generated credit costume).
+        self.assertEqual(42, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -254,11 +277,16 @@ class ScratchProjectTests(unittest.TestCase):
         # Derota base pulse frames (GND-04) + the slice-13 additions: 1 Boza centre core (GND-05; the four
         # outer domes reuse the Logram open frames by ref, so only the centre is a new crop) + 4 Grobda tank
         # tread frames (GND-06; the 12 variants share one tread set and reuse the burst + crater crops by ref)
-        # + 4 Domogram idle frames (GND-07; the scripted-path shooter reuses the burst + crater crops by ref)) + the 6 arcade
+        # + 4 Domogram idle frames (GND-07; the scripted-path shooter reuses the burst + crater crops by ref)
+        # + 7 Sol Tower rise-frame PNGs (SEC-01; the hidden citadel reuses the burst + crater crops by ref)
+        # + 1 Bonus Flag revealed-flag PNG and its own 16x16 source sheet (SEC-02; the Special Flag sprite,
+        # rendered from the pinned reference gfx since no Spriters Resource sheet breaks it out)) + the 7 arcade
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
-        # bacura / sheonite cues, committed under assets/game-sounds/ and attached to the Stage by
-        # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md).
-        self.assertEqual(175, len(assets))
+        # bacura / sheonite / bonus_flag cues, committed under assets/game-sounds/ and attached to the Stage by
+        # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md) + the 1 generated hidden-credit
+        # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
+        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset).
+        self.assertEqual(186, len(assets))
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -312,12 +340,13 @@ class ScratchProjectTests(unittest.TestCase):
                     expected.pop(key)
                     actual.pop(key)
                 # hud_glyphs.py appends its added Stage sounds on top of the historical
-                # two (docs/mechanics/010): first the "extend" cue, then the six arcade
-                # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040). Verify the
-                # exact list, then drop sounds from the general preserved-content comparison.
+                # two (docs/mechanics/010): first the "extend" cue, then the seven arcade
+                # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040 — bonus_flag added
+                # for SEC-02, slice 14). Verify the exact list, then drop sounds from the general
+                # preserved-content comparison.
                 self.assertEqual(
                     [sound["name"] for sound in expected["sounds"]]
-                    + ["extend", "air_destroy", "bacura", "garu_zakato",
+                    + ["extend", "air_destroy", "bacura", "bonus_flag", "garu_zakato",
                        "ground_destroy", "sheonite", "zakato"],
                     [sound["name"] for sound in actual["sounds"]],
                 )
@@ -829,7 +858,11 @@ class ScratchProjectTests(unittest.TestCase):
     def test_nonidentical_baseline_overlay_collision_is_rejected(self) -> None:
         source = self.copy_source()
         _project, _project_bytes, assets = scratch.validate_source(source)
-        name = next(iter(assets))
+        # The collision guard fires only when the overlay name shadows an IMMUTABLE BASELINE asset, so pick a
+        # referenced asset that actually comes from the baseline archive (not the first asset overall — a newer
+        # overlay-only asset can sort ahead of every baseline one, e.g. the slice-14 bonus-flag costume).
+        baseline = scratch._original_asset_base()
+        name = next(candidate for candidate in assets if candidate in baseline)
         add_overlay(source, name, b"different bytes")
         with (
             mock.patch.object(scratch, "_validate_asset"),
@@ -1042,6 +1075,11 @@ class ScratchProjectTests(unittest.TestCase):
             "sheonite end flag",
             "sheonite phase",
             "sheonite lock col",
+            # SEC-03 (slice 14): the hidden-credit display signal. Stage-written by the `update easter
+            # egg` proc (1 while a bombed Credit's ~2s overlay is showing, else 0), read by the
+            # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
+            # Transient display machinery like `bomb dx`, never sprite-written and never durable state.
+            "easter egg showing",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1050,6 +1088,10 @@ class ScratchProjectTests(unittest.TestCase):
             "high score",
             "craft",
             "next bonus",
+            # ECO-03 (slice 14): the Bonus Flag award selector — the port's runtime stand-in for the arcade
+            # `dswb` bit 1. Stage-owned (its power-on default is the placeholder DIP position; the harness flips
+            # it to exercise both award arms), read by the Stage `update bonus flag` proc, never sprite-written.
+            "flag awards craft",
         }
         # AREA-01/AREA-02 area state — durable Stage-owned position/schedule authority read
         # across ticks and across the death/reset boundary. It is NOT machinery (the
@@ -1339,6 +1381,21 @@ class ScratchProjectTests(unittest.TestCase):
             # explosion/crater clock, then delegates the terrain scroll+cull to `advance ground`.
             # Warp, dispatched per OCCUPIED Barra slot from the walk.
             director.UPDATE_BARRA_PROCCODE,
+            # SEC-01 (slice 14) ground.sol-tower: the hidden citadel's per-tick wrapper — HIDDEN/RISEN idle and
+            # the RISEN destroy crater delegate the terrain scroll+cull to `advance ground`, and the RISING
+            # phase walks the 7 rise steps off `slot timer`. Warp, dispatched per OCCUPIED Sol Tower slot.
+            director.UPDATE_SOL_TOWER_PROCCODE,
+            # SEC-02 (slice 14) secrets.bonus-flag: the hidden Special Flag's per-tick wrapper — an ACTIVE HIDDEN
+            # flag and a just-revealed HIT flag delegate the terrain scroll+cull to `advance ground`; a REVEALED
+            # HIT flag tests the craft fly-over and, on collection, awards the DIP choice (extra craft or 10,000
+            # via `score`), plays the flag sound, and culls the slot. Warp, dispatched per OCCUPIED flag slot.
+            director.UPDATE_BONUS_FLAG_PROCCODE,
+            # SEC-03 (slice 14) secrets.hidden-credit: the hidden Credit's per-tick wrapper — an ACTIVE HIDDEN
+            # egg (invisible) and a just-revealed HIT egg delegate the terrain scroll+cull to `advance ground`;
+            # a REVEALED HIT egg counts up its ~2s display clock off `slot timer`, sets/clears the `easter egg
+            # showing` overlay signal, and culls the slot at expiry (it never scrolls once revealed, mirroring
+            # the arcade freeze-on-hit). Warp, dispatched per OCCUPIED Credit slot.
+            director.UPDATE_EASTER_EGG_PROCCODE,
             # GND-01 (slice 9) ground.barra: the Garu Barra's thin per-tick wrapper — for a HIT node it
             # advances the explode-and-remove clock then removes the slot; base and active node delegate
             # the terrain scroll+cull to `advance ground`. Warp, dispatched per OCCUPIED Garu slot.
@@ -9231,6 +9288,706 @@ class ScratchProjectTests(unittest.TestCase):
 
         return failures
 
+    @staticmethod
+    def _sec_helpers(project: dict):
+        """Shared block-walk helpers for the SEC-01/02/03 authoring contracts (same toolkit as the GND guards)."""
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def proto(proccode):
+            return next(
+                (
+                    b
+                    for b in blocks.values()
+                    if b["opcode"] == "procedures_prototype"
+                    and b.get("mutation", {}).get("proccode") == proccode
+                ),
+                None,
+            )
+
+        def rref(inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def num(inp):
+            return _num_operand(inp)
+
+        def reach(start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def branch_ids(block, key):
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return reach(start) if start else set()
+
+        def direct_branch_ids(block, key):
+            # Only the immediate statements of a branch (its `next` chain), NOT nested control bodies. Use
+            # this to pin a per-family branch whose writes would otherwise be indistinguishable from siblings'
+            # writes swept in by `reach` (e.g. the debug seed's tight `if spawn found` under a broad clear-band).
+            sub = block["inputs"].get(key) if block else None
+            cur = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            out = set()
+            while cur and cur in blocks and cur not in out:
+                out.add(cur)
+                cur = blocks[cur].get("next")
+            return out
+
+        def subtree_has(cid, pred):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if pred(b):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def enclosing_cond_has(bid, pred):
+            cur = blocks.get(bid)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = parent["inputs"].get("CONDITION")
+                    cid = (
+                        cond[1]
+                        if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                        else None
+                    )
+                    if cid and subtree_has(cid, pred):
+                        return True
+                cur = parent
+            return False
+
+        def calls(idset, proccode):
+            return any(
+                blocks[x]["opcode"] == "procedures_call"
+                and blocks[x].get("mutation", {}).get("proccode") == proccode
+                for x in idset
+            )
+
+        def writes_value(idset, list_id, value):
+            return any(
+                blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                and num(blocks[x]["inputs"].get("ITEM")) == value
+                for x in idset
+            )
+
+        def write_ids(idset, list_id, value):
+            return [
+                x
+                for x in idset
+                if blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                and num(blocks[x]["inputs"].get("ITEM")) == value
+            ]
+
+        def has_list_write(idset, list_id):
+            return any(
+                blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                for x in idset
+            )
+
+        def advances_clock(idset, list_id):
+            # A `list_id = list_id + step` count-up on the SAME list (the animation/display clock).
+            for x in idset:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == list_id
+                    and (item := rref(b["inputs"].get("ITEM"))) is not None
+                    and item["opcode"] == "operator_add"
+                    and (base := rref(item["inputs"].get("NUM1"))) is not None
+                    and base["opcode"] == "data_itemoflist"
+                    and base["fields"]["LIST"][1] == list_id
+                ):
+                    return True
+            return False
+
+        def is_var_operand(operand, var_id):
+            # A variable read is emitted as a COMPACT primitive `[3, [12, name, id], ...]` inline in the
+            # operand (no separate data_variable block), so detect it on the operand shape.
+            return (
+                isinstance(operand, list)
+                and len(operand) >= 2
+                and isinstance(operand[1], list)
+                and len(operand[1]) >= 3
+                and operand[1][0] == 12
+                and operand[1][2] == var_id
+            )
+
+        def block_reads_var(block, var_ids):
+            return any(
+                isinstance(v, list)
+                and len(v) >= 2
+                and isinstance(v[1], list)
+                and len(v[1]) >= 3
+                and v[1][0] == 12
+                and v[1][2] in var_ids
+                for v in block.get("inputs", {}).values()
+            )
+
+        def subtree_reads_var(cid, var_ids):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if block_reads_var(b, var_ids):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def cond_eq_var(ifblock, var_id, value):
+            c = rref(ifblock["inputs"].get("CONDITION")) if ifblock else None
+            return (
+                c is not None
+                and c["opcode"] == "operator_equals"
+                and is_var_operand(c["inputs"].get("OPERAND1"), var_id)
+                and num(c["inputs"].get("OPERAND2")) == value
+            )
+
+        def enclosing_cond_reads_var(bid, var_id):
+            cur = blocks.get(bid)
+            while cur is not None:
+                parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = parent["inputs"].get("CONDITION")
+                    cid = (
+                        cond[1]
+                        if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str)
+                        else None
+                    )
+                    if cid and subtree_reads_var(cid, {var_id}):
+                        return True
+                cur = parent
+            return False
+
+        def changes_var(idset, var_id, value):
+            return any(
+                blocks[x]["opcode"] == "data_changevariableby"
+                and blocks[x]["fields"]["VARIABLE"][1] == var_id
+                and num(blocks[x]["inputs"].get("VALUE")) == value
+                for x in idset
+            )
+
+        def sets_var(idset, var_id, value):
+            return any(
+                blocks[x]["opcode"] == "data_setvariableto"
+                and blocks[x]["fields"]["VARIABLE"][1] == var_id
+                and num(blocks[x]["inputs"].get("VALUE")) == value
+                for x in idset
+            )
+
+        def broadcasts(idset, message):
+            for x in idset:
+                b = blocks[x]
+                if b["opcode"] not in ("event_broadcast", "event_broadcastandwait"):
+                    continue
+                inp = b["inputs"].get("BROADCAST_INPUT")
+                inner = inp[1] if isinstance(inp, list) and len(inp) >= 2 else None
+                if isinstance(inner, list) and len(inner) >= 2 and inner[1] == message:
+                    return True
+            return False
+
+        def plays_sound(idset, sound):
+            for x in idset:
+                b = blocks[x]
+                if b["opcode"] != "sound_play":
+                    continue
+                menu = rref(b["inputs"].get("SOUND_MENU"))
+                if (
+                    menu is not None
+                    and menu["opcode"] == "sound_sounds_menu"
+                    and menu["fields"]["SOUND_MENU"][0] == sound
+                ):
+                    return True
+            return False
+
+        def state_split(body, state_val):
+            # The top `if slot state == state_val / else` — returns (top, hit-branch ids, else-branch ids).
+            for b in body:
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = rref(b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := rref(c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and num(c["inputs"].get("OPERAND2")) == state_val
+                ):
+                    return b, branch_ids(b, "SUBSTACK"), branch_ids(b, "SUBSTACK2")
+            return None, set(), set()
+
+        def flag_split(idset, flag_val):
+            # A nested `if slot flag == flag_val / else` reachable within idset — returns (block, then, else).
+            for x in idset:
+                b = blocks[x]
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = rref(b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := rref(c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and num(c["inputs"].get("OPERAND2")) == flag_val
+                ):
+                    return b, branch_ids(b, "SUBSTACK"), branch_ids(b, "SUBSTACK2")
+            return None, set(), set()
+
+        def dispatch_calls(walk_type, proccode):
+            # `advance slots` routes `walk type == walk_type` to `proccode` (the ground update dispatch).
+            body = _proc_body_blocks(stage, director.ADVANCE_SLOTS_PROCCODE)
+            for b in body:
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
+                if cid and subtree_has(
+                    cid,
+                    lambda bl: bl["opcode"] == "operator_equals"
+                    and num(bl["inputs"].get("OPERAND2")) == walk_type,
+                ):
+                    if calls(branch_ids(b, "SUBSTACK"), proccode):
+                        return True
+            return False
+
+        return {
+            "stage": stage,
+            "blocks": blocks,
+            "proto": proto,
+            "rref": rref,
+            "num": num,
+            "reach": reach,
+            "branch_ids": branch_ids,
+            "direct_branch_ids": direct_branch_ids,
+            "subtree_has": subtree_has,
+            "enclosing_cond_has": enclosing_cond_has,
+            "calls": calls,
+            "writes_value": writes_value,
+            "write_ids": write_ids,
+            "has_list_write": has_list_write,
+            "advances_clock": advances_clock,
+            "is_var_operand": is_var_operand,
+            "block_reads_var": block_reads_var,
+            "subtree_reads_var": subtree_reads_var,
+            "cond_eq_var": cond_eq_var,
+            "enclosing_cond_reads_var": enclosing_cond_reads_var,
+            "changes_var": changes_var,
+            "sets_var": sets_var,
+            "broadcasts": broadcasts,
+            "plays_sound": plays_sound,
+            "state_split": state_split,
+            "flag_split": flag_split,
+            "dispatch_calls": dispatch_calls,
+        }
+
+    @classmethod
+    def _sec01_failures(cls, project: dict) -> set:
+        """SEC-01 secrets.sol-tower (#90) authoring contract — the hidden citadel (handle_1D_Sol_Tower /
+        handle_sol_tower_rising / sol_tower_risen, xevious_main.68k 3013-3076). One `update sol tower` proc,
+        warp. Top state split on `slot state`: ACTIVE delegates the shared terrain scroll (`advance ground`,
+        HIDDEN idle or RISEN idle — no clock); HIT splits by `slot flag`: RISEN => the destroy stage, cratering
+        PERSISTENTLY like a Barra (advance the crater clock + scroll, never cull); HIDDEN/RISING => the rise —
+        flip HIDDEN->RISING guarded by `slot flag == HIDDEN`, advance the rise clock, and once the arcade step
+        (floor(timer/16) mod 8) reaches SOL_RISE_STEP_COUNT (7) return the slot to ACTIVE with `slot flag` RISEN
+        so a second bomb scores the destroy stage (two scoring stages, same 2,000; the detector gates on ACTIVE,
+        so RISING is never re-scored). Growth 1x1->2x2 is baked into the 7 artwork frames — NO runtime setsizeto.
+        Spawn (its per-family init in the single-slot ground seed, gated `type == SOL_TOWER_TYPE`): the 2,000-pt
+        value, the HIDDEN phase, and a zeroed rise clock. Dispatch: `advance slots` routes the type to the proc."""
+        h = cls._sec_helpers(project)
+        failures = set()
+        upd = _proc_body_blocks(h["stage"], director.UPDATE_SOL_TOWER_PROCCODE)
+        spawn = _proc_body_blocks(h["stage"], director.ADVANCE_AREA_PROCCODE)
+
+        # (1) warp.
+        p = h["proto"](director.UPDATE_SOL_TOWER_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("sol-tower-warp")
+
+        # (2) state split (HIT vs ACTIVE-idle).
+        top, hit_ids, active_ids = h["state_split"](upd, director.SLOT_HIT)
+        if top is None or not hit_ids or not active_ids:
+            failures.add("sol-tower-state-split")
+
+        # (3) ACTIVE-idle delegates the shared terrain scroll.
+        if not h["calls"](active_ids, director.ADVANCE_GROUND_PROCCODE):
+            failures.add("sol-tower-active-scrolls")
+
+        # (4) HIT splits by `slot flag == RISEN` — destroy vs rise.
+        hit_inner, destroy_ids, rise_ids = h["flag_split"](hit_ids, director.SOL_RISEN_PHASE)
+        if hit_inner is None or not destroy_ids or not rise_ids:
+            failures.add("sol-tower-hit-split")
+
+        # (5) RISEN destroy stage craters PERSISTENTLY: crater clock + scroll, never culls.
+        if not (
+            h["advances_clock"](destroy_ids, director.SLOT_TIMER_ID)
+            and h["calls"](destroy_ids, director.ADVANCE_GROUND_PROCCODE)
+        ):
+            failures.add("sol-tower-destroy-craters")
+        if h["calls"](destroy_ids, director.CULL_SLOT_PROCCODE):
+            failures.add("sol-tower-destroy-persists")
+
+        # (6) REVEAL: flip `slot flag` HIDDEN->RISING, guarded by `slot flag == HIDDEN`.
+        rising_writes = h["write_ids"](rise_ids, director.SLOT_FLAG_ID, director.SOL_RISING_PHASE)
+        if not (
+            rising_writes
+            and all(
+                h["enclosing_cond_has"](
+                    x,
+                    lambda bl: bl["opcode"] == "operator_equals"
+                    and (lhs := h["rref"](bl["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and h["num"](bl["inputs"].get("OPERAND2")) == director.SOL_HIDDEN_PHASE,
+                )
+                for x in rising_writes
+            )
+        ):
+            failures.add("sol-tower-reveal")
+
+        # (7) rise clock advances (count-up on `slot timer`).
+        if not h["advances_clock"](rise_ids, director.SLOT_TIMER_ID):
+            failures.add("sol-tower-rise-clock")
+
+        # (8) TWO-STAGE: on reaching the step count return to ACTIVE + RISEN, gated on the rise-step test
+        # (`rise_step < SOL_RISE_STEP_COUNT`, inverted) — so RISING is never re-scored, RISEN is bombable again.
+        active_writes = h["write_ids"](rise_ids, director.SLOT_STATE_ID, director.SLOT_ACTIVE)
+        if not (
+            active_writes
+            and all(
+                h["enclosing_cond_has"](
+                    x,
+                    lambda bl: bl["opcode"] == "operator_lt"
+                    and h["num"](bl["inputs"].get("OPERAND2")) == director.SOL_RISE_STEP_COUNT,
+                )
+                for x in active_writes
+            )
+            and h["writes_value"](rise_ids, director.SLOT_FLAG_ID, director.SOL_RISEN_PHASE)
+        ):
+            failures.add("sol-tower-two-stage")
+
+        # (9) Spawn seeds pts/flag/timer under the `type == SOL_TOWER_TYPE` per-family gate. Match the gate by
+        # its DIRECT `operator_equals` condition (not a subtree scan — the outer single-slot OR-guard's
+        # condition also mentions the type, but its condition resolves to `operator_or`, not the equality).
+        sol_seed = set()
+        for b in spawn:
+            if b["opcode"] != "control_if":
+                continue
+            c = h["rref"](b["inputs"].get("CONDITION"))
+            if (
+                c is not None
+                and c["opcode"] == "operator_equals"
+                and h["num"](c["inputs"].get("OPERAND2")) == director.SOL_TOWER_TYPE
+            ):
+                sol_seed = h["branch_ids"](b, "SUBSTACK")
+                break
+        if not (
+            h["writes_value"](sol_seed, director.SLOT_PTS_ID, director.SOL_TOWER_PTS)
+            and h["writes_value"](sol_seed, director.SLOT_FLAG_ID, director.SOL_HIDDEN_PHASE)
+            and h["writes_value"](sol_seed, director.SLOT_TIMER_ID, 0)
+        ):
+            failures.add("sol-tower-spawn-seed")
+
+        # (10) dispatch routes the type to the update proc.
+        if not h["dispatch_calls"](director.SOL_TOWER_TYPE, director.UPDATE_SOL_TOWER_PROCCODE):
+            failures.add("sol-tower-dispatch")
+
+        return failures
+
+    @classmethod
+    def _sec02_failures(cls, project: dict) -> set:
+        """SEC-02 secrets.bonus-flag (#91) + ECO-03 economy.bonus-flag-award (#92) authoring contract —
+        handle_54_Bonus_Flag / reveal_bonus_flag / score_bonus_flag / remove_bonus_flag / check_flag_collected
+        (xevious_main.68k 3131-3188). One `update bonus flag` proc, warp. Top state split on `slot state`:
+        ACTIVE (HIDDEN idle) delegates the shared terrain scroll; HIT splits by `slot flag`: HIDDEN => the reveal
+        tick — flip to REVEALED and KEEP the slot HIT (never write `slot state`, so the ACTIVE-only detector never
+        re-scores it), then scroll; REVEALED => the per-tick fly-over test (`check_flag_collected` via the craft
+        overlap reporter — PROXIMITY, reading the craft cell, NOT a weapon). On collection: award by the DIP
+        choice (ECO-03) — an if/else on `flag awards craft == 1`: craft arm adds a craft (+1) and broadcasts
+        `craft changed` with NO `extend` jingle; points arm sets `award value` = 10,000 and routes through the
+        single `score` proc — then play the bonus-flag sound and cull the slot. The renderer is a SINGLE clone
+        bound to GROUND_SLOTS[0] (not a 16-clone band — the 300-clone ceiling). Debug spawn seeds ACTIVE/HIDDEN/
+        1,000-pt/timer-0 only when the bounded random-lateral draw accepts a column (`spawn found`)."""
+        h = cls._sec_helpers(project)
+        failures = set()
+        upd = _proc_body_blocks(h["stage"], director.UPDATE_BONUS_FLAG_PROCCODE)
+        debug = _proc_body_blocks(h["stage"], director.DEBUG_GROUND_SPAWN_PROCCODE)
+
+        # (1) warp.
+        p = h["proto"](director.UPDATE_BONUS_FLAG_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("bonus-flag-warp")
+
+        # (2) state split.
+        top, hit_ids, active_ids = h["state_split"](upd, director.SLOT_HIT)
+        if top is None or not hit_ids or not active_ids:
+            failures.add("bonus-flag-state-split")
+
+        # (3) ACTIVE-idle delegates the shared terrain scroll.
+        if not h["calls"](active_ids, director.ADVANCE_GROUND_PROCCODE):
+            failures.add("bonus-flag-active-scrolls")
+
+        # (4) HIT splits by `slot flag == REVEALED` — collect vs reveal.
+        hit_inner, revealed_ids, reveal_ids = h["flag_split"](hit_ids, director.FLAG_REVEALED_PHASE)
+        if hit_inner is None or not revealed_ids or not reveal_ids:
+            failures.add("bonus-flag-hit-split")
+
+        # (5) REVEAL tick flips to REVEALED, scrolls, and KEEPS HIT (never writes `slot state`).
+        if not (
+            h["writes_value"](reveal_ids, director.SLOT_FLAG_ID, director.FLAG_REVEALED_PHASE)
+            and h["calls"](reveal_ids, director.ADVANCE_GROUND_PROCCODE)
+        ):
+            failures.add("bonus-flag-reveal")
+        if h["has_list_write"](reveal_ids, director.SLOT_STATE_ID):
+            failures.add("bonus-flag-reveal-keeps-hit")
+
+        # (6) FLY-OVER: collection gated on the craft overlap reporter (reads the craft cell — proximity,
+        # not a weapon). Find the collected if/else within the REVEALED branch and take its collect arm.
+        collect_ids = set()
+        for x in revealed_ids:
+            b = h["blocks"][x]
+            if b["opcode"] != "control_if_else":
+                continue
+            cond = b["inputs"].get("CONDITION")
+            cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
+            if cid and h["subtree_reads_var"](
+                cid, {director.PLAYER_ROW_ID, director.PLAYER_COL_ID}
+            ):
+                collect_ids = h["branch_ids"](b, "SUBSTACK")
+                break
+        if not collect_ids:
+            failures.add("bonus-flag-flyover")
+
+        # (7) DIP award: an if/else on `flag awards craft == 1` inside the collect arm.
+        award = None
+        for x in collect_ids:
+            b = h["blocks"][x]
+            if b["opcode"] == "control_if_else" and h["cond_eq_var"](b, director.FLAG_AWARDS_CRAFT_ID, 1):
+                award = b
+                break
+        craft_arm = h["branch_ids"](award, "SUBSTACK") if award else set()
+        points_arm = h["branch_ids"](award, "SUBSTACK2") if award else set()
+        if award is None or not craft_arm or not points_arm:
+            failures.add("bonus-flag-award-dip")
+
+        # (8) craft arm: +1 craft and broadcast `craft changed`.
+        if not (
+            h["changes_var"](craft_arm, director.LIVES_ID, 1)
+            and h["broadcasts"](craft_arm, "craft changed")
+        ):
+            failures.add("bonus-flag-award-craft")
+        # (9) the extra-craft path plays NO `extend` jingle (that is the score-threshold bonus life only).
+        if h["plays_sound"](craft_arm, "extend"):
+            failures.add("bonus-flag-no-extend")
+
+        # (10) points arm: `award value` = 10,000 routed through the single `score` proc.
+        if not (
+            h["sets_var"](points_arm, director.AWARD_VALUE_ID, director.BONUS_FLAG_TANK_POINTS)
+            and h["calls"](points_arm, director.SCORE_PROCCODE)
+        ):
+            failures.add("bonus-flag-award-points")
+
+        # (11) collection plays the bonus-flag sound and (12) culls the slot.
+        if not h["plays_sound"](collect_ids, "bonus_flag"):
+            failures.add("bonus-flag-sound")
+        if not h["calls"](collect_ids, director.CULL_SLOT_PROCCODE):
+            failures.add("bonus-flag-cull")
+
+        # (13) dispatch routes the type to the update proc.
+        if not h["dispatch_calls"](director.BONUS_FLAG_TYPE, director.UPDATE_BONUS_FLAG_PROCCODE):
+            failures.add("bonus-flag-dispatch")
+
+        # (14) debug spawn: the flag branch (writes `slot type` = BONUS_FLAG_TYPE) seeds ACTIVE/HIDDEN/
+        # 1,000-pt/timer-0, gated on `spawn found == 1` (a rejected draw leaves the band empty).
+        flag_seed = set()
+        for b in debug:
+            if b["opcode"] != "control_if":
+                continue
+            # The tight per-shape `if spawn found` gate writes the flag type DIRECTLY (no nested control), so
+            # match on its direct next-chain — not `branch_ids`, which would sweep in the broad clear-band's
+            # sibling writes and make the seed check pass on any family's values.
+            ids = h["direct_branch_ids"](b, "SUBSTACK")
+            if h["writes_value"](ids, director.SLOT_TYPE_ID, director.BONUS_FLAG_TYPE):
+                flag_seed = ids
+                break
+        seed_found_gate = any(
+            h["enclosing_cond_reads_var"](x, director.SPAWN_FOUND_ID)
+            for x in h["write_ids"](flag_seed, director.SLOT_TYPE_ID, director.BONUS_FLAG_TYPE)
+        )
+        if not (
+            h["writes_value"](flag_seed, director.SLOT_STATE_ID, director.SLOT_ACTIVE)
+            and h["writes_value"](flag_seed, director.SLOT_FLAG_ID, director.FLAG_HIDDEN_PHASE)
+            and h["writes_value"](flag_seed, director.SLOT_PTS_ID, director.BONUS_FLAG_PTS)
+            and h["writes_value"](flag_seed, director.SLOT_TIMER_ID, 0)
+            and seed_found_gate
+        ):
+            failures.add("bonus-flag-spawn-seed")
+
+        # (15) the renderer is a SINGLE clone bound to GROUND_SLOTS[0] — not a 16-clone band.
+        flag_target = next((t for t in project["targets"] if t.get("name") == director.BONUS_FLAG_TARGET), None)
+        if flag_target is None:
+            failures.add("bonus-flag-single-clone")
+        else:
+            clone_creates = sum(
+                1 for b in flag_target["blocks"].values() if b["opcode"] == "control_create_clone_of"
+            )
+            if clone_creates != 1:
+                failures.add("bonus-flag-single-clone")
+
+        return failures
+
+    @classmethod
+    def _sec03_failures(cls, project: dict) -> set:
+        """SEC-03 secrets.hidden-credit (#93) authoring contract — handle_53_Easter_Egg / check_copyright_strings
+        (xevious_main.68k 5989-6011). One `update easter egg` proc, warp. Top state split on `slot state`: ACTIVE
+        (HIDDEN idle) delegates the shared terrain scroll; HIT splits by `slot flag`: HIDDEN => the reveal tick —
+        flip to SHOWING, RAISE the Stage `easter egg showing` signal, KEEP HIT (never write `slot state`), and DO
+        NOT scroll (the bombed egg freezes — the source scrolls only on its non-hit branch); SHOWING => count the
+        display clock UP by TICK_TIMER_STEP and, once it reaches EASTER_EGG_DISPLAY_FRAMES (128), LOWER the signal
+        and cull the slot. Spawn (its per-family init in the single-slot ground seed, gated `type ==
+        EASTER_EGG_TYPE`): the 10-pt value, the HIDDEN phase, a zeroed display clock. The credit is a separate
+        `easter-egg` overlay target that draws the credit costume on its ORIGINAL (creating ZERO clones — the
+        300-clone ceiling) while the signal is 1. Dispatch: `advance slots` routes the type to the proc."""
+        h = cls._sec_helpers(project)
+        failures = set()
+        upd = _proc_body_blocks(h["stage"], director.UPDATE_EASTER_EGG_PROCCODE)
+        spawn = _proc_body_blocks(h["stage"], director.ADVANCE_AREA_PROCCODE)
+
+        # (1) warp.
+        p = h["proto"](director.UPDATE_EASTER_EGG_PROCCODE)
+        if p is None or p["mutation"].get("warp") != "true":
+            failures.add("easter-egg-warp")
+
+        # (2) state split.
+        top, hit_ids, active_ids = h["state_split"](upd, director.SLOT_HIT)
+        if top is None or not hit_ids or not active_ids:
+            failures.add("easter-egg-state-split")
+
+        # (3) ACTIVE-idle delegates the shared terrain scroll.
+        if not h["calls"](active_ids, director.ADVANCE_GROUND_PROCCODE):
+            failures.add("easter-egg-active-scrolls")
+
+        # (4) HIT splits by `slot flag == SHOWING` — hold vs reveal.
+        hit_inner, showing_ids, reveal_ids = h["flag_split"](hit_ids, director.EASTER_EGG_SHOWING_PHASE)
+        if hit_inner is None or not showing_ids or not reveal_ids:
+            failures.add("easter-egg-hit-split")
+
+        # (5) REVEAL: flip to SHOWING, raise the signal (== 1), keep HIT, and DO NOT scroll (frozen).
+        if not (
+            h["writes_value"](reveal_ids, director.SLOT_FLAG_ID, director.EASTER_EGG_SHOWING_PHASE)
+            and h["sets_var"](reveal_ids, director.EASTER_EGG_SHOWING_ID, 1)
+        ):
+            failures.add("easter-egg-reveal")
+        if h["has_list_write"](reveal_ids, director.SLOT_STATE_ID):
+            failures.add("easter-egg-reveal-keeps-hit")
+        if h["calls"](reveal_ids, director.ADVANCE_GROUND_PROCCODE):
+            failures.add("easter-egg-reveal-freezes")
+
+        # (6) SHOWING: the display clock counts UP.
+        if not h["advances_clock"](showing_ids, director.SLOT_TIMER_ID):
+            failures.add("easter-egg-display-clock")
+
+        # (7) EXPIRY: on reaching the display window (gated by `slot timer < EASTER_EGG_DISPLAY_FRAMES`,
+        # inverted) lower the signal (== 0) and cull the slot.
+        signal_clears = [
+            x
+            for x in showing_ids
+            if h["blocks"][x]["opcode"] == "data_setvariableto"
+            and h["blocks"][x]["fields"]["VARIABLE"][1] == director.EASTER_EGG_SHOWING_ID
+            and h["num"](h["blocks"][x]["inputs"].get("VALUE")) == 0
+        ]
+        if not (
+            signal_clears
+            and all(
+                h["enclosing_cond_has"](
+                    x,
+                    lambda bl: bl["opcode"] == "operator_lt"
+                    and h["num"](bl["inputs"].get("OPERAND2")) == director.EASTER_EGG_DISPLAY_FRAMES,
+                )
+                for x in signal_clears
+            )
+            and h["calls"](showing_ids, director.CULL_SLOT_PROCCODE)
+        ):
+            failures.add("easter-egg-expiry")
+
+        # (8) Spawn seeds pts/flag/timer under the `type == EASTER_EGG_TYPE` per-family gate. Match the gate by
+        # its DIRECT `operator_equals` condition (not a subtree scan — the outer single-slot OR-guard's
+        # condition also mentions the type, but its condition resolves to `operator_or`, not the equality).
+        egg_seed = set()
+        for b in spawn:
+            if b["opcode"] != "control_if":
+                continue
+            c = h["rref"](b["inputs"].get("CONDITION"))
+            if (
+                c is not None
+                and c["opcode"] == "operator_equals"
+                and h["num"](c["inputs"].get("OPERAND2")) == director.EASTER_EGG_TYPE
+            ):
+                egg_seed = h["branch_ids"](b, "SUBSTACK")
+                break
+        if not (
+            h["writes_value"](egg_seed, director.SLOT_PTS_ID, director.EASTER_EGG_PTS)
+            and h["writes_value"](egg_seed, director.SLOT_FLAG_ID, director.EASTER_EGG_HIDDEN_PHASE)
+            and h["writes_value"](egg_seed, director.SLOT_TIMER_ID, 0)
+        ):
+            failures.add("easter-egg-spawn-seed")
+
+        # (9) dispatch routes the type to the update proc.
+        if not h["dispatch_calls"](director.EASTER_EGG_TYPE, director.UPDATE_EASTER_EGG_PROCCODE):
+            failures.add("easter-egg-dispatch")
+
+        # (10) OVERLAY: the `easter-egg` target shows the credit costume gated on the signal (== 1), and
+        # (11) creates ZERO clones (it draws on its ORIGINAL — the 300-clone ceiling).
+        egg_target = next((t for t in project["targets"] if t.get("name") == director.EASTER_EGG_TARGET), None)
+        if egg_target is None:
+            failures.add("easter-egg-overlay")
+            failures.add("easter-egg-no-clone")
+        else:
+            tb = egg_target["blocks"]
+            shows_credit = any(
+                b["opcode"] == "looks_switchcostumeto"
+                and (
+                    (menu := tb.get(b["inputs"].get("COSTUME", [None, None])[1])) is not None
+                    and menu["fields"].get("COSTUME", [None])[0] == director.EASTER_EGG_CREDIT_COSTUME
+                )
+                for b in tb.values()
+            )
+            signal_gate = any(
+                h["block_reads_var"](b, {director.EASTER_EGG_SHOWING_ID}) for b in tb.values()
+            )
+            if not (shows_credit and signal_gate):
+                failures.add("easter-egg-overlay")
+            if any(b["opcode"] == "control_create_clone_of" for b in tb.values()):
+                failures.add("easter-egg-no-clone")
+
+        return failures
+
     # Roadmap closure evidence for leaf `area.ground-dispatch` (AREA-02): the terrain-locked ground
     # substrate — `advance ground` scrolls every ground object DOWN the field by the fixed terrain step and
     # culls it off the bottom; the ordered walk routes each built ground type to its wrapper; and
@@ -10818,6 +11575,677 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._gnd07_failures(project), label)
+
+    # ---- SEC-01 / SEC-02 / SEC-03 secrets authoring contracts (slice 14) ----
+    # Roadmap closure evidence for leaf `secrets.sol-tower` (SEC-01): the hidden citadel reveals, rises through
+    # its 7-step animation and destroys, scoring at both the reveal and the destroy stage.
+    # roadmap-evidence: SEC-01 success  (test_sol_tower_slice_authoring_present — update sol tower warp; state split; ACTIVE-idle delegates the shared scroll; RISEN craters persistently; reveal flips HIDDEN->RISING guarded by ==HIDDEN; the rise clock counts up; the step count returns the slot to ACTIVE+RISEN so a second bomb scores; spawn seeds 2,000-pt/HIDDEN/timer-0; dispatch routes the type)
+    # roadmap-evidence: SEC-01 failure  (test_sol_tower_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_sol_tower_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sec01_failures(project))
+
+    def test_sol_tower_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sec01_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _rr(blocks, inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def _reach(blocks, start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def _branch(blocks, block, key):
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return _reach(blocks, start) if start else set()
+
+        def _sub(blocks, cid, pred):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if pred(b):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def _top(p):
+            blocks = _stage(p)["blocks"]
+            for b in _proc_body_blocks(_stage(p), director.UPDATE_SOL_TOWER_PROCCODE):
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = _rr(blocks, b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := _rr(blocks, c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                ):
+                    return b
+            return None
+
+        def _hit_inner(p):
+            blocks = _stage(p)["blocks"]
+            hit = _branch(blocks, _top(p), "SUBSTACK")
+            for x in hit:
+                b = blocks[x]
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = _rr(blocks, b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := _rr(blocks, c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and _num_operand(c["inputs"].get("OPERAND2")) == director.SOL_RISEN_PHASE
+                ):
+                    return b
+            return None
+
+        def _destroy_rise(p):
+            blocks = _stage(p)["blocks"]
+            hi = _hit_inner(p)
+            return blocks, _branch(blocks, hi, "SUBSTACK"), _branch(blocks, hi, "SUBSTACK2")
+
+        def _freeze_timer(blocks, ids):
+            for x in ids:
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                    item = _rr(blocks, b["inputs"].get("ITEM"))
+                    base_read = _rr(blocks, item["inputs"].get("NUM1")) if item is not None and item["opcode"] == "operator_add" else None
+                    if base_read is not None and base_read["opcode"] == "data_itemoflist" and base_read["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def unwarp(p):
+            for b in _stage(p)["blocks"].values():
+                if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == director.UPDATE_SOL_TOWER_PROCCODE:
+                    b["mutation"]["warp"] = "false"
+
+        def break_state(p):
+            blocks = _stage(p)["blocks"]
+            _rr(blocks, _top(p)["inputs"]["CONDITION"])["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_active_scroll(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _top(p), "SUBSTACK2"):
+                b = blocks[x]
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE:
+                    b["mutation"]["proccode"] = "noop"
+                    return
+
+        def break_hit_split(p):
+            blocks = _stage(p)["blocks"]
+            _rr(blocks, _hit_inner(p)["inputs"]["CONDITION"])["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def freeze_destroy(p):
+            blocks, destroy, _rise = _destroy_rise(p)
+            _freeze_timer(blocks, destroy)
+
+        def destroy_culls(p):
+            blocks, destroy, _rise = _destroy_rise(p)
+            for x in destroy:
+                b = blocks[x]
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE:
+                    b["mutation"]["proccode"] = director.CULL_SLOT_PROCCODE
+                    return
+
+        def break_reveal(p):
+            blocks, _destroy, rise = _destroy_rise(p)
+            for x in rise:
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID and _num_operand(b["inputs"].get("ITEM")) == director.SOL_RISING_PHASE:
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def freeze_rise(p):
+            blocks, _destroy, rise = _destroy_rise(p)
+            _freeze_timer(blocks, rise)
+
+        def break_two_stage(p):
+            blocks, _destroy, rise = _destroy_rise(p)
+            for x in rise:
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_STATE_ID and _num_operand(b["inputs"].get("ITEM")) == director.SLOT_ACTIVE:
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_spawn(p):
+            blocks = _stage(p)["blocks"]
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE):
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
+                c = blocks.get(cid) if cid else None
+                if c is not None and c["opcode"] == "operator_equals" and _num_operand(c["inputs"].get("OPERAND2")) == director.SOL_TOWER_TYPE:
+                    for x in _branch(blocks, b, "SUBSTACK"):
+                        bb = blocks[x]
+                        if bb["opcode"] == "data_replaceitemoflist" and bb["fields"]["LIST"][1] == director.SLOT_PTS_ID and _num_operand(bb["inputs"].get("ITEM")) == director.SOL_TOWER_PTS:
+                            bb["inputs"]["ITEM"] = [1, [4, "99"]]
+                            return
+
+        def break_dispatch(p):
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_SLOTS_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _is_walk_type(b["inputs"].get("OPERAND1"))
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.SOL_TOWER_TYPE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        cases = [
+            ("sol-tower-warp", unwarp),
+            ("sol-tower-state-split", break_state),
+            ("sol-tower-active-scrolls", break_active_scroll),
+            ("sol-tower-hit-split", break_hit_split),
+            ("sol-tower-destroy-craters", freeze_destroy),
+            ("sol-tower-destroy-persists", destroy_culls),
+            ("sol-tower-reveal", break_reveal),
+            ("sol-tower-rise-clock", freeze_rise),
+            ("sol-tower-two-stage", break_two_stage),
+            ("sol-tower-spawn-seed", break_spawn),
+            ("sol-tower-dispatch", break_dispatch),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._sec01_failures(project), label)
+
+    # Roadmap closure evidence for leaves `secrets.bonus-flag` (SEC-02) and `economy.bonus-flag-award` (ECO-03):
+    # the hidden Special Flag reveals (+1,000 via the shared detector), is collected by fly-over (proximity, not a
+    # weapon), and awards the DIP choice — an extra craft OR 10,000 points — then removes itself.
+    # roadmap-evidence: SEC-02 success  (test_bonus_flag_slice_authoring_present — update bonus flag warp; state split; ACTIVE-idle scrolls; reveal keeps HIT and never re-scores; fly-over collection reads the craft cell; the bonus-flag sound plays and the slot culls; single-clone renderer; debug spawn seeds ACTIVE/HIDDEN/1,000-pt/timer-0 gated on spawn-found; dispatch routes the type)
+    # roadmap-evidence: SEC-02 failure  (test_bonus_flag_slice_negative_fixtures — each contract clause corrupted bites)
+    # roadmap-evidence: ECO-03 success  (test_bonus_flag_slice_authoring_present — the DIP if/else on `flag awards craft`: craft arm adds +1 craft and broadcasts `craft changed` with no `extend` jingle; points arm sets award value 10,000 and routes through the single `score` proc)
+    # roadmap-evidence: ECO-03 failure  (test_bonus_flag_slice_negative_fixtures — bonus-flag-award-dip / -award-craft / -no-extend / -award-points bite)
+    def test_bonus_flag_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sec02_failures(project))
+
+    def test_bonus_flag_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sec02_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _rr(blocks, inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def _reach(blocks, start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def _branch(blocks, block, key):
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return _reach(blocks, start) if start else set()
+
+        def _direct_branch(blocks, block, key):
+            sub = block["inputs"].get(key) if block else None
+            cur = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            out = set()
+            while cur and cur in blocks and cur not in out:
+                out.add(cur)
+                cur = blocks[cur].get("next")
+            return out
+
+        def _upd(p):
+            return _proc_body_blocks(_stage(p), director.UPDATE_BONUS_FLAG_PROCCODE)
+
+        def _top(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = _rr(blocks, b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := _rr(blocks, c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                ):
+                    return b
+            return None
+
+        def _hit_inner(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _top(p), "SUBSTACK"):
+                b = blocks[x]
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = _rr(blocks, b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := _rr(blocks, c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and _num_operand(c["inputs"].get("OPERAND2")) == director.FLAG_REVEALED_PHASE
+                ):
+                    return b
+            return None
+
+        def _award(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = _rr(blocks, b["inputs"].get("CONDITION"))
+                o1 = c["inputs"].get("OPERAND1") if c is not None and c["opcode"] == "operator_equals" else None
+                if (
+                    o1 is not None
+                    and isinstance(o1, list)
+                    and len(o1) >= 2
+                    and isinstance(o1[1], list)
+                    and len(o1[1]) >= 3
+                    and o1[1][0] == 12
+                    and o1[1][2] == director.FLAG_AWARDS_CRAFT_ID
+                ):
+                    return b
+            return None
+
+        def unwarp(p):
+            for b in _stage(p)["blocks"].values():
+                if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == director.UPDATE_BONUS_FLAG_PROCCODE:
+                    b["mutation"]["warp"] = "false"
+
+        def break_state(p):
+            blocks = _stage(p)["blocks"]
+            _rr(blocks, _top(p)["inputs"]["CONDITION"])["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_active_scroll(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _top(p), "SUBSTACK2"):
+                b = blocks[x]
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE:
+                    b["mutation"]["proccode"] = "noop"
+                    return
+
+        def break_hit_split(p):
+            blocks = _stage(p)["blocks"]
+            _rr(blocks, _hit_inner(p)["inputs"]["CONDITION"])["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_reveal(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _hit_inner(p), "SUBSTACK2"):
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID and _num_operand(b["inputs"].get("ITEM")) == director.FLAG_REVEALED_PHASE:
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def reveal_writes_state(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _hit_inner(p), "SUBSTACK2"):
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID and _num_operand(b["inputs"].get("ITEM")) == director.FLAG_REVEALED_PHASE:
+                    b["fields"]["LIST"] = ["slot state", director.SLOT_STATE_ID]
+                    return
+
+        def break_flyover(p):
+            # Rewrite the compact craft-cell variable primitives in the overlap reporter to a dummy id, so
+            # the guard's "reads the craft cell" test no longer finds the fly-over proximity check.
+            for b in _upd(p):
+                for v in b.get("inputs", {}).values():
+                    if (
+                        isinstance(v, list)
+                        and len(v) >= 2
+                        and isinstance(v[1], list)
+                        and len(v[1]) >= 3
+                        and v[1][0] == 12
+                        and v[1][2] in (director.PLAYER_ROW_ID, director.PLAYER_COL_ID)
+                    ):
+                        v[1][1], v[1][2] = "neg-dummy", "neg-dummy-id"
+
+        def break_award_dip(p):
+            blocks = _stage(p)["blocks"]
+            _rr(blocks, _award(p)["inputs"]["CONDITION"])["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_award_craft(p):
+            for b in _upd(p):
+                if b["opcode"] == "data_changevariableby" and b["fields"]["VARIABLE"][1] == director.LIVES_ID and _num_operand(b["inputs"].get("VALUE")) == 1:
+                    b["inputs"]["VALUE"] = [1, [4, "0"]]
+                    return
+
+        def add_extend(p):
+            blocks = _stage(p)["blocks"]
+            award = _award(p)
+            sub = award["inputs"]["SUBSTACK"]
+            first = sub[1]
+            menu_id, play_id = "neg-extend-menu", "neg-extend-play"
+            blocks[menu_id] = {"opcode": "sound_sounds_menu", "parent": play_id, "next": None, "inputs": {}, "fields": {"SOUND_MENU": ["extend", None]}, "shadow": True, "topLevel": False}
+            blocks[play_id] = {"opcode": "sound_play", "parent": award["inputs"]["SUBSTACK"][1], "next": first, "inputs": {"SOUND_MENU": [1, menu_id]}, "fields": {}, "shadow": False, "topLevel": False}
+            blocks[first]["parent"] = play_id
+            award["inputs"]["SUBSTACK"] = [2, play_id]
+
+        def break_award_points(p):
+            for b in _upd(p):
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.AWARD_VALUE_ID and _num_operand(b["inputs"].get("VALUE")) == director.BONUS_FLAG_TANK_POINTS:
+                    b["inputs"]["VALUE"] = [1, [4, "0"]]
+                    return
+
+        def break_sound(p):
+            for b in _upd(p):
+                if b["opcode"] == "sound_sounds_menu" and b["fields"]["SOUND_MENU"][0] == "bonus_flag":
+                    b["fields"]["SOUND_MENU"] = ["neg-zzz", None]
+                    return
+
+        def break_cull(p):
+            for b in _upd(p):
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE:
+                    b["mutation"]["proccode"] = "noop"
+                    return
+
+        def break_dispatch(p):
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_SLOTS_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _is_walk_type(b["inputs"].get("OPERAND1"))
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.BONUS_FLAG_TYPE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        def break_spawn(p):
+            blocks = _stage(p)["blocks"]
+            for b in _proc_body_blocks(_stage(p), director.DEBUG_GROUND_SPAWN_PROCCODE):
+                if b["opcode"] != "control_if":
+                    continue
+                ids = _direct_branch(blocks, b, "SUBSTACK")
+                if any(blocks[x]["opcode"] == "data_replaceitemoflist" and blocks[x]["fields"]["LIST"][1] == director.SLOT_TYPE_ID and _num_operand(blocks[x]["inputs"].get("ITEM")) == director.BONUS_FLAG_TYPE for x in ids):
+                    for x in ids:
+                        bb = blocks[x]
+                        if bb["opcode"] == "data_replaceitemoflist" and bb["fields"]["LIST"][1] == director.SLOT_STATE_ID and _num_operand(bb["inputs"].get("ITEM")) == director.SLOT_ACTIVE:
+                            bb["inputs"]["ITEM"] = [1, [4, "99"]]
+                            return
+
+        def add_clone(p):
+            flag_target = next(t for t in p["targets"] if t.get("name") == director.BONUS_FLAG_TARGET)
+            flag_target["blocks"]["neg-extra-clone"] = {"opcode": "control_create_clone_of", "parent": None, "next": None, "inputs": {}, "fields": {}, "shadow": False, "topLevel": True}
+
+        cases = [
+            ("bonus-flag-warp", unwarp),
+            ("bonus-flag-state-split", break_state),
+            ("bonus-flag-active-scrolls", break_active_scroll),
+            ("bonus-flag-hit-split", break_hit_split),
+            ("bonus-flag-reveal", break_reveal),
+            ("bonus-flag-reveal-keeps-hit", reveal_writes_state),
+            ("bonus-flag-flyover", break_flyover),
+            ("bonus-flag-award-dip", break_award_dip),
+            ("bonus-flag-award-craft", break_award_craft),
+            ("bonus-flag-no-extend", add_extend),
+            ("bonus-flag-award-points", break_award_points),
+            ("bonus-flag-sound", break_sound),
+            ("bonus-flag-cull", break_cull),
+            ("bonus-flag-dispatch", break_dispatch),
+            ("bonus-flag-spawn-seed", break_spawn),
+            ("bonus-flag-single-clone", add_clone),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._sec02_failures(project), label)
+
+    # Roadmap closure evidence for leaf `secrets.hidden-credit` (SEC-03): a bomb on the invisible egg reveals a
+    # ~2 s original credit overlay (min score), which then self-removes; a separate zero-clone overlay target.
+    # roadmap-evidence: SEC-03 success  (test_hidden_credit_slice_authoring_present — update easter egg warp; state split; ACTIVE-idle scrolls; reveal flips to SHOWING, raises the signal, keeps HIT and freezes; the display clock counts up and expiry lowers the signal + culls; spawn seeds 10-pt/HIDDEN/timer-0; overlay shows the credit costume gated on the signal and creates zero clones; dispatch routes the type)
+    # roadmap-evidence: SEC-03 failure  (test_hidden_credit_slice_negative_fixtures — each contract clause corrupted bites)
+    def test_hidden_credit_slice_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sec03_failures(project))
+
+    def test_hidden_credit_slice_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._sec03_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _rr(blocks, inp):
+            r = inp[1] if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], str) else None
+            return blocks.get(r) if r else None
+
+        def _reach(blocks, start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                frontier.append(b.get("next"))
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return seen
+
+        def _branch(blocks, block, key):
+            sub = block["inputs"].get(key) if block else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return _reach(blocks, start) if start else set()
+
+        def _sub(blocks, cid, pred):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if pred(b):
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def _upd(p):
+            return _proc_body_blocks(_stage(p), director.UPDATE_EASTER_EGG_PROCCODE)
+
+        def _top(p):
+            blocks = _stage(p)["blocks"]
+            for b in _upd(p):
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = _rr(blocks, b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := _rr(blocks, c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT
+                ):
+                    return b
+            return None
+
+        def _hit_inner(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _top(p), "SUBSTACK"):
+                b = blocks[x]
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = _rr(blocks, b["inputs"].get("CONDITION"))
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and (lhs := _rr(blocks, c["inputs"].get("OPERAND1"))) is not None
+                    and lhs["opcode"] == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and _num_operand(c["inputs"].get("OPERAND2")) == director.EASTER_EGG_SHOWING_PHASE
+                ):
+                    return b
+            return None
+
+        def unwarp(p):
+            for b in _stage(p)["blocks"].values():
+                if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == director.UPDATE_EASTER_EGG_PROCCODE:
+                    b["mutation"]["warp"] = "false"
+
+        def break_state(p):
+            blocks = _stage(p)["blocks"]
+            _rr(blocks, _top(p)["inputs"]["CONDITION"])["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_active_scroll(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _top(p), "SUBSTACK2"):
+                b = blocks[x]
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.ADVANCE_GROUND_PROCCODE:
+                    b["mutation"]["proccode"] = "noop"
+                    return
+
+        def break_hit_split(p):
+            blocks = _stage(p)["blocks"]
+            _rr(blocks, _hit_inner(p)["inputs"]["CONDITION"])["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_reveal(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _hit_inner(p), "SUBSTACK2"):
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID and _num_operand(b["inputs"].get("ITEM")) == director.EASTER_EGG_SHOWING_PHASE:
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def reveal_writes_state(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _hit_inner(p), "SUBSTACK2"):
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID and _num_operand(b["inputs"].get("ITEM")) == director.EASTER_EGG_SHOWING_PHASE:
+                    b["fields"]["LIST"] = ["slot state", director.SLOT_STATE_ID]
+                    return
+
+        def reveal_scrolls(p):
+            blocks = _stage(p)["blocks"]
+            hi = _hit_inner(p)
+            sub = hi["inputs"]["SUBSTACK2"]
+            first = sub[1]
+            call_id = "neg-egg-advance"
+            blocks[call_id] = {
+                "opcode": "procedures_call",
+                "parent": sub[1],
+                "next": first,
+                "inputs": {},
+                "fields": {},
+                "shadow": False,
+                "topLevel": False,
+                "mutation": {"tagName": "mutation", "children": [], "proccode": director.ADVANCE_GROUND_PROCCODE, "argumentids": "[]", "warp": "true"},
+            }
+            blocks[first]["parent"] = call_id
+            hi["inputs"]["SUBSTACK2"] = [2, call_id]
+
+        def freeze_display(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _hit_inner(p), "SUBSTACK"):
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                    item = _rr(blocks, b["inputs"].get("ITEM"))
+                    base_read = _rr(blocks, item["inputs"].get("NUM1")) if item is not None and item["opcode"] == "operator_add" else None
+                    if base_read is not None and base_read["opcode"] == "data_itemoflist" and base_read["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def break_expiry(p):
+            blocks = _stage(p)["blocks"]
+            for x in _branch(blocks, _hit_inner(p), "SUBSTACK"):
+                b = blocks[x]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.EASTER_EGG_SHOWING_ID and _num_operand(b["inputs"].get("VALUE")) == 0:
+                    b["inputs"]["VALUE"] = [1, [4, "99"]]
+                    return
+
+        def break_spawn(p):
+            blocks = _stage(p)["blocks"]
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_AREA_PROCCODE):
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
+                c = blocks.get(cid) if cid else None
+                if c is not None and c["opcode"] == "operator_equals" and _num_operand(c["inputs"].get("OPERAND2")) == director.EASTER_EGG_TYPE:
+                    for x in _branch(blocks, b, "SUBSTACK"):
+                        bb = blocks[x]
+                        if bb["opcode"] == "data_replaceitemoflist" and bb["fields"]["LIST"][1] == director.SLOT_PTS_ID and _num_operand(bb["inputs"].get("ITEM")) == director.EASTER_EGG_PTS:
+                            bb["inputs"]["ITEM"] = [1, [4, "99"]]
+                            return
+
+        def break_dispatch(p):
+            for b in _proc_body_blocks(_stage(p), director.ADVANCE_SLOTS_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _is_walk_type(b["inputs"].get("OPERAND1"))
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.EASTER_EGG_TYPE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        def break_overlay(p):
+            egg = next(t for t in p["targets"] if t.get("name") == director.EASTER_EGG_TARGET)
+            for b in egg["blocks"].values():
+                if b["opcode"] == "looks_costume" and b["fields"].get("COSTUME", [None])[0] == director.EASTER_EGG_CREDIT_COSTUME:
+                    b["fields"]["COSTUME"] = ["neg-zzz", None]
+                    return
+
+        def add_clone(p):
+            egg = next(t for t in p["targets"] if t.get("name") == director.EASTER_EGG_TARGET)
+            egg["blocks"]["neg-extra-clone"] = {"opcode": "control_create_clone_of", "parent": None, "next": None, "inputs": {}, "fields": {}, "shadow": False, "topLevel": True}
+
+        cases = [
+            ("easter-egg-warp", unwarp),
+            ("easter-egg-state-split", break_state),
+            ("easter-egg-active-scrolls", break_active_scroll),
+            ("easter-egg-hit-split", break_hit_split),
+            ("easter-egg-reveal", break_reveal),
+            ("easter-egg-reveal-keeps-hit", reveal_writes_state),
+            ("easter-egg-reveal-freezes", reveal_scrolls),
+            ("easter-egg-display-clock", freeze_display),
+            ("easter-egg-expiry", break_expiry),
+            ("easter-egg-spawn-seed", break_spawn),
+            ("easter-egg-dispatch", break_dispatch),
+            ("easter-egg-overlay", break_overlay),
+            ("easter-egg-no-clone", add_clone),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._sec03_failures(project), label)
 
     @staticmethod
     def _shot_cap_failures(project: dict) -> set:
@@ -14681,10 +16109,15 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            self.assertIn(
-                "spriters-resource.com/arcade/xevious",
-                provenance[asset]["origin"],
-            )
+            if name == "Bonus Flag":
+                # SEC-02: the one reference-decoded sheet — credited to the pinned arcade reference (jotd666),
+                # not Spriters Resource, since no Spriters Resource sheet isolates the Special Flag sprite.
+                self.assertIn("jotd666/xevious", provenance[asset]["origin"])
+            else:
+                self.assertIn(
+                    "spriters-resource.com/arcade/xevious",
+                    provenance[asset]["origin"],
+                )
             self.assertIn(
                 "No reusable license specified",
                 provenance[asset]["license"],
@@ -14713,7 +16146,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "45ea53cd653a450c0fa394160c056800283852b7d5ddd823b17b1d86677b9c6e",
+            "8deba6b195a5e268e0844af180c06247ead1ec8f2067e5311741bfebb17d6ba0",
             build_hash,
         )
 
