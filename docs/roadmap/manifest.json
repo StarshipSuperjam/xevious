@@ -39,7 +39,7 @@
     {"key": "air", "title": "Capability: aerial enemies", "spec": "docs/spec/aerial-enemies.md", "spec_status": "locked"},
     {"key": "ground", "title": "Capability: ground objects", "spec": "docs/spec/ground-objects.md", "spec_status": "locked"},
     {"key": "secrets", "title": "Capability: secrets", "spec": "docs/spec/secrets.md", "spec_status": "locked"},
-    {"key": "andor", "title": "Capability: Andor Genesis", "spec": "docs/spec/andor-genesis.md", "spec_status": "draft"},
+    {"key": "andor", "title": "Capability: Andor Genesis", "spec": "docs/spec/andor-genesis.md", "spec_status": "locked"},
     {"key": "cabinet", "title": "Capability: cabinet flow", "spec": "docs/spec/cabinet-flow.md", "spec_status": "draft"},
     {"key": "presentation", "title": "Capability: audio and presentation", "spec": "docs/spec/audio-and-presentation.md", "spec_status": "draft"},
     {"key": "release", "title": "Capability: full-game release validation", "spec": null, "spec_status": "provisional"}
@@ -104,7 +104,7 @@
     {"key":"economy.bonus-flag-award","parent":"economy","title":"Complete configured Bonus Flag life award","slice":"14","milestone":"Boss and secrets","status":"history","delivered_by":142,"blocked_by":["secrets.bonus-flag"],"criteria":["ECO-03.bonus-flag"],"proof":"playable","records":["ECO-03"]},
     {"key":"secrets.hidden-credit","parent":"secrets","title":"Hidden credit event trigger and presentation","slice":"14","milestone":"Boss and secrets","status":"history","delivered_by":142,"criteria":["SEC-03.hidden-credit"],"proof":"playable","records":["SEC-03"]},
 
-    {"key":"andor.lifecycle","parent":"andor","title":"Andor composite lifecycle, alignment, arrival, and departure","slice":"15","milestone":"Boss and secrets","status":"provisional","criteria":["BOSS-01.lifecycle"],"proof":"playable","records":["BOSS-01"]},
+    {"key":"andor.lifecycle","parent":"andor","title":"Andor composite lifecycle, alignment, arrival, and departure","slice":"15","milestone":"Boss and secrets","status":"planned","criteria":["BOSS-01.lifecycle"],"proof":"playable","records":["BOSS-01"]},
     {"key":"andor.defenses","parent":"andor","title":"Andor ports, armor, Bragza, and fire permissions","slice":"16","milestone":"Boss and secrets","status":"provisional","blocked_by":["andor.lifecycle"],"criteria":["BOSS-02.defenses"],"proof":"playable","records":["BOSS-02"]},
     {"key":"andor.core-destruction","parent":"andor","title":"Andor core path, scoring, destruction, and cleanup","slice":"16","milestone":"Boss and secrets","status":"provisional","blocked_by":["andor.lifecycle","andor.defenses"],"criteria":["BOSS-03.core"],"proof":"playable","records":["BOSS-03"]},
 
