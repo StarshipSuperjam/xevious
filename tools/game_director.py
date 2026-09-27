@@ -580,6 +580,14 @@ ADD_DOMOGRAM_HANDLER = "add_domogram_with_path"
 # clears the active count. The pump (install_pump_bacura) consumes both.
 SET_BACURA_COUNT_HANDLER = "set_bacura_count"
 RESET_BACURA_COUNT_HANDLER = "reset_bacura_count"
+# BOSS-01 (andor.lifecycle #94): the Andor Genesis lifecycle schedule handlers. `andor_genesis_start` (arcade
+# opcode 76, sub_2_fn_20__andor_genesis_start $064A) arms the whole 15-part composite into the ground band and
+# clears the end flag; `andor_genesis_end` (opcode 77, sub_2_fn_21 $066E) raises the end flag, starting the
+# scripted retreat. Both carry empty params (the boss layout + lateral are intrinsic, not schedule columns).
+# Opcode 78 (`fire_mask_andor_genesis`) stores the gun-port fire mask; its consumer is slice 16, so that
+# handler is left to fall through here (counted as fired, cursor advanced) exactly as before.
+ANDOR_GENESIS_START_HANDLER = "andor_genesis_start"
+ANDOR_GENESIS_END_HANDLER = "andor_genesis_end"
 
 # DIF-03 per-family fire-permission masks. Area schedules set one mask byte per firing family; the
 # byte gates how often that family may fire, and the per-family firing that consumes each mask is the
@@ -8731,10 +8739,36 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         blocks.op_eq(handler_at_cursor(), text(SHEONITE_END_HANDLER)),
         [blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1))],
     )
-    # ENGINE-TODO: the remaining spawn / boss handler dispatch (add_object, andor_genesis_*) lands with the
-    # later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
-    # ground-stop), add_ground_object (the built static + Grobda ground families) and add_domogram_with_path
-    # (GND-07) are wired above; the still-unhandled spawn/boss records advance the cursor and count the fire only.
+    # BOSS-01 (andor.lifecycle #94): andor_genesis_start (op 76) arms the 15-part composite via the SAME
+    # bulk-arm the debug summon uses (_ground_seed_andor: master anchor at the arcade start, 15 slots stamped,
+    # end flag cleared), and andor_genesis_end (op 77) raises the end flag so the master retreats and tears the
+    # composite down. These records already live in the loaded area schedules (areas 4/9/14 — area 14 has two
+    # start/end pairs); wiring the branches makes real areas spawn and depart the boss. Like add_ground_object
+    # and add_domogram, the arm is withheld while the G ground-debug key owns the band (the cursor still advances
+    # at the loop end, so no record is skipped or replayed) — so a debug-summoned boss is never fought over by a
+    # live schedule record. The end flag write is likewise withheld while G is held, so a live end record cannot
+    # tear down the operator's debug boss mid-inspection; the two stay in sync. Slice 15 is the lifecycle only —
+    # nothing here touches firing (op 78's mask) or the hit/score/bomb path (slice 16).
+    andor_start_branch = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
+            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+        ),
+        _ground_seed_andor(blocks, base=GROUND_SLOTS[0]),
+    )
+    andor_end_branch = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_END_HANDLER)),
+            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+        ),
+        [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
+    )
+    # ENGINE-TODO: the remaining spawn handler dispatch (add_object for the non-boss scheduled spawns) lands with
+    # the later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
+    # ground-stop), add_ground_object (the built static + Grobda ground families), add_domogram_with_path
+    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above; the still-
+    # unhandled records — incl. fire_mask_andor_genesis (op 78, consumed in slice 16) — advance the cursor and
+    # count the fire only.
     blocks.substack(
         loop,
         [
@@ -8750,6 +8784,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             reset_bacura_branch,
             sheonite_start_branch,
             sheonite_end_branch,
+            andor_start_branch,
+            andor_end_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
