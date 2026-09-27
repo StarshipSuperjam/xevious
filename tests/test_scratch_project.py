@@ -252,20 +252,16 @@ class ScratchProjectTests(unittest.TestCase):
         # brag-spario renderers (AIR-10) + the garu-zakato renderer (AIR-08; all three Spario-style pools
         # reuse the zakato body stand-in by ref) + the bacura renderer (AIR-11; its own reserved band, a
         # single static slab costume with no burst) + the sheonite renderer (AIR-09; the inert escort pair
-        # in the shared flying pool, ten costumes with no burst), and the slice-9 barra + garu + logram
-        # ground renderers (all reuse proof costumes by ref), and the slice-12 zolbak + derota + garu-derota
-        # ground renderers (GND-02/GND-04; all reuse proof costumes by ref), and the slice-13 boza renderer
-        # (GND-05; the four outers reuse the Logram proof costumes by ref, the centre adds its own core costume),
-        # and the slice-13 grobda renderer (GND-06; the 12 variants share one tank costume set, reusing the
-        # shared burst + crater proof costumes by ref, plus 4 new tank tread frames), and the slice-13
-        # domogram renderer (GND-07; the scripted-path shooter, its own idle sprite set reusing the shared
-        # burst + crater proof costumes by ref, plus 4 new idle frames), and the slice-14 sol-tower renderer
-        # (SEC-01; the hidden citadel's 7 rise frames plus the shared burst + crater proof costumes by ref),
-        # and the slice-14 bonus-flag renderer (SEC-02; the hidden Special Flag, a single revealed-flag costume
+        # in the shared flying pool, ten costumes with no burst), and the slice-15 PR-1 shared "ground"
+        # renderer — the ten former full-band ground families (barra, sol-tower, garu, logram, zolbak, derota,
+        # garu-derota, boza, grobda, domogram) collapsed into ONE 16-clone pool that costume-switches on each
+        # slot's live type; its 129 costumes are those families' costume lists concatenated in order (offsets
+        # in GROUND_FAMILY_OFFSETS), freeing ~144 clones under the scratch-vm 300-clone ceiling — plus the
+        # slice-14 bonus-flag renderer (SEC-02; the hidden Special Flag, a single revealed-flag costume
         # with no burst or crater — like the Bacura it is never destroyed on screen), and the slice-14 easter-egg
         # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
         # renderer clone band since the egg draws no field sprite, holding a single generated credit costume).
-        self.assertEqual(42, len(project["targets"]))
+        self.assertEqual(33, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -287,6 +283,50 @@ class ScratchProjectTests(unittest.TestCase):
         # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
         # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset).
         self.assertEqual(186, len(assets))
+
+    def test_ground_pool_costume_list_is_merge_safe(self) -> None:
+        # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
+        # target by concatenating their costume lists (barra 0, sol-tower 11, garu 28, logram 39, zolbak 53,
+        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129 total). scratch-vm's SB3 loader
+        # enforces uniqueItems on a target's costumes array: two byte-identical costume OBJECTS are legal
+        # across separate targets but NOT within one, and the families share many crops by ref (the solv_death
+        # burst, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
+        # pins the merge-safety contract at the pytest level too (the loader failure only surfaced in the full
+        # harness before): the combined list is 129 costumes, no two costume OBJECTS are identical, and every
+        # NAME is unique — later duplicates are disambiguated with a " #<family>" suffix while each name's first
+        # occurrence stays canonical, so the renderer's by-name switch_costume still resolves to the right crop.
+        project, _project_bytes, _assets = scratch.validate_source()
+        ground = next(t for t in project["targets"] if t.get("name") == "ground")
+        costumes = ground["costumes"]
+        self.assertEqual(129, len(costumes), "the combined ground costume list is the 10 families concatenated")
+        objects = [json.dumps(c, sort_keys=True) for c in costumes]
+        self.assertEqual(
+            len(objects),
+            len(set(objects)),
+            "no two ground costume OBJECTS are identical (scratch-vm's SB3 loader rejects uniqueItems violations)",
+        )
+        names = [c.get("name") for c in costumes]
+        self.assertEqual(
+            len(names), len(set(names)), "every ground costume NAME is unique (duplicates get a ' #<family>' suffix)"
+        )
+        # The renderer selects these by NAME (switch_costume); each must survive the merge exactly once so
+        # scratch-vm's first-match resolves to the canonical crop (index-selected duplicates are renamed, not
+        # these first occurrences).
+        for canonical in (
+            "barra/idle/01",
+            "derota/idle/01",
+            "zolbak/idle/01",
+            "sol-tower/rise/07",
+            "boza-centre/core/01",
+            "grobda/roll/01",
+        ):
+            self.assertEqual(
+                names.count(canonical), 1, f"the by-name-selected costume {canonical!r} survives the merge exactly once"
+            )
+        # The disambiguated duplicates carry the deterministic " #<family>" marker and nothing else does.
+        renamed = [n for n in names if " #" in n]
+        self.assertTrue(renamed, "the shared crops are carried as ' #<family>' disambiguated duplicates")
+        self.assertEqual(ground["currentCostume"], 0, "the shared ground pool rests on its first costume")
 
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
@@ -16146,7 +16186,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "8deba6b195a5e268e0844af180c06247ead1ec8f2067e5311741bfebb17d6ba0",
+            "0769cba5afd55d52140b26948b9624e84c1d4ebbeb27da795d904bfc7cb24483",
             build_hash,
         )
 

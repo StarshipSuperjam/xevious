@@ -189,11 +189,6 @@
       "name": "bacura seed slot",
       "scope": "Stage"
     },
-    "barra-clone-slot": {
-      "kind": "variable",
-      "name": "barra clone slot",
-      "scope": "barra"
-    },
     "blaster-alloc-result": {
       "kind": "variable",
       "name": "alloc result",
@@ -208,11 +203,6 @@
       "kind": "variable",
       "name": "bonus flag clone slot",
       "scope": "bonus-flag"
-    },
-    "boza-clone-slot": {
-      "kind": "variable",
-      "name": "boza clone slot",
-      "scope": "boza"
     },
     "brag-spario-clone-slot": {
       "kind": "variable",
@@ -248,11 +238,6 @@
       "kind": "variable",
       "name": "debug spawn index",
       "scope": "Stage"
-    },
-    "derota-clone-slot": {
-      "kind": "variable",
-      "name": "derota clone slot",
-      "scope": "derota"
     },
     "difficulty-ai-adjust": {
       "kind": "variable",
@@ -464,16 +449,6 @@
       "name": "game state",
       "scope": "Stage"
     },
-    "garu-clone-slot": {
-      "kind": "variable",
-      "name": "garu clone slot",
-      "scope": "garu"
-    },
-    "garu-derota-clone-slot": {
-      "kind": "variable",
-      "name": "garu derota clone slot",
-      "scope": "garu derota"
-    },
     "garu-det-slot": {
       "kind": "variable",
       "name": "garu det slot",
@@ -498,6 +473,11 @@
       "kind": "variable",
       "name": "giddo spario clone slot",
       "scope": "giddo-spario"
+    },
+    "ground-clone-slot": {
+      "kind": "variable",
+      "name": "ground clone slot",
+      "scope": "ground"
     },
     "ground-stop-firing-row": {
       "kind": "variable",
@@ -553,11 +533,6 @@
       "kind": "variable",
       "name": "kapi clone slot",
       "scope": "kapi"
-    },
-    "logram-clone-slot": {
-      "kind": "variable",
-      "name": "logram clone slot",
-      "scope": "logram"
     },
     "num-bacura": {
       "kind": "variable",
@@ -724,11 +699,6 @@
       "name": "slot y",
       "scope": "Stage"
     },
-    "sol-tower-clone-slot": {
-      "kind": "variable",
-      "name": "sol tower clone slot",
-      "scope": "sol-tower"
-    },
     "solv-death-director-entry-epoch": {
       "kind": "variable",
       "name": "entry epoch",
@@ -813,11 +783,6 @@
       "kind": "variable",
       "name": "zakato clone slot",
       "scope": "zakato"
-    },
-    "zolbak-clone-slot": {
-      "kind": "variable",
-      "name": "zolbak clone slot",
-      "scope": "zolbak"
     },
     "zoshi-clone-slot": {
       "kind": "variable",

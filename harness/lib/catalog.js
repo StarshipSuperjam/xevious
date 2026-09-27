@@ -4964,6 +4964,144 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update sol tower'),
   },
   {
+    // Slice-15 PR-1: the shared ground-renderer clone pool. The 10 former full-band ground families (Barra,
+    // Sol Tower, Garu, Logram, Zolbak, Derota, Garu Derota, Boza, Grobda, Domogram) each rendered as their own
+    // 16-clone pool (160 clones) against scratch-vm's hard 300-clone ceiling; they are collapsed into ONE
+    // 16-clone "ground" pool. This is the whole point of the refactor, so it must show up as exactly one ground
+    // band of 16 clones, no legacy per-family render target left behind, and a materially lower live clone
+    // total (the ~144 clones the merge frees are the headroom the slice-16 Andor boss needs).
+    key: 'ground-pool-is-one-shared-clone-band',
+    behavior:
+      'The ten former full-band ground families render through ONE shared "ground" clone pool of exactly 16 clones (one per ground slot), not ten separate 16-clone pools; no legacy per-family render target survives, and the live clone total sits well under the scratch-vm 300-clone ceiling with real headroom (the ~144 clones the merge frees)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Free-run a little so the field is populated: the ground band is stamped at director enter and the
+      // flyer pools + bullets fill in as areas scroll, so the live total reflects real play.
+      step(vm, 200);
+      const LEGACY = [
+        'barra', 'sol-tower', 'garu', 'logram', 'zolbak',
+        'derota', 'garu derota', 'boza', 'grobda', 'domogram',
+      ];
+      const byName = {};
+      for (const c of vm.runtime.targets) {
+        if (c.isStage || c.isOriginal || !c.sprite) continue;
+        byName[c.sprite.name] = (byName[c.sprite.name] || 0) + 1;
+      }
+      const totalClones = Object.values(byName).reduce((a, b) => a + b, 0);
+      return {
+        groundClones: cloneCount(vm, 'ground'),
+        legacyClones: LEGACY.reduce((a, n) => a + (byName[n] || 0), 0),
+        totalClones,
+      };
+    },
+    assert(obs) {
+      assert.equal(
+        obs.groundClones,
+        16,
+        'the shared ground pool renders as exactly 16 clones (one per ground slot)',
+      );
+      assert.equal(obs.legacyClones, 0, 'no legacy per-family ground render pool survives the merge');
+      // Pre-refactor the ground band alone was 160 clones and the whole field ran ~292 against the 300
+      // ceiling; with the merge it must sit well under it. 250 is a generous bound the pre-refactor project
+      // (160 ground clones) could never satisfy, so a regression that re-splits the pool trips it.
+      assert.ok(
+        obs.totalClones < 250,
+        `the live clone total (${obs.totalClones}) sits under the 300 ceiling with headroom`,
+      );
+      assert.ok(
+        300 - obs.totalClones >= 50,
+        `the merge leaves real headroom under the 300-clone ceiling (${300 - obs.totalClones} free)`,
+      );
+    },
+    // Break the ground pool's `if state == playing` spawn gate so it creates ZERO clones → the 16-clone
+    // census assertion goes red (the shared pool never materializes).
+    negativeMutation: (p) => mutate.changeEqualsOperand(p, 'ground', 'playing', '__never__'),
+  },
+  {
+    // Slice-15 PR-1: render-equivalence of the shared ground pool. Each ground clone reads its slot's live
+    // `slot type` and dispatches to that family's costume subtree, with the family's costume ordinals rebased
+    // into ONE combined 129-costume list (GROUND_FAMILY_OFFSETS via _sw). The correctness crux (the riskiest
+    // seam in the plan) is that a clone on a slot of family X shows a costume from X's OWN band — a wrong
+    // offset would send it into another family's costumes. This drives live play and, for every ACTIVE ground
+    // slot whose clone is drawn, asserts the clone's current costume belongs to that slot type's family.
+    key: 'ground-pool-dispatches-costume-by-slot-type',
+    behavior:
+      "Every ground clone renders its slot type's OWN family costume: a clone bound to an ACTIVE slot of family X (read from the shared slot lists) shows a costume from X's band in the combined ground costume list — proving the shared pool's slot-type dispatch and the per-family costume-ordinal rebase are correct",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const slotName = variable('ground-clone-slot').name; // "ground clone slot"
+      const GROBDA = new Set([44, 53, 54, 56, 57, 58, 59, 60, 61, 62, 63, 64]);
+      // type -> { name, ok(costumeName) } for the ACTIVE (state 1) render of that family. Restricting to
+      // ACTIVE + visible keeps this to each family's idle/active costume (the shared HIT burst/crater frames
+      // are index-selected and proven by the per-family scenarios), so a costume outside the family's band
+      // means the slot-type dispatch or the offset rebase sent the clone to the wrong costumes.
+      const familyOf = (t) => {
+        if (t === 30 || t === 32)
+          return { name: 'barra/garu', ok: (c) => c === 'barra/idle/01' || /^garu\/base\//.test(c) };
+        if (t === 31) return { name: 'zolbak', ok: (c) => c === 'zolbak/idle/01' };
+        if (t === 27 || t === 33)
+          return { name: 'derota/garu-derota', ok: (c) => c === 'derota/idle/01' || /^garu-derota\/base\//.test(c) };
+        if (t === 38) return { name: 'logram', ok: (c) => /^logram\/open\/0[1-4]$/.test(c) };
+        if (t === 45)
+          return { name: 'boza', ok: (c) => c === 'boza-centre/core/01' || /^logram\/open\/0[1-4] #boza$/.test(c) };
+        if (GROBDA.has(t)) return { name: 'grobda', ok: (c) => /^grobda\/roll\/0[1-4]$/.test(c) };
+        if (t === 46) return { name: 'domogram', ok: (c) => /^domogram\/idle\/0[1-4]$/.test(c) };
+        if (t === 29) return { name: 'sol-tower', ok: (c) => /^sol-tower\//.test(c) };
+        return null; // Bacura and any non-full-band type are not this pool's job
+      };
+      const prevType = new Array(16).fill(0);
+      const seen = new Set();
+      const mismatches = [];
+      let observations = 0;
+      const HARD_CAP = 5000;
+      for (let i = 0; i < HARD_CAP; i += 1) {
+        step(vm, 1);
+        const types = readVar(vm, 'slot-type');
+        const states = readVar(vm, 'slot-state');
+        for (const rep of cloneReports(vm, 'ground', [slotName])) {
+          const slot = rep.vars[slotName]; // Scratch 1-based slot
+          const s = slot - 1;
+          if (s < 0 || s > 15) continue;
+          if (!rep.visible) continue; // the render arm sets show() only when a family arm matched this tick
+          if (states[s] !== 1) continue; // ACTIVE render only
+          const t = types[s];
+          if (t === 0) continue;
+          if (prevType[s] !== t) continue; // steady across two ticks: the clone rendered this settled type
+          const fam = familyOf(t);
+          if (!fam) continue;
+          observations += 1;
+          seen.add(fam.name);
+          if (!fam.ok(rep.costume || '')) {
+            mismatches.push({ slot, type: t, family: fam.name, costume: rep.costume });
+          }
+        }
+        for (let s = 0; s < 16; s += 1) prevType[s] = types[s];
+        if (seen.has('barra/garu') && seen.has('logram') && observations > 50) break;
+        if (readVar(vm, 'area-number') >= 6) break;
+      }
+      return { mismatches, seen: [...seen], observations };
+    },
+    assert(obs) {
+      assert.ok(obs.observations > 0, 'at least one ACTIVE ground clone was observed rendering');
+      assert.deepEqual(
+        obs.mismatches,
+        [],
+        "every ACTIVE ground clone shows a costume from its own slot type's family (no wrong-band dispatch or offset)",
+      );
+      assert.ok(
+        obs.seen.includes('logram'),
+        'a Logram (a non-zero-offset family) was observed rendering through the shared pool (non-vacuous)',
+      );
+    },
+    // Zero the Logram family's costume-ordinal offset (39) in the combined list, so every Logram clone
+    // switches into the WRONG (Barra) band instead of logram/open — the exact class of bug the per-family
+    // ordinal rebase risks. Logram still dispatches and shows (visible), so it is observed with a wrong
+    // costume and the no-mismatch assertion goes red.
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'ground', '39', '0'),
+  },
+  {
     // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).
     key: 'bonus-flag-revealed-by-bomb-scores-once-then-collected-by-flyover-not-a-weapon',
     behavior:

@@ -9973,62 +9973,142 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
-def barra_blocks() -> dict[str, dict[str, Any]]:
-    # GND-01 Barra renderer (game_director owns these blocks; sprite_extractor owns the costumes).
-    # One persistent clone per GROUND slot (1..16), the same clone-pool pattern as the Toroid but over
-    # the terrain band instead of the flying band. Each clone is a pure per-tick function of its slot's
-    # live state: shown, positioned (arcade cell -> stage px, the SAME mapping as every family renderer),
-    # and costumed when the slot holds a Barra; hidden otherwise. The clone writes no state.
-    #
-    # Costume by state:
-    #   ACTIVE -> the idle pyramid (ordinal BARRA_IDLE_ORDINAL).
-    #   HIT    -> the bomb-explosion clock (slot timer, reset to 0 by the detector, advanced by
-    #             `update barra`). For the first GROUND_CRATER_START_FRAMES (7 burst frames x 8) it plays
-    #             the shared solv_death burst (floor(timer/8) selects the frame, arcade `TIMER >> 3` in
-    #             handle_bomb_explosion $3186 — the distinct 0x60.. bomb-burst sprites are a deferred
-    #             cosmetic, so the shared aerial burst stands in). After that it is a PERSISTENT crater
-    #             (bomb_explosion_finished $31D7) flickering between the two crater costumes every
-    #             GROUND_CRATER_FLICKER_FRAMES (arcade `countup >> 2 & 1`), scrolling with the terrain
-    #             until it culls off the bottom. There is no size-doubling and no free-on-clock — unlike
-    #             the flying burst, the ground crater never removes itself on its clock.
-    blocks = Blocks(BARRA_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("barra clone slot", BARRA_CLONE_SLOT_ID)
+# ============================================================================
+# Shared ground-renderer clone pool (slice-15 PR-1).
+#
+# The 10 full-band ground families (Barra, Sol Tower, Garu, Logram, Zolbak,
+# Derota, Garu Derota, Boza, Grobda, Domogram) previously each owned a 16-clone
+# render target = 160 clones, against scratch-vm's hard 300-clone ceiling. They
+# are collapsed here into ONE 16-clone pool whose clones dispatch costume
+# selection on the slot's live `slot type` — the Garu/Boza multiplex idiom
+# promoted from `slot state`/`slot link` to `slot type`. Frees ~144 clones so the
+# slice-15 Andor Genesis boss (which borrows ground slots 1..15, each a different
+# type) can render through this same pool. See docs/mechanics record + memory
+# `ground-family-clone-ceiling`.
+#
+# Each family's costume-selection subtree is transplanted VERBATIM from its old
+# `*_blocks()` renderer; the only change is the costume ORDINAL rebase: the 10
+# families' costume slices are concatenated into ONE combined list (in
+# GROUND_FAMILY_COSTUME_COUNTS order), so every `switch_costume_expr(local)`
+# becomes `switch_costume_expr(offset + local)` where `offset` is the family's
+# start index in the combined list (`_sw`). By-name `switch_costume("name")` is
+# unchanged — scratch-vm resolves it to the FIRST match, and every cross-family
+# duplicate name is a byte-identical crop (see sprite_extractor combined-costume
+# assembly + its gates). The combined list is assembled in expected_project().
+# ============================================================================
+GROUND_RENDER_TARGET = "ground"
+GROUND_CLONE_SLOT_ID = "ground-clone-slot"
 
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("barra clone slot", BARRA_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+# The 10 render targets this pool replaces (pruned in expected_project; Bonus Flag
+# and Easter Egg sit off the full band and are NOT collapsed).
+GROUND_RENDER_LEGACY_TARGETS = (
+    BARRA_TARGET,
+    SOL_TOWER_TARGET,
+    GARU_TARGET,
+    LOGRAM_TARGET,
+    ZOLBAK_TARGET,
+    DEROTA_TARGET,
+    GARU_DEROTA_TARGET,
+    BOZA_TARGET,
+    GROBDA_TARGET,
+    DOMOGRAM_TARGET,
+)
 
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_barra = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(BARRA_TYPE)
-    )
-    # Terrain-locked position — identical cell->stage mapping to every family renderer.
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    # HIT costume: explosion burst until the crater begins, then the flickering crater.
+# Per-family costume-slice lengths, in combined-list order. The combined "ground"
+# costume list is the concatenation of the 10 slices in exactly this order; the
+# offset of each family is the running sum of the counts before it. The lengths
+# are re-asserted at generation time against the actual assembled slices, so a
+# manifest change that shifts a count fails loud instead of silently misindexing.
+GROUND_FAMILY_COSTUME_COUNTS = (
+    ("barra", 11),
+    ("sol-tower", 17),
+    ("garu", 11),
+    ("logram", 14),
+    ("zolbak", 11),
+    ("derota", 11),
+    ("garu derota", 11),
+    ("boza", 15),
+    ("grobda", 14),
+    ("domogram", 14),
+)
+
+
+def _ground_family_offsets() -> tuple[dict[str, int], int]:
+    offsets: dict[str, int] = {}
+    acc = 0
+    for key, count in GROUND_FAMILY_COSTUME_COUNTS:
+        offsets[key] = acc
+        acc += count
+    return offsets, acc
+
+
+GROUND_FAMILY_OFFSETS, GROUND_COSTUME_TOTAL = _ground_family_offsets()
+
+# Arcade z-order, verified at the pinned source (jotd666/xevious
+# @71473685a8c7856c8401c8519276cd97a38d4183, xevious_main.68k slot ranges +
+# amiga.68k:1856/1758 two-pass draw): ground installations occupy object slots
+# 0x02-0x0F and draw in the FIRST pass, BEHIND aerial enemies (slots 0x27-0x3F,
+# second pass); terrain is further back, the craft in front of all. The port's
+# flying render band sits at layerOrder 28..33; 27 is the highest layerOrder
+# freed by pruning the 10 legacy ground targets that is still below that band, so
+# the merged pool draws just under the flyers — arcade-faithful and unique.
+#
+# NOTE (surfaced to operator): today 7 of the 10 ground families render ABOVE the
+# flying band (a build-order artifact of per-family layerOrder=max+1), not the
+# arcade order. Collapsing to one below-flying band therefore CORRECTS those 7
+# where they overlap flyers — a small observable z-order change, not a pure
+# render-preserving move. This constant encodes that correction.
+GROUND_LAYER_ORDER = 27
+
+# The render arms dispatch on `slot type`; overlapping type sets across families
+# would make the dispatch ambiguous. Fail loud at import if they ever overlap.
+_GROUND_ALL_TYPES = [
+    BARRA_TYPE,
+    SOL_TOWER_TYPE,
+    GARU_BARRA_TYPE,
+    LOGRAM_TYPE,
+    ZOLBAK_TYPE,
+    DEROTA_TYPE,
+    GARU_DEROTA_TYPE,
+    BOZA_LOGRAM_TYPE,
+    DOMOGRAM_TYPE,
+    *GROBDA_TYPES,
+]
+assert len(_GROUND_ALL_TYPES) == len(set(_GROUND_ALL_TYPES)), (
+    "ground family types overlap; the shared renderer's slot-type dispatch would be ambiguous"
+)
+
+
+def _ground_if_else(blocks: "Blocks", cond: str, then_body: list[str], else_body: list[str]) -> str:
+    node = blocks.add("control_if_else")
+    blocks.blocks[node]["inputs"]["CONDITION"] = [2, cond]
+    blocks.blocks[cond]["parent"] = node
+    blocks.substack(node, then_body)
+    blocks.substack(node, else_body, name="SUBSTACK2")
+    return node
+
+
+def _sw(blocks: "Blocks", offset: int, expr: str) -> str:
+    # Switch to costume (offset + expr): `expr` evaluates to a family-LOCAL 1-based
+    # costume ordinal; `offset` rebases it into the combined "ground" list. For the
+    # first family (offset 0) this is identical to the pre-refactor switch.
+    if offset:
+        expr = blocks.op_add(number(offset), expr)
+    return blocks.switch_costume_expr(expr)
+
+
+def _passive_costume_subtree(
+    blocks: "Blocks",
+    slotvar,
+    offset: int,
+    idle_costume: str,
+    explode_base: int,
+    crater_base: int,
+) -> str:
+    # Barra crater model (also Zolbak, Derota): idle while ACTIVE; while HIT the
+    # shared burst (floor(timer/8)) then a persistent flickering crater.
     explode_ordinal = blocks.op_add(
-        number(BARRA_EXPLODE_BASE_ORDINAL),
+        number(explode_base),
         blocks.op_floor(
             blocks.op_div(
                 blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
@@ -10037,7 +10117,7 @@ def barra_blocks() -> dict[str, dict[str, Any]]:
         ),
     )
     crater_ordinal = blocks.op_add(
-        number(BARRA_CRATER_BASE_ORDINAL),
+        number(crater_base),
         blocks.op_mod(
             blocks.op_floor(
                 blocks.op_div(
@@ -10057,100 +10137,62 @@ def barra_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
     blocks.blocks[cratered]["parent"] = hit_costume
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
+    blocks.substack(hit_costume, [_sw(blocks, offset, crater_ordinal)])
+    blocks.substack(hit_costume, [_sw(blocks, offset, explode_ordinal)], name="SUBSTACK2")
 
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
     blocks.substack(state_render, [hit_costume])
-    # ACTIVE: the single idle pyramid. It is a fixed costume, so select it by name (switch_costume_expr
-    # obscures a menu with a runtime reporter — for a constant the by-name switch is the direct tool).
-    blocks.substack(
-        state_render,
-        [blocks.switch_costume("barra/idle/01")],
-        name="SUBSTACK2",
-    )
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_barra]
-    blocks.blocks[is_barra]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            # WPN-04 layering: a ground object sits ON the terrain, under the craft that
-            # flies over it and the bomb sight the player aims with. Unlike the flying
-            # renderers it does NOT go to front — its static layerOrder is already above
-            # the terrain strips (which never front themselves), so leaving it unfronted
-            # keeps it below the craft/crosshair/bomb-target (which do front every tick)
-            # while staying above the ground. Fronting here is what put a Barra over the
-            # sight the player was aiming with.
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
-    return blocks.blocks
+    blocks.substack(state_render, [blocks.switch_costume(idle_costume)], name="SUBSTACK2")
+    return state_render
 
 
-def sol_tower_blocks() -> dict[str, dict[str, Any]]:
-    # SEC-01 Sol Tower renderer (game_director owns these blocks; sprite_extractor owns the costumes). One
-    # persistent clone per GROUND slot (1..16), the same terrain-band clone pool as the Barra, a pure per-tick
-    # function of its slot's live state. The clone writes no state.
-    #
-    # Visibility + costume by phase (`slot flag`) and state:
-    #   HIDDEN & ACTIVE -> invisible (the un-revealed citadel); the clone is hidden.
-    #   RISING (HIT)    -> the rise frame for the current step = (slot timer >> 4) & 7, costume ordinal
-    #                      SOL_TOWER_RISE_BASE_ORDINAL + step (sol_tower_animation_tbl A8,A9,AA,AB,AE,B2,B6).
-    #                      The rise crops grow small->large, so the arcade's step-4 2x2 size flip is carried by
-    #                      the artwork; every frame renders at the one uniform GROUND_RENDER_SIZE.
-    #   RISEN & ACTIVE  -> the fully-risen citadel (the last rise frame, sol-tower/rise/07), a live target.
-    #   RISEN & HIT     -> the destroy stage: the shared solv_death burst for the first GROUND_CRATER_START_FRAMES
-    #                      (floor(slot timer / 8)), then the flickering persistent crater — IDENTICAL to the Barra
-    #                      (sol_tower_risen -> handle_bomb_explosion, the same routine), scrolling until it culls.
-    blocks = Blocks(SOL_TOWER_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("sol tower clone slot", SOL_TOWER_CLONE_SLOT_ID)
-    slot_state = lambda: blocks.list_item("slot state", SLOT_STATE_ID, slotvar())
+def _garu_costume_subtree(
+    blocks: "Blocks",
+    slotvar,
+    offset: int,
+    base_costume: str,
+    node_costume: str,
+    explode_base: int,
+) -> str:
+    # Garu Barra / Garu Derota: base (sentinel state) vs destructible node; the
+    # node's HIT burst is explode-and-remove (floor(timer/4)), no crater.
+    burst_ordinal = blocks.op_add(
+        number(explode_base),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GARU_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    base_or_node = blocks.add("control_if_else")
+    is_base = blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_GARU_BASE)
+    )
+    blocks.blocks[base_or_node]["inputs"]["CONDITION"] = [2, is_base]
+    blocks.blocks[is_base]["parent"] = base_or_node
+    blocks.substack(base_or_node, [blocks.switch_costume(base_costume)])
+    blocks.substack(base_or_node, [blocks.switch_costume(node_costume)], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [_sw(blocks, offset, burst_ordinal)])
+    blocks.substack(state_render, [base_or_node], name="SUBSTACK2")
+    return state_render
+
+
+def _sol_tower_costume_subtree(blocks: "Blocks", slotvar, offset: int) -> str:
+    # Sol Tower: rise animation (RISING) / risen idle / destroy (RISEN & HIT ->
+    # burst then flickering crater). Visibility (the HIDDEN idle hide) is applied
+    # by the caller's arm, matching the original render condition.
     slot_flag = lambda: blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar())
+    slot_state = lambda: blocks.list_item("slot state", SLOT_STATE_ID, slotvar())
     slot_timer = lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("sol tower clone slot", SOL_TOWER_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_sol = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(SOL_TOWER_TYPE)
-    )
-    # Terrain-locked position — identical cell->stage mapping to every family renderer.
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    # RISING costume: rise frame for step = (slot timer >> 4) & 7.
     rise_ordinal = blocks.op_add(
         number(SOL_TOWER_RISE_BASE_ORDINAL),
         blocks.op_mod(
@@ -10158,7 +10200,6 @@ def sol_tower_blocks() -> dict[str, dict[str, Any]]:
             number(8),
         ),
     )
-    # RISEN & HIT destroy costume: the shared burst until the crater begins, then the flickering crater.
     explode_ordinal = blocks.op_add(
         number(SOL_TOWER_EXPLODE_BASE_ORDINAL),
         blocks.op_floor(blocks.op_div(slot_timer(), number(GROUND_EXPLOSION_PHASE_FRAMES))),
@@ -10171,55 +10212,459 @@ def sol_tower_blocks() -> dict[str, dict[str, Any]]:
         ),
     )
     destroy_costume = blocks.add("control_if_else")
-    cratered = blocks.op_not(
-        blocks.op_lt(slot_timer(), number(GROUND_CRATER_START_FRAMES))
-    )
+    cratered = blocks.op_not(blocks.op_lt(slot_timer(), number(GROUND_CRATER_START_FRAMES)))
     blocks.blocks[destroy_costume]["inputs"]["CONDITION"] = [2, cratered]
     blocks.blocks[cratered]["parent"] = destroy_costume
-    blocks.substack(destroy_costume, [blocks.switch_costume_expr(crater_ordinal)])
-    blocks.substack(destroy_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
+    blocks.substack(destroy_costume, [_sw(blocks, offset, crater_ordinal)])
+    blocks.substack(destroy_costume, [_sw(blocks, offset, explode_ordinal)], name="SUBSTACK2")
 
-    # HIT: destroy (flag == RISEN) vs the rise animation (flag == RISING).
     hit_costume = blocks.add("control_if_else")
     is_risen = blocks.op_eq(slot_flag(), number(SOL_RISEN_PHASE))
     blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, is_risen]
     blocks.blocks[is_risen]["parent"] = hit_costume
     blocks.substack(hit_costume, [destroy_costume])
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(rise_ordinal)], name="SUBSTACK2")
+    blocks.substack(hit_costume, [_sw(blocks, offset, rise_ordinal)], name="SUBSTACK2")
 
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(slot_state(), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
     blocks.substack(state_render, [hit_costume])
-    # ACTIVE & visible => RISEN idle: the fully-risen citadel. A fixed costume, so switch by name (the direct
-    # tool for a constant; switch_costume_expr would obscure the menu with a runtime reporter).
     blocks.substack(state_render, [blocks.switch_costume("sol-tower/rise/07")], name="SUBSTACK2")
+    return state_render
 
-    # Visible unless it is a HIDDEN, un-revealed idle. HIDDEN only ever coincides with ACTIVE (the update flips
-    # it to RISING on the reveal tick before the renderer runs), so `HIDDEN && not hit` isolates the invisible
-    # pre-reveal citadel; every other phase (RISING/RISEN, idle or exploding) is drawn.
-    hidden_idle = blocks.op_and(
-        blocks.op_eq(slot_flag(), number(SOL_HIDDEN_PHASE)),
-        blocks.op_not(blocks.op_eq(slot_state(), number(SLOT_HIT))),
+
+def _logram_costume_subtree(blocks: "Blocks", slotvar, offset: int) -> str:
+    # Logram: open/close dome frame from `slot code` (1..4) while ACTIVE; Barra
+    # crater model while HIT.
+    explode_ordinal = blocks.op_add(
+        number(LOGRAM_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
     )
-    visible = blocks.op_and(is_sol, blocks.op_not(hidden_idle))
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, visible]
-    blocks.blocks[visible]["parent"] = render
+    crater_ordinal = blocks.op_add(
+        number(LOGRAM_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    hit_costume = blocks.add("control_if_else")
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
+    blocks.blocks[cratered]["parent"] = hit_costume
+    blocks.substack(hit_costume, [_sw(blocks, offset, crater_ordinal)])
+    blocks.substack(hit_costume, [_sw(blocks, offset, explode_ordinal)], name="SUBSTACK2")
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [hit_costume])
     blocks.substack(
-        render,
+        state_render,
+        [_sw(blocks, offset, blocks.list_item("slot code", SLOT_CODE_ID, slotvar()))],
+        name="SUBSTACK2",
+    )
+    return state_render
+
+
+def _boza_costume_subtree(blocks: "Blocks", slotvar, offset: int) -> str:
+    # Boza: CENTRE (link 0) fixed bullseye vs OUTER dome from `slot code`; Barra
+    # crater model while HIT.
+    explode_ordinal = blocks.op_add(
+        number(BOZA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(BOZA_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    hit_costume = blocks.add("control_if_else")
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
+    blocks.blocks[cratered]["parent"] = hit_costume
+    blocks.substack(hit_costume, [_sw(blocks, offset, crater_ordinal)])
+    blocks.substack(hit_costume, [_sw(blocks, offset, explode_ordinal)], name="SUBSTACK2")
+
+    active_costume = blocks.add("control_if_else")
+    is_centre = blocks.op_eq(blocks.list_item("slot link", SLOT_LINK_ID, slotvar()), number(0))
+    blocks.blocks[active_costume]["inputs"]["CONDITION"] = [2, is_centre]
+    blocks.blocks[is_centre]["parent"] = active_costume
+    blocks.substack(active_costume, [blocks.switch_costume("boza-centre/core/01")])
+    blocks.substack(
+        active_costume,
+        [_sw(blocks, offset, blocks.list_item("slot code", SLOT_CODE_ID, slotvar()))],
+        name="SUBSTACK2",
+    )
+
+    state_render = blocks.add("control_if_else")
+    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+    blocks.blocks[is_hit]["parent"] = state_render
+    blocks.substack(state_render, [hit_costume])
+    blocks.substack(state_render, [active_costume], name="SUBSTACK2")
+    return state_render
+
+
+def _grobda_costume_subtree(blocks: "Blocks", slotvar, offset: int) -> str:
+    # Grobda: render-only tread roll on the global tick + `slot dx` while ACTIVE;
+    # land craters vs water bursts-and-vanishes while HIT.
+    cur_dx = lambda: blocks.list_item("slot dx", SLOT_DX_ID, slotvar())
+    fwd_ordinal = lambda period: blocks.op_add(
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(period))),
+            number(GROBDA_ROLL_FRAME_COUNT),
+        ),
+        number(1),
+    )
+    reverse_ordinal = blocks.op_sub(
+        number(GROBDA_ROLL_FRAME_COUNT),
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(GROBDA_ROLL_PERIOD))),
+            number(GROBDA_ROLL_FRAME_COUNT),
+        ),
+    )
+    roll_costume = _ground_if_else(
+        blocks,
+        blocks.op_eq(cur_dx(), number(GROBDA_STOPPED_DX)),
+        [blocks.switch_costume("grobda/roll/01")],
         [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            # WPN-04 layering: a ground object sits ON the terrain, under the craft and bomb sight — leave it
-            # unfronted (its static layerOrder is already above the terrain strips) exactly like the Barra.
-            blocks.show(),
+            _ground_if_else(
+                blocks,
+                blocks.op_eq(cur_dx(), number(GROBDA_DART_DX)),
+                [_sw(blocks, offset, fwd_ordinal(GROBDA_ROLL_PERIOD_FAST))],
+                [
+                    _ground_if_else(
+                        blocks,
+                        blocks.op_lt(cur_dx(), number(GROBDA_STOPPED_DX)),
+                        [_sw(blocks, offset, reverse_ordinal)],
+                        [_sw(blocks, offset, fwd_ordinal(GROBDA_ROLL_PERIOD))],
+                    )
+                ],
+            )
         ],
     )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    is_water = functools.reduce(
+        blocks.op_or,
+        (
+            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(t))
+            for t in GROBDA_WATER_TYPES
+        ),
+    )
+    land_explode = blocks.op_add(
+        number(GROBDA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(GROBDA_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    land_costume = _ground_if_else(
+        blocks,
+        cratered,
+        [_sw(blocks, offset, crater_ordinal)],
+        [_sw(blocks, offset, land_explode)],
+    )
+    water_explode = blocks.op_add(
+        number(GROBDA_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GARU_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    hit_costume = _ground_if_else(
+        blocks, is_water, [_sw(blocks, offset, water_explode)], [land_costume]
+    )
+    state_render = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+        [hit_costume],
+        [roll_costume],
+    )
+    return state_render
+
+
+def _domogram_costume_subtree(blocks: "Blocks", slotvar, offset: int) -> str:
+    # Domogram: animates only while firing — costume from the baked `domogram frame
+    # ord` list at (floor(fire timer/4) mod 8)+1; Barra land-crater model while HIT.
+    anim_index = blocks.op_add(
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot fire timer", SLOT_FIRE_TIMER_ID, slotvar()), number(4)
+                )
+            ),
+            number(8),
+        ),
+        number(1),
+    )
+    active_costume = _sw(
+        blocks, offset, blocks.list_item("domogram frame ord", DOMOGRAM_FRAME_ORD_ID, anim_index)
+    )
+    land_explode = blocks.op_add(
+        number(DOMOGRAM_EXPLODE_BASE_ORDINAL),
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                number(GROUND_EXPLOSION_PHASE_FRAMES),
+            )
+        ),
+    )
+    crater_ordinal = blocks.op_add(
+        number(DOMOGRAM_CRATER_BASE_ORDINAL),
+        blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_CRATER_FLICKER_FRAMES),
+                )
+            ),
+            number(2),
+        ),
+    )
+    cratered = blocks.op_not(
+        blocks.op_lt(
+            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+            number(GROUND_CRATER_START_FRAMES),
+        )
+    )
+    hit_costume = _ground_if_else(
+        blocks,
+        cratered,
+        [_sw(blocks, offset, crater_ordinal)],
+        [_sw(blocks, offset, land_explode)],
+    )
+    state_render = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+        [hit_costume],
+        [active_costume],
+    )
+    return state_render
+
+
+def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
+    # The shared ground-renderer clone pool (see the module header above). One
+    # persistent clone per GROUND slot (1..16); each clone is a pure per-tick
+    # function of its slot's live state. The clone reads `slot type`, dispatches to
+    # the matching family's costume subtree (transplanted verbatim from the old
+    # per-family renderer, ordinals rebased into the combined list via `_sw`),
+    # positions with the shared cell->stage mapping, and shows; a slot holding no
+    # ground family (or a Sol Tower still hidden) hides. The clone writes no state.
+    #
+    # WPN-04 layering: like every ground family before it, the pool sits ON the
+    # terrain, under the craft/crosshair/bomb-sight (which front themselves every
+    # tick) — it is left unfronted; its explicit layerOrder (GROUND_LAYER_ORDER)
+    # places it above the terrain strips and, per the arcade, below the flying band.
+    blocks = Blocks(GROUND_RENDER_TARGET)
+    common_stop(blocks, hide=True, clones=True)
+    slotvar = lambda: variable("ground clone slot", GROUND_CLONE_SLOT_ID)
+
+    enter = blocks.receive("director enter")
+    spawn_body: list[str] = []
+    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
+        spawn_body += [
+            blocks.set_var("ground clone slot", GROUND_CLONE_SLOT_ID, number(slot)),
+            blocks.create_clone(),
+        ]
+    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
+
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    loop = blocks.add("control_repeat_until")
+    loop_condition = blocks.not_state(loop, "playing")
+    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
+
+    def stage_xy() -> tuple[str, str]:
+        # Terrain-locked position — the identical cell->stage mapping every family
+        # renderer used. Rebuilt fresh per arm (a reporter binds to one parent).
+        sx = blocks.op_sub(
+            blocks.op_mul(
+                blocks.op_div(
+                    blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)
+                ),
+                number(RENDER_COL_STAGE),
+            ),
+            number(RENDER_COL_OFFSET),
+        )
+        sy = blocks.op_sub(
+            number(RENDER_ROW_TOP),
+            blocks.op_mul(
+                blocks.op_div(
+                    blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)
+                ),
+                number(RENDER_ROW_STAGE),
+            ),
+        )
+        return sx, sy
+
+    def type_eq(type_id: int) -> str:
+        return blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(type_id))
+
+    def type_in(type_ids) -> str:
+        return functools.reduce(blocks.op_or, (type_eq(t) for t in type_ids))
+
+    def show_arm(state_render: str) -> list[str]:
+        sx, sy = stage_xy()
+        return [
+            blocks.go_expr(sx, sy),
+            state_render,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.show(),
+        ]
+
+    def plain_arm(subtree_fn) -> list[str]:
+        return show_arm(subtree_fn())
+
+    def sol_arm() -> list[str]:
+        # Sol Tower keeps its HIDDEN-idle hide exception: HIDDEN only coincides with
+        # ACTIVE (the update flips it to RISING on the reveal tick before render), so
+        # `HIDDEN && not hit` is the invisible pre-reveal citadel; everything else draws.
+        hidden_idle = blocks.op_and(
+            blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(SOL_HIDDEN_PHASE)),
+            blocks.op_not(
+                blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+            ),
+        )
+        gate = _ground_if_else(
+            blocks,
+            blocks.op_not(hidden_idle),
+            show_arm(_sol_tower_costume_subtree(blocks, slotvar, GROUND_FAMILY_OFFSETS["sol-tower"])),
+            [blocks.hide()],
+        )
+        return [gate]
+
+    off = GROUND_FAMILY_OFFSETS
+    # (predicate builder, arm builder) in combined-list order.
+    families = [
+        (
+            lambda: type_eq(BARRA_TYPE),
+            lambda: plain_arm(
+                lambda: _passive_costume_subtree(
+                    blocks, slotvar, off["barra"], "barra/idle/01",
+                    BARRA_EXPLODE_BASE_ORDINAL, BARRA_CRATER_BASE_ORDINAL,
+                )
+            ),
+        ),
+        (lambda: type_eq(SOL_TOWER_TYPE), sol_arm),
+        (
+            lambda: type_eq(GARU_BARRA_TYPE),
+            lambda: plain_arm(
+                lambda: _garu_costume_subtree(
+                    blocks, slotvar, off["garu"], GARU_BASE_EXPOSED_COSTUME,
+                    "barra/idle/01", GARU_EXPLODE_BASE_ORDINAL,
+                )
+            ),
+        ),
+        (
+            lambda: type_eq(LOGRAM_TYPE),
+            lambda: plain_arm(lambda: _logram_costume_subtree(blocks, slotvar, off["logram"])),
+        ),
+        (
+            lambda: type_eq(ZOLBAK_TYPE),
+            lambda: plain_arm(
+                lambda: _passive_costume_subtree(
+                    blocks, slotvar, off["zolbak"], "zolbak/idle/01",
+                    ZOLBAK_EXPLODE_BASE_ORDINAL, ZOLBAK_CRATER_BASE_ORDINAL,
+                )
+            ),
+        ),
+        (
+            lambda: type_eq(DEROTA_TYPE),
+            lambda: plain_arm(
+                lambda: _passive_costume_subtree(
+                    blocks, slotvar, off["derota"], "derota/idle/01",
+                    DEROTA_EXPLODE_BASE_ORDINAL, DEROTA_CRATER_BASE_ORDINAL,
+                )
+            ),
+        ),
+        (
+            lambda: type_eq(GARU_DEROTA_TYPE),
+            lambda: plain_arm(
+                lambda: _garu_costume_subtree(
+                    blocks, slotvar, off["garu derota"], GARU_DEROTA_BASE_EXPOSED_COSTUME,
+                    "derota/idle/01", GARU_DEROTA_EXPLODE_BASE_ORDINAL,
+                )
+            ),
+        ),
+        (
+            lambda: type_eq(BOZA_LOGRAM_TYPE),
+            lambda: plain_arm(lambda: _boza_costume_subtree(blocks, slotvar, off["boza"])),
+        ),
+        (
+            lambda: type_in(GROBDA_TYPES),
+            lambda: plain_arm(lambda: _grobda_costume_subtree(blocks, slotvar, off["grobda"])),
+        ),
+        (
+            lambda: type_eq(DOMOGRAM_TYPE),
+            lambda: plain_arm(lambda: _domogram_costume_subtree(blocks, slotvar, off["domogram"])),
+        ),
+    ]
+
+    branch: list[str] = [blocks.hide()]
+    for pred_fn, arm_fn in reversed(families):
+        node = blocks.add("control_if_else")
+        cond = pred_fn()
+        blocks.blocks[node]["inputs"]["CONDITION"] = [2, cond]
+        blocks.blocks[cond]["parent"] = node
+        blocks.substack(node, arm_fn())
+        blocks.substack(node, branch, name="SUBSTACK2")
+        branch = [node]
+
+    blocks.substack(loop, branch)
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -10346,839 +10791,6 @@ def easter_egg_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(show_if, [blocks.hide()], name="SUBSTACK2")
     blocks.substack(loop, [show_if])
     blocks.chain(enter, [blocks.hide(), loop])
-    return blocks.blocks
-
-
-def garu_blocks() -> dict[str, dict[str, Any]]:
-    # GND-01 Garu Barra renderer (game_director owns these blocks; sprite_extractor owns the costumes).
-    # One persistent clone per GROUND slot (1..16), the same terrain-band clone pool as the Barra. A Garu
-    # occupies two adjacent slots that both carry GARU_BARRA_TYPE, so each clone that sees its slot holding
-    # a Garu branches on the slot's STATE to know which part it is:
-    #   SLOT_GARU_BASE -> the 2x2 indestructible base, pulsing between its two frames on the global `tick`
-    #                     (the arcade cycles pulsing_colour_1; the frame swap stands in). Its costume is a
-    #                     32-px canvas, so the shared GROUND_RENDER_SIZE draws it ~2x the node (arcade 2x2).
-    #   SLOT_ACTIVE    -> the destructible node's idle pyramid (garu/node, mirrored from the Barra pyramid).
-    #   SLOT_HIT       -> the node's explode-and-remove burst (explode_and_remove_object $3216): the shared
-    #                     solv_death frames indexed floor(timer/4). `update garu` removes the slot when the
-    #                     burst finishes, so the clone hides on the next tick — no crater. The clone writes
-    #                     no state.
-    blocks = Blocks(GARU_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("garu clone slot", GARU_CLONE_SLOT_ID)
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("garu clone slot", GARU_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_garu = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(GARU_BARRA_TYPE)
-    )
-    # Terrain-locked position — identical cell->stage mapping to every family renderer.
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    # The node's HIT burst frame: floor(slot timer / 4), the shorter explode-and-remove cadence.
-    burst_ordinal = blocks.op_add(
-        number(GARU_EXPLODE_BASE_ORDINAL),
-        blocks.op_floor(
-            blocks.op_div(
-                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                number(GARU_EXPLOSION_PHASE_FRAMES),
-            )
-        ),
-    )
-    # State cascade: HIT (node exploding) -> base (sentinel) -> ACTIVE node.
-    base_or_node = blocks.add("control_if_else")
-    is_base = blocks.op_eq(
-        blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_GARU_BASE)
-    )
-    blocks.blocks[base_or_node]["inputs"]["CONDITION"] = [2, is_base]
-    blocks.blocks[is_base]["parent"] = base_or_node
-    # The indestructible base holds the red-socket frame (02) statically: bomb the top and the lit red socket
-    # is what shows beneath. The arcade colour-pulses the base's red lights (pulsing_colour_1); Scratch can
-    # pulse neither the red lights alone (a hue shift greens them, a brightness pulse flashes the whole base)
-    # nor synthesise a red-off crop, so the red-light glow is a recorded port necessity (operator decision
-    # 2026-09-24) and the exposed base simply shows the steady lit red socket.
-    blocks.substack(base_or_node, [blocks.switch_costume(GARU_BASE_EXPOSED_COSTUME)])
-    # ACTIVE node idle: the pyramid is a fixed costume (mirrored from the Barra), so select it by name —
-    # switch_costume_expr obscures a menu with a runtime reporter; for a constant the by-name switch is direct.
-    blocks.substack(base_or_node, [blocks.switch_costume("barra/idle/01")], name="SUBSTACK2")
-
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(burst_ordinal)])
-    blocks.substack(state_render, [base_or_node], name="SUBSTACK2")
-
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_garu]
-    blocks.blocks[is_garu]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            # WPN-04 layering: like the Barra, the Garu base/node stay on the terrain,
-            # under the craft and the bomb sight — its static layerOrder is already above
-            # the (never-fronting) terrain, so it is left unfronted. See barra_blocks.
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
-    return blocks.blocks
-
-
-def logram_blocks() -> dict[str, dict[str, Any]]:
-    # GND (ground.logram #71) Logram renderer (game_director owns these blocks; sprite_extractor owns the
-    # costumes). One persistent clone per GROUND slot (1..16), the same terrain-band clone pool as the
-    # Barra/Garu, each a pure per-tick function of its slot's live state:
-    #   ACTIVE -> the open/close dome frame `update logram` wrote into `slot code` (ordinals 1..4 =
-    #             logram/open/01..04). The dome sits closed (ordinal 1) during the wait and opens to 4
-    #             (full) at the shot, so the renderer just mirrors `slot code` via the reporter switch.
-    #   HIT    -> IDENTICAL to the Barra crater (handle_bomb_explosion): the shared solv_death burst for
-    #             the first GROUND_CRATER_START_FRAMES (floor(timer/8)), then a PERSISTENT crater flickering
-    #             the two crater frames (floor(timer/4) mod 2), scrolling until it culls. No free-on-clock.
-    # The clone writes no state.
-    blocks = Blocks(LOGRAM_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("logram clone slot", LOGRAM_CLONE_SLOT_ID)
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("logram clone slot", LOGRAM_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_logram = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(LOGRAM_TYPE)
-    )
-    # Terrain-locked position — identical cell->stage mapping to every family renderer.
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    # HIT costume: explosion burst until the crater begins, then the flickering crater (Barra-identical).
-    explode_ordinal = blocks.op_add(
-        number(LOGRAM_EXPLODE_BASE_ORDINAL),
-        blocks.op_floor(
-            blocks.op_div(
-                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                number(GROUND_EXPLOSION_PHASE_FRAMES),
-            )
-        ),
-    )
-    crater_ordinal = blocks.op_add(
-        number(LOGRAM_CRATER_BASE_ORDINAL),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(
-                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                    number(GROUND_CRATER_FLICKER_FRAMES),
-                )
-            ),
-            number(2),
-        ),
-    )
-    hit_costume = blocks.add("control_if_else")
-    cratered = blocks.op_not(
-        blocks.op_lt(
-            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-            number(GROUND_CRATER_START_FRAMES),
-        )
-    )
-    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
-    blocks.blocks[cratered]["parent"] = hit_costume
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
-
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [hit_costume])
-    # ACTIVE: the dome frame the update wrote into `slot code` (a runtime ordinal, so the reporter switch —
-    # a numeric costume value selects that 1-based costume, exactly as the burst/crater ordinals do).
-    blocks.substack(
-        state_render,
-        [blocks.switch_costume_expr(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()))],
-        name="SUBSTACK2",
-    )
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_logram]
-    blocks.blocks[is_logram]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            # WPN-04 layering: like the Barra, the Logram dome/crater stays on the terrain,
-            # under the craft and the bomb sight — its static layerOrder is already above
-            # the (never-fronting) terrain, so it is left unfronted. See barra_blocks.
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
-    return blocks.blocks
-
-
-def boza_blocks() -> dict[str, dict[str, Any]]:
-    # GND-05 (ground.boza-logram #87) renderer (game_director owns these blocks; sprite_extractor owns the
-    # costumes). One persistent clone per GROUND slot (1..16), the same terrain-band clone pool as every
-    # ground family, each a pure per-tick function of its slot's live state. All five composite parts share
-    # BOZA_LOGRAM_TYPE, so the clone branches on `slot link` (the outer/centre discriminator, mirroring the
-    # walk's own branch):
-    #   OUTER (link > 0)  ACTIVE -> the open/close dome frame `update boza` wrote into `slot code` (ordinals
-    #                              1..4 = logram/open/01..04, REUSED for the identical arcade sprites 0x2C..0x2F).
-    #   CENTRE (link == 0) ACTIVE -> the fixed bullseye costume BOZA_CENTRE_ORDINAL (5 = boza-centre/core/01,
-    #                              arcade code 0x3a); the centre never animates, so `slot code` is not read.
-    #   EITHER            HIT    -> IDENTICAL to the Barra/Logram crater (handle_bomb_explosion): the shared
-    #                              burst for the first GROUND_CRATER_START_FRAMES (floor(timer/8)), then the
-    #                              PERSISTENT two-frame flickering crater (floor(timer/4) mod 2), scrolling
-    #                              until it culls. No free-on-clock. The clone writes no state.
-    blocks = Blocks(BOZA_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("boza clone slot", BOZA_CLONE_SLOT_ID)
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("boza clone slot", BOZA_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_boza = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(BOZA_LOGRAM_TYPE)
-    )
-    # Terrain-locked position — identical cell->stage mapping to every family renderer.
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    # HIT costume: explosion burst until the crater begins, then the flickering crater (Barra-identical).
-    explode_ordinal = blocks.op_add(
-        number(BOZA_EXPLODE_BASE_ORDINAL),
-        blocks.op_floor(
-            blocks.op_div(
-                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                number(GROUND_EXPLOSION_PHASE_FRAMES),
-            )
-        ),
-    )
-    crater_ordinal = blocks.op_add(
-        number(BOZA_CRATER_BASE_ORDINAL),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(
-                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                    number(GROUND_CRATER_FLICKER_FRAMES),
-                )
-            ),
-            number(2),
-        ),
-    )
-    hit_costume = blocks.add("control_if_else")
-    cratered = blocks.op_not(
-        blocks.op_lt(
-            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-            number(GROUND_CRATER_START_FRAMES),
-        )
-    )
-    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
-    blocks.blocks[cratered]["parent"] = hit_costume
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
-
-    # ACTIVE costume: the CENTRE (link == 0) shows the fixed bullseye; an OUTER mirrors its `slot code` dome.
-    active_costume = blocks.add("control_if_else")
-    is_centre = blocks.op_eq(blocks.list_item("slot link", SLOT_LINK_ID, slotvar()), number(0))
-    blocks.blocks[active_costume]["inputs"]["CONDITION"] = [2, is_centre]
-    blocks.blocks[is_centre]["parent"] = active_costume
-    # The centre's bullseye is a single fixed costume (BOZA_CENTRE_ORDINAL = 5), so select it by name.
-    blocks.substack(active_costume, [blocks.switch_costume("boza-centre/core/01")])
-    blocks.substack(
-        active_costume,
-        [blocks.switch_costume_expr(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()))],
-        name="SUBSTACK2",
-    )
-
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [hit_costume])
-    blocks.substack(state_render, [active_costume], name="SUBSTACK2")
-
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_boza]
-    blocks.blocks[is_boza]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            # WPN-04 layering: like the Barra/Logram, the Boza dome/bullseye/crater stays on the terrain,
-            # under the craft and the bomb sight — its static layerOrder is already above the (never-fronting)
-            # terrain, so it is left unfronted. See barra_blocks.
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
-    return blocks.blocks
-
-
-def _passive_ground_blocks(
-    target: str,
-    clone_slot_name: str,
-    clone_slot_id: str,
-    slot_type: int,
-    idle_costume: str,
-    explode_base: int,
-    crater_base: int,
-) -> dict[str, dict[str, Any]]:
-    # GND shared renderer for a single-slot passive-or-crater ground family (Barra crater model): one
-    # persistent clone per GROUND slot (1..16), a pure per-tick function of its slot's live state — an idle
-    # costume while ACTIVE; while HIT the bomb-explosion clock (slot timer, zeroed by the detector) plays
-    # the shared solv_death burst (floor(timer/8)) then a PERSISTENT flickering crater. Identical to
-    # barra_blocks except target / clone-slot var / type / idle costume / costume ordinals — the Zolbak and
-    # Derota renderers are this same model (a Zolbak's AI-level side-effect and a Derota's firing both live
-    # in their update procs, not in the pure renderer). See barra_blocks for the layering rationale.
-    blocks = Blocks(target)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable(clone_slot_name, clone_slot_id)
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var(clone_slot_name, clone_slot_id, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_family = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(slot_type)
-    )
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    explode_ordinal = blocks.op_add(
-        number(explode_base),
-        blocks.op_floor(
-            blocks.op_div(
-                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                number(GROUND_EXPLOSION_PHASE_FRAMES),
-            )
-        ),
-    )
-    crater_ordinal = blocks.op_add(
-        number(crater_base),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(
-                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                    number(GROUND_CRATER_FLICKER_FRAMES),
-                )
-            ),
-            number(2),
-        ),
-    )
-    hit_costume = blocks.add("control_if_else")
-    cratered = blocks.op_not(
-        blocks.op_lt(
-            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-            number(GROUND_CRATER_START_FRAMES),
-        )
-    )
-    blocks.blocks[hit_costume]["inputs"]["CONDITION"] = [2, cratered]
-    blocks.blocks[cratered]["parent"] = hit_costume
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(crater_ordinal)])
-    blocks.substack(hit_costume, [blocks.switch_costume_expr(explode_ordinal)], name="SUBSTACK2")
-
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [hit_costume])
-    blocks.substack(state_render, [blocks.switch_costume(idle_costume)], name="SUBSTACK2")
-
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_family]
-    blocks.blocks[is_family]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
-    return blocks.blocks
-
-
-def zolbak_blocks() -> dict[str, dict[str, Any]]:
-    # GND-02 (ground.zolbak #85) renderer — the Barra crater model with the Zolbak dome costume. The
-    # AI-level reduction on death is in `update zolbak`; the renderer is a pure function of slot state.
-    return _passive_ground_blocks(
-        ZOLBAK_TARGET,
-        "zolbak clone slot",
-        ZOLBAK_CLONE_SLOT_ID,
-        ZOLBAK_TYPE,
-        "zolbak/idle/01",
-        ZOLBAK_EXPLODE_BASE_ORDINAL,
-        ZOLBAK_CRATER_BASE_ORDINAL,
-    )
-
-
-def derota_blocks() -> dict[str, dict[str, Any]]:
-    # GND-04 (ground.derota #86) renderer — the Barra crater model with the Derota turret costume. A Derota
-    # craters on a bomb hit exactly like the Barra; its periodic firing is in `update derota`.
-    return _passive_ground_blocks(
-        DEROTA_TARGET,
-        "derota clone slot",
-        DEROTA_CLONE_SLOT_ID,
-        DEROTA_TYPE,
-        "derota/idle/01",
-        DEROTA_EXPLODE_BASE_ORDINAL,
-        DEROTA_CRATER_BASE_ORDINAL,
-    )
-
-
-def garu_derota_blocks() -> dict[str, dict[str, Any]]:
-    # GND-04 (ground.derota #86) Garu Derota renderer (game_director owns these blocks; sprite_extractor
-    # owns the costumes). Structurally identical to the Garu Barra renderer — one clone per GROUND slot,
-    # branching on the slot's STATE because base and node share GARU_DEROTA_TYPE:
-    #   SLOT_GARU_BASE -> the 2x2 indestructible base, pulsing its two 32-px frames on the global tick
-    #                     (closed / open-firing centre; stands in for the arcade's pulsing_colour_1 base).
-    #   SLOT_ACTIVE    -> the destructible FIRING node's turret (garu-derota/node, reused from derota/idle).
-    #   SLOT_HIT       -> the node's explode-and-remove burst (floor(timer/4)); `update garu derota` removes
-    #                     the slot when the burst finishes, so the clone hides next tick — no crater.
-    # The node's firing is in `update garu derota`; the renderer is a pure function of slot state.
-    blocks = Blocks(GARU_DEROTA_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("garu derota clone slot", GARU_DEROTA_CLONE_SLOT_ID)
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("garu derota clone slot", GARU_DEROTA_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_garu = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(GARU_DEROTA_TYPE)
-    )
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    burst_ordinal = blocks.op_add(
-        number(GARU_DEROTA_EXPLODE_BASE_ORDINAL),
-        blocks.op_floor(
-            blocks.op_div(
-                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                number(GARU_EXPLOSION_PHASE_FRAMES),
-            )
-        ),
-    )
-    base_or_node = blocks.add("control_if_else")
-    is_base = blocks.op_eq(
-        blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_GARU_BASE)
-    )
-    blocks.blocks[base_or_node]["inputs"]["CONDITION"] = [2, is_base]
-    blocks.blocks[is_base]["parent"] = base_or_node
-    # The indestructible base holds the open red firing-centre frame (02) statically (see the Garu Barra
-    # renderer): the arcade's pulsing_colour_1 red-light glow is a recorded port necessity, not reproduced
-    # (Scratch cannot pulse the red alone; the crop-only sheet has no red-off cell; operator decision
-    # 2026-09-24).
-    blocks.substack(base_or_node, [blocks.switch_costume(GARU_DEROTA_BASE_EXPOSED_COSTUME)])
-    blocks.substack(base_or_node, [blocks.switch_costume("derota/idle/01")], name="SUBSTACK2")
-
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(burst_ordinal)])
-    blocks.substack(state_render, [base_or_node], name="SUBSTACK2")
-
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_garu]
-    blocks.blocks[is_garu]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
-    return blocks.blocks
-
-
-def grobda_blocks() -> dict[str, dict[str, Any]]:
-    # GND-06 (ground.grobda #88) renderer (game_director owns these blocks; sprite_extractor owns the
-    # costumes). One persistent clone per GROUND slot (1..16), a pure per-tick function of the slot's live
-    # state — the 12 variants share ONE tank costume set. While ACTIVE the tread ROLL is a render-only
-    # function of the GLOBAL tick + `slot dx` (the walk never writes `slot code`, and `slot timer` is busy
-    # with the reaction countdown): a stopped tank (dx == GROBDA_STOPPED_DX) holds roll frame 1; a forward
-    # tank cycles the 4 tread frames, a darting tank cycles them faster, and a reversing tank cycles them
-    # backward. While HIT a LAND Grobda plays the shared solv_death burst then a PERSISTENT flickering crater
-    # (the Barra model); a WATER Grobda plays the burst at the Garu-node cadence and VANISHES (the slot is
-    # culled by `update grobda`, so the clone hides next tick — no crater). Position/scale match every other
-    # ground family.
-    blocks = Blocks(GROBDA_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("grobda clone slot", GROBDA_CLONE_SLOT_ID)
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("grobda clone slot", GROBDA_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_grobda = functools.reduce(
-        blocks.op_or,
-        (blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(t)) for t in GROBDA_TYPES),
-    )
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-    cur_dx = lambda: blocks.list_item("slot dx", SLOT_DX_ID, slotvar())
-    # A forward tread phase at `period`: (floor(tick/period) mod FRAMES) + 1 -> ordinal 1..4. A reverse phase
-    # runs the same cycle backward. Each reporter is rebuilt fresh (a reporter binds to one parent only).
-    fwd_ordinal = lambda period: blocks.op_add(
-        blocks.op_mod(
-            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(period))),
-            number(GROBDA_ROLL_FRAME_COUNT),
-        ),
-        number(1),
-    )
-    reverse_ordinal = blocks.op_sub(
-        number(GROBDA_ROLL_FRAME_COUNT),
-        blocks.op_mod(
-            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(GROBDA_ROLL_PERIOD))),
-            number(GROBDA_ROLL_FRAME_COUNT),
-        ),
-    )
-    # ACTIVE tread costume: stopped -> hold frame 1; dart -> fast forward; back -> reverse; else forward.
-    def _if_else(cond: str, then_body: list[str], else_body: list[str]) -> str:
-        node = blocks.add("control_if_else")
-        blocks.blocks[node]["inputs"]["CONDITION"] = [2, cond]
-        blocks.blocks[cond]["parent"] = node
-        blocks.substack(node, then_body)
-        blocks.substack(node, else_body, name="SUBSTACK2")
-        return node
-    roll_costume = _if_else(
-        blocks.op_eq(cur_dx(), number(GROBDA_STOPPED_DX)),
-        [blocks.switch_costume("grobda/roll/01")],
-        [
-            _if_else(
-                blocks.op_eq(cur_dx(), number(GROBDA_DART_DX)),
-                [blocks.switch_costume_expr(fwd_ordinal(GROBDA_ROLL_PERIOD_FAST))],
-                [
-                    _if_else(
-                        blocks.op_lt(cur_dx(), number(GROBDA_STOPPED_DX)),
-                        [blocks.switch_costume_expr(reverse_ordinal)],
-                        [blocks.switch_costume_expr(fwd_ordinal(GROBDA_ROLL_PERIOD))],
-                    )
-                ],
-            )
-        ],
-    )
-    # HIT costume: land craters (burst -> persistent flicker), water bursts at the Garu-node cadence & vanishes.
-    is_water = functools.reduce(
-        blocks.op_or,
-        (blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(t)) for t in GROBDA_WATER_TYPES),
-    )
-    land_explode = blocks.op_add(
-        number(GROBDA_EXPLODE_BASE_ORDINAL),
-        blocks.op_floor(
-            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_EXPLOSION_PHASE_FRAMES))
-        ),
-    )
-    crater_ordinal = blocks.op_add(
-        number(GROBDA_CRATER_BASE_ORDINAL),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_CRATER_FLICKER_FRAMES))
-            ),
-            number(2),
-        ),
-    )
-    cratered = blocks.op_not(
-        blocks.op_lt(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_CRATER_START_FRAMES))
-    )
-    land_costume = _if_else(cratered, [blocks.switch_costume_expr(crater_ordinal)], [blocks.switch_costume_expr(land_explode)])
-    water_explode = blocks.op_add(
-        number(GROBDA_EXPLODE_BASE_ORDINAL),
-        blocks.op_floor(
-            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GARU_EXPLOSION_PHASE_FRAMES))
-        ),
-    )
-    hit_costume = _if_else(is_water, [blocks.switch_costume_expr(water_explode)], [land_costume])
-
-    state_render = _if_else(
-        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
-        [hit_costume],
-        [roll_costume],
-    )
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_grobda]
-    blocks.blocks[is_grobda]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
-    return blocks.blocks
-
-
-def domogram_blocks() -> dict[str, dict[str, Any]]:
-    # GND-07 (ground.domogram #89) renderer (game_director owns these blocks; sprite_extractor owns the
-    # costumes). One persistent clone per GROUND slot (1..16), a pure per-tick function of the slot's live
-    # state. While ACTIVE the sprite ANIMATES only while firing: the arcade selects the costume from
-    # `(_TYPE >> 2) & 7` indexing domogram_sprite_tbl (the walk never writes `slot code`), so the renderer
-    # reads `slot fire timer` (_TYPE, the shot-animation timer, 0 when idle) the same way — anim index =
-    # floor(_TYPE / 4) mod 8, mapped to a costume ordinal through the baked `domogram frame ord` list (idle
-    # _TYPE 0 -> index 0 -> ordinal 1, the resting sprite). While HIT it craters PERSISTENTLY like the Barra:
-    # the shared solv_death burst, then a flickering crater (a Domogram always craters on land — it has no
-    # water variant). Position/scale match every other ground family.
-    blocks = Blocks(DOMOGRAM_TARGET)
-    common_stop(blocks, hide=True, clones=True)
-    slotvar = lambda: variable("domogram clone slot", DOMOGRAM_CLONE_SLOT_ID)
-
-    enter = blocks.receive("director enter")
-    spawn_body: list[str] = []
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        spawn_body += [
-            blocks.set_var("domogram clone slot", DOMOGRAM_CLONE_SLOT_ID, number(slot)),
-            blocks.create_clone(),
-        ]
-    blocks.chain(enter, [blocks.if_state("playing", spawn_body)])
-
-    clone = blocks.add("control_start_as_clone", top_level=True)
-    loop = blocks.add("control_repeat_until")
-    loop_condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
-    is_domogram = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(DOMOGRAM_TYPE)
-    )
-    stage_x = blocks.op_sub(
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_COL_STAGE),
-        ),
-        number(RENDER_COL_OFFSET),
-    )
-    stage_y = blocks.op_sub(
-        number(RENDER_ROW_TOP),
-        blocks.op_mul(
-            blocks.op_div(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
-            number(RENDER_ROW_STAGE),
-        ),
-    )
-
-    def _if_else(cond: str, then_body: list[str], else_body: list[str]) -> str:
-        node = blocks.add("control_if_else")
-        blocks.blocks[node]["inputs"]["CONDITION"] = [2, cond]
-        blocks.blocks[cond]["parent"] = node
-        blocks.substack(node, then_body)
-        blocks.substack(node, else_body, name="SUBSTACK2")
-        return node
-
-    # ACTIVE sprite: the arcade's `(_TYPE >> 2) & 7` index into domogram_sprite_tbl, ported as a lookup of the
-    # baked `domogram frame ord` list at (floor(_TYPE/4) mod 8) + 1 (1-based Scratch list). _TYPE is even and
-    # <= 22 when rendered, so the live index is 0..5; the list's two trailing entries are inert padding.
-    anim_index = blocks.op_add(
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(
-                    blocks.list_item("slot fire timer", SLOT_FIRE_TIMER_ID, slotvar()), number(4)
-                )
-            ),
-            number(8),
-        ),
-        number(1),
-    )
-    active_costume = blocks.switch_costume_expr(
-        blocks.list_item("domogram frame ord", DOMOGRAM_FRAME_ORD_ID, anim_index)
-    )
-
-    # HIT sprite: the Barra land-crater model — the shared burst then a persistent 2-frame flicker.
-    land_explode = blocks.op_add(
-        number(DOMOGRAM_EXPLODE_BASE_ORDINAL),
-        blocks.op_floor(
-            blocks.op_div(
-                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_EXPLOSION_PHASE_FRAMES)
-            )
-        ),
-    )
-    crater_ordinal = blocks.op_add(
-        number(DOMOGRAM_CRATER_BASE_ORDINAL),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(
-                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_CRATER_FLICKER_FRAMES)
-                )
-            ),
-            number(2),
-        ),
-    )
-    cratered = blocks.op_not(
-        blocks.op_lt(
-            blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(GROUND_CRATER_START_FRAMES)
-        )
-    )
-    hit_costume = _if_else(
-        cratered, [blocks.switch_costume_expr(crater_ordinal)], [blocks.switch_costume_expr(land_explode)]
-    )
-
-    state_render = _if_else(
-        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
-        [hit_costume],
-        [active_costume],
-    )
-    render = blocks.add("control_if_else")
-    blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_domogram]
-    blocks.blocks[is_domogram]["parent"] = render
-    blocks.substack(
-        render,
-        [
-            blocks.go_expr(stage_x, stage_y),
-            state_render,
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
-            blocks.show(),
-        ],
-    )
-    blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
-    blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
 
@@ -12266,18 +11878,19 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, GARU_ZAKATO_TARGET)
     _ensure_gameplay_target(result, BACURA_TARGET)
     _ensure_gameplay_target(result, SHEONITE_TARGET)
-    _ensure_gameplay_target(result, BARRA_TARGET)
-    _ensure_gameplay_target(result, SOL_TOWER_TARGET)
+    # Slice-15 PR-1: the 10 full-band ground families are collapsed into ONE shared render target. Prune the
+    # legacy per-family targets (idempotent — a no-op once they are gone), ensure the shared "ground" target,
+    # and pin its layerOrder deterministically. Per the arcade z-order (verified at the pinned source: ground
+    # installations draw in the first pass, BEHIND aerial enemies), GROUND_LAYER_ORDER places the pool just
+    # below the flying band. Bonus Flag and Easter Egg sit off the full band and stay their own targets.
+    result["targets"] = [
+        t for t in result["targets"] if t.get("name") not in GROUND_RENDER_LEGACY_TARGETS
+    ]
     _ensure_gameplay_target(result, BONUS_FLAG_TARGET)
     _ensure_gameplay_target(result, EASTER_EGG_TARGET)
-    _ensure_gameplay_target(result, GARU_TARGET)
-    _ensure_gameplay_target(result, LOGRAM_TARGET)
-    _ensure_gameplay_target(result, ZOLBAK_TARGET)
-    _ensure_gameplay_target(result, DEROTA_TARGET)
-    _ensure_gameplay_target(result, GARU_DEROTA_TARGET)
-    _ensure_gameplay_target(result, BOZA_TARGET)
-    _ensure_gameplay_target(result, GROBDA_TARGET)
-    _ensure_gameplay_target(result, DOMOGRAM_TARGET)
+    _ensure_gameplay_target(result, GROUND_RENDER_TARGET)
+    _ground_target = next(t for t in result["targets"] if t.get("name") == GROUND_RENDER_TARGET)
+    _ground_target["layerOrder"] = GROUND_LAYER_ORDER
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -12380,29 +11993,78 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     if proof is not None and sheonite is not None:
         sheonite["costumes"] = proof_by_family("sheonite/")
         sheonite["currentCostume"] = 0
-    # GND-01: the Barra renderer mirrors its single idle pyramid frame (ordinal 1), then the shared
-    # explosion burst (the same solv_death frames, ordinals 2..9 — the ground bomb-burst is a deferred
-    # cosmetic, so the aerial burst stands in), then the two crater frames (ordinals 10..11) that the
-    # HIT renderer flickers between once the burst finishes. Idempotent; a no-op when any source is
-    # absent (generation runs to a fixpoint).
-    barra = next((t for t in result["targets"] if t.get("name") == BARRA_TARGET), None)
-    if proof is not None and barra is not None:
-        barra["costumes"] = proof_by_family("barra/")
-        if death is not None:
-            barra["costumes"].extend(copy.deepcopy(death["costumes"]))
-        barra["costumes"].extend(proof_by_family("crater/"))
-        barra["currentCostume"] = 0
-    # SEC-01 (ground.sol-tower #90): the Sol Tower renderer mirrors its 7 rise frames (ordinals 1..7;
-    # sol-tower/rise/01..07), then the shared solv_death explosion burst (ordinals 8..15) and the two crater
-    # frames (ordinals 16..17) — the SAME crater as the Barra, since a risen Sol Tower's destruction runs
-    # handle_bomb_explosion. Idempotent; a no-op when any source is absent (generation runs to a fixpoint).
-    sol_tower = next((t for t in result["targets"] if t.get("name") == SOL_TOWER_TARGET), None)
-    if proof is not None and sol_tower is not None:
-        sol_tower["costumes"] = proof_by_family("sol-tower/")
-        if death is not None:
-            sol_tower["costumes"].extend(copy.deepcopy(death["costumes"]))
-        sol_tower["costumes"].extend(proof_by_family("crater/"))
-        sol_tower["currentCostume"] = 0
+    # Slice-15 PR-1 shared ground pool: the 10 full-band families' costume slices are concatenated into ONE
+    # combined "ground" costume list, in GROUND_FAMILY_COSTUME_COUNTS order. Each slice is the SAME
+    # proof_by_family(+ shared solv_death burst + crater) recipe the per-family renderers used; the shared
+    # renderer offsets each family's costume ordinals by its start in the combined list (GROUND_FAMILY_OFFSETS).
+    # Two generation gates prove the merge is render-preserving: (1) each built slice length == its declared
+    # count (a manifest shift fails loud instead of silently misindexing); (2) no costume NAME maps to two
+    # different assets (protecting scratch-vm's by-name FIRST-match resolution — the cross-family duplicate
+    # names, i.e. the shared burst/crater/idle crops, are byte-identical deep-copies). Idempotent; a no-op when
+    # the proof source is absent (generation runs both to a fixpoint).
+    ground = next((t for t in result["targets"] if t.get("name") == GROUND_RENDER_TARGET), None)
+    if proof is not None and ground is not None:
+        death_frames = lambda: (copy.deepcopy(death["costumes"]) if death is not None else [])
+        ground_slices = {
+            "barra": proof_by_family("barra/") + death_frames() + proof_by_family("crater/"),
+            "sol-tower": proof_by_family("sol-tower/") + death_frames() + proof_by_family("crater/"),
+            "garu": proof_by_family("garu/") + proof_by_family("barra/") + death_frames(),
+            "logram": proof_by_family("logram/") + death_frames() + proof_by_family("crater/"),
+            "zolbak": proof_by_family("zolbak/") + death_frames() + proof_by_family("crater/"),
+            "derota": proof_by_family("derota/") + death_frames() + proof_by_family("crater/"),
+            "garu derota": proof_by_family("garu-derota/") + proof_by_family("derota/") + death_frames(),
+            "boza": proof_by_family("logram/")
+            + proof_by_family("boza-centre/")
+            + death_frames()
+            + proof_by_family("crater/"),
+            "grobda": proof_by_family("grobda/") + death_frames() + proof_by_family("crater/"),
+            "domogram": proof_by_family("domogram/") + death_frames() + proof_by_family("crater/"),
+        }
+        combined: list[dict[str, Any]] = []
+        combined_family: list[str] = []
+        for family_key, declared_count in GROUND_FAMILY_COSTUME_COUNTS:
+            family_slice = ground_slices[family_key]
+            if len(family_slice) != declared_count:
+                raise AssertionError(
+                    f"ground family {family_key!r}: assembled {len(family_slice)} costumes, "
+                    f"GROUND_FAMILY_COSTUME_COUNTS declares {declared_count}"
+                )
+            combined.extend(family_slice)
+            combined_family.extend([family_key] * len(family_slice))
+        # scratch-vm's SB3 loader enforces uniqueItems on a target's costume list: two byte-identical costume
+        # OBJECTS are legal across separate targets but NOT within one. The ten families share many crops by
+        # ref (the solv_death burst frames, the crater flicker pair, and the by-ref reused barra/derota idles
+        # and logram open frames), so the concatenated list carries duplicate objects. Every such duplicate is
+        # selected BY INDEX (switch_costume_expr on a computed ordinal — resolved by POSITION, not name); only
+        # the FIRST occurrence of each name is ever selected BY NAME (switch_costume), which scratch-vm resolves
+        # to that first match. So keep each name's first occurrence canonical and rename every later identical
+        # duplicate to a unique, deterministic name (f"{name} #{family}"). Index selection is unaffected
+        # (position unchanged) and the rendered pixels are identical (the name is never drawn) — this only
+        # satisfies the loader's uniqueItems constraint. A name that mapped to two DIFFERENT assets would make
+        # by-name resolution genuinely ambiguous, so that still fails loud.
+        seen_assets: dict[str, tuple] = {}
+        used_names: set[str] = set()
+        for costume, family_key in zip(combined, combined_family):
+            costume_name = costume.get("name")
+            asset = (costume.get("assetId"), costume.get("md5ext"), costume.get("dataFormat"))
+            if costume_name in seen_assets:
+                if seen_assets[costume_name] != asset:
+                    raise AssertionError(
+                        f"ground costume name {costume_name!r} maps to two different assets "
+                        f"({seen_assets[costume_name]} vs {asset}); by-name costume switches would be ambiguous"
+                    )
+                unique_name = f"{costume_name} #{family_key}"
+            else:
+                seen_assets[costume_name] = asset
+                unique_name = costume_name
+            if unique_name in used_names:
+                raise AssertionError(
+                    f"ground duplicate-costume rename {unique_name!r} collides with an existing costume name"
+                )
+            costume["name"] = unique_name
+            used_names.add(unique_name)
+        ground["costumes"] = combined
+        ground["currentCostume"] = 0
     # SEC-02 (secrets.bonus-flag #91): the Bonus Flag renderer mirrors its single revealed-flag frame
     # (ordinal 1; bonus-flag/flag/01, the arcade CODE=0x1f sprite) — and NOTHING else. Like the Bacura and
     # Sheonite the flag is never destroyed on screen: a bomb REVEALS it whole (no burst) and a fly-over just
@@ -12412,101 +12074,6 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     if proof is not None and bonus_flag is not None:
         bonus_flag["costumes"] = proof_by_family("bonus-flag/")
         bonus_flag["currentCostume"] = 0
-    # GND-01: the Garu Barra renderer mirrors its two 2x2 base frames (ordinals 1..2; the exposed base holds
-    # ordinal 2, the red socket — ordinal 1 is retained as a crop but not rendered), then the node
-    # idle pyramid (ordinal 3, "garu/node reuses the Barra pyramid" -> the barra/idle frame mirrored in),
-    # then the shared explosion burst (ordinals 4..11) the node plays before it vanishes. Idempotent; a
-    # no-op when any source is absent (generation runs to a fixpoint).
-    garu = next((t for t in result["targets"] if t.get("name") == GARU_TARGET), None)
-    if proof is not None and garu is not None:
-        garu["costumes"] = proof_by_family("garu/")
-        garu["costumes"].extend(proof_by_family("barra/"))
-        if death is not None:
-            garu["costumes"].extend(copy.deepcopy(death["costumes"]))
-        garu["currentCostume"] = 0
-    # GND (ground.logram #71): the Logram renderer mirrors its 4 open/close dome frames (ordinals 1..4),
-    # then the shared explosion burst (ordinals 5..12) and the two crater frames (ordinals 13..14) — the
-    # SAME crater as the Barra, since a bombed Logram runs handle_bomb_explosion. Idempotent; a no-op when
-    # any source is absent (generation runs to a fixpoint).
-    logram = next((t for t in result["targets"] if t.get("name") == LOGRAM_TARGET), None)
-    if proof is not None and logram is not None:
-        logram["costumes"] = proof_by_family("logram/")
-        if death is not None:
-            logram["costumes"].extend(copy.deepcopy(death["costumes"]))
-        logram["costumes"].extend(proof_by_family("crater/"))
-        logram["currentCostume"] = 0
-    # GND-02 (ground.zolbak #85): the Zolbak renderer mirrors its single idle dome frame (ordinal 1), then the
-    # shared explosion burst (ordinals 2..9) and the two crater frames (ordinals 10..11) — the SAME crater as
-    # the Barra, since a bombed Zolbak runs the shared ground bomb pipeline. Zolbak never fires; its only
-    # distinction is the on-death AI-level reduction, which lives in install_update_zolbak, not the renderer.
-    # Idempotent; a no-op when any source is absent (generation runs to a fixpoint).
-    zolbak = next((t for t in result["targets"] if t.get("name") == ZOLBAK_TARGET), None)
-    if proof is not None and zolbak is not None:
-        zolbak["costumes"] = proof_by_family("zolbak/")
-        if death is not None:
-            zolbak["costumes"].extend(copy.deepcopy(death["costumes"]))
-        zolbak["costumes"].extend(proof_by_family("crater/"))
-        zolbak["currentCostume"] = 0
-    # GND-04 (ground.derota #86): the Derota renderer mirrors its single idle turret frame (ordinal 1), then the
-    # shared explosion burst (ordinals 2..9) and the two crater frames (ordinals 10..11) — the SAME crater as
-    # the Barra. Derota is a plain periodic turret (no open/close dome cycle); its firing lives in
-    # install_update_derota. Idempotent; a no-op when any source is absent (generation runs to a fixpoint).
-    derota = next((t for t in result["targets"] if t.get("name") == DEROTA_TARGET), None)
-    if proof is not None and derota is not None:
-        derota["costumes"] = proof_by_family("derota/")
-        if death is not None:
-            derota["costumes"].extend(copy.deepcopy(death["costumes"]))
-        derota["costumes"].extend(proof_by_family("crater/"))
-        derota["currentCostume"] = 0
-    # GND-04 (ground.derota #86): the Garu Derota renderer mirrors its two 2x2 base frames (ordinals
-    # 1..2; the exposed base holds ordinal 2, the red firing centre — ordinal 1 is retained as a crop but not
-    # rendered), then the node turret frame (ordinal 3 — the node reuses the Derota turret bitmap, a documented
-    # port necessity: the sheet has no separate small node cell and the node carries turret code 0x27), then
-    # the shared explosion burst (ordinals 4..11) the node plays before it vanishes. The base is indestructible;
-    # the node fires (install_update_garu_derota). Idempotent; a no-op when any source is absent.
-    garu_derota = next((t for t in result["targets"] if t.get("name") == GARU_DEROTA_TARGET), None)
-    if proof is not None and garu_derota is not None:
-        garu_derota["costumes"] = proof_by_family("garu-derota/")
-        garu_derota["costumes"].extend(proof_by_family("derota/"))
-        if death is not None:
-            garu_derota["costumes"].extend(copy.deepcopy(death["costumes"]))
-        garu_derota["currentCostume"] = 0
-    # GND-05 (ground.boza-logram #87): the Boza renderer mirrors the 4 Logram open/close dome frames (ordinals
-    # 1..4 — the outer domes REUSE the identical arcade sprites 0x2C..0x2F, so they reference the same crops),
-    # then the single centre bullseye frame (ordinal 5 = boza-centre/, arcade code 0x3a), then the shared
-    # explosion burst (ordinals 6..13) and the two crater frames (ordinals 14..15) — the SAME crater as the
-    # Barra, since both an outer and the centre run handle_bomb_explosion on a bomb hit. Idempotent; a no-op
-    # when any source is absent (generation runs to a fixpoint).
-    boza = next((t for t in result["targets"] if t.get("name") == BOZA_TARGET), None)
-    if proof is not None and boza is not None:
-        boza["costumes"] = proof_by_family("logram/")
-        boza["costumes"].extend(proof_by_family("boza-centre/"))
-        if death is not None:
-            boza["costumes"].extend(copy.deepcopy(death["costumes"]))
-        boza["costumes"].extend(proof_by_family("crater/"))
-        boza["currentCostume"] = 0
-    # GND-06 (ground.grobda #88): the Grobda renderer mirrors its 4 tank tread frames (grobda/roll/01..04,
-    # ordinals 1..4 — the 12 variants share ONE tank costume set), then the shared explosion burst (ordinals
-    # 5..12) that BOTH the land crater and the water explode-and-remove draw from, then the two crater frames
-    # (ordinals 13..14) — the SAME crater as the Barra, since a bombed LAND Grobda runs handle_bomb_explosion
-    # (a water Grobda never shows them; it vanishes). Idempotent; a no-op when any source is absent (fixpoint).
-    grobda = next((t for t in result["targets"] if t.get("name") == GROBDA_TARGET), None)
-    if proof is not None and grobda is not None:
-        grobda["costumes"] = proof_by_family("grobda/")
-        if death is not None:
-            grobda["costumes"].extend(copy.deepcopy(death["costumes"]))
-        grobda["costumes"].extend(proof_by_family("crater/"))
-        grobda["currentCostume"] = 0
-    # GND-07 (ground.domogram #89): the Domogram target mirrors its 4 idle/animation frames (ordinals 1..4),
-    # then the shared solv_death burst (ordinals 5..12) and the two crater frames (13..14) — a land-only
-    # cratering family, so the ordinal layout matches DOMOGRAM_EXPLODE_BASE_ORDINAL / DOMOGRAM_CRATER_BASE_ORDINAL.
-    domogram = next((t for t in result["targets"] if t.get("name") == DOMOGRAM_TARGET), None)
-    if proof is not None and domogram is not None:
-        domogram["costumes"] = proof_by_family("domogram/")
-        if death is not None:
-            domogram["costumes"].extend(copy.deepcopy(death["costumes"]))
-        domogram["costumes"].extend(proof_by_family("crater/"))
-        domogram["currentCostume"] = 0
     # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
     # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
@@ -12902,18 +12469,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "garu-zakato": garu_zakato_blocks(),
         "bacura": bacura_blocks(),
         "sheonite": sheonite_blocks(),
-        "barra": barra_blocks(),
-        "sol-tower": sol_tower_blocks(),
+        "ground": ground_renderer_blocks(),
         "bonus-flag": bonus_flag_blocks(),
         "easter-egg": easter_egg_blocks(),
-        "garu": garu_blocks(),
-        "logram": logram_blocks(),
-        "zolbak": zolbak_blocks(),
-        "derota": derota_blocks(),
-        "garu derota": garu_derota_blocks(),
-        "boza": boza_blocks(),
-        "grobda": grobda_blocks(),
-        "domogram": domogram_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
     }
     for target in result["targets"]:
@@ -13024,59 +12582,19 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             target["variables"] = target["variables"] | {
                 ENEMY_BULLET_CLONE_SLOT_ID: ["enemy bullet clone slot", 0],
             }
-        elif target["name"] == BARRA_TARGET:
-            # GND-01: the only Barra render state is which GROUND slot each clone draws, snapshotted at
-            # creation. All entity state lives in the Stage slot lists the clone reads.
+        elif target["name"] == GROUND_RENDER_TARGET:
+            # Slice-15 PR-1: the 10 full-band ground families now share ONE render target; its only render
+            # state is which GROUND slot each clone draws. Registering the shared clone-slot var also closes the
+            # long-standing gap where the Grobda and Domogram clone-slot vars were used but never registered
+            # (scratch-vm auto-vivified them at runtime; the manifest never listed them).
             target["variables"] = target["variables"] | {
-                BARRA_CLONE_SLOT_ID: ["barra clone slot", 0],
-            }
-        elif target["name"] == SOL_TOWER_TARGET:
-            # SEC-01 (ground.sol-tower #90): likewise, the only Sol Tower render state is which GROUND slot each
-            # clone draws; the phase, rise step and crater clock live in the Stage slot lists the clone reads.
-            target["variables"] = target["variables"] | {
-                SOL_TOWER_CLONE_SLOT_ID: ["sol tower clone slot", 0],
+                GROUND_CLONE_SLOT_ID: ["ground clone slot", 0],
             }
         elif target["name"] == BONUS_FLAG_TARGET:
             # SEC-02 (secrets.bonus-flag #91): likewise, the only Bonus Flag render state is which GROUND slot
             # each clone draws; the reveal phase lives in the Stage slot lists the clone reads.
             target["variables"] = target["variables"] | {
                 BONUS_FLAG_CLONE_SLOT_ID: ["bonus flag clone slot", 0],
-            }
-        elif target["name"] == GARU_TARGET:
-            # GND-01: likewise, the only Garu render state is which GROUND slot each clone draws.
-            target["variables"] = target["variables"] | {
-                GARU_CLONE_SLOT_ID: ["garu clone slot", 0],
-            }
-        elif target["name"] == LOGRAM_TARGET:
-            # GND (ground.logram #71): likewise, the only Logram render state is which GROUND slot each
-            # clone draws; the dome frame and crater clock live in the Stage slot lists the clone reads.
-            target["variables"] = target["variables"] | {
-                LOGRAM_CLONE_SLOT_ID: ["logram clone slot", 0],
-            }
-        elif target["name"] == ZOLBAK_TARGET:
-            # GND-02 (ground.zolbak #85): likewise, the only Zolbak render state is which GROUND slot each
-            # clone draws; the idle/crater frame lives in the Stage slot lists the clone reads.
-            target["variables"] = target["variables"] | {
-                ZOLBAK_CLONE_SLOT_ID: ["zolbak clone slot", 0],
-            }
-        elif target["name"] == DEROTA_TARGET:
-            # GND-04 (ground.derota #86): likewise, the only Derota render state is which GROUND slot each
-            # clone draws; the idle/crater frame lives in the Stage slot lists the clone reads.
-            target["variables"] = target["variables"] | {
-                DEROTA_CLONE_SLOT_ID: ["derota clone slot", 0],
-            }
-        elif target["name"] == GARU_DEROTA_TARGET:
-            # GND-04 (ground.derota #86): likewise, the only Garu Derota render state is which GROUND slot
-            # each clone draws; the base pulse and node frames live in the Stage slot lists the clone reads.
-            target["variables"] = target["variables"] | {
-                GARU_DEROTA_CLONE_SLOT_ID: ["garu derota clone slot", 0],
-            }
-        elif target["name"] == BOZA_TARGET:
-            # GND-05 (ground.boza-logram #87): likewise, the only Boza render state is which GROUND slot each
-            # clone draws; the dome frame, centre discriminator, and crater clock live in the Stage slot lists
-            # the clone reads (branching on `slot link` for the outer-dome vs centre-bullseye costume).
-            target["variables"] = target["variables"] | {
-                BOZA_CLONE_SLOT_ID: ["boza clone slot", 0],
             }
     return result
 
