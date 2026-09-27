@@ -284,6 +284,50 @@ class ScratchProjectTests(unittest.TestCase):
         # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset).
         self.assertEqual(186, len(assets))
 
+    def test_ground_pool_costume_list_is_merge_safe(self) -> None:
+        # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
+        # target by concatenating their costume lists (barra 0, sol-tower 11, garu 28, logram 39, zolbak 53,
+        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129 total). scratch-vm's SB3 loader
+        # enforces uniqueItems on a target's costumes array: two byte-identical costume OBJECTS are legal
+        # across separate targets but NOT within one, and the families share many crops by ref (the solv_death
+        # burst, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
+        # pins the merge-safety contract at the pytest level too (the loader failure only surfaced in the full
+        # harness before): the combined list is 129 costumes, no two costume OBJECTS are identical, and every
+        # NAME is unique — later duplicates are disambiguated with a " #<family>" suffix while each name's first
+        # occurrence stays canonical, so the renderer's by-name switch_costume still resolves to the right crop.
+        project, _project_bytes, _assets = scratch.validate_source()
+        ground = next(t for t in project["targets"] if t.get("name") == "ground")
+        costumes = ground["costumes"]
+        self.assertEqual(129, len(costumes), "the combined ground costume list is the 10 families concatenated")
+        objects = [json.dumps(c, sort_keys=True) for c in costumes]
+        self.assertEqual(
+            len(objects),
+            len(set(objects)),
+            "no two ground costume OBJECTS are identical (scratch-vm's SB3 loader rejects uniqueItems violations)",
+        )
+        names = [c.get("name") for c in costumes]
+        self.assertEqual(
+            len(names), len(set(names)), "every ground costume NAME is unique (duplicates get a ' #<family>' suffix)"
+        )
+        # The renderer selects these by NAME (switch_costume); each must survive the merge exactly once so
+        # scratch-vm's first-match resolves to the canonical crop (index-selected duplicates are renamed, not
+        # these first occurrences).
+        for canonical in (
+            "barra/idle/01",
+            "derota/idle/01",
+            "zolbak/idle/01",
+            "sol-tower/rise/07",
+            "boza-centre/core/01",
+            "grobda/roll/01",
+        ):
+            self.assertEqual(
+                names.count(canonical), 1, f"the by-name-selected costume {canonical!r} survives the merge exactly once"
+            )
+        # The disambiguated duplicates carry the deterministic " #<family>" marker and nothing else does.
+        renamed = [n for n in names if " #" in n]
+        self.assertTrue(renamed, "the shared crops are carried as ' #<family>' disambiguated duplicates")
+        self.assertEqual(ground["currentCostume"], 0, "the shared ground pool rests on its first costume")
+
     def test_canonical_source_preserves_untouched_historical_content(self) -> None:
         original = json.loads(
             scratch.read_safe_archive(scratch.ORIGINAL_ARCHIVE)[
