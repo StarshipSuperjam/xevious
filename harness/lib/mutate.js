@@ -241,6 +241,43 @@ export function neutralizeProc(project, spriteName, proccode) {
 }
 
 /**
+ * Delete the ground renderer's per-tick `clear graphic effects` block(s) on a sprite, re-introducing the
+ * colour-effect residue bug (BOSS-01 finding #1): graphic effects PERSIST on the 16 reused ground clones,
+ * so a clone that drew a boss part (which sets the `color` effect) keeps that tint on the next normal
+ * ground object it draws. The block is spliced out of its chain (parent rewired past it, its `next`'s
+ * parent repointed), so the loop still runs — it just no longer clears effects. The severing negative for
+ * the `non-boss-clone-has-no-residual-tint` scenario.
+ */
+export function removeClearGraphicEffects(project, spriteName) {
+  const t = target(project, spriteName);
+  const ids = Object.keys(t.blocks).filter(
+    (id) => t.blocks[id].opcode === 'looks_cleargraphiceffects',
+  );
+  if (!ids.length) throw new Error(`mutate: no looks_cleargraphiceffects on ${spriteName}`);
+  for (const id of ids) {
+    const b = t.blocks[id];
+    const nextId = b.next || null;
+    const parentId = b.parent;
+    if (parentId && t.blocks[parentId]) {
+      const par = t.blocks[parentId];
+      if (par.next === id) {
+        par.next = nextId;
+      } else if (par.inputs) {
+        for (const k of Object.keys(par.inputs)) {
+          const inp = par.inputs[k];
+          if (Array.isArray(inp) && inp.some((e) => e === id)) {
+            if (nextId) par.inputs[k] = inp.map((e) => (e === id ? nextId : e));
+            else delete par.inputs[k];
+          }
+        }
+      }
+    }
+    if (nextId && t.blocks[nextId]) t.blocks[nextId].parent = parentId;
+    delete t.blocks[id];
+  }
+}
+
+/**
  * Splice a `set <varName> = <constValue>` block onto the FRONT of a proc's body. Used to bite an
  * omission-based invariant: some contracts are realized by NOT writing a variable (the Sheonite is inert
  * because `update sheonite` writes no `player hit`), so there is no existing block to neutralize — the
