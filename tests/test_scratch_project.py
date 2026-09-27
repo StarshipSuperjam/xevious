@@ -1134,6 +1134,12 @@ class ScratchProjectTests(unittest.TestCase):
             # read by the render dispatch, never sprite-written — transient animation machinery like `bomb dx`.
             "andor genesis colour",
             "andor genesis flip",
+            # BOSS-01 (slice 15): the composite anchor. `andor master x`/`andor master y` are the master
+            # proc's descent/hold/leave position, written each tick by the master's update proc and read by
+            # every part proc (which adds its own offset to place its slot). Stage-held so the ground band
+            # stays isolatable; never sprite-written — transient machinery like `andor genesis colour`.
+            "andor master x",
+            "andor master y",
             # SEC-03 (slice 14): the hidden-credit display signal. Stage-written by the `update easter
             # egg` proc (1 while a bombed Credit's ~2s overlay is showing, else 0), read by the
             # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
@@ -1284,6 +1290,10 @@ class ScratchProjectTests(unittest.TestCase):
                 "difficulty increment",
                 "formation count table",
                 "formation type offset table",
+                # BOSS-01 (slice 15): the two read-only Andor composite-offset tables (depth / lateral),
+                # indexed by (slot type - 0x40); the part proc adds item(index) to the master anchor.
+                "andor part depth",
+                "andor part lateral",
             },
             stage_list_names,
         )
@@ -1503,10 +1513,16 @@ class ScratchProjectTests(unittest.TestCase):
             # crater clock. Warp, dispatched per OCCUPIED Domogram slot from the walk.
             director.UPDATE_DOMOGRAM_PROCCODE,
             # BOSS-01 (slice 15) andor.lifecycle: the invisible Andor Genesis master's per-tick wrapper,
-            # dispatched per OCCUPIED master slot from the walk. This commit it is minimal — on the end flag it
-            # tears the whole 15-part composite down (freeing every part slot) and consumes the flag; with no end
-            # flag the boss holds, armed. The descend/hold/leave state machine + part alignment extend it later. Warp.
+            # dispatched per OCCUPIED master slot from the walk. It runs the lifecycle state machine: steps the
+            # shared colour-cycle + core flip-phase registers, then descends the shared anchor toward the hold
+            # position (clamped), holds, or — on the end flag — retreats up and tears the whole 15-part composite
+            # down (freeing every part slot) and consumes the flag. Writes only shared vars + slot type/state. Warp.
             director.UPDATE_ANDOR_MASTER_PROCCODE,
+            # BOSS-01 (slice 15) andor.lifecycle: the shared per-part alignment wrapper, dispatched per OCCUPIED
+            # visible-part slot (armor / core / port) from the walk. Each tick it pins this slot's x/y to the
+            # master's shared anchor plus the part's per-type composite offset (read from the two offset tables).
+            # No independent motion, no cull. Warp.
+            director.UPDATE_ANDOR_PART_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -16210,7 +16226,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "92cea3bbc9b26dd5038a200157c43751cac4cce9e3c66d1dcc65163a86fc8f7b",
+            "d4494eddc28b2c50a38243b122a90fc4130d9862bd64f13a03ab402bcef0f25e",
             build_hash,
         )
 

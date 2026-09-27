@@ -99,6 +99,26 @@
       "name": "andor genesis flip",
       "scope": "Stage"
     },
+    "andor-master-x": {
+      "kind": "variable",
+      "name": "andor master x",
+      "scope": "Stage"
+    },
+    "andor-master-y": {
+      "kind": "variable",
+      "name": "andor master y",
+      "scope": "Stage"
+    },
+    "andor-part-depth": {
+      "kind": "list",
+      "name": "andor part depth",
+      "scope": "Stage"
+    },
+    "andor-part-lateral": {
+      "kind": "list",
+      "name": "andor part lateral",
+      "scope": "Stage"
+    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",
