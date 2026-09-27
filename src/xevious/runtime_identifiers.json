@@ -84,6 +84,11 @@
       "name": "aim swap",
       "scope": "Stage"
     },
+    "andor-genesis-end-flag": {
+      "kind": "variable",
+      "name": "andor genesis end flag",
+      "scope": "Stage"
+    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",

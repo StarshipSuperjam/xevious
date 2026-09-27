@@ -876,6 +876,11 @@ UPDATE_GROBDA_PROCCODE = "update grobda"
 # moving`, and runs its masked-random shot cycle (a 24-frame animation firing one aimed bullet at the midpoint);
 # once bombed (HIT) it craters PERSISTENTLY like the Barra (handle_bomb_explosion) via `advance ground`.
 UPDATE_DOMOGRAM_PROCCODE = "update domogram"
+# BOSS-01 (andor.lifecycle #94): the invisible Andor Genesis master's per-tick update. In THIS commit it is
+# minimal — it consumes the end flag and tears the whole composite down (so the debug summon can be dismissed
+# and the non-scrolling boss never jams the ground-key cycle). The full descend->hold->leave state machine and
+# the per-part alignment come in a later commit; this proc is the seam they extend.
+UPDATE_ANDOR_MASTER_PROCCODE = "update andor master"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -1341,6 +1346,32 @@ DEROTA_TYPE = 27  # 0x1B, handle_1B_Derota: periodic aimed turret, craters on de
 GARU_DEROTA_TYPE = 33  # 0x21, handle_21_Garu_Derota: indestructible base + firing destructible node (GND-04)
 BOZA_LOGRAM_TYPE = 45  # 0x2D, handle_2D_Boza_Logram: 5-slot composite (4 outer Lograms + 1 centre), GND-05
 DOMOGRAM_TYPE = 46  # 0x2E, handle_2E_Domogram: path-driven mover that fires one aimed shot per animation (GND-07)
+# BOSS-01 (andor.lifecycle #94): Andor Genesis is a 15-part ground COMPOSITE — nine armor plates
+# (handle_41..49, a 3x3 grid), four gun ports (handle_4F/50/51/52), one centre core (handle_4A), and one
+# invisible master (handle_4B) that owns the shared position/colour/phase and drives every part. All 15 occupy
+# ground obj slots 1..15 (Scratch slots 2..16 = GROUND_SLOTS[0]+n); obj slot 0 (the bonus flag) is left free.
+# Slice 15 builds the LIFECYCLE only (arrive / hold / animate / depart). Firing (incl. the mask-47 consumer),
+# armor hit-immunity, the core bomb path, Bragza, and the destruction cascade are slice 16 (andor.defenses #95,
+# andor.core-destruction #96). Codes 76/77/78 are schedule opcodes (start/end/fire-mask), NOT part types.
+ANDOR_ARMOR_TYPES = tuple(range(0x41, 0x4A))  # 65..73 handle_41..49: nine armor plates (colour-cycle only)
+ANDOR_CORE_TYPE = 0x4A  # 74 handle_4A: the centre core (colour-cycle + _ATTR flip-orientation shimmer)
+ANDOR_MASTER_TYPE = 0x4B  # 75 handle_4B: the invisible 1x1 master (_CODE cleared) — owns position/colour/phase
+ANDOR_PORT_TYPES = (0x4F, 0x50, 0x51, 0x52)  # 79..82 handle_4F/50/51/52: four gun ports (colour-cycle; firing = slice 16)
+# The arm order (andor_genesis_data, xevious_sub.68k:565-566, verified byte-for-byte at the pin): obj slots
+# 1..15 receive these _TYPE bytes in order; the master lands at obj slot 15 (0x0F) = Scratch slot 16.
+ANDOR_GENESIS_DATA = (
+    0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,  # obj 1..9   nine armor plates
+    0x52, 0x51, 0x50, 0x4F,                                # obj 10..13 four gun ports
+    0x4A,                                                  # obj 14     core
+    0x4B,                                                  # obj 15     invisible master (Scratch slot 16)
+)
+ANDOR_PART_TYPES = (*ANDOR_ARMOR_TYPES, ANDOR_CORE_TYPE, *ANDOR_PORT_TYPES, ANDOR_MASTER_TYPE)
+assert set(ANDOR_GENESIS_DATA) == set(ANDOR_PART_TYPES) and len(ANDOR_GENESIS_DATA) == 15, (
+    "Andor arm-data must be exactly the 15 distinct part types"
+)
+# The schedule end record (C4) and the debug dismiss set this; the master's update proc tears the composite
+# down when it is set (mirrors andor_genesis_end_flag / remove_andor_genesis, xevious_sub.68k:569-572).
+ANDOR_GENESIS_END_FLAG_ID = "andor-genesis-end-flag"
 # GND-06 (ground.grobda #88): the tank/stingray family — the first SELF-MOVING ground object. 12 live
 # variants (handle_2C_Grobda_stationary + handle_35..40, skipping the unused 0x37 null slot). All share ONE
 # update proc and ONE tank costume set, differing only in reticle trigger, reaction, points, and land-crater
@@ -1479,6 +1510,12 @@ DEBUG_GROUND_FAMILIES = (
     # single-slot add_ground_object (arcade _CODE=0), so it seeds through the shared single-slot shape exactly
     # like the scheduled spawn — only its point value and hidden phase differ, seeded inside _ground_seed_single.
     (EASTER_EGG_TYPE, "single"),
+    # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite. Keyed on the invisible master type; the "andor"
+    # shape bulk-arms all 15 parts across the band. Unlike every other family the boss holds position (it does not
+    # scroll off), so the ground key's field-empty gate would jam on it forever — the debug handler adds a DISMISS
+    # branch (press G while the boss is present to set the end flag; the master proc then tears it down next tick,
+    # freeing the field for the next family). Reachable through the existing key, no new key, no locked-spec edit.
+    (ANDOR_MASTER_TYPE, "andor"),
 )
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
@@ -3427,7 +3464,14 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(DOMOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_DOMOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, easter_egg_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
+    # BOSS-01 (andor.lifecycle #94): only the invisible master (0x4B) dispatches to a proc this commit — it owns
+    # the lifecycle (end-flag teardown now; descend/hold/leave + part alignment later). The other 14 part types
+    # are armed-but-passive (no branch), inert until their update procs land — the walk skips a type with no branch.
+    andor_master_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ANDOR_MASTER_TYPE)),
+        [blocks.call_proc(UPDATE_ANDOR_MASTER_PROCCODE, warp=True)],
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, easter_egg_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch, andor_master_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -7093,6 +7137,35 @@ def install_fire_permission_gate(blocks: Blocks) -> None:
     blocks.chain(definition, [phase])
 
 
+def install_update_andor_master(blocks: Blocks) -> None:
+    # BOSS-01 (andor.lifecycle #94): the invisible Andor Genesis master's per-tick update. MINIMAL this commit:
+    # when the end flag is set (by the schedule end record in a later commit, or the debug dismiss now), tear the
+    # whole composite down — free every part slot (base+1..base+15) type+state the same belt-and-suspenders way
+    # `cull slot` and the debug band-clear do — then consume the flag. With no end flag the boss simply holds,
+    # armed. The full descend->hold->leave state machine and the per-part alignment extend THIS proc in a later
+    # commit; the terminal teardown is remove_andor_genesis (xevious_sub.68k), reached here on the end flag.
+    definition = _install_warp_proc(blocks, UPDATE_ANDOR_MASTER_PROCCODE)
+    base = GROUND_SLOTS[0]
+    teardown = [
+        block
+        for n in range(1, len(ANDOR_GENESIS_DATA) + 1)
+        for block in (
+            blocks.list_replace("slot type", SLOT_TYPE_ID, number(base + n), number(0)),
+            blocks.list_replace("slot state", SLOT_STATE_ID, number(base + n), number(0)),
+        )
+    ]
+    teardown.append(
+        blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0))
+    )
+    on_end = blocks.if_reporter(
+        blocks.op_eq(
+            variable("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID), number(1)
+        ),
+        teardown,
+    )
+    blocks.chain(definition, [on_end])
+
+
 def install_cull_slot(blocks: Blocks) -> None:
     # Free the slot at `slot index` (type/state to empty). The position fields are left as-is (like the
     # reference's check_scroll_offscreen 30B4, which clears only type/state/extra); a refilled flying
@@ -7457,7 +7530,21 @@ def install_debug_ground_spawn(blocks: Blocks) -> None:
             )
         ],
     ]
-    blocks.substack(gate, [*suppress_air, spawn])
+    # BOSS-01 (andor.lifecycle #94): the Andor boss holds position and never scrolls off, so — unlike every other
+    # debug family, whose scroll-off the field-empty gate simply waits out — it would jam the cursor forever. Give
+    # it an explicit DISMISS: while G is held AND the boss is present (its master slot is armed), set the end flag.
+    # The master's update proc tears the composite down next tick, the field empties, and the next G press advances
+    # to the following family. The boss being up means the field is not empty, so `dismiss` and `spawn` never both fire.
+    master_slot = GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA)
+    boss_present = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, number(master_slot)),
+        number(ANDOR_MASTER_TYPE),
+    )
+    dismiss = blocks.if_reporter(
+        boss_present,
+        [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
+    )
+    blocks.substack(gate, [*suppress_air, spawn, dismiss])
     blocks.chain(definition, [gate])
 
 
@@ -8008,6 +8095,31 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
     return seed
 
 
+def _ground_seed_andor(blocks: Blocks, *, base: int) -> list[str]:
+    # BOSS-01 (andor.lifecycle #94): the Andor Genesis bulk-arm — the port's sub_2_fn_20__andor_genesis_start
+    # ($064A): stamp all 15 part types into ground obj slots 1..15 (Scratch slots base+1..base+15) and clear the
+    # end flag. The arm ORDER is source-exact (ANDOR_GENESIS_DATA); the master lands at Scratch slot base+15.
+    # Each part is marked ACTIVE so the field-occupancy checks (and the debug key's field-empty gate) see the
+    # boss; slot x/y are seeded to 0 here — the per-part alignment procs (a later commit) drive them from the
+    # master's shared position, and the renderer default-hides these types until their art + render arms land, so
+    # a freshly-armed-but-unrendered composite is inert-but-present. cull clears only type/state, so seed x/y
+    # explicitly rather than trust a reused slot. Reached from the debug key now; the live schedule opcode wires
+    # in a later commit. Shared with that opcode so the debug arm is the scheduled arm's exact shape.
+    seed: list[str] = []
+    for n, part_type in enumerate(ANDOR_GENESIS_DATA, start=1):
+        slot = base + n
+        seed.extend(
+            [
+                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(part_type)),
+                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(SLOT_ACTIVE)),
+                blocks.list_replace("slot x", SLOT_X_ID, number(slot), number(0)),
+                blocks.list_replace("slot y", SLOT_Y_ID, number(slot), number(0)),
+            ]
+        )
+    seed.append(blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0)))
+    return seed
+
+
 def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str]:
     # DEBUG (tracked for removal #119): build ONE ground family's spawn from fixed debug constants — the band
     # base slot and a central lateral column (DEBUG_GROUND_SPRITE_Y) — through the SAME shared seed builders the
@@ -8091,6 +8203,10 @@ def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str
                 ],
             ),
         ]
+    if shape == "andor":
+        # BOSS-01 (andor.lifecycle #94): the whole 15-part composite arms at once into the ground band, so unlike
+        # the other shapes it ignores the fixed single-slot column and stamps slots base+1..base+15 directly.
+        return _ground_seed_andor(blocks, base=base)
     raise ValueError(f"unknown debug ground seed shape: {shape!r}")
 
 
@@ -8624,6 +8740,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_boza(blocks)
     install_update_grobda(blocks)
     install_update_domogram(blocks)
+    install_update_andor_master(blocks)  # BOSS-01 (andor.lifecycle #94)
     install_explode_toroid_tick(blocks)
     install_explode_giddo_spario_tick(blocks)
     install_update_bullet(blocks)
@@ -10073,6 +10190,10 @@ _GROUND_ALL_TYPES = [
     BOZA_LOGRAM_TYPE,
     DOMOGRAM_TYPE,
     *GROBDA_TYPES,
+    # BOSS-01 (andor.lifecycle #94): the 15 Andor Genesis part types reserve their place in the ground
+    # type ledger from the moment they can occupy the band. Their render arms arrive with the art in a
+    # later commit; listing them here now catches any accidental type collision at import.
+    *ANDOR_PART_TYPES,
 ]
 assert len(_GROUND_ALL_TYPES) == len(set(_GROUND_ALL_TYPES)), (
     "ground family types overlap; the shared renderer's slot-type dispatch would be ambiguous"
@@ -12161,6 +12282,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_LOCK_COL_ID,
         # SEC-03 (secrets.hidden-credit #93): the credit overlay's show/hide signal.
         EASTER_EGG_SHOWING_ID,
+        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag — set by the schedule end record (later commit)
+        # or the debug dismiss; the master's update proc tears the composite down on it.
+        ANDOR_GENESIS_END_FLAG_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -12291,6 +12415,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_END_FLAG_ID: ["sheonite end flag", 0],
         SHEONITE_PHASE_TMP_ID: ["sheonite phase", 0],
         SHEONITE_LOCK_COL_ID: ["sheonite lock col", 0],
+        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag (0 = alive/holding, 1 = tear down). Cleared on
+        # every arm and consumed by the master proc. (The per-area re-clear joins the other schedule flags when the
+        # live start/end opcodes are wired in a later commit; the debug path arms and consumes it within a session.)
+        ANDOR_GENESIS_END_FLAG_ID: ["andor genesis end flag", 0],
     }
     owned_lists = {
         ALLOWED_ID,

@@ -1115,6 +1115,10 @@ class ScratchProjectTests(unittest.TestCase):
             "sheonite end flag",
             "sheonite phase",
             "sheonite lock col",
+            # BOSS-01 (slice 15): the Andor Genesis end flag — Stage-written (by the schedule end record / the
+            # debug dismiss), read and consumed by the master's update proc in the walk, which tears the composite
+            # down on it. A schedule on/off flag like `sheonite end flag`: transient machinery, never sprite-written.
+            "andor genesis end flag",
             # SEC-03 (slice 14): the hidden-credit display signal. Stage-written by the `update easter
             # egg` proc (1 while a bombed Credit's ~2s overlay is showing, else 0), read by the
             # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
@@ -1483,6 +1487,11 @@ class ScratchProjectTests(unittest.TestCase):
             # stop-firing row), then moves through `advance ground moving`; a HIT Domogram runs the Barra
             # crater clock. Warp, dispatched per OCCUPIED Domogram slot from the walk.
             director.UPDATE_DOMOGRAM_PROCCODE,
+            # BOSS-01 (slice 15) andor.lifecycle: the invisible Andor Genesis master's per-tick wrapper,
+            # dispatched per OCCUPIED master slot from the walk. This commit it is minimal — on the end flag it
+            # tears the whole 15-part composite down (freeing every part slot) and consumes the flag; with no end
+            # flag the boss holds, armed. The descend/hold/leave state machine + part alignment extend it later. Warp.
+            director.UPDATE_ANDOR_MASTER_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -16186,7 +16195,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "0769cba5afd55d52140b26948b9624e84c1d4ebbeb27da795d904bfc7cb24483",
+            "856e6a69e42f4e141aff1a7953d7b0c29237eaf78745f02a32e4c87eb2cbcb8f",
             build_hash,
         )
 
