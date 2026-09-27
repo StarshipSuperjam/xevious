@@ -1372,6 +1372,16 @@ assert set(ANDOR_GENESIS_DATA) == set(ANDOR_PART_TYPES) and len(ANDOR_GENESIS_DA
 # The schedule end record (C4) and the debug dismiss set this; the master's update proc tears the composite
 # down when it is set (mirrors andor_genesis_end_flag / remove_andor_genesis, xevious_sub.68k:569-572).
 ANDOR_GENESIS_END_FLAG_ID = "andor-genesis-end-flag"
+# The shared colour-cycle byte (cycle_andor_genesis_colour, xevious_main.68k:5758-5767): every visible part
+# copies it into its _COLOUR each frame so the whole composite pulses in unison. In the port this drives the
+# Scratch `color` graphic effect on the armor/port/core render arms. The master proc (C3) steps it from
+# colour_tbl[(timer>>3)&7]; it inits 0 so the base crop renders untinted before the lifecycle runs.
+ANDOR_GENESIS_COLOUR_ID = "andor-genesis-colour"
+# The core's _ATTR flip-orientation phase (handle_4A, xevious_main.68k:5461-5465): 0..3 selecting one of the
+# four pre-flipped core costumes (none / x / y / xy). The master proc (C3) sets it from the timer
+# (xflip=(timer>>6)&1, yflip=(timer>>5)&1 -> phase = xflip + 2*yflip); it inits 0 so the base (unflipped)
+# core costume renders before the lifecycle runs.
+ANDOR_GENESIS_FLIP_ID = "andor-genesis-flip"
 # GND-06 (ground.grobda #88): the tank/stingray family — the first SELF-MOVING ground object. 12 live
 # variants (handle_2C_Grobda_stationary + handle_35..40, skipping the unused 0x37 null slot). All share ONE
 # update proc and ONE tank costume set, differing only in reticle trigger, reaction, points, and land-crater
@@ -2826,6 +2836,21 @@ class Blocks:
         self.blocks[reporter_id]["parent"] = block_id
         self.blocks[menu]["parent"] = block_id
         return block_id
+
+    def set_effect(self, effect: str, value: Any) -> str:
+        # `looks_seteffectto`: EFFECT is a dropdown FIELD (e.g. "COLOR"); VALUE is a numeric input that
+        # accepts a literal spec (number()/variable()) or a nested reporter's block id (str), wired like the
+        # arithmetic operands above.
+        block_id = self.add("looks_seteffectto", fields={"EFFECT": [effect, None]})
+        if isinstance(value, str):
+            self.blocks[block_id]["inputs"] = {"VALUE": [2, value]}
+            self.blocks[value]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"VALUE": value}
+        return block_id
+
+    def clear_graphic_effects(self) -> str:
+        return self.add("looks_cleargraphiceffects")
 
     def play_sound(self, sound: str) -> str:
         menu = self.add(
@@ -10147,6 +10172,14 @@ GROUND_FAMILY_COSTUME_COUNTS = (
     ("boza", 15),
     ("grobda", 14),
     ("domogram", 14),
+    # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite renders through the shared ground pool.
+    # Nine armor plates (types 0x41..0x49, ordinal = slot type - 64), four gun ports (0x4F..0x52,
+    # ordinal = slot type - 78), and the centre core as four pre-flipped costumes (none/x/y/xy, selected by
+    # the flip-phase var). The parts are indestructible in slice 15, so — unlike the mortal families — none
+    # appends the shared solv_death burst or a crater; the slice is just the part crops.
+    ("andor-armor", 9),
+    ("andor-port", 4),
+    ("andor-core", 4),
 )
 
 
@@ -10708,6 +10741,34 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         )
         return [gate]
 
+    def boss_arm(offset_key: str, ordinal_fn) -> list[str]:
+        # BOSS-01: an Andor Genesis part arm. Like a plain family arm (position -> costume -> size -> show) but
+        # it also sets the `color` graphic effect from the shared `andor genesis colour` var so the whole
+        # composite pulses in unison (every visible arcade part copies andor_genesis_colour into _COLOUR each
+        # frame, xevious_main.68k:5785 etc). The colour is cleared for every clone at the top of the loop
+        # (below), so a clone that drew a boss part last tick does not leave a tint on a normal ground object
+        # it draws next. Fresh reporters per call (a reporter binds to a single parent).
+        sx, sy = stage_xy()
+        return [
+            blocks.go_expr(sx, sy),
+            blocks.set_effect("COLOR", variable("andor genesis colour", ANDOR_GENESIS_COLOUR_ID)),
+            _sw(blocks, off[offset_key], ordinal_fn()),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.show(),
+        ]
+
+    def armor_ordinal() -> str:
+        # ordinal = slot type - 64 -> 1..9 for types 0x41..0x49, matching the manifest frame order.
+        return blocks.op_sub(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(0x40))
+
+    def port_ordinal() -> str:
+        # ordinal = slot type - 78 -> 1..4 for types 0x4F..0x52, matching the manifest frame order.
+        return blocks.op_sub(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(0x4E))
+
+    def core_ordinal() -> str:
+        # ordinal = 1 + flip phase (0..3) -> the four pre-flipped core costumes none/x/y/xy in manifest order.
+        return blocks.op_add(number(1), variable("andor genesis flip", ANDOR_GENESIS_FLIP_ID))
+
     off = GROUND_FAMILY_OFFSETS
     # (predicate builder, arm builder) in combined-list order.
     families = [
@@ -10773,6 +10834,11 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
             lambda: type_eq(DOMOGRAM_TYPE),
             lambda: plain_arm(lambda: _domogram_costume_subtree(blocks, slotvar, off["domogram"])),
         ),
+        # BOSS-01 (andor.lifecycle #94): the three visible Andor Genesis part groups. The invisible master
+        # (ANDOR_MASTER_TYPE) has NO arm and falls through to the default hide.
+        (lambda: type_in(ANDOR_ARMOR_TYPES), lambda: boss_arm("andor-armor", armor_ordinal)),
+        (lambda: type_in(ANDOR_PORT_TYPES), lambda: boss_arm("andor-port", port_ordinal)),
+        (lambda: type_eq(ANDOR_CORE_TYPE), lambda: boss_arm("andor-core", core_ordinal)),
     ]
 
     branch: list[str] = [blocks.hide()]
@@ -10785,7 +10851,11 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         blocks.substack(node, branch, name="SUBSTACK2")
         branch = [node]
 
-    blocks.substack(loop, branch)
+    # BOSS-01 colour-effect hygiene: graphic effects PERSIST on a reused clone across frames. The boss arms are
+    # the only ground arms that set the `color` effect, so clear it for every clone at the top of the dispatch
+    # each tick; a clone that drew a boss part last frame then draws a normal ground object with no residual
+    # tint. (No pre-slice-15 family used effects, so this clear is a no-op for them.)
+    blocks.substack(loop, [blocks.clear_graphic_effects(), *branch])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -12140,6 +12210,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             + proof_by_family("crater/"),
             "grobda": proof_by_family("grobda/") + death_frames() + proof_by_family("crater/"),
             "domogram": proof_by_family("domogram/") + death_frames() + proof_by_family("crater/"),
+            # BOSS-01: the Andor composite parts. Indestructible in slice 15 -> no burst, no crater; each
+            # slice is just its own crops, in manifest (== arcade type) order. The core's single crop expands
+            # to four pre-flipped costumes (andor-core/core/01/{none,x,y,xy}) via the extractor `flips` attr.
+            "andor-armor": proof_by_family("andor-armor/"),
+            "andor-port": proof_by_family("andor-port/"),
+            "andor-core": proof_by_family("andor-core/"),
         }
         combined: list[dict[str, Any]] = []
         combined_family: list[str] = []
@@ -12285,6 +12361,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag — set by the schedule end record (later commit)
         # or the debug dismiss; the master's update proc tears the composite down on it.
         ANDOR_GENESIS_END_FLAG_ID,
+        # BOSS-01: the shared colour-cycle byte (drives the `color` effect on every part) and the core's
+        # flip-orientation phase (selects one of the four pre-flipped core costumes). Written by the master
+        # proc, read by the render arms.
+        ANDOR_GENESIS_COLOUR_ID,
+        ANDOR_GENESIS_FLIP_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -12419,6 +12500,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # every arm and consumed by the master proc. (The per-area re-clear joins the other schedule flags when the
         # live start/end opcodes are wired in a later commit; the debug path arms and consumes it within a session.)
         ANDOR_GENESIS_END_FLAG_ID: ["andor genesis end flag", 0],
+        # BOSS-01: colour-cycle value (0 = untinted base) and core flip phase (0 = unflipped base). Both init 0
+        # so the base crops render before the lifecycle proc (C3) drives them.
+        ANDOR_GENESIS_COLOUR_ID: ["andor genesis colour", 0],
+        ANDOR_GENESIS_FLIP_ID: ["andor genesis flip", 0],
     }
     owned_lists = {
         ALLOWED_ID,

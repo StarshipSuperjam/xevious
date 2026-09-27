@@ -84,9 +84,19 @@
       "name": "aim swap",
       "scope": "Stage"
     },
+    "andor-genesis-colour": {
+      "kind": "variable",
+      "name": "andor genesis colour",
+      "scope": "Stage"
+    },
     "andor-genesis-end-flag": {
       "kind": "variable",
       "name": "andor genesis end flag",
+      "scope": "Stage"
+    },
+    "andor-genesis-flip": {
+      "kind": "variable",
+      "name": "andor genesis flip",
       "scope": "Stage"
     },
     "area-map-column": {

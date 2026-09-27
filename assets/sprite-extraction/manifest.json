@@ -47,6 +47,14 @@
       "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "excluded_rects": []
+    },
+    "andor_genesis": {
+      "asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "excluded_rects": []
     }
   },
   "frames": [
@@ -1028,6 +1036,161 @@
       "family": "bonus-flag",
       "animation": "flag",
       "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/01",
+      "sheet": "andor_genesis",
+      "rect": [3, 4, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/02",
+      "sheet": "andor_genesis",
+      "rect": [35, 4, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/03",
+      "sheet": "andor_genesis",
+      "rect": [67, 4, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/04",
+      "sheet": "andor_genesis",
+      "rect": [3, 36, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/05",
+      "sheet": "andor_genesis",
+      "rect": [35, 36, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/06",
+      "sheet": "andor_genesis",
+      "rect": [67, 36, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/07",
+      "sheet": "andor_genesis",
+      "rect": [3, 68, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/08",
+      "sheet": "andor_genesis",
+      "rect": [35, 68, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-armor/plate/09",
+      "sheet": "andor_genesis",
+      "rect": [67, 68, 32, 32],
+      "canvas": [32, 32],
+      "anchor": [16, 16],
+      "target": "toroid_sprite_proof",
+      "family": "andor-armor",
+      "animation": "plate",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-port/muzzle/01",
+      "sheet": "andor_genesis",
+      "rect": [226, 138, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-port",
+      "animation": "muzzle",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-port/muzzle/02",
+      "sheet": "andor_genesis",
+      "rect": [258, 138, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-port",
+      "animation": "muzzle",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-port/muzzle/03",
+      "sheet": "andor_genesis",
+      "rect": [226, 170, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-port",
+      "animation": "muzzle",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-port/muzzle/04",
+      "sheet": "andor_genesis",
+      "rect": [258, 170, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-port",
+      "animation": "muzzle",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-core/core/01",
+      "sheet": "andor_genesis",
+      "rect": [242, 154, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-core",
+      "animation": "core",
+      "duration_frames": 1,
+      "flips": ["none", "x", "y", "xy"]
     }
   ]
 }

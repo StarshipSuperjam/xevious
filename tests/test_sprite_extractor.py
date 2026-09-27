@@ -31,8 +31,10 @@ class SpriteExtractorTests(unittest.TestCase):
         # 4 Grobda tank tread frames (GND-06; the 12 variants share one tread set), and 4 Domogram idle
         # frames (GND-07; the scripted-path shooter's own sprite set)), plus the slice-14 additions —
         # 7 Sol Tower rise frames (SEC-01; the destroy stage reuses the shared explosion burst + crater) and
-        # 1 Bonus Flag revealed-flag frame (SEC-02; reveal shows the flag whole, so no burst crop of its own).
-        self.assertEqual(89, count)
+        # 1 Bonus Flag revealed-flag frame (SEC-02; reveal shows the flag whole, so no burst crop of its own),
+        # plus the slice-15 additions — the 17 Andor Genesis composite derivatives (BOSS-01; 9 armor plates +
+        # 4 gun ports + the core, which the extractor flip-expands into its 4 _ATTR orientations none/x/y/xy).
+        self.assertEqual(106, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -61,12 +63,22 @@ class SpriteExtractorTests(unittest.TestCase):
             # transparency and a stable centred anchor — just no longer hard-coded to the 1x1 size.
             canvas = derivative.frame["canvas"]
             self.assertEqual(tuple(canvas), (decoded.width, decoded.height))
-            # Every crop with matte around/inside it keys transparent; the two genuinely solid
-            # sprites are the 2x2 Garu Barra base (a filled foundation block) and the Bacura slab
-            # (a solid indestructible panel), whose crops hold no matte — so neither has a
-            # transparent pixel to assert, but both must still be fully opaque RGBA.
+            # Every crop with matte around/inside it keys transparent. The genuinely solid sprites hold
+            # no matte, so none has a transparent pixel to assert (but all stay fully opaque RGBA): the
+            # 2x2 Garu Barra base (a filled foundation block), the Bacura slab (a solid indestructible
+            # panel), and the Andor Genesis composite's fully-interior tiles — the centre armor plate
+            # (plate/05), all four gun ports, and the core — which sit wholly inside the octagon body,
+            # away from its matte-keyed cut corners (the eight edge/corner plates 01-04,06-09 carry the
+            # octagon edge and do key transparent).
             name = derivative.frame["name"]
-            if not name.startswith("garu/") and not name.startswith("bacura/"):
+            solid = (
+                name.startswith("garu/")
+                or name.startswith("bacura/")
+                or name.startswith("andor-port/")
+                or name.startswith("andor-core/")
+                or name.startswith("andor-armor/plate/05")
+            )
+            if not solid:
                 self.assertTrue(any(pixel[3] == 0 for pixel in decoded.pixels))
             self.assertTrue(any(pixel[3] == 255 for pixel in decoded.pixels))
             self.assertEqual([canvas[0] // 2, canvas[1] // 2], derivative.frame["anchor"])
@@ -202,7 +214,14 @@ class SpriteExtractorTests(unittest.TestCase):
             + [f"domogram/idle/{index:02d}" for index in range(1, 5)]
             # SEC-02 (slice 14) secrets.bonus-flag: the Special Flag's single revealed-flag crop (the arcade
             # CODE=0x1f sprite); reveal shows the flag whole and collection just removes it, so no burst crop.
-            + ["bonus-flag/flag/01"],
+            + ["bonus-flag/flag/01"]
+            # BOSS-01 (slice 15) andor.lifecycle: the Andor Genesis composite parts cropped from one
+            # assembled octagon — 9 armor plates (handle_41..49), 4 gun ports (handle_4F..52), and the core
+            # (handle_4A). The core is one crop the extractor flip-expands into its 4 _ATTR orientations
+            # (none/x/y/xy) — the arcade cycles the same bitmap through xflip/yflip each frame.
+            + [f"andor-armor/plate/{index:02d}" for index in range(1, 10)]
+            + [f"andor-port/muzzle/{index:02d}" for index in range(1, 5)]
+            + [f"andor-core/core/01/{token}" for token in ("none", "x", "y", "xy")],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])
@@ -212,8 +231,12 @@ class SpriteExtractorTests(unittest.TestCase):
             # Every 1x1 sprite is centred at (8,8); the 2x2 Garu Barra base (32x32 canvas) at (16,16);
             # the Bacura slab tumble frames share one 32x16 canvas (wide enough for the widest edge-on
             # frame) with a common (16,8) anchor, so each frame registers about that centre as it tumbles.
-            if costume["name"].startswith("garu/") or costume["name"].startswith(
-                "garu-derota/"
+            # The Andor armor plates are 2x2 parts on a 32x32 canvas anchored at (16,16); the ports and core
+            # are 1x1 parts on the standard 16x16 canvas at (8,8).
+            if (
+                costume["name"].startswith("garu/")
+                or costume["name"].startswith("garu-derota/")
+                or costume["name"].startswith("andor-armor/")
             ):
                 expected_center = (16, 16)
             elif costume["name"].startswith("bacura/"):

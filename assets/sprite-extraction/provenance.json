@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "87beda6c39941500f142b30f9d69932b5b0f9246da8ac18ef8536b2355c1644e",
+  "manifest_sha256": "ce02502b9761be2c4a5ed609af150d092525dbc170483f620344dc0061c963d5",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -2138,11 +2138,423 @@
         8
       ],
       "generator_version": 1
+    },
+    "368fd0ad34179b4d79c2035032294a67.png": {
+      "frame": "andor-armor/plate/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        3,
+        4,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "5e2a5f2dd88848711eb32ad9c1dacff2.png": {
+      "frame": "andor-armor/plate/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        35,
+        4,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "85b0e0a6f9f8389f3ff5b39a6e3e4e7f.png": {
+      "frame": "andor-armor/plate/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        67,
+        4,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "4c00c992420ae9c71298f77dff48bc02.png": {
+      "frame": "andor-armor/plate/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        3,
+        36,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "2ef851500c8422719a28cdd2b6d84073.png": {
+      "frame": "andor-armor/plate/05",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        35,
+        36,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "343f55e5f3be60ccf4d4cdd7a60a4a91.png": {
+      "frame": "andor-armor/plate/06",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        67,
+        36,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "d3bd257146c384a17d464997690f7005.png": {
+      "frame": "andor-armor/plate/07",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        3,
+        68,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "1ba01e123ec0aa9175029e86d7096561.png": {
+      "frame": "andor-armor/plate/08",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        35,
+        68,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "7e8ebc15e4cd222b2a4fcbea21808af1.png": {
+      "frame": "andor-armor/plate/09",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        67,
+        68,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "3269ca3aa4c9a1636cf1a5bfc7ae11d1.png": {
+      "frame": "andor-port/muzzle/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        226,
+        138,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "0dd25c3f485e971be1e9304850bf6a0f.png": {
+      "frame": "andor-port/muzzle/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        258,
+        138,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f4339b7667e73536e338f1f2d32abe69.png": {
+      "frame": "andor-port/muzzle/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        226,
+        170,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "d5b78c9f09126299c5bde13d5068a543.png": {
+      "frame": "andor-port/muzzle/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        258,
+        170,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "bed88673ae616dd67639ffba9a77f053.png": {
+      "frame": "andor-core/core/01/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        242,
+        154,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "f818177a78c79ea815139911fb84d51b.png": {
+      "frame": "andor-core/core/01/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        242,
+        154,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "49e364f166f2a6f4eaeb21980f2554be.png": {
+      "frame": "andor-core/core/01/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        242,
+        154,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "65139a2fd1fdbb81f53a4e926a14c860.png": {
+      "frame": "andor-core/core/01/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
+      "source_sha256": "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68",
+      "source": "The Spriters Resource: Xevious (Arcade), Andor Genesis — https://www.spriters-resource.com/arcade/xevious/asset/42386/",
+      "credit": "CrazyCarl",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        242,
+        154,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "xy"
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "5112381fb6b289c635968fc09dce4bf1ac9a1ae7c7499299093bbc6c2686fa47",
+    "sha256": "e31eff14b8a7a3e53bb593dc4a1b399131764e7d3c5cd4850cae84d473b9cc70",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -2232,7 +2644,24 @@
       "domogram/idle/02",
       "domogram/idle/03",
       "domogram/idle/04",
-      "bonus-flag/flag/01"
+      "bonus-flag/flag/01",
+      "andor-armor/plate/01",
+      "andor-armor/plate/02",
+      "andor-armor/plate/03",
+      "andor-armor/plate/04",
+      "andor-armor/plate/05",
+      "andor-armor/plate/06",
+      "andor-armor/plate/07",
+      "andor-armor/plate/08",
+      "andor-armor/plate/09",
+      "andor-port/muzzle/01",
+      "andor-port/muzzle/02",
+      "andor-port/muzzle/03",
+      "andor-port/muzzle/04",
+      "andor-core/core/01/none",
+      "andor-core/core/01/x",
+      "andor-core/core/01/y",
+      "andor-core/core/01/xy"
     ]
   }
 }

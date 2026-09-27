@@ -255,8 +255,10 @@ class ScratchProjectTests(unittest.TestCase):
         # in the shared flying pool, ten costumes with no burst), and the slice-15 PR-1 shared "ground"
         # renderer — the ten former full-band ground families (barra, sol-tower, garu, logram, zolbak, derota,
         # garu-derota, boza, grobda, domogram) collapsed into ONE 16-clone pool that costume-switches on each
-        # slot's live type; its 129 costumes are those families' costume lists concatenated in order (offsets
-        # in GROUND_FAMILY_OFFSETS), freeing ~144 clones under the scratch-vm 300-clone ceiling — plus the
+        # slot's live type; its 146 costumes are those families' costume lists concatenated in order (offsets
+        # in GROUND_FAMILY_OFFSETS) — 129 for the ten original families plus the slice-15 BOSS-01 Andor Genesis
+        # composite (9 armor + 4 gun ports + 4 core flip costumes = 17) — freeing ~144 clones under the
+        # scratch-vm 300-clone ceiling — plus the
         # slice-14 bonus-flag renderer (SEC-02; the hidden Special Flag, a single revealed-flag costume
         # with no burst or crater — like the Bacura it is never destroyed on screen), and the slice-14 easter-egg
         # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
@@ -281,13 +283,17 @@ class ScratchProjectTests(unittest.TestCase):
         # bacura / sheonite / bonus_flag cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md) + the 1 generated hidden-credit
         # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
-        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset).
-        self.assertEqual(186, len(assets))
+        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset)
+        # + the 17 Andor Genesis part PNGs (BOSS-01: 9 armor plates + 4 gun ports + 4 core flip-orientation
+        # costumes, the last four derived by deterministic transpose of one credited core crop; the Andor
+        # source sheet itself is not a referenced asset, so it adds no count).
+        self.assertEqual(203, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
         # target by concatenating their costume lists (barra 0, sol-tower 11, garu 28, logram 39, zolbak 53,
-        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129 total). scratch-vm's SB3 loader
+        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129); PR-2 (BOSS-01) appends the
+        # Andor Genesis composite (andor-armor 129, andor-port 138, andor-core 142 -> 146 total). scratch-vm's SB3 loader
         # enforces uniqueItems on a target's costumes array: two byte-identical costume OBJECTS are legal
         # across separate targets but NOT within one, and the families share many crops by ref (the solv_death
         # burst, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
@@ -298,7 +304,9 @@ class ScratchProjectTests(unittest.TestCase):
         project, _project_bytes, _assets = scratch.validate_source()
         ground = next(t for t in project["targets"] if t.get("name") == "ground")
         costumes = ground["costumes"]
-        self.assertEqual(129, len(costumes), "the combined ground costume list is the 10 families concatenated")
+        self.assertEqual(
+            146, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
+        )
         objects = [json.dumps(c, sort_keys=True) for c in costumes]
         self.assertEqual(
             len(objects),
@@ -1119,6 +1127,13 @@ class ScratchProjectTests(unittest.TestCase):
             # debug dismiss), read and consumed by the master's update proc in the walk, which tears the composite
             # down on it. A schedule on/off flag like `sheonite end flag`: transient machinery, never sprite-written.
             "andor genesis end flag",
+            # BOSS-01 (slice 15): the boss's two shared per-tick animation registers. `andor genesis colour`
+            # is the pulsing colour byte (cycle_andor_genesis_colour: colour_tbl[(timer>>3)&7]) every visible
+            # part copies into its `color` graphic effect; `andor genesis flip` is the core's _ATTR flip-phase
+            # selector (0-3) that picks its none/x/y/xy costume. Both Stage-written by the master's update proc,
+            # read by the render dispatch, never sprite-written — transient animation machinery like `bomb dx`.
+            "andor genesis colour",
+            "andor genesis flip",
             # SEC-03 (slice 14): the hidden-credit display signal. Stage-written by the `update easter
             # egg` proc (1 while a bombed Credit's ~2s overlay is showing, else 0), read by the
             # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
@@ -16195,7 +16210,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "856e6a69e42f4e141aff1a7953d7b0c29237eaf78745f02a32e4c87eb2cbcb8f",
+            "92cea3bbc9b26dd5038a200157c43751cac4cce9e3c66d1dcc65163a86fc8f7b",
             build_hash,
         )
 
