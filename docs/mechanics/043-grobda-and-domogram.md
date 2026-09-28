@@ -61,11 +61,11 @@
   4668–4688 fires one `init_new_bullet` when `_TYPE` decrements to 12 and reloads the masked shot timer; the
   velocity table is `domogram_vector_tbl` 4695–4744 (dY,dX pairs). The shared movers are `move_object_dX_dY`
   4817–4823 (two-axis; `handle_2E_Domogram` reaches it every tick via `domogram_colour_and_move` 4686–4688)
-  and `move_object_dX` 4842–4848 (one-axis), each `_X/_Y += 2 × _dX/_dY` with no scroll term; both then fall
+  and `move_object_dX` 4842–4846 (one-axis), each `_X/_Y += 2 × _dX/_dY` with no scroll term; both then fall
   through to `check_scroll_offscreen` 4827–4839, which removes the object when `_X` MSB `+ 1 ≥ 0x29` (bottom,
   `_X` MSB `≥ 0x28`) OR `_Y` MSB (unsigned) `≥ 0x1f` (either lateral edge — the right edge and, by the byte's
   wrap of a negative `_Y`, the left edge); the SEPARATE static-terrain scroll used by terrain-locked objects is
-  `scroll_sprite_X` 4849–4855 (`_X += 2 × −scroll_delta`), which shares the same `check_scroll_offscreen` tail. Placements and fire masks per area are the committed
+  `scroll_sprite_X` 4849–4854 (`_X += 2 × −scroll_delta`), which shares the same `check_scroll_offscreen` tail. Placements and fire masks per area are the committed
   [schedule data](../spec/data/area-schedules.json); the Domogram vector table is
   [domogram.json](../spec/data/domogram.json); the settled behaviour is
   [ground objects](../spec/ground-objects.md); point values are
