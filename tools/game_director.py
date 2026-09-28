@@ -1384,6 +1384,41 @@ ANDOR_PART_TYPES = (*ANDOR_ARMOR_TYPES, ANDOR_CORE_TYPE, *ANDOR_PORT_TYPES, ANDO
 assert set(ANDOR_GENESIS_DATA) == set(ANDOR_PART_TYPES) and len(ANDOR_GENESIS_DATA) == 15, (
     "Andor arm-data must be exactly the 15 distinct part types"
 )
+# --- BOSS-02 / BOSS-03 (andor.defenses #95, andor.core-destruction #96): the Andor Genesis COMBAT constants. ---
+# Armor immunity. The nine armor plates are born arcade `_STATE=3` ("| indestructible", handle_41..49 at the pin)
+# and never test for a hit or explode; the bomb-vs-ground detector's `== SLOT_ACTIVE` gate then skips them for
+# free (no collision-group edit). That is exactly the non-ACTIVE ground-band sentinel the Garu Barra base already
+# uses (SLOT_GARU_BASE), so armor reuses it, named for the andor context. The destroyed core, once converted to
+# the fly-up Bragza, is likewise never hittable (arcade `_STATE=8`), and is stamped this same sentinel (C4). The
+# walk dispatch and renderer key off `slot type` (not state), so a state-3 part still aligns and draws (Garu
+# Barra precedent), while the ACTIVE-gated bomb sweep leaves it alone.
+ANDOR_ARMOR_IMMUNE = SLOT_GARU_BASE  # 3
+# Score indices (1-based positions into VALUE_TABLE_POINTS; `slot pts` holds a position, NOT the arcade `_PTS`
+# byte). The core awards 4,000 (arcade `_PTS=60`, handle_4A) and each gun port 1,000 (arcade `_PTS=48`,
+# handle_4F..52) ONLY on a direct bomb — the destruction cascade scores nothing (C4). Derived from the value
+# table so a table edit can't silently desync them.
+ANDOR_CORE_PTS = VALUE_TABLE_POINTS.index(4000) + 1  # 21
+ANDOR_PORT_PTS = VALUE_TABLE_POINTS.index(1000) + 1  # 17
+# The port's gun-port fire mask (ffreq_mask_andor_genesis), captured into each port's `slot fire mask` at arm and
+# consumed by the shared fire-permission gate (C2). Mask 47 is NON-contiguous, so the gate special-cases it.
+# Derived from FIRE_MASK_FAMILIES so a rename can't drift.
+FIRE_MASK_ANDOR_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "andor_genesis")
+FIRE_MASK_ANDOR_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "andor_genesis")
+# The mask the DEBUG ground key forces into the summoned ports (the live schedule sets the same 47 in areas
+# 4/9/14, area-schedules.json mask arg), so a hold-G playtest exercises the real non-contiguous cadence instead
+# of the degenerate mask-0 fastest-fire a never-set var would give.
+ANDOR_GENESIS_DEBUG_FIRE_MASK = 47
+# The port's fixed initial fire countdown. Every port's handle_XX inits `_TIMER=1` ONCE at spawn (a plain 1, NOT
+# a masked-random draw — verified at the pin, xevious_main.68k:5513/5564/5615/5666); the MASK applies only to the
+# post-fire reload in the gate. So the arm seeds each port `slot fire timer = 1`.
+ANDOR_PORT_FIRE_TIMER_INIT = 1
+# Bragza: the destroyed core converts in place (andor_genesis_core_hit, xevious_main.68k:5475 -> handle_Bragza
+# 5493) into a lone indestructible enemy that flies straight UP the screen (arcade `_dX=0xffd0` = -48/frame on the
+# vertical `_X`/scroll axis; `_dY` cleared) as a 4-frame animation (C4). Bragza has NO arcade object `_TYPE` (it is
+# reached by SET_REENTRY_ADDR, a function-pointer set, not the type-dispatch table), so the port assigns it a free
+# code from the andor block's NOT-USED range (arcade dispatch 0x4C..0x4E are `null_fn`, xevious_main.68k:6242-6244).
+ANDOR_BRAGZA_TYPE = 0x4C  # 76: port-synthetic; arcade-NOT-USED, disjoint from every real object type
+assert ANDOR_BRAGZA_TYPE not in ANDOR_PART_TYPES, "Bragza type must not collide with a real Andor part"
 # The schedule end record (C4) and the debug dismiss set this; the master's update proc tears the composite
 # down when it is set (mirrors andor_genesis_end_flag / remove_andor_genesis, xevious_sub.68k:569-572).
 ANDOR_GENESIS_END_FLAG_ID = "andor-genesis-end-flag"
@@ -1972,6 +2007,11 @@ ANDOR_START_X = -8 * SLOT_UNITS_PER_CELL   # -2048; off the top (arcade _X MSB 0
 ANDOR_HOLD_X = 16 * SLOT_UNITS_PER_CELL    # +4096; on-field hold (arcade _X MSB 0x10)
 ANDOR_DESCEND_STEP = 0x20 * FRAMES_PER_TICK  # +64/tick (arcade +0x20/frame; 0x10 doubled, x2 frames)
 ANDOR_LEAVE_STEP = 0x10 * FRAMES_PER_TICK    # 32/tick, subtracted on the retreat (arcade -0x10/frame)
+# Bragza fly-up (C4). The converted core flies straight up the same depth/scroll axis as the descent at arcade
+# `_dX=0xffd0` = -48/frame (`_dY` cleared), applied over FRAMES_PER_TICK arcade frames per tick — the same RAW
+# scaling as the descent/leave steps (the single Bragza sprite has no composite offset, so no anamorphic factor).
+# Lower slot x = up-screen, so the update subtracts this each tick until the wreck culls off the top.
+ANDOR_BRAGZA_STEP = 0x30 * FRAMES_PER_TICK    # 96/tick up (arcade -0x30/frame; magnitude of _dX 0xffd0)
 ANDOR_LATERAL_Y = 0x0e80  # 3712; the master's fixed `_Y` (sub_2_fn_20__andor_genesis_start, xevious_sub.68k:553)
 # — a boss constant hardcoded by the arm, NOT a schedule column. 3712/32 = 116 px, ~ the debug central column
 # (DEBUG_GROUND_SPRITE_Y 112). Both the scheduled arm and the debug summon use it (the boss lateral is intrinsic).
@@ -8338,28 +8378,41 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
     return seed
 
 
-def _ground_seed_andor(blocks: Blocks, *, base: int) -> list[str]:
-    # BOSS-01 (andor.lifecycle #94): the Andor Genesis bulk-arm — the port's sub_2_fn_20__andor_genesis_start
-    # ($064A): stamp all 15 part types into ground obj slots 1..15 (Scratch slots base+1..base+15) and clear the
-    # end flag. The arm ORDER is source-exact (ANDOR_GENESIS_DATA); the master lands at Scratch slot base+15.
-    # Each part is marked ACTIVE so the field-occupancy checks (and the debug key's field-empty gate) see the
-    # boss. The master's shared anchor is set to its arcade start (`_X` MSB 0xf8 off the top, `_Y` = 0x0e80):
-    # `andor master x` = START_X, `andor master y` = LATERAL_Y — from here the master proc descends the anchor and
-    # `update andor part` pins each part to it. slot x/y are ALSO seeded to the part's initial composite position
-    # (START anchor + the part's offset) so the very first frame renders in place regardless of arm-vs-walk order;
-    # cull clears only type/state, so seed x/y explicitly rather than trust a reused slot. Reached from the debug
-    # key now; the live schedule opcode wires in a later commit — shared, so the debug arm is the scheduled arm's
-    # exact shape (the lateral is a boss constant, not a schedule column).
+def _ground_seed_andor(blocks: Blocks, *, base: int, port_fire_mask) -> list[str]:
+    # BOSS-01 (andor.lifecycle #94) + BOSS-02/03 (#95/#96): the Andor Genesis bulk-arm — the port's
+    # sub_2_fn_20__andor_genesis_start ($064A): stamp all 15 part types into ground obj slots 1..15 (Scratch slots
+    # base+1..base+15) and clear the end flag. The arm ORDER is source-exact (ANDOR_GENESIS_DATA); the master lands
+    # at Scratch slot base+15. The master's shared anchor is set to its arcade start (`_X` MSB 0xf8 off the top,
+    # `_Y` = 0x0e80): `andor master x` = START_X, `andor master y` = LATERAL_Y — from here the master proc descends
+    # the anchor and `update andor part` pins each part to it. slot x/y are ALSO seeded to the part's initial
+    # composite position (START anchor + the part's offset) so the very first frame renders in place regardless of
+    # arm-vs-walk order; cull clears only type/state, so seed x/y explicitly rather than trust a reused slot.
+    #
+    # BOSS-02/03 COMBAT state, keyed off the slot's part TYPE (never a hardcoded slot number):
+    #   * armor plates -> the ANDOR_ARMOR_IMMUNE sentinel (arcade `_STATE=3`): non-ACTIVE, so the ACTIVE-gated
+    #     bomb sweep skips them for free; still aligned/drawn (dispatch + render key off `slot type`).
+    #   * core         -> ACTIVE + `slot pts` = ANDOR_CORE_PTS (4,000 on a direct bomb).
+    #   * gun ports    -> ACTIVE + `slot pts` = ANDOR_PORT_PTS (1,000 on a direct bomb) + `slot fire mask`
+    #     (from the caller's factory: the live stage var, or the debug forced 47) + `slot fire timer` = the
+    #     arcade's fixed init 1 (the mask drives the post-fire reload, not this seed).
+    #   * master       -> ACTIVE, `slot pts` DELIBERATELY LEFT UN-SEEDED so it carries the previous tenant's
+    #     value: the arcade never inits obj-15's `_PTS`, so a bomb on the co-located core awards the core's 4,000
+    #     AND the master's stale leftover (the documented shell-slot bug — see C3, which tracks the master onto
+    #     the core each tick so the bomb lands on it).
+    # `port_fire_mask()` returns a FRESH reporter per call (one per port). Shared by the debug key and the live
+    # schedule opcode, so the debug arm is the scheduled arm's exact shape (the lateral is a boss constant, not a
+    # schedule column); only the fire-mask SOURCE differs (debug forces 47, live reads the schedule-set var).
     seed: list[str] = [
         blocks.set_var("andor master x", ANDOR_MASTER_X_ID, number(ANDOR_START_X)),
         blocks.set_var("andor master y", ANDOR_MASTER_Y_ID, number(ANDOR_LATERAL_Y)),
     ]
     for n, part_type in enumerate(ANDOR_GENESIS_DATA, start=1):
         slot = base + n
+        state_val = ANDOR_ARMOR_IMMUNE if part_type in ANDOR_ARMOR_TYPES else SLOT_ACTIVE
         seed.extend(
             [
                 blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(part_type)),
-                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(SLOT_ACTIVE)),
+                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(state_val)),
                 blocks.list_replace(
                     "slot x", SLOT_X_ID, number(slot),
                     number(ANDOR_START_X + ANDOR_PART_DEPTH_OFFSETS[part_type - 0x41]),
@@ -8370,6 +8423,27 @@ def _ground_seed_andor(blocks: Blocks, *, base: int) -> list[str]:
                 ),
             ]
         )
+        if part_type == ANDOR_CORE_TYPE:
+            seed.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, number(slot), number(ANDOR_CORE_PTS))
+            )
+        elif part_type in ANDOR_PORT_TYPES:
+            seed.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, number(slot), number(ANDOR_PORT_PTS))
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot fire mask", SLOT_FIRE_MASK_ID, number(slot), port_fire_mask()
+                )
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot fire timer", SLOT_FIRE_TIMER_ID, number(slot),
+                    number(ANDOR_PORT_FIRE_TIMER_INIT),
+                )
+            )
+        # armor + master: no `slot pts` written (armor is immune and never scored; the master carries the
+        # previous tenant's stale pts on purpose — the shell-slot bug).
     seed.append(blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0)))
     return seed
 
@@ -8460,7 +8534,13 @@ def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str
     if shape == "andor":
         # BOSS-01 (andor.lifecycle #94): the whole 15-part composite arms at once into the ground band, so unlike
         # the other shapes it ignores the fixed single-slot column and stamps slots base+1..base+15 directly.
-        return _ground_seed_andor(blocks, base=base)
+        # BOSS-02 (#95): under a fresh hold-G no `fire_mask_andor_genesis` schedule record has run, so the stage
+        # var would be 0 and give a degenerate fastest-fire. Force the ports to the real arcade mask 47 here so
+        # the operator's live playtest exercises the true (non-contiguous) fire cadence; live area schedules set
+        # 47 or 15 per area from the var, and the static harness pins the numeric correctness regardless.
+        return _ground_seed_andor(
+            blocks, base=base, port_fire_mask=lambda: number(ANDOR_GENESIS_DEBUG_FIRE_MASK)
+        )
     raise ValueError(f"unknown debug ground seed shape: {shape!r}")
 
 
@@ -8790,14 +8870,19 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # and add_domogram, the arm is withheld while the G ground-debug key owns the band (the cursor still advances
     # at the loop end, so no record is skipped or replayed) — so a debug-summoned boss is never fought over by a
     # live schedule record. The end flag write is likewise withheld while G is held, so a live end record cannot
-    # tear down the operator's debug boss mid-inspection; the two stay in sync. Slice 15 is the lifecycle only —
-    # nothing here touches firing (op 78's mask) or the hit/score/bomb path (slice 16).
+    # tear down the operator's debug boss mid-inspection; the two stay in sync. BOSS-02/03 (#95/#96): the arm now
+    # also seeds the combat state (armor immunity, core/port score indices, the ports' fire mask + timer) via the
+    # shared `_ground_seed_andor`; the only debug-vs-live difference is the fire-mask SOURCE (see that builder).
     andor_start_branch = blocks.if_reporter(
         blocks.op_and(
             blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
             blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
         ),
-        _ground_seed_andor(blocks, base=GROUND_SLOTS[0]),
+        _ground_seed_andor(
+            blocks,
+            base=GROUND_SLOTS[0],
+            port_fire_mask=lambda: variable(FIRE_MASK_ANDOR_NAME, FIRE_MASK_ANDOR_ID),
+        ),
     )
     andor_end_branch = blocks.if_reporter(
         blocks.op_and(
