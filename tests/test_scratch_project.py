@@ -10664,8 +10664,17 @@ class ScratchProjectTests(unittest.TestCase):
                 break
         if fire_if is None:
             failures.add("boss02-port-fire")
-        elif not h["subtree_has"](cond_id(fire_if), lambda z: eq_item(z, director.SLOT_STATE_ID, director.SLOT_ACTIVE)):
-            failures.add("boss02-fire-active-gated")
+        else:
+            if not h["subtree_has"](cond_id(fire_if), lambda z: eq_item(z, director.SLOT_STATE_ID, director.SLOT_ACTIVE)):
+                failures.add("boss02-fire-active-gated")
+            # (2b) DH-1 FIRE SUPPRESSED ON DEATH/BURST: the fire condition also polls the core (a
+            # `slot state == SLOT_HIT` term, negated) and the port's own explosion clock (`slot timer == 0`), so
+            # no volley leaves on the core-death frame (the arcade polls the core BEFORE its fire jsr, 5523-before-
+            # 5533) or once the port is already mid-burst.
+            core_poll = h["subtree_has"](cond_id(fire_if), lambda z: eq_item(z, director.SLOT_STATE_ID, director.SLOT_HIT))
+            idle_poll = h["subtree_has"](cond_id(fire_if), lambda z: eq_item(z, director.SLOT_TIMER_ID, 0))
+            if not (core_poll and idle_poll):
+                failures.add("boss02-fire-suppressed-on-death")
 
         # (3) MASK-47 GUARD + (4) bit-exact reload: a dedicated `slot fire mask == 47` branch reloads the
         # fire timer with `rng mod 16` plus a `× 32` high-bit term (reproducing the non-contiguous `rng AND 47`).
@@ -10817,32 +10826,54 @@ class ScratchProjectTests(unittest.TestCase):
         if not (sets_slot_from_var(director.SLOT_X_ID, director.ANDOR_MASTER_X_ID) and sets_slot_from_var(director.SLOT_Y_ID, director.ANDOR_MASTER_Y_ID)):
             failures.add("boss03-shell-track")
 
-        # (4) CORE-HIT CHECK + (5) FIRES-ONCE latch: on core `SLOT_HIT`, the master latches
-        # `andor destroyed timer = 1` (which also routes the core off HIT), so destruction fires exactly once.
+        # (4) CORE-HIT CHECK + (5) FIRES-ONCE latch: on core `SLOT_HIT`, the master (dispatched last) latches
+        # `andor destroyed timer = 1` — which routes every later tick into the destroyed departure — so the flash
+        # + departure fire exactly once. The master NO LONGER flips the port states: the gun-port cascade is a
+        # per-port poll in `update andor part` (guards 6/7 below), mirroring the arcade's per-port
+        # `cmp #3,(core _STATE)` ahead of each port's fire jsr (5523/5574/5625/5676).
         core_hit_if = next(
             (b for b in master if b["opcode"] == "control_if" and eq_item_at(cond(b), director.SLOT_STATE_ID, core_slot, director.SLOT_HIT)),
             None,
         )
-        cascade_ids = h["branch_ids"](core_hit_if, "SUBSTACK") if core_hit_if else set()
+        death_ids = h["branch_ids"](core_hit_if, "SUBSTACK") if core_hit_if else set()
         if core_hit_if is None:
             failures.add("boss03-core-hit-check")
-        if core_hit_if is None or not h["sets_var"](cascade_ids, director.ANDOR_DESTROYED_TIMER_ID, 1):
+        if core_hit_if is None or not h["sets_var"](death_ids, director.ANDOR_DESTROYED_TIMER_ID, 1):
             failures.add("boss03-fires-once")
 
-        # (6) CASCADE: every surviving ACTIVE port is cascaded directly to `SLOT_HIT`; (7) the cascade routes
-        # through NO proc call, so a cascaded port scores nothing (only a direct bomb scores).
-        def cascades(pslot):
-            for x in cascade_ids:
-                b = blocks[x]
-                if b["opcode"] == "control_if" and eq_item_at(cond(b), director.SLOT_STATE_ID, pslot, director.SLOT_ACTIVE):
-                    if body_writes_iv([blocks[y] for y in h["branch_ids"](b, "SUBSTACK")], director.SLOT_STATE_ID, pslot, director.SLOT_HIT):
-                        return True
-            return False
+        # (6) PER-PORT CASCADE + (7) SCORES NOTHING / STAYS BOMBABLE. The cascade lives in `update andor part`
+        # as an `operator_or`-gated explosion trigger (the only OR-conditioned `if` in the proc): a part explodes
+        # when directly bombed (SLOT_HIT), OR it is a port AND the core is SLOT_HIT (the per-port poll), OR its own
+        # explosion clock is already running (slot timer > 0). (6) that condition must contain BOTH the core-state
+        # poll and a port-type test. (7) the branch routes through NO proc call and never stamps the current slot
+        # SLOT_HIT — so a core-cascaded port stays SLOT_ACTIVE (bombable for its 1,000) throughout its burst, and
+        # the cascade itself awards nothing (only the ACTIVE-gated detector, on a direct bomb, ever scores).
+        def cond_id(b):
+            c = b["inputs"].get("CONDITION")
+            return c[1] if isinstance(c, list) and len(c) >= 2 and isinstance(c[1], str) else None
 
-        if core_hit_if is None or not all(cascades(p) for p in port_slots):
+        explode_if = next(
+            (b for b in part if b["opcode"] == "control_if" and (c := cond(b)) is not None and c["opcode"] == "operator_or"),
+            None,
+        )
+        if explode_if is None:
             failures.add("boss03-cascade")
-        if core_hit_if is not None and any(blocks[x]["opcode"] == "procedures_call" for x in cascade_ids):
             failures.add("boss03-cascade-no-score")
+        else:
+            eid = cond_id(explode_if)
+            has_core_poll = h["subtree_has"](eid, lambda z: eq_item_at(z, director.SLOT_STATE_ID, core_slot, director.SLOT_HIT))
+            has_port = h["subtree_has"](eid, lambda z: any(eq_item(z, director.SLOT_TYPE_ID, t) for t in director.ANDOR_PORT_TYPES))
+            if not (has_core_poll and has_port):
+                failures.add("boss03-cascade")
+            ebody = [blocks[x] for x in h["branch_ids"](explode_if, "SUBSTACK")]
+            forced_hit = any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                and num(b["inputs"].get("ITEM")) == director.SLOT_HIT
+                for b in ebody
+            )
+            if any(b["opcode"] == "procedures_call" for b in ebody) or forced_hit:
+                failures.add("boss03-cascade-no-score")
 
         # (8) CONVERT CORE: the part proc's finished-burst resolution flips the core slot to Bragza AND
         # stamps the immune sentinel (blocking a second bomb re-scoring the stale pts).
@@ -10871,9 +10902,9 @@ class ScratchProjectTests(unittest.TestCase):
         if not convert_ok:
             failures.add("boss03-convert-core")
 
-        # (9) HIT TIMER: the part proc's `SLOT_HIT` branch advances `slot timer` so the shared burst plays.
-        hit_if = next((b for b in part if b["opcode"] == "control_if" and eq_item(cond(b), director.SLOT_STATE_ID, director.SLOT_HIT)), None)
-        if hit_if is None or not h["advances_clock"](h["branch_ids"](hit_if, "SUBSTACK"), director.SLOT_TIMER_ID):
+        # (9) EXPLODE TIMER: the part proc's OR-gated explode branch advances `slot timer` every tick so the
+        # shared 8-frame burst animates instead of freezing on frame 0.
+        if explode_if is None or not h["advances_clock"](h["branch_ids"](explode_if, "SUBSTACK"), director.SLOT_TIMER_ID):
             failures.add("boss03-hit-timer")
 
         # (10) TEARDOWN SPARES BRAGZA: every master core-slot type-free is the guarded body of its OWN
@@ -10971,6 +11002,19 @@ class ScratchProjectTests(unittest.TestCase):
                     b["inputs"]["OPERAND2"] = [1, [4, "99"]]
                     return
 
+        def break_fire_suppressed(p):
+            # Corrupt the `slot timer == 0` term of the port-fire AND (unique to the fire gate — the explode
+            # trigger uses `slot timer > 0`), so the fire is no longer suppressed mid-burst / on the death frame.
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _lhs_list(blk, b, director.SLOT_TIMER_ID)
+                    and _num_operand(b["inputs"].get("OPERAND2")) == 0
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                    return
+
         def break_mask47_guard(p):
             blk = _stage(p)["blocks"]
             for b in _body(p, director.FIRE_GATE_PROCCODE):
@@ -11026,6 +11070,7 @@ class ScratchProjectTests(unittest.TestCase):
         cases = [
             ("boss02-port-fire", break_port_fire),
             ("boss02-fire-active-gated", break_fire_active_gate),
+            ("boss02-fire-suppressed-on-death", break_fire_suppressed),
             ("boss02-mask47-guard", break_mask47_guard),
             ("boss02-mask47-reload", break_mask47_reload),
             ("boss02-armor-immune", break_armor_immune),
@@ -11138,43 +11183,61 @@ class ScratchProjectTests(unittest.TestCase):
                     b["inputs"]["VALUE"] = [1, [4, "0"]]
                     return
 
-        def break_cascade(p):
+        def _explode_if(p):
+            # The single `operator_or`-conditioned `if` in `update andor part` — the per-port explode trigger.
             blk = _stage(p)["blocks"]
-            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
-                if (
-                    b["opcode"] == "data_replaceitemoflist"
-                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
-                    and _num_operand(b["inputs"].get("INDEX")) == BASE + 11
-                    and _num_operand(b["inputs"].get("ITEM")) == director.SLOT_HIT
-                ):
-                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if b["opcode"] != "control_if":
+                    continue
+                c = blk.get(b["inputs"].get("CONDITION", [None, None])[1])
+                if c is not None and c["opcode"] == "operator_or":
+                    return blk, b
+            return blk, None
+
+        def break_cascade(p):
+            # Corrupt the core-state poll INSIDE the part's OR-gated explode trigger (the per-port cascade),
+            # leaving the operator_or + timer advance intact so the branch is still located. Scoped to that
+            # condition subtree so it does not touch the fire gate's own (negated) core poll.
+            blk, ex = _explode_if(p)
+            if ex is None:
+                return
+            seen, frontier = set(), [ex["inputs"]["CONDITION"][1]]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blk:
+                    continue
+                seen.add(x)
+                bb = blk[x]
+                if bb["opcode"] == "operator_equals" and _lhs_item(blk, bb, director.SLOT_STATE_ID, CORE) and _num_operand(bb["inputs"].get("OPERAND2")) == director.SLOT_HIT:
+                    bb["inputs"]["OPERAND2"] = [1, [4, "99"]]
                     return
+                for v in bb.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
 
         def break_cascade_no_score(p):
-            # Graft a proc call into the cascade branch — a cascaded port must route through NO scoring proc.
-            blk = _stage(p)["blocks"]
-            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
-                if b["opcode"] == "control_if":
-                    c = blk.get(b["inputs"].get("CONDITION", [None, None])[1])
-                    if c is not None and c["opcode"] == "operator_equals" and _lhs_item(blk, c, director.SLOT_STATE_ID, CORE) and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT:
-                        bid = _bid(blk, b)
-                        sub = b["inputs"].get("SUBSTACK")
-                        head = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
-                        gid = "graft-cascade-score"
-                        blk[gid] = {
-                            "opcode": "procedures_call",
-                            "parent": bid,
-                            "next": head,
-                            "inputs": {},
-                            "fields": {},
-                            "shadow": False,
-                            "topLevel": False,
-                            "mutation": {"tagName": "mutation", "children": [], "proccode": "score", "argumentids": "[]", "warp": "false"},
-                        }
-                        b["inputs"]["SUBSTACK"] = [2, gid]
-                        if head:
-                            blk[head]["parent"] = gid
-                        return
+            # Graft a scoring proc call into the part's OR-gated explode branch — a cascade must route through
+            # NO scoring proc (only the direct-bomb detector scores a port).
+            blk, ex = _explode_if(p)
+            if ex is None:
+                return
+            bid = _bid(blk, ex)
+            sub = ex["inputs"].get("SUBSTACK")
+            head = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            gid = "graft-explode-score"
+            blk[gid] = {
+                "opcode": "procedures_call",
+                "parent": bid,
+                "next": head,
+                "inputs": {},
+                "fields": {},
+                "shadow": False,
+                "topLevel": False,
+                "mutation": {"tagName": "mutation", "children": [], "proccode": "score", "argumentids": "[]", "warp": "false"},
+            }
+            ex["inputs"]["SUBSTACK"] = [2, gid]
+            if head:
+                blk[head]["parent"] = gid
 
         def break_convert_core(p):
             blk = _stage(p)["blocks"]
@@ -17441,7 +17504,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "21e1d5ac81a49fa3579cd632d5757abf1e4bd6f7621c8d5b9002ecb6959113fe",
+            "45ab26a955fcbc18224b95174171fd44b5de74c374d9b19347b4911c36a1cf6a",
             build_hash,
         )
 

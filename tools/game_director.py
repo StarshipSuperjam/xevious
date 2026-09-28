@@ -7525,39 +7525,30 @@ def install_update_andor_master(blocks: Blocks) -> None:
             blocks, "slot y", SLOT_Y_ID, variable("andor master y", ANDOR_MASTER_Y_ID)
         ),
     ]
-    # BOSS-03 (#96) CORE-DEATH sequence. The master dispatches LAST in the ascending walk, so it sees every part's
+    # BOSS-03 (#96) CORE-DEATH sequence. The master dispatches LAST in the ascending walk, so it sees the core's
     # state this tick. When the core (obj 14 -> Scratch slot base+14) is SLOT_HIT — bombed for 4,000 this tick (or a
-    # prior one) — begin the destruction, ONCE: cascade every still-ACTIVE gun port to SLOT_HIT (the arcade per-port
-    # `cmp #3,(core _STATE); jeq <xx>_gun_port_hit` at 5523/5574/5625/5676 — an explosion, NOT a score: the cascade
-    # awards nothing), flash the shared colour to 0x1d, and latch the destroyed clock to 1. A port ALREADY SLOT_HIT
-    # (directly bombed) is not re-cascaded (only ACTIVE ports flip) — matching the arcade's per-port poll. The core
-    # itself keeps exploding under `update andor part`, which converts it to the fly-up Bragza when its own burst
-    # finishes (andor_genesis_core_hit waits for `_STATE==4` before the conversion, 5482); the master does not touch
-    # the core here. The latch (destroyed timer != 0) then routes every later tick into the destroyed departure, so
-    # this check fires exactly once even as the core stays SLOT_HIT until it converts. (handle_4B's first instruction
-    # tests the core `_STATE==3` every tick before the descend/hold branch, 5387-5388.)
+    # prior one) — begin the destruction, ONCE: flash the shared colour to 0x1d and latch the destroyed clock to 1.
+    # The gun-port CASCADE is NOT done here. In the arcade each port's OWN handler polls the core state BEFORE its
+    # fire call (`cmp #3,(core _STATE); jeq <xx>_gun_port_hit` at 5523/5574/5625/5676, ahead of the fire jsr at
+    # 5533/5584/5635/5686) and routes itself to `<xx>_gun_port_hit` — an explosion, NOT a score. Critically the
+    # cascaded port stays `_STATE=2` (active) throughout its explosion (only `gun_port_explosion_finished` at
+    # 5721-5726 sets state 4), so a bomb landing on it during the burst still scores its 1,000. Modelling the cascade
+    # as a master-driven flip to SLOT_HIT (as C4 did) diverged twice on the death frame: the ports (walked earlier)
+    # fired one extra volley before the master flipped them, and a cascading port became instantly un-bombable. So the
+    # cascade now lives per-port in `update andor part` (fire gated on core-not-hit; a port whose core is hit explodes
+    # while staying ACTIVE/bombable until its burst finishes) — source-exact on the death tick. The master here only
+    # flashes + latches. The core itself keeps exploding under `update andor part`, converting to the fly-up Bragza
+    # when its own burst finishes (andor_genesis_core_hit waits for `_STATE==4`, 5482). The latch (destroyed timer
+    # != 0) routes every later tick into the destroyed departure, so this check fires exactly once even as the core
+    # stays SLOT_HIT until it converts. (handle_4B's first instruction tests the core `_STATE==3` every tick before
+    # the descend/hold branch, 5387-5388.)
     core_slot = base + 14  # obj 14 (core) -> Scratch slot base+14
     core_is_hit = blocks.op_eq(
         blocks.list_item("slot state", SLOT_STATE_ID, number(core_slot)), number(SLOT_HIT)
     )
-    cascade: list[str] = []
-    for obj in range(10, 14):  # obj 10..13 (the four gun ports) -> Scratch slots base+10..base+13
-        pslot = base + obj
-        cascade.append(
-            blocks.if_reporter(
-                blocks.op_eq(
-                    blocks.list_item("slot state", SLOT_STATE_ID, number(pslot)), number(SLOT_ACTIVE)
-                ),
-                [
-                    blocks.list_replace("slot state", SLOT_STATE_ID, number(pslot), number(SLOT_HIT)),
-                    blocks.list_replace("slot timer", SLOT_TIMER_ID, number(pslot), number(0)),
-                ],
-            )
-        )
     core_death_check = blocks.if_reporter(
         core_is_hit,
         [
-            *cascade,
             blocks.set_var(
                 "andor genesis colour", ANDOR_GENESIS_COLOUR_ID, number(ANDOR_DESTROYED_COLOUR_FLASH)
             ),
@@ -7617,35 +7608,54 @@ def install_update_andor_part(blocks: Blocks) -> None:
     definition = _install_warp_proc(blocks, UPDATE_ANDOR_PART_PROCCODE)
     part_index = lambda: blocks.op_sub(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0x40))
     slot_type = lambda: _cur_item(blocks, "slot type", SLOT_TYPE_ID)
-    # BOSS-02 (#95): after alignment, the four gun ports fire on the SHARED periodic gate under the mask captured
-    # at arm (handle_4F..52 each call chk_timer_fire_bullet_reinit_timer, xevious_main.68k:5533/5584/5635/5686).
-    # Gate the fire call on SLOT_ACTIVE: a directly-bombed or cascaded port is non-ACTIVE and the arcade routes it
-    # to explosion, not the fire timer — so a dying port stops firing while alignment above still pins it. Armor
-    # (immune sentinel) and the core are never port types, so they never reach this call.
-    is_port = functools.reduce(
+    slot_timer = lambda: _cur_item(blocks, "slot timer", SLOT_TIMER_ID)
+    # Each port polls the CORE slot's state itself, exactly as the arcade does. handle_4F..52 test
+    # `cmp.b #3,(core _STATE)` at 5523/5574/5625/5676 — BEFORE their fire jsr at 5533/5584/5635/5686 — and route
+    # themselves to <xx>_gun_port_hit when the core is dead. Reproduce that per-port poll here (the cascade is NOT
+    # driven by the master flipping port states — that flip lagged one tick behind this earlier-walked proc and let
+    # a port fire one extra volley on the death frame, and made a cascading port instantly un-bombable).
+    core_slot = GROUND_SLOTS[0] + 14  # obj 14 (core) -> Scratch slot base+14
+    core_is_hit = lambda: blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, number(core_slot)), number(SLOT_HIT)
+    )
+    is_port = lambda: functools.reduce(
         blocks.op_or,
         (blocks.op_eq(slot_type(), number(t)) for t in ANDOR_PORT_TYPES),
     )
-    is_active = blocks.op_eq(
+    is_active = lambda: blocks.op_eq(
         _cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE)
     )
-    port_fire = blocks.if_reporter(
-        blocks.op_and(is_port, is_active),
-        [blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)],
-    )
-    # BOSS-02/03 (#95/#96): a HIT part (a directly-bombed or cascaded gun port, or the bombed core) plays the shared
-    # ground explosion burst. Advance its animation clock every tick (F4) so the renderer's floor(slot timer / 8)
-    # walks the 8 burst frames instead of freezing on frame 0. When the burst finishes (floor >= EXPLODE_COSTUME_
-    # COUNT), resolve the part: a gun port is explode-and-remove (free the slot — the arcade <xx>_gun_port_hit plays
-    # gun_port_explosion then the slot is gone); the CORE converts in place into the fly-up Bragza (arcade
-    # andor_genesis_core_hit waits for its explosion to finish, `_STATE==4`, THEN sets it flying, 5482-5491) —
-    # stamped ANDOR_BRAGZA_TYPE + the ANDOR_ARMOR_IMMUNE sentinel (never re-bombable) with its anim clock reset. The
-    # master's core-death check has already cascaded the ports + latched the destroyed departure by the time the
-    # core reaches this point. Armor is the immune sentinel, never SLOT_HIT, so it never enters this branch.
-    slot_timer = lambda: _cur_item(blocks, "slot timer", SLOT_TIMER_ID)
-    is_hit = blocks.op_eq(
+    is_hit = lambda: blocks.op_eq(
         _cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT)
     )
+    # BOSS-02 (#95): after alignment, an ACTIVE gun port fires on the SHARED periodic gate under the mask captured at
+    # arm (handle_4F..52 each call chk_timer_fire_bullet_reinit_timer). Suppress the fire when the core is hit (the
+    # arcade polls the core FIRST and diverts to its explosion, so no volley leaves on the death frame — DH-1) and
+    # when this port is already mid-burst (slot timer > 0). A directly-bombed port is non-ACTIVE (SLOT_HIT) and is
+    # skipped too. Armor (immune sentinel) and the core are never port types, so they never reach this call.
+    port_fire = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_and(is_port(), is_active()),
+            blocks.op_and(blocks.op_not(core_is_hit()), blocks.op_eq(slot_timer(), number(0))),
+        ),
+        [blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)],
+    )
+    # BOSS-02/03 (#95/#96): a part plays the shared ground explosion burst when it is directly bombed (SLOT_HIT), OR
+    # it is a gun port whose core has just died (the per-port cascade poll above — DH-2), OR it is a gun port already
+    # mid-burst (a port AND slot timer > 0, so a cascade burst keeps running to completion after the core converts and
+    # stops being SLOT_HIT — the arcade port runs its own gun_port_explosion independently once diverted, 5541-5721,
+    # and the composite dispatch does not guarantee the ports resolve on the same tick as the core). A cascaded port
+    # stays SLOT_ACTIVE throughout its explosion, exactly like the arcade (only gun_port_explosion_finished at 5721
+    # sets _STATE=4) — so a bomb landing on it during the burst still scores its 1,000 through the ACTIVE-gated
+    # detector. Advance the animation clock every tick (F4) so the renderer's floor(slot timer / 8) walks the 8 burst
+    # frames instead of freezing on frame 0. When the burst finishes (floor >= EXPLODE_COSTUME_COUNT), resolve the
+    # part: a gun port is explode-and-remove (free the slot); the CORE converts in place into the fly-up Bragza
+    # (arcade andor_genesis_core_hit waits for its explosion to finish, `_STATE==4`, THEN sets it flying, 5482-5491)
+    # — stamped ANDOR_BRAGZA_TYPE + the ANDOR_ARMOR_IMMUNE sentinel (never re-bombable) with its anim clock reset.
+    # The mid-burst continuation is gated on `is_port` (not the bare timer) so armor — the immune sentinel, never
+    # SLOT_HIT and never a port — never advances a slot timer it did not start: this proc writes ONLY slot x/y for a
+    # non-exploding part, so a boss part armed over a slot with a stale explosion clock stays inert (band isolation).
+    # The live seed zeroes `slot timer` on every arm, so a real port always begins its burst from 0.
     burst_done = blocks.op_not(
         blocks.op_lt(
             blocks.op_floor(
@@ -7668,8 +7678,12 @@ def install_update_andor_part(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(0)),
         ],
     )
-    hit_branch = blocks.if_reporter(
-        is_hit,
+    explode = blocks.op_or(
+        blocks.op_or(is_hit(), blocks.op_and(is_port(), core_is_hit())),
+        blocks.op_and(is_port(), blocks.op_gt(slot_timer(), number(0))),
+    )
+    explode_branch = blocks.if_reporter(
+        explode,
         [
             _set_cur_item(
                 blocks, "slot timer", SLOT_TIMER_ID,
@@ -7696,7 +7710,7 @@ def install_update_andor_part(blocks: Blocks) -> None:
                 ),
             ),
             port_fire,
-            hit_branch,
+            explode_branch,
         ],
     )
 
@@ -11435,11 +11449,16 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         return blocks.op_add(number(1), variable("andor genesis flip", ANDOR_GENESIS_FLIP_ID))
 
     def andor_mortal_costume(offset_key: str, idle_ordinal_fn, explode_base: int) -> str:
-        # BOSS-02/03: a mortal boss part (gun port / core). While not SLOT_HIT it shows its idle costume (the
-        # port muzzle by type, or the core's flip-phase costume); while SLOT_HIT it plays the shared solv_death
-        # burst, floor(slot timer / GROUND_EXPLOSION_PHASE_FRAMES) into ordinals explode_base..+7 — the same
-        # explode clock every ground family uses. `update andor part` advances the timer and frees/converts the
-        # slot the tick the burst completes, so the render never overruns the 8 burst frames.
+        # BOSS-02/03: a mortal boss part (gun port / core). While idle it shows its idle costume (the port muzzle by
+        # type, or the core's flip-phase costume); while exploding it plays the shared solv_death burst,
+        # floor(slot timer / GROUND_EXPLOSION_PHASE_FRAMES) into ordinals explode_base..+7 — the same explode clock
+        # every ground family uses. The burst shows while the slot is SLOT_HIT (directly bombed) OR its explode clock
+        # is running (slot timer > 0): a core-death-cascaded gun port stays SLOT_ACTIVE (bombable for its 1,000)
+        # throughout its explosion (DH-2), so keying on SLOT_HIT alone would leave a cascaded port drawing its idle
+        # muzzle while it should be bursting. This timer>0 test is confined to this Andor-only helper — the general
+        # ground families (Barra/Sol-tower) that advance slot timer while ACTIVE for other reasons never render
+        # through here. `update andor part` advances the timer and frees/converts the slot the tick the burst
+        # completes, so the render never overruns the 8 burst frames.
         offset = off[offset_key]
         explode_ordinal = blocks.op_add(
             number(explode_base),
@@ -11451,11 +11470,16 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
             ),
         )
         state_render = blocks.add("control_if_else")
-        is_hit = blocks.op_eq(
-            blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)
+        exploding = blocks.op_or(
+            blocks.op_eq(
+                blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)
+            ),
+            blocks.op_gt(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(0)
+            ),
         )
-        blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-        blocks.blocks[is_hit]["parent"] = state_render
+        blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, exploding]
+        blocks.blocks[exploding]["parent"] = state_render
         blocks.substack(state_render, [_sw(blocks, offset, explode_ordinal)])
         blocks.substack(state_render, [_sw(blocks, offset, idle_ordinal_fn())], name="SUBSTACK2")
         return state_render

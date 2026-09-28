@@ -34,10 +34,12 @@ state and never react to weapons; they exist to be the body (all nine handlers s
 5771–5983). The four gun ports fire per the boss's fire-permission mask
 ([Difficulty and formations](difficulty-and-formations.md)) and are individually bombable. Bragza — the
 boss's own projectile-spawning defense — emerges on the core's destruction sequence: the core object
-converts in place to an indestructible Bragza that flies off under constant velocity (5486–5504; the
-reference's own comment and its motion vector disagree about the flight axis — recorded as an observed
-source discrepancy, resolution deferred to arcade observation). Enemy shots from the ports use the
-shared bullet rules ([Aerial enemies](aerial-enemies.md)).
+converts in place to an indestructible Bragza that flies off under constant velocity (5486–5504). The
+motion vector is authoritative over the reference's stale comment (source wins): the conversion sets
+`_dX = 0xffd0` and clears `_dY`, and since `_X`/`_dX` is the vertical/scroll axis (`dir_delta_tbl`,
+2171–2180; −`_X` = up-screen), Bragza flies **up the screen** — the port models this as `slot x`
+decreasing (`update andor bragza`, [048](../mechanics/048-andor-core-destruction.md)). Enemy shots from
+the ports use the shared bullet rules ([Aerial enemies](aerial-enemies.md)).
 
 **Destruction and departure (BOSS-03).** Only bombing the core kills the boss: the core takes a bomb
 like any ground target, scores its value, and its destruction cascades — each surviving gun port
