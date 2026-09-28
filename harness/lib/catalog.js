@@ -104,6 +104,65 @@ const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
 const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
 const shotSlotTypes = (vm) => readVar(vm, 'slot-type').slice(36, 39);
 
+// --- BOSS-01 / andor.lifecycle (#94) shared scenario helpers -------------------------------------------
+// Geometry read straight from tools/game_director.py (source-verified against the pin). The master's
+// shared anchor `andor master x` descends from ANDOR_START_X (off the top edge) toward ANDOR_HOLD_X by
+// ANDOR_DESCEND_STEP each tick and holds; on the end flag it retreats up by ANDOR_LEAVE_STEP and, once
+// clear of the top, tears the composite down. Each visible part pins to the anchor + its per-type offset.
+// GROUND band = Scratch slots 1..16 (JS index 0..15); the arm stamps the 15 parts into Scratch slots
+// 2..16 (arcade obj 1..15), master LAST at Scratch slot 16 (JS 15); the obj-0 flag slot (JS 0) stays free.
+const ANDOR = {
+  START_X: -2048,
+  HOLD_X: 4096,
+  DESCEND_STEP: 64,
+  LEAVE_STEP: 32,
+  LATERAL_Y: 3712,
+  MASTER_TYPE: 75, // 0x4B invisible master
+  CORE_TYPE: 74, // 0x4A
+  BASE_SLOT: 1, // GROUND_SLOTS[0]; parts occupy Scratch slots base+1..base+15, master at base+15 (16)
+};
+// The source arm order (ANDOR_GENESIS_DATA): 9 armor (0x41..0x49), 4 ports (0x52,0x51,0x50,0x4F), core
+// (0x4A), master (0x4B) — obj 1..15 -> Scratch slots 2..16.
+const ANDOR_PART_TYPES_BY_OBJ = [
+  0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x52, 0x51, 0x50, 0x4f, 0x4a, 0x4b,
+];
+
+/** A put(id, jsIndex, value) writer into a Stage slot list (kebab manifest id). */
+function slotPutter(vm) {
+  return (id, i, v) => {
+    readVar(vm, id)[i] = v;
+  };
+}
+/** Zero the whole ground band (Scratch slots 1..16 = JS 0..15) type+state — the isolation pre-seed every
+ * boss scenario shares (freeze the director first so the live walk can't re-stamp it). */
+function clearGroundBand(vm) {
+  const put = slotPutter(vm);
+  for (let s = 0; s <= 15; s += 1) {
+    put('slot-type', s, 0);
+    put('slot-state', s, 0);
+  }
+}
+/** Read a ground-pool clone's graphic effect by the Scratch slot it is bound to (its sprite-local
+ * `ground clone slot`). cloneReports does not surface effects, so read the clone target directly. */
+function groundCloneEffect(vm, scratchSlot, effect = 'color') {
+  const slotName = variable('ground-clone-slot').name; // "ground clone slot"
+  for (const c of vm.runtime.targets) {
+    if (c.isStage || c.isOriginal || !c.sprite || c.sprite.name !== 'ground') continue;
+    let bound = null;
+    for (const id of Object.keys(c.variables)) {
+      if (c.variables[id].name === slotName) bound = c.variables[id].value;
+    }
+    if (Number(bound) === scratchSlot) {
+      return {
+        effect: (c.effects && c.effects[effect]) || 0,
+        visible: c.visible,
+        costume: c.sprite.costumes[c.currentCostume] ? c.sprite.costumes[c.currentCostume].name : null,
+      };
+    }
+  }
+  return null;
+}
+
 export const SCENARIOS = [
   {
     key: 'shot-cap-ceiling',
@@ -5100,6 +5159,471 @@ export const SCENARIOS = [
     // ordinal rebase risks. Logram still dispatches and shows (visible), so it is observed with a wrong
     // costume and the no-mismatch assertion goes red.
     negativeMutation: (p) => mutate.changeAddLiteral(p, 'ground', '39', '0'),
+  },
+  {
+    // BOSS-01 / andor.lifecycle (#94): the arrival state machine (handle_4B_Andor_Genesis, xevious_main.68k
+    // 5386-5406). Driven deterministically: freeze the director and tick `update andor master` by hand
+    // (callProc + step), reading the shared anchor var — pacing-invariant, not a live-walk timing assertion.
+    key: 'boss-arrives-and-holds',
+    behavior:
+      'The Andor Genesis master descends from off the top edge (ANDOR_START_X) toward the fixed hold row by a constant step each tick, lands EXACTLY on the hold row (clamped, never overshooting), and then holds with no further motion while the end flag is clear',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-genesis-end-flag', 0);
+      writeVar(vm, 'andor-master-x', ANDOR.START_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      const x0 = readVar(vm, 'andor-master-x');
+      const tick = () => {
+        callProc(vm, 'Stage', 'update andor master');
+        step(vm, 1);
+      };
+      tick();
+      const afterOne = readVar(vm, 'andor-master-x');
+      // Run well past the arrival window ((HOLD-START)/STEP = 96 ticks lands exactly; 120 is a safe margin).
+      for (let i = 0; i < 120; i += 1) tick();
+      const atHold = readVar(vm, 'andor-master-x');
+      tick(); // one more tick at the hold row must not move
+      const heldNext = readVar(vm, 'andor-master-x');
+      // Clamp proof: from just below the hold row a full step would overshoot -> clamp back to exactly hold.
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X - ANDOR.DESCEND_STEP / 2); // 4064; +64 -> 4128 > hold
+      tick();
+      const clamped = readVar(vm, 'andor-master-x');
+      return { x0, afterOne, atHold, heldNext, clamped };
+    },
+    assert(obs) {
+      assert.equal(obs.x0, ANDOR.START_X, 'the master starts off the top edge at ANDOR_START_X');
+      assert.equal(
+        obs.afterOne,
+        ANDOR.START_X + ANDOR.DESCEND_STEP,
+        'one tick descends the anchor by exactly one descend step',
+      );
+      assert.equal(obs.atHold, ANDOR.HOLD_X, 'the descent lands exactly on the hold row (ANDOR_HOLD_X)');
+      assert.equal(obs.heldNext, ANDOR.HOLD_X, 'at the hold row the master holds — no further motion');
+      assert.equal(
+        obs.clamped,
+        ANDOR.HOLD_X,
+        'a step that would overshoot the hold row is clamped back to it (never past)',
+      );
+    },
+    // Empty the master proc -> the anchor never descends from START -> the "reaches hold" clauses go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor master'),
+  },
+  {
+    // BOSS-01 / andor.lifecycle (#94): per-frame composite alignment (handle_41..4F part offsets,
+    // xevious_main.68k 5447-5983). `update andor part` pins the slot at `slot index` to the shared anchor +
+    // the part's per-type offset. Asserted against the anchor VAR (not the master slot), so the one-tick
+    // ascending-walk lag (finding #5) can never flake this.
+    key: 'boss-parts-align-to-master',
+    behavior:
+      "Every visible Andor part pins rigidly to the master's shared anchor plus its own per-type composite offset: `update andor part` sets the slot's x/y to `andor master x/y` + the part's offset (from the owned offset lists) regardless of the slot's prior position, and when the anchor moves each part tracks it by the same delta — the composite moves as one body",
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      const depth = readVar(vm, 'andor-part-depth');
+      const lateral = readVar(vm, 'andor-part-lateral');
+      // Sample three parts spanning the offset table — an armor plate, a gun port, the core — each on its
+      // own Scratch slot. Seed each slot's x/y to a WRONG sentinel first, so a passing assertion can only
+      // mean the proc RE-COMPUTED the position from the anchor (not that it happened to match a seed).
+      const cases = [
+        { slot: 2, type: 0x41 }, // armor (obj 1)
+        { slot: 14, type: 0x4f }, // gun port (obj 13)
+        { slot: 15, type: 0x4a }, // core (obj 14)
+      ];
+      const align = (slot, type) => {
+        const i = slot - 1;
+        put('slot-type', i, type);
+        put('slot-state', i, 1);
+        put('slot-x', i, 999999); // wrong sentinel
+        put('slot-y', i, -999999);
+        writeVar(vm, 'slot-index', slot);
+        callProc(vm, 'Stage', 'update andor part');
+        step(vm, 1);
+        return { type, off: type - 0x41, x: readVar(vm, 'slot-x')[i], y: readVar(vm, 'slot-y')[i] };
+      };
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      const first = cases.map((c) => align(c.slot, c.type));
+      // Rigidity: move the anchor by a delta and re-run; every part must track by the SAME delta.
+      const delta = 512;
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X + delta);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y - delta);
+      const second = cases.map((c) => align(c.slot, c.type));
+      return { depth, lateral, first, second, delta };
+    },
+    assert(obs) {
+      for (const p of obs.first) {
+        assert.equal(
+          p.x,
+          ANDOR.HOLD_X + obs.depth[p.off],
+          `part 0x${p.type.toString(16)} slot x = anchor x + its depth offset`,
+        );
+        assert.equal(
+          p.y,
+          ANDOR.LATERAL_Y + obs.lateral[p.off],
+          `part 0x${p.type.toString(16)} slot y = anchor y + its lateral offset`,
+        );
+      }
+      for (const p of obs.second) {
+        assert.equal(
+          p.x,
+          ANDOR.HOLD_X + obs.delta + obs.depth[p.off],
+          `part 0x${p.type.toString(16)} tracks the moved anchor x rigidly (same delta)`,
+        );
+        assert.equal(
+          p.y,
+          ANDOR.LATERAL_Y - obs.delta + obs.lateral[p.off],
+          `part 0x${p.type.toString(16)} tracks the moved anchor y rigidly (same delta)`,
+        );
+      }
+      // Non-vacuous: the sampled parts sit at DISTINCT composite offsets (a real octagon, not all-centre).
+      const offs = obs.first.map((p) => `${obs.depth[p.off]},${obs.lateral[p.off]}`);
+      assert.ok(new Set(offs).size >= 2, 'the sampled parts have distinct composite offsets');
+    },
+    // Empty the part proc -> slot x/y stay at the wrong sentinel -> every alignment clause goes red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor part'),
+  },
+  {
+    // BOSS-01 / andor.lifecycle (#94): the departure + teardown (andor_genesis_leave 5426-5438,
+    // remove_andor_genesis 5440-5443). On the end flag the master retreats up and, once clear of the top,
+    // frees every part slot (the port consolidates the parts' self-removal into the master's teardown —
+    // record 046 deviation #3). No reward is given (destruction is slice 16).
+    key: 'boss-departs-on-end-flag',
+    behavior:
+      'On the end flag the Andor Genesis master retreats upward by a constant step each tick (back toward ANDOR_START_X) and, once it clears the top edge, TEARS DOWN the whole composite — every one of the 15 part slots is freed (type and state 0) and the end flag is consumed — with no reward',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      // Seed the full composite held on-field (all 15 slots occupied), then raise the end flag.
+      for (let n = 1; n <= 15; n += 1) {
+        put('slot-type', ANDOR.BASE_SLOT + n - 1, ANDOR_PART_TYPES_BY_OBJ[n - 1]);
+        put('slot-state', ANDOR.BASE_SLOT + n - 1, 1);
+      }
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'andor-genesis-end-flag', 1);
+      const tick = () => {
+        callProc(vm, 'Stage', 'update andor master');
+        step(vm, 1);
+      };
+      const xStart = readVar(vm, 'andor-master-x');
+      // RETREAT: a few ticks while still on-screen — the anchor decreases by exactly one leave step/tick.
+      const retreatSamples = [];
+      for (let i = 0; i < 5; i += 1) {
+        tick();
+        retreatSamples.push(readVar(vm, 'andor-master-x'));
+      }
+      // Run out until it clears the top and tears down (HOLD->below START at 32/tick ~= 192 ticks; 400 safe).
+      let tornDown = false;
+      for (let i = 0; i < 400 && !tornDown; i += 1) {
+        tick();
+        const types = readVar(vm, 'slot-type');
+        tornDown = ANDOR_PART_TYPES_BY_OBJ.every((_, n) => types[ANDOR.BASE_SLOT + n] === 0);
+      }
+      const types = readVar(vm, 'slot-type');
+      const states = readVar(vm, 'slot-state');
+      return {
+        xStart,
+        retreatSamples,
+        tornDown,
+        freedTypes: ANDOR_PART_TYPES_BY_OBJ.map((_, n) => types[ANDOR.BASE_SLOT + n]),
+        freedStates: ANDOR_PART_TYPES_BY_OBJ.map((_, n) => states[ANDOR.BASE_SLOT + n]),
+        endFlag: readVar(vm, 'andor-genesis-end-flag'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.xStart, ANDOR.HOLD_X, 'the composite starts held on-field');
+      for (let i = 0; i < obs.retreatSamples.length; i += 1) {
+        assert.equal(
+          obs.retreatSamples[i],
+          ANDOR.HOLD_X - ANDOR.LEAVE_STEP * (i + 1),
+          'the master retreats up by exactly one leave step each tick',
+        );
+      }
+      assert.ok(obs.tornDown, 'once clear of the top the composite tears down within the departure window');
+      assert.deepEqual(obs.freedTypes, new Array(15).fill(0), 'every one of the 15 part slots is freed (type 0)');
+      assert.deepEqual(
+        obs.freedStates,
+        new Array(15).fill(0),
+        'every one of the 15 part slots is freed (state 0)',
+      );
+      assert.equal(obs.endFlag, 0, 'the end flag is consumed by the teardown');
+    },
+    // Break the `end flag == 1` gate so departure never triggers -> no retreat, no teardown -> red.
+    negativeMutation: (p) =>
+      mutate.changeVarEqualsOperand(p, 'Stage', 'andor genesis end flag', 1, 999),
+  },
+  {
+    // BOSS-01 / andor.lifecycle (#94): the ground band re-isolates in BOTH directions (plan finding #2). The
+    // boss confines its mutable state to shared vars + slot type/state/x/y, so (a) armed over a stale slot it
+    // overwrites the stale position from the anchor and touches no cross-field, and (b) on teardown it leaves
+    // no residual boss field behind. Both directions are asserted; the vacuity negative severs direction (a).
+    key: 'boss-band-isolation',
+    behavior:
+      "The Andor composite confines its mutable state to shared variables + slot type/state/x/y, so the ground band re-isolates both ways: (a) armed over a slot holding a STALE object, the part proc recomputes slot x/y from the anchor and leaves every cross-field (flag/pts/timer/code/dx/dy) untouched; (b) through its whole life and teardown the boss writes none of those cross-fields, so the vacated slot is freed clean for the next normal occupant",
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      const slot = 5; // Scratch slot 5 -> obj 4 -> an armor plate type
+      const i = slot - 1;
+      const type = ANDOR_PART_TYPES_BY_OBJ[slot - ANDOR.BASE_SLOT - 1];
+      const depth = readVar(vm, 'andor-part-depth');
+      const lateral = readVar(vm, 'andor-part-lateral');
+      const off = type - 0x41;
+      // (a) Pre-load the slot with a STALE object's cross-fields + garbage x/y, then arm the boss part over
+      // it and run one alignment tick.
+      const SENT_A = { flag: 7, pts: 13, timer: 99, code: 42, dx: -55, dy: 66 };
+      put('slot-flag', i, SENT_A.flag);
+      put('slot-pts', i, SENT_A.pts);
+      put('slot-timer', i, SENT_A.timer);
+      put('slot-code', i, SENT_A.code);
+      put('slot-dx', i, SENT_A.dx);
+      put('slot-dy', i, SENT_A.dy);
+      put('slot-x', i, 123456); // stale garbage position
+      put('slot-y', i, 654321);
+      put('slot-type', i, type);
+      put('slot-state', i, 1);
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'slot-index', slot);
+      callProc(vm, 'Stage', 'update andor part');
+      step(vm, 1);
+      const aRecomputedX = readVar(vm, 'slot-x')[i];
+      const aRecomputedY = readVar(vm, 'slot-y')[i];
+      const aCross = {
+        flag: readVar(vm, 'slot-flag')[i],
+        pts: readVar(vm, 'slot-pts')[i],
+        timer: readVar(vm, 'slot-timer')[i],
+        code: readVar(vm, 'slot-code')[i],
+        dx: readVar(vm, 'slot-dx')[i],
+        dy: readVar(vm, 'slot-dy')[i],
+      };
+      // (b) Fresh cross-field sentinels on the same slot, seed the full composite, raise the end flag and run
+      // to teardown; the boss must leave those fields untouched through its whole life (owns only type/state/x/y).
+      clearGroundBand(vm);
+      const SENT_B = { flag: 3, pts: 9, timer: 44, code: 21, dx: 12, dy: -8 };
+      put('slot-flag', i, SENT_B.flag);
+      put('slot-pts', i, SENT_B.pts);
+      put('slot-timer', i, SENT_B.timer);
+      put('slot-code', i, SENT_B.code);
+      put('slot-dx', i, SENT_B.dx);
+      put('slot-dy', i, SENT_B.dy);
+      for (let n = 1; n <= 15; n += 1) {
+        put('slot-type', ANDOR.BASE_SLOT + n - 1, ANDOR_PART_TYPES_BY_OBJ[n - 1]);
+        put('slot-state', ANDOR.BASE_SLOT + n - 1, 1);
+      }
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'andor-genesis-end-flag', 1);
+      let tornDown = false;
+      for (let k = 0; k < 400 && !tornDown; k += 1) {
+        callProc(vm, 'Stage', 'update andor master');
+        step(vm, 1);
+        tornDown = readVar(vm, 'slot-type')[i] === 0;
+      }
+      const bCross = {
+        flag: readVar(vm, 'slot-flag')[i],
+        pts: readVar(vm, 'slot-pts')[i],
+        timer: readVar(vm, 'slot-timer')[i],
+        code: readVar(vm, 'slot-code')[i],
+        dx: readVar(vm, 'slot-dx')[i],
+        dy: readVar(vm, 'slot-dy')[i],
+      };
+      return {
+        off,
+        depth,
+        lateral,
+        aRecomputedX,
+        aRecomputedY,
+        aCross,
+        sentA: SENT_A,
+        tornDown,
+        bCross,
+        sentB: SENT_B,
+        bFreedType: readVar(vm, 'slot-type')[i],
+        bFreedState: readVar(vm, 'slot-state')[i],
+      };
+    },
+    assert(obs) {
+      // (a) stale x/y overwritten from the anchor + offset (stale garbage ignored)
+      assert.equal(
+        obs.aRecomputedX,
+        ANDOR.HOLD_X + obs.depth[obs.off],
+        '(a) the part recomputes slot x from the anchor, ignoring the stale value',
+      );
+      assert.equal(
+        obs.aRecomputedY,
+        ANDOR.LATERAL_Y + obs.lateral[obs.off],
+        '(a) the part recomputes slot y from the anchor, ignoring the stale value',
+      );
+      // (a) the boss part proc wrote ONLY x/y — every cross-field is untouched (no bleed into the slot)
+      assert.deepEqual(obs.aCross, obs.sentA, '(a) the boss part proc leaves every slot cross-field untouched');
+      // (b) the composite freed the slot, and left no residual boss field for the next occupant
+      assert.ok(obs.tornDown, '(b) the departing composite frees the slot');
+      assert.equal(obs.bFreedType, 0, '(b) the vacated slot type is 0');
+      assert.equal(obs.bFreedState, 0, '(b) the vacated slot state is 0');
+      assert.deepEqual(
+        obs.bCross,
+        obs.sentB,
+        '(b) the boss leaves no residual cross-field on the vacated slot through its whole life',
+      );
+    },
+    // Empty the part proc -> direction (a) never recomputes the stale x/y -> the (a) clauses go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor part'),
+  },
+  {
+    // BOSS-01 / andor.lifecycle (#94) finding #1 (the single biggest correctness trap): the `color` graphic
+    // effect PERSISTS on the 16 reused ground clones. The boss arms are the only ground arms that set it, so
+    // the render loop clears it for every clone each tick; a clone that drew a boss part must show NO residual
+    // tint on the next normal ground object. Driven live (the render loop must run), with ground spawns
+    // suppressed + the band cleared so nothing else stamps the slot under test.
+    key: 'non-boss-clone-has-no-residual-tint',
+    behavior:
+      'A ground clone that drew a boss part (its `color` graphic effect set from the shared colour var) shows ZERO colour effect on the next tick when its slot becomes a normal ground object — the per-tick clear at the top of the render dispatch prevents boss tint from bleeding onto ordinary ground',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      suppressGroundSpawns(vm);
+      const put = slotPutter(vm);
+      // Clear the live band so only the slot under test renders, and pin the anchor on-field so the part the
+      // walk aligns each tick stays on-screen. No master TYPE is seeded (so nothing resets the colour var).
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'andor-genesis-colour', 5); // a non-zero palette index -> a visible tint via the boss arm
+      const slot = 2; // Scratch slot 2 (JS 1)
+      const i = slot - 1;
+      // Draw a boss part (armor) at the slot: the boss arm sets the colour effect on this clone.
+      put('slot-type', i, 0x41);
+      put('slot-state', i, 1);
+      put('slot-x', i, 3000);
+      put('slot-y', i, 3000);
+      step(vm, 2);
+      const boss = groundCloneEffect(vm, slot);
+      // Now flip the same slot to a NORMAL ground object (Barra); the top-of-loop clear must zero the effect.
+      put('slot-type', i, 30); // BARRA_TYPE
+      put('slot-state', i, 1);
+      put('slot-x', i, 3000);
+      put('slot-y', i, 3000);
+      step(vm, 2);
+      const normal = groundCloneEffect(vm, slot);
+      return { boss, normal };
+    },
+    assert(obs) {
+      assert.ok(obs.boss, 'the ground clone bound to the test slot exists');
+      assert.ok(obs.boss.effect > 0, 'the clone drawing a boss part has a non-zero colour effect (tinted)');
+      assert.ok(obs.normal, 'the same ground clone is still present after the slot becomes normal');
+      assert.equal(
+        obs.normal.effect,
+        0,
+        'the clone shows NO residual colour effect once it draws a normal ground object',
+      );
+      assert.ok(
+        obs.normal.visible && /^barra\//.test(obs.normal.costume || ''),
+        'non-vacuous: the clone actually rendered a normal (Barra) ground object',
+      );
+    },
+    // Delete the per-tick clear-graphic-effects -> the boss tint persists onto the normal object -> red.
+    negativeMutation: (p) => mutate.removeClearGraphicEffects(p, 'ground'),
+  },
+  {
+    // BOSS-01 / andor.lifecycle (#94): the LIVE debug-key summon path (install_debug_ground_spawn) — the one
+    // path the operator actually drives. Every OTHER boss scenario above FREEZES the walk and calls the update
+    // procs by hand, so none of them exercised the debug key's arm/dismiss handler. That gap let a same-tick
+    // self-dismiss ship: the original dismiss read the master slot AFTER the arm stamped it and set the end flag
+    // on the very press that summoned the boss, so the master tore the composite down at START_X before it could
+    // descend — "Andor never shows up; the ground enemies just start over" (operator playtest, 2026-09-27). The
+    // fix gates the dismiss on a FRESH press (rising edge of `debug ground key held`) AND a boss already present
+    // at the start of the tick. This scenario drives the real key end-to-end: HOLD G to summon and hold (the end
+    // flag must stay 0 while held), then RELEASE + a fresh press to dismiss (end flag set -> master retreats off
+    // the top -> composite freed). It is the regression net the frozen-walk scenarios could not be.
+    key: 'boss-summoned-and-dismissed-by-debug-key',
+    behavior:
+      "Holding the debug ground key (G) with the family cursor on the Andor entry ARMS all 15 composite parts and the invisible master, which then descends from off the top edge while the key stays held — the end flag stays 0, so the boss is NOT self-dismissed on the press that summoned it; releasing G and pressing it again (a fresh rising edge, boss present) sets the end flag, and the master retreats off the top and frees every boss slot",
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Suppress the scheduled ground stream and clear the live band so the ONLY ground object that can appear is
+      // the debug key's, then park the family cursor on the Andor entry (last in DEBUG_GROUND_FAMILIES) so the
+      // next fresh, field-empty spawn arms the boss.
+      suppressGroundSpawns(vm);
+      clearGroundBand(vm);
+      const ANDOR_FAMILY_INDEX = 16; // index of (ANDOR_MASTER_TYPE, 'andor') in DEBUG_GROUND_FAMILIES
+      writeVar(vm, 'debug-ground-index', ANDOR_FAMILY_INDEX);
+      const masterJs = ANDOR.BASE_SLOT + 15 - 1; // Scratch slot 16 -> JS index 15
+      const armedCount = () => {
+        const t = readVar(vm, 'slot-type');
+        let n = 0;
+        for (let s = 0; s <= 15; s += 1) {
+          const x = t[s];
+          if ((x >= 0x41 && x <= 0x4b) || (x >= 0x4f && x <= 0x52)) n += 1;
+        }
+        return n;
+      };
+      // SUMMON: hold G. The first field-empty tick arms the composite; subsequent held ticks let the master
+      // descend. Sample the end flag across several held pumps -> it must never be raised while held.
+      keyDown(vm, 'g');
+      step(vm, 1);
+      const armedFirst = armedCount();
+      const masterFirst = readVar(vm, 'slot-type')[masterJs];
+      const endHeld = [readVar(vm, 'andor-genesis-end-flag')];
+      for (let i = 0; i < 3; i += 1) {
+        step(vm, 1);
+        endHeld.push(readVar(vm, 'andor-genesis-end-flag'));
+      }
+      const armedHeld = armedCount();
+      const masterHeld = readVar(vm, 'slot-type')[masterJs];
+      const xHeld = readVar(vm, 'andor-master-x');
+      // DISMISS: release, then a fresh press. The rising edge with the boss present raises the end flag; the
+      // master then retreats off the top and frees every boss slot.
+      keyUp(vm, 'g');
+      step(vm, 1);
+      keyDown(vm, 'g');
+      let endRaised = false;
+      let tornDown = false;
+      for (let i = 0; i < 12 && !tornDown; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'andor-genesis-end-flag') === 1) endRaised = true;
+        if (armedCount() === 0) tornDown = true;
+      }
+      keyUp(vm, 'g');
+      return { armedFirst, masterFirst, armedHeld, masterHeld, xHeld, endHeld, endRaised, tornDown };
+    },
+    assert(obs) {
+      // Summoned: all 15 parts armed, the invisible master typed at Scratch slot 16.
+      assert.equal(obs.armedFirst, 15, 'holding G on the Andor cursor arms all 15 composite parts');
+      assert.equal(obs.masterFirst, ANDOR.MASTER_TYPE, 'the invisible master is typed at Scratch slot 16');
+      // NOT self-dismissed while held: the end flag stays 0 across every held pump — the biting check for the
+      // shipped same-tick self-dismiss bug.
+      for (const e of obs.endHeld) {
+        assert.equal(e, 0, 'the end flag is NOT raised while G is held (no same-tick self-dismiss)');
+      }
+      // Still up and descending after the held pumps (moved off START_X toward the hold row).
+      assert.equal(obs.armedHeld, 15, 'the composite stays armed while G is held (not torn down)');
+      assert.equal(obs.masterHeld, ANDOR.MASTER_TYPE, 'the master stays present while G is held');
+      assert.ok(
+        obs.xHeld > ANDOR.START_X,
+        `the master descends from START_X while held (x=${obs.xHeld} > ${ANDOR.START_X})`,
+      );
+      // Dismissed by a fresh press: the end flag is raised and the whole composite is freed.
+      assert.ok(obs.endRaised, 'a fresh G press with the boss present raises the end flag (dismiss)');
+      assert.ok(obs.tornDown, 'after the dismiss the master retreats off the top and frees every boss slot');
+    },
+    // Reproduce the shipped bug: flip the rising-edge guard from `debug ground key held == 0` to `== 1`, so a
+    // HELD key (held is set to 1 each tick) fires the dismiss every tick -> the boss is self-dismissed on the
+    // press that summons it and torn down before it can hold -> the "armed while held" / "end stays 0" checks bite.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'debug ground key held', 0, 1),
   },
   {
     // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).

@@ -580,6 +580,14 @@ ADD_DOMOGRAM_HANDLER = "add_domogram_with_path"
 # clears the active count. The pump (install_pump_bacura) consumes both.
 SET_BACURA_COUNT_HANDLER = "set_bacura_count"
 RESET_BACURA_COUNT_HANDLER = "reset_bacura_count"
+# BOSS-01 (andor.lifecycle #94): the Andor Genesis lifecycle schedule handlers. `andor_genesis_start` (arcade
+# opcode 76, sub_2_fn_20__andor_genesis_start $064A) arms the whole 15-part composite into the ground band and
+# clears the end flag; `andor_genesis_end` (opcode 77, sub_2_fn_21 $066E) raises the end flag, starting the
+# scripted retreat. Both carry empty params (the boss layout + lateral are intrinsic, not schedule columns).
+# Opcode 78 (`fire_mask_andor_genesis`) stores the gun-port fire mask; its consumer is slice 16, so that
+# handler is left to fall through here (counted as fired, cursor advanced) exactly as before.
+ANDOR_GENESIS_START_HANDLER = "andor_genesis_start"
+ANDOR_GENESIS_END_HANDLER = "andor_genesis_end"
 
 # DIF-03 per-family fire-permission masks. Area schedules set one mask byte per firing family; the
 # byte gates how often that family may fire, and the per-family firing that consumes each mask is the
@@ -876,6 +884,16 @@ UPDATE_GROBDA_PROCCODE = "update grobda"
 # moving`, and runs its masked-random shot cycle (a 24-frame animation firing one aimed bullet at the midpoint);
 # once bombed (HIT) it craters PERSISTENTLY like the Barra (handle_bomb_explosion) via `advance ground`.
 UPDATE_DOMOGRAM_PROCCODE = "update domogram"
+# BOSS-01 (andor.lifecycle #94): the invisible Andor Genesis master's per-tick update. In THIS commit it is
+# minimal — it consumes the end flag and tears the whole composite down (so the debug summon can be dismissed
+# and the non-scrolling boss never jams the ground-key cycle). The full descend->hold->leave state machine and
+# the per-part alignment come in a later commit; this proc is the seam they extend.
+UPDATE_ANDOR_MASTER_PROCCODE = "update andor master"
+# BOSS-01 (andor.lifecycle #94): the shared per-part alignment update (C3). One proc for all 14 visible parts
+# (armor / core / ports); each frame it sets this slot's slot x/y to the master's shared position plus the part's
+# per-type composite offset (looked up by slot type). No independent motion; the master's teardown frees the part
+# slots, so this proc never culls.
+UPDATE_ANDOR_PART_PROCCODE = "update andor part"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -938,6 +956,8 @@ DEBUG_SPAWN_INDEX_ID = "debug-spawn-index"  # which DEBUG_SPAWN_FAMILIES entry T
 DEBUG_GROUND_SPAWN_PROCCODE = "debug ground spawn"
 DEBUG_GROUND_KEY = "g"  # G = cycle a single debug GROUND family (G for ground; freed when the death fixtures went)
 DEBUG_GROUND_INDEX_ID = "debug-ground-index"  # which DEBUG_GROUND_FAMILIES entry G brings in next
+DEBUG_GROUND_KEY_HELD_ID = "debug-ground-key-held"  # previous-tick G sample; the boss DISMISS fires only on a
+# fresh press (rising edge), never on the same press that armed the boss (see install_debug_ground_spawn)
 DEBUG_GROUND_SPRITE_Y = 112  # lateral column for the debug spawn — a central, common column (schedule median)
 # DEBUG (temporary playtest tool, tracked for removal #119): a PAUSE/FREEZE key so the operator can stop the
 # action on a single frame and take an OS screenshot of a ground- or air-enemy issue to report. It is a TOGGLE
@@ -1341,6 +1361,57 @@ DEROTA_TYPE = 27  # 0x1B, handle_1B_Derota: periodic aimed turret, craters on de
 GARU_DEROTA_TYPE = 33  # 0x21, handle_21_Garu_Derota: indestructible base + firing destructible node (GND-04)
 BOZA_LOGRAM_TYPE = 45  # 0x2D, handle_2D_Boza_Logram: 5-slot composite (4 outer Lograms + 1 centre), GND-05
 DOMOGRAM_TYPE = 46  # 0x2E, handle_2E_Domogram: path-driven mover that fires one aimed shot per animation (GND-07)
+# BOSS-01 (andor.lifecycle #94): Andor Genesis is a 15-part ground COMPOSITE — nine armor plates
+# (handle_41..49, a 3x3 grid), four gun ports (handle_4F/50/51/52), one centre core (handle_4A), and one
+# invisible master (handle_4B) that owns the shared position/colour/phase and drives every part. All 15 occupy
+# ground obj slots 1..15 (Scratch slots 2..16 = GROUND_SLOTS[0]+n); obj slot 0 (the bonus flag) is left free.
+# Slice 15 builds the LIFECYCLE only (arrive / hold / animate / depart). Firing (incl. the mask-47 consumer),
+# armor hit-immunity, the core bomb path, Bragza, and the destruction cascade are slice 16 (andor.defenses #95,
+# andor.core-destruction #96). Codes 76/77/78 are schedule opcodes (start/end/fire-mask), NOT part types.
+ANDOR_ARMOR_TYPES = tuple(range(0x41, 0x4A))  # 65..73 handle_41..49: nine armor plates (colour-cycle only)
+ANDOR_CORE_TYPE = 0x4A  # 74 handle_4A: the centre core (colour-cycle + _ATTR flip-orientation shimmer)
+ANDOR_MASTER_TYPE = 0x4B  # 75 handle_4B: the invisible 1x1 master (_CODE cleared) — owns position/colour/phase
+ANDOR_PORT_TYPES = (0x4F, 0x50, 0x51, 0x52)  # 79..82 handle_4F/50/51/52: four gun ports (colour-cycle; firing = slice 16)
+# The arm order (andor_genesis_data, xevious_sub.68k:565-566, verified byte-for-byte at the pin): obj slots
+# 1..15 receive these _TYPE bytes in order; the master lands at obj slot 15 (0x0F) = Scratch slot 16.
+ANDOR_GENESIS_DATA = (
+    0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,  # obj 1..9   nine armor plates
+    0x52, 0x51, 0x50, 0x4F,                                # obj 10..13 four gun ports
+    0x4A,                                                  # obj 14     core
+    0x4B,                                                  # obj 15     invisible master (Scratch slot 16)
+)
+ANDOR_PART_TYPES = (*ANDOR_ARMOR_TYPES, ANDOR_CORE_TYPE, *ANDOR_PORT_TYPES, ANDOR_MASTER_TYPE)
+assert set(ANDOR_GENESIS_DATA) == set(ANDOR_PART_TYPES) and len(ANDOR_GENESIS_DATA) == 15, (
+    "Andor arm-data must be exactly the 15 distinct part types"
+)
+# The schedule end record (C4) and the debug dismiss set this; the master's update proc tears the composite
+# down when it is set (mirrors andor_genesis_end_flag / remove_andor_genesis, xevious_sub.68k:569-572).
+ANDOR_GENESIS_END_FLAG_ID = "andor-genesis-end-flag"
+# The shared colour-cycle byte (cycle_andor_genesis_colour, xevious_main.68k:5758-5767): every visible part
+# copies it into its _COLOUR each frame so the whole composite pulses in unison. In the port this drives the
+# Scratch `color` graphic effect on the armor/port/core render arms. The master proc (C3) steps it from
+# colour_tbl[(timer>>3)&7]; it inits 0 so the base crop renders untinted before the lifecycle runs.
+ANDOR_GENESIS_COLOUR_ID = "andor-genesis-colour"
+# The core's _ATTR flip-orientation phase (handle_4A, xevious_main.68k:5461-5465): 0..3 selecting one of the
+# four pre-flipped core costumes (none / x / y / xy). Source: `_ATTR = 0x80 | ((countup_timer_1>>3)&0x0c)`, and
+# `_ATTR` bit2(value 4)=xflip, bit3(value 8)=yflip (xevious.inc / neogeo.68k:927). So xflip=(timer>>5)&1 (every
+# 32 frames), yflip=(timer>>6)&1 (every 64) -> the sequence none->x->y->xy is exactly phase = (timer>>5)&3, and
+# the costume order [none,x,y,xy] gives the render ordinal 1 + phase. (An earlier note here read the bits in the
+# wrong order; the source has xflip at bit2, yflip at bit3.) The master proc (C3) sets it from `tick` each frame;
+# it inits 0 so the base (unflipped) core costume renders before the lifecycle runs. NOTE this animation is a
+# DELIBERATE, DOCUMENTED divergence: the jotd666 NeoGeo renderer only consumes flip bits on 2x2 sprites, so the
+# 1x1 core does not visibly flip in the reference — the port realizes the Namco arcade intent (see the C5
+# mechanics record and memory `andor-core-flip-noop-in-neogeo`). The colour cycle below is NOT a divergence
+# (colour is written on every sprite size in the reference).
+ANDOR_GENESIS_FLIP_ID = "andor-genesis-flip"
+# --- BOSS-01 C3: lifecycle geometry + motion. The computed geometry (positions/offsets) depends on the slot-unit
+# and render-stage primitives defined further down (SLOT_UNITS_PER_CELL, FRAMES_PER_TICK, RENDER_COL/ROW_STAGE),
+# so it lives after them (search "BOSS-01 C3 geometry"). Only the shared-var/list ID strings live here, next to
+# the other Andor IDs, since they have no such dependency.
+ANDOR_MASTER_X_ID = "andor-master-x"     # descent/depth anchor (port slot-x units); driven by the master proc
+ANDOR_MASTER_Y_ID = "andor-master-y"     # lateral anchor (port slot-y units); fixed for the whole lifecycle
+ANDOR_PART_DEPTH_ID = "andor-part-depth"     # per-part depth offset table (index = slot type - 0x40)
+ANDOR_PART_LATERAL_ID = "andor-part-lateral"  # per-part lateral offset table (index = slot type - 0x40)
 # GND-06 (ground.grobda #88): the tank/stingray family — the first SELF-MOVING ground object. 12 live
 # variants (handle_2C_Grobda_stationary + handle_35..40, skipping the unused 0x37 null slot). All share ONE
 # update proc and ONE tank costume set, differing only in reticle trigger, reaction, points, and land-crater
@@ -1479,6 +1550,12 @@ DEBUG_GROUND_FAMILIES = (
     # single-slot add_ground_object (arcade _CODE=0), so it seeds through the shared single-slot shape exactly
     # like the scheduled spawn — only its point value and hidden phase differ, seeded inside _ground_seed_single.
     (EASTER_EGG_TYPE, "single"),
+    # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite. Keyed on the invisible master type; the "andor"
+    # shape bulk-arms all 15 parts across the band. Unlike every other family the boss holds position (it does not
+    # scroll off), so the ground key's field-empty gate would jam on it forever — the debug handler adds a DISMISS
+    # branch (press G while the boss is present to set the end flag; the master proc then tears it down next tick,
+    # freeing the field for the next family). Reachable through the existing key, no new key, no locked-spec edit.
+    (ANDOR_MASTER_TYPE, "andor"),
 )
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
@@ -1881,6 +1958,73 @@ RENDER_COL_STAGE = 15
 RENDER_COL_OFFSET = 240
 RENDER_ROW_TOP = 155
 RENDER_ROW_STAGE = 8
+# --- BOSS-01 C3 geometry: the Andor Genesis lifecycle positions + composite offsets (all source-verified at the
+# pin). Placed here so the slot-unit / frame / render-stage primitives above are already defined; the matching ID
+# strings live up by the other Andor constants. ------------------------------------------------------------------
+# Arrival descent / scripted departure (handle_4B_Andor_Genesis, xevious_main.68k:5386-5438). The arcade master
+# enters at `_X` MSB 0xf8 (= signed -8 cells, off the top) and descends at +0x20/frame until `_X` MSB == 0x10
+# (= +16 cells) where it holds; on the end flag it retreats at -0x10/frame back to MSB 0xf8 and is removed
+# (remove_andor_genesis, 5440). `_X` is the same 1/32-px depth axis as the port's slot x (cell = 256 units, so
+# the MSB is the signed cell number), and the port applies velocity over FRAMES_PER_TICK (2) arcade frames per
+# tick. Lower slot x = up-screen, so START is above the field and HOLD is on it; the descent lands exactly on
+# HOLD ((HOLD-START)/step = 6144/64 = 96 ticks) and the retreat exactly on START (6144/32 = 192 ticks).
+ANDOR_START_X = -8 * SLOT_UNITS_PER_CELL   # -2048; off the top (arcade _X MSB 0xf8, sub_2_fn_20 sets it)
+ANDOR_HOLD_X = 16 * SLOT_UNITS_PER_CELL    # +4096; on-field hold (arcade _X MSB 0x10)
+ANDOR_DESCEND_STEP = 0x20 * FRAMES_PER_TICK  # +64/tick (arcade +0x20/frame; 0x10 doubled, x2 frames)
+ANDOR_LEAVE_STEP = 0x10 * FRAMES_PER_TICK    # 32/tick, subtracted on the retreat (arcade -0x10/frame)
+ANDOR_LATERAL_Y = 0x0e80  # 3712; the master's fixed `_Y` (sub_2_fn_20__andor_genesis_start, xevious_sub.68k:553)
+# — a boss constant hardcoded by the arm, NOT a schedule column. 3712/32 = 116 px, ~ the debug central column
+# (DEBUG_GROUND_SPRITE_Y 112). Both the scheduled arm and the debug summon use it (the boss lateral is intrinsic).
+# The Scratch `color` graphic effect this drives (boss_arm) scales the arcade palette index (2..6) up into a
+# visible hue sweep — a single Scratch color effect cannot reproduce the arcade's palette swaps, so this is a
+# port interpretation (recorded in the C5 mechanics record; tunable at playtest).
+ANDOR_COLOUR_EFFECT_SCALE = 20
+# Per-part composite offsets added to the master position each frame, in ARCADE units (1/32 px), taken from the
+# reference's own in-game sprite array dump (assets/amiga/andor_genesis_sprite_dump.bin at the pin) — the
+# authoritative record of where the hardware actually places each part. Each block gives a part's sprite code,
+# _ATTR (size), _COLOUR and screen x/y; normalising every part's CENTRE against the core's centre yields a
+# perfectly symmetric layout (armor 3x3 on a 32-px pitch, gun ports on the ±16-px diagonals, core at the centre).
+# The dump is preferred over the handlers' raw `_X`/`_Y` adds: those adds are TOP-LEFT origins, so the 2x2 armor
+# (centre = top-left + 16) and the 1x1 core (centre = top-left + 8) do not share an origin, and reading the adds
+# directly placed the armor block a half-plate off the core (the "big mess" playtest). Reading centre-relative
+# positions from the dump removes that anchor mismatch AND fixes the arcade left/right of the asymmetric corner
+# plates by construction — each part's art (rendered from the same reference at its own sprite code) sits exactly
+# where the dump puts it. The grid is row-major over types 0x41..0x49 (TL,TM,TR,ML,C,MR,BL,BM,BR). Depth (< 0 =
+# up) and lateral both apply to slot x/y with the dump's sign (+lateral = +slot y = right; +depth = +slot x =
+# down, matching the scroll axis). Stored as (depth_px, lateral_px) * SLOT_UNITS_PER_PIXEL so the whole-pixel
+# assertion below still holds.
+_P = SLOT_UNITS_PER_PIXEL  # 32 units per arcade pixel
+_ANDOR_ARC_OFFSETS = {
+    0x41: (-32 * _P, -32 * _P), 0x42: (-32 * _P, 0), 0x43: (-32 * _P, +32 * _P),  # armor top row
+    0x44: (0, -32 * _P), 0x45: (0, 0), 0x46: (0, +32 * _P),                       # armor middle row
+    0x47: (+32 * _P, -32 * _P), 0x48: (+32 * _P, 0), 0x49: (+32 * _P, +32 * _P),  # armor bottom row
+    0x4A: (0, 0),  # core: sits on the master
+    0x4F: (-16 * _P, -16 * _P), 0x50: (-16 * _P, +16 * _P),  # gun ports top-left / top-right
+    0x51: (+16 * _P, -16 * _P), 0x52: (+16 * _P, +16 * _P),  # gun ports bottom-left / bottom-right
+}
+# The 14 part types the alignment proc positions each frame (all but the invisible master 0x4B).
+ANDOR_ALIGNED_PART_TYPES = (*ANDOR_ARMOR_TYPES, ANDOR_CORE_TYPE, *ANDOR_PORT_TYPES)
+# Depth offsets carry the same anamorphic isotropy factor as the Boza domes (memory `anamorphic-composite-offset
+# -bug`; docs/mechanics/042): the cell->stage map spaces lateral at RENDER_COL_STAGE px/cell but depth at only
+# RENDER_ROW_STAGE, so a raw depth offset would render RENDER_COL_STAGE/RENDER_ROW_STAGE too tight and collapse
+# the octagon vertically. Lateral is already at the sprite scale (arcade `_Y` units == port slot-y units, both
+# px*32), so it keeps the plain per-unit value. Two constant lists indexed by (slot type - 0x40) -> 1..18 (the
+# master + unused 0x4B..0x4E rows are 0 and never dispatched here) let the ONE part updater do an O(1) lookup.
+_ANDOR_DEPTH_UNITS_PER_PX = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE // RENDER_ROW_STAGE  # 32 * 15 // 8 = 60
+
+
+def _andor_part_offset_tables() -> tuple[list[int], list[int]]:
+    depth: list[int] = []
+    lateral: list[int] = []
+    for part_type in range(0x41, 0x53):  # 0x41..0x52 -> list index 1..18
+        arc_depth, arc_lateral = _ANDOR_ARC_OFFSETS.get(part_type, (0, 0))
+        assert arc_depth % SLOT_UNITS_PER_PIXEL == 0, "arcade depth offset must be whole pixels"
+        depth.append(arc_depth // SLOT_UNITS_PER_PIXEL * _ANDOR_DEPTH_UNITS_PER_PX)
+        lateral.append(arc_lateral)  # arcade _Y units == port slot-y units (both 1/32 px)
+    return depth, lateral
+
+
+ANDOR_PART_DEPTH_OFFSETS, ANDOR_PART_LATERAL_OFFSETS = _andor_part_offset_tables()
 TOROID_RENDER_SIZE = 225  # 16-px sprite at ~2.25 stage px/px, matching solvalou's on-screen scale
 # WPN-02 hit/explosion state (`flying_enemy_hit` 4865–4902): a struck flying enemy explodes over 20
 # arcade frames = 10 ticks, five 4-frame phases, still drifting on its velocity; at arcade frame 8 the
@@ -2030,6 +2174,15 @@ BACURA_TUMBLE_UNITS_PER_FRAME = 128  # slot-x units per frame flip: (_X>>7) => /
 BARRA_TARGET = "barra"
 BARRA_CLONE_SLOT_ID = "barra-clone-slot"  # sprite-local: which ground slot this clone renders
 GROUND_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+# BOSS-01: the Andor Genesis composite renders at the EXACT terrain scale instead of the ground pop (225%), so its
+# 15 parts tile seamlessly into one octagon. The cell->stage map fixes lateral at RENDER_COL_STAGE px per
+# SLOT_UNITS_PER_CELL units = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE / SLOT_UNITS_PER_CELL = 1.875 stage px per
+# arcade px; a part must render at that same scale for its size to match its offset spacing (a 32-px armor plate at
+# ±32-px pitch, a 16-px port at ±16). So size% = 100 * that ratio = 187.5. (The armor costume is a 32-px canvas and
+# the ports/core are 16-px, so the ONE size% yields the arcade 2:1 plate/port ratio for free.) 225% was the "big
+# mess" overlap: the parts drew ~20% larger than their spacing. Depth offsets already carry the anamorphic factor
+# (_ANDOR_DEPTH_UNITS_PER_PX = 60) so both axes land at 1.875 — confirming 187.5 was the intended scale all along.
+ANDOR_RENDER_SIZE = 100 * SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE / SLOT_UNITS_PER_CELL  # = 187.5
 EXPLODE_COSTUME_COUNT = 8  # the shared solv_death burst is 8 costumes (explode_01..08)
 BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
 BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
@@ -2790,6 +2943,21 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
+    def set_effect(self, effect: str, value: Any) -> str:
+        # `looks_seteffectto`: EFFECT is a dropdown FIELD (e.g. "COLOR"); VALUE is a numeric input that
+        # accepts a literal spec (number()/variable()) or a nested reporter's block id (str), wired like the
+        # arithmetic operands above.
+        block_id = self.add("looks_seteffectto", fields={"EFFECT": [effect, None]})
+        if isinstance(value, str):
+            self.blocks[block_id]["inputs"] = {"VALUE": [2, value]}
+            self.blocks[value]["parent"] = block_id
+        else:
+            self.blocks[block_id]["inputs"] = {"VALUE": value}
+        return block_id
+
+    def clear_graphic_effects(self) -> str:
+        return self.add("looks_cleargraphiceffects")
+
     def play_sound(self, sound: str) -> str:
         menu = self.add(
             "sound_sounds_menu", fields={"SOUND_MENU": [sound, None]}, shadow=True
@@ -3427,7 +3595,22 @@ def install_advance_slots(blocks: Blocks) -> None:
         blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(DOMOGRAM_TYPE)),
         [blocks.call_proc(UPDATE_DOMOGRAM_PROCCODE, warp=True)],
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, easter_egg_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch])
+    # BOSS-01 (andor.lifecycle #94): the invisible master (0x4B) runs the lifecycle state machine; the 14 visible
+    # parts (armor / core / ports) share one alignment proc that pins each to the master's shared anchor. The
+    # master sits at the highest boss slot (Scratch 16) so it dispatches LAST in the ascending walk — the parts
+    # read the previous tick's anchor (a uniform, cosmetically invisible one-frame lag during motion, zero at hold).
+    andor_master_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ANDOR_MASTER_TYPE)),
+        [blocks.call_proc(UPDATE_ANDOR_MASTER_PROCCODE, warp=True)],
+    )
+    is_andor_part = functools.reduce(
+        blocks.op_or,
+        (blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(t)) for t in ANDOR_ALIGNED_PART_TYPES),
+    )
+    andor_part_branch = blocks.if_reporter(
+        is_andor_part, [blocks.call_proc(UPDATE_ANDOR_PART_PROCCODE, warp=True)]
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, easter_egg_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch, andor_master_branch, andor_part_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -7093,6 +7276,115 @@ def install_fire_permission_gate(blocks: Blocks) -> None:
     blocks.chain(definition, [phase])
 
 
+def install_update_andor_master(blocks: Blocks) -> None:
+    # BOSS-01 (andor.lifecycle #94): the invisible Andor Genesis master's per-tick update — the composite's whole
+    # lifecycle state machine (handle_4B_Andor_Genesis, xevious_main.68k:5386-5443). Each tick it (1) advances the
+    # two shared animation registers the parts render from — the colour cycle and the core flip phase — then
+    # (2) drives the descent/hold/departure by the master's shared depth position + the end flag:
+    #   * end flag clear -> DESCEND toward HOLD (+ANDOR_DESCEND_STEP, clamped), else HOLD (no change);
+    #   * end flag set   -> RETREAT up (-ANDOR_LEAVE_STEP) until it clears the top (<= START), then TEAR DOWN the
+    #     whole composite (free every part slot type+state, mirroring remove_andor_genesis) and consume the flag.
+    # The phase is derived from position + flag — no explicit phase var — so the ground band-isolation invariant
+    # holds. (Source checks the end flag only once HOLD is reached; here a flag set mid-descent reverses
+    # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold, and the
+    # debug summon's dismiss fires only on a FRESH G press once the boss is already up (well after it has reached
+    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.) The
+    # per-frame part alignment lives in `update andor part`; the master owns only the shared anchor + animation.
+    definition = _install_warp_proc(blocks, UPDATE_ANDOR_MASTER_PROCCODE)
+    base = GROUND_SLOTS[0]
+    tick = lambda: variable("tick", TICK_ID)
+
+    # (1) Colour cycle (cycle_andor_genesis_colour, 5758-5767): andor_genesis_colour = colour_tbl[(timer>>3)&7]
+    # with colour_tbl = [2,3,4,5,6,5,4,3], a triangle wave 2..6..3. countup_timer_1 counts arcade frames, and the
+    # port `tick` counts ticks of FRAMES_PER_TICK frames, so (frames>>3)&7 == (tick>>2)&7 (see the note by
+    # ANDOR_START_X on the 2-frames/tick scaling). The triangle is expressed in closed form: 6 - |((tick>>2)&7)-4|.
+    colour_index = blocks.op_mod(blocks.op_floor(blocks.op_div(tick(), number(4))), number(8))
+    colour = blocks.op_sub(number(6), blocks.op_abs(blocks.op_sub(colour_index, number(4))))
+    set_colour = blocks.set_var_expr("andor genesis colour", ANDOR_GENESIS_COLOUR_ID, colour)
+    # (2) Core flip phase (handle_4A, 5461-5465): phase = (frames>>5)&3 == (tick>>4)&3 (see ANDOR_GENESIS_FLIP_ID).
+    flip = blocks.op_mod(blocks.op_floor(blocks.op_div(tick(), number(16))), number(4))
+    set_flip = blocks.set_var_expr("andor genesis flip", ANDOR_GENESIS_FLIP_ID, flip)
+
+    master_x = lambda: variable("andor master x", ANDOR_MASTER_X_ID)
+    # DESCEND: while below HOLD, step down and clamp so it lands exactly on HOLD (then holds with no change).
+    descend = _ground_if_else(
+        blocks,
+        blocks.op_lt(master_x(), number(ANDOR_HOLD_X)),
+        [
+            blocks.set_var_expr(
+                "andor master x", ANDOR_MASTER_X_ID,
+                blocks.op_add(master_x(), number(ANDOR_DESCEND_STEP)),
+            ),
+            blocks.if_reporter(
+                blocks.op_gt(master_x(), number(ANDOR_HOLD_X)),
+                [blocks.set_var("andor master x", ANDOR_MASTER_X_ID, number(ANDOR_HOLD_X))],
+            ),
+        ],
+        [],  # at HOLD: fixed screen position, no scroll
+    )
+    # TEAR DOWN (remove_andor_genesis, 5440-5443 + the parts' own removal): free every part slot type+state the
+    # belt-and-suspenders way `cull slot` and the debug band-clear do, then consume the flag.
+    teardown = [
+        block
+        for n in range(1, len(ANDOR_GENESIS_DATA) + 1)
+        for block in (
+            blocks.list_replace("slot type", SLOT_TYPE_ID, number(base + n), number(0)),
+            blocks.list_replace("slot state", SLOT_STATE_ID, number(base + n), number(0)),
+        )
+    ]
+    teardown.append(blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0)))
+    # LEAVE: retreat up until clear of the top, then tear down.
+    leave = _ground_if_else(
+        blocks,
+        blocks.op_lt(master_x(), blocks.op_add(number(ANDOR_START_X), number(1))),  # <= START_X
+        teardown,
+        [
+            blocks.set_var_expr(
+                "andor master x", ANDOR_MASTER_X_ID,
+                blocks.op_sub(master_x(), number(ANDOR_LEAVE_STEP)),
+            )
+        ],
+    )
+    lifecycle = _ground_if_else(
+        blocks,
+        blocks.op_eq(variable("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID), number(1)),
+        [leave],
+        [descend],
+    )
+    blocks.chain(definition, [set_colour, set_flip, lifecycle])
+
+
+def install_update_andor_part(blocks: Blocks) -> None:
+    # BOSS-01 (andor.lifecycle #94): one tick of alignment for a single visible Andor part (armor / core / port)
+    # at `slot index`. Each frame it pins this slot to the master's shared anchor plus the part's per-type
+    # composite offset — set slot x = andor master x + depth[type-0x40], slot y = andor master y + lateral
+    # [type-0x40] — reading the two constant offset lists (source-verified, anamorphic depth). No independent
+    # motion and no cull: the master's teardown frees the part slots. The master (Scratch slot 16) updates the
+    # shared anchor AFTER the parts (ascending walk), so during motion the parts render one tick behind the
+    # anchor — a uniform lag across all parts, so the composite stays rigid, and it is zero while holding.
+    definition = _install_warp_proc(blocks, UPDATE_ANDOR_PART_PROCCODE)
+    part_index = lambda: blocks.op_sub(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0x40))
+    blocks.chain(
+        definition,
+        [
+            _set_cur_item(
+                blocks, "slot x", SLOT_X_ID,
+                blocks.op_add(
+                    variable("andor master x", ANDOR_MASTER_X_ID),
+                    blocks.list_item("andor part depth", ANDOR_PART_DEPTH_ID, part_index()),
+                ),
+            ),
+            _set_cur_item(
+                blocks, "slot y", SLOT_Y_ID,
+                blocks.op_add(
+                    variable("andor master y", ANDOR_MASTER_Y_ID),
+                    blocks.list_item("andor part lateral", ANDOR_PART_LATERAL_ID, part_index()),
+                ),
+            ),
+        ],
+    )
+
+
 def install_cull_slot(blocks: Blocks) -> None:
     # Free the slot at `slot index` (type/state to empty). The position fields are left as-is (like the
     # reference's check_scroll_offscreen 30B4, which clears only type/state/extra); a refilled flying
@@ -7383,7 +7675,7 @@ def install_debug_ground_spawn(blocks: Blocks) -> None:
     # tool until they are all built and playtested, then it is removed (it amends the locked control mapping —
     # see core-game-systems.md and issue #119).
     definition = _install_warp_proc(blocks, DEBUG_GROUND_SPAWN_PROCCODE)
-    gate = blocks.add("control_if")
+    gate = blocks.add("control_if_else")
     pressed = blocks.key_pressed(gate, DEBUG_GROUND_KEY)
     blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
 
@@ -7457,7 +7749,45 @@ def install_debug_ground_spawn(blocks: Blocks) -> None:
             )
         ],
     ]
-    blocks.substack(gate, [*suppress_air, spawn])
+    # BOSS-01 (andor.lifecycle #94): the Andor boss holds position and never scrolls off, so — unlike every other
+    # debug family, whose scroll-off the field-empty gate simply waits out — it would jam the cursor forever. Give
+    # it an explicit DISMISS, but one that does NOT fire on the same press that armed it (that self-dismiss left the
+    # boss torn down off-screen before it could descend — it never appeared). Two conditions:
+    #   (a) a FRESH G press (rising edge) — `debug ground key held` was 0 last tick — so simply HOLDING G lets the
+    #       composite descend and hold instead of being dismissed every tick; and
+    #   (b) the boss was ALREADY up at the START of this tick — its master slot is read HERE, before `spawn` runs,
+    #       so the press that arms the boss (master slot still 0 at this point) reads not-present and does not dismiss.
+    # It therefore runs BEFORE `spawn` in the pressed branch. A second G press (after a release) tears the composite
+    # down so the master proc frees the field and the cursor can advance to the next family.
+    master_slot = GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA)
+    rising = blocks.op_eq(
+        variable("debug ground key held", DEBUG_GROUND_KEY_HELD_ID), number(0)
+    )
+    boss_present = blocks.op_eq(
+        blocks.list_item("slot type", SLOT_TYPE_ID, number(master_slot)),
+        number(ANDOR_MASTER_TYPE),
+    )
+    dismiss = blocks.if_reporter(
+        blocks.op_and(rising, boss_present),
+        [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
+    )
+    # Pressed branch: dismiss FIRST (it must read the pre-spawn master slot), then record that G is held so the next
+    # held tick is not a rising edge, then suppress the normal stream and run the field-empty spawn/cycle.
+    blocks.substack(
+        gate,
+        [
+            dismiss,
+            blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(1)),
+            *suppress_air,
+            spawn,
+        ],
+    )
+    # Released branch: clear the held sample so the next press registers as a fresh rising edge (a deliberate dismiss).
+    blocks.substack(
+        gate,
+        [blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(0))],
+        name="SUBSTACK2",
+    )
     blocks.chain(definition, [gate])
 
 
@@ -8008,6 +8338,42 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
     return seed
 
 
+def _ground_seed_andor(blocks: Blocks, *, base: int) -> list[str]:
+    # BOSS-01 (andor.lifecycle #94): the Andor Genesis bulk-arm — the port's sub_2_fn_20__andor_genesis_start
+    # ($064A): stamp all 15 part types into ground obj slots 1..15 (Scratch slots base+1..base+15) and clear the
+    # end flag. The arm ORDER is source-exact (ANDOR_GENESIS_DATA); the master lands at Scratch slot base+15.
+    # Each part is marked ACTIVE so the field-occupancy checks (and the debug key's field-empty gate) see the
+    # boss. The master's shared anchor is set to its arcade start (`_X` MSB 0xf8 off the top, `_Y` = 0x0e80):
+    # `andor master x` = START_X, `andor master y` = LATERAL_Y — from here the master proc descends the anchor and
+    # `update andor part` pins each part to it. slot x/y are ALSO seeded to the part's initial composite position
+    # (START anchor + the part's offset) so the very first frame renders in place regardless of arm-vs-walk order;
+    # cull clears only type/state, so seed x/y explicitly rather than trust a reused slot. Reached from the debug
+    # key now; the live schedule opcode wires in a later commit — shared, so the debug arm is the scheduled arm's
+    # exact shape (the lateral is a boss constant, not a schedule column).
+    seed: list[str] = [
+        blocks.set_var("andor master x", ANDOR_MASTER_X_ID, number(ANDOR_START_X)),
+        blocks.set_var("andor master y", ANDOR_MASTER_Y_ID, number(ANDOR_LATERAL_Y)),
+    ]
+    for n, part_type in enumerate(ANDOR_GENESIS_DATA, start=1):
+        slot = base + n
+        seed.extend(
+            [
+                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(part_type)),
+                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(SLOT_ACTIVE)),
+                blocks.list_replace(
+                    "slot x", SLOT_X_ID, number(slot),
+                    number(ANDOR_START_X + ANDOR_PART_DEPTH_OFFSETS[part_type - 0x41]),
+                ),
+                blocks.list_replace(
+                    "slot y", SLOT_Y_ID, number(slot),
+                    number(ANDOR_LATERAL_Y + ANDOR_PART_LATERAL_OFFSETS[part_type - 0x41]),
+                ),
+            ]
+        )
+    seed.append(blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0)))
+    return seed
+
+
 def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str]:
     # DEBUG (tracked for removal #119): build ONE ground family's spawn from fixed debug constants — the band
     # base slot and a central lateral column (DEBUG_GROUND_SPRITE_Y) — through the SAME shared seed builders the
@@ -8091,6 +8457,10 @@ def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str
                 ],
             ),
         ]
+    if shape == "andor":
+        # BOSS-01 (andor.lifecycle #94): the whole 15-part composite arms at once into the ground band, so unlike
+        # the other shapes it ignores the fixed single-slot column and stamps slots base+1..base+15 directly.
+        return _ground_seed_andor(blocks, base=base)
     raise ValueError(f"unknown debug ground seed shape: {shape!r}")
 
 
@@ -8412,10 +8782,36 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         blocks.op_eq(handler_at_cursor(), text(SHEONITE_END_HANDLER)),
         [blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1))],
     )
-    # ENGINE-TODO: the remaining spawn / boss handler dispatch (add_object, andor_genesis_*) lands with the
-    # later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
-    # ground-stop), add_ground_object (the built static + Grobda ground families) and add_domogram_with_path
-    # (GND-07) are wired above; the still-unhandled spawn/boss records advance the cursor and count the fire only.
+    # BOSS-01 (andor.lifecycle #94): andor_genesis_start (op 76) arms the 15-part composite via the SAME
+    # bulk-arm the debug summon uses (_ground_seed_andor: master anchor at the arcade start, 15 slots stamped,
+    # end flag cleared), and andor_genesis_end (op 77) raises the end flag so the master retreats and tears the
+    # composite down. These records already live in the loaded area schedules (areas 4/9/14 — area 14 has two
+    # start/end pairs); wiring the branches makes real areas spawn and depart the boss. Like add_ground_object
+    # and add_domogram, the arm is withheld while the G ground-debug key owns the band (the cursor still advances
+    # at the loop end, so no record is skipped or replayed) — so a debug-summoned boss is never fought over by a
+    # live schedule record. The end flag write is likewise withheld while G is held, so a live end record cannot
+    # tear down the operator's debug boss mid-inspection; the two stay in sync. Slice 15 is the lifecycle only —
+    # nothing here touches firing (op 78's mask) or the hit/score/bomb path (slice 16).
+    andor_start_branch = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
+            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+        ),
+        _ground_seed_andor(blocks, base=GROUND_SLOTS[0]),
+    )
+    andor_end_branch = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_END_HANDLER)),
+            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+        ),
+        [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
+    )
+    # ENGINE-TODO: the remaining spawn handler dispatch (add_object for the non-boss scheduled spawns) lands with
+    # the later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
+    # ground-stop), add_ground_object (the built static + Grobda ground families), add_domogram_with_path
+    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above; the still-
+    # unhandled records — incl. fire_mask_andor_genesis (op 78, consumed in slice 16) — advance the cursor and
+    # count the fire only.
     blocks.substack(
         loop,
         [
@@ -8431,6 +8827,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             reset_bacura_branch,
             sheonite_start_branch,
             sheonite_end_branch,
+            andor_start_branch,
+            andor_end_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -8624,6 +9022,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_boza(blocks)
     install_update_grobda(blocks)
     install_update_domogram(blocks)
+    install_update_andor_master(blocks)  # BOSS-01 (andor.lifecycle #94)
+    install_update_andor_part(blocks)  # BOSS-01 (andor.lifecycle #94)
     install_explode_toroid_tick(blocks)
     install_explode_giddo_spario_tick(blocks)
     install_update_bullet(blocks)
@@ -10030,6 +10430,14 @@ GROUND_FAMILY_COSTUME_COUNTS = (
     ("boza", 15),
     ("grobda", 14),
     ("domogram", 14),
+    # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite renders through the shared ground pool.
+    # Nine armor plates (types 0x41..0x49, ordinal = slot type - 64), four gun ports (0x4F..0x52,
+    # ordinal = slot type - 78), and the centre core as four pre-flipped costumes (none/x/y/xy, selected by
+    # the flip-phase var). The parts are indestructible in slice 15, so — unlike the mortal families — none
+    # appends the shared solv_death burst or a crater; the slice is just the part crops.
+    ("andor-armor", 9),
+    ("andor-port", 4),
+    ("andor-core", 4),
 )
 
 
@@ -10073,6 +10481,10 @@ _GROUND_ALL_TYPES = [
     BOZA_LOGRAM_TYPE,
     DOMOGRAM_TYPE,
     *GROBDA_TYPES,
+    # BOSS-01 (andor.lifecycle #94): the 15 Andor Genesis part types reserve their place in the ground
+    # type ledger from the moment they can occupy the band. Their render arms arrive with the art in a
+    # later commit; listing them here now catches any accidental type collision at import.
+    *ANDOR_PART_TYPES,
 ]
 assert len(_GROUND_ALL_TYPES) == len(set(_GROUND_ALL_TYPES)), (
     "ground family types overlap; the shared renderer's slot-type dispatch would be ambiguous"
@@ -10587,6 +10999,42 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         )
         return [gate]
 
+    def boss_arm(offset_key: str, ordinal_fn) -> list[str]:
+        # BOSS-01: an Andor Genesis part arm. Like a plain family arm (position -> costume -> size -> show) but
+        # it also sets the `color` graphic effect from the shared `andor genesis colour` var so the whole
+        # composite pulses in unison (every visible arcade part copies andor_genesis_colour into _COLOUR each
+        # frame, xevious_main.68k:5785 etc). The var holds the raw arcade palette index (2..6); a single Scratch
+        # color effect cannot reproduce the arcade's palette swaps, so it is scaled up here into a visible hue
+        # sweep (ANDOR_COLOUR_EFFECT_SCALE — a port interpretation, tunable at playtest). The colour is cleared for
+        # every clone at the top of the loop (below), so a clone that drew a boss part last tick does not leave a
+        # tint on a normal ground object it draws next. Fresh reporters per call (a reporter binds to one parent).
+        sx, sy = stage_xy()
+        return [
+            blocks.go_expr(sx, sy),
+            blocks.set_effect(
+                "COLOR",
+                blocks.op_mul(
+                    variable("andor genesis colour", ANDOR_GENESIS_COLOUR_ID),
+                    number(ANDOR_COLOUR_EFFECT_SCALE),
+                ),
+            ),
+            _sw(blocks, off[offset_key], ordinal_fn()),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(ANDOR_RENDER_SIZE)}),
+            blocks.show(),
+        ]
+
+    def armor_ordinal() -> str:
+        # ordinal = slot type - 64 -> 1..9 for types 0x41..0x49, matching the manifest frame order.
+        return blocks.op_sub(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(0x40))
+
+    def port_ordinal() -> str:
+        # ordinal = slot type - 78 -> 1..4 for types 0x4F..0x52, matching the manifest frame order.
+        return blocks.op_sub(blocks.list_item("slot type", SLOT_TYPE_ID, slotvar()), number(0x4E))
+
+    def core_ordinal() -> str:
+        # ordinal = 1 + flip phase (0..3) -> the four pre-flipped core costumes none/x/y/xy in manifest order.
+        return blocks.op_add(number(1), variable("andor genesis flip", ANDOR_GENESIS_FLIP_ID))
+
     off = GROUND_FAMILY_OFFSETS
     # (predicate builder, arm builder) in combined-list order.
     families = [
@@ -10652,6 +11100,11 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
             lambda: type_eq(DOMOGRAM_TYPE),
             lambda: plain_arm(lambda: _domogram_costume_subtree(blocks, slotvar, off["domogram"])),
         ),
+        # BOSS-01 (andor.lifecycle #94): the three visible Andor Genesis part groups. The invisible master
+        # (ANDOR_MASTER_TYPE) has NO arm and falls through to the default hide.
+        (lambda: type_in(ANDOR_ARMOR_TYPES), lambda: boss_arm("andor-armor", armor_ordinal)),
+        (lambda: type_in(ANDOR_PORT_TYPES), lambda: boss_arm("andor-port", port_ordinal)),
+        (lambda: type_eq(ANDOR_CORE_TYPE), lambda: boss_arm("andor-core", core_ordinal)),
     ]
 
     branch: list[str] = [blocks.hide()]
@@ -10664,7 +11117,11 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         blocks.substack(node, branch, name="SUBSTACK2")
         branch = [node]
 
-    blocks.substack(loop, branch)
+    # BOSS-01 colour-effect hygiene: graphic effects PERSIST on a reused clone across frames. The boss arms are
+    # the only ground arms that set the `color` effect, so clear it for every clone at the top of the dispatch
+    # each tick; a clone that drew a boss part last frame then draws a normal ground object with no residual
+    # tint. (No pre-slice-15 family used effects, so this clear is a no-op for them.)
+    blocks.substack(loop, [blocks.clear_graphic_effects(), *branch])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -12019,6 +12476,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             + proof_by_family("crater/"),
             "grobda": proof_by_family("grobda/") + death_frames() + proof_by_family("crater/"),
             "domogram": proof_by_family("domogram/") + death_frames() + proof_by_family("crater/"),
+            # BOSS-01: the Andor composite parts. Indestructible in slice 15 -> no burst, no crater; each
+            # slice is just its own crops, in manifest (== arcade type) order. The core's single crop expands
+            # to four pre-flipped costumes (andor-core/core/01/{none,x,y,xy}) via the extractor `flips` attr.
+            "andor-armor": proof_by_family("andor-armor/"),
+            "andor-port": proof_by_family("andor-port/"),
+            "andor-core": proof_by_family("andor-core/"),
         }
         combined: list[dict[str, Any]] = []
         combined_family: list[str] = []
@@ -12144,8 +12607,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         INVULN_ID,
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
         DEBUG_SPAWN_INDEX_ID,
-        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor.
+        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor and its rising-edge sample
+        # (the boss dismiss fires only on a fresh press, never on the press that armed it).
         DEBUG_GROUND_INDEX_ID,
+        DEBUG_GROUND_KEY_HELD_ID,
         # DEBUG (tracked for removal, #119): the P-key freeze/resume toggle and its rising-edge sample.
         PAUSED_ID,
         PAUSE_KEY_HELD_ID,
@@ -12161,6 +12626,20 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_LOCK_COL_ID,
         # SEC-03 (secrets.hidden-credit #93): the credit overlay's show/hide signal.
         EASTER_EGG_SHOWING_ID,
+        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag — set by the schedule end record (later commit)
+        # or the debug dismiss; the master's update proc tears the composite down on it.
+        ANDOR_GENESIS_END_FLAG_ID,
+        # BOSS-01: the shared colour-cycle byte (drives the `color` effect on every part) and the core's
+        # flip-orientation phase (selects one of the four pre-flipped core costumes). Written by the master
+        # proc, read by the render arms.
+        ANDOR_GENESIS_COLOUR_ID,
+        ANDOR_GENESIS_FLIP_ID,
+        # BOSS-01: the composite anchor. The master proc drives these two shared vars (descent/hold/leave on
+        # x, fixed lateral on y); every part proc reads them each tick and adds its own per-type offset to
+        # place its slot. Keeping the anchor in shared vars (never a per-slot field) is what lets the ground
+        # band re-isolate for free — see the band-isolation invariant.
+        ANDOR_MASTER_X_ID,
+        ANDOR_MASTER_Y_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -12275,8 +12754,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # DEBUG_SPAWN_FAMILIES); starts at the first family.
         DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
         # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor (0-based into
-        # DEBUG_GROUND_FAMILIES); starts at the first family.
+        # DEBUG_GROUND_FAMILIES); starts at the first family. Its rising-edge sample starts 0, so the first G press
+        # is always a fresh edge; normal play never presses G, and the boss-summon harness scenario drives it live.
         DEBUG_GROUND_INDEX_ID: ["debug ground index", 0],
+        DEBUG_GROUND_KEY_HELD_ID: ["debug ground key held", 0],
         # DEBUG (tracked for removal, #119): the P-key freeze toggle (1 = frozen) and its previous-tick
         # P sample for rising-edge detection; both start at 0 so the walk runs and the harness is unaffected.
         PAUSED_ID: ["debug paused", 0],
@@ -12291,6 +12772,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_END_FLAG_ID: ["sheonite end flag", 0],
         SHEONITE_PHASE_TMP_ID: ["sheonite phase", 0],
         SHEONITE_LOCK_COL_ID: ["sheonite lock col", 0],
+        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag (0 = alive/holding, 1 = tear down). Cleared on
+        # every arm and consumed by the master proc. (The per-area re-clear joins the other schedule flags when the
+        # live start/end opcodes are wired in a later commit; the debug path arms and consumes it within a session.)
+        ANDOR_GENESIS_END_FLAG_ID: ["andor genesis end flag", 0],
+        # BOSS-01: colour-cycle value (0 = untinted base) and core flip phase (0 = unflipped base). Both init 0
+        # so the base crops render before the lifecycle proc (C3) drives them.
+        ANDOR_GENESIS_COLOUR_ID: ["andor genesis colour", 0],
+        ANDOR_GENESIS_FLIP_ID: ["andor genesis flip", 0],
+        # BOSS-01: the composite anchor. Init 0; each arm seeds the real start position (ANDOR_START_X /
+        # ANDOR_LATERAL_Y) before the master proc runs, so the value before the first tick never renders.
+        ANDOR_MASTER_X_ID: ["andor master x", 0],
+        ANDOR_MASTER_Y_ID: ["andor master y", 0],
     }
     owned_lists = {
         ALLOWED_ID,
@@ -12335,6 +12828,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         DIFFICULTY_INCREMENT_ID,
         FORMATION_COUNT_TABLE_ID,
         FORMATION_TYPE_OFFSET_TABLE_ID,
+        # BOSS-01: the two read-only per-part composite-offset tables (depth toward the craft / lateral),
+        # indexed by (slot type - 0x40); the part proc reads item(index) of each and adds it to the master
+        # anchor. Baked once here, never mutated at runtime.
+        ANDOR_PART_DEPTH_ID,
+        ANDOR_PART_LATERAL_ID,
     }
     preserved_lists = {
         list_id: value
@@ -12437,6 +12935,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # authority, indexed at runtime by the folded AI level (raise) or the record offset (set).
         FORMATION_COUNT_TABLE_ID: ["formation count table", list(FORMATION_COUNTS)],
         FORMATION_TYPE_OFFSET_TABLE_ID: ["formation type offset table", list(FORMATION_TYPE_OFFSETS)],
+        # BOSS-01: per-part composite offsets (index = slot type - 0x40), added to the master anchor each
+        # tick by `update andor part`. Depth (toward the craft) is scaled 15/8 to the render's anamorphic
+        # column/row ratio so the composite stays square; lateral is 1:1 in slot units (see
+        # _andor_part_offset_tables). Read-only.
+        ANDOR_PART_DEPTH_ID: ["andor part depth", list(ANDOR_PART_DEPTH_OFFSETS)],
+        ANDOR_PART_LATERAL_ID: ["andor part lateral", list(ANDOR_PART_LATERAL_OFFSETS)],
     }
     stage["broadcasts"] = {message_id: name for name, message_id in MESSAGES.items()}
 

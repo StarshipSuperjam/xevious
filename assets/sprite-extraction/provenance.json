@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "87beda6c39941500f142b30f9d69932b5b0f9246da8ac18ef8536b2355c1644e",
+  "manifest_sha256": "910196b799e8170303fc2980a8a739d2cde220b11ba7365800a5df789aeb960d",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -2138,11 +2138,423 @@
         8
       ],
       "generator_version": 1
+    },
+    "91414a20e5f2e11da6cf69e1eccf4a3a.png": {
+      "frame": "andor-armor/plate/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "c21ec3d20d4097c905bd0f613f9332d3.png": {
+      "frame": "andor-armor/plate/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "72c378d61809bc6dc45576edb060d290.png": {
+      "frame": "andor-armor/plate/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "04a6f84052a193c5a8776dd908cdc856.png": {
+      "frame": "andor-armor/plate/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "37a3a917ef82fa9a5a7d44dd89da99dd.png": {
+      "frame": "andor-armor/plate/05",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "3d563d2baa0ea92c8b532c311f17f734.png": {
+      "frame": "andor-armor/plate/06",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "1138b6cb033dafb9a1fc12bbdf430f1a.png": {
+      "frame": "andor-armor/plate/07",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "500b7faa81ee6ee2bb43266e2e1179a6.png": {
+      "frame": "andor-armor/plate/08",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "94a05cdae585994f56e31b3a9526a238.png": {
+      "frame": "andor-armor/plate/09",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "4ce04638ddc8863c362a2ec769309247.png": {
+      "frame": "andor-port/muzzle/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "de0fb4a6bf6b50e692736d52efcdf2e0.png": {
+      "frame": "andor-port/muzzle/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        16,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f716294d53d33df2488e271eec0f8fa3.png": {
+      "frame": "andor-port/muzzle/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "a021764bbc276b2117c7d8be56579f33.png": {
+      "frame": "andor-port/muzzle/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        48,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "33464d73ed92b1a30dd83cb5d55db56f.png": {
+      "frame": "andor-core/core/01/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "f28784b3c982228f07aafef2436dc079.png": {
+      "frame": "andor-core/core/01/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "c297f23dac88872ad1f68729df90168e.png": {
+      "frame": "andor-core/core/01/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "23d3ff8d5b09576a868c731cdf30fc04.png": {
+      "frame": "andor-core/core/01/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "ba94972d502213b598fbc24343728610.png",
+      "source_sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1,
+      "flip": "xy"
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "5112381fb6b289c635968fc09dce4bf1ac9a1ae7c7499299093bbc6c2686fa47",
+    "sha256": "1cb766ded2bd2c9d8a833786115e68ca8be932e53ca3e82722e2d978dde6f105",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -2232,7 +2644,24 @@
       "domogram/idle/02",
       "domogram/idle/03",
       "domogram/idle/04",
-      "bonus-flag/flag/01"
+      "bonus-flag/flag/01",
+      "andor-armor/plate/01",
+      "andor-armor/plate/02",
+      "andor-armor/plate/03",
+      "andor-armor/plate/04",
+      "andor-armor/plate/05",
+      "andor-armor/plate/06",
+      "andor-armor/plate/07",
+      "andor-armor/plate/08",
+      "andor-armor/plate/09",
+      "andor-port/muzzle/01",
+      "andor-port/muzzle/02",
+      "andor-port/muzzle/03",
+      "andor-port/muzzle/04",
+      "andor-core/core/01/none",
+      "andor-core/core/01/x",
+      "andor-core/core/01/y",
+      "andor-core/core/01/xy"
     ]
   }
 }

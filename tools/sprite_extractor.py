@@ -28,6 +28,10 @@ GENERATOR_VERSION = 1
 GENERATED_TARGET = "toroid_sprite_proof"
 MANAGED_TARGETS = {"solvalou", GENERATED_TARGET}
 FRAME_NAME = re.compile(r"^[a-z0-9]+(?:[/-][a-z0-9]+)*$")
+# A frame may carry an optional `flips` list: each token emits one costume that is a deterministic
+# horizontal/vertical transpose of the single crop, named "{name}/{token}". Used by the Andor Genesis core,
+# whose arcade _ATTR flip-orientation animation (handle_4A) cycles one bitmap through its four orientations.
+FLIP_TOKENS = {"none": (False, False), "x": (True, False), "y": (False, True), "xy": (True, True)}
 
 
 class SpriteExtractionError(RuntimeError):
@@ -254,11 +258,13 @@ def _intersects(
     )
 
 
-def _require_keys(value: dict, expected: set[str], label: str) -> None:
+def _require_keys(
+    value: dict, expected: set[str], label: str, optional: set[str] = frozenset()
+) -> None:
     actual = set(value)
-    if actual != expected:
+    if not (expected <= actual and actual <= expected | optional):
         missing = expected - actual
-        unknown = actual - expected
+        unknown = actual - expected - optional
         details = []
         if missing:
             details.append("missing " + ", ".join(sorted(missing)))
@@ -363,6 +369,7 @@ def validate_manifest(manifest: object) -> dict:
                 "duration_frames",
             },
             label,
+            optional={"flips"},
         )
         name = frame.get("name")
         if not isinstance(name, str) or not FRAME_NAME.fullmatch(name):
@@ -370,6 +377,24 @@ def validate_manifest(manifest: object) -> dict:
         if name in names:
             raise SpriteExtractionError(f"duplicate frame name: {name}")
         names.add(name)
+        # A `flips` frame expands to one costume per token ("{name}/{token}"); register the expanded names too
+        # so a later frame cannot silently collide with one.
+        flips = frame.get("flips")
+        if flips is not None:
+            if (
+                not isinstance(flips, list)
+                or not flips
+                or any(token not in FLIP_TOKENS for token in flips)
+                or len(set(flips)) != len(flips)
+            ):
+                raise SpriteExtractionError(
+                    f"{name}.flips must be a non-empty list of distinct tokens from {sorted(FLIP_TOKENS)}"
+                )
+            for token in flips:
+                expanded_name = f"{name}/{token}"
+                if expanded_name in names:
+                    raise SpriteExtractionError(f"duplicate frame name: {expanded_name}")
+                names.add(expanded_name)
         sheet_name = frame.get("sheet")
         if sheet_name not in sheets:
             raise SpriteExtractionError(f"{name} names unknown sheet {sheet_name!r}")
@@ -477,6 +502,20 @@ def _place_on_canvas(
     return Image(canvas_width, canvas_height, tuple(pixels))
 
 
+def _flip_image(image: Image, xflip: bool, yflip: bool) -> Image:
+    """A deterministic horizontal/vertical transpose of an RGBA image (no interpolation)."""
+    if not xflip and not yflip:
+        return image
+    width, height = image.width, image.height
+    pixels = [(0, 0, 0, 0)] * (width * height)
+    for y in range(height):
+        src_y = (height - 1 - y) if yflip else y
+        for x in range(width):
+            src_x = (width - 1 - x) if xflip else x
+            pixels[y * width + x] = image.pixel(src_x, src_y)
+    return Image(width, height, tuple(pixels))
+
+
 def render_derivatives(
     manifest: dict,
     asset_dir: Path = ASSET_DIR,
@@ -501,15 +540,32 @@ def render_derivatives(
     for frame in manifest["frames"]:
         rect = tuple(frame["rect"])
         crop = _crop_and_remove_matte(decoded[frame["sheet"]], rect, matte)
-        image = _place_on_canvas(
+        base = _place_on_canvas(
             crop,
             tuple(frame["canvas"]),
             tuple(frame["anchor"]),
         )
-        png = encode_png(image)
-        derivatives.append(
-            Derivative(frame, f"{_md5(png)}.png", png, image)
-        )
+        flips = frame.get("flips")
+        if flips is None:
+            variants = [(frame, base)]
+        else:
+            # Emit one costume per flip token, in manifest order, named "{name}/{token}". Each synthetic frame
+            # carries the token in `flip` (recorded in provenance) and drops `flips` so downstream sees a plain
+            # frame. The pixels are a deterministic transpose of the one credited crop.
+            variants = []
+            for token in flips:
+                xflip, yflip = FLIP_TOKENS[token]
+                variant_frame = {
+                    key: value for key, value in frame.items() if key != "flips"
+                }
+                variant_frame["name"] = f"{frame['name']}/{token}"
+                variant_frame["flip"] = token
+                variants.append((variant_frame, _flip_image(base, xflip, yflip)))
+        for variant_frame, image in variants:
+            png = encode_png(image)
+            derivatives.append(
+                Derivative(variant_frame, f"{_md5(png)}.png", png, image)
+            )
     return derivatives
 
 
@@ -834,6 +890,9 @@ def _derivative_provenance(
             "anchor": frame["anchor"],
             "generator_version": GENERATOR_VERSION,
         }
+        if "flip" in frame:
+            # A derived flip variant: same credited crop, deterministically transposed (see _flip_image).
+            outputs[derivative.filename]["flip"] = frame["flip"]
     return {
         "version": 1,
         "generator_version": GENERATOR_VERSION,
@@ -862,6 +921,11 @@ def _overlay_record(manifest: dict, derivative: Derivative) -> dict:
             f"create this asset. Source {sheet['asset']} at SHA-256 "
             f"{sheet['sha256']}; crop {frame['rect']}, canvas {frame['canvas']}, "
             f"anchor {frame['anchor']}."
+            + (
+                f" Derived by deterministic {frame['flip']}-flip of that crop."
+                if "flip" in frame
+                else ""
+            )
         ),
     }
 

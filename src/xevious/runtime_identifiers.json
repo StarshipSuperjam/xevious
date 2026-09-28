@@ -84,6 +84,41 @@
       "name": "aim swap",
       "scope": "Stage"
     },
+    "andor-genesis-colour": {
+      "kind": "variable",
+      "name": "andor genesis colour",
+      "scope": "Stage"
+    },
+    "andor-genesis-end-flag": {
+      "kind": "variable",
+      "name": "andor genesis end flag",
+      "scope": "Stage"
+    },
+    "andor-genesis-flip": {
+      "kind": "variable",
+      "name": "andor genesis flip",
+      "scope": "Stage"
+    },
+    "andor-master-x": {
+      "kind": "variable",
+      "name": "andor master x",
+      "scope": "Stage"
+    },
+    "andor-master-y": {
+      "kind": "variable",
+      "name": "andor master y",
+      "scope": "Stage"
+    },
+    "andor-part-depth": {
+      "kind": "list",
+      "name": "andor part depth",
+      "scope": "Stage"
+    },
+    "andor-part-lateral": {
+      "kind": "list",
+      "name": "andor part lateral",
+      "scope": "Stage"
+    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",
@@ -222,6 +257,11 @@
     "debug-ground-index": {
       "kind": "variable",
       "name": "debug ground index",
+      "scope": "Stage"
+    },
+    "debug-ground-key-held": {
+      "kind": "variable",
+      "name": "debug ground key held",
       "scope": "Stage"
     },
     "debug-pause-key-held": {

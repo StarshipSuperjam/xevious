@@ -112,8 +112,12 @@ SPRITE_SHEET_HASHES = {
     "Ground Enemies": (
         "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf"
     ),
+    # BOSS-01 (slice 15): the Andor Genesis part sheet. Decoded directly from the pinned arcade reference gfx
+    # (like Bonus Flag below) rather than the Spriters Resource rip: that rip only shows assembled octagons,
+    # whose naive slices bake the core into the centre plate and cannot form separable tiles, so the 14 part
+    # cells are rendered from the pin by tools/andor_sprite_render.py — its credited origin is the pin.
     "Andor Genesis": (
-        "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68"
+        "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233"
     ),
     "Aerial Enemies": (
         "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8"
@@ -255,8 +259,10 @@ class ScratchProjectTests(unittest.TestCase):
         # in the shared flying pool, ten costumes with no burst), and the slice-15 PR-1 shared "ground"
         # renderer — the ten former full-band ground families (barra, sol-tower, garu, logram, zolbak, derota,
         # garu-derota, boza, grobda, domogram) collapsed into ONE 16-clone pool that costume-switches on each
-        # slot's live type; its 129 costumes are those families' costume lists concatenated in order (offsets
-        # in GROUND_FAMILY_OFFSETS), freeing ~144 clones under the scratch-vm 300-clone ceiling — plus the
+        # slot's live type; its 146 costumes are those families' costume lists concatenated in order (offsets
+        # in GROUND_FAMILY_OFFSETS) — 129 for the ten original families plus the slice-15 BOSS-01 Andor Genesis
+        # composite (9 armor + 4 gun ports + 4 core flip costumes = 17) — freeing ~144 clones under the
+        # scratch-vm 300-clone ceiling — plus the
         # slice-14 bonus-flag renderer (SEC-02; the hidden Special Flag, a single revealed-flag costume
         # with no burst or crater — like the Bacura it is never destroyed on screen), and the slice-14 easter-egg
         # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
@@ -281,13 +287,17 @@ class ScratchProjectTests(unittest.TestCase):
         # bacura / sheonite / bonus_flag cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md) + the 1 generated hidden-credit
         # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
-        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset).
-        self.assertEqual(186, len(assets))
+        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset)
+        # + the 17 Andor Genesis part PNGs (BOSS-01: 9 armor plates + 4 gun ports + 4 core flip-orientation
+        # costumes, the last four derived by deterministic transpose of one credited core crop; the Andor
+        # source sheet itself is not a referenced asset, so it adds no count).
+        self.assertEqual(203, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
         # target by concatenating their costume lists (barra 0, sol-tower 11, garu 28, logram 39, zolbak 53,
-        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129 total). scratch-vm's SB3 loader
+        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129); PR-2 (BOSS-01) appends the
+        # Andor Genesis composite (andor-armor 129, andor-port 138, andor-core 142 -> 146 total). scratch-vm's SB3 loader
         # enforces uniqueItems on a target's costumes array: two byte-identical costume OBJECTS are legal
         # across separate targets but NOT within one, and the families share many crops by ref (the solv_death
         # burst, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
@@ -298,7 +308,9 @@ class ScratchProjectTests(unittest.TestCase):
         project, _project_bytes, _assets = scratch.validate_source()
         ground = next(t for t in project["targets"] if t.get("name") == "ground")
         costumes = ground["costumes"]
-        self.assertEqual(129, len(costumes), "the combined ground costume list is the 10 families concatenated")
+        self.assertEqual(
+            146, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
+        )
         objects = [json.dumps(c, sort_keys=True) for c in costumes]
         self.assertEqual(
             len(objects),
@@ -1091,6 +1103,10 @@ class ScratchProjectTests(unittest.TestCase):
             # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor — the ground analog
             # of the T-key cursor, likewise a transient dev-tool register, not durable Stage state.
             "debug ground index",
+            # DEBUG (tracked for removal, #119): the previous-tick G sample for rising-edge detection — so the
+            # Andor boss's debug DISMISS fires only on a FRESH G press, never on the press that summons it.
+            # A transient dev-tool register (default 0; the harness drives it only in the boss-summon scenario).
+            "debug ground key held",
             # DEBUG (tracked for removal, #119): the P-key freeze/resume TOGGLE (1 = frozen) and its
             # previous-tick P sample for rising-edge detection — transient dev-tool registers, not durable
             # Stage state (both default 0; the harness never presses P, so the walk runs every tick).
@@ -1115,6 +1131,23 @@ class ScratchProjectTests(unittest.TestCase):
             "sheonite end flag",
             "sheonite phase",
             "sheonite lock col",
+            # BOSS-01 (slice 15): the Andor Genesis end flag — Stage-written (by the schedule end record / the
+            # debug dismiss), read and consumed by the master's update proc in the walk, which tears the composite
+            # down on it. A schedule on/off flag like `sheonite end flag`: transient machinery, never sprite-written.
+            "andor genesis end flag",
+            # BOSS-01 (slice 15): the boss's two shared per-tick animation registers. `andor genesis colour`
+            # is the pulsing colour byte (cycle_andor_genesis_colour: colour_tbl[(timer>>3)&7]) every visible
+            # part copies into its `color` graphic effect; `andor genesis flip` is the core's _ATTR flip-phase
+            # selector (0-3) that picks its none/x/y/xy costume. Both Stage-written by the master's update proc,
+            # read by the render dispatch, never sprite-written — transient animation machinery like `bomb dx`.
+            "andor genesis colour",
+            "andor genesis flip",
+            # BOSS-01 (slice 15): the composite anchor. `andor master x`/`andor master y` are the master
+            # proc's descent/hold/leave position, written each tick by the master's update proc and read by
+            # every part proc (which adds its own offset to place its slot). Stage-held so the ground band
+            # stays isolatable; never sprite-written — transient machinery like `andor genesis colour`.
+            "andor master x",
+            "andor master y",
             # SEC-03 (slice 14): the hidden-credit display signal. Stage-written by the `update easter
             # egg` proc (1 while a bombed Credit's ~2s overlay is showing, else 0), read by the
             # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
@@ -1265,6 +1298,10 @@ class ScratchProjectTests(unittest.TestCase):
                 "difficulty increment",
                 "formation count table",
                 "formation type offset table",
+                # BOSS-01 (slice 15): the two read-only Andor composite-offset tables (depth / lateral),
+                # indexed by (slot type - 0x40); the part proc adds item(index) to the master anchor.
+                "andor part depth",
+                "andor part lateral",
             },
             stage_list_names,
         )
@@ -1483,6 +1520,17 @@ class ScratchProjectTests(unittest.TestCase):
             # stop-firing row), then moves through `advance ground moving`; a HIT Domogram runs the Barra
             # crater clock. Warp, dispatched per OCCUPIED Domogram slot from the walk.
             director.UPDATE_DOMOGRAM_PROCCODE,
+            # BOSS-01 (slice 15) andor.lifecycle: the invisible Andor Genesis master's per-tick wrapper,
+            # dispatched per OCCUPIED master slot from the walk. It runs the lifecycle state machine: steps the
+            # shared colour-cycle + core flip-phase registers, then descends the shared anchor toward the hold
+            # position (clamped), holds, or — on the end flag — retreats up and tears the whole 15-part composite
+            # down (freeing every part slot) and consumes the flag. Writes only shared vars + slot type/state. Warp.
+            director.UPDATE_ANDOR_MASTER_PROCCODE,
+            # BOSS-01 (slice 15) andor.lifecycle: the shared per-part alignment wrapper, dispatched per OCCUPIED
+            # visible-part slot (armor / core / port) from the walk. Each tick it pins this slot's x/y to the
+            # master's shared anchor plus the part's per-type composite offset (read from the two offset tables).
+            # No independent motion, no cull. Warp.
+            director.UPDATE_ANDOR_PART_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -10028,6 +10076,488 @@ class ScratchProjectTests(unittest.TestCase):
 
         return failures
 
+    @classmethod
+    def _boss01_failures(cls, project: dict) -> set:
+        """BOSS-01 andor.lifecycle (#94) authoring contract — the Andor Genesis composite lifecycle
+        (handle_4B master / handle_4A core / handle_41..49 armor / handle_4F..52 ports,
+        xevious_main.68k 5386-5983; sub_2_fn_20/21 arm+end, xevious_sub.68k 544-572). Master
+        (`update andor master`, warp): each tick steps the shared colour byte and the core flip phase from
+        `tick`, then runs the state machine on the end flag — clear => DESCEND `andor master x` by
+        ANDOR_DESCEND_STEP while below ANDOR_HOLD_X and clamp EXACTLY to HOLD (lands on and holds the fixed
+        row); set => RETREAT by ANDOR_LEAVE_STEP until it clears the top, then TEAR DOWN all 15 part slots
+        (type+state 0) and consume the flag. Parts (`update andor part`, warp) pin `slot x`/`slot y` to the
+        master anchor plus the per-type composite offset lists. Dispatch routes the master and part types to
+        their procs. The schedule arm stamps EXACTLY the andor-genesis.json layout into slots
+        base+1..base+15. Render (shared `ground` pool): clears graphic effects for every clone each tick (so
+        a clone that drew a boss part leaves NO residual tint on a normal object), and the boss arms set the
+        `color` effect from the shared colour byte scaled by ANDOR_COLOUR_EFFECT_SCALE."""
+        h = cls._sec_helpers(project)
+        blocks = h["blocks"]
+        num = h["num"]
+        failures = set()
+        base = director.GROUND_SLOTS[0]
+        master = _proc_body_blocks(h["stage"], director.UPDATE_ANDOR_MASTER_PROCCODE)
+        part = _proc_body_blocks(h["stage"], director.UPDATE_ANDOR_PART_PROCCODE)
+        area = _proc_body_blocks(h["stage"], director.ADVANCE_AREA_PROCCODE)
+
+        def val_reporter_id(b):
+            val = b["inputs"].get("VALUE")
+            return val[1] if isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str) else None
+
+        def item_reporter_id(b):
+            item = b["inputs"].get("ITEM")
+            return item[1] if isinstance(item, list) and len(item) >= 2 and isinstance(item[1], str) else None
+
+        def subtree_reads_list(cid, list_id):
+            seen, frontier = set(), [cid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                b = blocks[x]
+                if b["opcode"] == "data_itemoflist" and b["fields"].get("LIST", [None, None])[1] == list_id:
+                    return True
+                for v in b.get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        def writes_index_value(idset, list_id, index, value):
+            return any(
+                blocks[x]["opcode"] == "data_replaceitemoflist"
+                and blocks[x]["fields"]["LIST"][1] == list_id
+                and num(blocks[x]["inputs"].get("INDEX")) == index
+                and num(blocks[x]["inputs"].get("ITEM")) == value
+                for x in idset
+            )
+
+        def var_set_to_op(idset, var_id, op_opcode):
+            # First `set var_id = <reporter of op_opcode>` in idset — returns the reporter block dict.
+            for x in idset:
+                b = blocks[x]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var_id:
+                    rid = val_reporter_id(b)
+                    r = blocks.get(rid) if rid else None
+                    if r is not None and r["opcode"] == op_opcode:
+                        return rid, r
+            return None, None
+
+        # (1) master + (2) part procs run under warp (an atomic per-tick pass).
+        pm = h["proto"](director.UPDATE_ANDOR_MASTER_PROCCODE)
+        if pm is None or pm["mutation"].get("warp") != "true":
+            failures.add("andor-master-warp")
+        pp = h["proto"](director.UPDATE_ANDOR_PART_PROCCODE)
+        if pp is None or pp["mutation"].get("warp") != "true":
+            failures.add("andor-part-warp")
+
+        # (3) colour cycle: master sets `andor genesis colour` from an expression over `tick`.
+        if not any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"]["VARIABLE"][1] == director.ANDOR_GENESIS_COLOUR_ID
+            and (rid := val_reporter_id(b)) is not None
+            and h["subtree_reads_var"](rid, {director.TICK_ID})
+            for b in master
+        ):
+            failures.add("andor-colour-cycle")
+
+        # (4) core flip phase: master sets `andor genesis flip` from an expression over `tick`.
+        if not any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"]["VARIABLE"][1] == director.ANDOR_GENESIS_FLIP_ID
+            and (rid := val_reporter_id(b)) is not None
+            and h["subtree_reads_var"](rid, {director.TICK_ID})
+            for b in master
+        ):
+            failures.add("andor-flip-phase")
+
+        # The lifecycle top: `if andor genesis end flag == 1 (leave) / else (descend)`.
+        top = next(
+            (
+                b
+                for b in master
+                if b["opcode"] == "control_if_else"
+                and h["cond_eq_var"](b, director.ANDOR_GENESIS_END_FLAG_ID, 1)
+            ),
+            None,
+        )
+        if top is None:
+            failures.add("andor-end-gate")
+        leave_ids = h["branch_ids"](top, "SUBSTACK") if top else set()
+        descend_ids = h["branch_ids"](top, "SUBSTACK2") if top else set()
+
+        # (5) ARRIVAL descent: below HOLD, step `andor master x` down by ANDOR_DESCEND_STEP (reads itself).
+        rid, add = var_set_to_op(descend_ids, director.ANDOR_MASTER_X_ID, "operator_add")
+        if not (
+            add is not None
+            and num(add["inputs"].get("NUM2")) == director.ANDOR_DESCEND_STEP
+            and h["subtree_reads_var"](rid, {director.ANDOR_MASTER_X_ID})
+        ):
+            failures.add("andor-descend")
+
+        # (6) HOLD: the descent is gated `andor master x < ANDOR_HOLD_X` and clamps EXACTLY to HOLD, so it
+        # lands on and holds the fixed screen row instead of overshooting.
+        gate_ok = any(
+            blocks[x]["opcode"] == "operator_lt" and num(blocks[x]["inputs"].get("OPERAND2")) == director.ANDOR_HOLD_X
+            for x in descend_ids
+        )
+        if not (gate_ok and h["sets_var"](descend_ids, director.ANDOR_MASTER_X_ID, director.ANDOR_HOLD_X)):
+            failures.add("andor-hold")
+
+        # (7) DEPARTURE retreat: on the end flag, step `andor master x` UP by ANDOR_LEAVE_STEP (reads itself).
+        rid, sub = var_set_to_op(leave_ids, director.ANDOR_MASTER_X_ID, "operator_subtract")
+        if not (
+            sub is not None
+            and num(sub["inputs"].get("NUM2")) == director.ANDOR_LEAVE_STEP
+            and h["subtree_reads_var"](rid, {director.ANDOR_MASTER_X_ID})
+        ):
+            failures.add("andor-depart")
+
+        # (8) TEARDOWN: once retreated clear of the top, free EVERY part slot (type+state 0) and consume the
+        # flag (mirrors remove_andor_genesis + the parts' own removal).
+        n_parts = len(director.ANDOR_GENESIS_DATA)
+        if not (
+            all(
+                writes_index_value(leave_ids, director.SLOT_TYPE_ID, base + n, 0)
+                and writes_index_value(leave_ids, director.SLOT_STATE_ID, base + n, 0)
+                for n in range(1, n_parts + 1)
+            )
+            and h["sets_var"](leave_ids, director.ANDOR_GENESIS_END_FLAG_ID, 0)
+        ):
+            failures.add("andor-teardown")
+
+        # (9)+(10) ALIGNMENT: the part proc pins slot x/y to the master anchor + the per-type offset lists.
+        def part_align(slot_list_id, master_var_id, offset_list_id):
+            for b in part:
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == slot_list_id:
+                    rid = item_reporter_id(b)
+                    r = blocks.get(rid) if rid else None
+                    if (
+                        r is not None
+                        and r["opcode"] == "operator_add"
+                        and h["subtree_reads_var"](rid, {master_var_id})
+                        and subtree_reads_list(rid, offset_list_id)
+                    ):
+                        return b
+            return None
+
+        if part_align(director.SLOT_X_ID, director.ANDOR_MASTER_X_ID, director.ANDOR_PART_DEPTH_ID) is None:
+            failures.add("andor-part-align-x")
+        if part_align(director.SLOT_Y_ID, director.ANDOR_MASTER_Y_ID, director.ANDOR_PART_LATERAL_ID) is None:
+            failures.add("andor-part-align-y")
+
+        # (11)+(12) DISPATCH routes the master and the part types to their procs.
+        if not h["dispatch_calls"](director.ANDOR_MASTER_TYPE, director.UPDATE_ANDOR_MASTER_PROCCODE):
+            failures.add("andor-dispatch-master")
+        if not h["dispatch_calls"](director.ANDOR_ARMOR_TYPES[0], director.UPDATE_ANDOR_PART_PROCCODE):
+            failures.add("andor-dispatch-part")
+
+        # (13) LAYOUT EQUALITY: the schedule arm stamps exactly the andor-genesis.json part-type layout into
+        # slots base+1..base+15 (scoped to `advance area` — the debug arm's identical copy lives in its own
+        # proc, so a broken schedule arm still bites here).
+        layout = json.loads(
+            (ROOT / "docs" / "spec" / "data" / "andor-genesis.json").read_text(encoding="utf-8")
+        )["layout"]["values"]
+        if not all(
+            any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                and num(b["inputs"].get("INDEX")) == base + n
+                and num(b["inputs"].get("ITEM")) == layout[n - 1]
+                for b in area
+            )
+            for n in range(1, len(layout) + 1)
+        ):
+            failures.add("andor-arm-layout")
+
+        # (14) COLOUR HYGIENE: the shared ground pool clears graphic effects every clone/tick, and (15) the
+        # boss arms set the `color` effect from the shared colour byte scaled by ANDOR_COLOUR_EFFECT_SCALE.
+        ground = next((t for t in project["targets"] if t.get("name") == director.GROUND_RENDER_TARGET), None)
+        if ground is None:
+            failures.add("andor-colour-clear")
+            failures.add("andor-boss-tint")
+        else:
+            gb = ground["blocks"]
+            if not any(b["opcode"] == "looks_cleargraphiceffects" for b in gb.values()):
+                failures.add("andor-colour-clear")
+
+            def g_subtree(cid, pred):
+                seen, frontier = set(), [cid]
+                while frontier:
+                    x = frontier.pop()
+                    if not x or x in seen or x not in gb:
+                        continue
+                    seen.add(x)
+                    b = gb[x]
+                    if pred(b):
+                        return True
+                    for v in b.get("inputs", {}).values():
+                        if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                            frontier.append(v[1])
+                return False
+
+            def g_reads_colour(b):
+                return any(
+                    isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list)
+                    and len(v[1]) >= 3 and v[1][0] == 12 and v[1][2] == director.ANDOR_GENESIS_COLOUR_ID
+                    for v in b.get("inputs", {}).values()
+                )
+
+            tint_ok = False
+            for b in gb.values():
+                if b["opcode"] != "looks_seteffectto" or b["fields"].get("EFFECT", [None])[0] != "COLOR":
+                    continue
+                val = b["inputs"].get("VALUE")
+                rid = val[1] if isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str) else None
+                r = gb.get(rid) if rid else None
+                if (
+                    r is not None
+                    and r["opcode"] == "operator_multiply"
+                    and g_subtree(rid, g_reads_colour)
+                    and (
+                        _num_operand(r["inputs"].get("NUM1")) == director.ANDOR_COLOUR_EFFECT_SCALE
+                        or _num_operand(r["inputs"].get("NUM2")) == director.ANDOR_COLOUR_EFFECT_SCALE
+                    )
+                ):
+                    tint_ok = True
+                    break
+            if not tint_ok:
+                failures.add("andor-boss-tint")
+
+        return failures
+
+    # Roadmap closure evidence for leaf `andor.lifecycle` (BOSS-01): the Andor Genesis boss arrives (descends
+    # to a fixed hold row), holds its position as one rigid composite of 15 parts pinned to the invisible
+    # master, pulses colour on every visible part + the core's flip shimmer, and departs (retreats off the top
+    # and tears the composite down) on the schedule/debug end flag — no firing, no destruction (slice 16).
+    # roadmap-evidence: BOSS-01 success  (test_andor_lifecycle_authoring_present — master/part warp; colour +
+    # flip driven from tick; end-flag state machine descends+clamps to hold, retreats, tears down 15 slots;
+    # parts align to the master anchor + offset lists; dispatch routes master+part types; the arm matches the
+    # andor-genesis.json layout; the ground pool clears effects each tick and the boss arms tint from the
+    # shared colour byte)
+    # roadmap-evidence: BOSS-01 failure  (test_andor_lifecycle_negative_fixtures — each contract clause corrupted bites)
+    def test_andor_lifecycle_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._boss01_failures(project))
+
+    def test_andor_lifecycle_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._boss01_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _proto(p, proccode):
+            for b in _stage(p)["blocks"].values():
+                if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == proccode:
+                    return b
+            return None
+
+        def _body(p, proccode):
+            return _proc_body_blocks(_stage(p), proccode)
+
+        def _val_rid(b):
+            val = b["inputs"].get("VALUE")
+            return val[1] if isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str) else None
+
+        def _item_rid(b):
+            item = b["inputs"].get("ITEM")
+            return item[1] if isinstance(item, list) and len(item) >= 2 and isinstance(item[1], str) else None
+
+        def _top(p):
+            blocks = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if b["opcode"] != "control_if_else":
+                    continue
+                c = blocks.get(b["inputs"].get("CONDITION", [None, None])[1])
+                if (
+                    c is not None
+                    and c["opcode"] == "operator_equals"
+                    and _num_operand(c["inputs"].get("OPERAND2")) == 1
+                    and (o1 := c["inputs"].get("OPERAND1"))
+                    and isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], list)
+                    and o1[1][0] == 12 and o1[1][2] == director.ANDOR_GENESIS_END_FLAG_ID
+                ):
+                    return b
+            return None
+
+        def _reach(blocks, start):
+            seen, frontier = set(), [start]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                for v in [blocks[x].get("next"), *(
+                    vv[1] for vv in blocks[x].get("inputs", {}).values()
+                    if isinstance(vv, list) and len(vv) >= 2 and isinstance(vv[1], str)
+                )]:
+                    frontier.append(v)
+            return seen
+
+        def _arm(p, key):
+            blocks = _stage(p)["blocks"]
+            top = _top(p)
+            sub = top["inputs"].get(key) if top else None
+            start = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            return blocks, (_reach(blocks, start) if start else set())
+
+        def master_no_warp(p):
+            _proto(p, director.UPDATE_ANDOR_MASTER_PROCCODE)["mutation"]["warp"] = "false"
+
+        def part_no_warp(p):
+            _proto(p, director.UPDATE_ANDOR_PART_PROCCODE)["mutation"]["warp"] = "false"
+
+        def break_colour(p):
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.ANDOR_GENESIS_COLOUR_ID:
+                    b["inputs"]["VALUE"] = [1, [4, "3"]]
+                    return
+
+        def break_flip(p):
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.ANDOR_GENESIS_FLIP_ID:
+                    b["inputs"]["VALUE"] = [1, [4, "0"]]
+                    return
+
+        def break_end_gate(p):
+            blocks = _stage(p)["blocks"]
+            c = blocks.get(_top(p)["inputs"]["CONDITION"][1])
+            c["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+        def break_descend(p):
+            blocks, descend = _arm(p, "SUBSTACK2")
+            for x in descend:
+                b = blocks[x]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.ANDOR_MASTER_X_ID:
+                    r = blocks.get(_val_rid(b))
+                    if r is not None and r["opcode"] == "operator_add":
+                        r["inputs"]["NUM2"] = [1, [4, "1"]]
+                        return
+
+        def break_hold(p):
+            # Corrupt the exact HOLD clamp value so the descent no longer lands on the fixed row.
+            blocks, descend = _arm(p, "SUBSTACK2")
+            for x in descend:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"]["VARIABLE"][1] == director.ANDOR_MASTER_X_ID
+                    and _num_operand(b["inputs"].get("VALUE")) == director.ANDOR_HOLD_X
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, "99999"]]
+                    return
+
+        def break_depart(p):
+            blocks, leave = _arm(p, "SUBSTACK")
+            for x in leave:
+                b = blocks[x]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.ANDOR_MASTER_X_ID:
+                    r = blocks.get(_val_rid(b))
+                    if r is not None and r["opcode"] == "operator_subtract":
+                        r["inputs"]["NUM2"] = [1, [4, "1"]]
+                        return
+
+        def break_teardown(p):
+            blocks, leave = _arm(p, "SUBSTACK")
+            base = director.GROUND_SLOTS[0]
+            for x in leave:
+                b = blocks[x]
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == base + 1
+                    and _num_operand(b["inputs"].get("ITEM")) == 0
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_align_x(p):
+            blocks = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID:
+                    r = blocks.get(_item_rid(b))
+                    if r is not None and r["opcode"] == "operator_add":
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def break_align_y(p):
+            blocks = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_Y_ID:
+                    r = blocks.get(_item_rid(b))
+                    if r is not None and r["opcode"] == "operator_add":
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def break_dispatch_master(p):
+            for b in _body(p, director.ADVANCE_SLOTS_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _is_walk_type(b["inputs"].get("OPERAND1"))
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.ANDOR_MASTER_TYPE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        def break_dispatch_part(p):
+            for b in _body(p, director.ADVANCE_SLOTS_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _is_walk_type(b["inputs"].get("OPERAND1"))
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.ANDOR_ARMOR_TYPES[0]
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        def break_layout(p):
+            base = director.GROUND_SLOTS[0]
+            for b in _body(p, director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == base + 1
+                    and _num_operand(b["inputs"].get("ITEM")) == director.ANDOR_GENESIS_DATA[0]
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_colour_clear(p):
+            ground = next(t for t in p["targets"] if t.get("name") == director.GROUND_RENDER_TARGET)
+            for b in ground["blocks"].values():
+                if b["opcode"] == "looks_cleargraphiceffects":
+                    b["opcode"] = "looks_nextcostume"
+
+        def break_boss_tint(p):
+            ground = next(t for t in p["targets"] if t.get("name") == director.GROUND_RENDER_TARGET)
+            gb = ground["blocks"]
+            for b in gb.values():
+                if b["opcode"] == "looks_seteffectto" and b["fields"].get("EFFECT", [None])[0] == "COLOR":
+                    b["inputs"]["VALUE"] = [1, [4, "0"]]
+
+        cases = [
+            ("andor-master-warp", master_no_warp),
+            ("andor-part-warp", part_no_warp),
+            ("andor-colour-cycle", break_colour),
+            ("andor-flip-phase", break_flip),
+            ("andor-end-gate", break_end_gate),
+            ("andor-descend", break_descend),
+            ("andor-hold", break_hold),
+            ("andor-depart", break_depart),
+            ("andor-teardown", break_teardown),
+            ("andor-part-align-x", break_align_x),
+            ("andor-part-align-y", break_align_y),
+            ("andor-dispatch-master", break_dispatch_master),
+            ("andor-dispatch-part", break_dispatch_part),
+            ("andor-arm-layout", break_layout),
+            ("andor-colour-clear", break_colour_clear),
+            ("andor-boss-tint", break_boss_tint),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._boss01_failures(project), label)
+
     # Roadmap closure evidence for leaf `area.ground-dispatch` (AREA-02): the terrain-locked ground
     # substrate — `advance ground` scrolls every ground object DOWN the field by the fixed terrain step and
     # culls it off the bottom; the ordered walk routes each built ground type to its wrapper; and
@@ -16149,9 +16679,11 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name == "Bonus Flag":
-                # SEC-02: the one reference-decoded sheet — credited to the pinned arcade reference (jotd666),
-                # not Spriters Resource, since no Spriters Resource sheet isolates the Special Flag sprite.
+            if name in ("Bonus Flag", "Andor Genesis"):
+                # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
+                # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
+                # and the Andor rip only shows assembled octagons that cannot be sliced into separable
+                # part tiles (BOSS-01), so both are rendered from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -16186,7 +16718,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "0769cba5afd55d52140b26948b9624e84c1d4ebbeb27da795d904bfc7cb24483",
+            "4bca50b8e81eada7d13cce47404d9b4a9056f990a9d0ff69add77430be93a1bd",
             build_hash,
         )
 
