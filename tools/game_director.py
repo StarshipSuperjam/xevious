@@ -7532,7 +7532,7 @@ def install_update_andor_master(blocks: Blocks) -> None:
     # fire call (`cmp #3,(core _STATE); jeq <xx>_gun_port_hit` at 5523/5574/5625/5676, ahead of the fire jsr at
     # 5533/5584/5635/5686) and routes itself to `<xx>_gun_port_hit` — an explosion, NOT a score. Critically the
     # cascaded port stays `_STATE=2` (active) throughout its explosion (only `gun_port_explosion_finished` at
-    # 5721-5726 sets state 4), so a bomb landing on it during the burst still scores its 1,000. Modelling the cascade
+    # 5738 sets state 4, at 5740), so a bomb landing on it during the burst still scores its 1,000. Modelling the cascade
     # as a master-driven flip to SLOT_HIT (as C4 did) diverged twice on the death frame: the ports (walked earlier)
     # fired one extra volley before the master flipped them, and a cascading port became instantly un-bombable. So the
     # cascade now lives per-port in `update andor part` (fire gated on core-not-hit; a port whose core is hit explodes
@@ -7643,9 +7643,9 @@ def install_update_andor_part(blocks: Blocks) -> None:
     # BOSS-02/03 (#95/#96): a part plays the shared ground explosion burst when it is directly bombed (SLOT_HIT), OR
     # it is a gun port whose core has just died (the per-port cascade poll above — DH-2), OR it is a gun port already
     # mid-burst (a port AND slot timer > 0, so a cascade burst keeps running to completion after the core converts and
-    # stops being SLOT_HIT — the arcade port runs its own gun_port_explosion independently once diverted, 5541-5721,
+    # stops being SLOT_HIT — the arcade port runs its own gun_port_explosion independently once diverted, 5541-5740,
     # and the composite dispatch does not guarantee the ports resolve on the same tick as the core). A cascaded port
-    # stays SLOT_ACTIVE throughout its explosion, exactly like the arcade (only gun_port_explosion_finished at 5721
+    # stays SLOT_ACTIVE throughout its explosion, exactly like the arcade (only gun_port_explosion_finished at 5738
     # sets _STATE=4) — so a bomb landing on it during the burst still scores its 1,000 through the ACTIVE-gated
     # detector. Advance the animation clock every tick (F4) so the renderer's floor(slot timer / 8) walks the 8 burst
     # frames instead of freezing on frame 0. When the burst finishes (floor >= EXPLODE_COSTUME_COUNT), resolve the
