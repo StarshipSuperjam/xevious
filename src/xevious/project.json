@@ -10272,15 +10272,15 @@
         "andor-part-depth": [
           "andor part depth",
           [
-            -2400,
-            -2400,
-            -2400,
-            -480,
-            -480,
-            -480,
-            1440,
-            1440,
-            1440,
+            -1920,
+            -1920,
+            -1920,
+            0,
+            0,
+            0,
+            1920,
+            1920,
+            1920,
             0,
             0,
             0,
@@ -10295,24 +10295,24 @@
         "andor-part-lateral": [
           "andor part lateral",
           [
-            1280,
-            256,
-            -768,
-            1280,
-            256,
-            -768,
-            1280,
-            256,
-            -768,
+            -1024,
+            0,
+            1024,
+            -1024,
+            0,
+            1024,
+            -1024,
+            0,
+            1024,
             0,
             0,
             0,
             0,
             0,
-            512,
             -512,
             512,
-            -512
+            -512,
+            512
           ]
         ]
       },
@@ -174630,7 +174630,7 @@
               1,
               [
                 4,
-                -4448
+                -3968
               ]
             ]
           },
@@ -174659,7 +174659,7 @@
               1,
               [
                 4,
-                4992
+                2688
               ]
             ]
           },
@@ -174746,7 +174746,7 @@
               1,
               [
                 4,
-                -4448
+                -3968
               ]
             ]
           },
@@ -174775,7 +174775,7 @@
               1,
               [
                 4,
-                3968
+                3712
               ]
             ]
           },
@@ -174862,7 +174862,7 @@
               1,
               [
                 4,
-                -4448
+                -3968
               ]
             ]
           },
@@ -174891,7 +174891,7 @@
               1,
               [
                 4,
-                2944
+                4736
               ]
             ]
           },
@@ -174978,7 +174978,7 @@
               1,
               [
                 4,
-                -2528
+                -2048
               ]
             ]
           },
@@ -175007,7 +175007,7 @@
               1,
               [
                 4,
-                4992
+                2688
               ]
             ]
           },
@@ -175094,7 +175094,7 @@
               1,
               [
                 4,
-                -2528
+                -2048
               ]
             ]
           },
@@ -175123,7 +175123,7 @@
               1,
               [
                 4,
-                3968
+                3712
               ]
             ]
           },
@@ -175210,7 +175210,7 @@
               1,
               [
                 4,
-                -2528
+                -2048
               ]
             ]
           },
@@ -175239,7 +175239,7 @@
               1,
               [
                 4,
-                2944
+                4736
               ]
             ]
           },
@@ -175326,7 +175326,7 @@
               1,
               [
                 4,
-                -608
+                -128
               ]
             ]
           },
@@ -175355,7 +175355,7 @@
               1,
               [
                 4,
-                4992
+                2688
               ]
             ]
           },
@@ -175442,7 +175442,7 @@
               1,
               [
                 4,
-                -608
+                -128
               ]
             ]
           },
@@ -175471,7 +175471,7 @@
               1,
               [
                 4,
-                3968
+                3712
               ]
             ]
           },
@@ -175558,7 +175558,7 @@
               1,
               [
                 4,
-                -608
+                -128
               ]
             ]
           },
@@ -175587,7 +175587,7 @@
               1,
               [
                 4,
-                2944
+                4736
               ]
             ]
           },
@@ -175703,7 +175703,7 @@
               1,
               [
                 4,
-                3200
+                4224
               ]
             ]
           },
@@ -175819,7 +175819,7 @@
               1,
               [
                 4,
-                4224
+                3200
               ]
             ]
           },
@@ -175935,7 +175935,7 @@
               1,
               [
                 4,
-                3200
+                4224
               ]
             ]
           },
@@ -176051,7 +176051,7 @@
               1,
               [
                 4,
-                4224
+                3200
               ]
             ]
           },
@@ -197565,7 +197565,7 @@
               1,
               [
                 4,
-                -4448
+                -3968
               ]
             ]
           },
@@ -197594,7 +197594,7 @@
               1,
               [
                 4,
-                4992
+                2688
               ]
             ]
           },
@@ -197681,7 +197681,7 @@
               1,
               [
                 4,
-                -4448
+                -3968
               ]
             ]
           },
@@ -197710,7 +197710,7 @@
               1,
               [
                 4,
-                3968
+                3712
               ]
             ]
           },
@@ -197797,7 +197797,7 @@
               1,
               [
                 4,
-                -4448
+                -3968
               ]
             ]
           },
@@ -197826,7 +197826,7 @@
               1,
               [
                 4,
-                2944
+                4736
               ]
             ]
           },
@@ -197913,7 +197913,7 @@
               1,
               [
                 4,
-                -2528
+                -2048
               ]
             ]
           },
@@ -197942,7 +197942,7 @@
               1,
               [
                 4,
-                4992
+                2688
               ]
             ]
           },
@@ -198029,7 +198029,7 @@
               1,
               [
                 4,
-                -2528
+                -2048
               ]
             ]
           },
@@ -198058,7 +198058,7 @@
               1,
               [
                 4,
-                3968
+                3712
               ]
             ]
           },
@@ -198145,7 +198145,7 @@
               1,
               [
                 4,
-                -2528
+                -2048
               ]
             ]
           },
@@ -198174,7 +198174,7 @@
               1,
               [
                 4,
-                2944
+                4736
               ]
             ]
           },
@@ -198261,7 +198261,7 @@
               1,
               [
                 4,
-                -608
+                -128
               ]
             ]
           },
@@ -198290,7 +198290,7 @@
               1,
               [
                 4,
-                4992
+                2688
               ]
             ]
           },
@@ -198377,7 +198377,7 @@
               1,
               [
                 4,
-                -608
+                -128
               ]
             ]
           },
@@ -198406,7 +198406,7 @@
               1,
               [
                 4,
-                3968
+                3712
               ]
             ]
           },
@@ -198493,7 +198493,7 @@
               1,
               [
                 4,
-                -608
+                -128
               ]
             ]
           },
@@ -198522,7 +198522,7 @@
               1,
               [
                 4,
-                2944
+                4736
               ]
             ]
           },
@@ -198638,7 +198638,7 @@
               1,
               [
                 4,
-                3200
+                4224
               ]
             ]
           },
@@ -198754,7 +198754,7 @@
               1,
               [
                 4,
-                4224
+                3200
               ]
             ]
           },
@@ -198870,7 +198870,7 @@
               1,
               [
                 4,
-                3200
+                4224
               ]
             ]
           },
@@ -198986,7 +198986,7 @@
               1,
               [
                 4,
-                4224
+                3200
               ]
             ]
           },
@@ -241285,7 +241285,7 @@
               1,
               [
                 4,
-                225
+                187.5
               ]
             ]
           },
@@ -241923,7 +241923,7 @@
               1,
               [
                 4,
-                225
+                187.5
               ]
             ]
           },
@@ -242891,7 +242891,7 @@
               1,
               [
                 4,
-                225
+                187.5
               ]
             ]
           },
@@ -254003,8 +254003,8 @@
           "name": "andor-armor/plate/01",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "368fd0ad34179b4d79c2035032294a67",
-          "md5ext": "368fd0ad34179b4d79c2035032294a67.png",
+          "assetId": "91414a20e5f2e11da6cf69e1eccf4a3a",
+          "md5ext": "91414a20e5f2e11da6cf69e1eccf4a3a.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254012,8 +254012,8 @@
           "name": "andor-armor/plate/02",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "5e2a5f2dd88848711eb32ad9c1dacff2",
-          "md5ext": "5e2a5f2dd88848711eb32ad9c1dacff2.png",
+          "assetId": "c21ec3d20d4097c905bd0f613f9332d3",
+          "md5ext": "c21ec3d20d4097c905bd0f613f9332d3.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254021,8 +254021,8 @@
           "name": "andor-armor/plate/03",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "85b0e0a6f9f8389f3ff5b39a6e3e4e7f",
-          "md5ext": "85b0e0a6f9f8389f3ff5b39a6e3e4e7f.png",
+          "assetId": "72c378d61809bc6dc45576edb060d290",
+          "md5ext": "72c378d61809bc6dc45576edb060d290.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254030,8 +254030,8 @@
           "name": "andor-armor/plate/04",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "4c00c992420ae9c71298f77dff48bc02",
-          "md5ext": "4c00c992420ae9c71298f77dff48bc02.png",
+          "assetId": "04a6f84052a193c5a8776dd908cdc856",
+          "md5ext": "04a6f84052a193c5a8776dd908cdc856.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254039,8 +254039,8 @@
           "name": "andor-armor/plate/05",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "2ef851500c8422719a28cdd2b6d84073",
-          "md5ext": "2ef851500c8422719a28cdd2b6d84073.png",
+          "assetId": "37a3a917ef82fa9a5a7d44dd89da99dd",
+          "md5ext": "37a3a917ef82fa9a5a7d44dd89da99dd.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254048,8 +254048,8 @@
           "name": "andor-armor/plate/06",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "343f55e5f3be60ccf4d4cdd7a60a4a91",
-          "md5ext": "343f55e5f3be60ccf4d4cdd7a60a4a91.png",
+          "assetId": "3d563d2baa0ea92c8b532c311f17f734",
+          "md5ext": "3d563d2baa0ea92c8b532c311f17f734.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254057,8 +254057,8 @@
           "name": "andor-armor/plate/07",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "d3bd257146c384a17d464997690f7005",
-          "md5ext": "d3bd257146c384a17d464997690f7005.png",
+          "assetId": "1138b6cb033dafb9a1fc12bbdf430f1a",
+          "md5ext": "1138b6cb033dafb9a1fc12bbdf430f1a.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254066,8 +254066,8 @@
           "name": "andor-armor/plate/08",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "1ba01e123ec0aa9175029e86d7096561",
-          "md5ext": "1ba01e123ec0aa9175029e86d7096561.png",
+          "assetId": "500b7faa81ee6ee2bb43266e2e1179a6",
+          "md5ext": "500b7faa81ee6ee2bb43266e2e1179a6.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254075,8 +254075,8 @@
           "name": "andor-armor/plate/09",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "7e8ebc15e4cd222b2a4fcbea21808af1",
-          "md5ext": "7e8ebc15e4cd222b2a4fcbea21808af1.png",
+          "assetId": "94a05cdae585994f56e31b3a9526a238",
+          "md5ext": "94a05cdae585994f56e31b3a9526a238.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254084,8 +254084,8 @@
           "name": "andor-port/muzzle/01",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "3269ca3aa4c9a1636cf1a5bfc7ae11d1",
-          "md5ext": "3269ca3aa4c9a1636cf1a5bfc7ae11d1.png",
+          "assetId": "4ce04638ddc8863c362a2ec769309247",
+          "md5ext": "4ce04638ddc8863c362a2ec769309247.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -254093,8 +254093,8 @@
           "name": "andor-port/muzzle/02",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "0dd25c3f485e971be1e9304850bf6a0f",
-          "md5ext": "0dd25c3f485e971be1e9304850bf6a0f.png",
+          "assetId": "de0fb4a6bf6b50e692736d52efcdf2e0",
+          "md5ext": "de0fb4a6bf6b50e692736d52efcdf2e0.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -254102,8 +254102,8 @@
           "name": "andor-port/muzzle/03",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "f4339b7667e73536e338f1f2d32abe69",
-          "md5ext": "f4339b7667e73536e338f1f2d32abe69.png",
+          "assetId": "f716294d53d33df2488e271eec0f8fa3",
+          "md5ext": "f716294d53d33df2488e271eec0f8fa3.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -254111,8 +254111,8 @@
           "name": "andor-port/muzzle/04",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "d5b78c9f09126299c5bde13d5068a543",
-          "md5ext": "d5b78c9f09126299c5bde13d5068a543.png",
+          "assetId": "a021764bbc276b2117c7d8be56579f33",
+          "md5ext": "a021764bbc276b2117c7d8be56579f33.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -254120,8 +254120,8 @@
           "name": "andor-core/core/01/none",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "bed88673ae616dd67639ffba9a77f053",
-          "md5ext": "bed88673ae616dd67639ffba9a77f053.png",
+          "assetId": "33464d73ed92b1a30dd83cb5d55db56f",
+          "md5ext": "33464d73ed92b1a30dd83cb5d55db56f.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -254129,8 +254129,8 @@
           "name": "andor-core/core/01/x",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "f818177a78c79ea815139911fb84d51b",
-          "md5ext": "f818177a78c79ea815139911fb84d51b.png",
+          "assetId": "f28784b3c982228f07aafef2436dc079",
+          "md5ext": "f28784b3c982228f07aafef2436dc079.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -254138,8 +254138,8 @@
           "name": "andor-core/core/01/y",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "49e364f166f2a6f4eaeb21980f2554be",
-          "md5ext": "49e364f166f2a6f4eaeb21980f2554be.png",
+          "assetId": "c297f23dac88872ad1f68729df90168e",
+          "md5ext": "c297f23dac88872ad1f68729df90168e.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -254147,8 +254147,8 @@
           "name": "andor-core/core/01/xy",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "65139a2fd1fdbb81f53a4e926a14c860",
-          "md5ext": "65139a2fd1fdbb81f53a4e926a14c860.png",
+          "assetId": "23d3ff8d5b09576a868c731cdf30fc04",
+          "md5ext": "23d3ff8d5b09576a868c731cdf30fc04.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         }
@@ -254952,8 +254952,8 @@
           "name": "andor-armor/plate/01",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "368fd0ad34179b4d79c2035032294a67",
-          "md5ext": "368fd0ad34179b4d79c2035032294a67.png",
+          "assetId": "91414a20e5f2e11da6cf69e1eccf4a3a",
+          "md5ext": "91414a20e5f2e11da6cf69e1eccf4a3a.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254961,8 +254961,8 @@
           "name": "andor-armor/plate/02",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "5e2a5f2dd88848711eb32ad9c1dacff2",
-          "md5ext": "5e2a5f2dd88848711eb32ad9c1dacff2.png",
+          "assetId": "c21ec3d20d4097c905bd0f613f9332d3",
+          "md5ext": "c21ec3d20d4097c905bd0f613f9332d3.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254970,8 +254970,8 @@
           "name": "andor-armor/plate/03",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "85b0e0a6f9f8389f3ff5b39a6e3e4e7f",
-          "md5ext": "85b0e0a6f9f8389f3ff5b39a6e3e4e7f.png",
+          "assetId": "72c378d61809bc6dc45576edb060d290",
+          "md5ext": "72c378d61809bc6dc45576edb060d290.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254979,8 +254979,8 @@
           "name": "andor-armor/plate/04",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "4c00c992420ae9c71298f77dff48bc02",
-          "md5ext": "4c00c992420ae9c71298f77dff48bc02.png",
+          "assetId": "04a6f84052a193c5a8776dd908cdc856",
+          "md5ext": "04a6f84052a193c5a8776dd908cdc856.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254988,8 +254988,8 @@
           "name": "andor-armor/plate/05",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "2ef851500c8422719a28cdd2b6d84073",
-          "md5ext": "2ef851500c8422719a28cdd2b6d84073.png",
+          "assetId": "37a3a917ef82fa9a5a7d44dd89da99dd",
+          "md5ext": "37a3a917ef82fa9a5a7d44dd89da99dd.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -254997,8 +254997,8 @@
           "name": "andor-armor/plate/06",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "343f55e5f3be60ccf4d4cdd7a60a4a91",
-          "md5ext": "343f55e5f3be60ccf4d4cdd7a60a4a91.png",
+          "assetId": "3d563d2baa0ea92c8b532c311f17f734",
+          "md5ext": "3d563d2baa0ea92c8b532c311f17f734.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -255006,8 +255006,8 @@
           "name": "andor-armor/plate/07",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "d3bd257146c384a17d464997690f7005",
-          "md5ext": "d3bd257146c384a17d464997690f7005.png",
+          "assetId": "1138b6cb033dafb9a1fc12bbdf430f1a",
+          "md5ext": "1138b6cb033dafb9a1fc12bbdf430f1a.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -255015,8 +255015,8 @@
           "name": "andor-armor/plate/08",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "1ba01e123ec0aa9175029e86d7096561",
-          "md5ext": "1ba01e123ec0aa9175029e86d7096561.png",
+          "assetId": "500b7faa81ee6ee2bb43266e2e1179a6",
+          "md5ext": "500b7faa81ee6ee2bb43266e2e1179a6.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -255024,8 +255024,8 @@
           "name": "andor-armor/plate/09",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "7e8ebc15e4cd222b2a4fcbea21808af1",
-          "md5ext": "7e8ebc15e4cd222b2a4fcbea21808af1.png",
+          "assetId": "94a05cdae585994f56e31b3a9526a238",
+          "md5ext": "94a05cdae585994f56e31b3a9526a238.png",
           "rotationCenterX": 16,
           "rotationCenterY": 16
         },
@@ -255033,8 +255033,8 @@
           "name": "andor-port/muzzle/01",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "3269ca3aa4c9a1636cf1a5bfc7ae11d1",
-          "md5ext": "3269ca3aa4c9a1636cf1a5bfc7ae11d1.png",
+          "assetId": "4ce04638ddc8863c362a2ec769309247",
+          "md5ext": "4ce04638ddc8863c362a2ec769309247.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -255042,8 +255042,8 @@
           "name": "andor-port/muzzle/02",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "0dd25c3f485e971be1e9304850bf6a0f",
-          "md5ext": "0dd25c3f485e971be1e9304850bf6a0f.png",
+          "assetId": "de0fb4a6bf6b50e692736d52efcdf2e0",
+          "md5ext": "de0fb4a6bf6b50e692736d52efcdf2e0.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -255051,8 +255051,8 @@
           "name": "andor-port/muzzle/03",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "f4339b7667e73536e338f1f2d32abe69",
-          "md5ext": "f4339b7667e73536e338f1f2d32abe69.png",
+          "assetId": "f716294d53d33df2488e271eec0f8fa3",
+          "md5ext": "f716294d53d33df2488e271eec0f8fa3.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -255060,8 +255060,8 @@
           "name": "andor-port/muzzle/04",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "d5b78c9f09126299c5bde13d5068a543",
-          "md5ext": "d5b78c9f09126299c5bde13d5068a543.png",
+          "assetId": "a021764bbc276b2117c7d8be56579f33",
+          "md5ext": "a021764bbc276b2117c7d8be56579f33.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -255069,8 +255069,8 @@
           "name": "andor-core/core/01/none",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "bed88673ae616dd67639ffba9a77f053",
-          "md5ext": "bed88673ae616dd67639ffba9a77f053.png",
+          "assetId": "33464d73ed92b1a30dd83cb5d55db56f",
+          "md5ext": "33464d73ed92b1a30dd83cb5d55db56f.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -255078,8 +255078,8 @@
           "name": "andor-core/core/01/x",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "f818177a78c79ea815139911fb84d51b",
-          "md5ext": "f818177a78c79ea815139911fb84d51b.png",
+          "assetId": "f28784b3c982228f07aafef2436dc079",
+          "md5ext": "f28784b3c982228f07aafef2436dc079.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -255087,8 +255087,8 @@
           "name": "andor-core/core/01/y",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "49e364f166f2a6f4eaeb21980f2554be",
-          "md5ext": "49e364f166f2a6f4eaeb21980f2554be.png",
+          "assetId": "c297f23dac88872ad1f68729df90168e",
+          "md5ext": "c297f23dac88872ad1f68729df90168e.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -255096,8 +255096,8 @@
           "name": "andor-core/core/01/xy",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "65139a2fd1fdbb81f53a4e926a14c860",
-          "md5ext": "65139a2fd1fdbb81f53a4e926a14c860.png",
+          "assetId": "23d3ff8d5b09576a868c731cdf30fc04",
+          "md5ext": "23d3ff8d5b09576a868c731cdf30fc04.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         }
@@ -255154,10 +255154,10 @@
           "name": "Andor Genesis",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "658f7a13b186cf73d1ac4cb11e6fccb7",
-          "md5ext": "658f7a13b186cf73d1ac4cb11e6fccb7.png",
-          "rotationCenterX": 393,
-          "rotationCenterY": 157.5
+          "assetId": "ba94972d502213b598fbc24343728610",
+          "md5ext": "ba94972d502213b598fbc24343728610.png",
+          "rotationCenterX": 48,
+          "rotationCenterY": 56
         },
         {
           "name": "Aerial Enemies",

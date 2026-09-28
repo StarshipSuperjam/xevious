@@ -1979,21 +1979,28 @@ ANDOR_LATERAL_Y = 0x0e80  # 3712; the master's fixed `_Y` (sub_2_fn_20__andor_ge
 # visible hue sweep — a single Scratch color effect cannot reproduce the arcade's palette swaps, so this is a
 # port interpretation (recorded in the C5 mechanics record; tunable at playtest).
 ANDOR_COLOUR_EFFECT_SCALE = 20
-# Per-part composite offsets added to the master position each frame, in ARCADE units (1/32 px), read from each
-# handler's `_X` (depth) / `_Y` (lateral) add at the pin: armor handle_41..49 (5771-5983), gun ports
-# handle_4F..52 (5508-5687), core handle_4A (5447-5468, zero offset — it sits on the master). The 3x3 armor grid
-# is row-major over types 0x41..0x49 (TL,TM,TR,ML,C,MR,BL,BM,BR); rows (depth) -0x0500/-0x0100/+0x0300, cols
-# (lateral) +0x0500/+0x0100/-0x0300; ports at the four ±0x0200 corners. Depth (< 0 = up) and lateral signs are
-# applied to slot x/y WITH THE SAME SIGN as the arcade (verified: depth matches the scroll axis; lateral matches
-# the Boza composite precedent) — the arcade left/right of asymmetric corner plates is the one thing to eyeball
-# at playtest, as no asymmetric-lateral port precedent exists yet.
+# Per-part composite offsets added to the master position each frame, in ARCADE units (1/32 px), taken from the
+# reference's own in-game sprite array dump (assets/amiga/andor_genesis_sprite_dump.bin at the pin) — the
+# authoritative record of where the hardware actually places each part. Each block gives a part's sprite code,
+# _ATTR (size), _COLOUR and screen x/y; normalising every part's CENTRE against the core's centre yields a
+# perfectly symmetric layout (armor 3x3 on a 32-px pitch, gun ports on the ±16-px diagonals, core at the centre).
+# The dump is preferred over the handlers' raw `_X`/`_Y` adds: those adds are TOP-LEFT origins, so the 2x2 armor
+# (centre = top-left + 16) and the 1x1 core (centre = top-left + 8) do not share an origin, and reading the adds
+# directly placed the armor block a half-plate off the core (the "big mess" playtest). Reading centre-relative
+# positions from the dump removes that anchor mismatch AND fixes the arcade left/right of the asymmetric corner
+# plates by construction — each part's art (rendered from the same reference at its own sprite code) sits exactly
+# where the dump puts it. The grid is row-major over types 0x41..0x49 (TL,TM,TR,ML,C,MR,BL,BM,BR). Depth (< 0 =
+# up) and lateral both apply to slot x/y with the dump's sign (+lateral = +slot y = right; +depth = +slot x =
+# down, matching the scroll axis). Stored as (depth_px, lateral_px) * SLOT_UNITS_PER_PIXEL so the whole-pixel
+# assertion below still holds.
+_P = SLOT_UNITS_PER_PIXEL  # 32 units per arcade pixel
 _ANDOR_ARC_OFFSETS = {
-    0x41: (-0x0500, +0x0500), 0x42: (-0x0500, +0x0100), 0x43: (-0x0500, -0x0300),  # armor top row
-    0x44: (-0x0100, +0x0500), 0x45: (-0x0100, +0x0100), 0x46: (-0x0100, -0x0300),  # armor middle row
-    0x47: (+0x0300, +0x0500), 0x48: (+0x0300, +0x0100), 0x49: (+0x0300, -0x0300),  # armor bottom row
+    0x41: (-32 * _P, -32 * _P), 0x42: (-32 * _P, 0), 0x43: (-32 * _P, +32 * _P),  # armor top row
+    0x44: (0, -32 * _P), 0x45: (0, 0), 0x46: (0, +32 * _P),                       # armor middle row
+    0x47: (+32 * _P, -32 * _P), 0x48: (+32 * _P, 0), 0x49: (+32 * _P, +32 * _P),  # armor bottom row
     0x4A: (0, 0),  # core: sits on the master
-    0x4F: (-0x0200, +0x0200), 0x50: (-0x0200, -0x0200),  # gun ports top-left / top-right
-    0x51: (+0x0200, +0x0200), 0x52: (+0x0200, -0x0200),  # gun ports bottom-left / bottom-right
+    0x4F: (-16 * _P, -16 * _P), 0x50: (-16 * _P, +16 * _P),  # gun ports top-left / top-right
+    0x51: (+16 * _P, -16 * _P), 0x52: (+16 * _P, +16 * _P),  # gun ports bottom-left / bottom-right
 }
 # The 14 part types the alignment proc positions each frame (all but the invisible master 0x4B).
 ANDOR_ALIGNED_PART_TYPES = (*ANDOR_ARMOR_TYPES, ANDOR_CORE_TYPE, *ANDOR_PORT_TYPES)
@@ -2167,6 +2174,15 @@ BACURA_TUMBLE_UNITS_PER_FRAME = 128  # slot-x units per frame flip: (_X>>7) => /
 BARRA_TARGET = "barra"
 BARRA_CLONE_SLOT_ID = "barra-clone-slot"  # sprite-local: which ground slot this clone renders
 GROUND_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+# BOSS-01: the Andor Genesis composite renders at the EXACT terrain scale instead of the ground pop (225%), so its
+# 15 parts tile seamlessly into one octagon. The cell->stage map fixes lateral at RENDER_COL_STAGE px per
+# SLOT_UNITS_PER_CELL units = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE / SLOT_UNITS_PER_CELL = 1.875 stage px per
+# arcade px; a part must render at that same scale for its size to match its offset spacing (a 32-px armor plate at
+# ±32-px pitch, a 16-px port at ±16). So size% = 100 * that ratio = 187.5. (The armor costume is a 32-px canvas and
+# the ports/core are 16-px, so the ONE size% yields the arcade 2:1 plate/port ratio for free.) 225% was the "big
+# mess" overlap: the parts drew ~20% larger than their spacing. Depth offsets already carry the anamorphic factor
+# (_ANDOR_DEPTH_UNITS_PER_PX = 60) so both axes land at 1.875 — confirming 187.5 was the intended scale all along.
+ANDOR_RENDER_SIZE = 100 * SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE / SLOT_UNITS_PER_CELL  # = 187.5
 EXPLODE_COSTUME_COUNT = 8  # the shared solv_death burst is 8 costumes (explode_01..08)
 BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
 BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
@@ -11003,7 +11019,7 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
                 ),
             ),
             _sw(blocks, off[offset_key], ordinal_fn()),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(ANDOR_RENDER_SIZE)}),
             blocks.show(),
         ]
 

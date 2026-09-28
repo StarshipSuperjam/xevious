@@ -112,8 +112,12 @@ SPRITE_SHEET_HASHES = {
     "Ground Enemies": (
         "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf"
     ),
+    # BOSS-01 (slice 15): the Andor Genesis part sheet. Decoded directly from the pinned arcade reference gfx
+    # (like Bonus Flag below) rather than the Spriters Resource rip: that rip only shows assembled octagons,
+    # whose naive slices bake the core into the centre plate and cannot form separable tiles, so the 14 part
+    # cells are rendered from the pin by tools/andor_sprite_render.py — its credited origin is the pin.
     "Andor Genesis": (
-        "4ca80d9f5d8894c86d5557cafaf8b5fb8dff368c69ec36f16cbde69dd3891d68"
+        "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233"
     ),
     "Aerial Enemies": (
         "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8"
@@ -16675,9 +16679,11 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name == "Bonus Flag":
-                # SEC-02: the one reference-decoded sheet — credited to the pinned arcade reference (jotd666),
-                # not Spriters Resource, since no Spriters Resource sheet isolates the Special Flag sprite.
+            if name in ("Bonus Flag", "Andor Genesis"):
+                # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
+                # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
+                # and the Andor rip only shows assembled octagons that cannot be sliced into separable
+                # part tiles (BOSS-01), so both are rendered from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -16712,7 +16718,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "c9597797a76a60b61190b7c788324ae6c7c29d47355b189baa748d82fe82b6ac",
+            "4bca50b8e81eada7d13cce47404d9b4a9056f990a9d0ff69add77430be93a1bd",
             build_hash,
         )
 
