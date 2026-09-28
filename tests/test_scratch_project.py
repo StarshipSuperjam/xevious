@@ -112,12 +112,14 @@ SPRITE_SHEET_HASHES = {
     "Ground Enemies": (
         "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf"
     ),
-    # BOSS-01 (slice 15): the Andor Genesis part sheet. Decoded directly from the pinned arcade reference gfx
-    # (like Bonus Flag below) rather than the Spriters Resource rip: that rip only shows assembled octagons,
-    # whose naive slices bake the core into the centre plate and cannot form separable tiles, so the 14 part
-    # cells are rendered from the pin by tools/andor_sprite_render.py — its credited origin is the pin.
+    # BOSS-01 (slice 15) / BOSS-03 (slice 16): the Andor Genesis part sheet. Decoded directly from the pinned
+    # arcade reference gfx (like Bonus Flag below) rather than the Spriters Resource rip: that rip only shows
+    # assembled octagons, whose naive slices bake the core into the centre plate and cannot form separable
+    # tiles, so the 14 part cells (9 armor, 4 gun ports, 1 core) plus the 4 Bragza fly cells (codes 0xb8..0xbb,
+    # the destroyed core's fly-up form) are rendered from the pin by tools/andor_sprite_render.py — its
+    # credited origin is the pin.
     "Andor Genesis": (
-        "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233"
+        "7dffc8055714aab17b8f9d32538d793110c89b3404a545b9fb63ee8c5c6e0b92"
     ),
     "Aerial Enemies": (
         "0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8"
@@ -289,27 +291,34 @@ class ScratchProjectTests(unittest.TestCase):
         # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
         # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset)
         # + the 17 Andor Genesis part PNGs (BOSS-01: 9 armor plates + 4 gun ports + 4 core flip-orientation
-        # costumes, the last four derived by deterministic transpose of one credited core crop; the Andor
-        # source sheet itself is not a referenced asset, so it adds no count).
-        self.assertEqual(203, len(assets))
+        # costumes, the last four derived by deterministic transpose of one credited core crop) and the Andor
+        # source sheet itself, which the sprite_sheets reference target displays whole (so it counts once)
+        # + the 4 Bragza fly PNGs (BOSS-03: the destroyed core's fly-up form, handle_Bragza codes 0xb8..0xbb
+        # at CLUT 0x15; swapping the source sheet for the taller 96x128 Bragza-bearing render is net-zero on
+        # the count, so slice 16 adds exactly the 4 new crops).
+        self.assertEqual(207, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
         # target by concatenating their costume lists (barra 0, sol-tower 11, garu 28, logram 39, zolbak 53,
-        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129); PR-2 (BOSS-01) appends the
-        # Andor Genesis composite (andor-armor 129, andor-port 138, andor-core 142 -> 146 total). scratch-vm's SB3 loader
+        # derota 64, garu derota 75, boza 86, grobda 101, domogram 115 -> 129); PR-2 (BOSS-01) appended the
+        # Andor Genesis composite (andor-armor 129, andor-port 138, andor-core 142 -> 146). BOSS-03 (slice 16)
+        # grows the hit boss parts by the shared explosion burst so they animate on death (andor-port +8,
+        # andor-core +8) and adds the destroyed core's 4-frame Bragza, so the Andor block is now andor-armor
+        # 129 (9), andor-port 138 (4 idle + 8 burst = 12), andor-core 150 (4 idle + 8 burst = 12), andor-bragza
+        # 162 (4) -> 166 total. scratch-vm's SB3 loader
         # enforces uniqueItems on a target's costumes array: two byte-identical costume OBJECTS are legal
         # across separate targets but NOT within one, and the families share many crops by ref (the solv_death
         # burst, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
         # pins the merge-safety contract at the pytest level too (the loader failure only surfaced in the full
-        # harness before): the combined list is 129 costumes, no two costume OBJECTS are identical, and every
+        # harness before): the combined list is 166 costumes, no two costume OBJECTS are identical, and every
         # NAME is unique — later duplicates are disambiguated with a " #<family>" suffix while each name's first
         # occurrence stays canonical, so the renderer's by-name switch_costume still resolves to the right crop.
         project, _project_bytes, _assets = scratch.validate_source()
         ground = next(t for t in project["targets"] if t.get("name") == "ground")
         costumes = ground["costumes"]
         self.assertEqual(
-            146, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
+            166, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
         )
         objects = [json.dumps(c, sort_keys=True) for c in costumes]
         self.assertEqual(
@@ -1148,6 +1157,12 @@ class ScratchProjectTests(unittest.TestCase):
             # stays isolatable; never sprite-written — transient machinery like `andor genesis colour`.
             "andor master x",
             "andor master y",
+            # BOSS-03 (slice 16): the boss death-sequence latch/counter. `andor destroyed timer` is 0 while
+            # the boss is alive; the master's update proc sets it to 1 on the tick the core is hit (firing the
+            # cascade + colour flash exactly once) and then counts it up each tick to drive the flash->settle
+            # colour and the scroll-off departure. Stage-written by the master's update proc, read by the same
+            # proc's destroyed sub-state and reset on teardown; never sprite-written — transient machinery.
+            "andor destroyed timer",
             # SEC-03 (slice 14): the hidden-credit display signal. Stage-written by the `update easter
             # egg` proc (1 while a bombed Credit's ~2s overlay is showing, else 0), read by the
             # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
@@ -1531,6 +1546,11 @@ class ScratchProjectTests(unittest.TestCase):
             # master's shared anchor plus the part's per-type composite offset (read from the two offset tables).
             # No independent motion, no cull. Warp.
             director.UPDATE_ANDOR_PART_PROCCODE,
+            # BOSS-03 (slice 16) andor.core-destruction: the destroyed core's Bragza mover, dispatched per
+            # OCCUPIED Bragza slot from the walk (the converted core carries the synthetic ANDOR_BRAGZA_TYPE).
+            # Each tick it flies the slot up-screen (slot x -= ANDOR_BRAGZA_STEP, slot y held) and culls it off
+            # the top edge. Independent of the master — the wreck departs while Bragza keeps climbing. Warp.
+            director.UPDATE_ANDOR_BRAGZA_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -10409,8 +10429,15 @@ class ScratchProjectTests(unittest.TestCase):
             _proto(p, director.UPDATE_ANDOR_PART_PROCCODE)["mutation"]["warp"] = "false"
 
         def break_colour(p):
+            # Corrupt the tick-reading colour-CYCLE write specifically (a reporter VALUE), not one of the
+            # BOSS-03 death-flash colour writes (constant 0x1d / 6), which the check (3) already ignores because
+            # they do not read `tick`. Matching the check's own predicate keeps this negative biting.
             for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
-                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.ANDOR_GENESIS_COLOUR_ID:
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"]["VARIABLE"][1] == director.ANDOR_GENESIS_COLOUR_ID
+                    and _val_rid(b) is not None
+                ):
                     b["inputs"]["VALUE"] = [1, [4, "3"]]
                     return
 
@@ -12999,12 +13026,21 @@ class ScratchProjectTests(unittest.TestCase):
         # GND-05 adds one deliberate exception: the Boza centre, when bombed, cascades by setting its four
         # outer slots to HIT directly (faithful to the arcade `destroy_all_outer_lograms`, which bulk-sets the
         # outer state and bypasses the per-slot award path — this is exactly why a cascaded outer scores
-        # nothing). Those cascade writes live inside UPDATE_BOZA's body. So the invariant is: exactly one HIT
-        # write in the resolver, and every other HIT write on the Stage is a Boza-cascade write — nothing stray.
+        # nothing). Those cascade writes live inside UPDATE_BOZA's body. BOSS-03 (slice 16) adds the same
+        # deliberate exception for the Andor Genesis core death: when the core slot is hit, the master's update
+        # proc cascades the surviving gun ports to HIT directly (faithful to the per-port `cmp #3,(core _STATE)`
+        # poll -> `<xx>_gun_port_hit`, which explodes a port without awarding — exactly why a cascaded port
+        # scores nothing). Those cascade writes live inside UPDATE_ANDOR_MASTER's body. So the invariant is:
+        # exactly one HIT write in the resolver, and every other HIT write on the Stage is a Boza-cascade or
+        # Andor-core-cascade write — nothing stray.
         boza_body_ids = {id(b) for b in _proc_body_blocks(stage, director.UPDATE_BOZA_PROCCODE)}
+        andor_master_body_ids = {
+            id(b) for b in _proc_body_blocks(stage, director.UPDATE_ANDOR_MASTER_PROCCODE)
+        }
+        cascade_body_ids = boza_body_ids | andor_master_body_ids
         resolver_hits = [bid for bid in hit_writes if bid in resolve_body]
         non_resolver_hits = [bid for bid in hit_writes if bid not in resolve_body]
-        cascade_only = all(id(blocks[bid]) in boza_body_ids for bid in non_resolver_hits)
+        cascade_only = all(id(blocks[bid]) in cascade_body_ids for bid in non_resolver_hits)
         if len(resolver_hits) != 1 or not cascade_only:
             failures.add("single-hit-resolver")
         # SYS-03's guarantee: a resolved hit scores exactly once — the `score` call lives in
@@ -16718,7 +16754,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "21cfdf55d7e3dde23ad7e46c70508246ecba0e45e785ce149603cd3513fad72b",
+            "21e1d5ac81a49fa3579cd632d5757abf1e4bd6f7621c8d5b9002ecb6959113fe",
             build_hash,
         )
 

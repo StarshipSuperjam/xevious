@@ -49,9 +49,9 @@
       "excluded_rects": []
     },
     "andor_genesis": {
-      "asset": "ba94972d502213b598fbc24343728610.png",
-      "sha256": "c42db95f857157441822a8eb452386f565b7317c83dd7abdf92aab4a18217233",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part). The 14 Andor Genesis part cells the composite crops: 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
+      "asset": "233c35c614f27343780ebf4967597aab.png",
+      "sha256": "7dffc8055714aab17b8f9d32538d793110c89b3404a545b9fb63ee8c5c6e0b92",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/andor_sprite_render.py. The 14 Andor Genesis part cells the composite crops are decoded at sprite CLUT 3 (the _COLOUR the reference's own sprite dump records for every part): 9 armor plates handle_41..49 (2x2 sprite codes 88,128,132,136,140,144,148,152,156), 4 gun ports handle_4F..52 (codes 92,93,94,95), 1 core handle_4A (code 16) — part _CODE read at the pin (xevious_main.68k). The 4 Bragza fly cells (the destroyed core's fly-up form, BOSS-03) are codes 0xb8..0xbb (handle_Bragza, xevious_main.68k:5498) decoded at the Bragza colour cycle's base CLUT 0x15. The Spriters Resource sheet (42386) only shows assembled octagons whose naive slices bake the core into the centre plate and cannot form separable tiles, so the parts are taken from the pinned reference the build already grounds on (as the bonus_flag sheet is).",
       "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "excluded_rects": []
@@ -1191,6 +1191,50 @@
       "animation": "core",
       "duration_frames": 1,
       "flips": ["none", "x", "y", "xy"]
+    },
+    {
+      "name": "andor-bragza/fly/01",
+      "sheet": "andor_genesis",
+      "rect": [0, 112, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-bragza",
+      "animation": "fly",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-bragza/fly/02",
+      "sheet": "andor_genesis",
+      "rect": [16, 112, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-bragza",
+      "animation": "fly",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-bragza/fly/03",
+      "sheet": "andor_genesis",
+      "rect": [32, 112, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-bragza",
+      "animation": "fly",
+      "duration_frames": 1
+    },
+    {
+      "name": "andor-bragza/fly/04",
+      "sheet": "andor_genesis",
+      "rect": [48, 112, 16, 16],
+      "canvas": [16, 16],
+      "anchor": [8, 8],
+      "target": "toroid_sprite_proof",
+      "family": "andor-bragza",
+      "animation": "fly",
+      "duration_frames": 1
     }
   ]
 }

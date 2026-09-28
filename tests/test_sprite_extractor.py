@@ -33,8 +33,10 @@ class SpriteExtractorTests(unittest.TestCase):
         # 7 Sol Tower rise frames (SEC-01; the destroy stage reuses the shared explosion burst + crater) and
         # 1 Bonus Flag revealed-flag frame (SEC-02; reveal shows the flag whole, so no burst crop of its own),
         # plus the slice-15 additions — the 17 Andor Genesis composite derivatives (BOSS-01; 9 armor plates +
-        # 4 gun ports + the core, which the extractor flip-expands into its 4 _ATTR orientations none/x/y/xy).
-        self.assertEqual(106, count)
+        # 4 gun ports + the core, which the extractor flip-expands into its 4 _ATTR orientations none/x/y/xy),
+        # plus the slice-16 additions — the 4 Bragza fly frames (BOSS-03; the destroyed core's fly-up form,
+        # handle_Bragza codes 0xb8..0xbb at CLUT 0x15).
+        self.assertEqual(110, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -221,7 +223,10 @@ class SpriteExtractorTests(unittest.TestCase):
             # (none/x/y/xy) — the arcade cycles the same bitmap through xflip/yflip each frame.
             + [f"andor-armor/plate/{index:02d}" for index in range(1, 10)]
             + [f"andor-port/muzzle/{index:02d}" for index in range(1, 5)]
-            + [f"andor-core/core/01/{token}" for token in ("none", "x", "y", "xy")],
+            + [f"andor-core/core/01/{token}" for token in ("none", "x", "y", "xy")]
+            # BOSS-03 (slice 16) andor.core-destruction: the destroyed core's fly-up Bragza — a 4-frame
+            # animation (handle_Bragza codes 0xb8..0xbb) rendered at the Bragza colour cycle's base CLUT 0x15.
+            + [f"andor-bragza/fly/{index:02d}" for index in range(1, 5)],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])
