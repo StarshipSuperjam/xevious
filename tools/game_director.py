@@ -584,8 +584,9 @@ RESET_BACURA_COUNT_HANDLER = "reset_bacura_count"
 # opcode 76, sub_2_fn_20__andor_genesis_start $064A) arms the whole 15-part composite into the ground band and
 # clears the end flag; `andor_genesis_end` (opcode 77, sub_2_fn_21 $066E) raises the end flag, starting the
 # scripted retreat. Both carry empty params (the boss layout + lateral are intrinsic, not schedule columns).
-# Opcode 78 (`fire_mask_andor_genesis`) stores the gun-port fire mask; its consumer is slice 16, so that
-# handler is left to fall through here (counted as fired, cursor advanced) exactly as before.
+# Opcode 78 (`fire_mask_andor_genesis`) stores the gun-port fire mask into its Stage var via the shared
+# `mask_branches` (it is one of FIRE_MASK_FAMILIES); the arm captures that var into each port's `slot fire mask`,
+# and the fire-permission gate consumes it (BOSS-02, mask 47 handled bit-exactly).
 ANDOR_GENESIS_START_HANDLER = "andor_genesis_start"
 ANDOR_GENESIS_END_HANDLER = "andor_genesis_end"
 
@@ -1404,10 +1405,16 @@ ANDOR_PORT_PTS = VALUE_TABLE_POINTS.index(1000) + 1  # 17
 # Derived from FIRE_MASK_FAMILIES so a rename can't drift.
 FIRE_MASK_ANDOR_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "andor_genesis")
 FIRE_MASK_ANDOR_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "andor_genesis")
-# The mask the DEBUG ground key forces into the summoned ports (the live schedule sets the same 47 in areas
-# 4/9/14, area-schedules.json mask arg), so a hold-G playtest exercises the real non-contiguous cadence instead
-# of the degenerate mask-0 fastest-fire a never-set var would give.
-ANDOR_GENESIS_DEBUG_FIRE_MASK = 47
+# The Andor gun-port fire mask (ffreq_mask_andor_genesis, area-schedules.json mask arg, xevious_main.68k:5519).
+# = 0b101111 = bits {0,1,2,3,5} -> NON-contiguous (recorded in 027): `rng & 47` yields {0-15, 32-47} and NEVER
+# 16-31, so the shared gate's `rng mod (mask+1)` = `rng mod 48` (uniform 0-47) is WRONG for it. The gate
+# special-cases it with a bit-exact reload (install_fire_permission_gate), and HANDLED_NON_CONTIGUOUS_FIRE_MASKS
+# below lists it so the generate-time guard passes.
+ANDOR_FIRE_MASK = 47
+# The mask the DEBUG ground key forces into the summoned ports (the live schedule sets the same value in areas
+# 4/9/14), so a hold-G playtest exercises the real non-contiguous cadence instead of the degenerate mask-0
+# fastest-fire a never-set var would give.
+ANDOR_GENESIS_DEBUG_FIRE_MASK = ANDOR_FIRE_MASK
 # The port's fixed initial fire countdown. Every port's handle_XX inits `_TIMER=1` ONCE at spawn (a plain 1, NOT
 # a masked-random draw — verified at the pin, xevious_main.68k:5513/5564/5615/5666); the MASK applies only to the
 # post-fire reload in the gate. So the arm seeds each port `slot fire timer = 1`.
@@ -1819,12 +1826,18 @@ TERRAZI_GLIDE_DECEL = 4
 # on a GLOBAL 8-arcade-frame phase (`countup_timer_1 & 7 == 0`); a tick is 2 arcade frames, so the port
 # phase is every 4th tick. On a phase tick it decrements the per-slot fire countdown as a BYTE (with
 # 256-wrap, so a spawn draw of 0 wraps to 255 then counts down — the reference's byte underflow) and,
-# at zero, fires one aimed bullet and reloads the countdown to (rng & mask) + 1. The mask is a contiguous
-# low-bit fire-frequency byte, so `rng & mask` is reproduced as `rng mod (mask+1)` — exact for every
-# flying family's scheduled masks (Terrazi 3/7, Zoshi 15/31, Kapi 3/7); the boss `andor_genesis` mask 47
-# is the one non-contiguous byte and is flagged for its own leaf. Recorded in record 027.
+# at zero, fires one aimed bullet and reloads the countdown to (rng & mask) + 1. For a CONTIGUOUS low-bit
+# fire-frequency byte, `rng & mask` is reproduced as `rng mod (mask+1)` — exact for every flying family's
+# scheduled masks (Terrazi 3/7, Zoshi 15/31, Kapi 3/7). The boss `andor_genesis` mask 47 is the one
+# NON-contiguous byte (BOSS-02): the gate reproduces it with a bit-exact branch, and a generate-time guard
+# fails the build if a new non-contiguous mask ever slips in unhandled. Recorded in record 027.
 FIRE_GATE_PHASE_TICKS = 4  # 8 arcade frames / 2 frames-per-tick
 FIRE_TIMER_BYTE_MOD = 256  # the countdown is a byte; decrement wraps mod 256 (reference underflow)
+# The closed set of NON-contiguous fire masks the gate reproduces exactly (bit-decomposition branches). A mask
+# is "contiguous" (all low bits set, 2^k-1) iff `mask & (mask+1) == 0`, and only then is `rng mod (mask+1)` ==
+# `rng & mask`. `_assert_fire_masks_handled` refuses to build if any scheduled fire mask is non-contiguous and
+# not in this set, so it can never silently fall through to the wrong modulo reload. Today: just the Andor 47.
+HANDLED_NON_CONTIGUOUS_FIRE_MASKS = frozenset({ANDOR_FIRE_MASK})
 TERRAZI_FIRE_SUPPRESS = 255  # glide sets the fire countdown to 0xff to suppress fire (3699)
 
 # AIR-05 Kapi (handle_10_Kapi 3602-3623, kapi_10_fire 3624-3665): the first peel-away DIVING aerial
@@ -7268,6 +7281,31 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     blocks.chain(definition, [*capture, detonate_sound, set_ring_angle, ring, *spawn_body, *free])
 
 
+def _is_contiguous_mask(mask: int) -> bool:
+    # A fire mask is "contiguous" (all low bits set, i.e. 2^k - 1) iff `mask & (mask+1) == 0`. Only for such a
+    # mask does the gate's `rng mod (mask+1)` equal the arcade's `rng & mask`.
+    return mask & (mask + 1) == 0
+
+
+def _assert_fire_masks_handled() -> None:
+    # BOSS-02 generate-time completeness guard: refuse to build if any area schedule sets a NON-contiguous fire
+    # mask the gate does not reproduce exactly, so a future mask can never silently fall through to the wrong
+    # `rng mod (mask+1)` reload. Today the only non-contiguous scheduled mask is the Andor gun-port 47.
+    data = _load_spec_data("area-schedules.json")
+    for area in data["areas"]:
+        for record in area["records"]:
+            if not record["handler"].startswith(FIRE_MASK_PREFIX):
+                continue
+            mask = record["params"]["mask"]
+            if not _is_contiguous_mask(mask) and mask not in HANDLED_NON_CONTIGUOUS_FIRE_MASKS:
+                raise ValueError(
+                    f"area {area['area']} sets non-contiguous fire mask {mask} "
+                    f"({record['handler']}); the fire-permission gate cannot reproduce `rng & {mask}` as a "
+                    f"modulo reload. Add a bit-exact branch and list {mask} in "
+                    f"HANDLED_NON_CONTIGUOUS_FIRE_MASKS."
+                )
+
+
 def install_fire_permission_gate(blocks: Blocks) -> None:
     # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
     # Operates on the current slot (`slot index`): every firing family calls this each active tick after
@@ -7277,10 +7315,17 @@ def install_fire_permission_gate(blocks: Blocks) -> None:
     #     0 wraps to 255 and counts down (the reference's underflow), never a permanent no-fire.
     #  3. At zero, FIRE one aimed bullet (the shared aim/alloc body) and RELOAD the countdown to
     #     (rng & mask) + 1 — no zero-suppression branch: the mask CAPS the reload interval (mask 0 =>
-    #     reload 1 => fastest, larger mask => rarer). `rng & mask` is `rng mod (mask+1)` for the
-    #     contiguous fire-frequency masks the schedule uses (recorded in 027).
+    #     reload 1 => fastest, larger mask => rarer).
+    #     * CONTIGUOUS mask (2^k-1): `rng & mask` == `rng mod (mask+1)` (Terrazi/Zoshi/Kapi — record 027).
+    #     * NON-contiguous handled mask (BOSS-02, the Andor 47): a bit-exact branch. 47 = bits {0,1,2,3,5}, so
+    #       `rng & 47 = (rng mod 16) + 32*(floor(rng/32) mod 2)` — bits 0-3 plus bit 5, bit 4 (=16) masked out.
+    #       `rng out` is the RNG's integer byte (0..255, install_rng_step), so the decomposition is exact.
+    #     The generate-time guard (_assert_fire_masks_handled) proves this branch set is complete.
+    _assert_fire_masks_handled()
     definition = _install_warp_proc(blocks, FIRE_GATE_PROCCODE)
     timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+    mask = lambda: _cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID)
+    rng = lambda: variable("rng out", RNG_OUT_ID)
     on_phase = blocks.op_eq(
         blocks.op_mod(variable("tick", TICK_ID), number(FIRE_GATE_PHASE_TICKS)), number(0)
     )
@@ -7293,19 +7338,32 @@ def install_fire_permission_gate(blocks: Blocks) -> None:
             number(FIRE_TIMER_BYTE_MOD),
         ),
     )
+    # Contiguous reload: (rng mod (mask+1)) + 1.
+    reload_contiguous = _set_cur_item(
+        blocks,
+        "slot fire timer",
+        SLOT_FIRE_TIMER_ID,
+        blocks.op_add(
+            blocks.op_mod(rng(), blocks.op_add(mask(), number(1))),
+            number(1),
+        ),
+    )
+    # Bit-exact reload for the non-contiguous Andor mask 47: (rng & 47) + 1.
+    bit5 = blocks.op_mod(blocks.op_floor(blocks.op_div(rng(), number(32))), number(2))
+    reload_mask47 = _set_cur_item(
+        blocks,
+        "slot fire timer",
+        SLOT_FIRE_TIMER_ID,
+        blocks.op_add(
+            blocks.op_add(blocks.op_mod(rng(), number(16)), blocks.op_mul(number(32), bit5)),
+            number(1),
+        ),
+    )
     reload = [
         blocks.call_proc(RNG_PROCCODE, warp=True),
-        _set_cur_item(
-            blocks,
-            "slot fire timer",
-            SLOT_FIRE_TIMER_ID,
-            blocks.op_add(
-                blocks.op_mod(
-                    variable("rng out", RNG_OUT_ID),
-                    blocks.op_add(_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)),
-                ),
-                number(1),
-            ),
+        blocks.if_reporter(blocks.op_eq(mask(), number(ANDOR_FIRE_MASK)), [reload_mask47]),
+        blocks.if_reporter(
+            blocks.op_not(blocks.op_eq(mask(), number(ANDOR_FIRE_MASK))), [reload_contiguous]
         ),
     ]
     fired = blocks.if_reporter(
@@ -7404,6 +7462,23 @@ def install_update_andor_part(blocks: Blocks) -> None:
     # anchor — a uniform lag across all parts, so the composite stays rigid, and it is zero while holding.
     definition = _install_warp_proc(blocks, UPDATE_ANDOR_PART_PROCCODE)
     part_index = lambda: blocks.op_sub(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0x40))
+    slot_type = lambda: _cur_item(blocks, "slot type", SLOT_TYPE_ID)
+    # BOSS-02 (#95): after alignment, the four gun ports fire on the SHARED periodic gate under the mask captured
+    # at arm (handle_4F..52 each call chk_timer_fire_bullet_reinit_timer, xevious_main.68k:5533/5584/5635/5686).
+    # Gate the fire call on SLOT_ACTIVE: a directly-bombed or cascaded port is non-ACTIVE and the arcade routes it
+    # to explosion, not the fire timer — so a dying port stops firing while alignment above still pins it. Armor
+    # (immune sentinel) and the core are never port types, so they never reach this call.
+    is_port = functools.reduce(
+        blocks.op_or,
+        (blocks.op_eq(slot_type(), number(t)) for t in ANDOR_PORT_TYPES),
+    )
+    is_active = blocks.op_eq(
+        _cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE)
+    )
+    port_fire = blocks.if_reporter(
+        blocks.op_and(is_port, is_active),
+        [blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)],
+    )
     blocks.chain(
         definition,
         [
@@ -7421,6 +7496,7 @@ def install_update_andor_part(blocks: Blocks) -> None:
                     blocks.list_item("andor part lateral", ANDOR_PART_LATERAL_ID, part_index()),
                 ),
             ),
+            port_fire,
         ],
     )
 
@@ -8894,9 +8970,11 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # ENGINE-TODO: the remaining spawn handler dispatch (add_object for the non-boss scheduled spawns) lands with
     # the later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
     # ground-stop), add_ground_object (the built static + Grobda ground families), add_domogram_with_path
-    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above; the still-
-    # unhandled records — incl. fire_mask_andor_genesis (op 78, consumed in slice 16) — advance the cursor and
-    # count the fire only.
+    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above. All eight
+    # fire masks — fire_mask_andor_genesis (op 78) among them — are stored into their Stage vars by `mask_branches`
+    # and now genuinely consumed: the Andor arm captures op 78's var into each gun port's `slot fire mask`, driving
+    # the boss fire-permission gate (slice 16). Any handler still without a branch advances the cursor and counts
+    # the fire only.
     blocks.substack(
         loop,
         [
