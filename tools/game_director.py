@@ -956,6 +956,8 @@ DEBUG_SPAWN_INDEX_ID = "debug-spawn-index"  # which DEBUG_SPAWN_FAMILIES entry T
 DEBUG_GROUND_SPAWN_PROCCODE = "debug ground spawn"
 DEBUG_GROUND_KEY = "g"  # G = cycle a single debug GROUND family (G for ground; freed when the death fixtures went)
 DEBUG_GROUND_INDEX_ID = "debug-ground-index"  # which DEBUG_GROUND_FAMILIES entry G brings in next
+DEBUG_GROUND_KEY_HELD_ID = "debug-ground-key-held"  # previous-tick G sample; the boss DISMISS fires only on a
+# fresh press (rising edge), never on the same press that armed the boss (see install_debug_ground_spawn)
 DEBUG_GROUND_SPRITE_Y = 112  # lateral column for the debug spawn — a central, common column (schedule median)
 # DEBUG (temporary playtest tool, tracked for removal #119): a PAUSE/FREEZE key so the operator can stop the
 # action on a single frame and take an OS screenshot of a ground- or air-enemy issue to report. It is a TOGGLE
@@ -7269,7 +7271,8 @@ def install_update_andor_master(blocks: Blocks) -> None:
     # The phase is derived from position + flag — no explicit phase var — so the ground band-isolation invariant
     # holds. (Source checks the end flag only once HOLD is reached; here a flag set mid-descent reverses
     # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold, and the
-    # debug summon is dismissed while held — so the derived-phase form is faithful in every reachable case.) The
+    # debug summon's dismiss fires only on a FRESH G press once the boss is already up (well after it has reached
+    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.) The
     # per-frame part alignment lives in `update andor part`; the master owns only the shared anchor + animation.
     definition = _install_warp_proc(blocks, UPDATE_ANDOR_MASTER_PROCCODE)
     base = GROUND_SLOTS[0]
@@ -7656,7 +7659,7 @@ def install_debug_ground_spawn(blocks: Blocks) -> None:
     # tool until they are all built and playtested, then it is removed (it amends the locked control mapping —
     # see core-game-systems.md and issue #119).
     definition = _install_warp_proc(blocks, DEBUG_GROUND_SPAWN_PROCCODE)
-    gate = blocks.add("control_if")
+    gate = blocks.add("control_if_else")
     pressed = blocks.key_pressed(gate, DEBUG_GROUND_KEY)
     blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
 
@@ -7732,19 +7735,43 @@ def install_debug_ground_spawn(blocks: Blocks) -> None:
     ]
     # BOSS-01 (andor.lifecycle #94): the Andor boss holds position and never scrolls off, so — unlike every other
     # debug family, whose scroll-off the field-empty gate simply waits out — it would jam the cursor forever. Give
-    # it an explicit DISMISS: while G is held AND the boss is present (its master slot is armed), set the end flag.
-    # The master's update proc tears the composite down next tick, the field empties, and the next G press advances
-    # to the following family. The boss being up means the field is not empty, so `dismiss` and `spawn` never both fire.
+    # it an explicit DISMISS, but one that does NOT fire on the same press that armed it (that self-dismiss left the
+    # boss torn down off-screen before it could descend — it never appeared). Two conditions:
+    #   (a) a FRESH G press (rising edge) — `debug ground key held` was 0 last tick — so simply HOLDING G lets the
+    #       composite descend and hold instead of being dismissed every tick; and
+    #   (b) the boss was ALREADY up at the START of this tick — its master slot is read HERE, before `spawn` runs,
+    #       so the press that arms the boss (master slot still 0 at this point) reads not-present and does not dismiss.
+    # It therefore runs BEFORE `spawn` in the pressed branch. A second G press (after a release) tears the composite
+    # down so the master proc frees the field and the cursor can advance to the next family.
     master_slot = GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA)
+    rising = blocks.op_eq(
+        variable("debug ground key held", DEBUG_GROUND_KEY_HELD_ID), number(0)
+    )
     boss_present = blocks.op_eq(
         blocks.list_item("slot type", SLOT_TYPE_ID, number(master_slot)),
         number(ANDOR_MASTER_TYPE),
     )
     dismiss = blocks.if_reporter(
-        boss_present,
+        blocks.op_and(rising, boss_present),
         [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
     )
-    blocks.substack(gate, [*suppress_air, spawn, dismiss])
+    # Pressed branch: dismiss FIRST (it must read the pre-spawn master slot), then record that G is held so the next
+    # held tick is not a rising edge, then suppress the normal stream and run the field-empty spawn/cycle.
+    blocks.substack(
+        gate,
+        [
+            dismiss,
+            blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(1)),
+            *suppress_air,
+            spawn,
+        ],
+    )
+    # Released branch: clear the held sample so the next press registers as a fresh rising edge (a deliberate dismiss).
+    blocks.substack(
+        gate,
+        [blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(0))],
+        name="SUBSTACK2",
+    )
     blocks.chain(definition, [gate])
 
 
@@ -12564,8 +12591,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         INVULN_ID,
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
         DEBUG_SPAWN_INDEX_ID,
-        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor.
+        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor and its rising-edge sample
+        # (the boss dismiss fires only on a fresh press, never on the press that armed it).
         DEBUG_GROUND_INDEX_ID,
+        DEBUG_GROUND_KEY_HELD_ID,
         # DEBUG (tracked for removal, #119): the P-key freeze/resume toggle and its rising-edge sample.
         PAUSED_ID,
         PAUSE_KEY_HELD_ID,
@@ -12709,8 +12738,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # DEBUG_SPAWN_FAMILIES); starts at the first family.
         DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
         # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor (0-based into
-        # DEBUG_GROUND_FAMILIES); starts at the first family.
+        # DEBUG_GROUND_FAMILIES); starts at the first family. Its rising-edge sample starts 0, so the first G press
+        # is always a fresh edge; normal play never presses G, and the boss-summon harness scenario drives it live.
         DEBUG_GROUND_INDEX_ID: ["debug ground index", 0],
+        DEBUG_GROUND_KEY_HELD_ID: ["debug ground key held", 0],
         # DEBUG (tracked for removal, #119): the P-key freeze toggle (1 = frozen) and its previous-tick
         # P sample for rising-edge detection; both start at 0 so the walk runs and the harness is unaffected.
         PAUSED_ID: ["debug paused", 0],

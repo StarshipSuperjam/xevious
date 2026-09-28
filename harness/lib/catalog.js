@@ -5538,6 +5538,94 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeClearGraphicEffects(p, 'ground'),
   },
   {
+    // BOSS-01 / andor.lifecycle (#94): the LIVE debug-key summon path (install_debug_ground_spawn) — the one
+    // path the operator actually drives. Every OTHER boss scenario above FREEZES the walk and calls the update
+    // procs by hand, so none of them exercised the debug key's arm/dismiss handler. That gap let a same-tick
+    // self-dismiss ship: the original dismiss read the master slot AFTER the arm stamped it and set the end flag
+    // on the very press that summoned the boss, so the master tore the composite down at START_X before it could
+    // descend — "Andor never shows up; the ground enemies just start over" (operator playtest, 2026-09-27). The
+    // fix gates the dismiss on a FRESH press (rising edge of `debug ground key held`) AND a boss already present
+    // at the start of the tick. This scenario drives the real key end-to-end: HOLD G to summon and hold (the end
+    // flag must stay 0 while held), then RELEASE + a fresh press to dismiss (end flag set -> master retreats off
+    // the top -> composite freed). It is the regression net the frozen-walk scenarios could not be.
+    key: 'boss-summoned-and-dismissed-by-debug-key',
+    behavior:
+      "Holding the debug ground key (G) with the family cursor on the Andor entry ARMS all 15 composite parts and the invisible master, which then descends from off the top edge while the key stays held — the end flag stays 0, so the boss is NOT self-dismissed on the press that summoned it; releasing G and pressing it again (a fresh rising edge, boss present) sets the end flag, and the master retreats off the top and frees every boss slot",
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Suppress the scheduled ground stream and clear the live band so the ONLY ground object that can appear is
+      // the debug key's, then park the family cursor on the Andor entry (last in DEBUG_GROUND_FAMILIES) so the
+      // next fresh, field-empty spawn arms the boss.
+      suppressGroundSpawns(vm);
+      clearGroundBand(vm);
+      const ANDOR_FAMILY_INDEX = 16; // index of (ANDOR_MASTER_TYPE, 'andor') in DEBUG_GROUND_FAMILIES
+      writeVar(vm, 'debug-ground-index', ANDOR_FAMILY_INDEX);
+      const masterJs = ANDOR.BASE_SLOT + 15 - 1; // Scratch slot 16 -> JS index 15
+      const armedCount = () => {
+        const t = readVar(vm, 'slot-type');
+        let n = 0;
+        for (let s = 0; s <= 15; s += 1) {
+          const x = t[s];
+          if ((x >= 0x41 && x <= 0x4b) || (x >= 0x4f && x <= 0x52)) n += 1;
+        }
+        return n;
+      };
+      // SUMMON: hold G. The first field-empty tick arms the composite; subsequent held ticks let the master
+      // descend. Sample the end flag across several held pumps -> it must never be raised while held.
+      keyDown(vm, 'g');
+      step(vm, 1);
+      const armedFirst = armedCount();
+      const masterFirst = readVar(vm, 'slot-type')[masterJs];
+      const endHeld = [readVar(vm, 'andor-genesis-end-flag')];
+      for (let i = 0; i < 3; i += 1) {
+        step(vm, 1);
+        endHeld.push(readVar(vm, 'andor-genesis-end-flag'));
+      }
+      const armedHeld = armedCount();
+      const masterHeld = readVar(vm, 'slot-type')[masterJs];
+      const xHeld = readVar(vm, 'andor-master-x');
+      // DISMISS: release, then a fresh press. The rising edge with the boss present raises the end flag; the
+      // master then retreats off the top and frees every boss slot.
+      keyUp(vm, 'g');
+      step(vm, 1);
+      keyDown(vm, 'g');
+      let endRaised = false;
+      let tornDown = false;
+      for (let i = 0; i < 12 && !tornDown; i += 1) {
+        step(vm, 1);
+        if (readVar(vm, 'andor-genesis-end-flag') === 1) endRaised = true;
+        if (armedCount() === 0) tornDown = true;
+      }
+      keyUp(vm, 'g');
+      return { armedFirst, masterFirst, armedHeld, masterHeld, xHeld, endHeld, endRaised, tornDown };
+    },
+    assert(obs) {
+      // Summoned: all 15 parts armed, the invisible master typed at Scratch slot 16.
+      assert.equal(obs.armedFirst, 15, 'holding G on the Andor cursor arms all 15 composite parts');
+      assert.equal(obs.masterFirst, ANDOR.MASTER_TYPE, 'the invisible master is typed at Scratch slot 16');
+      // NOT self-dismissed while held: the end flag stays 0 across every held pump — the biting check for the
+      // shipped same-tick self-dismiss bug.
+      for (const e of obs.endHeld) {
+        assert.equal(e, 0, 'the end flag is NOT raised while G is held (no same-tick self-dismiss)');
+      }
+      // Still up and descending after the held pumps (moved off START_X toward the hold row).
+      assert.equal(obs.armedHeld, 15, 'the composite stays armed while G is held (not torn down)');
+      assert.equal(obs.masterHeld, ANDOR.MASTER_TYPE, 'the master stays present while G is held');
+      assert.ok(
+        obs.xHeld > ANDOR.START_X,
+        `the master descends from START_X while held (x=${obs.xHeld} > ${ANDOR.START_X})`,
+      );
+      // Dismissed by a fresh press: the end flag is raised and the whole composite is freed.
+      assert.ok(obs.endRaised, 'a fresh G press with the boss present raises the end flag (dismiss)');
+      assert.ok(obs.tornDown, 'after the dismiss the master retreats off the top and frees every boss slot');
+    },
+    // Reproduce the shipped bug: flip the rising-edge guard from `debug ground key held == 0` to `== 1`, so a
+    // HELD key (held is set to 1 each tick) fires the dismiss every tick -> the boss is self-dismissed on the
+    // press that summons it and torn down before it can hold -> the "armed while held" / "end stays 0" checks bite.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'debug ground key held', 0, 1),
+  },
+  {
     // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).
     key: 'bonus-flag-revealed-by-bomb-scores-once-then-collected-by-flyover-not-a-weapon',
     behavior:

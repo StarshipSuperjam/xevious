@@ -1099,6 +1099,10 @@ class ScratchProjectTests(unittest.TestCase):
             # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor — the ground analog
             # of the T-key cursor, likewise a transient dev-tool register, not durable Stage state.
             "debug ground index",
+            # DEBUG (tracked for removal, #119): the previous-tick G sample for rising-edge detection — so the
+            # Andor boss's debug DISMISS fires only on a FRESH G press, never on the press that summons it.
+            # A transient dev-tool register (default 0; the harness drives it only in the boss-summon scenario).
+            "debug ground key held",
             # DEBUG (tracked for removal, #119): the P-key freeze/resume TOGGLE (1 = frozen) and its
             # previous-tick P sample for rising-edge detection — transient dev-tool registers, not durable
             # Stage state (both default 0; the harness never presses P, so the walk runs every tick).
@@ -16708,7 +16712,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "140e3f28f1ba4d7df7b67dcdf6be9de40c8371ce7aa2ef204de8bd74c8b96639",
+            "c9597797a76a60b61190b7c788324ae6c7c29d47355b189baa748d82fe82b6ac",
             build_hash,
         )
 

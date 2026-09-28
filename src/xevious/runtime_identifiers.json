@@ -259,6 +259,11 @@
       "name": "debug ground index",
       "scope": "Stage"
     },
+    "debug-ground-key-held": {
+      "kind": "variable",
+      "name": "debug ground key held",
+      "scope": "Stage"
+    },
     "debug-pause-key-held": {
       "kind": "variable",
       "name": "debug pause key held",
