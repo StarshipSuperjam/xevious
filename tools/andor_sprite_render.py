@@ -68,10 +68,12 @@ GFX_C = "assets/amiga/xevious_gfx.c"
 # matte here and come back out as alpha downstream -- the bonus_flag convention.
 MATTE = (0, 128, 0)
 
-# Every visible Andor part copies andor_genesis_colour into _COLOUR each frame;
-# the arm handlers set that to palette index 3 as the parts' base CLUT (the boss
-# then pulses it live via the Scratch colour effect). So every tile renders at
-# sprite CLUT 3.
+# Every visible Andor part copies andor_genesis_colour into _COLOUR each frame,
+# so the boss pulses live in play. The static tiles are decoded at CLUT 3 -- the
+# _COLOUR the reference's own per-sprite dump (andor_genesis_sprite_dump.bin)
+# records for every Andor part -- and the Scratch colour effect drives the pulse
+# on top of that base. (The live palette byte cycles [2,3,4,5,6,5,4,3]; 3 is the
+# dump-recorded resting value, not the whole cycle.)
 PART_CLUT = 3
 
 # Part sprite _CODE at the pin (xevious_main.68k). Armor plates handle_41..49 have
