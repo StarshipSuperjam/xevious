@@ -16,7 +16,11 @@
     `4 × slot dx`, `slot y` by `4 × slot dy` — with **no scroll term added on top**. The arcade bakes the
     scroll INTO the stored delta (raw dX 8 is scroll-matched, so a "stopped" object still drifts down the field
     at the scroll rate), so adding a separate scroll baseline would double the along-scroll speed. The off-field
-    cull is unchanged from the terrain scroller.
+    cull is `check_scroll_offscreen` — the SAME routine the terrain scroller falls through to — which removes
+    the object off the bottom (scroll-axis MSB `_X ≥ 0x28`) **or off either lateral edge** (column MSB `_Y`,
+    unsigned, `≥ 0x1f`): the right edge at col `≥ 0x1f` and, via the source's byte-wrap of a negative `_Y`, the
+    left edge at col `< 0`. A Domogram whose path vector carries a lateral component drives to a side edge and
+    is removed there; a Grobda clears `_dY`, so it only ever exits the bottom.
   - **The Grobda: twelve variants, none fires, all react to the reticle.** A Grobda arms a 48-frame reaction
     only while the craft's reticle sits inside a **[−2, +1]** per-axis alignment band of its cell, on
     both the depth and lateral axes. Two reticle windows drive it: the moving **crosshair** (led ahead of the
@@ -56,9 +60,12 @@
   the `countup_timer_1 & 7` phase, starting a 24-frame animation on shot-timer expiry; `domogram_shooting`
   4668–4688 fires one `init_new_bullet` when `_TYPE` decrements to 12 and reloads the masked shot timer; the
   velocity table is `domogram_vector_tbl` 4695–4744 (dY,dX pairs). The shared movers are `move_object_dX_dY`
-  4817–4823 (two-axis) and `move_object_dX` 4842–4848 (one-axis), each `_X/_Y += 2 × _dX/_dY` with no scroll
-  term; the SEPARATE static-terrain scroll used by terrain-locked objects is `scroll_sprite_X` 4849–4855
-  (`_X += 2 × −scroll_delta`). Placements and fire masks per area are the committed
+  4817–4823 (two-axis; `handle_2E_Domogram` reaches it every tick via `domogram_colour_and_move` 4686–4688)
+  and `move_object_dX` 4842–4848 (one-axis), each `_X/_Y += 2 × _dX/_dY` with no scroll term; both then fall
+  through to `check_scroll_offscreen` 4827–4839, which removes the object when `_X` MSB `+ 1 ≥ 0x29` (bottom,
+  `_X` MSB `≥ 0x28`) OR `_Y` MSB (unsigned) `≥ 0x1f` (either lateral edge — the right edge and, by the byte's
+  wrap of a negative `_Y`, the left edge); the SEPARATE static-terrain scroll used by terrain-locked objects is
+  `scroll_sprite_X` 4849–4855 (`_X += 2 × −scroll_delta`), which shares the same `check_scroll_offscreen` tail. Placements and fire masks per area are the committed
   [schedule data](../spec/data/area-schedules.json); the Domogram vector table is
   [domogram.json](../spec/data/domogram.json); the settled behaviour is
   [ground objects](../spec/ground-objects.md); point values are
@@ -81,7 +88,8 @@
     (terrain scroll) for terrain-locked ones, and each handler calls exactly one. The port had only the
     terrain scroller (`advance ground`, `slot x += AREA_PROGRESS_STEP`). GND-06/07 add the velocity analog:
     `advance ground moving` advances `slot x`/`slot y` by `TICK_VELOCITY_SCALE × slot dx`/`slot dy` and runs the
-    same off-field cull, with **no `AREA_PROGRESS_STEP` baseline**. A Grobda's raw dX 8 is scroll-matched, so
+    same `check_scroll_offscreen` off-field cull on ALL edges (bottom `cur_row ≥ 0x28`, right `cur_col ≥ 0x1f`,
+    left `cur_col < 0`), with **no `AREA_PROGRESS_STEP` baseline**. A Grobda's raw dX 8 is scroll-matched, so
     `TICK_VELOCITY_SCALE × 8 = 32 = AREA_PROGRESS_STEP` — a stopped Grobda drifts down at exactly the scroll
     rate, and adding a baseline would double it. Static families keep `advance ground` unchanged; only these two
     families (and only while ACTIVE) use the mover. A struck (HIT) Grobda or Domogram craters in place and so
@@ -130,8 +138,11 @@
     `domogram-fires-one-aimed-shot-at-anim-midpoint-gated` (it fires exactly one aimed bullet at animation
     frame 12, and is silent with its shot countdown untouched past the stop-firing row), and
     `domogram-craters-when-bombed` (a struck Domogram scrolls with the terrain and ignores its own leftover
-    velocity, cratering persistently). Each is proven against the real build and a mutated build that fails the
-    same assertion. `ground-dispatch-spawns-scoped` and the debug-key cycle scenario are widened so the now-built
+    velocity, cratering persistently), and `domogram-culls-at-a-lateral-edge-not-only-the-bottom` (a mover
+    driven sideways is removed at the right edge at col 31 and the left edge at col −1, both inclusive
+    boundaries — col 0 and col 30 — and a mid-field object survive, and the bottom cull at row 40 still fires;
+    the fix for the operator's 2026-09-28 playtest report of a Domogram sliding along the right edge forever).
+    Each is proven against the real build and a mutated build that fails the same assertion. `ground-dispatch-spawns-scoped` and the debug-key cycle scenario are widened so the now-built
     Grobda and Domogram types count as in-scope handled families.
   - Structural (`tests/test_scratch_project.py`): `_gnd06_failures` — present-and-negative guards pinning the
     Grobda (twelve variants stamped under their types; none fires; the reticle windows read the bomb-target and
@@ -174,10 +185,15 @@
   **no `guardrail-ack`**. The five port necessities above (the per-slot velocity mover distinct from the terrain
   scroller; `TICK_VELOCITY_SCALE=4` with raw deltas; frame-stepped timers; one Grobda proc over a variant table;
   and the Domogram path decoded into runtime columns) are structural translations into Scratch's flat slot lists
-  and tick convention, not behavioural changes. The off-field cull for the moving seam is bottom-only, matching
-  the established ground scroller `advance ground` — the arcade `check_scroll_offscreen` also tests the lateral
-  edge, but ground objects scroll down and move gently, so the bottom edge is their only realistic exit (the
-  same convention every prior ground family uses). The exact on-screen rhythm of each Grobda variant's reaction
+  and tick convention, not behavioural changes. **Fidelity correction (operator playtest, 2026-09-28):** the
+  off-field cull for the moving seam was originally bottom-only, on the assumption that a ground object "scrolls
+  down and moves gently, so the bottom edge is its only realistic exit." A playtest found a Domogram whose path
+  vector carries a lateral component drives to the right edge and then slides along it, off the bottom, instead
+  of leaving — because the arcade's `check_scroll_offscreen` DOES test the lateral edge (`_Y` MSB, unsigned,
+  `≥ 0x1f`) and the Domogram reaches it through the culling `move_object_dX_dY`. The moving seam's cull is now
+  source-exact to `check_scroll_offscreen` on all edges (bottom `cur_row ≥ 0x28`, right `cur_col ≥ 0x1f`, left
+  `cur_col < 0`); the Grobda is unaffected because it clears `_dY` and never moves laterally. The exact
+  on-screen rhythm of each Grobda variant's reaction
   and the Domogram's patrol-and-fire cadence remain for the operator playtest to confirm, along with the
   operator's pixel-verification of the shared tank tread and Domogram idle crops.
 - [x] No assembly or other source code was copied into the Scratch project.

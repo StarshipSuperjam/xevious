@@ -4906,6 +4906,87 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update domogram'),
   },
   {
+    // GND-07 (ground.domogram #89) lateral-cull fix (operator playtest, 2026-09-28): a self-moving ground
+    // object must be removed at a LATERAL screen edge, not only off the bottom.
+    key: 'domogram-culls-at-a-lateral-edge-not-only-the-bottom',
+    behavior:
+      "A self-moving ground object (the `advance ground moving` seam, shared by the Domogram's ACTIVE mover) is culled off ANY off-field edge, source-exact to check_scroll_offscreen ($30B4): the lateral test removes it when the column MSB is off either side — the RIGHT edge (cur_col >= CULL_COL_MAX = 0x1f) or, via the source's byte-wrap of a negative _Y, the LEFT edge (cur_col < 0) — while a mid-field object and both inclusive boundaries (col 0 and col 30) survive, and the bottom cull (cur_row >= 0x28) still fires. Before this fix a Domogram driven sideways slid along the screen edge forever until it scrolled off the bottom.",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      // Seed a single ACTIVE Domogram (JS slot 15 == Scratch 1-based slot 16) with the given position and
+      // velocity, everything else cleared, then run `advance ground moving` (the changed seam) once per tick.
+      const seedMover = (x, y, dx, dy) => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        put('slot-type', 15, 46); // Domogram (0x2E)
+        put('slot-state', 15, 1); // ACTIVE
+        put('slot-x', 15, x);
+        put('slot-y', 15, y);
+        put('slot-dx', 15, dx);
+        put('slot-dy', 15, dy);
+        writeVar(vm, 'slot-index', 16);
+      };
+      const runToCullOrHold = (ticks) => {
+        for (let t = 0; t < ticks; t += 1) {
+          callProc(vm, 'Stage', 'advance ground moving');
+          step(vm, 1);
+          if (readVar(vm, 'slot-state')[15] === 0) {
+            return { culled: true, tick: t + 1, col: readVar(vm, 'slot-y')[15] / 256, row: readVar(vm, 'slot-x')[15] / 256 };
+          }
+        }
+        return { culled: false, col: readVar(vm, 'slot-y')[15] / 256, row: readVar(vm, 'slot-x')[15] / 256 };
+      };
+
+      // Probe R-cull: col 30, no vertical motion (dx 0, so it CANNOT bottom-cull — isolates the lateral edge),
+      // dy 64 -> +256/tick lands exactly on col 31 (0x1f) on the first tick.
+      seedMover(0, 30 * 256, 0, 64);
+      const rightCull = runToCullOrHold(4);
+      // Probe R-inside: col 30 held still (dy 0) is ON-field (valid 0..30) and must NEVER cull.
+      seedMover(0, 30 * 256, 0, 0);
+      const rightHold = runToCullOrHold(4);
+      // Probe L-cull: col 0, dy -64 -> -256/tick reaches col -1 on the first tick (source byte-wrap edge).
+      seedMover(0, 0, 0, -64);
+      const leftCull = runToCullOrHold(4);
+      // Probe L-inside: col 0 held still is the inclusive LEFT boundary and must NEVER cull.
+      seedMover(0, 0, 0, 0);
+      const leftHold = runToCullOrHold(4);
+      // Probe mid-field: col 15 held still must never cull (the cull is edge-conditional, not "always").
+      seedMover(0, 15 * 256, 0, 0);
+      const midHold = runToCullOrHold(4);
+      // Probe bottom (regression guard for the OR-refactor): row 39, dx 8 -> +32/tick crosses row 40 (0x28)
+      // on the first tick; the bottom cull must still fire alongside the new lateral edges.
+      seedMover(40 * 256 - 32, 15 * 256, 8, 0);
+      const bottomCull = runToCullOrHold(4);
+
+      return { rightCull, rightHold, leftCull, leftHold, midHold, bottomCull };
+    },
+    assert(obs) {
+      assert.equal(obs.rightCull.culled, true, 'a mover driven RIGHT is culled at the lateral edge');
+      assert.equal(obs.rightCull.tick, 1, 'it culls the tick it reaches col 31 (0x1f)');
+      assert.equal(obs.rightCull.col, 31, 'the right edge cull fires exactly at col 31, inclusive (source _Y MSB >= 0x1f)');
+      assert.equal(obs.rightHold.culled, false, 'col 30 is ON-field (valid 0..30) and is never culled — the right boundary is exclusive of 30');
+      assert.equal(obs.leftCull.culled, true, 'a mover driven LEFT is culled at the lateral edge');
+      assert.equal(obs.leftCull.tick, 1, 'it culls the tick it reaches col -1');
+      assert.equal(obs.leftCull.col, -1, 'the left edge cull fires at col -1 (source byte-wrap of a negative _Y), NOT col -2');
+      assert.equal(obs.leftHold.culled, false, 'col 0 is the inclusive LEFT boundary and is never culled');
+      assert.equal(obs.midHold.culled, false, 'a mid-field (col 15) object is never culled — the cull is edge-conditional');
+      assert.equal(obs.bottomCull.culled, true, 'the bottom cull (row >= 40) still fires after adding the lateral edges');
+      assert.equal(obs.bottomCull.row, 40, 'the bottom cull fires exactly at row 40 (0x28), unchanged by the OR-refactor');
+    },
+    // Sever the moving seam: with `advance ground moving` neutralized the object never moves and never culls,
+    // so every "is culled" probe (right, left, bottom) stays ACTIVE -> those assertions go red. Proves the
+    // cull is carried by the changed seam, not by something else stepping the slot.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'advance ground moving'),
+  },
+  {
     // SEC-01 / ground.sol-tower (#90): the hidden citadel's reveal -> 7-step rise -> two-stage scoring.
     key: 'sol-tower-reveals-rises-then-a-second-bomb-craters-scoring-both-stages',
     behavior:

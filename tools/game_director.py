@@ -4255,13 +4255,27 @@ def install_advance_ground_moving(blocks: Blocks) -> None:
     # `slot index` — the first ground slot that moves by its OWN velocity instead of the fixed terrain
     # scroll. Mirrors the source's move_object_dX / move_object_dX_dY (xevious_main.68k 4817-4846): the
     # scroll-axis position (`slot x`) advances by TICK_VELOCITY_SCALE * `slot dx` and the lateral position
-    # (`slot y`) by TICK_VELOCITY_SCALE * `slot dy`, then the SAME bottom-edge cull `advance ground` uses.
+    # (`slot y`) by TICK_VELOCITY_SCALE * `slot dy`, then the SAME off-field cull the source applies.
     # There is NO AREA_PROGRESS_STEP scroll baseline: the source applies no separate scroll term to a moving
     # object, so the terrain scroll is baked into the stored delta (raw 8 = scroll-matched, so a "stopped"
     # object still drifts DOWN the field at the scroll rate and eventually culls). A Grobda leaves `slot dy`
     # 0 (it moves scroll-axis-only, `activate_and_set_grobda_dX` 4574-4579 clears _dY); a Domogram drives
-    # both axes from its path vector. Culling stays bottom-only, like `advance ground`: even a backward
-    # Grobda (raw dX 2 -> +8/tick absolute) still creeps down the field, never off the top or sides.
+    # both axes from its path vector.
+    #
+    # Cull is source-exact to `check_scroll_offscreen` ($30B4, xevious_main.68k 4827-4839), which BOTH
+    # move_object_dX and move_object_dX_dY fall through to, and which handle_2E_Domogram reaches every tick
+    # via domogram_colour_and_move -> jbsr move_object_dX_dY (4688; the CULLING mover, not the _2 variant at
+    # 4856). It removes the object when the scroll-axis MSB is past the bottom (`_X` MSB + 1 >= 0x29, i.e.
+    # `_X` MSB >= 0x28 = CULL_ROW_MAX) OR the lateral MSB (unsigned byte) `_Y` >= 0x1f. That single lateral
+    # test catches the RIGHT edge (col >= CULL_COL_MAX = 0x1f) and, via the source's byte-wrap of a negative
+    # `_Y` (col -1 -> 0xff >= 0x1f), the LEFT edge (col < 0). Note the left threshold is col < 0, NOT the
+    # col <= -2 the top/bottom paths use: the lateral compare has no `addq #1` before it (unlike the `_X`
+    # path at 4829), so the arcade removes a left-drifting object one column sooner than a top-exiting one.
+    # A Domogram whose path vector drives it sideways (dy != 0) reaches a lateral edge and is removed there,
+    # exactly as the arcade does; the earlier bottom-only cull let such a Domogram slide along the edge and
+    # scroll off the bottom instead (operator playtest, 2026-09-28). No top cull: a ground mover's dx >= 0
+    # always, so it never exits the top. A Grobda is unaffected — with `slot dy` 0 it never moves laterally,
+    # so off_right/off_left can never fire for it and it still only ever exits the bottom.
     definition = _install_warp_proc(blocks, ADVANCE_GROUND_MOVING_PROCCODE)
     move_x = _set_cur_item(
         blocks,
@@ -4282,7 +4296,10 @@ def install_advance_ground_moving(blocks: Blocks) -> None:
         ),
     )
     off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
-    cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(0))
+    offscreen = blocks.op_or(off_bottom, blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     blocks.chain(definition, [move_x, move_y, cull])
 
 
