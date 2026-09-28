@@ -7383,11 +7383,17 @@ def install_update_andor_master(blocks: Blocks) -> None:
     #   * end flag set   -> RETREAT up (-ANDOR_LEAVE_STEP) until it clears the top (<= START), then TEAR DOWN the
     #     whole composite (free every part slot type+state, mirroring remove_andor_genesis) and consume the flag.
     # The phase is derived from position + flag — no explicit phase var — so the ground band-isolation invariant
-    # holds. (Source checks the end flag only once HOLD is reached; here a flag set mid-descent reverses
+    # holds. (Source checks the SCHEDULE end flag only once HOLD is reached; here a flag set mid-descent reverses
     # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold, and the
     # debug summon's dismiss fires only on a FRESH G press once the boss is already up (well after it has reached
-    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.) The
-    # per-frame part alignment lives in `update andor part`; the master owns only the shared anchor + animation.
+    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.)
+    # The CORE-BOMB destruction path is different and NOT an approximation: handle_4B's FIRST instruction, before the
+    # descend/hold branch, tests the core (obj 0x0E) for `_STATE==3` every tick (xevious_main.68k:5387-5388), so
+    # bombing the core mid-descent legitimately ends the boss. The port's core-destruction check (C4) likewise runs
+    # every tick regardless of phase, matching that — the earlier "the end flag only rises after hold" assumption
+    # does not constrain the core-bomb path. BOSS-03 (#96): each tick this proc also pins the master slot onto the
+    # core's cell for the shell-slot bug (below). The per-frame part alignment lives in `update andor part`; the
+    # master owns only the shared anchor + animation + its own slot's position.
     definition = _install_warp_proc(blocks, UPDATE_ANDOR_MASTER_PROCCODE)
     base = GROUND_SLOTS[0]
     tick = lambda: variable("tick", TICK_ID)
@@ -7449,7 +7455,23 @@ def install_update_andor_master(blocks: Blocks) -> None:
         [leave],
         [descend],
     )
-    blocks.chain(definition, [set_colour, set_flip, lifecycle])
+    # BOSS-03 (#96) shell-slot leftover bug: the master (obj 0x0F) shares the core's on-screen position — in the
+    # arcade the CORE copies the master's `_X`/`_Y` each tick (handle_4A, xevious_main.68k:5453/5466), and since the
+    # port's core composite offset is (0,0) ("core sits on the master", _ANDOR_ARC_OFFSETS[0x4A]), the core slot
+    # renders exactly at the anchor. Pin the master's own slot (Scratch slot 16, `slot index` here) onto that same
+    # anchor each tick — read BEFORE `lifecycle` steps the anchor, so it equals the value the parts (core) aligned to
+    # this tick (parts run earlier in the walk, reading last tick's anchor, which is unchanged until lifecycle below).
+    # The master slot is invisible (no render arm) — this only co-locates it with the core for the bomb detector. The
+    # master carries stale `slot pts` (un-seeded on purpose, `_ground_seed_andor`), so a bomb on the co-located core
+    # awards the core's 4,000 (ANDOR_CORE_PTS) AND the master's leftover value — the documented shell-slot bug. A
+    # direct port bomb still scores its own 1,000 (ANDOR_PORT_PTS); armor + Bragza stay immune (non-ACTIVE sentinel).
+    track_master_slot = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, master_x()),
+        _set_cur_item(
+            blocks, "slot y", SLOT_Y_ID, variable("andor master y", ANDOR_MASTER_Y_ID)
+        ),
+    ]
+    blocks.chain(definition, [set_colour, set_flip, *track_master_slot, lifecycle])
 
 
 def install_update_andor_part(blocks: Blocks) -> None:
