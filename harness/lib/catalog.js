@@ -5626,6 +5626,412 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'debug ground key held', 0, 1),
   },
   {
+    // BOSS-02 / andor.defenses (#95): the four gun ports fire on the SHARED periodic gate under the boss fire
+    // mask captured at arm (update andor part -> fire permission gate, gated on SLOT_ACTIVE, xevious_main.68k
+    // 5533/5584/5635/5686 -> chk_timer_fire_bullet_reinit_timer 4999-5010), and the NON-contiguous mask 47
+    // reloads BIT-EXACTLY as (rng & 47) -> values in {0-15, 32-47}, never 16-31 (the shared gate's `rng mod 48`
+    // would be wrong — riskiest seam). Driven per-tick: freeze the director and hand-drive the procs (callProc +
+    // step), pinning `tick` on-phase so the every-4th-tick cadence passes on each manual call. The harness runs
+    // to settling, not per-frame, so the mask cadence is pinned statically by sampling the reload distribution.
+    key: 'andor-ports-fire-under-mask',
+    behavior:
+      "An ACTIVE Andor gun port fires one aimed bullet through the shared periodic gate on the fire-mask cadence; a non-ACTIVE (bombed/cascaded) port stops firing while still pinned; and the port's non-contiguous mask-47 reload is bit-exact `rng & 47`, only ever producing reload intervals in {1-16, 33-48} (masked {0-15, 32-47}) and NEVER the 16-31 band a plain `rng mod 48` would give",
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2); // settle the craft so the aimed-bullet allocator has a live target (see logram-fires-once)
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'tick', 0); // on-phase: tick mod FIRE_GATE_PHASE_TICKS == 0 on every manual call
+      const PORT_SLOT = 14; // Scratch slot 14 -> obj 13 -> gun port (type 0x4F); JS index 13
+      const i = PORT_SLOT - 1;
+      const clearBullets = () => {
+        for (let s = 39; s <= 57; s += 1) {
+          // BULLET_SLOTS 40-58 -> JS 39-57: keep the shared pool from filling across 240 reload samples
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+      };
+      const seedPort = (slotState) => {
+        put('slot-type', i, 0x4f); // gun port (type 0x4F)
+        put('slot-state', i, slotState);
+        put('slot-fire-mask', i, 47); // the boss fire mask
+        put('slot-fire-timer', i, 1); // dec -> 0 this tick -> fire
+        put('slot-timer', i, 0);
+        put('slot-x', i, ANDOR.HOLD_X);
+        put('slot-y', i, ANDOR.LATERAL_Y);
+        writeVar(vm, 'slot-index', PORT_SLOT);
+      };
+      // (a) an ACTIVE port fires this tick (through `update andor part`'s ACTIVE-gated fire branch).
+      clearBullets();
+      seedPort(1); // SLOT_ACTIVE
+      writeVar(vm, 'bullet-alloc-result', 0);
+      callProc(vm, 'Stage', 'update andor part');
+      step(vm, 1);
+      const activeFired = readVar(vm, 'bullet-alloc-result') > 0;
+      // (b) a non-ACTIVE (HIT) port does NOT fire — the arcade routes a hit port to explosion, not the timer.
+      clearBullets();
+      seedPort(2); // SLOT_HIT
+      writeVar(vm, 'bullet-alloc-result', 0);
+      callProc(vm, 'Stage', 'update andor part');
+      step(vm, 1);
+      const deadFired = readVar(vm, 'bullet-alloc-result') > 0;
+      // (c) mask-47 reload distribution: drive the fire gate directly on the ACTIVE port many times and collect
+      // each reloaded interval. reload = (rng & 47) + 1, so masked = interval - 1 must never fall in 16-31.
+      seedPort(1);
+      const masked = [];
+      for (let n = 0; n < 240; n += 1) {
+        clearBullets();
+        put('slot-fire-timer', i, 1); // dec -> 0 -> fire+reload this call
+        writeVar(vm, 'tick', 0);
+        writeVar(vm, 'slot-index', PORT_SLOT);
+        callProc(vm, 'Stage', 'fire permission gate');
+        step(vm, 1);
+        masked.push(readVar(vm, 'slot-fire-timer')[i] - 1);
+      }
+      return { activeFired, deadFired, masked };
+    },
+    assert(obs) {
+      assert.equal(obs.activeFired, true, 'an ACTIVE gun port fires an aimed bullet on the gate cadence');
+      assert.equal(obs.deadFired, false, 'a non-ACTIVE (bombed/cascaded) port does not fire while still pinned');
+      assert.deepEqual(
+        obs.masked.filter((m) => m >= 16 && m <= 31),
+        [],
+        'mask-47 reload NEVER lands in the 16-31 band (bit 4 is masked out) — the non-contiguous AND is exact',
+      );
+      assert.ok(obs.masked.every((m) => m >= 0 && m <= 47), 'every reload is a valid rng&47 interval (masked 0-47)');
+      assert.ok(obs.masked.some((m) => m <= 15), 'non-vacuous: some reloads land in the low {0-15} band');
+      assert.ok(obs.masked.some((m) => m >= 32), 'non-vacuous: some reloads land in the high {32-47} band');
+    },
+    // Break the mask-47 recognition (`item(slot index) of slot fire mask == 47`) so the gate falls through to the
+    // CONTIGUOUS `rng mod (mask+1)` = `rng mod 48` reload -> values spread uniformly 0-47, landing in the
+    // forbidden 16-31 band -> the non-contiguous-mask assertion bites. (The port still fires, isolating the bug
+    // to the mask arithmetic.)
+    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot fire mask', 47, 999),
+  },
+  {
+    // BOSS-02 / andor.defenses (#95): the nine armor plates are born the ANDOR_ARMOR_IMMUNE sentinel state (NOT
+    // SLOT_ACTIVE) — handle_41..49 each set `_STATE=3 | indestructible`, xevious_main.68k:5771-5983 — so the
+    // shared ground detector's `== SLOT_ACTIVE` gate skips them: a bomb dead on an armor plate scores NOTHING and
+    // never marks it struck, while the SAME bomb on the SAME cell destroys an ACTIVE core for 4,000 (the detector
+    // is live). Mirrors garu-base-is-indestructible: the control proves it is the sentinel, not a dead detector.
+    key: 'andor-armor-is-immune',
+    behavior:
+      'A bomb dead on an Andor armor plate (the ANDOR_ARMOR_IMMUNE sentinel state, not ACTIVE) scores NOTHING and never marks the plate struck, while the SAME bomb on the SAME cell destroys+scores an ACTIVE core for 4,000 — so the immunity is the plate sentinel failing the detector ACTIVE gate, measured against a genuinely live detector',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      // (a) an armor plate (immune sentinel) dead on the bomb target scores nothing.
+      clearGroundBand(vm);
+      put('slot-type', 14, 0x41); // armor plate type (obj 1), placed in a ground slot for the shared cell
+      put('slot-state', 14, 3); // ANDOR_ARMOR_IMMUNE sentinel (!= SLOT_ACTIVE 1)
+      put('slot-pts', 14, 21); // would be worth 4000 IF scored — proves the gate, not a zero-pts accident
+      put('slot-x', 14, 5120);
+      put('slot-y', 14, 4096);
+      put('slot-x', 32, 5120); // locked bomb target on the plate cell
+      put('slot-y', 32, 4096);
+      const armorScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const armorDelta = readVar(vm, 'eco-score') - armorScore0;
+      const armorState = readVar(vm, 'slot-state')[14];
+      // (b) live control: an ACTIVE core on the identical cell DOES score 4000, so the zero above is real immunity.
+      clearGroundBand(vm);
+      put('slot-type', 14, 74); // core
+      put('slot-state', 14, 1); // ACTIVE
+      put('slot-pts', 14, 21);
+      put('slot-x', 14, 5120);
+      put('slot-y', 14, 4096);
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const coreScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const coreDelta = readVar(vm, 'eco-score') - coreScore0;
+      return { armorDelta, armorState, coreDelta, award: readVar(vm, 'eco-value-table')[20] };
+    },
+    assert(obs) {
+      assert.equal(obs.armorDelta, 0, 'a bomb dead on an armor plate scores NOTHING (immune sentinel fails the ACTIVE gate)');
+      assert.equal(obs.armorState, 3, 'the armor plate is never marked struck — it keeps its immune sentinel');
+      assert.equal(obs.award, 4000, 'the control core is worth its 4,000-pt value-table entry');
+      assert.equal(obs.coreDelta, obs.award, 'control: the SAME bomb on the SAME cell destroys+scores an ACTIVE core');
+    },
+    // Empty the ground detector: the control core no longer scores -> the control assertion fails, proving the
+    // armor zero is measured against a live detector (not a dead seed). Mirrors garu-base-is-indestructible.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
+  },
+  {
+    // BOSS-03 / andor.core-destruction (#96): bombing the core (ACTIVE, worth 4,000) scores 4,000 once through
+    // the shared ground detector and marks it HIT; the core then bursts in place under `update andor part` and,
+    // when its burst finishes (floor(slot timer / 8) >= EXPLODE_COSTUME_COUNT, i.e. timer >= 64), CONVERTS in
+    // place to the indestructible fly-up Bragza (ANDOR_BRAGZA_TYPE + immune sentinel) — faithful to
+    // andor_genesis_core_hit waiting for `_STATE==4` before the conversion (xevious_main.68k:5475-5491).
+    key: 'andor-core-bomb-scores-and-destroys',
+    behavior:
+      "Bombing the Andor core (ACTIVE, worth 4,000) scores exactly 4,000 once through the shared ground detector and marks the core HIT; a second bomb on the HIT core never re-scores; the core then bursts in place and, when its burst finishes, CONVERTS to the indestructible fly-up Bragza (type ANDOR_BRAGZA_TYPE, immune sentinel), never re-bombable",
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      const CORE = 14; // Scratch slot 15 -> JS index 14 (the core, obj 14)
+      put('slot-type', CORE, 74); // ANDOR_CORE_TYPE
+      put('slot-state', CORE, 1); // ACTIVE (bombable)
+      put('slot-pts', CORE, 21); // 1-based value-table position of 4000
+      put('slot-x', CORE, 5120);
+      put('slot-y', CORE, 4096);
+      put('slot-x', 32, 5120); // locked bomb target on the core cell
+      put('slot-y', 32, 4096);
+      const award = readVar(vm, 'eco-value-table')[20]; // position 21 -> JS index 20 = 4000
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const scoreDelta = readVar(vm, 'eco-score') - score0;
+      const hitState = readVar(vm, 'slot-state')[CORE];
+      // A second bomb on the now-HIT core must not re-score.
+      put('slot-x', 32, 5120);
+      put('slot-y', 32, 4096);
+      const reScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const reScoreDelta = readVar(vm, 'eco-score') - reScore0;
+      // Burst then convert: drive `update andor part` on the core; the burst clock climbs 2/tick, and the core
+      // converts on the tick floor(timer/8) >= 8 (timer 64 -> 32 ticks).
+      put('slot-timer', CORE, 0); // the detector zeroed the burst clock on the hit tick
+      writeVar(vm, 'slot-index', 15); // Scratch 1-based core slot
+      const snaps = [];
+      for (let t = 0; t < 32; t += 1) {
+        callProc(vm, 'Stage', 'update andor part');
+        step(vm, 1);
+        snaps.push({
+          type: readVar(vm, 'slot-type')[CORE],
+          state: readVar(vm, 'slot-state')[CORE],
+          timer: readVar(vm, 'slot-timer')[CORE],
+        });
+      }
+      return { award, scoreDelta, hitState, reScoreDelta, snaps };
+    },
+    assert(obs) {
+      assert.equal(obs.award, 4000, 'the core is worth its 4,000-pt value-table entry');
+      assert.equal(obs.scoreDelta, obs.award, 'bombing the core scores exactly 4,000 once (shared ground detector)');
+      assert.equal(obs.hitState, 2, 'the bombed core is marked HIT (state 2), so it cannot re-score');
+      assert.equal(obs.reScoreDelta, 0, 'a second bomb on the HIT core scores nothing');
+      const mid = obs.snaps[30]; // tick 31: timer 62, still bursting as the core
+      assert.equal(mid.type, 74, 'mid-burst the core is still the core (type 0x4A)');
+      assert.equal(mid.state, 2, 'mid-burst the core is still HIT (bursting)');
+      assert.equal(mid.timer, 62, 'the burst clock counts 2 frames/tick');
+      const done = obs.snaps[31]; // tick 32: timer reaches 64 -> burst finishes -> convert
+      assert.equal(done.type, 76, 'the finished core CONVERTS to the fly-up Bragza (ANDOR_BRAGZA_TYPE 0x4C)');
+      assert.equal(done.state, 3, 'the converted Bragza carries the immune sentinel (never re-bombable)');
+    },
+    // Empty the shared ground detector: the core never scores, never goes HIT, so it never bursts or converts ->
+    // the 4,000 award, the HIT mark, and the Bragza conversion all go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check ground hit'),
+  },
+  {
+    // BOSS-03 / andor.core-destruction (#96): the core-death cascade in `update andor master` (which dispatches
+    // LAST, seeing every part's state this tick). When the core is HIT it runs the destruction ONCE: cascades
+    // every still-ACTIVE gun port straight to HIT (the arcade per-port `cmp #3,(core _STATE); jeq <xx>_gun_port_
+    // hit`, 5523/5574/5625/5676 — an explosion, awarding NOTHING), leaves an already-HIT (directly-bombed) port
+    // alone, flashes the shared colour, and latches the destroyed clock so the sequence fires exactly once.
+    key: 'andor-core-cascades-ports',
+    behavior:
+      "When the core is HIT, `update andor master` runs the destruction ONCE: it cascades every still-ACTIVE gun port straight to HIT (an explosion that awards NOTHING), leaves an already-HIT (directly-bombed) port untouched, flashes the shared colour to the destroyed flash value, and latches the destroyed clock — a later tick advances the destroyed departure rather than re-latching or re-scoring",
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'andor-genesis-end-flag', 0);
+      writeVar(vm, 'andor-destroyed-timer', 0);
+      // core slot 15 (JS 14) HIT; ports slots 11-14 (JS 10-13): three still ACTIVE + one already HIT.
+      put('slot-type', 14, 74);
+      put('slot-state', 14, 2); // core HIT (bombed this tick or a prior one)
+      const PORTS = [10, 11, 12, 13]; // JS indices for Scratch slots 11-14 (the four gun ports)
+      const portTypes = [0x52, 0x51, 0x50, 0x4f];
+      PORTS.forEach((js, k) => put('slot-type', js, portTypes[k]));
+      put('slot-state', 10, 1); // ACTIVE
+      put('slot-state', 11, 1); // ACTIVE
+      put('slot-state', 12, 1); // ACTIVE
+      put('slot-state', 13, 2); // already HIT (directly bombed) -> must be left alone
+      put('slot-timer', 13, 40); // its own burst clock, which the cascade must NOT reset
+      writeVar(vm, 'slot-index', 16); // the master slot
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'update andor master');
+      step(vm, 1);
+      const afterStates = PORTS.map((js) => readVar(vm, 'slot-state')[js]);
+      const cascadeScore = readVar(vm, 'eco-score') - score0;
+      const destroyedTimer1 = readVar(vm, 'andor-destroyed-timer');
+      const colour = readVar(vm, 'andor-genesis-colour');
+      const alreadyHitTimer = readVar(vm, 'slot-timer')[13];
+      // Fires once: a later master tick advances the destroyed departure (clock > 1), it does not re-latch or score.
+      callProc(vm, 'Stage', 'update andor master');
+      step(vm, 1);
+      const destroyedTimer2 = readVar(vm, 'andor-destroyed-timer');
+      const scoreAfter2 = readVar(vm, 'eco-score') - score0;
+      return {
+        afterStates,
+        cascadeScore,
+        destroyedTimer1,
+        destroyedTimer2,
+        colour,
+        alreadyHitTimer,
+        scoreAfter2,
+      };
+    },
+    assert(obs) {
+      assert.deepEqual(obs.afterStates, [2, 2, 2, 2], 'every surviving ACTIVE gun port is cascaded to HIT (state 2)');
+      assert.equal(obs.cascadeScore, 0, 'the cascade awards NOTHING (only a direct bomb scores a port)');
+      assert.equal(obs.destroyedTimer1, 1, 'the destroyed clock latches to 1 on the core-death tick');
+      assert.equal(obs.colour, 29, 'the shared colour flashes to the destroyed flash value (0x1d)');
+      assert.equal(obs.alreadyHitTimer, 40, 'an already-HIT (directly-bombed) port is not re-cascaded — its burst clock is untouched');
+      assert.ok(obs.destroyedTimer2 > 1, 'the sequence fires ONCE: a later tick advances the destroyed departure, it does not re-latch');
+      assert.equal(obs.scoreAfter2, 0, 'no score is awarded across the whole destruction (cascade scores nothing)');
+    },
+    // Graft a score write into the master proc so the cascade appears to award points -> the "cascade awards
+    // NOTHING" assertion bites (an omission invariant: the correct behaviour is that no score is written, so the
+    // biting negative must GRAFT the forbidden write). 'score' is the actual stage score variable.
+    negativeMutation: (p) => mutate.graftVariableSetOnProc(p, 'Stage', 'update andor master', 'score', 999),
+  },
+  {
+    // BOSS-03 / andor.core-destruction (#96): the converted core flies as the indestructible Bragza
+    // (handle_Bragza, xevious_main.68k:5493-5504: `_dX=0xffd0` = up the scroll axis, `_dY` cleared). `update
+    // andor bragza` moves the slot UP by exactly ANDOR_BRAGZA_STEP each tick (slot x decreasing, slot y held) and
+    // culls it once it clears the top of the field. The 4-frame costume + colour cycle are cosmetic (render arm).
+    key: 'andor-bragza-flies-up',
+    behavior:
+      'The converted core flies as the indestructible Bragza: `update andor bragza` moves its slot UP the scroll axis by exactly ANDOR_BRAGZA_STEP each tick (slot x decreasing, slot y held constant) and culls the slot once it clears the top of the field',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      const B = 14; // any ground slot; use JS index 14 (Scratch slot 15)
+      put('slot-type', B, 76); // ANDOR_BRAGZA_TYPE
+      put('slot-state', B, 3); // immune sentinel
+      put('slot-x', B, 2000);
+      put('slot-y', B, 4096);
+      writeVar(vm, 'slot-index', 15);
+      const xs = [];
+      for (let t = 0; t < 4; t += 1) {
+        callProc(vm, 'Stage', 'update andor bragza');
+        step(vm, 1);
+        xs.push({ x: readVar(vm, 'slot-x')[B], y: readVar(vm, 'slot-y')[B] });
+      }
+      // Cull: place it one step short of the cull row so the next tick's fly-up carries it past ANDOR_BRAGZA_CULL_X
+      // (-2048) and frees the slot — the Bragza's only exit.
+      put('slot-type', B, 76);
+      put('slot-state', B, 3);
+      put('slot-x', B, -2048 + 96 - 1); // ANDOR_BRAGZA_CULL_X + ANDOR_BRAGZA_STEP - 1
+      put('slot-y', B, 4096);
+      writeVar(vm, 'slot-index', 15);
+      callProc(vm, 'Stage', 'update andor bragza');
+      step(vm, 1);
+      return { xs, culledType: readVar(vm, 'slot-type')[B], culledState: readVar(vm, 'slot-state')[B] };
+    },
+    assert(obs) {
+      assert.deepEqual(
+        obs.xs.map((s) => s.x),
+        [1904, 1808, 1712, 1616],
+        'the Bragza flies UP by exactly 96 units/tick (slot x decreasing)',
+      );
+      assert.ok(obs.xs.every((s) => s.y === 4096), 'the Bragza holds its lateral position (slot y constant)');
+      assert.equal(obs.culledType, 0, 'once it clears the top of the field the Bragza slot is culled (type 0)');
+      assert.equal(obs.culledState, 0, 'the culled Bragza slot is freed (state 0) so it can be reused');
+    },
+    // Empty the Bragza update: the slot never flies or culls -> the up-flight and cull assertions go red.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor bragza'),
+  },
+  {
+    // BOSS-03 / andor.core-destruction (#96): the preserved arcade shell-slot leftover bug. The invisible master
+    // (obj 0x0F) is forced ACTIVE at spawn with its `_PTS` NEVER initialised (handle_4B 5378-5385 + sub_2_fn_20
+    // 546-549), and it shares the core's cell — so a single bomb on the core awards BOTH the core's 4,000 AND the
+    // master's stale leftover value. The port pins the master slot onto the core's cell each tick (update andor
+    // master) with its `slot pts` left un-seeded, reproducing the double award; without the tracking the master
+    // stays off-cell and only the core scores.
+    key: 'andor-shell-slot-leftover-award',
+    behavior:
+      'The preserved arcade shell-slot bug: the invisible master is ACTIVE with its `slot pts` never initialized, and `update andor master` pins its slot onto the core cell each tick — so ONE bomb on the core awards BOTH the core 4,000 AND the master stale leftover value (here 200), once; without the per-tick tracking the master stays off-cell and only the core scores',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const put = slotPutter(vm);
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-genesis-end-flag', 0);
+      writeVar(vm, 'andor-destroyed-timer', 0);
+      const cellX = ANDOR.HOLD_X;
+      const cellY = ANDOR.LATERAL_Y;
+      writeVar(vm, 'andor-master-x', cellX);
+      writeVar(vm, 'andor-master-y', cellY);
+      // Core (slot 15 / JS 14): ACTIVE, worth 4000, sitting on the shared cell.
+      put('slot-type', 14, 74);
+      put('slot-state', 14, 1);
+      put('slot-pts', 14, 21); // value-table position of 4000
+      put('slot-x', 14, cellX);
+      put('slot-y', 14, cellY);
+      // Master (slot 16 / JS 15): ACTIVE with a KNOWN stale leftover pts (value-table position 8 -> 200), seeded
+      // OFF the cell so only the per-tick tracking can co-locate it with the core.
+      put('slot-type', 15, 75);
+      put('slot-state', 15, 1);
+      put('slot-pts', 15, 8); // stale leftover -> 200
+      put('slot-x', 15, 99999);
+      put('slot-y', 15, 99999);
+      writeVar(vm, 'slot-index', 16);
+      callProc(vm, 'Stage', 'update andor master'); // pins the master slot onto the anchor (= the core cell)
+      step(vm, 1);
+      const masterX = readVar(vm, 'slot-x')[15];
+      // Bomb the shared cell.
+      put('slot-x', 32, cellX);
+      put('slot-y', 32, cellY);
+      const coreValue = readVar(vm, 'eco-value-table')[20]; // 4000
+      const staleValue = readVar(vm, 'eco-value-table')[7]; // 200
+      const score0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const delta = readVar(vm, 'eco-score') - score0;
+      // Once: a second bomb (both slots now HIT) awards nothing more.
+      put('slot-x', 32, cellX);
+      put('slot-y', 32, cellY);
+      const reScore0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      const reDelta = readVar(vm, 'eco-score') - reScore0;
+      return { masterX, cellX, coreValue, staleValue, delta, reDelta };
+    },
+    assert(obs) {
+      assert.equal(obs.masterX, obs.cellX, 'the master slot is pinned onto the core cell each tick');
+      assert.equal(obs.coreValue, 4000, 'the core is worth 4,000');
+      assert.equal(obs.staleValue, 200, 'the seeded stale leftover value is 200');
+      assert.equal(
+        obs.delta,
+        obs.coreValue + obs.staleValue,
+        'one core bomb awards BOTH the core 4,000 AND the stale master value (the shell bug) = 4,200',
+      );
+      assert.equal(obs.reDelta, 0, 'the shell award happens once — a second bomb scores nothing (both slots now HIT)');
+    },
+    // Empty the master update: the master slot is never tracked onto the core cell, so it stays off-cell and the
+    // detector never awards its stale value -> the double-award (4,200) assertion bites.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor master'),
+  },
+  {
     // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).
     key: 'bonus-flag-revealed-by-bomb-scores-once-then-collected-by-flyover-not-a-weapon',
     behavior:

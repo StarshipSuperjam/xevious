@@ -10585,6 +10585,693 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             self.assertIn(label, self._boss01_failures(project), label)
 
+    @classmethod
+    def _boss02_failures(cls, project: dict) -> set:
+        """BOSS-02 andor.defenses (#95) authoring contract — the Andor Genesis boss's active defenses
+        (handle_4F..52 gun ports / handle_41..49 armor, xevious_main.68k 5508-5983;
+        chk_timer_fire_bullet_reinit_timer 4999-5010; sub_2_fn_22 fire mask, xevious_sub.68k 411-412).
+        The `update andor part` proc calls the shared `fire permission gate` ONLY when the slot is a port
+        type AND still `SLOT_ACTIVE` (so a bombed/cascaded port stops firing). The gate reloads the
+        non-contiguous boss mask 47 bit-exactly — `((rng mod 16) + 32·bit5) + 1` = `rng AND 47` — not a
+        uniform `rng mod 48`. The schedule arm seeds the nine armor plates to the `ANDOR_ARMOR_IMMUNE`
+        sentinel (so the ACTIVE-gated bomb sweep skips them), and seeds each gun port ACTIVE with its 1,000
+        `slot pts`, a `slot fire mask`, and `slot fire timer = 1`."""
+        h = cls._sec_helpers(project)
+        blocks = h["blocks"]
+        num = h["num"]
+        rref = h["rref"]
+        failures = set()
+        base = director.GROUND_SLOTS[0]
+        part = _proc_body_blocks(h["stage"], director.UPDATE_ANDOR_PART_PROCCODE)
+        gate = _proc_body_blocks(h["stage"], director.FIRE_GATE_PROCCODE)
+        area = _proc_body_blocks(h["stage"], director.ADVANCE_AREA_PROCCODE)
+        port_slots = [base + n for n, t in enumerate(director.ANDOR_GENESIS_DATA, 1) if t in director.ANDOR_PORT_TYPES]
+        armor_slots = [base + n for n, t in enumerate(director.ANDOR_GENESIS_DATA, 1) if t in director.ANDOR_ARMOR_TYPES]
+
+        def cond(b):
+            return rref(b["inputs"].get("CONDITION"))
+
+        def cond_id(b):
+            c = b["inputs"].get("CONDITION")
+            return c[1] if isinstance(c, list) and len(c) >= 2 and isinstance(c[1], str) else None
+
+        def item_rid(b):
+            it = b["inputs"].get("ITEM")
+            return it[1] if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], str) else None
+
+        def eq_item(bl, list_id, value):
+            # `operator_equals` comparing an item of `list_id` to the numeric `value` (index unconstrained).
+            if bl is None or bl.get("opcode") != "operator_equals":
+                return False
+            for a, bkey in (("OPERAND1", "OPERAND2"), ("OPERAND2", "OPERAND1")):
+                r = rref(bl["inputs"].get(a))
+                if r is not None and r["opcode"] == "data_itemoflist" and r["fields"]["LIST"][1] == list_id and num(bl["inputs"].get(bkey)) == value:
+                    return True
+            return False
+
+        def body_writes_iv(body, list_id, index, value):
+            return any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == list_id
+                and num(b["inputs"].get("INDEX")) == index
+                and num(b["inputs"].get("ITEM")) == value
+                for b in body
+            )
+
+        def body_writes_i(body, list_id, index):
+            return any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == list_id
+                and num(b["inputs"].get("INDEX")) == index
+                for b in body
+            )
+
+        # (1) PORT FIRE: the part proc calls the shared fire gate under `is-port AND is-active`; (2) the
+        # gate is `slot state == SLOT_ACTIVE`, so a bombed/cascaded (non-active) port stops firing.
+        fire_if = None
+        for b in part:
+            if b["opcode"] != "control_if":
+                continue
+            c = cond(b)
+            cid = cond_id(b)
+            if c is None or c["opcode"] != "operator_and" or cid is None:
+                continue
+            is_port = h["subtree_has"](
+                cid, lambda z: any(eq_item(z, director.SLOT_TYPE_ID, t) for t in director.ANDOR_PORT_TYPES)
+            )
+            if is_port and h["calls"](h["branch_ids"](b, "SUBSTACK"), director.FIRE_GATE_PROCCODE):
+                fire_if = b
+                break
+        if fire_if is None:
+            failures.add("boss02-port-fire")
+        elif not h["subtree_has"](cond_id(fire_if), lambda z: eq_item(z, director.SLOT_STATE_ID, director.SLOT_ACTIVE)):
+            failures.add("boss02-fire-active-gated")
+
+        # (3) MASK-47 GUARD + (4) bit-exact reload: a dedicated `slot fire mask == 47` branch reloads the
+        # fire timer with `rng mod 16` plus a `× 32` high-bit term (reproducing the non-contiguous `rng AND 47`).
+        mask_if = next(
+            (b for b in gate if b["opcode"] == "control_if" and eq_item(cond(b), director.SLOT_FIRE_MASK_ID, director.ANDOR_FIRE_MASK)),
+            None,
+        )
+        if mask_if is None:
+            failures.add("boss02-mask47-guard")
+        else:
+            reload_ok = False
+            for x in h["branch_ids"](mask_if, "SUBSTACK"):
+                b = blocks[x]
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID:
+                    rid = item_rid(b)
+                    if (
+                        rid
+                        and h["subtree_has"](rid, lambda z: z["opcode"] == "operator_mod" and num(z["inputs"].get("NUM2")) == 16)
+                        and h["subtree_has"](
+                            rid,
+                            lambda z: z["opcode"] == "operator_multiply"
+                            and (num(z["inputs"].get("NUM1")) == 32 or num(z["inputs"].get("NUM2")) == 32),
+                        )
+                    ):
+                        reload_ok = True
+                        break
+            if not reload_ok:
+                failures.add("boss02-mask47-reload")
+
+        # (5) ARMOR IMMUNE: every armor slot is seeded to the immune sentinel by the schedule arm (advance
+        # area is the sole writer of fixed numeric slot indices 2..16, so whole-proc scoping is exact).
+        if not all(body_writes_iv(area, director.SLOT_STATE_ID, s, director.ANDOR_ARMOR_IMMUNE) for s in armor_slots):
+            failures.add("boss02-armor-immune")
+
+        # (6) PORT SCORE: each gun port is seeded with its 1,000-point `slot pts` index.
+        if not all(body_writes_iv(area, director.SLOT_PTS_ID, s, director.ANDOR_PORT_PTS) for s in port_slots):
+            failures.add("boss02-port-score")
+
+        # (7) PORT FIRE SEED: each gun port is seeded a `slot fire mask` and `slot fire timer = 1`.
+        if not all(
+            body_writes_i(area, director.SLOT_FIRE_MASK_ID, s)
+            and body_writes_iv(area, director.SLOT_FIRE_TIMER_ID, s, director.ANDOR_PORT_FIRE_TIMER_INIT)
+            for s in port_slots
+        ):
+            failures.add("boss02-port-fire-seed")
+
+        return failures
+
+    @classmethod
+    def _boss03_failures(cls, project: dict) -> set:
+        """BOSS-03 andor.core-destruction (#96) authoring contract — the only path that destroys and scores
+        the boss (handle_4A core / andor_genesis_core_hit / handle_4B master / andor_genesis_destroyed,
+        xevious_main.68k 5386-5491; the shell-slot leftover bug, handle_4B 5378-5385 + sub_2_fn_20
+        xevious_sub.68k 546-549). The schedule arm seeds the core ACTIVE with its 4,000 `slot pts` while
+        the master slot's `slot pts` is left UN-seeded (the shell bug), and each tick `update andor master`
+        pins its own slot onto the shared anchor so one core bomb awards both. On core `SLOT_HIT` the master
+        (dispatched last) cascades the surviving ACTIVE ports to `SLOT_HIT` directly — routing through NO
+        proc, so the cascade scores nothing — and latches `andor destroyed timer = 1` so it fires exactly
+        once. `update andor part`'s `SLOT_HIT` branch advances the slot timer so the burst animates, and a
+        finished core-burst converts the slot to `ANDOR_BRAGZA_TYPE` stamped immune; `update andor bragza`
+        flies it up-screen (`slot x -= ANDOR_BRAGZA_STEP`) and culls it. The master teardown is type-aware:
+        every core-slot type-free is guarded by `!= ANDOR_BRAGZA_TYPE`, so a still-flying Bragza is spared."""
+        h = cls._sec_helpers(project)
+        blocks = h["blocks"]
+        num = h["num"]
+        rref = h["rref"]
+        failures = set()
+        base = director.GROUND_SLOTS[0]
+        core_slot = base + 14
+        master_slot = base + 15
+        port_slots = [base + o for o in range(10, 14)]
+        master = _proc_body_blocks(h["stage"], director.UPDATE_ANDOR_MASTER_PROCCODE)
+        part = _proc_body_blocks(h["stage"], director.UPDATE_ANDOR_PART_PROCCODE)
+        bragza = _proc_body_blocks(h["stage"], director.UPDATE_ANDOR_BRAGZA_PROCCODE)
+        area = _proc_body_blocks(h["stage"], director.ADVANCE_AREA_PROCCODE)
+        mset = {id(b) for b in master}
+        master_ids = [bid for bid, b in blocks.items() if id(b) in mset]
+
+        def cond(b):
+            return rref(b["inputs"].get("CONDITION"))
+
+        def item_rid(b):
+            it = b["inputs"].get("ITEM")
+            return it[1] if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], str) else None
+
+        def eq_item(bl, list_id, value):
+            if bl is None or bl.get("opcode") != "operator_equals":
+                return False
+            for a, bkey in (("OPERAND1", "OPERAND2"), ("OPERAND2", "OPERAND1")):
+                r = rref(bl["inputs"].get(a))
+                if r is not None and r["opcode"] == "data_itemoflist" and r["fields"]["LIST"][1] == list_id and num(bl["inputs"].get(bkey)) == value:
+                    return True
+            return False
+
+        def eq_item_at(bl, list_id, index, value):
+            if bl is None or bl.get("opcode") != "operator_equals":
+                return False
+            for a, bkey in (("OPERAND1", "OPERAND2"), ("OPERAND2", "OPERAND1")):
+                r = rref(bl["inputs"].get(a))
+                if (
+                    r is not None
+                    and r["opcode"] == "data_itemoflist"
+                    and r["fields"]["LIST"][1] == list_id
+                    and num(r["inputs"].get("INDEX")) == index
+                    and num(bl["inputs"].get(bkey)) == value
+                ):
+                    return True
+            return False
+
+        def item_reads_var(b, var_id):
+            it = b["inputs"].get("ITEM")
+            if h["is_var_operand"](it, var_id):
+                return True
+            rid = it[1] if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], str) else None
+            return bool(rid) and h["subtree_reads_var"](rid, {var_id})
+
+        def sets_slot_from_var(slot_list_id, var_id):
+            return any(
+                b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == slot_list_id and item_reads_var(b, var_id)
+                for b in master
+            )
+
+        def body_writes_iv(body, list_id, index, value):
+            return any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == list_id
+                and num(b["inputs"].get("INDEX")) == index
+                and num(b["inputs"].get("ITEM")) == value
+                for b in body
+            )
+
+        def body_writes_i(body, list_id, index):
+            return any(
+                b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == list_id and num(b["inputs"].get("INDEX")) == index
+                for b in body
+            )
+
+        # (1) CORE SCORE: the schedule arm seeds the core slot ACTIVE with its 4,000-point `slot pts` index.
+        if not body_writes_iv(area, director.SLOT_PTS_ID, core_slot, director.ANDOR_CORE_PTS):
+            failures.add("boss03-core-score")
+
+        # (2) SHELL BUG: the master slot's `slot pts` is NEVER seeded, so it carries the stale prior tenant's
+        # value — a core bomb awards it too (advance area is the sole fixed-index seed writer).
+        if body_writes_i(area, director.SLOT_PTS_ID, master_slot):
+            failures.add("boss03-master-pts-stale")
+
+        # (3) SHELL TRACK: `update andor master` pins its own slot x/y onto the shared anchor each tick, so
+        # the master slot co-locates with the core and one core bomb hits both.
+        if not (sets_slot_from_var(director.SLOT_X_ID, director.ANDOR_MASTER_X_ID) and sets_slot_from_var(director.SLOT_Y_ID, director.ANDOR_MASTER_Y_ID)):
+            failures.add("boss03-shell-track")
+
+        # (4) CORE-HIT CHECK + (5) FIRES-ONCE latch: on core `SLOT_HIT`, the master latches
+        # `andor destroyed timer = 1` (which also routes the core off HIT), so destruction fires exactly once.
+        core_hit_if = next(
+            (b for b in master if b["opcode"] == "control_if" and eq_item_at(cond(b), director.SLOT_STATE_ID, core_slot, director.SLOT_HIT)),
+            None,
+        )
+        cascade_ids = h["branch_ids"](core_hit_if, "SUBSTACK") if core_hit_if else set()
+        if core_hit_if is None:
+            failures.add("boss03-core-hit-check")
+        if core_hit_if is None or not h["sets_var"](cascade_ids, director.ANDOR_DESTROYED_TIMER_ID, 1):
+            failures.add("boss03-fires-once")
+
+        # (6) CASCADE: every surviving ACTIVE port is cascaded directly to `SLOT_HIT`; (7) the cascade routes
+        # through NO proc call, so a cascaded port scores nothing (only a direct bomb scores).
+        def cascades(pslot):
+            for x in cascade_ids:
+                b = blocks[x]
+                if b["opcode"] == "control_if" and eq_item_at(cond(b), director.SLOT_STATE_ID, pslot, director.SLOT_ACTIVE):
+                    if body_writes_iv([blocks[y] for y in h["branch_ids"](b, "SUBSTACK")], director.SLOT_STATE_ID, pslot, director.SLOT_HIT):
+                        return True
+            return False
+
+        if core_hit_if is None or not all(cascades(p) for p in port_slots):
+            failures.add("boss03-cascade")
+        if core_hit_if is not None and any(blocks[x]["opcode"] == "procedures_call" for x in cascade_ids):
+            failures.add("boss03-cascade-no-score")
+
+        # (8) CONVERT CORE: the part proc's finished-burst resolution flips the core slot to Bragza AND
+        # stamps the immune sentinel (blocking a second bomb re-scoring the stale pts).
+        convert_ok = False
+        for b in part:
+            if b["opcode"] != "control_if_else":
+                continue
+            c = cond(b)
+            if c is not None and c["opcode"] == "operator_equals" and eq_item(c, director.SLOT_TYPE_ID, director.ANDOR_CORE_TYPE):
+                th = h["branch_ids"](b, "SUBSTACK")
+                to_bragza = any(
+                    blocks[x]["opcode"] == "data_replaceitemoflist"
+                    and blocks[x]["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                    and num(blocks[x]["inputs"].get("ITEM")) == director.ANDOR_BRAGZA_TYPE
+                    for x in th
+                )
+                to_immune = any(
+                    blocks[x]["opcode"] == "data_replaceitemoflist"
+                    and blocks[x]["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and num(blocks[x]["inputs"].get("ITEM")) == director.ANDOR_ARMOR_IMMUNE
+                    for x in th
+                )
+                if to_bragza and to_immune:
+                    convert_ok = True
+                    break
+        if not convert_ok:
+            failures.add("boss03-convert-core")
+
+        # (9) HIT TIMER: the part proc's `SLOT_HIT` branch advances `slot timer` so the shared burst plays.
+        hit_if = next((b for b in part if b["opcode"] == "control_if" and eq_item(cond(b), director.SLOT_STATE_ID, director.SLOT_HIT)), None)
+        if hit_if is None or not h["advances_clock"](h["branch_ids"](hit_if, "SUBSTACK"), director.SLOT_TIMER_ID):
+            failures.add("boss03-hit-timer")
+
+        # (10) TEARDOWN SPARES BRAGZA: every master core-slot type-free is the guarded body of its OWN
+        # `not(slot type[core_slot] == ANDOR_BRAGZA_TYPE)` if, so the converted, still-flying Bragza is never
+        # clobbered by the composite teardown. The guards are a next-chain (each teardown builder's per-slot
+        # ifs are siblings), so a parent-walk would conflate them — the write's IMMEDIATE guard is pinned.
+        def guarded_teardown(bid):
+            p = blocks.get(blocks[bid].get("parent"))
+            if p is None or p["opcode"] not in ("control_if", "control_if_else"):
+                return False
+            sub = p["inputs"].get("SUBSTACK")
+            head = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+            if head != bid:
+                return False
+            c = rref(p["inputs"].get("CONDITION"))
+            if c is None or c["opcode"] != "operator_not":
+                return False
+            return eq_item_at(rref(c["inputs"].get("OPERAND")), director.SLOT_TYPE_ID, core_slot, director.ANDOR_BRAGZA_TYPE)
+
+        teardown_writes = [
+            bid
+            for bid in master_ids
+            if blocks[bid]["opcode"] == "data_replaceitemoflist"
+            and blocks[bid]["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+            and num(blocks[bid]["inputs"].get("INDEX")) == core_slot
+            and num(blocks[bid]["inputs"].get("ITEM")) == 0
+        ]
+        if not teardown_writes or not all(guarded_teardown(bid) for bid in teardown_writes):
+            failures.add("boss03-teardown-spares-bragza")
+
+        # (11) BRAGZA FLIES UP + culls: `update andor bragza` steps slot x UP by ANDOR_BRAGZA_STEP and culls.
+        fly_ok = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_X_ID
+            and (it := rref(b["inputs"].get("ITEM"))) is not None
+            and it["opcode"] == "operator_subtract"
+            and num(it["inputs"].get("NUM2")) == director.ANDOR_BRAGZA_STEP
+            for b in bragza
+        )
+        culls = any(
+            b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.CULL_SLOT_PROCCODE for b in bragza
+        )
+        if not (fly_ok and culls):
+            failures.add("boss03-bragza-flies-up")
+
+        # (12) DISPATCH: `advance slots` routes the Bragza type to `update andor bragza`.
+        if not h["dispatch_calls"](director.ANDOR_BRAGZA_TYPE, director.UPDATE_ANDOR_BRAGZA_PROCCODE):
+            failures.add("boss03-dispatch-bragza")
+
+        return failures
+
+    # Roadmap closure evidence for leaf `andor.defenses` (BOSS-02): once the Andor Genesis composite is
+    # standing, the four gun ports fire player-aimed bullets on the boss fire-mask cadence, the nine armor
+    # plates are indestructible, and each port is individually bombable for 1,000 — the boss's active
+    # defenses (no destruction path; that is BOSS-03). The live proof (a summoned boss fires under the
+    # mask and armor shrugs off a bomb) is the harness `andor-ports-fire-under-mask` / `andor-armor-is-immune`.
+    # roadmap-evidence: BOSS-02 success  (test_andor_defenses_authoring_present — port fire gated on is-port AND
+    # active; mask-47 bit-exact reload; armor seeded immune; ports seeded with score + fire mask + timer)
+    # roadmap-evidence: BOSS-02 failure  (test_andor_defenses_negative_fixtures — each contract clause corrupted bites)
+    def test_andor_defenses_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._boss02_failures(project))
+
+    def test_andor_defenses_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._boss02_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _body(p, proccode):
+            return _proc_body_blocks(_stage(p), proccode)
+
+        def _lhs_list(blk, c, list_id):
+            lhs = blk.get(c["inputs"].get("OPERAND1", [None, None])[1]) if isinstance(c["inputs"].get("OPERAND1"), list) else None
+            return lhs is not None and lhs["opcode"] == "data_itemoflist" and lhs["fields"]["LIST"][1] == list_id
+
+        def break_port_fire(p):
+            # Neutralise the fire-gate call so no port-fire branch is found.
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.FIRE_GATE_PROCCODE:
+                    b["mutation"]["proccode"] = "not the fire gate"
+                    return
+
+        def break_fire_active_gate(p):
+            # Corrupt the `slot state == SLOT_ACTIVE` operand of the port-fire AND (leaving is-port + the call
+            # intact) so the branch is found but no longer active-gated.
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _lhs_list(blk, b, director.SLOT_STATE_ID)
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.SLOT_ACTIVE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                    return
+
+        def break_mask47_guard(p):
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.FIRE_GATE_PROCCODE):
+                if b["opcode"] == "control_if":
+                    c = blk.get(b["inputs"].get("CONDITION", [None, None])[1])
+                    if c is not None and c["opcode"] == "operator_equals" and _lhs_list(blk, c, director.SLOT_FIRE_MASK_ID) and _num_operand(c["inputs"].get("OPERAND2")) == director.ANDOR_FIRE_MASK:
+                        c["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                        return
+
+        def break_mask47_reload(p):
+            # Break the `mod 16` term of the mask-47 reload (the guard itself stays intact).
+            for b in _body(p, director.FIRE_GATE_PROCCODE):
+                if b["opcode"] == "operator_mod" and _num_operand(b["inputs"].get("NUM2")) == 16:
+                    b["inputs"]["NUM2"] = [1, [4, "99"]]
+                    return
+
+        def break_armor_immune(p):
+            base = director.GROUND_SLOTS[0]
+            for b in _body(p, director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == base + 1
+                    and _num_operand(b["inputs"].get("ITEM")) == director.ANDOR_ARMOR_IMMUNE
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, str(director.SLOT_ACTIVE)]]
+                    return
+
+        def break_port_score(p):
+            base = director.GROUND_SLOTS[0]
+            for b in _body(p, director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == base + 10
+                    and _num_operand(b["inputs"].get("ITEM")) == director.ANDOR_PORT_PTS
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_port_fire_seed(p):
+            base = director.GROUND_SLOTS[0]
+            for b in _body(p, director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_FIRE_TIMER_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == base + 10
+                    and _num_operand(b["inputs"].get("ITEM")) == director.ANDOR_PORT_FIRE_TIMER_INIT
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        cases = [
+            ("boss02-port-fire", break_port_fire),
+            ("boss02-fire-active-gated", break_fire_active_gate),
+            ("boss02-mask47-guard", break_mask47_guard),
+            ("boss02-mask47-reload", break_mask47_reload),
+            ("boss02-armor-immune", break_armor_immune),
+            ("boss02-port-score", break_port_score),
+            ("boss02-port-fire-seed", break_port_fire_seed),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._boss02_failures(project), label)
+
+    # Roadmap closure evidence for leaf `andor.core-destruction` (BOSS-03): bombing the core (and only the
+    # core) ends the boss — it awards 4,000 plus the documented shell-slot leftover value, bursts in place
+    # and converts into the up-flying indestructible Bragza, cascades the surviving ports without scoring
+    # them, and runs a distinct flash-and-scroll-off departure that tears the composite down but spares the
+    # Bragza. The live proof is the harness `andor-core-bomb-scores-and-destroys` / `andor-core-cascades-ports`
+    # / `andor-bragza-flies-up` / `andor-shell-slot-leftover-award`.
+    # roadmap-evidence: BOSS-03 success  (test_andor_core_destruction_authoring_present — core seeded to score,
+    # master pts left stale + tracked onto the anchor, core-hit cascade scores nothing + fires once, core
+    # converts to immune Bragza that flies up + culls, teardown spares the Bragza slot, dispatch routes Bragza)
+    # roadmap-evidence: BOSS-03 failure  (test_andor_core_destruction_negative_fixtures — each contract clause corrupted bites)
+    def test_andor_core_destruction_authoring_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._boss03_failures(project))
+
+    def test_andor_core_destruction_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._boss03_failures(base))
+
+        def _stage(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def _body(p, proccode):
+            return _proc_body_blocks(_stage(p), proccode)
+
+        def _bid(blk, b):
+            return next(k for k, v in blk.items() if v is b)
+
+        def _lhs_item(blk, c, list_id, index=None):
+            o1 = c["inputs"].get("OPERAND1")
+            lhs = blk.get(o1[1]) if isinstance(o1, list) and isinstance(o1[1], str) else None
+            if lhs is None or lhs["opcode"] != "data_itemoflist" or lhs["fields"]["LIST"][1] != list_id:
+                return False
+            return index is None or _num_operand(lhs["inputs"].get("INDEX")) == index
+
+        BASE = director.GROUND_SLOTS[0]
+        CORE = BASE + 14
+        MASTER = BASE + 15
+
+        def break_core_score(p):
+            for b in _body(p, director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_PTS_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == CORE
+                    and _num_operand(b["inputs"].get("ITEM")) == director.ANDOR_CORE_PTS
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_master_pts_stale(p):
+            # Graft a `slot pts` seed onto the master slot — the shell bug depends on it staying UN-seeded.
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.ADVANCE_AREA_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == MASTER
+                ):
+                    bid = _bid(blk, b)
+                    old_next = b.get("next")
+                    gid = "graft-master-pts"
+                    blk[gid] = {
+                        "opcode": "data_replaceitemoflist",
+                        "parent": bid,
+                        "next": old_next,
+                        "inputs": {"INDEX": [1, [4, str(MASTER)]], "ITEM": [1, [4, "9"]]},
+                        "fields": {"LIST": ["slot pts", director.SLOT_PTS_ID]},
+                        "shadow": False,
+                        "topLevel": False,
+                    }
+                    b["next"] = gid
+                    if old_next:
+                        blk[old_next]["parent"] = gid
+                    return
+
+        def break_shell_track(p):
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID:
+                    b["inputs"]["ITEM"] = [1, [4, "0"]]
+                    return
+
+        def break_core_hit_check(p):
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if b["opcode"] == "control_if":
+                    c = blk.get(b["inputs"].get("CONDITION", [None, None])[1])
+                    if c is not None and c["opcode"] == "operator_equals" and _lhs_item(blk, c, director.SLOT_STATE_ID, CORE) and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT:
+                        c["inputs"]["OPERAND2"] = [1, [4, "99"]]
+                        return
+
+        def break_fires_once(p):
+            # Drop the destroyed-timer latch value (keeping the core-hit branch intact).
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"]["VARIABLE"][1] == director.ANDOR_DESTROYED_TIMER_ID
+                    and _num_operand(b["inputs"].get("VALUE")) == 1
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, "0"]]
+                    return
+
+        def break_cascade(p):
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == BASE + 11
+                    and _num_operand(b["inputs"].get("ITEM")) == director.SLOT_HIT
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "99"]]
+                    return
+
+        def break_cascade_no_score(p):
+            # Graft a proc call into the cascade branch — a cascaded port must route through NO scoring proc.
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if b["opcode"] == "control_if":
+                    c = blk.get(b["inputs"].get("CONDITION", [None, None])[1])
+                    if c is not None and c["opcode"] == "operator_equals" and _lhs_item(blk, c, director.SLOT_STATE_ID, CORE) and _num_operand(c["inputs"].get("OPERAND2")) == director.SLOT_HIT:
+                        bid = _bid(blk, b)
+                        sub = b["inputs"].get("SUBSTACK")
+                        head = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
+                        gid = "graft-cascade-score"
+                        blk[gid] = {
+                            "opcode": "procedures_call",
+                            "parent": bid,
+                            "next": head,
+                            "inputs": {},
+                            "fields": {},
+                            "shadow": False,
+                            "topLevel": False,
+                            "mutation": {"tagName": "mutation", "children": [], "proccode": "score", "argumentids": "[]", "warp": "false"},
+                        }
+                        b["inputs"]["SUBSTACK"] = [2, gid]
+                        if head:
+                            blk[head]["parent"] = gid
+                        return
+
+        def break_convert_core(p):
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if b["opcode"] == "control_if_else":
+                    c = blk.get(b["inputs"].get("CONDITION", [None, None])[1])
+                    if c is not None and c["opcode"] == "operator_equals" and _lhs_item(blk, c, director.SLOT_TYPE_ID) and _num_operand(c["inputs"].get("OPERAND2")) == director.ANDOR_CORE_TYPE:
+                        sub = b["inputs"].get("SUBSTACK")
+                        start = sub[1] if isinstance(sub, list) and isinstance(sub[1], str) else None
+                        seen, frontier = set(), [start]
+                        while frontier:
+                            x = frontier.pop()
+                            if not x or x in seen or x not in blk:
+                                continue
+                            seen.add(x)
+                            bb = blk[x]
+                            if bb["opcode"] == "data_replaceitemoflist" and bb["fields"]["LIST"][1] == director.SLOT_TYPE_ID and _num_operand(bb["inputs"].get("ITEM")) == director.ANDOR_BRAGZA_TYPE:
+                                bb["inputs"]["ITEM"] = [1, [4, "99"]]
+                                return
+                            frontier.append(bb.get("next"))
+                            for v in bb.get("inputs", {}).values():
+                                if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                                    frontier.append(v[1])
+
+        def _item_ref(blk, b):
+            it = b["inputs"].get("ITEM")
+            rid = it[1] if isinstance(it, list) and len(it) >= 2 and isinstance(it[1], str) else None
+            return blk.get(rid) if rid else None
+
+        def break_hit_timer(p):
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_PART_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                    it = _item_ref(blk, b)
+                    if it is not None and it["opcode"] == "operator_add":
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+                        return
+
+        def break_teardown_spares_bragza(p):
+            # Corrupt the IMMEDIATE `!= ANDOR_BRAGZA_TYPE` guard wrapping a master core-slot type-free.
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_MASTER_PROCCODE):
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                    and _num_operand(b["inputs"].get("INDEX")) == CORE
+                    and _num_operand(b["inputs"].get("ITEM")) == 0
+                ):
+                    parent = blk.get(b.get("parent"))
+                    if parent is None or parent["opcode"] not in ("control_if", "control_if_else"):
+                        continue
+                    c = blk.get(parent["inputs"].get("CONDITION", [None, None])[1])
+                    if c is None or c["opcode"] != "operator_not":
+                        continue
+                    inner = blk.get(c["inputs"].get("OPERAND", [None, None])[1])
+                    if inner is not None and inner["opcode"] == "operator_equals" and _num_operand(inner["inputs"].get("OPERAND2")) == director.ANDOR_BRAGZA_TYPE:
+                        inner["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                        return
+
+        def break_bragza_flies_up(p):
+            blk = _stage(p)["blocks"]
+            for b in _body(p, director.UPDATE_ANDOR_BRAGZA_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID:
+                    it = _item_ref(blk, b)
+                    if it is not None and it["opcode"] == "operator_subtract":
+                        it["inputs"]["NUM2"] = [1, [4, "1"]]
+                        return
+
+        def break_dispatch_bragza(p):
+            for b in _body(p, director.ADVANCE_SLOTS_PROCCODE):
+                if (
+                    b["opcode"] == "operator_equals"
+                    and _is_walk_type(b["inputs"].get("OPERAND1"))
+                    and _num_operand(b["inputs"].get("OPERAND2")) == director.ANDOR_BRAGZA_TYPE
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, "999"]]
+                    return
+
+        cases = [
+            ("boss03-core-score", break_core_score),
+            ("boss03-master-pts-stale", break_master_pts_stale),
+            ("boss03-shell-track", break_shell_track),
+            ("boss03-core-hit-check", break_core_hit_check),
+            ("boss03-fires-once", break_fires_once),
+            ("boss03-cascade", break_cascade),
+            ("boss03-cascade-no-score", break_cascade_no_score),
+            ("boss03-convert-core", break_convert_core),
+            ("boss03-hit-timer", break_hit_timer),
+            ("boss03-teardown-spares-bragza", break_teardown_spares_bragza),
+            ("boss03-bragza-flies-up", break_bragza_flies_up),
+            ("boss03-dispatch-bragza", break_dispatch_bragza),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._boss03_failures(project), label)
+
     # Roadmap closure evidence for leaf `area.ground-dispatch` (AREA-02): the terrain-locked ground
     # substrate — `advance ground` scrolls every ground object DOWN the field by the fixed terrain step and
     # culls it off the bottom; the ordered walk routes each built ground type to its wrapper; and
