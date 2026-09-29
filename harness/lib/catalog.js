@@ -23,7 +23,7 @@ import {
   constants,
   variable,
 } from './harness.js';
-import { reachPlaying, stateOf } from './build.js';
+import { reachPlaying, stateOf, insertCoin } from './build.js';
 import * as mutate from './mutate.js';
 
 // The committed RNG fixture (the shared LFSR's byte stream from each seed) — the model the live
@@ -247,7 +247,9 @@ export const SCENARIOS = [
       step(vm, 3);
       const gatedHeld = state(vm) === 'title' && epoch(vm) === epochBefore;
       // Hold start and stop at the first playing tick (a tap overshoots — see reachPlaying); keep the
-      // craft alive so it does not die back to the title before we observe playing.
+      // craft alive so it does not die back to the title before we observe playing. CAB-02 (slice 17):
+      // the start now costs a credit, so bank one first or the held start is a silent no-op.
+      insertCoin(vm, 1);
       writeVar(vm, 'invuln', 1);
       keyDown(vm, ' ');
       let reached = false;
@@ -265,6 +267,66 @@ export const SCENARIOS = [
     },
     // Remove title -> ready so start can never reach playing → assertion fails.
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'title -> ready'),
+  },
+  {
+    // CAB-02 (cabinet.attract-credits, slice 17), coin side: the always-on coin poll adds one credit per
+    // coin on the rising edge, and the bank caps at 99 (arcade `cmp.b #0x99` BCD ceiling; sub 171-206).
+    key: 'coins-bank-credits',
+    behavior: 'Each coin banks one credit; the credit bank caps at 99',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      const boot = readVar(vm, 'cabinet-credits'); // 0 at power-on
+      insertCoin(vm, 2);
+      const afterTwo = readVar(vm, 'cabinet-credits'); // two coins -> two credits
+      // Seed one below the cap and insert two: one lands, the second is rejected at the ceiling.
+      writeVar(vm, 'cabinet-credits', 98);
+      insertCoin(vm, 2);
+      const capped = readVar(vm, 'cabinet-credits'); // 99, not 100
+      return { boot, afterTwo, capped };
+    },
+    assert(obs) {
+      assert.equal(obs.boot, 0, 'no credits at power-on');
+      assert.equal(obs.afterTwo, 2, 'two coins bank two credits');
+      assert.equal(obs.capped, 99, 'the credit bank caps at 99');
+    },
+    // Sever the coin poll body: coins can no longer bank → afterTwo is 0, the assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'cabinet coin poll'),
+  },
+  {
+    // CAB-02, start side: a 1-player start is credit-gated — ignored at 0 credits, and when a credit is
+    // banked it spends exactly one and begins the game (arcade `cmp.b #1,(num_credits) ; jcs` then `sbcd`).
+    key: 'one-player-start-costs-a-credit',
+    behavior: 'A 1P start is ignored without a credit, and spends exactly one when it has it',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      // A start press with an empty bank is ignored: the machine stays at the title.
+      tapKey(vm, ' ');
+      step(vm, 3);
+      const noCreditState = state(vm); // 'title'
+      // Bank one credit, then start: it reaches playing and the bank drops back to 0.
+      insertCoin(vm, 1);
+      writeVar(vm, 'invuln', 1);
+      tapKey(vm, ' ');
+      let started = false;
+      for (let i = 0; i < 120 && !started; i += 1) {
+        step(vm, 1);
+        if (state(vm) === 'playing') started = true;
+      }
+      const spent = readVar(vm, 'cabinet-credits'); // 0 after spending the one credit
+      return { noCreditState, started, spent };
+    },
+    assert(obs) {
+      assert.equal(obs.noCreditState, 'title', 'a start with no credit is ignored');
+      assert.equal(obs.started, true, 'a start with a credit reaches playing');
+      assert.equal(obs.spent, 0, 'a 1P start spends exactly one credit');
+    },
+    // Freeze every `change credits` (the +1 coin and the -1 start) → the banked coin never lands, the
+    // credited start never fires, `started` is false: the assertion fails.
+    negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'credits'),
   },
   {
     key: 'death-respawn',

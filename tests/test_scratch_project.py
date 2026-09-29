@@ -1041,6 +1041,11 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             director.generate()
 
+    # roadmap-evidence: CAB-02 success  (credit/coin classification below pins `credits` as economy state
+    #   and `coin key held` as machinery; harness coins-bank-credits + one-player-start-costs-a-credit prove
+    #   the coin bank, the 99 cap, and the credit-gated 1P start spend)
+    # roadmap-evidence: CAB-02 failure  (harness coins-bank-credits negative neutralizes the coin poll;
+    #   one-player-start-costs-a-credit negative freezes the credit change so neither coin nor start lands)
     def test_game_director_has_one_stage_owned_transition_path(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         stage = next(target for target in project["targets"] if target["isStage"])
@@ -1121,6 +1126,10 @@ class ScratchProjectTests(unittest.TestCase):
             # Stage state (both default 0; the harness never presses P, so the walk runs every tick).
             "debug paused",
             "debug pause key held",
+            # CAB-02 (slice 17): the coin key's previous-tick sample for rising-edge (tap) coin detection —
+            # a transient input register like the debug-key held samples, not durable Stage state (the
+            # credit bank it feeds is economy state, below). Written by the always-on coin poll.
+            "coin key held",
             # WPN-04 (slice 9): the in-flight bomb's accelerating scroll-axis velocity — a transient
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
@@ -1180,6 +1189,10 @@ class ScratchProjectTests(unittest.TestCase):
             # `dswb` bit 1. Stage-owned (its power-on default is the placeholder DIP position; the harness flips
             # it to exercise both award arms), read by the Stage `update bonus flag` proc, never sprite-written.
             "flag awards craft",
+            # CAB-02 (slice 17): the credit bank (0..99). Stage-written by the always-on coin poll (+1 per
+            # coin, capped) and by the credit-gated start (-1); read by the HUD credit display only, never
+            # sprite-written. Economy state like `score`/`craft`; cleared only at power-on, not on any reset.
+            "credits",
         }
         # AREA-01/AREA-02 area state — durable Stage-owned position/schedule authority read
         # across ticks and across the death/reset boundary. It is NOT machinery (the
@@ -1356,6 +1369,9 @@ class ScratchProjectTests(unittest.TestCase):
             director.RESOLVE_HIT_PROCCODE,
             director.SCORE_PROCCODE,
             director.CHECK_BONUS_PROCCODE,
+            # CAB-02 (slice 17): the always-on coin poll, called every tick from the Stage's green-flag
+            # coin loop (not the walk). It banks credits and reads the coin key; it writes no game state.
+            director.COIN_POLL_PROCCODE,
             # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
             # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
             # shared RNG step the spawn draw now consumes (its first live consumer).
@@ -17152,10 +17168,10 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(
             set(), sensed & arrow_keys, "the Stage walk must not steer the bomb sight by arrow keys"
         )
-        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, the debug-ground 'g' poll, and the
-        # debug-pause 'p' poll are expected Stage key reads ('t'/'g'/'p' are temporary dev tools tracked
-        # for removal, #119).
-        self.assertLessEqual(sensed, {"b", "t", "g", "p"}, sensed)
+        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, the debug-ground 'g' poll, the
+        # debug-pause 'p' poll, and the CAB-02 coin 'c' poll are expected Stage key reads ('t'/'g'/'p'
+        # are temporary dev tools tracked for removal, #119; 'c' is the permanent coin key — slice 17).
+        self.assertLessEqual(sensed, {"b", "t", "g", "p", "c"}, sensed)
 
         # Negative: re-add an arrow-key branch (an arrow-key poll on the Stage) → the guard fires.
         corrupt = copy.deepcopy(project)
@@ -17504,7 +17520,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "bac2e557b8e7262182f6ab6fe4f3ed176395975f0303401a5d9e9fe17f4a4e97",
+            "97f79d75d450f236a0038eeef9f9d1f37923662cd349139e9a56177649c36e5d",
             build_hash,
         )
 

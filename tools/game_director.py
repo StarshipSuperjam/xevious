@@ -976,6 +976,20 @@ DEBUG_PAUSE_PROCCODE = "debug pause toggle"
 DEBUG_PAUSE_KEY = "p"  # P = pause/resume (toggle) for the playtest
 PAUSED_ID = "debug-paused"  # 1 while frozen, 0 while running; the walk body is gated on == 0
 PAUSE_KEY_HELD_ID = "debug-pause-key-held"  # previous-tick P sample, for a rising-edge (tap) toggle
+# CAB-02 (cabinet.attract-credits, slice 17): coins and the one-player credit gate. There is no coin-box
+# hardware in this port, so a keyboard key inserts a coin (a port necessity, like the debug keys stand in
+# for hardware the port lacks) — an amendment to the LOCKED control mapping (see core-game-systems.md).
+# The arcade reads coins + start together in a NAMCO-chip replacement routine
+# (`src/xevious_sub.68k` `sub_fn_4__handle_credits_and_start` 171-206); the port splits that into an
+# always-on C-key coin poll (here) and the credit-gated Space start (the title->ready hat). The arcade
+# credit count is stored BCD and capped at 0x99 (`cmp.b #0x99`), which displays as 99, so the port's
+# plain-integer credit caps at 99 decimal; one coin adds one credit (`abcd`), a 1P start needs >=1 and
+# deducts 1 (`cmp.b #1 ; jcs` then `sbcd`).
+COIN_POLL_PROCCODE = "cabinet coin poll"
+COIN_KEY = "c"  # C = insert coin (port necessity: no coin-box hardware)
+CREDIT_CAP = 99  # decimal display of the arcade's BCD 0x99 credit ceiling
+CREDITS_ID = "cabinet-credits"  # 0..99 credit bank; +1 per coin, -1 per 1P start; cleared only at power-on
+COIN_KEY_HELD_ID = "cabinet-coin-key-held"  # previous-tick C sample, for a rising-edge (tap) coin insert
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -8198,6 +8212,48 @@ def install_debug_pause(blocks: Blocks) -> None:
     blocks.chain(definition, [gate])
 
 
+def install_coin_poll(blocks: Blocks) -> None:
+    # CAB-02: the coin poll — a warp custom block called every tick by the Stage's always-on coin loop (a
+    # green-flag `forever`, unlike the walk which only runs while `playing`; coins must register in every
+    # state — title, attract-scores, and the demo). Mirrors the P-key debug toggle's rising-edge pattern:
+    # each tick sample C; on the RISING edge only (`coin key held` == 0 last tick) add one credit, then
+    # remember C is down so holding it does not add a credit every tick. Faithful to
+    # `sub_fn_4__handle_credits_and_start` (`src/xevious_sub.68k` 171-206): the credit is added only while
+    # below the cap (arcade `cmp.b #0x99 ; jeq` skips both the add and the coin sound at the ceiling).
+    # ATTRACT NOTE (slice 17): the coin sound and the coin-during-attract abort transition are added in a
+    # later commit (the abort needs the attract state machine); C1 ships the credit bank + cap only.
+    definition = _install_warp_proc(blocks, COIN_POLL_PROCCODE)
+    gate = blocks.add("control_if_else")
+    pressed = blocks.key_pressed(gate, COIN_KEY)
+    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
+
+    # C held down this tick: on the RISING edge only (held == 0 last tick), and only below the cap, add one
+    # credit; then remember C is down so a held key does not add a credit every tick.
+    rising = blocks.if_reporter(
+        blocks.op_eq(variable("coin key held", COIN_KEY_HELD_ID), number(0)),
+        [
+            blocks.if_reporter(
+                blocks.op_lt(variable("credits", CREDITS_ID), number(CREDIT_CAP)),
+                [
+                    blocks.change_var("credits", CREDITS_ID, 1),
+                    # COIN SOUND goes here once the operator settles the provenance (see slice-17 plan).
+                ],
+            )
+        ],
+    )
+    blocks.substack(
+        gate,
+        [rising, blocks.set_var("coin key held", COIN_KEY_HELD_ID, number(1))],
+    )
+    # C up: clear the held sample so the next press is a fresh rising edge.
+    blocks.substack(
+        gate,
+        [blocks.set_var("coin key held", COIN_KEY_HELD_ID, number(0))],
+        name="SUBSTACK2",
+    )
+    blocks.chain(definition, [gate])
+
+
 def _advance_area_number(blocks: Blocks) -> str:
     # AREA-01 area increment with the 16 -> 7 loop (completing area 16 continues at area 7).
     # One source, called from both the completion branch and the near-end checkpoint. Returns
@@ -9505,6 +9561,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_resolve_hit(blocks)
     install_alloc_bullet_slot(blocks)
     install_emit_radiating_bullet(blocks)
+    install_coin_poll(blocks)  # CAB-02 (cabinet.attract-credits, slice 17)
 
     flag = blocks.flag()
     blocks.chain(
@@ -9513,12 +9570,47 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var("state epoch", EPOCH_ID, number(0)),
             blocks.set_var("death outcome", OUTCOME_ID, text("")),
             blocks.set_var("game state", STATE_ID, text("boot")),
+            # CAB-02: the credit bank and the coin key's rising-edge sample are cleared only at power-on
+            # (this green flag). No director reset scope touches `credits`, so it persists across
+            # game-over/new-game exactly like a real cabinet — only turning the machine off zeroes it.
+            blocks.set_var("credits", CREDITS_ID, number(0)),
+            blocks.set_var("coin key held", COIN_KEY_HELD_ID, number(0)),
             blocks.call_transition("title", "cold-start"),
         ],
     )
 
+    # CAB-02: the always-on coin loop. Coins must register in EVERY state, but the walk only runs while
+    # `playing`, so the coin poll gets its own green-flag `forever` on the Stage. This is the project's
+    # only `forever` — safe here precisely because the Stage never runs `stop_others`: `common_stop`
+    # (which installs `stop_others`) is called only inside SPRITE builders, and `stop_others` is
+    # sprite-local, so no sprite's director-stop can kill this loop. If it ever were killed it would not
+    # restart (green-flag-triggered), so keep the Stage free of any script-stop handler.
+    coin_flag = blocks.flag()
+    coin_loop = blocks.add("control_forever")
+    blocks.substack(coin_loop, [blocks.call_proc(COIN_POLL_PROCCODE, warp=True)])
+    blocks.chain(coin_flag, [coin_loop])
+
+    # CAB-02: a 1-player start now costs a credit. The Space start hat fires only at the title, and only
+    # when at least one credit is banked; it deducts one and begins the game. A press at 0 credits is
+    # silently ignored (arcade `cmp.b #1,(num_credits) ; jcs` — start below cost returns).
     space = blocks.key("space")
-    blocks.chain(space, [blocks.if_state("title", [blocks.call_transition("ready", "new-game")])])
+    blocks.chain(
+        space,
+        [
+            blocks.if_state(
+                "title",
+                [
+                    blocks.if_reporter(
+                        blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+                        [
+                            blocks.change_var("credits", CREDITS_ID, -1),
+                            blocks.call_transition("ready", "new-game"),
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
 
     # AUDIO: sound-only receiver for the shot×Bacura bounce. The bounce runs on a blaster clone
     # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
@@ -13143,6 +13235,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # DEBUG (tracked for removal, #119): the P-key freeze/resume toggle and its rising-edge sample.
         PAUSED_ID,
         PAUSE_KEY_HELD_ID,
+        # CAB-02 (cabinet.attract-credits, slice 17): the credit bank (economy) and the coin key's
+        # previous-tick sample (machinery). Classified in the partition test to match.
+        CREDITS_ID,
+        COIN_KEY_HELD_ID,
         # AIR-11: the live Bacura spawn pump's state (main_fn_5 inc counter + main_fn_3 init loop).
         NUM_BACURA_ID,
         BACURA_INC_CNT_ID,
@@ -13293,6 +13389,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # P sample for rising-edge detection; both start at 0 so the walk runs and the harness is unaffected.
         PAUSED_ID: ["debug paused", 0],
         PAUSE_KEY_HELD_ID: ["debug pause key held", 0],
+        # CAB-02 (slice 17): the credit bank (0..99, `credits`) and the coin key's previous-tick sample
+        # (`coin key held`), both cleared only at power-on (the Stage green flag). See install_coin_poll.
+        CREDITS_ID: ["credits", 0],
+        COIN_KEY_HELD_ID: ["coin key held", 0],
         # AIR-11: Bacura live-spawn pump state (re-topped per area in _enter_area_top).
         NUM_BACURA_ID: ["num bacura", 0],
         BACURA_INC_CNT_ID: ["bacura inc cnt", 0],

@@ -259,6 +259,16 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "cabinet-coin-key-held": {
+      "kind": "variable",
+      "name": "coin key held",
+      "scope": "Stage"
+    },
+    "cabinet-credits": {
+      "kind": "variable",
+      "name": "credits",
+      "scope": "Stage"
+    },
     "debug-ground-index": {
       "kind": "variable",
       "name": "debug ground index",
