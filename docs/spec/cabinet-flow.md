@@ -1,5 +1,5 @@
 ---
-status: draft
+status: locked
 reference_verified_at: 71473685a8c7856c8401c8519276cd97a38d4183
 ---
 
@@ -21,14 +21,21 @@ game's identity.
 ## Behavior
 
 **Attract cycle (CAB-01).** An idle cabinet loops: title → demonstration play → best-five table →
-demonstration play → title … (`attract_mode_jump_tbl` and stage handlers 1211–1350; the demonstration
-stage appears twice per cycle because two table slots share its handler). The title stage runs ~744
-frames (~12.4 s: an initial hold, a sparkle appear/move/disappear sequence, then a flashing-logo phase —
-derived by tracing the stage's frame gating, recorded medium-confidence). The demonstration stage has no
+demonstration play → title …. On boot, when no credit is waiting, the main thread enters attract at the
+title stage (`main_thread_main_loop` 348–357), and each frame dispatches on the current stage — index
+stage − 1 — through the jump table (`attract_mode_main_loop` 359–370, `attract_mode_jump_tbl` 1211); the
+demonstration stage appears twice per cycle because two table slots share its handler. The title stage runs
+~744 frames (~12.4 s: an initial hold, a sparkle appear/move/disappear sequence, then a flashing-logo phase
+— derived by tracing the stage's frame gating, recorded medium-confidence). The demonstration stage has no
 timer: the attract pilot (a random walk drawing from the shared stream, with a 1-in-16 chance of a
 simulated fire press per frame — `gen_rnd_dir` 2156–2165, `gen_rnd_shot` 2351–2354) plays until the
-demonstration craft is destroyed. The best-five stage holds 512 frames (~8.5 s, 1338–1344). No stage
-scores or consumes lives; coin-up resets the attract state completely (377–384, 1292–1294).
+demonstration craft is destroyed. The best-five stage holds 512 frames (~8.5 s, 1338–1344). No stage scores
+or consumes lives: the real-game score, lives, and area are initialized only after the start button is
+pressed on the credited-start path (`coined_up` 398–416), never on attract entry. A mode flag marks which
+mode is live — cleared on attract entry (`main_thread_main_loop` 349), set when a game begins
+(`coined_up` 398) — but in the reference it drives only the 1UP/2UP HUD indicator (`src/xevious_sub.68k`
+`flash_1up_2up` 769–776), not scoring or lives. Coin-up resets the attract state completely
+(`coined_up` 377–388).
 
 **Credits and starts (CAB-02).** Credits cap at 99; each coin adds one with the coin sound. A 1-player
 start costs 1 credit and requires at least 1; a 2-player start costs 2 and requires at least 2

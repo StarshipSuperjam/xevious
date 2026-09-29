@@ -53,7 +53,7 @@ bind now; the delegated detail becomes binding when its document settles.
 | Ground objects | settled | [Ground objects](ground-objects.md) |
 | Secrets | settled | [Secrets](secrets.md) |
 | Andor Genesis | settled | [Andor Genesis](andor-genesis.md) |
-| Cabinet flow | in progress | [Cabinet flow](cabinet-flow.md) |
+| Cabinet flow | settled | [Cabinet flow](cabinet-flow.md) |
 | Audio and presentation | in progress | [Audio and presentation](audio-and-presentation.md) |
 
 The order this work gets built in is the [build order](build-plan.md) (a living document with no stage).

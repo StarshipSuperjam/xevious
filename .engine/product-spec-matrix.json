@@ -177,6 +177,62 @@
       "who": "operator"
     },
     {
+      "criterion": "An idle cabinet cycles title → demo → best five → demo → title without scoring or losing lives",
+      "digest": "sha256:543320920eecb8a4d057b34fef8485f3691bc7f35bf3459f3964c8c88cc375c3",
+      "doc": "docs/spec/cabinet-flow.md",
+      "how_verified": "Watch the built `.sb3` idle through two full cycles",
+      "position": 0,
+      "who": "operator"
+    },
+    {
+      "criterion": "The demonstration plays itself and ends by dying, not by a timer",
+      "digest": "sha256:dc00c4b7979e7cda602467fdc84c7a75cbbbf0431418cbda23e2ddc4e41c9e14",
+      "doc": "docs/spec/cabinet-flow.md",
+      "how_verified": "Watch a demo stage to its end",
+      "position": 1,
+      "who": "operator"
+    },
+    {
+      "criterion": "Credits cap and start costs behave as recorded (1 credit/1P, 2 credits/2P, cap 99)",
+      "digest": "sha256:de9369415997d69205b2c00aa7f4d3ee2507955c2aa3a14cb2ec775a50d13e60",
+      "doc": "docs/spec/cabinet-flow.md",
+      "how_verified": "Play: insert coins, try starts with 0, 1, and 2 credits",
+      "position": 2,
+      "who": "operator"
+    },
+    {
+      "criterion": "Two players alternate on life loss with fully independent state, each resuming at the top of their own area",
+      "digest": "sha256:e688326be0cc358baca8cdfdfb69391eaba2dff058bb133334a5cd21a5a04e3f",
+      "doc": "docs/spec/cabinet-flow.md",
+      "how_verified": "Two-player game: verify score/lives/area separation across several swaps",
+      "position": 3,
+      "who": "operator"
+    },
+    {
+      "criterion": "A qualifying score enters ten-character initials that auto-complete on the tenth character or timeout",
+      "digest": "sha256:90a3972fe5acad73a672d702ef84e7e435cc2d4c6c3dc03503d2ed7495d38bfc",
+      "doc": "docs/spec/cabinet-flow.md",
+      "how_verified": "Play: qualify, enter initials both ways",
+      "position": 4,
+      "who": "operator"
+    },
+    {
+      "criterion": "Attract stage durations and the credit rules match this document in the build's data",
+      "digest": "sha256:9b37cbacbe7d2103dfc88cb0f4b2aeb60e89131906c22fbc3c1ee024b1245e2d",
+      "doc": "docs/spec/cabinet-flow.md",
+      "how_verified": "Data/structural fixture over the built project's director states and constants",
+      "position": 5,
+      "who": "engine"
+    },
+    {
+      "criterion": "The attract pilot draws from the shared random stream (seeded attract runs repeat)",
+      "digest": "sha256:98a901b5c546e25fb980c0d027a690fcd0e6c080b8af48eff57f6fe082b712b6",
+      "doc": "docs/spec/cabinet-flow.md",
+      "how_verified": "Seeded fixture: two attract runs from one seed produce identical demonstrations",
+      "position": 6,
+      "who": "engine"
+    },
+    {
       "criterion": "One state machine owns all transitions; every edge the build implements is on the recorded list (cabinet edges gate their own slices), and no state write exists outside the transition path",
       "digest": "sha256:4436377e29d32137dfc10a11a616c146a6c24a503cb58f66e159a23b088a489d",
       "doc": "docs/spec/core-game-systems.md",
