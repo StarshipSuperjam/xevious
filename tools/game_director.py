@@ -8928,6 +8928,19 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         # its destructible node at N+1 (handle_20_Garu_Barra stamps a5 and a5+_OBJSIZE).
         return blocks.op_add(number(GROUND_SLOTS[0] + 1), ground_slot_at_cursor())
 
+    def andor_boss_present() -> str:
+        # DEBUG-summon guard (fresh reporter per call — single-parent rule). True while the Andor
+        # Genesis is on the field: its invisible master occupies Scratch slot GROUND_SLOTS[0] +
+        # len(ANDOR_GENESIS_DATA) for the boss's WHOLE lifecycle (armed by the seed, cleared only by the
+        # master's teardown). Used to keep schedule ground stamps off the boss band across a debug summon
+        # even after G is released — see the add_ground/add_domogram gates below.
+        return blocks.op_eq(
+            blocks.list_item(
+                "slot type", SLOT_TYPE_ID, number(GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA))
+            ),
+            number(ANDOR_MASTER_TYPE),
+        )
+
     end = blocks.list_item(
         "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
     )
@@ -9125,10 +9138,20 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # built family at a time, isolated from normal play. The cursor still advances at the loop's end regardless,
     # so no schedule record is skipped or replayed; only the stamp is withheld while G is held. When G is not
     # held this is exactly the original condition, so normal play is untouched.
+    # BOSS-01/02/03 (#94/#95/#96): the stamp is ALSO withheld while a debug-summoned Andor Genesis is present.
+    # The G-held gate alone protected the boss band only while G was down, but the boss DEPARTS after G is
+    # released (its debug dismiss fires on a fresh G press, then the master retreats over the following ticks
+    # with G up); the resuming schedule ground stamps would then land in the boss's own slots and tear the
+    # retreating composite apart plate by plate. Keying the suppression on the master's presence keeps the band
+    # protected across the whole summon (descend/hold/retreat/teardown). Real play is untouched: in areas
+    # 4/9/14 every add_ground_object record fires ABOVE andor_genesis_start and has scrolled off before the boss
+    # arms, so no schedule ground stamp is ever live while the master is present — this is a no-op there.
     add_ground_branch = blocks.if_reporter(
         blocks.op_and(
             blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+            blocks.op_not(
+                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
+            ),
         ),
         [
             blocks.if_reporter(is_single_slot_ground, spawn_ground),
@@ -9149,13 +9172,18 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # always carries type 0x2E, so this never changes normal play, but it keeps the Domogram spawn keyed off
     # `area-schedule-ground-type` exactly like the static/Grobda/Garu/Boza branches — so a test (or a debug
     # aid) that zeroes that column to isolate a scenario suppresses the Domogram uniformly with the rest.
+    # The Domogram stamp is withheld under the same two conditions as add_ground_object above: while G owns the
+    # band, and while a debug-summoned Andor master is present (so a retreating boss is not cannibalised by a
+    # resuming Domogram record after G is released). No-op in real play for the same reason.
     add_domogram_branch = blocks.if_reporter(
         blocks.op_and(
             blocks.op_and(
                 blocks.op_eq(handler_at_cursor(), text(ADD_DOMOGRAM_HANDLER)),
                 blocks.op_eq(ground_type_at_cursor(), number(DOMOGRAM_TYPE)),
             ),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+            blocks.op_not(
+                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
+            ),
         ),
         spawn_domogram,
     )

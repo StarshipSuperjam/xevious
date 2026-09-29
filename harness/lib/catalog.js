@@ -6294,6 +6294,104 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor master'),
   },
   {
+    // BOSS-02/03 debug-summon band protection (operator playtest fix, 2026-09-28: "it retreated in pieces").
+    // A debug-G-summoned Andor Genesis drops into whatever area is live, whose schedule may still have pending
+    // add_ground_object / add_domogram records. The original suppression withheld those stamps only while the G
+    // key was HELD -- but the boss DEPARTS after G is released (its dismiss is a fresh G press, then the master
+    // retreats over the following G-up ticks), so the resuming schedule stamps landed in the boss's own ground
+    // slots (Scratch 2..16) and overwrote the composite one plate at a time as it retreated. The fix ALSO
+    // withholds every schedule ground stamp while the invisible master occupies its slot (andor_boss_present),
+    // for the boss's whole lifecycle -- hold through retreat through teardown. Real play is untouched: in areas
+    // 4/9/14 every add_ground_object record fires above andor_genesis_start and has scrolled off before the boss
+    // arms, so no schedule ground stamp is ever live while the master is present. Driven LIVE (real step() runs
+    // _consume_schedule): with the boss present the area-1 schedule scrolls a stream of ground records past the
+    // band and NONE lands in it; without the guard (negative) the band is cannibalized from the fourth step on.
+    key: 'andor-debug-summon-band-not-cannibalized-by-schedule',
+    behavior:
+      'While a debug-summoned Andor Genesis master occupies the band, the area schedule\'s own ground stamps (add_ground_object / add_domogram) are withheld, so across the boss holding AND retreating not one of its 15 ground slots is ever overwritten by a foreign ground type -- the composite stays whole through the hold and then tears down cleanly (every part freed to 0, never left as a stray schedule stamp)',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = slotPutter(vm);
+      clearGroundBand(vm);
+      // Arm the full 15-part composite held on-field (the debug summon's armed state); master present at slot 16.
+      for (let n = 1; n <= 15; n += 1) {
+        const type = ANDOR_PART_TYPES_BY_OBJ[n - 1];
+        put('slot-type', ANDOR.BASE_SLOT + n - 1, type);
+        // armor -> immune sentinel (3), core/ports/master -> active (1), exactly as _ground_seed_andor arms them.
+        put('slot-state', ANDOR.BASE_SLOT + n - 1, type >= 0x41 && type <= 0x49 ? 3 : 1);
+      }
+      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'andor-genesis-end-flag', 0);
+      writeVar(vm, 'andor-destroyed-timer', 0);
+      const andorTypes = new Set([...ANDOR_PART_TYPES_BY_OBJ, 0x4c]); // the 15 part types + Bragza (0x4C)
+      const foreign = [];
+      const snapBand = (phase, k) => {
+        const t = readVar(vm, 'slot-type');
+        for (let n = 1; n <= 15; n += 1) {
+          const v = t[ANDOR.BASE_SLOT + n - 1];
+          if (v !== 0 && !andorTypes.has(v)) foreign.push({ phase, step: k, obj: n, type: v });
+        }
+      };
+      // Keep the passive craft alive + isolate the ground band from the port bullets: clear the enemy-bullet
+      // (JS 39-57) and flying (JS 58-63) bands each frame before stepping.
+      const clearTraffic = () => {
+        const t = readVar(vm, 'slot-type');
+        const s = readVar(vm, 'slot-state');
+        for (let js = 39; js <= 63; js += 1) {
+          t[js] = 0;
+          s[js] = 0;
+        }
+      };
+      // HOLD: the boss holds on-field while the live schedule scrolls its ground records past the band.
+      for (let k = 0; k < 8; k += 1) {
+        clearTraffic();
+        step(vm, 1);
+        snapBand('hold', k);
+      }
+      const heldWhole = ANDOR_PART_TYPES_BY_OBJ.map(
+        (_, n) => readVar(vm, 'slot-type')[ANDOR.BASE_SLOT + n],
+      );
+      const stateAfterHold = readVar(vm, 'game-director-state');
+      // RETREAT: dismiss the boss -> the master retreats and tears the composite down; the band must stay clean.
+      writeVar(vm, 'andor-genesis-end-flag', 1);
+      let tornDown = false;
+      for (let k = 0; k < 30 && !tornDown; k += 1) {
+        clearTraffic();
+        step(vm, 1);
+        snapBand('retreat', k);
+        const t = readVar(vm, 'slot-type');
+        tornDown = ANDOR_PART_TYPES_BY_OBJ.every((_, n) => t[ANDOR.BASE_SLOT + n] === 0);
+      }
+      return { foreign, heldWhole, stateAfterHold, tornDown };
+    },
+    assert(obs) {
+      assert.equal(
+        obs.stateAfterHold,
+        'playing',
+        'the game keeps playing through the hold, so the live schedule genuinely ran under the boss',
+      );
+      assert.deepEqual(
+        obs.heldWhole,
+        ANDOR_PART_TYPES_BY_OBJ,
+        'while the boss is held every one of its 15 slots still holds its own Andor part type -- no schedule stamp cannibalized the band',
+      );
+      assert.deepEqual(
+        obs.foreign,
+        [],
+        'no foreign (non-Andor) ground type ever lands in the boss band across the hold or the retreat',
+      );
+      assert.ok(
+        obs.tornDown,
+        'the composite retreats and tears down cleanly -- every part is freed to 0, none left behind as a stray schedule stamp',
+      );
+    },
+    // Disable the boss-present guard (item(16) of (slot type) == 75 -> == 999) so the schedule's ground stamps
+    // resume into the band while the boss is present -> the band is cannibalized -> the band-clean assertion bites.
+    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot type', 75, 999),
+  },
+  {
     // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).
     key: 'bonus-flag-revealed-by-bomb-scores-once-then-collected-by-flyover-not-a-weapon',
     behavior:
