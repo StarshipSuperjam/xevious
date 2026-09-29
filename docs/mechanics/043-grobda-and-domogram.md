@@ -192,7 +192,22 @@
   of leaving — because the arcade's `check_scroll_offscreen` DOES test the lateral edge (`_Y` MSB, unsigned,
   `≥ 0x1f`) and the Domogram reaches it through the culling `move_object_dX_dY`. The moving seam's cull is now
   source-exact to `check_scroll_offscreen` on all edges (bottom `cur_row ≥ 0x28`, right `cur_col ≥ 0x1f`, left
-  `cur_col < 0`); the Grobda is unaffected because it clears `_dY` and never moves laterally. The exact
+  `cur_col < 0`); the Grobda is unaffected because it clears `_dY` and never moves laterally. **Why the exit
+  still looks abrupt (deferred rendering-scale artifact, not a cull defect — operator decision 2026-09-28
+  "keep source-faithful until we finalize the rendering issues"):** a follow-up playtest report asked whether
+  the Domogram should "drive off the frame" rather than vanish the moment its edge meets the canvas frame. It
+  should not — the arcade removes a self-moving ground object one column past the last on-screen column (the
+  right cull fires at `cur_col ≥ 31`; the lateral render map is `x = col·RENDER_COL_STAGE − RENDER_COL_OFFSET`
+  = `col·15 − 240`, so the object is culled while its cell centre is near the frame, exactly as the source
+  does — a near-edge pop, never a drive fully clear of the visible frame). The *visual* abruptness is the
+  known deferred sprite scale: `GROUND_RENDER_SIZE = 225` draws each ground cell at ~2.25 stage-px per
+  source-px, so the sprite body overhangs its small anamorphic hit cell and, at the cull column, its drawn
+  extent still overlaps the frame — so it appears to pop out of view instead of sliding cleanly off. This is
+  the same deferred rendering-scale overhang the `GROUND_RENDER_SIZE = 225` definition itself flags (a 16-px
+  sprite drawn at ~2.25 stage-px/px) — the shared ground-sprite scale outruns the small anamorphic hit/exit
+  geometry across every ground family, an unresolved canvas-proportion issue the operator has chosen to hold
+  rather than fit the geometry to an unfinished scale; the cull column is kept source-faithful and is not
+  changed to compensate. The exact
   on-screen rhythm of each Grobda variant's reaction
   and the Domogram's patrol-and-fire cadence remain for the operator playtest to confirm, along with the
   operator's pixel-verification of the shared tank tread and Domogram idle crops.
