@@ -14632,25 +14632,95 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("craft-changed-listener")
 
-        # A flashing "1UP" is a loop whose body both shows and hides.
-        def has_flash_loop() -> bool:
+        # Walk a substack chain from `start`, descending into any nested if/if-else/loop
+        # bodies (SUBSTACK/SUBSTACK2), yielding every block node. The 1UP flash's `hide`
+        # now sits inside an `if attract==0`, so the flash checks must see nested nodes.
+        def walk_body(start):
+            cursor = start
+            while cursor:
+                node = blocks[cursor]
+                yield node
+                for key in ("SUBSTACK", "SUBSTACK2"):
+                    inner = node["inputs"].get(key)
+                    if (
+                        isinstance(inner, list)
+                        and len(inner) > 1
+                        and isinstance(inner[1], str)
+                    ):
+                        yield from walk_body(inner[1])
+                cursor = node["next"]
+
+        # A flashing "1UP" is a loop whose body both shows and hides (the hide may be
+        # nested inside a gate — see the attract-gate guard below).
+        def flash_loop_body():
             for b in blocks.values():
                 if b["opcode"] not in ("control_repeat_until", "control_repeat"):
                     continue
                 substack = b["inputs"].get("SUBSTACK")
                 if not substack:
                     continue
-                cursor, opcodes = substack[1], set()
-                while cursor:
-                    node = blocks[cursor]
-                    opcodes.add(node["opcode"])
-                    cursor = node["next"]
-                if {"looks_show", "looks_hide"} <= opcodes:
-                    return True
-            return False
+                body = list(walk_body(substack[1]))
+                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in body}:
+                    return substack[1], body
+            return None
 
-        if not has_flash_loop():
+        if flash_loop_body() is None:
             failures.add("flashing-1up")
+
+        # CAB-01 (slice 17): the blank (hide) half of the 1UP/2UP flash is gated on
+        # `attract == 0`, so the attract demo shows the indicator STEADY and only a real
+        # game flashes it — the arcade `flash_1up_2up` (src/xevious_sub.68k 769-776) ANDs
+        # the flash-timer bit with the real-game flag before writing the blank string. The
+        # `show` half is never gated, so a demo clone is never left hidden.
+        # roadmap-evidence: CAB-01 success
+        def flash_hide_attract_gated() -> bool:
+            found = flash_loop_body()
+            if found is None:
+                return False
+            direct_start, body = found
+            # The hide must sit inside an `if <attract == 0>` gate.
+            gated_hide = False
+            for node in body:
+                if node["opcode"] != "control_if":
+                    continue
+                cond = node["inputs"].get("CONDITION")
+                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
+                    continue
+                eq = blocks.get(cond[1])
+                if eq is None or eq["opcode"] != "operator_equals":
+                    continue
+                operands = (eq["inputs"].get("OPERAND1"), eq["inputs"].get("OPERAND2"))
+                refs_attract = any(refs(o, director.ATTRACT_ID) for o in operands)
+                has_zero = any(
+                    isinstance(o, list)
+                    and len(o) > 1
+                    and isinstance(o[1], list)
+                    and len(o[1]) > 1
+                    and str(o[1][1]) == "0"
+                    for o in operands
+                )
+                inner = node["inputs"].get("SUBSTACK")
+                hides = (
+                    isinstance(inner, list)
+                    and len(inner) > 1
+                    and isinstance(inner[1], str)
+                    and any(n["opcode"] == "looks_hide" for n in walk_body(inner[1]))
+                )
+                if refs_attract and has_zero and hides:
+                    gated_hide = True
+            # `show` must stay UNgated (on the loop's direct chain), so the demo clone is
+            # never left hidden even though its hide never runs.
+            direct_show = False
+            cursor = direct_start
+            while cursor:
+                node = blocks[cursor]
+                if node["opcode"] == "looks_show":
+                    direct_show = True
+                cursor = node["next"]
+            return gated_hide and direct_show
+
+        if not flash_hide_attract_gated():
+            failures.add("flash-1up-attract-gated")
 
         # Regression guard for the "header flashes then vanishes" bug: a clone's keep-alive
         # `repeat until` must LOOP while the HUD is visible and stop only on return to
@@ -14801,25 +14871,63 @@ class ScratchProjectTests(unittest.TestCase):
                         director.MESSAGES["director stop"],
                     ]
 
+        def walk_body(blocks: dict, start):
+            cursor = start
+            while cursor:
+                node = blocks[cursor]
+                yield node
+                for key in ("SUBSTACK", "SUBSTACK2"):
+                    inner = node["inputs"].get(key)
+                    if (
+                        isinstance(inner, list)
+                        and len(inner) > 1
+                        and isinstance(inner[1], str)
+                    ):
+                        yield from walk_body(blocks, inner[1])
+                cursor = node["next"]
+
         def break_flash(p: dict) -> None:
             blocks = hud_blocks(p)
-            for b in blocks.values():
+            for b in list(blocks.values()):
                 if b["opcode"] not in ("control_repeat_until", "control_repeat"):
                     continue
                 substack = b["inputs"].get("SUBSTACK")
                 if not substack:
                     continue
-                cursor, nodes = substack[1], []
-                opcodes = set()
-                while cursor:
-                    node = blocks[cursor]
-                    opcodes.add(node["opcode"])
-                    nodes.append(node)
-                    cursor = node["next"]
-                if {"looks_show", "looks_hide"} <= opcodes:
+                nodes = list(walk_body(blocks, substack[1]))
+                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}:
                     for node in nodes:
                         if node["opcode"] == "looks_hide":
                             node["opcode"] = "looks_show"
+
+        def break_flash_gate(p: dict) -> None:
+            # Ungate the flash's hide: neutralise the `attract == 0` condition so the
+            # attract demo would flash the 1UP/2UP indicator like a real game.
+            blocks = hud_blocks(p)
+            for b in list(blocks.values()):
+                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                    continue
+                substack = b["inputs"].get("SUBSTACK")
+                if not substack:
+                    continue
+                nodes = list(walk_body(blocks, substack[1]))
+                if not ({"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}):
+                    continue
+                for node in nodes:
+                    if node["opcode"] != "control_if":
+                        continue
+                    cond = node["inputs"].get("CONDITION")
+                    if not (
+                        isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)
+                    ):
+                        continue
+                    eq = blocks.get(cond[1])
+                    if eq is None or eq["opcode"] != "operator_equals":
+                        continue
+                    for slot in ("OPERAND1", "OPERAND2"):
+                        if refs(eq["inputs"].get(slot), director.ATTRACT_ID):
+                            eq["inputs"][slot] = [1, [4, 0]]
+                return
 
         def break_write_only_local(p: dict) -> None:
             blocks = hud_blocks(p)
@@ -14892,6 +15000,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("craft-referenced", break_craft_reference),
             ("craft-changed-listener", break_craft_changed),
             ("flashing-1up", break_flash),
+            # roadmap-evidence: CAB-01 failure
+            ("flash-1up-attract-gated", break_flash_gate),
             ("hud-writes-only-local", break_write_only_local),
             ("hud-life-spawn-loop-capped", break_life_spawn_loop_cap),
             ("hud-life-count-capped", break_life_count_cap),
@@ -17776,7 +17886,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "10b2479051df516cb94d7701331cb30d063fb8c3d690853a66b518eed9accdee",
+            "cb517fbb144d0492e85d8f8d9e9cfa8614cf0c95d679f9b426f7d66a2be8aedd",
             build_hash,
         )
 

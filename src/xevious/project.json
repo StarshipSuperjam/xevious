@@ -231145,7 +231145,7 @@
         },
         "gd-hud-269": {
           "opcode": "control_if",
-          "next": "gd-hud-283",
+          "next": "gd-hud-285",
           "parent": "gd-hud-263",
           "inputs": {
             "CONDITION": [
@@ -231192,8 +231192,8 @@
         },
         "gd-hud-271": {
           "opcode": "control_repeat_until",
-          "next": "gd-hud-281",
-          "parent": "gd-hud-280",
+          "next": "gd-hud-283",
+          "parent": "gd-hud-282",
           "inputs": {
             "CONDITION": [
               2,
@@ -231286,7 +231286,7 @@
         },
         "gd-hud-275": {
           "opcode": "control_repeat",
-          "next": "gd-hud-276",
+          "next": "gd-hud-278",
           "parent": "gd-hud-271",
           "inputs": {
             "TIMES": [
@@ -231302,18 +231302,65 @@
           "topLevel": false
         },
         "gd-hud-276": {
-          "opcode": "looks_hide",
-          "next": "gd-hud-277",
-          "parent": "gd-hud-275",
-          "inputs": {},
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-hud-278",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "attract",
+                "cabinet-attract"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-hud-277": {
+          "opcode": "looks_hide",
+          "next": null,
+          "parent": "gd-hud-278",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-278": {
+          "opcode": "control_if",
+          "next": "gd-hud-279",
+          "parent": "gd-hud-275",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-276"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-277"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-279": {
           "opcode": "control_repeat",
-          "next": "gd-hud-278",
-          "parent": "gd-hud-276",
+          "next": "gd-hud-280",
+          "parent": "gd-hud-278",
           "inputs": {
             "TIMES": [
               1,
@@ -231327,19 +231374,19 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-278": {
+        "gd-hud-280": {
           "opcode": "looks_show",
           "next": null,
-          "parent": "gd-hud-277",
+          "parent": "gd-hud-279",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-279": {
+        "gd-hud-281": {
           "opcode": "looks_gotofrontback",
-          "next": "gd-hud-280",
-          "parent": "gd-hud-283",
+          "next": "gd-hud-282",
+          "parent": "gd-hud-285",
           "inputs": {},
           "fields": {
             "FRONT_BACK": [
@@ -231350,27 +231397,9 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-280": {
+        "gd-hud-282": {
           "opcode": "looks_show",
           "next": "gd-hud-271",
-          "parent": "gd-hud-279",
-          "inputs": {},
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-hud-281": {
-          "opcode": "looks_hide",
-          "next": "gd-hud-282",
-          "parent": "gd-hud-271",
-          "inputs": {},
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-hud-282": {
-          "opcode": "control_delete_this_clone",
-          "next": null,
           "parent": "gd-hud-281",
           "inputs": {},
           "fields": {},
@@ -231378,27 +231407,45 @@
           "topLevel": false
         },
         "gd-hud-283": {
+          "opcode": "looks_hide",
+          "next": "gd-hud-284",
+          "parent": "gd-hud-271",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-284": {
+          "opcode": "control_delete_this_clone",
+          "next": null,
+          "parent": "gd-hud-283",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-285": {
           "opcode": "control_if",
-          "next": "gd-hud-287",
+          "next": "gd-hud-289",
           "parent": "gd-hud-269",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-hud-284"
+              "gd-hud-286"
             ],
             "SUBSTACK": [
               2,
-              "gd-hud-279"
+              "gd-hud-281"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-284": {
+        "gd-hud-286": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-hud-283",
+          "parent": "gd-hud-285",
           "inputs": {
             "OPERAND1": [
               3,
@@ -231424,10 +231471,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-285": {
+        "gd-hud-287": {
           "opcode": "looks_gotofrontback",
-          "next": "gd-hud-286",
-          "parent": "gd-hud-287",
+          "next": "gd-hud-288",
+          "parent": "gd-hud-289",
           "inputs": {},
           "fields": {
             "FRONT_BACK": [
@@ -231438,37 +231485,37 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-286": {
+        "gd-hud-288": {
           "opcode": "looks_show",
           "next": null,
-          "parent": "gd-hud-285",
+          "parent": "gd-hud-287",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-287": {
+        "gd-hud-289": {
           "opcode": "control_if",
-          "next": "gd-hud-291",
-          "parent": "gd-hud-283",
+          "next": "gd-hud-293",
+          "parent": "gd-hud-285",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-hud-288"
+              "gd-hud-290"
             ],
             "SUBSTACK": [
               2,
-              "gd-hud-285"
+              "gd-hud-287"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-288": {
+        "gd-hud-290": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-hud-287",
+          "parent": "gd-hud-289",
           "inputs": {
             "OPERAND1": [
               3,
@@ -231494,10 +231541,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-289": {
+        "gd-hud-291": {
           "opcode": "looks_gotofrontback",
-          "next": "gd-hud-290",
-          "parent": "gd-hud-291",
+          "next": "gd-hud-292",
+          "parent": "gd-hud-293",
           "inputs": {},
           "fields": {
             "FRONT_BACK": [
@@ -231508,37 +231555,37 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-290": {
+        "gd-hud-292": {
           "opcode": "looks_show",
           "next": null,
-          "parent": "gd-hud-289",
+          "parent": "gd-hud-291",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-291": {
+        "gd-hud-293": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-hud-287",
+          "parent": "gd-hud-289",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-hud-292"
+              "gd-hud-294"
             ],
             "SUBSTACK": [
               2,
-              "gd-hud-289"
+              "gd-hud-291"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-292": {
+        "gd-hud-294": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-hud-291",
+          "parent": "gd-hud-293",
           "inputs": {
             "OPERAND1": [
               3,
@@ -231564,9 +231611,9 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-293": {
+        "gd-hud-295": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-hud-295",
+          "next": "gd-hud-297",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -231580,37 +231627,37 @@
           "x": 20,
           "y": 620
         },
-        "gd-hud-294": {
+        "gd-hud-296": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-hud-295",
+          "parent": "gd-hud-297",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-295": {
+        "gd-hud-297": {
           "opcode": "control_if",
-          "next": "gd-hud-298",
-          "parent": "gd-hud-293",
+          "next": "gd-hud-300",
+          "parent": "gd-hud-295",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-hud-296"
+              "gd-hud-298"
             ],
             "SUBSTACK": [
               2,
-              "gd-hud-294"
+              "gd-hud-296"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-296": {
+        "gd-hud-298": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-hud-295",
+          "parent": "gd-hud-297",
           "inputs": {
             "OPERAND1": [
               3,
@@ -231636,10 +231683,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-297": {
+        "gd-hud-299": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-hud-298",
+          "parent": "gd-hud-300",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -231652,28 +231699,28 @@
             "warp": "true"
           }
         },
-        "gd-hud-298": {
+        "gd-hud-300": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-hud-295",
+          "parent": "gd-hud-297",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-hud-299"
+              "gd-hud-301"
             ],
             "SUBSTACK": [
               2,
-              "gd-hud-297"
+              "gd-hud-299"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-hud-299": {
+        "gd-hud-301": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-hud-298",
+          "parent": "gd-hud-300",
           "inputs": {
             "OPERAND1": [
               3,

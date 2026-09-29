@@ -11220,6 +11220,13 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
     )
     # 1UP: flashes (show/hide, held HUD_1UP_FLASH_HOLD_TICKS each way) for as long as the
     # HUD is visible, epoch/state-safe via the same title/boot guard as the digit loops.
+    # CAB-01 (slice 17): the blank half of the flash is gated on `attract==0` (a real game).
+    # The arcade `flash_1up_2up` (src/xevious_sub.68k 769-776) does `and.b (is_real_game),d3`
+    # before deciding to write the "   " blank string, so a CLEARED flag (the attract demo)
+    # skips the blank and the 1UP/2UP shows steady; only a real game flashes it. In the port a
+    # demo is `playing` with attract==1, so gating the `hide` on attract==0 keeps the demo's
+    # indicator steady while a real game (attract==0) still flashes. `show` always runs, so a
+    # demo clone is never left hidden.
     flash_loop = blocks.add("control_repeat_until")
     flash_condition = blocks.either_state(flash_loop, "title", "boot")
     blocks.blocks[flash_loop]["inputs"]["CONDITION"] = [2, flash_condition]
@@ -11227,7 +11234,10 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         flash_loop,
         [
             blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
-            blocks.hide(),
+            blocks.if_reporter(
+                blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
+                [blocks.hide()],
+            ),
             blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
             blocks.show(),
         ],
