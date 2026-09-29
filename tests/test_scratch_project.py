@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import scratch_project as scratch  # noqa: E402
 import check_mechanics_record as mechanics  # noqa: E402
 import game_director as director  # noqa: E402
+import hud_glyphs  # noqa: E402
 
 
 def _proc_body_blocks(stage: dict, proccode: str) -> list:
@@ -295,8 +296,11 @@ class ScratchProjectTests(unittest.TestCase):
         # source sheet itself, which the sprite_sheets reference target displays whole (so it counts once)
         # + the 4 Bragza fly PNGs (BOSS-03: the destroyed core's fly-up form, handle_Bragza codes 0xb8..0xbb
         # at CLUT 0x15; swapping the source sheet for the taller 96x128 Bragza-bearing render is net-zero on
-        # the count, so slice 16 adds exactly the 4 new crops).
-        self.assertEqual(207, len(assets))
+        # the count, so slice 16 adds exactly the 4 new crops)
+        # + the 14 slice-17 CAB-01 attract-overlay PNGs on start_screen (10 credit-counter digits + the
+        # CREDIT / PUSH START / INSERT COIN labels + the best-five table), all rendered by tools/hud_glyphs.py
+        # in the port-generated 5x7 font — project-original, distinct from the HUD glyph crops.
+        self.assertEqual(221, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -424,6 +428,16 @@ class ScratchProjectTests(unittest.TestCase):
                 # terrain scroll counters) added on top of their historical content.
                 expected.pop("variables")
                 actual.pop("variables")
+            elif target["name"] == "start_screen":
+                # CAB-01 (slice 17): start_screen gains the attract-display sprite-local
+                # variables (attract role/place/divisor) and hud_glyphs.py APPENDS the
+                # attract-overlay costumes (the CREDIT line, credit digits, prompts,
+                # best-five table) after the historical logo costume at index 0. Drop the
+                # added variables and truncate the costumes back to the historical set,
+                # then compare the rest.
+                expected.pop("variables")
+                actual.pop("variables")
+                actual["costumes"] = actual["costumes"][: len(expected["costumes"])]
             self.assert_ordered_json_equal(
                 expected,
                 actual,
@@ -16286,6 +16300,190 @@ class ScratchProjectTests(unittest.TestCase):
         expected = data["tables"]["high_score_defaults"]["scores"]
         self.assertEqual(expected, by_name["high score table"])
 
+    def test_attract_default_initials_are_project_original_and_font_covered(self) -> None:
+        # CAB-01 (slice 17): the attract best-five initials are project-original placeholders that
+        # live as a source constant (hud_glyphs.ATTRACT_DEFAULT_INITIALS) — NOT in the
+        # reference-extracted, digest-guarded docs/spec/data/scores.json (that file is decode-only
+        # and carries only the reference-derived default scores the initials pair with). Pin them
+        # paired one-for-one with those scores, and pin that every glyph they use has a port-font
+        # (CREDIT_FONT) entry — the "unknown glyph fails loudly" font-coverage guard.
+        # roadmap-evidence: CAB-01 success  (the default best-five initials are present as a
+        #   project-original constant, paired with the arcade scores, and fully covered by the port font)
+        data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
+        scores = data["tables"]["high_score_defaults"]["scores"]
+        # The initials are project-original: they must NOT have leaked into the reference data file.
+        self.assertNotIn(
+            "port_default_initials",
+            data["tables"]["high_score_defaults"],
+            "project-original initials must not live in the reference-extracted scores.json",
+        )
+        initials = hud_glyphs.ATTRACT_DEFAULT_INITIALS
+        self.assertEqual(
+            len(initials),
+            len(scores),
+            "each default best-five score must have exactly one initials entry",
+        )
+        self.assertEqual(len(initials), len(director.HIGH_SCORE_DEFAULTS))
+        for entry in initials:
+            self.assertEqual(len(entry), 3, f"best-five initials {entry!r} must be three glyphs")
+            for glyph in entry:
+                self.assertIn(
+                    glyph,
+                    hud_glyphs.CREDIT_FONT,
+                    f"initials glyph {glyph!r} has no CREDIT_FONT entry (would render nothing)",
+                )
+
+    @staticmethod
+    def _attract_display_failures(project: dict) -> set:
+        """CAB-01/CAB-02 attract displays on start_screen — the port-font costumes, the
+        clone spawn/dispatch, the four role branches (CREDIT label, credit digit, prompt,
+        best-five), the credit-digit costume EXPRESSION, and the static label costume
+        switches (structure only; the pixels and on-screen layout are the operator's
+        playtest). Mirrors the HUD render guard for the attract-display clone family."""
+        failures = set()
+        ss = next(t for t in project["targets"] if t.get("name") == "start_screen")
+        blocks = ss["blocks"]
+        costumes = {c["name"] for c in ss["costumes"]}
+
+        required = {"credit-label", "push-start", "insert-coin", "best-five"}
+        required |= {f"digit/{d}" for d in range(10)}
+        for name in sorted(required):
+            if name not in costumes:
+                failures.add(f"costume-missing:{name}")
+
+        if not any(b["opcode"] == "control_create_clone_of" for b in blocks.values()):
+            failures.add("attract-spawns-clones")
+        if not any(b["opcode"] == "control_start_as_clone" for b in blocks.values()):
+            failures.add("attract-clone-handler")
+
+        role_id = director.ATTRACT_DISPLAY_ROLE_ID
+
+        def role_dispatch(role_value: int) -> bool:
+            # A role branch is `attract role == <value>`: operator_equals with the role
+            # variable on the left and the literal role value on the right.
+            for b in blocks.values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                rhs_spec = rhs[1] if isinstance(rhs, list) else None
+                is_role = (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == role_id
+                )
+                is_val = isinstance(rhs_spec, list) and str(rhs_spec[1]) == str(role_value)
+                if is_role and is_val:
+                    return True
+            return False
+
+        for label, value in (
+            ("credit-label-role-dispatch", director.ATTRACT_ROLE_CREDIT_LABEL),
+            ("credit-digit-role-dispatch", director.ATTRACT_ROLE_CREDIT_DIGIT),
+            ("prompt-role-dispatch", director.ATTRACT_ROLE_PROMPT),
+            ("best-five-role-dispatch", director.ATTRACT_ROLE_BEST_FIVE),
+        ):
+            if not role_dispatch(value):
+                failures.add(label)
+
+        # The credit digit renders through a costume EXPRESSION: a switch-costume block fed
+        # by join("digit/", <digit>) — not a static costume name (that is how a per-place
+        # digit tracks the live credit count).
+        def digit_expr_switch() -> bool:
+            for b in blocks.values():
+                if b["opcode"] != "looks_switchcostumeto":
+                    continue
+                ci = b["inputs"].get("COSTUME")
+                if isinstance(ci, list) and isinstance(ci[1], str):
+                    fed = blocks.get(ci[1])
+                    if fed is not None and fed["opcode"] == "operator_join":
+                        return True
+            return False
+
+        if not digit_expr_switch():
+            failures.add("credit-digit-costume-expr")
+
+        # The static labels (CREDIT line, the two prompts, the table) switch to a named
+        # port-font costume via a costume-menu shadow.
+        label_switch_names = {
+            b["fields"]["COSTUME"][0]
+            for b in blocks.values()
+            if b["opcode"] == "looks_costume" and b.get("fields", {}).get("COSTUME")
+        }
+        for name in ("credit-label", "push-start", "insert-coin", "best-five"):
+            if name not in label_switch_names:
+                failures.add(f"label-switch-missing:{name}")
+
+        return failures
+
+    def test_attract_display_wiring_present(self) -> None:
+        # CAB-01/CAB-02 (slice 17): the attract-display clone family is wired onto
+        # start_screen — the port-font costumes, the clone spawn/dispatch, the four role
+        # branches, the credit-digit costume expression, and the static label switches.
+        # roadmap-evidence: CAB-01 success  (the attract displays are structurally present:
+        #   costumes attached, clones spawned/dispatched, every role branch and switch wired)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._attract_display_failures(project))
+
+    def test_attract_display_negative_fixtures(self) -> None:
+        # roadmap-evidence: CAB-01 failure  (each severing fixture makes the matching
+        #   attract-display structural guard report its failure — the guard binds)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._attract_display_failures(base))
+
+        def ss_blocks(p: dict) -> dict:
+            return next(t for t in p["targets"] if t.get("name") == "start_screen")["blocks"]
+
+        def break_spawn(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] == "control_create_clone_of":
+                    b["opcode"] = "control_create_clone_of_disabled"
+
+        def break_handler(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] == "control_start_as_clone":
+                    b["opcode"] = "control_start_as_clone_disabled"
+
+        def break_best_five_dispatch(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                if (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == director.ATTRACT_DISPLAY_ROLE_ID
+                    and isinstance(rhs, list)
+                    and isinstance(rhs[1], list)
+                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_BEST_FIVE)
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "999"]]
+
+        def break_digit_expr(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] == "operator_join":
+                    b["opcode"] = "operator_join_disabled"
+
+        def drop_best_five_costume(p: dict) -> None:
+            ss = next(t for t in p["targets"] if t.get("name") == "start_screen")
+            ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "best-five"]
+
+        for label, mutate_fn in (
+            ("attract-spawns-clones", break_spawn),
+            ("attract-clone-handler", break_handler),
+            ("best-five-role-dispatch", break_best_five_dispatch),
+            ("credit-digit-costume-expr", break_digit_expr),
+            ("costume-missing:best-five", drop_best_five_costume),
+        ):
+            project = load_source(scratch.SOURCE_DIR)
+            mutate_fn(project)
+            self.assertIn(label, self._attract_display_failures(project), label)
+
     def test_game_over_negative_fixtures(self) -> None:
         base = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._eco04_failures(base))
@@ -17578,7 +17776,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d3c693da63c66ae24e14e3d354abb4c94c0327934f7b099bfb8e8a50427e607e",
+            "10b2479051df516cb94d7701331cb30d063fb8c3d690853a66b518eed9accdee",
             build_hash,
         )
 

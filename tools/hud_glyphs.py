@@ -144,11 +144,15 @@ CREDIT_FONT = {
     " ": (".....", ".....", ".....", ".....", ".....", ".....", "....."),
     "A": (".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
     "B": ("####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."),
+    "C": (".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."),
+    "D": ("####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."),
     "E": ("#####", "#....", "#....", "####.", "#....", "#....", "#####"),
     "H": ("#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
     "I": ("#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####"),
     "J": ("..###", "...#.", "...#.", "...#.", "#..#.", "#..#.", ".##.."),
+    "K": ("#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"),
     "M": ("#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"),
+    "N": ("#...#", "##..#", "#.#.#", "#.#.#", "#.#.#", "#..##", "#...#"),
     "O": (".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."),
     "P": ("####.", "#...#", "#...#", "####.", "#....", "#....", "#...."),
     "R": ("####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"),
@@ -158,7 +162,43 @@ CREDIT_FONT = {
     "V": ("#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."),
     "X": ("#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"),
     "Y": ("#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."),
+    # Digits 0-9 (credit counter, best-five ranks and scores) and the period (default initials
+    # M.N / S.O / S.K). Same 5x7 cell and style as the letters; 0 carries a slash so it never
+    # reads as the letter O.
+    "0": (".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."),
+    "1": ("..#..", ".##..", "..#..", "..#..", "..#..", "..#..", "#####"),
+    "2": (".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"),
+    "3": ("#####", "...#.", "..#..", "...#.", "....#", "#...#", ".###."),
+    "4": ("...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."),
+    "5": ("#####", "#....", "####.", "....#", "....#", "#...#", ".###."),
+    "6": (".###.", "#....", "#....", "####.", "#...#", "#...#", ".###."),
+    "7": ("#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."),
+    "8": (".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."),
+    "9": (".###.", "#...#", "#...#", ".####", "....#", "....#", ".###."),
+    ".": (".....", ".....", ".....", ".....", ".....", ".##..", ".##.."),
 }
+
+# CAB-01 attract-screen overlays on the start_screen target (slice 17). Same self-contained port
+# font as the SEC-03 credit above and the same project-original stance: the credit counter, the
+# CREDIT / PUSH START / INSERT COIN prompts, and the default best-five table are the port's own
+# content, NOT the arcade HUD font crops and NOT the ROM's default name strings. See docs/mechanics
+# 037 (CAB-01).
+ATTRACT_TARGET = "start_screen"
+ATTRACT_BEST_FIVE_NAME = "best-five"
+ATTRACT_LABELS = (
+    ("credit-label", "CREDIT"),
+    ("push-start", "PUSH START"),
+    ("insert-coin", "INSERT COIN"),
+)
+# The default best-five INITIALS are this project's own placeholder content (the operator's choice),
+# NOT the arcade ROM's default name strings (docs/REFERENCE_POLICY.md forbids transcribing in-game
+# text). They live here as a source constant — the same home and stance as CREDIT_TEXT_LINES above —
+# rather than in the reference-extracted docs/spec/data/scores.json (that file is decode-only, guarded
+# by a digest manifest). Only the SCORES they pair with are the reference-derived arcade defaults, and
+# those are read from scores.json. Every glyph used here must have a CREDIT_FONT entry (a test pins it);
+# high-score-entry that would let a player set these stays slice 19 (CAB-04).
+ATTRACT_DEFAULT_INITIALS = ("STK", "M.N", "EVE", "S.O", "S.K")
+SCORES_DATA_PATH = ROOT / "docs" / "spec" / "data" / "scores.json"
 
 
 @dataclass(frozen=True)
@@ -448,29 +488,31 @@ def _upscale_nearest(image: se.Image, factor: int) -> se.Image:
     return se.Image(new_width, new_height, tuple(pixels))
 
 
-def render_credit() -> CreditOutput:
-    """Compose the two-line hidden-credit overlay bitmap from the built-in port font.
+def render_font_costume(name: str, lines: tuple[str, ...]) -> CreditOutput:
+    """Compose one costume of centered port-font text lines from the built-in CREDIT_FONT.
 
-    This is the port's OWN original content (CREDIT_TEXT_LINES), rendered in a
-    self-contained pixel font — NOT arcade art and NOT the arcade HUD font crops. See
-    the CREDIT_* block above for why the arcade font can't supply these letters."""
+    The single compositor for every port-generated text overlay — the SEC-03 hidden-credit
+    (render_credit) and the CAB-01 attract displays (render_attract_costumes). All are the
+    port's OWN content rendered in a self-contained pixel font, NOT arcade art and NOT the
+    arcade HUD font crops (see the CREDIT_* block above). A missing glyph fails loudly so a
+    reworded overlay never silently drops a letter."""
     cell_w = CREDIT_GLYPH_W + CREDIT_GLYPH_GAP
     line_h = CREDIT_GLYPH_H + CREDIT_LINE_GAP
-    for line in CREDIT_TEXT_LINES:
+    for line in lines:
         for char in line:
             if char not in CREDIT_FONT:
                 raise HudGlyphsError(
-                    f"credit text needs glyph {char!r}, which has no CREDIT_FONT entry"
+                    f"overlay text {name!r} needs glyph {char!r}, which has no CREDIT_FONT entry"
                 )
 
     def line_width(line: str) -> int:
         # each glyph occupies its 5 columns plus a trailing gap, minus the final gap
         return max(0, len(line) * cell_w - CREDIT_GLYPH_GAP)
 
-    base_width = max(line_width(line) for line in CREDIT_TEXT_LINES)
-    base_height = len(CREDIT_TEXT_LINES) * line_h - CREDIT_LINE_GAP
+    base_width = max(line_width(line) for line in lines)
+    base_height = len(lines) * line_h - CREDIT_LINE_GAP
     pixels = [CREDIT_TRANSPARENT] * (base_width * base_height)
-    for row, line in enumerate(CREDIT_TEXT_LINES):
+    for row, line in enumerate(lines):
         x_start = (base_width - line_width(line)) // 2  # center each line horizontally
         y_start = row * line_h
         for col, char in enumerate(line):
@@ -484,9 +526,58 @@ def render_credit() -> CreditOutput:
     base = se.Image(base_width, base_height, tuple(pixels))
     scaled = _upscale_nearest(base, CREDIT_SCALE)
     png = se.encode_png(scaled)
-    return CreditOutput(
-        CREDIT_COSTUME_NAME, f"{se._md5(png)}.png", png, scaled.width, scaled.height
+    return CreditOutput(name, f"{se._md5(png)}.png", png, scaled.width, scaled.height)
+
+
+def render_credit() -> CreditOutput:
+    """Compose the two-line hidden-credit overlay bitmap (SEC-03) from the built-in port font."""
+    return render_font_costume(CREDIT_COSTUME_NAME, CREDIT_TEXT_LINES)
+
+
+def _load_best_five() -> tuple[list[str], list[int]]:
+    """The project's default best-five rows: project-original initials paired with the
+    reference-derived arcade default scores.
+
+    The initials are the port's own placeholder content (ATTRACT_DEFAULT_INITIALS, a source
+    constant — scores.json is reference-decode-only and cannot carry project-original data).
+    The scores are the arcade defaults read from docs/spec/data/scores.json, so the rendered
+    table can never drift from the reference data a test pins. The two must be paired
+    one-for-one; a mismatch is a wiring error, not a soft fallback."""
+    data = json.loads(SCORES_DATA_PATH.read_text())
+    scores = data["tables"]["high_score_defaults"].get("scores")
+    initials = list(ATTRACT_DEFAULT_INITIALS)
+    if not isinstance(scores, list) or not scores:
+        raise HudGlyphsError("scores.json high_score_defaults.scores is missing")
+    if len(initials) != len(scores):
+        raise HudGlyphsError(
+            "ATTRACT_DEFAULT_INITIALS and scores.json best-five scores must be the same length"
+        )
+    return [str(entry) for entry in initials], [int(entry) for entry in scores]
+
+
+def _best_five_row(rank: int, initials: str, score: int) -> str:
+    # One fixed-width best-five row: rank(1) + gap(2) + initials(3) + gap(2) + score. With the
+    # default data every row is 13 monospace cells, so the five centered lines column-align.
+    return f"{rank}  {initials}  {score}"
+
+
+def render_attract_costumes() -> list[CreditOutput]:
+    """The CAB-01 attract-screen overlays on the start_screen target, in the port font.
+
+    Digit costumes drive the live credit counter (title_blocks switches a digit clone to
+    `digit/<n>` each tick); the CREDIT / PUSH START / INSERT COIN labels and the default
+    best-five table are static. All project-original (the arcade HUD font lacks these
+    glyphs; the best-five initials are the operator's placeholders, not the ROM strings)."""
+    outputs = [render_font_costume(f"digit/{d}", (str(d),)) for d in range(10)]
+    for name, text in ATTRACT_LABELS:
+        outputs.append(render_font_costume(name, (text,)))
+    initials, scores = _load_best_five()
+    rows = tuple(
+        _best_five_row(rank, ini, score)
+        for rank, (ini, score) in enumerate(zip(initials, scores), start=1)
     )
+    outputs.append(render_font_costume(ATTRACT_BEST_FIVE_NAME, rows))
+    return outputs
 
 
 def _credit_costume(output: CreditOutput) -> dict:
@@ -514,6 +605,27 @@ def _overlay_credit_record(output: CreditOutput) -> dict:
             "NOT arcade art and NOT the arcade str_program_by_EVEZOO credit; the port's "
             f"own placeholder wording. {CREDIT_SCALE}x nearest-neighbor upscale of the "
             "built-in CREDIT_FONT, white ink on transparent, bitmapResolution 1."
+        ),
+    }
+
+
+def _overlay_attract_record(output: CreditOutput) -> dict:
+    return {
+        "origin": (
+            "Original attract-screen text overlay rendered by tools/hud_glyphs.py in a "
+            "port-generated 5x7 pixel font (render_attract_costumes); not derived from any "
+            "third-party source"
+        ),
+        "license": "Project-original (no third-party source)",
+        "notes": (
+            f"Port attract display costume '{output.name}' on the start_screen target. NOT "
+            "arcade art and NOT the arcade HUD font crops: the credit-counter digits, the "
+            "CREDIT / PUSH START / INSERT COIN prompts, and the project-original default "
+            "best-five table (initials from the ATTRACT_DEFAULT_INITIALS source constant, the "
+            "operator's placeholders, NOT the ROM default name strings; paired with the arcade "
+            "default scores from docs/spec/data/scores.json). "
+            f"{CREDIT_SCALE}x nearest-neighbor upscale of the built-in CREDIT_FONT, white ink "
+            "on transparent, bitmapResolution 1."
         ),
     }
 
@@ -692,6 +804,7 @@ def expected_project(
     sound: dict,
     credit_output: CreditOutput,
     game_sounds: list[GameSoundOutput] | None = None,
+    attract_outputs: list[CreditOutput] | None = None,
 ) -> dict:
     result = copy.deepcopy(project)
     hud = next((target for target in result["targets"] if target.get("name") == HUD_TARGET), None)
@@ -716,6 +829,27 @@ def expected_project(
             f"Scratch project has no {CREDIT_TARGET} target; run tools/game_director.py generate first"
         )
     egg["costumes"] = [_credit_costume(credit_output)]
+    # CAB-01: attach the attract-screen overlays (credit digits/labels, best-five table) to
+    # game_director's start_screen target, whose clone roles switch among them during title and
+    # attract-scores. game_director owns the target and its base logo costume (kept as costume 0,
+    # the default); this module appends the generated overlays. Filtering by the attract names
+    # first keeps this idempotent — a re-run drops the prior overlays before re-appending, so the
+    # logo stays index 0 and the order never drifts.
+    attract_outputs = attract_outputs or []
+    if attract_outputs:
+        start_screen = next(
+            (t for t in result["targets"] if t.get("name") == ATTRACT_TARGET), None
+        )
+        if start_screen is None:
+            raise HudGlyphsError(
+                f"Scratch project has no {ATTRACT_TARGET} target; run tools/game_director.py generate first"
+            )
+        attract_names = {output.name for output in attract_outputs}
+        start_screen["costumes"] = [
+            costume
+            for costume in start_screen["costumes"]
+            if costume.get("name") not in attract_names
+        ] + [_credit_costume(output) for output in attract_outputs]
     stage = next(target for target in result["targets"] if target.get("isStage"))
     # Rebuild the Stage's added sounds deterministically: keep the base music/start sounds, then
     # `extend`, then the gameplay SFX in name order. Filtering by name first keeps this idempotent
@@ -810,6 +944,7 @@ def _derivative_provenance(
     sound_filename: str,
     credit_output: CreditOutput,
     game_sounds: list[GameSoundOutput] | None = None,
+    attract_outputs: list[CreditOutput] | None = None,
 ) -> dict:
     outputs = {}
     for output in glyph_outputs:
@@ -844,6 +979,12 @@ def _derivative_provenance(
             "name": output.name,
             "generator_version": GENERATOR_VERSION,
         }
+    for output in attract_outputs or []:
+        outputs[output.filename] = {
+            "kind": "attract",
+            "name": output.name,
+            "generator_version": GENERATOR_VERSION,
+        }
     return {
         "version": 1,
         "generator_version": GENERATOR_VERSION,
@@ -863,6 +1004,7 @@ def _expected_state() -> tuple[
     set[str],
     list[GameSoundOutput],
     CreditOutput,
+    list[CreditOutput],
 ]:
     manifest, manifest_bytes = load_manifest()
     glyph_outputs = render_glyphs(manifest)
@@ -870,12 +1012,13 @@ def _expected_state() -> tuple[
     sound, sound_bytes, sound_filename = render_extend_sound(manifest)
     game_sounds = render_game_sounds()
     credit_output = render_credit()
+    attract_outputs = render_attract_costumes()
     prior_outputs = set(_prior_output_records())
     current_project = _read_json(PROJECT_PATH)
     project_bytes = se._ordered_json_bytes(
         expected_project(
             current_project, glyph_outputs, life_output, manifest, sound,
-            credit_output, game_sounds,
+            credit_output, game_sounds, attract_outputs,
         )
     )
     overlay = _read_json(OVERLAY_PROVENANCE_PATH)
@@ -911,12 +1054,14 @@ def _expected_state() -> tuple[
     for output in game_sounds:
         assets[output.filename] = _overlay_game_sound_record(output)
     assets[credit_output.filename] = _overlay_credit_record(credit_output)
+    for output in attract_outputs:
+        assets[output.filename] = _overlay_attract_record(output)
     assets = dict(sorted(assets.items()))
     overlay_bytes = se._ordered_json_bytes({"version": 1, "assets": assets})
     derivative_provenance_bytes = se._ordered_json_bytes(
         _derivative_provenance(
             manifest, manifest_bytes, glyph_outputs, life_output, sound_filename,
-            credit_output, game_sounds,
+            credit_output, game_sounds, attract_outputs,
         )
     )
     return (
@@ -930,6 +1075,7 @@ def _expected_state() -> tuple[
         prior_outputs,
         game_sounds,
         credit_output,
+        attract_outputs,
     )
 
 
@@ -945,12 +1091,15 @@ def generate() -> None:
         prior_outputs,
         game_sounds,
         credit_output,
+        attract_outputs,
     ) = _expected_state()
     expected_names = {output.filename for output in glyph_outputs} | {
         life_output.filename,
         sound_info["filename"],
         credit_output.filename,
-    } | {output.filename for output in game_sounds}
+    } | {output.filename for output in game_sounds} | {
+        output.filename for output in attract_outputs
+    }
     for stale in sorted(prior_outputs - expected_names):
         stale_path = ASSET_DIR / stale
         if stale_path.is_file() and not stale_path.is_symlink():
@@ -962,6 +1111,8 @@ def generate() -> None:
     (ASSET_DIR / credit_output.filename).write_bytes(credit_output.png)
     for output in game_sounds:
         (ASSET_DIR / output.filename).write_bytes(output.wav)
+    for output in attract_outputs:
+        (ASSET_DIR / output.filename).write_bytes(output.png)
     PROJECT_PATH.write_bytes(project_bytes)
     OVERLAY_PROVENANCE_PATH.write_bytes(overlay_bytes)
     DERIVATIVE_PROVENANCE_PATH.write_bytes(derivative_provenance_bytes)
@@ -991,12 +1142,15 @@ def check_repository() -> int:
         prior_outputs,
         game_sounds,
         credit_output,
+        attract_outputs,
     ) = _expected_state()
     expected_names = {output.filename for output in glyph_outputs} | {
         life_output.filename,
         sound_info["filename"],
         credit_output.filename,
-    } | {output.filename for output in game_sounds}
+    } | {output.filename for output in game_sounds} | {
+        output.filename for output in attract_outputs
+    }
     stale = prior_outputs - expected_names
     if stale:
         raise HudGlyphsError("stale generated HUD assets: " + ", ".join(sorted(stale)))
@@ -1007,10 +1161,12 @@ def check_repository() -> int:
     _require_bytes(ASSET_DIR / credit_output.filename, credit_output.png)
     for output in game_sounds:
         _require_bytes(ASSET_DIR / output.filename, output.wav)
+    for output in attract_outputs:
+        _require_bytes(ASSET_DIR / output.filename, output.png)
     _require_bytes(PROJECT_PATH, project_bytes)
     _require_bytes(OVERLAY_PROVENANCE_PATH, overlay_bytes)
     _require_bytes(DERIVATIVE_PROVENANCE_PATH, derivative_provenance_bytes)
-    return len(glyph_outputs) + 2
+    return len(glyph_outputs) + 2 + len(attract_outputs)
 
 
 def main(argv: list[str] | None = None) -> int:

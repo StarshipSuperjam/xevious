@@ -422,6 +422,76 @@
       "kind": "game_sound",
       "name": "zakato",
       "generator_version": 1
+    },
+    "f55752da33442c0972b74106fdb463c3.png": {
+      "kind": "attract",
+      "name": "digit/0",
+      "generator_version": 1
+    },
+    "aabcf248fb300f65689237cf8e2e7205.png": {
+      "kind": "attract",
+      "name": "digit/1",
+      "generator_version": 1
+    },
+    "52ccf3c6f6355c8ae886df1cd0c7c33d.png": {
+      "kind": "attract",
+      "name": "digit/2",
+      "generator_version": 1
+    },
+    "a3097e53637a726768eb44a96f39e867.png": {
+      "kind": "attract",
+      "name": "digit/3",
+      "generator_version": 1
+    },
+    "66804e059730a8950c4db1bec37bd62e.png": {
+      "kind": "attract",
+      "name": "digit/4",
+      "generator_version": 1
+    },
+    "fe608d76fe8959a0f98ea4edcaa08961.png": {
+      "kind": "attract",
+      "name": "digit/5",
+      "generator_version": 1
+    },
+    "12099fba27f77b99ad484943bfeb20d3.png": {
+      "kind": "attract",
+      "name": "digit/6",
+      "generator_version": 1
+    },
+    "559579afe6d66a801714f6502e2baa90.png": {
+      "kind": "attract",
+      "name": "digit/7",
+      "generator_version": 1
+    },
+    "663496d9b5920e38535fee4bde6c30ff.png": {
+      "kind": "attract",
+      "name": "digit/8",
+      "generator_version": 1
+    },
+    "e5a5be1fcc20c8480e11271505470f08.png": {
+      "kind": "attract",
+      "name": "digit/9",
+      "generator_version": 1
+    },
+    "8db224654904a0dc1d850c68b7e388cf.png": {
+      "kind": "attract",
+      "name": "credit-label",
+      "generator_version": 1
+    },
+    "fe2cb2790a178a43913d7118dfdd08b5.png": {
+      "kind": "attract",
+      "name": "push-start",
+      "generator_version": 1
+    },
+    "3b0808386f291290e262bf8d8b28976a.png": {
+      "kind": "attract",
+      "name": "insert-coin",
+      "generator_version": 1
+    },
+    "b54c09ad7f9581c9c189e5d60ec2da32.png": {
+      "kind": "attract",
+      "name": "best-five",
+      "generator_version": 1
     }
   }
 }

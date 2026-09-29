@@ -429,6 +429,10 @@ REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABL
 QUALIFIED_ID = "eco-qualified"
 HIGH_SCORE_TABLE_ID = "eco-high-score-table"
 HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
+# The CAB-01 best-five table initials are project-original placeholders that live where they are
+# rendered — tools/hud_glyphs.py ATTRACT_DEFAULT_INITIALS — baked into the static 'best-five'
+# costume. game_director only switches the best-five clone to that pre-baked costume, so it holds
+# no copy of the initials here.
 
 # AREA-01 area scroll clock (docs/spec/area-progression-and-terrain.md, locked). One
 # monotonic per-area position drives the terrain, the object scheduler, and the area loop.
@@ -1017,6 +1021,36 @@ PILOT_DIR_ID = "cabinet-pilot-dir"
 # gen_rnd_dir (xevious_main 1622): the demo direction is redrawn only when (countup_timer_1 & 0x0f) == 0,
 # i.e. once every 16 arcade frames = 8 build ticks (FRAMES_PER_TICK == 2, defined below), and HELD in between.
 ATTRACT_PILOT_DIR_HOLD_TICKS = 8  # = 16 arcade frames // 2 frames-per-tick
+# CAB-01 attract displays (slice 17 C4): the start_screen target renders the credit line during `title`
+# and the default best-five table during `attract-scores`, as clone roles (the HUD clone-role idiom),
+# switching to the port-font costumes tools/hud_glyphs.py attaches to start_screen. All display state is
+# sprite-local to start_screen (the role + digit place snapshotted into each clone at creation, the cached
+# 10^place divisor), never a Stage variable — the clones only READ `credits`/`game state`. Clones are
+# cleared on every `director stop` (common_stop clones=True) and rebuilt on `director enter`.
+ATTRACT_DISPLAY_ROLE_ID = "attract-display-role"
+ATTRACT_DISPLAY_PLACE_ID = "attract-display-place"
+ATTRACT_DISPLAY_DIVISOR_ID = "attract-display-divisor"
+ATTRACT_ROLE_CREDIT_LABEL = 1  # the static "CREDIT" word
+ATTRACT_ROLE_CREDIT_DIGIT = 2  # one credit-counter digit (reads `credits`); place 0 = units
+ATTRACT_ROLE_PROMPT = 3  # flashing PUSH START (credits>=1) / INSERT COIN (credits==0)
+ATTRACT_ROLE_BEST_FIVE = 4  # the static default best-five table
+ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
+# Project-defined placement (stage -240..240 x, -180..180 y, +y up); the operator fine-tunes exact
+# placement at playtest, exactly as the ECO-02 HUD layout notes (no reference basis for the port's own
+# credit-line/best-five geometry — the arcade layout does not carry over to the port font).
+ATTRACT_CREDIT_LABEL_X = -52
+ATTRACT_CREDIT_LINE_Y = -150
+ATTRACT_CREDIT_DIGIT_UNITS_X = 44  # place 0 (units); each higher place sits one spacing to its left
+ATTRACT_CREDIT_DIGIT_SPACING = 18
+ATTRACT_PROMPT_X = 0
+ATTRACT_PROMPT_Y = -120
+ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
+ATTRACT_BEST_FIVE_X = 0
+ATTRACT_BEST_FIVE_Y = 0
+ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
+ATTRACT_COSTUME_PUSH_START = "push-start"
+ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
+ATTRACT_COSTUME_BEST_FIVE = "best-five"
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -10352,16 +10386,151 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
 
 def title_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("start-screen")
-    common_stop(blocks, hide=True)
+    # CAB-01: the original still renders the logo, but start_screen now ALSO spawns the attract-display
+    # clone roles (credit line in title, best-five table in attract-scores). Its clones must therefore be
+    # retired on every transition (clones=True) — otherwise they would accumulate across the
+    # title -> demo -> best-five -> demo -> title cycle (the clone leak the slice-21 soak would surface).
+    common_stop(blocks, hide=True, clones=True)
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.hide()])
     enter = blocks.receive("director enter")
-    # B4: the logo enters at the top and glides to center (baseline: 1 s from y=250).
-    # Preserved-baseline presentation; the glide is wall-clock (a presentation beat,
-    # not gameplay timing).
+    # B4: the logo enters at the top and glides to center (baseline: 1 s from y=250). Preserved-baseline
+    # presentation; the glide is a WALL-CLOCK block (a presentation beat, not gameplay timing) — it does not
+    # advance under the headless harness's fixed-step pump. So the display clones are stamped FIRST, before
+    # the glide, so nothing that must run every attract entry sits behind the glide's wall-clock wait.
+    #
+    # CAB-01 display spawn: each clone is positioned by the original just before create_clone (Python-constant
+    # coords, the HUD spawn idiom) and dresses itself in its start-as-clone body; the original NEVER switches
+    # its own costume, so the visible logo is never disturbed. The stamps run in one frame (no blocking block
+    # between the go/create_clone pairs), then the original returns to the glide start and glides in.
+    title_body: list[str] = [blocks.go(0, 250), blocks.show()]
+    title_body += [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_CREDIT_LABEL)),
+        blocks.go(ATTRACT_CREDIT_LABEL_X, ATTRACT_CREDIT_LINE_Y),
+        blocks.create_clone(),
+    ]
+    for place in range(ATTRACT_CREDIT_PLACES):
+        digit_x = ATTRACT_CREDIT_DIGIT_UNITS_X - place * ATTRACT_CREDIT_DIGIT_SPACING
+        title_body += [
+            blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_CREDIT_DIGIT)),
+            blocks.set_var("attract place", ATTRACT_DISPLAY_PLACE_ID, number(place)),
+            blocks.go(digit_x, ATTRACT_CREDIT_LINE_Y),
+            blocks.create_clone(),
+        ]
+    title_body += [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_PROMPT)),
+        blocks.go(ATTRACT_PROMPT_X, ATTRACT_PROMPT_Y),
+        blocks.create_clone(),
+        blocks.go(0, 250),  # back to the glide start; the logo glides in with the clones already stamped
+        blocks.glide(1, 0, 0),
+    ]
+    title = blocks.if_state("title", title_body)
+    # The default best-five table renders during attract-scores as one static clone. The original stays
+    # hidden here (the preceding director stop hid it); only the clone shows the table.
+    scores_body = [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_BEST_FIVE)),
+        blocks.go(ATTRACT_BEST_FIVE_X, ATTRACT_BEST_FIVE_Y),
+        blocks.create_clone(),
+    ]
+    scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
+    blocks.chain(enter, [title, scores])
+
+    # start-as-clone: dispatch on the snapshotted role. The clone inherits the visible original, so it hides
+    # first and each role shows itself only once it has switched to its own costume (no logo flash).
+    clone = blocks.add("control_start_as_clone", top_level=True)
+    hide_first = blocks.hide()
+
+    # CREDIT label (static): switches to the "CREDIT" word and shows; common_stop retires it on the next
+    # transition, exactly like the HUD's static HIGH SCORE label.
+    credit_label_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_CREDIT_LABEL,
+        [blocks.switch_costume(ATTRACT_COSTUME_CREDIT_LABEL), blocks.to_front(), blocks.show()],
+    )
+
+    # CREDIT digit: digit = floor(credits / 10^place) mod 10, updated every tick while in title so an
+    # inserted coin bumps the counter live (leading-zero preserving, two digits). Mirrors the HUD digit
+    # role; loops until the state leaves title, then hides + deletes.
+    set_divisor = blocks.set_var("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID, number(1))
+    divisor_loop = blocks.add(
+        "control_repeat", inputs={"TIMES": variable("attract place", ATTRACT_DISPLAY_PLACE_ID)}
+    )
+    blocks.substack(
+        divisor_loop,
+        [
+            blocks.set_var_expr(
+                "attract divisor",
+                ATTRACT_DISPLAY_DIVISOR_ID,
+                blocks.op_mul(
+                    variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID), number(10)
+                ),
+            )
+        ],
+    )
+    digit_tick = blocks.add("control_repeat_until")
+    blocks.blocks[digit_tick]["inputs"]["CONDITION"] = [2, blocks.not_state(digit_tick, "title")]
+    digit_expr = blocks.op_mod(
+        blocks.op_floor(
+            blocks.op_div(
+                variable("credits", CREDITS_ID),
+                variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID),
+            )
+        ),
+        number(10),
+    )
+    blocks.substack(
+        digit_tick, [blocks.switch_costume_expr(blocks.op_join(text("digit/"), digit_expr))]
+    )
+    credit_digit_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_CREDIT_DIGIT,
+        [
+            set_divisor,
+            divisor_loop,
+            blocks.to_front(),
+            blocks.show(),
+            digit_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
+    # Prompt: PUSH START when there is a credit to spend, INSERT COIN otherwise, flashing while in title.
+    # The costume is re-picked each cycle so it flips live the tick a coin banks the first credit.
+    prompt_tick = blocks.add("control_repeat_until")
+    blocks.blocks[prompt_tick]["inputs"]["CONDITION"] = [2, blocks.not_state(prompt_tick, "title")]
+    has_credit = blocks.if_reporter(
+        blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+        [blocks.switch_costume(ATTRACT_COSTUME_PUSH_START)],
+    )
+    no_credit = blocks.if_reporter(
+        blocks.op_eq(variable("credits", CREDITS_ID), number(0)),
+        [blocks.switch_costume(ATTRACT_COSTUME_INSERT_COIN)],
+    )
+    blocks.substack(
+        prompt_tick,
+        [
+            has_credit,
+            no_credit,
+            blocks.to_front(),
+            blocks.show(),
+            blocks.hold_ticks(ATTRACT_PROMPT_FLASH_HOLD_TICKS),
+            blocks.hide(),
+            blocks.hold_ticks(ATTRACT_PROMPT_FLASH_HOLD_TICKS),
+        ],
+    )
+    prompt_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_PROMPT,
+        [prompt_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+    )
+
+    # Best-five table (static): switches to the composed table costume and shows; common_stop retires it.
+    best_five_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_BEST_FIVE,
+        [blocks.switch_costume(ATTRACT_COSTUME_BEST_FIVE), blocks.to_front(), blocks.show()],
+    )
+
     blocks.chain(
-        enter,
-        [blocks.if_state("title", [blocks.go(0, 250), blocks.show(), blocks.glide(1, 0, 0)])],
+        clone,
+        [hide_first, credit_label_role, credit_digit_role, prompt_role, best_five_role],
     )
     return blocks.blocks
 
@@ -10966,7 +11135,16 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
     spawn_body.append(blocks.if_state("game-over", game_over_body))
     # The life-icon row is spawned by the shared proc below (also used on `craft changed`).
     spawn_body.append(blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True))
-    gate = blocks.if_not_either_state("title", "boot", spawn_body)
+    # CAB-01: exclude the render-only `attract-scores` state too — the best-five table owns the screen
+    # there and the live score/life HUD must not draw over it. attract-scores is not title/boot, so the
+    # existing two-state gate would otherwise let the HUD spawn; nest an explicit not-attract-scores guard.
+    not_scores = blocks.add("control_if")
+    blocks.blocks[not_scores]["inputs"]["CONDITION"] = [
+        2,
+        blocks.not_state(not_scores, ATTRACT_SCORES_STATE),
+    ]
+    blocks.substack(not_scores, spawn_body)
+    gate = blocks.if_not_either_state("title", "boot", [not_scores])
     blocks.chain(enter, [gate])
 
     # Each clone snapshots its role (and, for digit clones, its place) at creation — the
@@ -14015,6 +14193,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         elif target["name"] == "area_01b":
             target["variables"] = target["variables"] | {
                 TERRAIN_STEP_B_ID: ["scroll step", 0]
+            }
+        elif target["name"] == "start_screen":
+            # CAB-01: all attract-display state is sprite-local to start_screen (never a Stage
+            # variable) — the role snapshotted into each clone at creation, the digit's place, and
+            # the cached 10^place divisor. The clones only READ `credits`/`game state`.
+            target["variables"] = target["variables"] | {
+                ATTRACT_DISPLAY_ROLE_ID: ["attract role", 0],
+                ATTRACT_DISPLAY_PLACE_ID: ["attract place", 0],
+                ATTRACT_DISPLAY_DIVISOR_ID: ["attract divisor", 1],
             }
         elif target["name"] == "hud":
             # ECO-02: all HUD state is sprite-local (never a Stage variable) — the role

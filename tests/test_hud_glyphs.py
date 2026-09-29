@@ -20,7 +20,9 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count = hg.check_repository()
-        self.assertEqual(33, count)
+        # 47: the 33 HUD/credit/sound outputs + the 14 slice-17 CAB-01 attract overlays on
+        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels + best-five table).
+        self.assertEqual(47, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -144,11 +146,13 @@ class HudGlyphsTests(unittest.TestCase):
         _sound, _data, sound_filename = hg.render_extend_sound(self.manifest)
         game_sounds = hg.render_game_sounds()
         credit = hg.render_credit()
+        attract = hg.render_attract_costumes()
+        attract_filenames = {output.filename for output in attract}
         expected_filenames = {output.filename for output in glyphs} | {
             life.filename,
             sound_filename,
             credit.filename,
-        } | {output.filename for output in game_sounds}
+        } | {output.filename for output in game_sounds} | attract_filenames
         self.assertEqual(expected_filenames, set(provenance["outputs"]))
         for filename in expected_filenames:
             self.assertIn(filename, overlay)
@@ -161,6 +165,13 @@ class HudGlyphsTests(unittest.TestCase):
                 # its port-original provenance and that it is not arcade art.
                 self.assertIn("operator's own content", record["notes"])
                 self.assertIn("NOT arcade art", record["notes"])
+            elif filename in attract_filenames:
+                # CAB-01 (slice 17): the attract overlays are likewise the port's OWN original
+                # content (port font, project-original prompts and placeholder initials), so they
+                # carry the project-original stance, not the third-party disclaimer.
+                self.assertIn("NOT arcade art", record["notes"])
+                self.assertNotIn("did not create", record["notes"])
+                self.assertIn("no third-party source", record["license"])
             else:
                 self.assertIn("did not create", record["notes"])
 

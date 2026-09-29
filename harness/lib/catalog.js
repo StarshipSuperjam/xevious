@@ -677,6 +677,90 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update easter egg'),
   },
   {
+    // CAB-01 (cabinet.attract-credits, slice 17): the best-five table renders during the attract-scores
+    // sub-state, and the live gameplay HUD is held OFF while it shows. The port draws the table with the
+    // start_screen clone-role idiom (the arcade HUD font lacks the letters, so it uses the 5×7 port font, as
+    // SEC-03 does): a `best-five` role clone (attract role == 4) switches to the pre-composed `best-five`
+    // costume and shows only in attract-scores. The HUD spawn is excluded during attract-scores (its gate
+    // gained `game state != "attract-scores"`) so the live score/high-score digit clones do not draw over
+    // the table. Drives to the best-five screen and reads the start_screen clones and the hud digit clones.
+    // roadmap-evidence: CAB-01 success  (the best-five clone dresses itself and the HUD is suppressed here)
+    key: 'attract-scores-render',
+    behavior:
+      'The best-five table renders during attract-scores (a port-font clone) and the live HUD digits are held off',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
+      step(vm, 3); // let the transition retire the demo HUD clones and the best-five clone dress itself
+      const roleName = variable('attract-display-role').name; // "attract role"
+      const bestFive = cloneReports(vm, 'start_screen', [roleName]).filter(
+        (r) => r.vars[roleName] === 4 && r.costume === 'best-five' && r.visible,
+      );
+      const hudDigits = cloneReports(vm, 'hud').filter((r) => /^digit\/[0-9]$/.test(r.costume || ''));
+      return { st: state(vm), bestFiveShown: bestFive.length, hudDigits: hudDigits.length };
+    },
+    assert(obs) {
+      assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
+      assert.equal(obs.bestFiveShown, 1, 'exactly one best-five clone shows the best-five table costume');
+      assert.equal(obs.hudDigits, 0, 'the live HUD score digits are held off while the table shows');
+    },
+    // Break the best-five dispatch (`attract role == 4`): the best-five clone never matches its role branch,
+    // so it never switches to the `best-five` costume nor shows → the table-present assertion fails.
+    // roadmap-evidence: CAB-01 failure  (a broken role dispatch leaves the best-five table unrendered)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 4, 5),
+  },
+  {
+    // CAB-01 (cabinet.attract-credits, slice 17): the attract-display clones do not leak across cycles. The
+    // start_screen static clones (the CREDIT label, the best-five table) have no self-delete; they rely on
+    // `common_stop(clones=True)` retiring every clone on each state transition. Without that the port would
+    // accumulate a fresh CREDIT/best-five clone every title -> demo -> best-five -> demo -> title lap — a
+    // slow leak the single-state playing census can never see (feasibility plan-review S4). Runs three full
+    // attract laps, sampling the start_screen clone count at the same phase (a settled title) each lap, and
+    // asserts the count returns to its baseline instead of climbing.
+    // roadmap-evidence: CAB-01 success  (per-transition clone retirement keeps the count flat across laps)
+    key: 'attract-clone-no-leak',
+    behavior: 'The attract-display clones retire per transition — their count returns to baseline each cycle',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      const atDemo = () => state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
+      const stepUntil = (pred, budget) => {
+        let t = 0;
+        while (!pred() && t < budget) {
+          step(vm, 1);
+          t += 1;
+        }
+        return pred();
+      };
+      const samples = [];
+      for (let cycle = 0; cycle < 3; cycle += 1) {
+        assert.ok(stepUntil(() => state(vm) === 'title', 600), `cycle ${cycle}: the cabinet rests at title`);
+        step(vm, 3); // let the title spawn its CREDIT/digit/prompt clones before sampling
+        samples.push(cloneCount(vm, 'start_screen'));
+        assert.ok(stepUntil(atDemo, 600), `cycle ${cycle}: the title hold launches demo 1`);
+        assert.ok(killDemoToState(vm, 'attract-scores'), `cycle ${cycle}: demo 1 death routes to best-five`);
+        assert.ok(stepUntil(atDemo, 400), `cycle ${cycle}: the best-five hold launches demo 2`);
+        assert.ok(killDemoToState(vm, 'title'), `cycle ${cycle}: demo 2 death returns to title`);
+      }
+      return { samples };
+    },
+    assert(obs) {
+      assert.ok(obs.samples[0] > 0, 'the title spawns its attract-display clones');
+      for (let i = 1; i < obs.samples.length; i += 1) {
+        assert.ok(
+          obs.samples[i] <= obs.samples[0],
+          `no attract-clone leak: lap ${i} holds ${obs.samples[i]} clones vs the ${obs.samples[0]} baseline`,
+        );
+      }
+    },
+    // Remove every `delete this clone` on start_screen so no attract clone is ever retired: each title lap
+    // stacks fresh CREDIT/digit/prompt clones on the un-retired previous ones → the count climbs past
+    // baseline and the no-leak assertion fails.
+    // roadmap-evidence: CAB-01 failure  (without clone retirement the attract displays accumulate each lap)
+    negativeMutation: (p) => mutate.removeDeleteThisClone(p, 'start_screen'),
+  },
+  {
     key: 'death-respawn',
     behavior: 'A flying enemy touching the craft runs death -> respawn and returns to playing',
     playtestStep: 5,
