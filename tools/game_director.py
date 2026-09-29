@@ -990,6 +990,17 @@ COIN_KEY = "c"  # C = insert coin (port necessity: no coin-box hardware)
 CREDIT_CAP = 99  # decimal display of the arcade's BCD 0x99 credit ceiling
 CREDITS_ID = "cabinet-credits"  # 0..99 credit bank; +1 per coin, -1 per 1P start; cleared only at power-on
 COIN_KEY_HELD_ID = "cabinet-coin-key-held"  # previous-tick C sample, for a rising-edge (tap) coin insert
+COIN_EDGE_ID = "cabinet-coin-edge"  # 1 on the tick a coin was inserted (rising edge), else 0 — drives the coin-abort
+# CAB-01 (cabinet.attract-credits, slice 17): the attract-cycle state surface. The demo reuses the
+# `playing` state under the `attract` flag (a distinct state would touch ~40 `playing` gate sites; the
+# flag touches ~4). `attract` == 1 means "the cabinet is idling through its attract cycle" and holds
+# across every attract sub-state (title, demo1, best-five, demo2); it is cleared to 0 only on the
+# credit-gated real-game start, so a real game is `playing` with attract==0 and a demo is `playing` with
+# attract==1. `attract-scores` is a new render-only `game state` value (the best-five screen; no walk).
+ATTRACT_ID = "cabinet-attract"
+ATTRACT_EPOCH_ID = "cabinet-attract-epoch"  # state-epoch snapshot for the cancellable hold timers
+ATTRACT_STAGE_ID = "cabinet-attract-stage"  # 1 = demo after title, 2 = demo after best-five (routes demo death)
+ATTRACT_SCORES_STATE = "attract-scores"
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -1823,6 +1834,13 @@ BOMB_ACCEL_PER_FRAME = 2  # the bomb's `_dX` gains -2 per arcade frame, then `_X
 # The bomb target scrolls with the terrain — the same scroll_delta the ground uses (scroll_sprite_X
 # $30E8: +16 units/arcade-frame). Per tick that is AREA_PROGRESS_STEP (32); per frame, half of it.
 SCROLL_UNITS_PER_FRAME = AREA_PROGRESS_STEP // FRAMES_PER_TICK  # 16
+
+# CAB-01 attract hold lengths, in port ticks. The arcade title stage runs 744 frames exactly (main
+# 1217-1296: 64 hold + 16 + 136 + 16 sparkle + 512 flashing logo) before it auto-advances to the demo;
+# the best-five stage runs 512 frames (main 1336-1344). Each is divided by FRAMES_PER_TICK (2). The demo
+# itself has no timer — it exits when the auto-pilot craft dies (main 1298-1328).
+ATTRACT_TITLE_HOLD_TICKS = 744 // FRAMES_PER_TICK  # 372
+ATTRACT_SCORES_HOLD_TICKS = 512 // FRAMES_PER_TICK  # 256
 
 # AIR-06 Terrazi (handle_11_Terrazi 3667-3729): the first periodically-firing aerial family. Aimed
 # approach on the 48-magnitude (3 px/frame) tier; while distant it fires under its mask (the shared
@@ -2990,9 +3008,34 @@ class Blocks:
         return block_id
 
     def hold_ticks(self, ticks: int) -> str:
-        # An empty repeat yields one frame (tick) per iteration under Scratch's
-        # screen refresh — a wall-clock-free hold, per the units rule.
+        # An empty `repeat` does NOT pace one iteration per frame: with no block in
+        # its body nothing requests a screen refresh, so the sequencer runs every
+        # iteration inside a single frame's work budget and the hold collapses to
+        # ~instant (verified against scratch-vm). This is the REQUIRED primitive for the
+        # short beats that run DURING `playing` — READY/game-over/explosion and the 1UP
+        # flash (its `repeat_until either_state(title,boot)` loop runs while playing). The
+        # Stage walk settles ~220 tick_body iterations per `_step()` only because nothing
+        # requests a redraw during play; a paced hold here would set redrawRequested every
+        # frame and throttle the walk to ~2 ticks/step (~11 harness scenarios go red). So
+        # for a during-play hold the collapse is a feature, not a limitation. For a hold
+        # that must span real seconds while NOT playing, use `hold_frames` (below).
         block_id = self.add("control_repeat", inputs={"TIMES": number(ticks)})
+        return block_id
+
+    def hold_frames(self, frames: int) -> str:
+        # A frame-accurate hold: `repeat frames { wait 0 secs }`. `wait 0` is the one
+        # control block that requests a screen refresh, so it yields exactly one frame
+        # per iteration and the 0s duration always finishes on the next frame — a
+        # deterministic frame count with no wall-clock dependence (per the units rule).
+        # Unlike `hold_ticks`, this actually holds, so it is the primitive for the
+        # multi-second attract dwells (title, best-five) the cabinet must show.
+        # WARNING: only for holds that run when NOT `playing`. The `wait 0` requests a
+        # redraw every frame; used during play it throttles the settling Stage walk (see
+        # `hold_ticks` above). The attract title/best-five dwells run in `title` /
+        # `attract-scores`, where the walk is off, so they are safe.
+        block_id = self.add("control_repeat", inputs={"TIMES": number(frames)})
+        wait = self.add("control_wait", inputs={"DURATION": number(0)})
+        self.substack(block_id, [wait])
         return block_id
 
     def glide(self, seconds: float, x: int, y: int) -> str:
@@ -8220,25 +8263,32 @@ def install_coin_poll(blocks: Blocks) -> None:
     # remember C is down so holding it does not add a credit every tick. Faithful to
     # `sub_fn_4__handle_credits_and_start` (`src/xevious_sub.68k` 171-206): the credit is added only while
     # below the cap (arcade `cmp.b #0x99 ; jeq` skips both the add and the coin sound at the ceiling).
-    # ATTRACT NOTE (slice 17): the coin sound and the coin-during-attract abort transition are added in a
-    # later commit (the abort needs the attract state machine); C1 ships the credit bank + cap only.
+    # ATTRACT (slice 17, CAB-01): the coin poll raises `coin edge` for the one tick a coin is inserted; the
+    # Stage's non-warp coin loop reads it to run the coin-abort transition (a coin during an attract sub-state
+    # resets the cabinet to the title, matching arcade `coined_up`). The abort must NOT run here — this proc is
+    # warp, and the transition procedure does `broadcast and wait` (director stop/reset/enter), which cannot
+    # safely nest inside a warp thread — so the abort is done from the non-warp loop in `stage_blocks`. The
+    # coin SOUND is still a marked placeholder pending the operator's provenance decision.
     definition = _install_warp_proc(blocks, COIN_POLL_PROCCODE)
+    reset_edge = blocks.set_var("coin edge", COIN_EDGE_ID, number(0))
     gate = blocks.add("control_if_else")
     pressed = blocks.key_pressed(gate, COIN_KEY)
     blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
 
-    # C held down this tick: on the RISING edge only (held == 0 last tick), and only below the cap, add one
-    # credit; then remember C is down so a held key does not add a credit every tick.
+    # C held down this tick: on the RISING edge only (held == 0 last tick) raise `coin edge`, and only below
+    # the cap add one credit; then remember C is down so a held key does not add a credit every tick. The edge
+    # is raised even at the cap so a coin inserted at 99 credits still aborts an attract demo to the title.
     rising = blocks.if_reporter(
         blocks.op_eq(variable("coin key held", COIN_KEY_HELD_ID), number(0)),
         [
+            blocks.set_var("coin edge", COIN_EDGE_ID, number(1)),
             blocks.if_reporter(
                 blocks.op_lt(variable("credits", CREDITS_ID), number(CREDIT_CAP)),
                 [
                     blocks.change_var("credits", CREDITS_ID, 1),
                     # COIN SOUND goes here once the operator settles the provenance (see slice-17 plan).
                 ],
-            )
+            ),
         ],
     )
     blocks.substack(
@@ -8251,7 +8301,7 @@ def install_coin_poll(blocks: Blocks) -> None:
         [blocks.set_var("coin key held", COIN_KEY_HELD_ID, number(0))],
         name="SUBSTACK2",
     )
-    blocks.chain(definition, [gate])
+    blocks.chain(definition, [reset_edge, gate])
 
 
 def _advance_area_number(blocks: Blocks) -> str:
@@ -9412,10 +9462,15 @@ def install_score(blocks: Blocks) -> None:
     blocks.substack(
         high_if, [blocks.set_var("high score", HIGH_SCORE_ID, variable("score", SCORE_ID))]
     )
-    blocks.chain(
-        definition,
+    # CAB-01: no scoring or bonus craft during the attract demo. The arcade sets up the score/lives/area
+    # only on the credited-start path (`coined_up` main 398-417), never in the attract dispatch; the port
+    # expresses that by gating this single scoring path on attract==0, so a demo kill adds neither score nor a
+    # bonus craft (check_for_extra_solvalou is inside the gate too).
+    gate = blocks.if_reporter(
+        blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
         [add_award, cap_if, high_if, blocks.call_proc(CHECK_BONUS_PROCCODE, warp=True)],
     )
+    blocks.chain(definition, [gate])
 
 
 def install_check_bonus_life(blocks: Blocks) -> None:
@@ -9575,6 +9630,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # game-over/new-game exactly like a real cabinet — only turning the machine off zeroes it.
             blocks.set_var("credits", CREDITS_ID, number(0)),
             blocks.set_var("coin key held", COIN_KEY_HELD_ID, number(0)),
+            blocks.set_var("coin edge", COIN_EDGE_ID, number(0)),
+            # CAB-01: power on into the attract cycle. `attract` stays 1 through title -> demo -> best-five ->
+            # demo -> title and is cleared only by a credited real start (below). `attract stage` 0 = no demo
+            # yet; the title hold sets it to 1 when it launches the first demo.
+            blocks.set_var("attract", ATTRACT_ID, number(1)),
+            blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(0)),
+            blocks.set_var("attract epoch", ATTRACT_EPOCH_ID, number(0)),
             blocks.call_transition("title", "cold-start"),
         ],
     )
@@ -9587,7 +9649,26 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # restart (green-flag-triggered), so keep the Stage free of any script-stop handler.
     coin_flag = blocks.flag()
     coin_loop = blocks.add("control_forever")
-    blocks.substack(coin_loop, [blocks.call_proc(COIN_POLL_PROCCODE, warp=True)])
+    # CAB-01 coin-abort: a coin inserted during an attract sub-state (attract==1, any state but the title)
+    # resets the cabinet to the title, matching arcade `coined_up` (coin-up resets the attract state). The
+    # coin poll (warp) only raises `coin edge`; the abort transition runs HERE, in this non-warp loop, because
+    # the transition procedure's `broadcast and wait` cannot safely nest inside a warp thread. attract stays 1
+    # (a coin does not leave the attract cycle — it only banks a credit and rewinds to the title). A coin
+    # during a real game (attract==0) or at the title never aborts; it only banks a credit.
+    coin_abort = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("coin edge", COIN_EDGE_ID), number(1)),
+            blocks.op_and(
+                blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+                blocks.op_not(blocks.op_eq(variable("game state", STATE_ID), text("title"))),
+            ),
+        ),
+        [blocks.call_transition("title", "cold-start")],
+    )
+    blocks.substack(
+        coin_loop,
+        [blocks.call_proc(COIN_POLL_PROCCODE, warp=True), coin_abort],
+    )
     blocks.chain(coin_flag, [coin_loop])
 
     # CAB-02: a 1-player start now costs a credit. The Space start hat fires only at the title, and only
@@ -9604,6 +9685,12 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                         blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
                         [
                             blocks.change_var("credits", CREDITS_ID, -1),
+                            # CAB-01: clear the attract flag atomically on the credited start, in the same
+                            # branch that deducts the credit — a started game can never inherit attract==1, so
+                            # it always runs as a real game (scoring on, real death). This also closes the
+                            # title-hold-vs-Space race: the title-hold demo launch is epoch-guarded, and this
+                            # transition increments the epoch, so a start that wins the tick cancels the hold.
+                            blocks.set_var("attract", ATTRACT_ID, number(0)),
                             blocks.call_transition("ready", "new-game"),
                         ],
                     )
@@ -9677,10 +9764,57 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.if_state(
                 "game-over",
-                [set_qualified, blocks.call_transition("title", "cold-start")],
+                [
+                    set_qualified,
+                    # CAB-01: a finished real game returns the cabinet to its attract cycle — raise `attract`
+                    # before the transition to the title so the following title hold launches a demo again.
+                    blocks.set_var("attract", ATTRACT_ID, number(1)),
+                    blocks.call_transition("title", "cold-start"),
+                ],
             )
         ],
     )
+
+    # CAB-01: the attract hold timers, an epoch-guarded `director enter` receiver on the Stage (the pattern
+    # the solvalou READY hold uses). On entering the title it holds ATTRACT_TITLE_HOLD_TICKS then launches the
+    # first demo; on entering the best-five screen it holds ATTRACT_SCORES_HOLD_TICKS then launches the second
+    # demo. Both fire only if the state epoch still matches the one snapshotted at entry, so any transition in
+    # between (a credited start, a coin-abort, the demo's own death) cancels the pending launch. This receiver
+    # RESTARTS on every `director enter` (Scratch re-broadcast semantics), so a stale hold is also abandoned.
+    # It is never killed by `director stop`: that runs `stop_others` only on sprites, and this is the Stage.
+    attract_enter = blocks.receive("director enter")
+    attract_snapshot = blocks.set_var(
+        "attract epoch", ATTRACT_EPOCH_ID, variable("state epoch", EPOCH_ID)
+    )
+    title_hold = blocks.if_state(
+        "title",
+        [
+            blocks.hold_frames(ATTRACT_TITLE_HOLD_TICKS),
+            blocks.if_reporter(
+                _attract_epoch_state(blocks, "title"),
+                [
+                    # demo 1 (after the title) -> best-five on death.
+                    blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(1)),
+                    blocks.call_transition("playing", "new-game"),
+                ],
+            ),
+        ],
+    )
+    scores_hold = blocks.if_state(
+        ATTRACT_SCORES_STATE,
+        [
+            blocks.hold_frames(ATTRACT_SCORES_HOLD_TICKS),
+            blocks.if_reporter(
+                _attract_epoch_state(blocks, ATTRACT_SCORES_STATE),
+                [
+                    # demo 2 (after best-five) -> the title on death.
+                    blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(2)),
+                    blocks.call_transition("playing", "new-game"),
+                ],
+            ),
+        ],
+    )
+    blocks.chain(attract_enter, [attract_snapshot, title_hold, scores_hold])
 
     enter = blocks.receive("director enter")
     start_sound = blocks.add(
@@ -9704,7 +9838,14 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     bgm = blocks.add("sound_playuntildone", inputs={"SOUND_MENU": [1, bgm_menu]})
     blocks.blocks[bgm_menu]["parent"] = bgm
     blocks.substack(loop, [bgm])
-    blocks.chain(enter, [blocks.if_state("playing", [start_sound, loop])])
+    # CAB-01: the "Game Start" fanfare is the cue that a game just began — it must not play when `playing` is
+    # entered as an attract demo (attract==1), only for a credited real start (attract==0). The BGM loop still
+    # runs during the demo: the attract mode is a real gameplay demonstration and plays the same music.
+    fanfare = blocks.if_reporter(
+        blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
+        [start_sound],
+    )
+    blocks.chain(enter, [blocks.if_state("playing", [fanfare, loop])])
 
     # SYS-04 / AREA-01 centralized ordered update: a second `director enter` thread (parallel to the
     # BGM loop above) drives one atomic pass per tick while playing, in the reference's frame order —
@@ -9718,6 +9859,37 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # death is triggered here, in the non-warp thread, as the loop's terminal statement — clear the flag,
     # spend a craft, and run the player-dead transition (the exact body the retired D key used). The
     # death-complete handler still decides respawn vs game-over from the craft counter.
+    # CAB-01: under the attract demo (attract==1) a hit ends the demo instead of the game — spend NO craft and
+    # skip player-dead. The auto-pilot craft "dies, not times out" (main 1298-1328: the demo exits when the
+    # craft death sequence sets scroll_disabled). Route by `attract stage`: 1 = the demo that followed the
+    # title -> show the best-five table next; 2 = the demo that followed best-five -> return to the title.
+    demo_death = blocks.add("control_if_else")
+    demo_stage_1 = blocks.op_eq(variable("attract stage", ATTRACT_STAGE_ID), number(1))
+    blocks.blocks[demo_death]["inputs"]["CONDITION"] = [2, demo_stage_1]
+    blocks.blocks[demo_stage_1]["parent"] = demo_death
+    blocks.substack(
+        demo_death,
+        [blocks.call_transition(ATTRACT_SCORES_STATE, "new-game")],
+    )
+    blocks.substack(
+        demo_death,
+        [blocks.call_transition("title", "cold-start")],
+        name="SUBSTACK2",
+    )
+    real_or_demo = blocks.add("control_if_else")
+    in_attract = blocks.op_eq(variable("attract", ATTRACT_ID), number(1))
+    blocks.blocks[real_or_demo]["inputs"]["CONDITION"] = [2, in_attract]
+    blocks.blocks[in_attract]["parent"] = real_or_demo
+    blocks.substack(real_or_demo, [demo_death])
+    blocks.substack(
+        real_or_demo,
+        [
+            blocks.change_var("craft", LIVES_ID, -1),
+            blocks.send("craft changed"),
+            blocks.call_transition("player-dead", "none"),
+        ],
+        name="SUBSTACK2",
+    )
     death_check = blocks.if_reporter(
         blocks.op_and(
             blocks.op_eq(variable("player hit", PLAYER_HIT_ID), number(1)),
@@ -9725,9 +9897,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ),
         [
             blocks.set_var("player hit", PLAYER_HIT_ID, number(0)),
-            blocks.change_var("craft", LIVES_ID, -1),
-            blocks.send("craft changed"),
-            blocks.call_transition("player-dead", "none"),
+            real_or_demo,
         ],
     )
     # DEBUG (temporary, tracked for removal #119): while G is held, the Bacura pump is suppressed too, so no
@@ -9923,6 +10093,19 @@ def reset_if(
     blocks.blocks[control]["inputs"]["CONDITION"] = [2, condition]
     blocks.substack(control, commands)
     return control
+
+
+def _attract_epoch_state(blocks: Blocks, state: str) -> str:
+    # CAB-01: (attract epoch == state epoch) AND (game state == <state>). The attract hold fires only if no
+    # transition has happened since the hold began (the epoch was snapshotted on entry). Mirrors
+    # Blocks.if_epoch_state's guard, but reads the Stage-local `attract epoch` (the per-sprite epoch helper is
+    # bound to the display name "entry epoch", so it cannot be reused on the Stage).
+    epoch = blocks.op_eq(
+        variable("attract epoch", ATTRACT_EPOCH_ID),
+        variable("state epoch", EPOCH_ID),
+    )
+    state_ok = blocks.op_eq(variable("game state", STATE_ID), text(state))
+    return blocks.op_and(epoch, state_ok)
 
 
 def solvalou_blocks() -> dict[str, dict[str, Any]]:
@@ -13239,6 +13422,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # previous-tick sample (machinery). Classified in the partition test to match.
         CREDITS_ID,
         COIN_KEY_HELD_ID,
+        COIN_EDGE_ID,
+        ATTRACT_ID,
+        ATTRACT_EPOCH_ID,
+        ATTRACT_STAGE_ID,
         # AIR-11: the live Bacura spawn pump's state (main_fn_5 inc counter + main_fn_3 init loop).
         NUM_BACURA_ID,
         BACURA_INC_CNT_ID,
@@ -13393,6 +13580,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # (`coin key held`), both cleared only at power-on (the Stage green flag). See install_coin_poll.
         CREDITS_ID: ["credits", 0],
         COIN_KEY_HELD_ID: ["coin key held", 0],
+        COIN_EDGE_ID: ["coin edge", 0],
+        ATTRACT_ID: ["attract", 0],
+        ATTRACT_EPOCH_ID: ["attract epoch", 0],
+        ATTRACT_STAGE_ID: ["attract stage", 0],
         # AIR-11: Bacura live-spawn pump state (re-topped per area in _enter_area_top).
         NUM_BACURA_ID: ["num bacura", 0],
         BACURA_INC_CNT_ID: ["bacura inc cnt", 0],
@@ -13485,6 +13676,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
+                # CAB-01 attract cycle (title -> demo1 -> best-five -> demo2 -> title). The demo reuses the
+                # `playing` state under attract==1; a demo death routes by `attract stage`, and a coin during
+                # any attract sub-state aborts to the title. These edges are only ever taken while attract==1.
+                "title -> playing",
+                "playing -> attract-scores",
+                "attract-scores -> playing",
+                "playing -> title",
+                "attract-scores -> title",
             ],
         ],
         # SYS-02 object slots (index NN+1 = arcade slot 0xNN): type 0 = empty (skipped),

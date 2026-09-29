@@ -1046,6 +1046,14 @@ class ScratchProjectTests(unittest.TestCase):
     #   the coin bank, the 99 cap, and the credit-gated 1P start spend)
     # roadmap-evidence: CAB-02 failure  (harness coins-bank-credits negative neutralizes the coin poll;
     #   one-player-start-costs-a-credit negative freezes the credit change so neither coin nor start lands)
+    # roadmap-evidence: CAB-01 success  (the allowed-transition + attract-machinery classification below pins
+    #   the attract state machine; harness attract-title-launches-demo, attract-demo-death-to-best-five,
+    #   attract-scores-launches-second-demo, and attract-second-demo-death-returns-to-title drive the full
+    #   title -> demo -> best-five -> demo -> title cycle live, with attract-coin-aborts-to-title and
+    #   attract-cleared-on-credited-start proving the coin-abort and the atomic clear on a credited start)
+    # roadmap-evidence: CAB-01 failure  (each attract scenario's negative removes the exact edge it relies on
+    #   — title->playing, playing->attract-scores, attract-scores->playing, playing->title — so the cycle
+    #   stalls; attract-cleared-on-credited-start pins `attract` set to 1 so a started game reads as a demo)
     def test_game_director_has_one_stage_owned_transition_path(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         stage = next(target for target in project["targets"] if target["isStage"])
@@ -1130,6 +1138,15 @@ class ScratchProjectTests(unittest.TestCase):
             # a transient input register like the debug-key held samples, not durable Stage state (the
             # credit bank it feeds is economy state, below). Written by the always-on coin poll.
             "coin key held",
+            # CAB-01 (slice 17): the attract-cycle machinery. `coin edge` is the one-tick coin-inserted pulse
+            # the non-warp coin loop reads to run the coin-abort. `attract` is the 0/1 flag that marks the whole
+            # attract cycle (title/demo/best-five/demo); `attract epoch` is the state-epoch snapshot guarding
+            # the cancellable hold timers; `attract stage` (1 or 2) records which demo is running so a demo
+            # death routes to best-five or the title. All transient machinery, not durable Stage state.
+            "coin edge",
+            "attract",
+            "attract epoch",
+            "attract stage",
             # WPN-04 (slice 9): the in-flight bomb's accelerating scroll-axis velocity — a transient
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
@@ -1254,6 +1271,12 @@ class ScratchProjectTests(unittest.TestCase):
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
+                # CAB-01 (slice 17) attract cycle: the demo reuses `playing` under attract==1.
+                "title -> playing",
+                "playing -> attract-scores",
+                "attract-scores -> playing",
+                "playing -> title",
+                "attract-scores -> title",
             ],
             stage["lists"][director.ALLOWED_ID][1],
         )
@@ -14087,6 +14110,26 @@ class ScratchProjectTests(unittest.TestCase):
             body.append(cur)
             cur = blocks[cur]["next"]
 
+        # CAB-01 (slice 17): the entire scoring path is wrapped in `if attract == 0`, so a demo kill accrues
+        # neither score nor a bonus craft. Require that gate, then descend into it to check the scoring body
+        # itself — a missing or mis-conditioned gate is a scoring-in-attract regression.
+        if len(body) == 1 and blocks[body[0]]["opcode"] == "control_if":
+            gate = blocks[body[0]]
+            cond = blocks[gate["inputs"]["CONDITION"][1]]
+            if (
+                cond["opcode"] == "operator_equals"
+                and refs(cond["inputs"].get("OPERAND1"), director.ATTRACT_ID)
+                and cond["inputs"].get("OPERAND2") == [1, [4, 0]]
+            ):
+                body, cur = [], gate["inputs"].get("SUBSTACK", [None, None])[1]
+                while cur:
+                    body.append(cur)
+                    cur = blocks[cur]["next"]
+            else:
+                failures.add("attract-score-gate")
+        else:
+            failures.add("attract-score-gate")
+
         # award -> score: `change score by (award value)`. (NOT `set score = score + award
         # value`: a `set var = operator(...)` value-input does not evaluate in the Scratch VM,
         # so the score path adds via `change ... by` the award-value variable directly.)
@@ -17520,7 +17563,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "97f79d75d450f236a0038eeef9f9d1f37923662cd349139e9a56177649c36e5d",
+            "cb41d41308d919eeeb14a2ae9328999e706c9fd3a10512b741ec8663034ef8cf",
             build_hash,
         )
 

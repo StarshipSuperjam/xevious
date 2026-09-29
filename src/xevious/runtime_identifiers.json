@@ -259,6 +259,26 @@
       "name": "bullet cursor",
       "scope": "Stage"
     },
+    "cabinet-attract": {
+      "kind": "variable",
+      "name": "attract",
+      "scope": "Stage"
+    },
+    "cabinet-attract-epoch": {
+      "kind": "variable",
+      "name": "attract epoch",
+      "scope": "Stage"
+    },
+    "cabinet-attract-stage": {
+      "kind": "variable",
+      "name": "attract stage",
+      "scope": "Stage"
+    },
+    "cabinet-coin-edge": {
+      "kind": "variable",
+      "name": "coin edge",
+      "scope": "Stage"
+    },
     "cabinet-coin-key-held": {
       "kind": "variable",
       "name": "coin key held",
