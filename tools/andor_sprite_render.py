@@ -83,6 +83,14 @@ PART_CLUT = 3
 ARMOR_CODES = [88, 128, 132, 136, 140, 144, 148, 152, 156]  # 0x41..0x49
 PORT_CODES = [92, 93, 94, 95]                                # 0x4F..0x52
 CORE_CODE = 16                                               # 0x4A
+# BOSS-03 (andor.core-destruction #96): the fly-up Bragza the destroyed core becomes is a 1x1 sprite
+# animated over four codes 0xb8..0xbb (handle_Bragza: `_CODE = 0xb8 + ((countup_timer_1>>1)&3)`,
+# xevious_main.68k:5498) and a cycling colour 0x15..0x1c (`_COLOUR = 0x15 + ((countup_timer_1>>1)&7)`,
+# 5501). Unlike the parts (CLUT 3), the Bragza has its OWN colour cycle; the static tiles are decoded at
+# the cycle BASE (CLUT 0x15) and the Scratch colour effect drives the live cycle on top (the parts'
+# convention). Ordinals match the manifest frame order (fly/01..04 == codes 0xb8..0xbb).
+BRAGZA_CODES = [0xB8, 0xB9, 0xBA, 0xBB]                      # 184..187
+BRAGZA_CLUT = 0x15                                           # 21: the base of the Bragza colour cycle
 
 # The reference's own 2x2 compositor (assets/amiga/sprite_specific.py) lays a
 # _ATTR=3 sprite's four codes at these 16-px sub-cell origins, in code+0..+3 order.
@@ -90,7 +98,7 @@ ARMOR_SUBTILE_ORIGINS = [(16, 0), (16, 16), (0, 0), (0, 16)]  # code+0,+1,+2,+3
 
 TILE = 16
 SHEET_WIDTH = 96
-SHEET_HEIGHT = 112
+SHEET_HEIGHT = 128  # a fifth 16px row (y=112) for the four Bragza cells (BOSS-03)
 # Cell top-left origins on the sheet (must match manifest andor_genesis rects).
 ARMOR_CELL_ORIGINS = [
     (0, 0), (32, 0), (64, 0),       # plate/01 02 03
@@ -99,6 +107,7 @@ ARMOR_CELL_ORIGINS = [
 ]
 PORT_CELL_ORIGINS = [(0, 96), (16, 96), (32, 96), (48, 96)]  # muzzle/01..04
 CORE_CELL_ORIGIN = (64, 96)                                   # core/01 (flips downstream)
+BRAGZA_CELL_ORIGINS = [(0, 112), (16, 112), (32, 112), (48, 112)]  # fly/01..04
 
 
 def _sha256(data: bytes) -> str:
@@ -193,6 +202,9 @@ def render_sheet(checkout: Path) -> Image:
         blit(gfx.tile_rgba(code, PART_CLUT), cell_x, cell_y)
     # Core: single 16x16 base tile; the extractor derives its 4 flip orientations.
     blit(gfx.tile_rgba(CORE_CODE, PART_CLUT), *CORE_CELL_ORIGIN)
+    # Bragza: four 16x16 anim frames, decoded at the Bragza colour cycle's base CLUT (not the parts' CLUT 3).
+    for code, (cell_x, cell_y) in zip(BRAGZA_CODES, BRAGZA_CELL_ORIGINS):
+        blit(gfx.tile_rgba(code, BRAGZA_CLUT), cell_x, cell_y)
 
     return Image(SHEET_WIDTH, SHEET_HEIGHT, tuple(pixels))
 

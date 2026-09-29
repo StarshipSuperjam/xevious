@@ -584,8 +584,9 @@ RESET_BACURA_COUNT_HANDLER = "reset_bacura_count"
 # opcode 76, sub_2_fn_20__andor_genesis_start $064A) arms the whole 15-part composite into the ground band and
 # clears the end flag; `andor_genesis_end` (opcode 77, sub_2_fn_21 $066E) raises the end flag, starting the
 # scripted retreat. Both carry empty params (the boss layout + lateral are intrinsic, not schedule columns).
-# Opcode 78 (`fire_mask_andor_genesis`) stores the gun-port fire mask; its consumer is slice 16, so that
-# handler is left to fall through here (counted as fired, cursor advanced) exactly as before.
+# Opcode 78 (`fire_mask_andor_genesis`) stores the gun-port fire mask into its Stage var via the shared
+# `mask_branches` (it is one of FIRE_MASK_FAMILIES); the arm captures that var into each port's `slot fire mask`,
+# and the fire-permission gate consumes it (BOSS-02, mask 47 handled bit-exactly).
 ANDOR_GENESIS_START_HANDLER = "andor_genesis_start"
 ANDOR_GENESIS_END_HANDLER = "andor_genesis_end"
 
@@ -894,6 +895,11 @@ UPDATE_ANDOR_MASTER_PROCCODE = "update andor master"
 # per-type composite offset (looked up by slot type). No independent motion; the master's teardown frees the part
 # slots, so this proc never culls.
 UPDATE_ANDOR_PART_PROCCODE = "update andor part"
+# BOSS-03 (andor.core-destruction #96): the lone fly-up update for the destroyed core once it has converted into
+# the indestructible Bragza (C4). One tick = move straight up the scroll axis (slot x -= ANDOR_BRAGZA_STEP) at a
+# fixed velocity, slot y held; cull off the top edge. Dispatched on ANDOR_BRAGZA_TYPE (not an aligned part type),
+# so it detaches from the composite anchor the instant the core converts. (handle_Bragza, xevious_main.68k:5493.)
+UPDATE_ANDOR_BRAGZA_PROCCODE = "update andor bragza"
 # AIR-12 / PLY-02: the enemy-bullet per-tick update (aim-once-then-fly, cull, craft collision) and the
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
@@ -1384,6 +1390,47 @@ ANDOR_PART_TYPES = (*ANDOR_ARMOR_TYPES, ANDOR_CORE_TYPE, *ANDOR_PORT_TYPES, ANDO
 assert set(ANDOR_GENESIS_DATA) == set(ANDOR_PART_TYPES) and len(ANDOR_GENESIS_DATA) == 15, (
     "Andor arm-data must be exactly the 15 distinct part types"
 )
+# --- BOSS-02 / BOSS-03 (andor.defenses #95, andor.core-destruction #96): the Andor Genesis COMBAT constants. ---
+# Armor immunity. The nine armor plates are born arcade `_STATE=3` ("| indestructible", handle_41..49 at the pin)
+# and never test for a hit or explode; the bomb-vs-ground detector's `== SLOT_ACTIVE` gate then skips them for
+# free (no collision-group edit). That is exactly the non-ACTIVE ground-band sentinel the Garu Barra base already
+# uses (SLOT_GARU_BASE), so armor reuses it, named for the andor context. The destroyed core, once converted to
+# the fly-up Bragza, is likewise never hittable (arcade `_STATE=8`), and is stamped this same sentinel (C4). The
+# walk dispatch and renderer key off `slot type` (not state), so a state-3 part still aligns and draws (Garu
+# Barra precedent), while the ACTIVE-gated bomb sweep leaves it alone.
+ANDOR_ARMOR_IMMUNE = SLOT_GARU_BASE  # 3
+# Score indices (1-based positions into VALUE_TABLE_POINTS; `slot pts` holds a position, NOT the arcade `_PTS`
+# byte). The core awards 4,000 (arcade `_PTS=60`, handle_4A) and each gun port 1,000 (arcade `_PTS=48`,
+# handle_4F..52) ONLY on a direct bomb — the destruction cascade scores nothing (C4). Derived from the value
+# table so a table edit can't silently desync them.
+ANDOR_CORE_PTS = VALUE_TABLE_POINTS.index(4000) + 1  # 21
+ANDOR_PORT_PTS = VALUE_TABLE_POINTS.index(1000) + 1  # 17
+# The port's gun-port fire mask (ffreq_mask_andor_genesis), captured into each port's `slot fire mask` at arm and
+# consumed by the shared fire-permission gate (C2). Mask 47 is NON-contiguous, so the gate special-cases it.
+# Derived from FIRE_MASK_FAMILIES so a rename can't drift.
+FIRE_MASK_ANDOR_NAME = next(n for s, n, i in FIRE_MASK_FAMILIES if s == "andor_genesis")
+FIRE_MASK_ANDOR_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "andor_genesis")
+# The Andor gun-port fire mask (ffreq_mask_andor_genesis, area-schedules.json mask arg, xevious_main.68k:5519).
+# = 0b101111 = bits {0,1,2,3,5} -> NON-contiguous (recorded in 027): `rng & 47` yields {0-15, 32-47} and NEVER
+# 16-31, so the shared gate's `rng mod (mask+1)` = `rng mod 48` (uniform 0-47) is WRONG for it. The gate
+# special-cases it with a bit-exact reload (install_fire_permission_gate), and HANDLED_NON_CONTIGUOUS_FIRE_MASKS
+# below lists it so the generate-time guard passes.
+ANDOR_FIRE_MASK = 47
+# The mask the DEBUG ground key forces into the summoned ports (the live schedule sets the same value in areas
+# 4/9/14), so a hold-G playtest exercises the real non-contiguous cadence instead of the degenerate mask-0
+# fastest-fire a never-set var would give.
+ANDOR_GENESIS_DEBUG_FIRE_MASK = ANDOR_FIRE_MASK
+# The port's fixed initial fire countdown. Every port's handle_XX inits `_TIMER=1` ONCE at spawn (a plain 1, NOT
+# a masked-random draw — verified at the pin, xevious_main.68k:5513/5564/5615/5666); the MASK applies only to the
+# post-fire reload in the gate. So the arm seeds each port `slot fire timer = 1`.
+ANDOR_PORT_FIRE_TIMER_INIT = 1
+# Bragza: the destroyed core converts in place (andor_genesis_core_hit, xevious_main.68k:5475 -> handle_Bragza
+# 5493) into a lone indestructible enemy that flies straight UP the screen (arcade `_dX=0xffd0` = -48/frame on the
+# vertical `_X`/scroll axis; `_dY` cleared) as a 4-frame animation (C4). Bragza has NO arcade object `_TYPE` (it is
+# reached by SET_REENTRY_ADDR, a function-pointer set, not the type-dispatch table), so the port assigns it a free
+# code from the andor block's NOT-USED range (arcade dispatch 0x4C..0x4E are `null_fn`, xevious_main.68k:6242-6244).
+ANDOR_BRAGZA_TYPE = 0x4C  # 76: port-synthetic; arcade-NOT-USED, disjoint from every real object type
+assert ANDOR_BRAGZA_TYPE not in ANDOR_PART_TYPES, "Bragza type must not collide with a real Andor part"
 # The schedule end record (C4) and the debug dismiss set this; the master's update proc tears the composite
 # down when it is set (mirrors andor_genesis_end_flag / remove_andor_genesis, xevious_sub.68k:569-572).
 ANDOR_GENESIS_END_FLAG_ID = "andor-genesis-end-flag"
@@ -1410,6 +1457,11 @@ ANDOR_GENESIS_FLIP_ID = "andor-genesis-flip"
 # the other Andor IDs, since they have no such dependency.
 ANDOR_MASTER_X_ID = "andor-master-x"     # descent/depth anchor (port slot-x units); driven by the master proc
 ANDOR_MASTER_Y_ID = "andor-master-y"     # lateral anchor (port slot-y units); fixed for the whole lifecycle
+# BOSS-03 (#96): the destroyed-departure clock. 0 = the boss is alive (normal descend/hold/leave lifecycle);
+# nonzero = the core has been bombed and the composite is in the flash-then-sink death sub-state, counting ticks
+# since the core died. It latches the destruction sequence to fire exactly once and routes the master proc into
+# the destroyed animation (andor_genesis_destroyed). Reset to 0 when the wreck clears the field (teardown).
+ANDOR_DESTROYED_TIMER_ID = "andor-destroyed-timer"
 ANDOR_PART_DEPTH_ID = "andor-part-depth"     # per-part depth offset table (index = slot type - 0x40)
 ANDOR_PART_LATERAL_ID = "andor-part-lateral"  # per-part lateral offset table (index = slot type - 0x40)
 # GND-06 (ground.grobda #88): the tank/stingray family — the first SELF-MOVING ground object. 12 live
@@ -1784,12 +1836,18 @@ TERRAZI_GLIDE_DECEL = 4
 # on a GLOBAL 8-arcade-frame phase (`countup_timer_1 & 7 == 0`); a tick is 2 arcade frames, so the port
 # phase is every 4th tick. On a phase tick it decrements the per-slot fire countdown as a BYTE (with
 # 256-wrap, so a spawn draw of 0 wraps to 255 then counts down — the reference's byte underflow) and,
-# at zero, fires one aimed bullet and reloads the countdown to (rng & mask) + 1. The mask is a contiguous
-# low-bit fire-frequency byte, so `rng & mask` is reproduced as `rng mod (mask+1)` — exact for every
-# flying family's scheduled masks (Terrazi 3/7, Zoshi 15/31, Kapi 3/7); the boss `andor_genesis` mask 47
-# is the one non-contiguous byte and is flagged for its own leaf. Recorded in record 027.
+# at zero, fires one aimed bullet and reloads the countdown to (rng & mask) + 1. For a CONTIGUOUS low-bit
+# fire-frequency byte, `rng & mask` is reproduced as `rng mod (mask+1)` — exact for every flying family's
+# scheduled masks (Terrazi 3/7, Zoshi 15/31, Kapi 3/7). The boss `andor_genesis` mask 47 is the one
+# NON-contiguous byte (BOSS-02): the gate reproduces it with a bit-exact branch, and a generate-time guard
+# fails the build if a new non-contiguous mask ever slips in unhandled. Recorded in record 027.
 FIRE_GATE_PHASE_TICKS = 4  # 8 arcade frames / 2 frames-per-tick
 FIRE_TIMER_BYTE_MOD = 256  # the countdown is a byte; decrement wraps mod 256 (reference underflow)
+# The closed set of NON-contiguous fire masks the gate reproduces exactly (bit-decomposition branches). A mask
+# is "contiguous" (all low bits set, 2^k-1) iff `mask & (mask+1) == 0`, and only then is `rng mod (mask+1)` ==
+# `rng & mask`. `_assert_fire_masks_handled` refuses to build if any scheduled fire mask is non-contiguous and
+# not in this set, so it can never silently fall through to the wrong modulo reload. Today: just the Andor 47.
+HANDLED_NON_CONTIGUOUS_FIRE_MASKS = frozenset({ANDOR_FIRE_MASK})
 TERRAZI_FIRE_SUPPRESS = 255  # glide sets the fire countdown to 0xff to suppress fire (3699)
 
 # AIR-05 Kapi (handle_10_Kapi 3602-3623, kapi_10_fire 3624-3665): the first peel-away DIVING aerial
@@ -1972,6 +2030,30 @@ ANDOR_START_X = -8 * SLOT_UNITS_PER_CELL   # -2048; off the top (arcade _X MSB 0
 ANDOR_HOLD_X = 16 * SLOT_UNITS_PER_CELL    # +4096; on-field hold (arcade _X MSB 0x10)
 ANDOR_DESCEND_STEP = 0x20 * FRAMES_PER_TICK  # +64/tick (arcade +0x20/frame; 0x10 doubled, x2 frames)
 ANDOR_LEAVE_STEP = 0x10 * FRAMES_PER_TICK    # 32/tick, subtracted on the retreat (arcade -0x10/frame)
+# Bragza fly-up (C4). The converted core flies straight up the same depth/scroll axis as the descent at arcade
+# `_dX=0xffd0` = -48/frame (`_dY` cleared), applied over FRAMES_PER_TICK arcade frames per tick — the same RAW
+# scaling as the descent/leave steps (the single Bragza sprite has no composite offset, so no anamorphic factor).
+# Lower slot x = up-screen, so the update subtracts this each tick until the wreck culls off the top.
+ANDOR_BRAGZA_STEP = 0x30 * FRAMES_PER_TICK    # 96/tick up (arcade -0x30/frame; magnitude of _dX 0xffd0)
+# The Bragza culls when it clears the top of the field. It flies up (slot x decreasing) from the boss hold row; it
+# is gone once its slot x is above the composite's own off-top entry anchor (ANDOR_START_X = -8 cells). Reuses the
+# same top-of-field reference the descent enters from, so the wreck never renders a stuck frame above the screen.
+ANDOR_BRAGZA_CULL_X = ANDOR_START_X  # -2048; cull the Bragza once it flies above the top-of-field entry anchor
+# BOSS-03 destroyed-departure sub-state (andor_genesis_destroyed, xevious_main.68k:5409-5424) — a DISTINCT death
+# animation, not the scripted `andor_genesis_leave` retreat. On core death the master (a) flashes the whole
+# composite's shared colour to 0x1d for a few frames, then to 6, and (b) sinks the wreck DOWN off the bottom WITH
+# the screen at twice the scroll rate (`_X += -2*scroll_delta`; scroll_delta is negative here — the descent proved
+# +slot x = down — so the wreck's depth INCREASES toward the removal MSB 0x30) until it clears the field, then
+# clears the master (remove_andor_genesis, 5440). The normal ground scroll is AREA_PROGRESS_STEP/tick, so twice
+# that is the sink rate; the removal MSB 0x30 = +48 cells is the off-bottom threshold.
+ANDOR_DESTROYED_STEP = 2 * AREA_PROGRESS_STEP        # 64/tick down (arcade -2*scroll_delta; |scroll_delta|=16/frame)
+ANDOR_DESTROYED_OFF_X = 0x30 * SLOT_UNITS_PER_CELL   # 12288; the removal MSB 0x30 (+48 cells, off the bottom)
+ANDOR_DESTROYED_COLOUR_FLASH = 0x1d  # 29; the shared colour the wreck flashes on entry (andor_genesis_colour := 0x1d)
+ANDOR_DESTROYED_COLOUR_FINAL = 6     # after the flash timer, the shared colour settles to 6 (andor_genesis_colour := 6)
+# The arcade flash `_TIMER=3` counts down one per ARCADE frame (3 frames of 0x1d); at FRAMES_PER_TICK=2 frames/tick
+# the closest whole-tick flash is the entry tick plus this many further destroyed ticks (~4 frames — a one-frame
+# rounding of the arcade's 3, documented in the C5 mechanics record).
+ANDOR_DESTROYED_FLASH_TICKS = 1
 ANDOR_LATERAL_Y = 0x0e80  # 3712; the master's fixed `_Y` (sub_2_fn_20__andor_genesis_start, xevious_sub.68k:553)
 # — a boss constant hardcoded by the arm, NOT a schedule column. 3712/32 = 116 px, ~ the debug central column
 # (DEBUG_GROUND_SPRITE_Y 112). Both the scheduled arm and the debug summon use it (the boss lateral is intrinsic).
@@ -3610,7 +3692,13 @@ def install_advance_slots(blocks: Blocks) -> None:
     andor_part_branch = blocks.if_reporter(
         is_andor_part, [blocks.call_proc(UPDATE_ANDOR_PART_PROCCODE, warp=True)]
     )
-    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, easter_egg_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch, andor_master_branch, andor_part_branch])
+    # BOSS-03 (andor.core-destruction #96): the converted core flies up as the lone Bragza on its own type
+    # (ANDOR_BRAGZA_TYPE) — dispatched to its own mover, detached from the composite alignment.
+    andor_bragza_branch = blocks.if_reporter(
+        blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(ANDOR_BRAGZA_TYPE)),
+        [blocks.call_proc(UPDATE_ANDOR_BRAGZA_PROCCODE, warp=True)],
+    )
+    dispatch = blocks.if_reporter(occupied, [read_type, toroid_branch, kapi_branch, torkan_branch, terrazi_branch, zoshi_branch, jara_branch, zakato_branch, giddo_spario_branch, brag_spario_branch, brag_zakato_branch, garu_zakato_branch, sheonite_branch, bacura_branch, bullet_branch, barra_branch, sol_tower_branch, bonus_flag_branch, easter_egg_branch, garu_branch, logram_branch, zolbak_branch, derota_branch, garu_derota_branch, boza_branch, grobda_branch, domogram_branch, andor_master_branch, andor_part_branch, andor_bragza_branch])
     blocks.substack(loop, [dispatch, blocks.change_var("slot index", SLOT_INDEX_ID, 1)])
     blocks.chain(definition, [advance_tick, set_index, loop])
 
@@ -4167,13 +4255,27 @@ def install_advance_ground_moving(blocks: Blocks) -> None:
     # `slot index` — the first ground slot that moves by its OWN velocity instead of the fixed terrain
     # scroll. Mirrors the source's move_object_dX / move_object_dX_dY (xevious_main.68k 4817-4846): the
     # scroll-axis position (`slot x`) advances by TICK_VELOCITY_SCALE * `slot dx` and the lateral position
-    # (`slot y`) by TICK_VELOCITY_SCALE * `slot dy`, then the SAME bottom-edge cull `advance ground` uses.
+    # (`slot y`) by TICK_VELOCITY_SCALE * `slot dy`, then the SAME off-field cull the source applies.
     # There is NO AREA_PROGRESS_STEP scroll baseline: the source applies no separate scroll term to a moving
     # object, so the terrain scroll is baked into the stored delta (raw 8 = scroll-matched, so a "stopped"
     # object still drifts DOWN the field at the scroll rate and eventually culls). A Grobda leaves `slot dy`
     # 0 (it moves scroll-axis-only, `activate_and_set_grobda_dX` 4574-4579 clears _dY); a Domogram drives
-    # both axes from its path vector. Culling stays bottom-only, like `advance ground`: even a backward
-    # Grobda (raw dX 2 -> +8/tick absolute) still creeps down the field, never off the top or sides.
+    # both axes from its path vector.
+    #
+    # Cull is source-exact to `check_scroll_offscreen` ($30B4, xevious_main.68k 4827-4839), which BOTH
+    # move_object_dX and move_object_dX_dY fall through to, and which handle_2E_Domogram reaches every tick
+    # via domogram_colour_and_move -> jbsr move_object_dX_dY (4688; the CULLING mover, not the _2 variant at
+    # 4856). It removes the object when the scroll-axis MSB is past the bottom (`_X` MSB + 1 >= 0x29, i.e.
+    # `_X` MSB >= 0x28 = CULL_ROW_MAX) OR the lateral MSB (unsigned byte) `_Y` >= 0x1f. That single lateral
+    # test catches the RIGHT edge (col >= CULL_COL_MAX = 0x1f) and, via the source's byte-wrap of a negative
+    # `_Y` (col -1 -> 0xff >= 0x1f), the LEFT edge (col < 0). Note the left threshold is col < 0, NOT the
+    # col <= -2 the top/bottom paths use: the lateral compare has no `addq #1` before it (unlike the `_X`
+    # path at 4829), so the arcade removes a left-drifting object one column sooner than a top-exiting one.
+    # A Domogram whose path vector drives it sideways (dy != 0) reaches a lateral edge and is removed there,
+    # exactly as the arcade does; the earlier bottom-only cull let such a Domogram slide along the edge and
+    # scroll off the bottom instead (operator playtest, 2026-09-28). No top cull: a ground mover's dx >= 0
+    # always, so it never exits the top. A Grobda is unaffected — with `slot dy` 0 it never moves laterally,
+    # so off_right/off_left can never fire for it and it still only ever exits the bottom.
     definition = _install_warp_proc(blocks, ADVANCE_GROUND_MOVING_PROCCODE)
     move_x = _set_cur_item(
         blocks,
@@ -4194,7 +4296,10 @@ def install_advance_ground_moving(blocks: Blocks) -> None:
         ),
     )
     off_bottom = blocks.op_not(blocks.op_lt(_cur_row(blocks), number(CULL_ROW_MAX)))
-    cull = blocks.if_reporter(off_bottom, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
+    off_right = blocks.op_not(blocks.op_lt(_cur_col(blocks), number(CULL_COL_MAX)))
+    off_left = blocks.op_lt(_cur_col(blocks), number(0))
+    offscreen = blocks.op_or(off_bottom, blocks.op_or(off_right, off_left))
+    cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     blocks.chain(definition, [move_x, move_y, cull])
 
 
@@ -7228,6 +7333,31 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     blocks.chain(definition, [*capture, detonate_sound, set_ring_angle, ring, *spawn_body, *free])
 
 
+def _is_contiguous_mask(mask: int) -> bool:
+    # A fire mask is "contiguous" (all low bits set, i.e. 2^k - 1) iff `mask & (mask+1) == 0`. Only for such a
+    # mask does the gate's `rng mod (mask+1)` equal the arcade's `rng & mask`.
+    return mask & (mask + 1) == 0
+
+
+def _assert_fire_masks_handled() -> None:
+    # BOSS-02 generate-time completeness guard: refuse to build if any area schedule sets a NON-contiguous fire
+    # mask the gate does not reproduce exactly, so a future mask can never silently fall through to the wrong
+    # `rng mod (mask+1)` reload. Today the only non-contiguous scheduled mask is the Andor gun-port 47.
+    data = _load_spec_data("area-schedules.json")
+    for area in data["areas"]:
+        for record in area["records"]:
+            if not record["handler"].startswith(FIRE_MASK_PREFIX):
+                continue
+            mask = record["params"]["mask"]
+            if not _is_contiguous_mask(mask) and mask not in HANDLED_NON_CONTIGUOUS_FIRE_MASKS:
+                raise ValueError(
+                    f"area {area['area']} sets non-contiguous fire mask {mask} "
+                    f"({record['handler']}); the fire-permission gate cannot reproduce `rng & {mask}` as a "
+                    f"modulo reload. Add a bit-exact branch and list {mask} in "
+                    f"HANDLED_NON_CONTIGUOUS_FIRE_MASKS."
+                )
+
+
 def install_fire_permission_gate(blocks: Blocks) -> None:
     # AIR-06 shared, family-agnostic periodic-fire gate (chk_timer_fire_bullet_reinit_timer 4999-5010).
     # Operates on the current slot (`slot index`): every firing family calls this each active tick after
@@ -7237,10 +7367,17 @@ def install_fire_permission_gate(blocks: Blocks) -> None:
     #     0 wraps to 255 and counts down (the reference's underflow), never a permanent no-fire.
     #  3. At zero, FIRE one aimed bullet (the shared aim/alloc body) and RELOAD the countdown to
     #     (rng & mask) + 1 — no zero-suppression branch: the mask CAPS the reload interval (mask 0 =>
-    #     reload 1 => fastest, larger mask => rarer). `rng & mask` is `rng mod (mask+1)` for the
-    #     contiguous fire-frequency masks the schedule uses (recorded in 027).
+    #     reload 1 => fastest, larger mask => rarer).
+    #     * CONTIGUOUS mask (2^k-1): `rng & mask` == `rng mod (mask+1)` (Terrazi/Zoshi/Kapi — record 027).
+    #     * NON-contiguous handled mask (BOSS-02, the Andor 47): a bit-exact branch. 47 = bits {0,1,2,3,5}, so
+    #       `rng & 47 = (rng mod 16) + 32*(floor(rng/32) mod 2)` — bits 0-3 plus bit 5, bit 4 (=16) masked out.
+    #       `rng out` is the RNG's integer byte (0..255, install_rng_step), so the decomposition is exact.
+    #     The generate-time guard (_assert_fire_masks_handled) proves this branch set is complete.
+    _assert_fire_masks_handled()
     definition = _install_warp_proc(blocks, FIRE_GATE_PROCCODE)
     timer = lambda: _cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID)
+    mask = lambda: _cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID)
+    rng = lambda: variable("rng out", RNG_OUT_ID)
     on_phase = blocks.op_eq(
         blocks.op_mod(variable("tick", TICK_ID), number(FIRE_GATE_PHASE_TICKS)), number(0)
     )
@@ -7253,19 +7390,32 @@ def install_fire_permission_gate(blocks: Blocks) -> None:
             number(FIRE_TIMER_BYTE_MOD),
         ),
     )
+    # Contiguous reload: (rng mod (mask+1)) + 1.
+    reload_contiguous = _set_cur_item(
+        blocks,
+        "slot fire timer",
+        SLOT_FIRE_TIMER_ID,
+        blocks.op_add(
+            blocks.op_mod(rng(), blocks.op_add(mask(), number(1))),
+            number(1),
+        ),
+    )
+    # Bit-exact reload for the non-contiguous Andor mask 47: (rng & 47) + 1.
+    bit5 = blocks.op_mod(blocks.op_floor(blocks.op_div(rng(), number(32))), number(2))
+    reload_mask47 = _set_cur_item(
+        blocks,
+        "slot fire timer",
+        SLOT_FIRE_TIMER_ID,
+        blocks.op_add(
+            blocks.op_add(blocks.op_mod(rng(), number(16)), blocks.op_mul(number(32), bit5)),
+            number(1),
+        ),
+    )
     reload = [
         blocks.call_proc(RNG_PROCCODE, warp=True),
-        _set_cur_item(
-            blocks,
-            "slot fire timer",
-            SLOT_FIRE_TIMER_ID,
-            blocks.op_add(
-                blocks.op_mod(
-                    variable("rng out", RNG_OUT_ID),
-                    blocks.op_add(_cur_item(blocks, "slot fire mask", SLOT_FIRE_MASK_ID), number(1)),
-                ),
-                number(1),
-            ),
+        blocks.if_reporter(blocks.op_eq(mask(), number(ANDOR_FIRE_MASK)), [reload_mask47]),
+        blocks.if_reporter(
+            blocks.op_not(blocks.op_eq(mask(), number(ANDOR_FIRE_MASK))), [reload_contiguous]
         ),
     ]
     fired = blocks.if_reporter(
@@ -7285,11 +7435,17 @@ def install_update_andor_master(blocks: Blocks) -> None:
     #   * end flag set   -> RETREAT up (-ANDOR_LEAVE_STEP) until it clears the top (<= START), then TEAR DOWN the
     #     whole composite (free every part slot type+state, mirroring remove_andor_genesis) and consume the flag.
     # The phase is derived from position + flag — no explicit phase var — so the ground band-isolation invariant
-    # holds. (Source checks the end flag only once HOLD is reached; here a flag set mid-descent reverses
+    # holds. (Source checks the SCHEDULE end flag only once HOLD is reached; here a flag set mid-descent reverses
     # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold, and the
     # debug summon's dismiss fires only on a FRESH G press once the boss is already up (well after it has reached
-    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.) The
-    # per-frame part alignment lives in `update andor part`; the master owns only the shared anchor + animation.
+    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.)
+    # The CORE-BOMB destruction path is different and NOT an approximation: handle_4B's FIRST instruction, before the
+    # descend/hold branch, tests the core (obj 0x0E) for `_STATE==3` every tick (xevious_main.68k:5387-5388), so
+    # bombing the core mid-descent legitimately ends the boss. The port's core-destruction check (C4) likewise runs
+    # every tick regardless of phase, matching that — the earlier "the end flag only rises after hold" assumption
+    # does not constrain the core-bomb path. BOSS-03 (#96): each tick this proc also pins the master slot onto the
+    # core's cell for the shell-slot bug (below). The per-frame part alignment lives in `update andor part`; the
+    # master owns only the shared anchor + animation + its own slot's position.
     definition = _install_warp_proc(blocks, UPDATE_ANDOR_MASTER_PROCCODE)
     base = GROUND_SLOTS[0]
     tick = lambda: variable("tick", TICK_ID)
@@ -7323,21 +7479,40 @@ def install_update_andor_master(blocks: Blocks) -> None:
         [],  # at HOLD: fixed screen position, no scroll
     )
     # TEAR DOWN (remove_andor_genesis, 5440-5443 + the parts' own removal): free every part slot type+state the
-    # belt-and-suspenders way `cull slot` and the debug band-clear do, then consume the flag.
-    teardown = [
-        block
-        for n in range(1, len(ANDOR_GENESIS_DATA) + 1)
-        for block in (
-            blocks.list_replace("slot type", SLOT_TYPE_ID, number(base + n), number(0)),
-            blocks.list_replace("slot state", SLOT_STATE_ID, number(base + n), number(0)),
-        )
-    ]
-    teardown.append(blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0)))
+    # belt-and-suspenders way `cull slot` and the debug band-clear do, then consume the end flag AND the destroyed
+    # clock. TYPE-AWARE (F1): a slot that now holds the fly-up Bragza (the converted core, ANDOR_BRAGZA_TYPE) is
+    # NOT cleared — the arcade's remove_andor_genesis frees only the master, the armor self-clears, the ports have
+    # exploded, and the converted core is the independent Bragza, which must keep flying. A builder (fresh blocks
+    # per call) because both the normal-leave and the destroyed-departure paths tear down.
+    destroyed_timer = lambda: variable("andor destroyed timer", ANDOR_DESTROYED_TIMER_ID)
+
+    def build_teardown() -> list[str]:
+        body: list[str] = []
+        for n in range(1, len(ANDOR_GENESIS_DATA) + 1):
+            slot = base + n
+            body.append(
+                blocks.if_reporter(
+                    blocks.op_not(
+                        blocks.op_eq(
+                            blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)),
+                            number(ANDOR_BRAGZA_TYPE),
+                        )
+                    ),
+                    [
+                        blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
+                        blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
+                    ],
+                )
+            )
+        body.append(blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0)))
+        body.append(blocks.set_var("andor destroyed timer", ANDOR_DESTROYED_TIMER_ID, number(0)))
+        return body
+
     # LEAVE: retreat up until clear of the top, then tear down.
     leave = _ground_if_else(
         blocks,
         blocks.op_lt(master_x(), blocks.op_add(number(ANDOR_START_X), number(1))),  # <= START_X
-        teardown,
+        build_teardown(),
         [
             blocks.set_var_expr(
                 "andor master x", ANDOR_MASTER_X_ID,
@@ -7351,7 +7526,92 @@ def install_update_andor_master(blocks: Blocks) -> None:
         [leave],
         [descend],
     )
-    blocks.chain(definition, [set_colour, set_flip, lifecycle])
+    # BOSS-03 (#96) shell-slot leftover bug: the master (obj 0x0F) shares the core's on-screen position — in the
+    # arcade the CORE copies the master's `_X`/`_Y` each tick (handle_4A, xevious_main.68k:5453/5466), and since the
+    # port's core composite offset is (0,0) ("core sits on the master", _ANDOR_ARC_OFFSETS[0x4A]), the core slot
+    # renders exactly at the anchor. Pin the master's own slot (Scratch slot 16, `slot index` here) onto that same
+    # anchor each tick — read BEFORE `lifecycle` steps the anchor, so it equals the value the parts (core) aligned to
+    # this tick (parts run earlier in the walk, reading last tick's anchor, which is unchanged until lifecycle below).
+    # The master slot is invisible (no render arm) — this only co-locates it with the core for the bomb detector. The
+    # master carries stale `slot pts` (un-seeded on purpose, `_ground_seed_andor`), so a bomb on the co-located core
+    # awards the core's 4,000 (ANDOR_CORE_PTS) AND the master's leftover value — the documented shell-slot bug. A
+    # direct port bomb still scores its own 1,000 (ANDOR_PORT_PTS); armor + Bragza stay immune (non-ACTIVE sentinel).
+    track_master_slot = [
+        _set_cur_item(blocks, "slot x", SLOT_X_ID, master_x()),
+        _set_cur_item(
+            blocks, "slot y", SLOT_Y_ID, variable("andor master y", ANDOR_MASTER_Y_ID)
+        ),
+    ]
+    # BOSS-03 (#96) CORE-DEATH sequence. The master dispatches LAST in the ascending walk, so it sees the core's
+    # state this tick. When the core (obj 14 -> Scratch slot base+14) is SLOT_HIT — bombed for 4,000 this tick (or a
+    # prior one) — begin the destruction, ONCE: flash the shared colour to 0x1d and latch the destroyed clock to 1.
+    # The gun-port CASCADE is NOT done here. In the arcade each port's OWN handler polls the core state BEFORE its
+    # fire call (`cmp #3,(core _STATE); jeq <xx>_gun_port_hit` at 5523/5574/5625/5676, ahead of the fire jsr at
+    # 5533/5584/5635/5686) and routes itself to `<xx>_gun_port_hit` — an explosion, NOT a score. Critically the
+    # cascaded port stays `_STATE=2` (active) throughout its explosion (only `gun_port_explosion_finished` at
+    # 5738 sets state 4, at 5740), so a bomb landing on it during the burst still scores its 1,000. Modelling the cascade
+    # as a master-driven flip to SLOT_HIT (as C4 did) diverged twice on the death frame: the ports (walked earlier)
+    # fired one extra volley before the master flipped them, and a cascading port became instantly un-bombable. So the
+    # cascade now lives per-port in `update andor part` (fire gated on core-not-hit; a port whose core is hit explodes
+    # while staying ACTIVE/bombable until its burst finishes) — source-exact on the death tick. The master here only
+    # flashes + latches. The core itself keeps exploding under `update andor part`, converting to the fly-up Bragza
+    # when its own burst finishes (andor_genesis_core_hit waits for `_STATE==4`, 5482). The latch (destroyed timer
+    # != 0) routes every later tick into the destroyed departure, so this check fires exactly once even as the core
+    # stays SLOT_HIT until it converts. (handle_4B's first instruction tests the core `_STATE==3` every tick before
+    # the descend/hold branch, 5387-5388.)
+    core_slot = base + 14  # obj 14 (core) -> Scratch slot base+14
+    core_is_hit = blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, number(core_slot)), number(SLOT_HIT)
+    )
+    core_death_check = blocks.if_reporter(
+        core_is_hit,
+        [
+            blocks.set_var(
+                "andor genesis colour", ANDOR_GENESIS_COLOUR_ID, number(ANDOR_DESTROYED_COLOUR_FLASH)
+            ),
+            blocks.set_var("andor destroyed timer", ANDOR_DESTROYED_TIMER_ID, number(1)),
+        ],
+    )
+    # DESTROYED DEPARTURE (andor_genesis_destroyed, 5409-5424): a distinct death animation — NOT the scripted leave.
+    # Flash the shared colour (0x1d for the first tick or two, then 6), sink the wreck DOWN off the bottom with the
+    # screen at twice the scroll rate (the armor + still-exploding parts follow the anchor via `update andor part`),
+    # and tear down (type-aware — never the Bragza) once it clears the field.
+    flash = _ground_if_else(
+        blocks,
+        blocks.op_not(blocks.op_gt(destroyed_timer(), number(ANDOR_DESTROYED_FLASH_TICKS))),
+        [blocks.set_var("andor genesis colour", ANDOR_GENESIS_COLOUR_ID, number(ANDOR_DESTROYED_COLOUR_FLASH))],
+        [blocks.set_var("andor genesis colour", ANDOR_GENESIS_COLOUR_ID, number(ANDOR_DESTROYED_COLOUR_FINAL))],
+    )
+    sink = blocks.set_var_expr(
+        "andor master x", ANDOR_MASTER_X_ID,
+        blocks.op_add(master_x(), number(ANDOR_DESTROYED_STEP)),
+    )
+    off_field = _ground_if_else(
+        blocks,
+        blocks.op_not(blocks.op_lt(master_x(), number(ANDOR_DESTROYED_OFF_X))),  # master_x >= OFF_X
+        build_teardown(),
+        [],
+    )
+    destroyed_progress = [
+        flash,
+        sink,
+        blocks.change_var("andor destroyed timer", ANDOR_DESTROYED_TIMER_ID, 1),
+        off_field,
+    ]
+    # Route the whole tick: while alive (destroyed clock 0) run colour/flip + the shell-slot track + the core-death
+    # check, then the descend/hold/leave lifecycle only if the check did not just latch a death this tick; once the
+    # clock is latched, run only the destroyed departure.
+    alive_body = [
+        set_colour,
+        set_flip,
+        *track_master_slot,
+        core_death_check,
+        _ground_if_else(blocks, blocks.op_eq(destroyed_timer(), number(0)), [lifecycle], []),
+    ]
+    blocks.chain(
+        definition,
+        [_ground_if_else(blocks, blocks.op_eq(destroyed_timer(), number(0)), alive_body, destroyed_progress)],
+    )
 
 
 def install_update_andor_part(blocks: Blocks) -> None:
@@ -7364,6 +7624,91 @@ def install_update_andor_part(blocks: Blocks) -> None:
     # anchor — a uniform lag across all parts, so the composite stays rigid, and it is zero while holding.
     definition = _install_warp_proc(blocks, UPDATE_ANDOR_PART_PROCCODE)
     part_index = lambda: blocks.op_sub(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0x40))
+    slot_type = lambda: _cur_item(blocks, "slot type", SLOT_TYPE_ID)
+    slot_timer = lambda: _cur_item(blocks, "slot timer", SLOT_TIMER_ID)
+    # Each port polls the CORE slot's state itself, exactly as the arcade does. handle_4F..52 test
+    # `cmp.b #3,(core _STATE)` at 5523/5574/5625/5676 — BEFORE their fire jsr at 5533/5584/5635/5686 — and route
+    # themselves to <xx>_gun_port_hit when the core is dead. Reproduce that per-port poll here (the cascade is NOT
+    # driven by the master flipping port states — that flip lagged one tick behind this earlier-walked proc and let
+    # a port fire one extra volley on the death frame, and made a cascading port instantly un-bombable).
+    core_slot = GROUND_SLOTS[0] + 14  # obj 14 (core) -> Scratch slot base+14
+    core_is_hit = lambda: blocks.op_eq(
+        blocks.list_item("slot state", SLOT_STATE_ID, number(core_slot)), number(SLOT_HIT)
+    )
+    is_port = lambda: functools.reduce(
+        blocks.op_or,
+        (blocks.op_eq(slot_type(), number(t)) for t in ANDOR_PORT_TYPES),
+    )
+    is_active = lambda: blocks.op_eq(
+        _cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE)
+    )
+    is_hit = lambda: blocks.op_eq(
+        _cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_HIT)
+    )
+    # BOSS-02 (#95): after alignment, an ACTIVE gun port fires on the SHARED periodic gate under the mask captured at
+    # arm (handle_4F..52 each call chk_timer_fire_bullet_reinit_timer). Suppress the fire when the core is hit (the
+    # arcade polls the core FIRST and diverts to its explosion, so no volley leaves on the death frame — DH-1) and
+    # when this port is already mid-burst (slot timer > 0). A directly-bombed port is non-ACTIVE (SLOT_HIT) and is
+    # skipped too. Armor (immune sentinel) and the core are never port types, so they never reach this call.
+    port_fire = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_and(is_port(), is_active()),
+            blocks.op_and(blocks.op_not(core_is_hit()), blocks.op_eq(slot_timer(), number(0))),
+        ),
+        [blocks.call_proc(FIRE_GATE_PROCCODE, warp=True)],
+    )
+    # BOSS-02/03 (#95/#96): a part plays the shared ground explosion burst when it is directly bombed (SLOT_HIT), OR
+    # it is a gun port whose core has just died (the per-port cascade poll above — DH-2), OR it is a gun port already
+    # mid-burst (a port AND slot timer > 0, so a cascade burst keeps running to completion after the core converts and
+    # stops being SLOT_HIT — the arcade port runs its own gun_port_explosion independently once diverted, 5541-5740,
+    # and the composite dispatch does not guarantee the ports resolve on the same tick as the core). A cascaded port
+    # stays SLOT_ACTIVE throughout its explosion, exactly like the arcade (only gun_port_explosion_finished at 5738
+    # sets _STATE=4) — so a bomb landing on it during the burst still scores its 1,000 through the ACTIVE-gated
+    # detector. Advance the animation clock every tick (F4) so the renderer's floor(slot timer / 8) walks the 8 burst
+    # frames instead of freezing on frame 0. When the burst finishes (floor >= EXPLODE_COSTUME_COUNT), resolve the
+    # part: a gun port is explode-and-remove (free the slot); the CORE converts in place into the fly-up Bragza
+    # (arcade andor_genesis_core_hit waits for its explosion to finish, `_STATE==4`, THEN sets it flying, 5482-5491)
+    # — stamped ANDOR_BRAGZA_TYPE + the ANDOR_ARMOR_IMMUNE sentinel (never re-bombable) with its anim clock reset.
+    # The mid-burst continuation is gated on `is_port` (not the bare timer) so armor — the immune sentinel, never
+    # SLOT_HIT and never a port — never advances a slot timer it did not start: this proc writes ONLY slot x/y for a
+    # non-exploding part, so a boss part armed over a slot with a stale explosion clock stays inert (band isolation).
+    # The live seed zeroes `slot timer` on every arm, so a real port always begins its burst from 0.
+    burst_done = blocks.op_not(
+        blocks.op_lt(
+            blocks.op_floor(
+                blocks.op_div(slot_timer(), number(GROUND_EXPLOSION_PHASE_FRAMES))
+            ),
+            number(EXPLODE_COSTUME_COUNT),
+        )
+    )
+    is_core = blocks.op_eq(slot_type(), number(ANDOR_CORE_TYPE))
+    resolve_done = _ground_if_else(
+        blocks,
+        is_core,
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(ANDOR_BRAGZA_TYPE)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(ANDOR_ARMOR_IMMUNE)),
+            _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        ],
+        [
+            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(0)),
+            _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(0)),
+        ],
+    )
+    explode = blocks.op_or(
+        blocks.op_or(is_hit(), blocks.op_and(is_port(), core_is_hit())),
+        blocks.op_and(is_port(), blocks.op_gt(slot_timer(), number(0))),
+    )
+    explode_branch = blocks.if_reporter(
+        explode,
+        [
+            _set_cur_item(
+                blocks, "slot timer", SLOT_TIMER_ID,
+                blocks.op_add(slot_timer(), number(TICK_TIMER_STEP)),
+            ),
+            blocks.if_reporter(burst_done, [resolve_done]),
+        ],
+    )
     blocks.chain(
         definition,
         [
@@ -7381,8 +7726,29 @@ def install_update_andor_part(blocks: Blocks) -> None:
                     blocks.list_item("andor part lateral", ANDOR_PART_LATERAL_ID, part_index()),
                 ),
             ),
+            port_fire,
+            explode_branch,
         ],
     )
+
+
+def install_update_andor_bragza(blocks: Blocks) -> None:
+    # BOSS-03 (andor.core-destruction #96): the destroyed core, once its explosion has finished, has converted into
+    # the indestructible Bragza (`update andor part`). It is no longer part of the composite — it flies straight UP
+    # the scroll axis on its own (handle_Bragza, xevious_main.68k:5493-5504: `_dX=0xffd0` = -48/frame up, `_dY`
+    # cleared). Each tick: slot x -= ANDOR_BRAGZA_STEP (lower slot x = up-screen), slot y held, and cull once it
+    # clears the top of the field. The 4-frame animation + colour cycle are cosmetic and live in the render arm
+    # (they read the shared `tick`, mirroring the arcade `(countup_timer_1>>1)` code/colour selectors).
+    definition = _install_warp_proc(blocks, UPDATE_ANDOR_BRAGZA_PROCCODE)
+    slot_x = lambda: _cur_item(blocks, "slot x", SLOT_X_ID)
+    fly_up = _set_cur_item(
+        blocks, "slot x", SLOT_X_ID, blocks.op_sub(slot_x(), number(ANDOR_BRAGZA_STEP))
+    )
+    cull = blocks.if_reporter(
+        blocks.op_lt(slot_x(), number(ANDOR_BRAGZA_CULL_X)),
+        [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)],
+    )
+    blocks.chain(definition, [fly_up, cull])
 
 
 def install_cull_slot(blocks: Blocks) -> None:
@@ -8338,28 +8704,44 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
     return seed
 
 
-def _ground_seed_andor(blocks: Blocks, *, base: int) -> list[str]:
-    # BOSS-01 (andor.lifecycle #94): the Andor Genesis bulk-arm — the port's sub_2_fn_20__andor_genesis_start
-    # ($064A): stamp all 15 part types into ground obj slots 1..15 (Scratch slots base+1..base+15) and clear the
-    # end flag. The arm ORDER is source-exact (ANDOR_GENESIS_DATA); the master lands at Scratch slot base+15.
-    # Each part is marked ACTIVE so the field-occupancy checks (and the debug key's field-empty gate) see the
-    # boss. The master's shared anchor is set to its arcade start (`_X` MSB 0xf8 off the top, `_Y` = 0x0e80):
-    # `andor master x` = START_X, `andor master y` = LATERAL_Y — from here the master proc descends the anchor and
-    # `update andor part` pins each part to it. slot x/y are ALSO seeded to the part's initial composite position
-    # (START anchor + the part's offset) so the very first frame renders in place regardless of arm-vs-walk order;
-    # cull clears only type/state, so seed x/y explicitly rather than trust a reused slot. Reached from the debug
-    # key now; the live schedule opcode wires in a later commit — shared, so the debug arm is the scheduled arm's
-    # exact shape (the lateral is a boss constant, not a schedule column).
+def _ground_seed_andor(blocks: Blocks, *, base: int, port_fire_mask) -> list[str]:
+    # BOSS-01 (andor.lifecycle #94) + BOSS-02/03 (#95/#96): the Andor Genesis bulk-arm — the port's
+    # sub_2_fn_20__andor_genesis_start ($064A): stamp all 15 part types into ground obj slots 1..15 (Scratch slots
+    # base+1..base+15) and clear the end flag. The arm ORDER is source-exact (ANDOR_GENESIS_DATA); the master lands
+    # at Scratch slot base+15. The master's shared anchor is set to its arcade start (`_X` MSB 0xf8 off the top,
+    # `_Y` = 0x0e80): `andor master x` = START_X, `andor master y` = LATERAL_Y — from here the master proc descends
+    # the anchor and `update andor part` pins each part to it. slot x/y are ALSO seeded to the part's initial
+    # composite position (START anchor + the part's offset) so the very first frame renders in place regardless of
+    # arm-vs-walk order; cull clears only type/state, so seed x/y explicitly rather than trust a reused slot.
+    #
+    # BOSS-02/03 COMBAT state, keyed off the slot's part TYPE (never a hardcoded slot number):
+    #   * armor plates -> the ANDOR_ARMOR_IMMUNE sentinel (arcade `_STATE=3`): non-ACTIVE, so the ACTIVE-gated
+    #     bomb sweep skips them for free; still aligned/drawn (dispatch + render key off `slot type`).
+    #   * core         -> ACTIVE + `slot pts` = ANDOR_CORE_PTS (4,000 on a direct bomb).
+    #   * gun ports    -> ACTIVE + `slot pts` = ANDOR_PORT_PTS (1,000 on a direct bomb) + `slot fire mask`
+    #     (from the caller's factory: the live stage var, or the debug forced 47) + `slot fire timer` = the
+    #     arcade's fixed init 1 (the mask drives the post-fire reload, not this seed).
+    #   * master       -> ACTIVE, `slot pts` DELIBERATELY LEFT UN-SEEDED so it carries the previous tenant's
+    #     value: the arcade never inits obj-15's `_PTS`, so a bomb on the co-located core awards the core's 4,000
+    #     AND the master's stale leftover (the documented shell-slot bug — see C3, which tracks the master onto
+    #     the core each tick so the bomb lands on it).
+    # `port_fire_mask()` returns a FRESH reporter per call (one per port). Shared by the debug key and the live
+    # schedule opcode, so the debug arm is the scheduled arm's exact shape (the lateral is a boss constant, not a
+    # schedule column); only the fire-mask SOURCE differs (debug forces 47, live reads the schedule-set var).
     seed: list[str] = [
         blocks.set_var("andor master x", ANDOR_MASTER_X_ID, number(ANDOR_START_X)),
         blocks.set_var("andor master y", ANDOR_MASTER_Y_ID, number(ANDOR_LATERAL_Y)),
+        # BOSS-03 (#96): a freshly-armed boss is ALIVE — clear the destroyed-departure clock so a re-summon (or a
+        # reused slot band from a prior boss that died) starts the descend/hold lifecycle, not the death animation.
+        blocks.set_var("andor destroyed timer", ANDOR_DESTROYED_TIMER_ID, number(0)),
     ]
     for n, part_type in enumerate(ANDOR_GENESIS_DATA, start=1):
         slot = base + n
+        state_val = ANDOR_ARMOR_IMMUNE if part_type in ANDOR_ARMOR_TYPES else SLOT_ACTIVE
         seed.extend(
             [
                 blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(part_type)),
-                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(SLOT_ACTIVE)),
+                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(state_val)),
                 blocks.list_replace(
                     "slot x", SLOT_X_ID, number(slot),
                     number(ANDOR_START_X + ANDOR_PART_DEPTH_OFFSETS[part_type - 0x41]),
@@ -8368,8 +8750,32 @@ def _ground_seed_andor(blocks: Blocks, *, base: int) -> list[str]:
                     "slot y", SLOT_Y_ID, number(slot),
                     number(ANDOR_LATERAL_Y + ANDOR_PART_LATERAL_OFFSETS[part_type - 0x41]),
                 ),
+                # BOSS-02/03: zero the explosion/animation clock so a reused slot cannot start a bombed part
+                # mid-burst; the detector/cascade re-zero it on the hit tick, so this only clears stale carry-over.
+                blocks.list_replace("slot timer", SLOT_TIMER_ID, number(slot), number(0)),
             ]
         )
+        if part_type == ANDOR_CORE_TYPE:
+            seed.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, number(slot), number(ANDOR_CORE_PTS))
+            )
+        elif part_type in ANDOR_PORT_TYPES:
+            seed.append(
+                blocks.list_replace("slot pts", SLOT_PTS_ID, number(slot), number(ANDOR_PORT_PTS))
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot fire mask", SLOT_FIRE_MASK_ID, number(slot), port_fire_mask()
+                )
+            )
+            seed.append(
+                blocks.list_replace(
+                    "slot fire timer", SLOT_FIRE_TIMER_ID, number(slot),
+                    number(ANDOR_PORT_FIRE_TIMER_INIT),
+                )
+            )
+        # armor + master: no `slot pts` written (armor is immune and never scored; the master carries the
+        # previous tenant's stale pts on purpose — the shell-slot bug).
     seed.append(blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(0)))
     return seed
 
@@ -8460,7 +8866,13 @@ def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str
     if shape == "andor":
         # BOSS-01 (andor.lifecycle #94): the whole 15-part composite arms at once into the ground band, so unlike
         # the other shapes it ignores the fixed single-slot column and stamps slots base+1..base+15 directly.
-        return _ground_seed_andor(blocks, base=base)
+        # BOSS-02 (#95): under a fresh hold-G no `fire_mask_andor_genesis` schedule record has run, so the stage
+        # var would be 0 and give a degenerate fastest-fire. Force the ports to the real arcade mask 47 here so
+        # the operator's live playtest exercises the true (non-contiguous) fire cadence; live area schedules set
+        # 47 or 15 per area from the var, and the static harness pins the numeric correctness regardless.
+        return _ground_seed_andor(
+            blocks, base=base, port_fire_mask=lambda: number(ANDOR_GENESIS_DEBUG_FIRE_MASK)
+        )
     raise ValueError(f"unknown debug ground seed shape: {shape!r}")
 
 
@@ -8515,6 +8927,19 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         # The next ground-band slot (N+1): a Garu Barra occupies two adjacent slots — the base at N and
         # its destructible node at N+1 (handle_20_Garu_Barra stamps a5 and a5+_OBJSIZE).
         return blocks.op_add(number(GROUND_SLOTS[0] + 1), ground_slot_at_cursor())
+
+    def andor_boss_present() -> str:
+        # DEBUG-summon guard (fresh reporter per call — single-parent rule). True while the Andor
+        # Genesis is on the field: its invisible master occupies Scratch slot GROUND_SLOTS[0] +
+        # len(ANDOR_GENESIS_DATA) for the boss's WHOLE lifecycle (armed by the seed, cleared only by the
+        # master's teardown). Used to keep schedule ground stamps off the boss band across a debug summon
+        # even after G is released — see the add_ground/add_domogram gates below.
+        return blocks.op_eq(
+            blocks.list_item(
+                "slot type", SLOT_TYPE_ID, number(GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA))
+            ),
+            number(ANDOR_MASTER_TYPE),
+        )
 
     end = blocks.list_item(
         "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
@@ -8713,10 +9138,20 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # built family at a time, isolated from normal play. The cursor still advances at the loop's end regardless,
     # so no schedule record is skipped or replayed; only the stamp is withheld while G is held. When G is not
     # held this is exactly the original condition, so normal play is untouched.
+    # BOSS-01/02/03 (#94/#95/#96): the stamp is ALSO withheld while a debug-summoned Andor Genesis is present.
+    # The G-held gate alone protected the boss band only while G was down, but the boss DEPARTS after G is
+    # released (its debug dismiss fires on a fresh G press, then the master retreats over the following ticks
+    # with G up); the resuming schedule ground stamps would then land in the boss's own slots and tear the
+    # retreating composite apart plate by plate. Keying the suppression on the master's presence keeps the band
+    # protected across the whole summon (descend/hold/retreat/teardown). Real play is untouched: in areas
+    # 4/9/14 every add_ground_object record fires ABOVE andor_genesis_start and has scrolled off before the boss
+    # arms, so no schedule ground stamp is ever live while the master is present — this is a no-op there.
     add_ground_branch = blocks.if_reporter(
         blocks.op_and(
             blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+            blocks.op_not(
+                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
+            ),
         ),
         [
             blocks.if_reporter(is_single_slot_ground, spawn_ground),
@@ -8737,13 +9172,18 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # always carries type 0x2E, so this never changes normal play, but it keeps the Domogram spawn keyed off
     # `area-schedule-ground-type` exactly like the static/Grobda/Garu/Boza branches — so a test (or a debug
     # aid) that zeroes that column to isolate a scenario suppresses the Domogram uniformly with the rest.
+    # The Domogram stamp is withheld under the same two conditions as add_ground_object above: while G owns the
+    # band, and while a debug-summoned Andor master is present (so a retreating boss is not cannibalised by a
+    # resuming Domogram record after G is released). No-op in real play for the same reason.
     add_domogram_branch = blocks.if_reporter(
         blocks.op_and(
             blocks.op_and(
                 blocks.op_eq(handler_at_cursor(), text(ADD_DOMOGRAM_HANDLER)),
                 blocks.op_eq(ground_type_at_cursor(), number(DOMOGRAM_TYPE)),
             ),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
+            blocks.op_not(
+                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
+            ),
         ),
         spawn_domogram,
     )
@@ -8790,14 +9230,19 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # and add_domogram, the arm is withheld while the G ground-debug key owns the band (the cursor still advances
     # at the loop end, so no record is skipped or replayed) — so a debug-summoned boss is never fought over by a
     # live schedule record. The end flag write is likewise withheld while G is held, so a live end record cannot
-    # tear down the operator's debug boss mid-inspection; the two stay in sync. Slice 15 is the lifecycle only —
-    # nothing here touches firing (op 78's mask) or the hit/score/bomb path (slice 16).
+    # tear down the operator's debug boss mid-inspection; the two stay in sync. BOSS-02/03 (#95/#96): the arm now
+    # also seeds the combat state (armor immunity, core/port score indices, the ports' fire mask + timer) via the
+    # shared `_ground_seed_andor`; the only debug-vs-live difference is the fire-mask SOURCE (see that builder).
     andor_start_branch = blocks.if_reporter(
         blocks.op_and(
             blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
             blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
         ),
-        _ground_seed_andor(blocks, base=GROUND_SLOTS[0]),
+        _ground_seed_andor(
+            blocks,
+            base=GROUND_SLOTS[0],
+            port_fire_mask=lambda: variable(FIRE_MASK_ANDOR_NAME, FIRE_MASK_ANDOR_ID),
+        ),
     )
     andor_end_branch = blocks.if_reporter(
         blocks.op_and(
@@ -8809,9 +9254,11 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     # ENGINE-TODO: the remaining spawn handler dispatch (add_object for the non-boss scheduled spawns) lands with
     # the later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
     # ground-stop), add_ground_object (the built static + Grobda ground families), add_domogram_with_path
-    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above; the still-
-    # unhandled records — incl. fire_mask_andor_genesis (op 78, consumed in slice 16) — advance the cursor and
-    # count the fire only.
+    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above. All eight
+    # fire masks — fire_mask_andor_genesis (op 78) among them — are stored into their Stage vars by `mask_branches`
+    # and now genuinely consumed: the Andor arm captures op 78's var into each gun port's `slot fire mask`, driving
+    # the boss fire-permission gate (slice 16). Any handler still without a branch advances the cursor and counts
+    # the fire only.
     blocks.substack(
         loop,
         [
@@ -9024,6 +9471,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_update_domogram(blocks)
     install_update_andor_master(blocks)  # BOSS-01 (andor.lifecycle #94)
     install_update_andor_part(blocks)  # BOSS-01 (andor.lifecycle #94)
+    install_update_andor_bragza(blocks)  # BOSS-03 (andor.core-destruction #96)
     install_explode_toroid_tick(blocks)
     install_explode_giddo_spario_tick(blocks)
     install_update_bullet(blocks)
@@ -10431,14 +10879,21 @@ GROUND_FAMILY_COSTUME_COUNTS = (
     ("grobda", 14),
     ("domogram", 14),
     # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite renders through the shared ground pool.
-    # Nine armor plates (types 0x41..0x49, ordinal = slot type - 64), four gun ports (0x4F..0x52,
-    # ordinal = slot type - 78), and the centre core as four pre-flipped costumes (none/x/y/xy, selected by
-    # the flip-phase var). The parts are indestructible in slice 15, so — unlike the mortal families — none
-    # appends the shared solv_death burst or a crater; the slice is just the part crops.
+    # Nine armor plates (types 0x41..0x49, ordinal = slot type - 64) are indestructible — just the part crops.
+    # The four gun ports (0x4F..0x52, ordinal = slot type - 78) and the centre core (four pre-flipped costumes
+    # none/x/y/xy, selected by the flip-phase var) become mortal in slice 16, so each appends the shared
+    # solv_death burst (8 frames) their HIT branch plays: port muzzle 1..4 + burst 5..12; core flips 1..4 +
+    # burst 5..12. The converted core's fly-up Bragza is its own 4-frame family (codes 0xb8..0xbb). No craters
+    # (a boss part leaves no ground scar — it explodes and is gone / departs with the wreck).
     ("andor-armor", 9),
-    ("andor-port", 4),
-    ("andor-core", 4),
+    ("andor-port", 4 + EXPLODE_COSTUME_COUNT),
+    ("andor-core", 4 + EXPLODE_COSTUME_COUNT),
+    ("andor-bragza", 4),
 )
+# BOSS-03 (#96): the first burst ordinal on the port / core slices (1..4 are the muzzle / flip costumes; the
+# shared solv_death burst follows). The HIT render walks base + floor(slot timer / GROUND_EXPLOSION_PHASE_FRAMES).
+ANDOR_PORT_EXPLODE_BASE_ORDINAL = 5
+ANDOR_CORE_EXPLODE_BASE_ORDINAL = 5
 
 
 def _ground_family_offsets() -> tuple[dict[str, int], int]:
@@ -10485,6 +10940,9 @@ _GROUND_ALL_TYPES = [
     # type ledger from the moment they can occupy the band. Their render arms arrive with the art in a
     # later commit; listing them here now catches any accidental type collision at import.
     *ANDOR_PART_TYPES,
+    # BOSS-03 (andor.core-destruction #96): the fly-up Bragza the destroyed core converts into occupies a
+    # ground slot on its own synthetic type; list it so the dispatch/overlap guard covers it too.
+    ANDOR_BRAGZA_TYPE,
 ]
 assert len(_GROUND_ALL_TYPES) == len(set(_GROUND_ALL_TYPES)), (
     "ground family types overlap; the shared renderer's slot-type dispatch would be ambiguous"
@@ -10999,26 +11457,26 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         )
         return [gate]
 
-    def boss_arm(offset_key: str, ordinal_fn) -> list[str]:
-        # BOSS-01: an Andor Genesis part arm. Like a plain family arm (position -> costume -> size -> show) but
-        # it also sets the `color` graphic effect from the shared `andor genesis colour` var so the whole
-        # composite pulses in unison (every visible arcade part copies andor_genesis_colour into _COLOUR each
-        # frame, xevious_main.68k:5785 etc). The var holds the raw arcade palette index (2..6); a single Scratch
-        # color effect cannot reproduce the arcade's palette swaps, so it is scaled up here into a visible hue
-        # sweep (ANDOR_COLOUR_EFFECT_SCALE — a port interpretation, tunable at playtest). The colour is cleared for
-        # every clone at the top of the loop (below), so a clone that drew a boss part last tick does not leave a
-        # tint on a normal ground object it draws next. Fresh reporters per call (a reporter binds to one parent).
+    def boss_arm(costume_stmt: str, colour_effect: str | None = None) -> list[str]:
+        # BOSS-01/02/03: an Andor Genesis part arm. Like a plain family arm (position -> costume -> size -> show)
+        # but it also sets the `color` graphic effect. For the composite parts (armor/port/core) the effect is the
+        # shared `andor genesis colour` var so the whole composite pulses in unison (every visible arcade part
+        # copies andor_genesis_colour into _COLOUR each frame, xevious_main.68k:5785 etc); the var holds the raw
+        # arcade palette index (2..6), scaled up into a visible hue sweep (ANDOR_COLOUR_EFFECT_SCALE — a port
+        # interpretation, tunable at playtest). The Bragza passes its OWN cycle (it has left the composite, so it
+        # no longer tracks the shared colour). The colour is cleared for every clone at the top of the loop
+        # (below), so a clone that drew a boss part last tick leaves no tint on a normal object it draws next.
+        # `costume_stmt` is the (fresh) statement that selects this part's costume — a single switch, or the
+        # HIT/idle state subtree for the mortal parts. Fresh reporters per call (a reporter binds to one parent).
         sx, sy = stage_xy()
+        effect = colour_effect if colour_effect is not None else blocks.op_mul(
+            variable("andor genesis colour", ANDOR_GENESIS_COLOUR_ID),
+            number(ANDOR_COLOUR_EFFECT_SCALE),
+        )
         return [
             blocks.go_expr(sx, sy),
-            blocks.set_effect(
-                "COLOR",
-                blocks.op_mul(
-                    variable("andor genesis colour", ANDOR_GENESIS_COLOUR_ID),
-                    number(ANDOR_COLOUR_EFFECT_SCALE),
-                ),
-            ),
-            _sw(blocks, off[offset_key], ordinal_fn()),
+            blocks.set_effect("COLOR", effect),
+            costume_stmt,
             blocks.add("looks_setsizeto", inputs={"SIZE": number(ANDOR_RENDER_SIZE)}),
             blocks.show(),
         ]
@@ -11034,6 +11492,58 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
     def core_ordinal() -> str:
         # ordinal = 1 + flip phase (0..3) -> the four pre-flipped core costumes none/x/y/xy in manifest order.
         return blocks.op_add(number(1), variable("andor genesis flip", ANDOR_GENESIS_FLIP_ID))
+
+    def andor_mortal_costume(offset_key: str, idle_ordinal_fn, explode_base: int) -> str:
+        # BOSS-02/03: a mortal boss part (gun port / core). While idle it shows its idle costume (the port muzzle by
+        # type, or the core's flip-phase costume); while exploding it plays the shared solv_death burst,
+        # floor(slot timer / GROUND_EXPLOSION_PHASE_FRAMES) into ordinals explode_base..+7 — the same explode clock
+        # every ground family uses. The burst shows while the slot is SLOT_HIT (directly bombed) OR its explode clock
+        # is running (slot timer > 0): a core-death-cascaded gun port stays SLOT_ACTIVE (bombable for its 1,000)
+        # throughout its explosion (DH-2), so keying on SLOT_HIT alone would leave a cascaded port drawing its idle
+        # muzzle while it should be bursting. This timer>0 test is confined to this Andor-only helper — the general
+        # ground families (Barra/Sol-tower) that advance slot timer while ACTIVE for other reasons never render
+        # through here. `update andor part` advances the timer and frees/converts the slot the tick the burst
+        # completes, so the render never overruns the 8 burst frames.
+        offset = off[offset_key]
+        explode_ordinal = blocks.op_add(
+            number(explode_base),
+            blocks.op_floor(
+                blocks.op_div(
+                    blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
+                    number(GROUND_EXPLOSION_PHASE_FRAMES),
+                )
+            ),
+        )
+        state_render = blocks.add("control_if_else")
+        exploding = blocks.op_or(
+            blocks.op_eq(
+                blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)
+            ),
+            blocks.op_gt(
+                blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(0)
+            ),
+        )
+        blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, exploding]
+        blocks.blocks[exploding]["parent"] = state_render
+        blocks.substack(state_render, [_sw(blocks, offset, explode_ordinal)])
+        blocks.substack(state_render, [_sw(blocks, offset, idle_ordinal_fn())], name="SUBSTACK2")
+        return state_render
+
+    def bragza_arm() -> list[str]:
+        # BOSS-03: the fly-up Bragza — its own 4-frame animation (codes 0xb8..0xbb) and colour cycle (CLUT
+        # 0x15..0x1c), both selected by the shared `tick` (arcade `(countup_timer_1>>1)&3` / `&7`, rebased
+        # through FRAMES_PER_TICK). It has left the composite, so it drives its OWN colour effect, not the shared
+        # andor-genesis colour. The sprite tiles are decoded at CLUT 0x15 (the cycle base); the effect adds the
+        # live cycle on top (a port interpretation like the parts', tunable at playtest).
+        tick = lambda: variable("tick", TICK_ID)
+        costume = _sw(
+            blocks, off["andor-bragza"], blocks.op_add(number(1), blocks.op_mod(tick(), number(4)))
+        )
+        colour_effect = blocks.op_mul(
+            blocks.op_add(number(0x15), blocks.op_mod(tick(), number(8))),
+            number(ANDOR_COLOUR_EFFECT_SCALE),
+        )
+        return boss_arm(costume, colour_effect=colour_effect)
 
     off = GROUND_FAMILY_OFFSETS
     # (predicate builder, arm builder) in combined-list order.
@@ -11100,11 +11610,27 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
             lambda: type_eq(DOMOGRAM_TYPE),
             lambda: plain_arm(lambda: _domogram_costume_subtree(blocks, slotvar, off["domogram"])),
         ),
-        # BOSS-01 (andor.lifecycle #94): the three visible Andor Genesis part groups. The invisible master
-        # (ANDOR_MASTER_TYPE) has NO arm and falls through to the default hide.
-        (lambda: type_in(ANDOR_ARMOR_TYPES), lambda: boss_arm("andor-armor", armor_ordinal)),
-        (lambda: type_in(ANDOR_PORT_TYPES), lambda: boss_arm("andor-port", port_ordinal)),
-        (lambda: type_eq(ANDOR_CORE_TYPE), lambda: boss_arm("andor-core", core_ordinal)),
+        # BOSS-01/02/03: the visible Andor Genesis part groups + the fly-up Bragza. The invisible master
+        # (ANDOR_MASTER_TYPE) has NO arm and falls through to the default hide. Armor is indestructible (single
+        # costume); the ports and core are mortal (idle-or-explosion state subtree); the converted core flies as
+        # the Bragza on its own type.
+        (
+            lambda: type_in(ANDOR_ARMOR_TYPES),
+            lambda: boss_arm(_sw(blocks, off["andor-armor"], armor_ordinal())),
+        ),
+        (
+            lambda: type_in(ANDOR_PORT_TYPES),
+            lambda: boss_arm(
+                andor_mortal_costume("andor-port", port_ordinal, ANDOR_PORT_EXPLODE_BASE_ORDINAL)
+            ),
+        ),
+        (
+            lambda: type_eq(ANDOR_CORE_TYPE),
+            lambda: boss_arm(
+                andor_mortal_costume("andor-core", core_ordinal, ANDOR_CORE_EXPLODE_BASE_ORDINAL)
+            ),
+        ),
+        (lambda: type_eq(ANDOR_BRAGZA_TYPE), bragza_arm),
     ]
 
     branch: list[str] = [blocks.hide()]
@@ -12476,12 +13002,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             + proof_by_family("crater/"),
             "grobda": proof_by_family("grobda/") + death_frames() + proof_by_family("crater/"),
             "domogram": proof_by_family("domogram/") + death_frames() + proof_by_family("crater/"),
-            # BOSS-01: the Andor composite parts. Indestructible in slice 15 -> no burst, no crater; each
-            # slice is just its own crops, in manifest (== arcade type) order. The core's single crop expands
-            # to four pre-flipped costumes (andor-core/core/01/{none,x,y,xy}) via the extractor `flips` attr.
+            # BOSS-01/02/03: the Andor composite parts, in manifest (== arcade type) order. Armor is
+            # indestructible -> just its crops. The gun ports and the core become mortal in slice 16, so each
+            # appends the shared solv_death burst their HIT branch plays (ordinals 5..12). The core's single crop
+            # expands to four pre-flipped costumes (andor-core/core/01/{none,x,y,xy}) via the extractor `flips`
+            # attr. The converted core's fly-up Bragza is its own 4-frame slice (andor-bragza/fly/01..04).
             "andor-armor": proof_by_family("andor-armor/"),
-            "andor-port": proof_by_family("andor-port/"),
-            "andor-core": proof_by_family("andor-core/"),
+            "andor-port": proof_by_family("andor-port/") + death_frames(),
+            "andor-core": proof_by_family("andor-core/") + death_frames(),
+            "andor-bragza": proof_by_family("andor-bragza/"),
         }
         combined: list[dict[str, Any]] = []
         combined_family: list[str] = []
@@ -12640,6 +13169,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # band re-isolate for free — see the band-isolation invariant.
         ANDOR_MASTER_X_ID,
         ANDOR_MASTER_Y_ID,
+        # BOSS-03 (#96): the destroyed-departure clock (0 = alive, nonzero = flash-then-sink death sub-state).
+        ANDOR_DESTROYED_TIMER_ID,
     }
     preserved_variables = {
         variable_id: value
@@ -12784,6 +13315,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # ANDOR_LATERAL_Y) before the master proc runs, so the value before the first tick never renders.
         ANDOR_MASTER_X_ID: ["andor master x", 0],
         ANDOR_MASTER_Y_ID: ["andor master y", 0],
+        # BOSS-03: the destroyed-departure clock. Init 0 (alive); the master proc latches it on core death and
+        # resets it to 0 when the wreck clears the field, so a fresh boss (schedule or debug re-summon) starts alive.
+        ANDOR_DESTROYED_TIMER_ID: ["andor destroyed timer", 0],
     }
     owned_lists = {
         ALLOWED_ID,

@@ -84,6 +84,11 @@
       "name": "aim swap",
       "scope": "Stage"
     },
+    "andor-destroyed-timer": {
+      "kind": "variable",
+      "name": "andor destroyed timer",
+      "scope": "Stage"
+    },
     "andor-genesis-colour": {
       "kind": "variable",
       "name": "andor genesis colour",
