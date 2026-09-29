@@ -163,7 +163,10 @@ reticle reads the same movement input as the craft, and when it reaches the top 
 and backs the craft down with it — so the reticle can never leave the top of the screen and the craft stops
 with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
-port's own: arrow keys move, Space fires, B bombs, a temporary `T` (playtest-only, issue #119)
+port's own: arrow keys move, Space fires and starts a game from the title screen (a start now costs one
+available credit — see [Cabinet flow](cabinet-flow.md)), B bombs, a permanent `C` inserts a coin (a port
+necessity: the arcade coin slot has no hardware in this port, so coin entry is a player-doable key — one
+credit per press, capped at 99, per [Cabinet flow](cabinet-flow.md)), a temporary `T` (playtest-only, issue #119)
 cycles a single debug aerial enemy through the built aerial families one at a time — holding it brings in one
 enemy, and each time the field clears it advances to the next family (Terrazi → Kapi → wrap) — a
 temporary `G` (playtest-only, issue #119) does the same for the built ground families, stamping one into the
