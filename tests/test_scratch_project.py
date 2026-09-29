@@ -1147,6 +1147,17 @@ class ScratchProjectTests(unittest.TestCase):
             "attract",
             "attract epoch",
             "attract stage",
+            # CAB-01 (slice 17): the auto-pilot's virtual input register. `input up/down/left/right/fire` are
+            # the 0/1 flags `install_attract_pilot` drives while the cabinet demos (attract==1), read through
+            # `input_active` in place of the keyboard by the solvalou/blaster seams; `pilot dir` is the held
+            # 0..8 direction the redraw decomposes into them. All Stage-written by the pilot proc, re-zeroed
+            # with the world, never sprite-written — transient input machinery, not durable state.
+            "input up",
+            "input down",
+            "input left",
+            "input right",
+            "input fire",
+            "pilot dir",
             # WPN-04 (slice 9): the in-flight bomb's accelerating scroll-axis velocity — a transient
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
@@ -1395,6 +1406,10 @@ class ScratchProjectTests(unittest.TestCase):
             # CAB-02 (slice 17): the always-on coin poll, called every tick from the Stage's green-flag
             # coin loop (not the walk). It banks credits and reads the coin key; it writes no game state.
             director.COIN_POLL_PROCCODE,
+            # CAB-01 (slice 17): the attract auto-pilot, called first in the walk tick_body but only while a
+            # demo runs (attract==1). It draws the shared RNG to redraw/hold the demo's direction and fire,
+            # writing only the virtual input register (machinery); a real game never calls it.
+            director.ATTRACT_PILOT_PROCCODE,
             # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
             # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
             # shared RNG step the spawn draw now consumes (its first live consumer).
@@ -17563,7 +17578,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "cb41d41308d919eeeb14a2ae9328999e706c9fd3a10512b741ec8663034ef8cf",
+            "d3c693da63c66ae24e14e3d354abb4c94c0327934f7b099bfb8e8a50427e607e",
             build_hash,
         )
 

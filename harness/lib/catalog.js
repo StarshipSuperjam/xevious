@@ -510,6 +510,173 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'attract', 1),
   },
   {
+    // CAB-01 (cabinet.attract-credits, slice 17): the self-playing demo's auto-pilot actually drives the
+    // craft. During a demo the six keyboard reads are replaced by the virtual input register (`input up/
+    // down/left/right/fire`) that `install_attract_pilot` writes each tick, so the craft moves with no keys
+    // touched. Steps a live demo (invuln pinned so it does not die and route away mid-observation) and
+    // watches the craft's logical position (`player-row`/`player-col`) wander from where it entered.
+    // (arcade auto-pilot `gen_rnd_dir` xevious_main 2156-2165, dispatched when `attract_mode_stage != 0`.)
+    // roadmap-evidence: CAB-01 success  (the demo craft moves only because the auto-pilot feeds the virtual
+    //   input register the movement seams read via input_active)
+    key: 'attract-pilot-drives-craft',
+    behavior: 'The demo auto-pilot drives the craft — it moves with no keyboard input',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachDemo(vm), 'precondition: the demo is running');
+      const r0 = readVar(vm, 'player-row');
+      const c0 = readVar(vm, 'player-col');
+      let maxRowDev = 0;
+      let maxColDev = 0;
+      for (let i = 0; i < 64; i += 1) {
+        writeVar(vm, 'invuln', 1); // keep the demo craft alive so we watch it move, not die
+        step(vm, 1);
+        maxRowDev = Math.max(maxRowDev, Math.abs(readVar(vm, 'player-row') - r0));
+        maxColDev = Math.max(maxColDev, Math.abs(readVar(vm, 'player-col') - c0));
+      }
+      return { maxRowDev, maxColDev, attract: readVar(vm, 'cabinet-attract') };
+    },
+    assert(obs) {
+      assert.equal(obs.attract, 1, 'the craft moves while still in the attract demo');
+      assert.ok(
+        obs.maxRowDev > 0 || obs.maxColDev > 0,
+        'the auto-pilot moves the demo craft (no keyboard input)',
+      );
+    },
+    // Sever the auto-pilot: the virtual input register stays at its demo-entry zero, so no movement seam
+    // ever fires and the craft never moves → both deviations are 0, the assertion fails.
+    // roadmap-evidence: CAB-01 failure  (neutralizing the pilot proc leaves the craft motionless)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'attract pilot'),
+  },
+  {
+    // CAB-01 / SYS-04 (cabinet-flow reproducibility): the auto-pilot is deterministic — two demos seeded
+    // from the same RNG cold-start replay the identical input stream. The pilot draws direction and fire
+    // from the shared RNG (`rng out`) at a fixed position in the ordered walk, so its output is a pure
+    // function of (seed, tick). This captures that output DIRECTLY (a tick-pump that seeds the seed, sets
+    // `tick`, runs the `attract pilot` proc, and reads its six output flags) rather than per-`step()`
+    // craft sampling — one `step()` settles a machine-dependent number of internal ticks, so a live sample
+    // is not a stable stream (deterministic-per-tick-testing-of-walk-procs). Two identical pumps from the
+    // same seed must yield byte-identical traces; the direction stays in the reject-sampled 0..8 range and
+    // decomposes into the four flags exactly per `dir_delta_tbl` (xevious_main 2156-2180); fire is the
+    // 1-in-16 draw (`gen_rnd_shot` 2351-2354). RNG_COLD_START_SEED = 0x4A39, the demo-entry reseed value.
+    // roadmap-evidence: CAB-01 success  (two seeded pilot runs replay the identical, source-faithful stream)
+    key: 'attract-pilot-reproducible',
+    behavior: 'Two seeded auto-pilot runs replay the identical input stream (0..8 dir, exact flag decomposition, 1-in-16 fire)',
+    playtestStep: 1,
+    async drive(vm) {
+      const inputs = [
+        'cabinet-input-up',
+        'cabinet-input-down',
+        'cabinet-input-left',
+        'cabinet-input-right',
+        'cabinet-input-fire',
+      ];
+      // A deterministic tick-pump: reseed to the demo-entry cold-start, then for each tick set `tick`,
+      // run the pilot proc, and record [dir, up, down, left, right, fire]. No greenFlag, so the only
+      // thread is the one the proc call pushes — nothing else advances state (a clean, fixed environment).
+      const pump = (ticks) => {
+        writeVar(vm, 'rng-state', 0x4a39); // RNG_COLD_START_SEED
+        writeVar(vm, 'cabinet-pilot-dir', 8); // neutral, as the demo-entry reset leaves it
+        for (const id of inputs) writeVar(vm, id, 0);
+        const trace = [];
+        for (let t = 0; t < ticks; t += 1) {
+          writeVar(vm, 'tick', t);
+          callProc(vm, 'Stage', 'attract pilot');
+          step(vm, 1);
+          trace.push([
+            readVar(vm, 'cabinet-pilot-dir'),
+            readVar(vm, 'cabinet-input-up'),
+            readVar(vm, 'cabinet-input-down'),
+            readVar(vm, 'cabinet-input-left'),
+            readVar(vm, 'cabinet-input-right'),
+            readVar(vm, 'cabinet-input-fire'),
+          ]);
+        }
+        return trace;
+      };
+      const traceA = pump(64);
+      const traceB = pump(64); // re-seeds internally, so this is a second demo from the same cold-start
+      return { traceA, traceB };
+    },
+    assert(obs) {
+      assert.deepEqual(obs.traceA, obs.traceB, 'two seeded demos replay the identical input stream');
+      const dirs = obs.traceA.map((e) => e[0]);
+      assert.ok(
+        dirs.every((d) => Number.isInteger(d) && d >= 0 && d <= 8),
+        'every drawn direction is reject-sampled into 0..8',
+      );
+      assert.ok(
+        dirs.some((d) => d < 8),
+        'the pilot actually steers (at least one non-neutral direction)',
+      );
+      // Each direction decomposes into the four flags exactly per dir_delta_tbl (U / U+R / R / D+R / D /
+      // D+L / L / U+L / none): up={0,1,7}, right={1,2,3}, down={3,4,5}, left={5,6,7}, dir 8 = none.
+      for (const [d, up, down, left, right, fire] of obs.traceA) {
+        assert.equal(up, d === 0 || d === 1 || d === 7 ? 1 : 0, `up flag matches dir ${d}`);
+        assert.equal(right, d === 1 || d === 2 || d === 3 ? 1 : 0, `right flag matches dir ${d}`);
+        assert.equal(down, d === 3 || d === 4 || d === 5 ? 1 : 0, `down flag matches dir ${d}`);
+        assert.equal(left, d === 5 || d === 6 || d === 7 ? 1 : 0, `left flag matches dir ${d}`);
+        assert.ok(fire === 0 || fire === 1, 'fire is a clean 0/1 flag');
+      }
+      assert.ok(
+        obs.traceA.some((e) => e[5] === 1),
+        'the 1-in-16 fire draw presses the button over the window',
+      );
+    },
+    // Sever the pilot: the proc runs to a no-op, so `pilot dir` stays neutral (8) and every input flag
+    // stays 0 for the whole trace → the "at least one non-neutral direction" assertion fails.
+    // roadmap-evidence: CAB-01 failure  (a severed pilot produces an all-neutral, non-steering stream)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'attract pilot'),
+  },
+  {
+    // CAB-01 / SEC-03 coupling (slice 17): the arcade silently removes the hidden-credit object during
+    // attract — `handle_53_Easter_Egg` (xevious_main 5989) checks `tst.w attract_mode_stage` and jumps to
+    // `remove_easter_egg` (6013-6016) before any of its logic. The demo shares the playing state and runs
+    // the same area schedule, so a scheduled Credit CAN be stamped into a ground slot during a demo; the
+    // attract gate in `update easter egg` culls it the tick its slot is dispatched, lowering the display
+    // signal — the demo can never arm a bomb-reveal target. Seeds a hidden Credit into a ground slot during
+    // a demo (with ground spawns suppressed so nothing refills it) and confirms it is culled, signal down.
+    // roadmap-evidence: CAB-01 success  (a Credit seeded into a demo is culled, its overlay signal cleared)
+    key: 'attract-suppresses-hidden-credit',
+    behavior: 'The hidden-credit object is silently removed during a demo (SEC-03 attract coupling)',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachDemo(vm), 'precondition: the demo is running');
+      suppressGroundSpawns(vm); // nothing refills the slot after the cull
+      const put = (id, i, v) => {
+        const a = readVar(vm, id);
+        a[i] = v;
+      };
+      const SLOT = 8; // a mid ground slot (Scratch 1..16 = JS 0..15; obj-0 flag slot stays free)
+      put('slot-type', SLOT, 83); // EASTER_EGG_TYPE (0x53), hidden Credit
+      put('slot-state', SLOT, 1); // ACTIVE
+      put('slot-flag', SLOT, 0); // HIDDEN phase
+      put('slot-timer', SLOT, 0);
+      put('slot-x', SLOT, 3000);
+      put('slot-y', SLOT, 3000);
+      const seededType = readVar(vm, 'slot-type')[SLOT];
+      for (let i = 0; i < 4; i += 1) {
+        writeVar(vm, 'invuln', 1); // keep the demo alive so the walk keeps dispatching the slot
+        step(vm, 1);
+      }
+      return {
+        seededType,
+        culledType: readVar(vm, 'slot-type')[SLOT],
+        culledState: readVar(vm, 'slot-state')[SLOT],
+        showing: readVar(vm, 'sec-easter-egg-showing'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.seededType, 83, 'the hidden Credit was seeded into the demo');
+      assert.equal(obs.culledType, 0, 'the Credit slot is culled (type cleared) during the demo');
+      assert.equal(obs.culledState, 0, 'the Credit slot is freed during the demo');
+      assert.equal(obs.showing, 0, 'the credit overlay signal is never raised in attract');
+    },
+    // Sever the whole `update easter egg` proc (which carries the attract cull gate): the seeded Credit is
+    // never removed, so its slot type stays 83 → the assertion fails.
+    // roadmap-evidence: CAB-01 failure  (without the attract gate the Credit survives into the demo)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update easter egg'),
+  },
+  {
     key: 'death-respawn',
     behavior: 'A flying enemy touching the craft runs death -> respawn and returns to playing',
     playtestStep: 5,

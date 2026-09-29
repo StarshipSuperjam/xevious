@@ -1001,6 +1001,22 @@ ATTRACT_ID = "cabinet-attract"
 ATTRACT_EPOCH_ID = "cabinet-attract-epoch"  # state-epoch snapshot for the cancellable hold timers
 ATTRACT_STAGE_ID = "cabinet-attract-stage"  # 1 = demo after title, 2 = demo after best-five (routes demo death)
 ATTRACT_SCORES_STATE = "attract-scores"
+# CAB-01 auto-pilot demo (slice 17 C3): the virtual input register the attract pilot drives in place of
+# the keyboard while attract==1. `Blocks.input_active` composes each craft control from these when the
+# cabinet is demoing (attract==1) or from the real key otherwise. All machinery. The four direction flags
+# HOLD between the pilot's periodic redraws (each 0/1); `pilot dir` is the transient 0-8 draw the redraw
+# decomposes into them; `input fire` is recomputed every tick. All are reset with the world (new-game
+# scope, which also covers demo entry) so no demo inherits the previous demo's last direction.
+ATTRACT_PILOT_PROCCODE = "attract pilot"
+INPUT_UP_ID = "cabinet-input-up"
+INPUT_DOWN_ID = "cabinet-input-down"
+INPUT_LEFT_ID = "cabinet-input-left"
+INPUT_RIGHT_ID = "cabinet-input-right"
+INPUT_FIRE_ID = "cabinet-input-fire"
+PILOT_DIR_ID = "cabinet-pilot-dir"
+# gen_rnd_dir (xevious_main 1622): the demo direction is redrawn only when (countup_timer_1 & 0x0f) == 0,
+# i.e. once every 16 arcade frames = 8 build ticks (FRAMES_PER_TICK == 2, defined below), and HELD in between.
+ATTRACT_PILOT_DIR_HOLD_TICKS = 8  # = 16 arcade frames // 2 frames-per-tick
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -2993,6 +3009,25 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
+    def input_active(self, parent: str, key: str, virtual_id: str, virtual_name: str) -> str:
+        # CAB-01: a control read that is the auto-pilot's virtual input while the cabinet demos and the
+        # real key otherwise — `(attract==1 AND <virtual>==1) OR (attract==0 AND key_pressed(<key>))`. It
+        # is a BOOLEAN-composed reporter (not a ternary), so it drops straight into an existing
+        # `key_pressed` boolean slot in the solvalou/blaster seams. When attract==0 only the right disjunct
+        # can be true and it is exactly the old keyboard read, so a real game is byte-for-byte unchanged;
+        # when attract==1 only the left disjunct can be true and the read follows `input <dir>`/`input fire`
+        # that `install_attract_pilot` drives. Each call builds fresh operand blocks (a reporter cannot be
+        # shared across two parents — the second steals it), so this helper is safe to call per seam.
+        attract_on = self.op_eq(variable("attract", ATTRACT_ID), number(1))
+        virtual_set = self.op_eq(variable(virtual_name, virtual_id), number(1))
+        demo = self.op_and(attract_on, virtual_set)
+        attract_off = self.op_eq(variable("attract", ATTRACT_ID), number(0))
+        key_down = self.key_pressed(parent, key)  # parent placeholder; op_and re-parents it below
+        live = self.op_and(attract_off, key_down)
+        result = self.op_or(demo, live)
+        self.blocks[result]["parent"] = parent
+        return result
+
     def touching(self, parent: str, sprite: str) -> str:
         menu = self.add(
             "sensing_touchingobjectmenu",
@@ -4609,7 +4644,26 @@ def install_update_easter_egg(blocks: Blocks) -> None:
     blocks.substack(top, [hit_inner])
     # ACTIVE (HIDDEN invisible idle): just the shared terrain scroll + off-field cull.
     blocks.substack(top, [advance()], name="SUBSTACK2")
-    blocks.chain(definition, [top])
+    # CAB-01 / SEC-03 coupling: the arcade silently removes the hidden-credit object in attract mode —
+    # `handle_53_Easter_Egg` (xevious_main 5989) checks `tst.w attract_mode_stage` and jumps to
+    # `remove_easter_egg` (6013-6016) before running any of its logic. The demo shares the playing state and
+    # runs the same area schedule, so a scheduled egg CAN be stamped into a slot during a demo; without this
+    # gate it would idle there (and, though the auto-pilot never bombs, it would arm a bomb-reveal target the
+    # demo must not have). So when attract==1 remove the egg the tick its slot is dispatched: lower the
+    # display signal and cull the slot, exactly like `remove_easter_egg`, and skip the normal update.
+    attract_gate = blocks.add("control_if_else")
+    egg_in_attract = blocks.op_eq(variable("attract", ATTRACT_ID), number(1))
+    blocks.blocks[attract_gate]["inputs"]["CONDITION"] = [2, egg_in_attract]
+    blocks.blocks[egg_in_attract]["parent"] = attract_gate
+    blocks.substack(
+        attract_gate,
+        [
+            blocks.set_var("easter egg showing", EASTER_EGG_SHOWING_ID, number(0)),
+            blocks.call_proc(CULL_SLOT_PROCCODE, warp=True),
+        ],
+    )
+    blocks.substack(attract_gate, [top], name="SUBSTACK2")
+    blocks.chain(definition, [attract_gate])
 
 
 def install_update_garu(blocks: Blocks) -> None:
@@ -8304,6 +8358,84 @@ def install_coin_poll(blocks: Blocks) -> None:
     blocks.chain(definition, [reset_edge, gate])
 
 
+def install_attract_pilot(blocks: Blocks) -> None:
+    # CAB-01 auto-pilot: the self-playing demo's "hands". Called first in the walk tick_body, gated on
+    # attract==1, so it drives the virtual input register (`input up/down/left/right/fire`) that
+    # `Blocks.input_active` feeds to the solvalou/blaster seams while the cabinet demos. A real game
+    # (attract==0) never calls it and those seams read the keyboard instead. Faithful to the arcade attract
+    # pilot (pin jotd666/xevious@71473685):
+    #  * DIRECTION (`gen_rnd_dir`, xevious_main 2156-2165): redrawn ONLY when (countup_timer_1 & 0x0f)==0 —
+    #    every 16 arcade frames = 8 build ticks (FRAMES_PER_TICK==2) — and HELD in between (in the port the
+    #    four direction flags simply persist between redraws). On a redraw it do-while draws `rng & 0x0f` and
+    #    rejects >= 9, keeping a direction 0..8 where dir 8 = neutral (comment 2167-2169). The 0..8 is
+    #    decomposed into the four flags per `dir_delta_tbl` 2171-2180 (U / U+R / R / D+R / D / D+L / L / U+L /
+    #    none) — membership sums, which coerce the equality booleans to numeric 0/1.
+    #  * FIRE (`gen_rnd_shot`, xevious_main 2351-2354): each frame draw `rng & 0x0f`; a 0 (1-in-16) acts as
+    #    "button 1 held" this frame. The port presses `input fire` on that 1/16, and the blaster's own reload
+    #    cadence (`blaster_blocks`) turns an isolated press into one shot exactly as a held button would — the
+    #    arcade's effective auto-fire. One draw per tick (the port tick is the walk's frame granularity).
+    # Both draw from the shared stream (`rng out`), like the arcade's shared `pseudo_random_gen`, at a fixed
+    # position in the ordered walk (first in tick_body, direction before fire — the arcade's within-frame
+    # order: solvalou inputs before shooting). So two demos seeded from RNG_COLD_START_SEED replay the same
+    # RNG sequence and trace the identical craft path (SYS-04 reproducibility).
+    definition = _install_warp_proc(blocks, ATTRACT_PILOT_PROCCODE)
+
+    # DIRECTION: redraw only on the 8-tick boundary. `tick` is read here at the top of the walk before
+    # ADVANCE_SLOTS advances it, so a demo (tick reset to 0 by its new-game entry) redraws at tick 0, 8, 16 …
+    on_boundary = blocks.op_eq(
+        blocks.op_mod(variable("tick", TICK_ID), number(ATTRACT_PILOT_DIR_HOLD_TICKS)),
+        number(0),
+    )
+    # do-while reject-sample (gen_rnd_dir always advances at least once, then loops while the low nibble is
+    # >= 9). `control_repeat_until` checks its condition at the top, so a single advance BEFORE the loop plus
+    # the loop's own advance gives do-while semantics: keep the first accepted draw, else redraw.
+    draw_loop = blocks.add("control_repeat_until")
+    accepted = blocks.op_lt(
+        blocks.op_mod(variable("rng out", RNG_OUT_ID), number(16)), number(9)
+    )
+    blocks.blocks[draw_loop]["inputs"]["CONDITION"] = [2, accepted]
+    blocks.substack(draw_loop, [blocks.call_proc(RNG_PROCCODE, warp=True)])
+    set_dir = blocks.set_var_expr(
+        "pilot dir", PILOT_DIR_ID, blocks.op_mod(variable("rng out", RNG_OUT_ID), number(16))
+    )
+    d = lambda: variable("pilot dir", PILOT_DIR_ID)
+    membership = lambda a, b, c: blocks.op_add(
+        blocks.op_add(blocks.op_eq(d(), number(a)), blocks.op_eq(d(), number(b))),
+        blocks.op_eq(d(), number(c)),
+    )
+    set_up = blocks.set_var_expr("input up", INPUT_UP_ID, membership(0, 1, 7))
+    set_right = blocks.set_var_expr("input right", INPUT_RIGHT_ID, membership(1, 2, 3))
+    set_down = blocks.set_var_expr("input down", INPUT_DOWN_ID, membership(3, 4, 5))
+    set_left = blocks.set_var_expr("input left", INPUT_LEFT_ID, membership(5, 6, 7))
+    redraw = blocks.if_reporter(
+        on_boundary,
+        [
+            blocks.call_proc(RNG_PROCCODE, warp=True),  # first draw (always advances)
+            draw_loop,  # then reject-and-redraw while the low nibble is >= 9
+            set_dir,
+            set_up,
+            set_right,
+            set_down,
+            set_left,
+        ],
+    )
+
+    # FIRE every tick: press on a 1-in-16 draw. `op_add(..., 0)` coerces the equality boolean to a numeric
+    # 0/1 so the stored flag reads cleanly as a number wherever `input fire` is compared.
+    set_fire = blocks.set_var_expr(
+        "input fire",
+        INPUT_FIRE_ID,
+        blocks.op_add(
+            blocks.op_eq(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(16)), number(0)),
+            number(0),
+        ),
+    )
+    blocks.chain(
+        definition,
+        [redraw, blocks.call_proc(RNG_PROCCODE, warp=True), set_fire],
+    )
+
+
 def _advance_area_number(blocks: Blocks) -> str:
     # AREA-01 area increment with the 16 -> 7 loop (completing area 16 continues at area 7).
     # One source, called from both the completion branch and the near-end checkpoint. Returns
@@ -9617,6 +9749,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_alloc_bullet_slot(blocks)
     install_emit_radiating_bullet(blocks)
     install_coin_poll(blocks)  # CAB-02 (cabinet.attract-credits, slice 17)
+    install_attract_pilot(blocks)  # CAB-01 auto-pilot (cabinet.attract-credits, slice 17)
 
     flag = blocks.flag()
     blocks.chain(
@@ -9637,6 +9770,14 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var("attract", ATTRACT_ID, number(1)),
             blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(0)),
             blocks.set_var("attract epoch", ATTRACT_EPOCH_ID, number(0)),
+            # CAB-01: the auto-pilot's virtual input register starts neutral. Each demo also re-zeroes it on
+            # entry (new-game reset), so no demo can inherit the previous demo's last direction or fire state.
+            blocks.set_var("input up", INPUT_UP_ID, number(0)),
+            blocks.set_var("input down", INPUT_DOWN_ID, number(0)),
+            blocks.set_var("input left", INPUT_LEFT_ID, number(0)),
+            blocks.set_var("input right", INPUT_RIGHT_ID, number(0)),
+            blocks.set_var("input fire", INPUT_FIRE_ID, number(0)),
+            blocks.set_var("pilot dir", PILOT_DIR_ID, number(8)),
             blocks.call_transition("title", "cold-start"),
         ],
     )
@@ -9917,7 +10058,15 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # The whole tick — read, area clock, walk, bomb, spawns, death — runs only while NOT paused. The
     # ADVANCE_AREA -> ADVANCE_SLOTS pair stays adjacent inside this body, so the area-clock adjacency contract
     # holds; the pause gate merely wraps the body.
+    # CAB-01: the auto-pilot runs FIRST, and only during a demo (attract==1), so its shared-stream draws sit
+    # at a fixed head-of-walk position (reproducible) and it has set the virtual inputs before READ_PLAYER and
+    # the object walk read the craft this tick. A real game (attract==0) skips it entirely.
+    attract_pilot = blocks.if_reporter(
+        blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+        [blocks.call_proc(ATTRACT_PILOT_PROCCODE, warp=True)],
+    )
     tick_body = [
+        attract_pilot,
         blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
         # WPN-04: the bomb sight leads the craft (needs the just-cached player cell).
         blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True),
@@ -9991,6 +10140,16 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                 [
                     blocks.set_var("rng state", RNG_STATE_ID, number(RNG_COLD_START_SEED)),
                     blocks.set_var("tick", TICK_ID, number(0)),
+                    # CAB-01: re-zero the auto-pilot's virtual inputs and hold direction with the world, so a
+                    # demo entered by `playing`/new-game starts from RNG_COLD_START_SEED AND a neutral input
+                    # register — the two together make two seeded demos byte-identical (SYS-04). Harmless on a
+                    # real new-game start: attract==0 there, so the seams read the keyboard, not these flags.
+                    blocks.set_var("input up", INPUT_UP_ID, number(0)),
+                    blocks.set_var("input down", INPUT_DOWN_ID, number(0)),
+                    blocks.set_var("input left", INPUT_LEFT_ID, number(0)),
+                    blocks.set_var("input right", INPUT_RIGHT_ID, number(0)),
+                    blocks.set_var("input fire", INPUT_FIRE_ID, number(0)),
+                    blocks.set_var("pilot dir", PILOT_DIR_ID, number(8)),
                     blocks.set_var("score", SCORE_ID, number(0)),
                     # ECO-04: the best-five verdict is only meaningful for the game just ended.
                     blocks.set_var("qualified", QUALIFIED_ID, number(0)),
@@ -10144,16 +10303,19 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
     # B9: the craft fronts itself every tick, so it renders above the terrain, the
     # shots, and the frame borders (which the audit found were covering the ship).
     movement_body = [blocks.to_front()]
-    for key, (opcode, input_name, amount) in {
-        "left arrow": ("motion_changexby", "DX", -7),
-        "right arrow": ("motion_changexby", "DX", 7),
-        "up arrow": ("motion_changeyby", "DY", 7),
-        "down arrow": ("motion_changeyby", "DY", -7),
+    # CAB-01: each direction is read through `input_active`, so the auto-pilot's virtual inputs drive the
+    # craft while the cabinet demos (attract==1) and the arrow keys drive it in a real game (attract==0). The
+    # virtual flag paired with each arrow matches the auto-pilot's direction decomposition.
+    for key, (opcode, input_name, amount, virtual_id, virtual_name) in {
+        "left arrow": ("motion_changexby", "DX", -7, INPUT_LEFT_ID, "input left"),
+        "right arrow": ("motion_changexby", "DX", 7, INPUT_RIGHT_ID, "input right"),
+        "up arrow": ("motion_changeyby", "DY", 7, INPUT_UP_ID, "input up"),
+        "down arrow": ("motion_changeyby", "DY", -7, INPUT_DOWN_ID, "input down"),
     }.items():
         pressed = blocks.add("control_if")
         blocks.blocks[pressed]["inputs"]["CONDITION"] = [
             2,
-            blocks.key_pressed(pressed, key),
+            blocks.input_active(pressed, key, virtual_id, virtual_name),
         ]
         blocks.substack(
             pressed,
@@ -10436,7 +10598,9 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     fire_gate = blocks.add("control_if")
     space_and_ready = blocks.add("operator_and")
     blocks.blocks[space_and_ready]["parent"] = fire_gate
-    pressed = blocks.key_pressed(space_and_ready, "space")
+    # CAB-01: fire is read through `input_active` — the auto-pilot's `input fire` while demoing, Space in a
+    # real game. It drops into the same boolean slot the raw `key_pressed(space)` used to fill.
+    pressed = blocks.input_active(space_and_ready, "space", INPUT_FIRE_ID, "input fire")
     ready = blocks.greater(space_and_ready, "blaster reload", RELOAD_ID, RELOAD_TICKS - 1)
     blocks.blocks[space_and_ready]["inputs"] = {
         "OPERAND1": [2, pressed],
@@ -10467,7 +10631,9 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     release_gate = blocks.add("control_if")
     not_pressed = blocks.add("operator_not")
     blocks.blocks[not_pressed]["parent"] = release_gate
-    released = blocks.key_pressed(not_pressed, "space")
+    # CAB-01: the release re-prime also reads through `input_active`, so an auto-pilot fire re-primes exactly
+    # as a real Space release does — an isolated 1/16 demo press fires one shot and re-primes for the next.
+    released = blocks.input_active(not_pressed, "space", INPUT_FIRE_ID, "input fire")
     blocks.blocks[not_pressed]["inputs"] = {"OPERAND": [2, released]}
     blocks.blocks[release_gate]["inputs"]["CONDITION"] = [2, not_pressed]
     blocks.substack(
@@ -13426,6 +13592,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID,
         ATTRACT_EPOCH_ID,
         ATTRACT_STAGE_ID,
+        # CAB-01 (slice 17): the auto-pilot's virtual input register and its held direction (all machinery).
+        INPUT_UP_ID,
+        INPUT_DOWN_ID,
+        INPUT_LEFT_ID,
+        INPUT_RIGHT_ID,
+        INPUT_FIRE_ID,
+        PILOT_DIR_ID,
         # AIR-11: the live Bacura spawn pump's state (main_fn_5 inc counter + main_fn_3 init loop).
         NUM_BACURA_ID,
         BACURA_INC_CNT_ID,
@@ -13584,6 +13757,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID: ["attract", 0],
         ATTRACT_EPOCH_ID: ["attract epoch", 0],
         ATTRACT_STAGE_ID: ["attract stage", 0],
+        INPUT_UP_ID: ["input up", 0],
+        INPUT_DOWN_ID: ["input down", 0],
+        INPUT_LEFT_ID: ["input left", 0],
+        INPUT_RIGHT_ID: ["input right", 0],
+        INPUT_FIRE_ID: ["input fire", 0],
+        PILOT_DIR_ID: ["pilot dir", 0],
         # AIR-11: Bacura live-spawn pump state (re-topped per area in _enter_area_top).
         NUM_BACURA_ID: ["num bacura", 0],
         BACURA_INC_CNT_ID: ["bacura inc cnt", 0],

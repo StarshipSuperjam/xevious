@@ -289,6 +289,36 @@
       "name": "credits",
       "scope": "Stage"
     },
+    "cabinet-input-down": {
+      "kind": "variable",
+      "name": "input down",
+      "scope": "Stage"
+    },
+    "cabinet-input-fire": {
+      "kind": "variable",
+      "name": "input fire",
+      "scope": "Stage"
+    },
+    "cabinet-input-left": {
+      "kind": "variable",
+      "name": "input left",
+      "scope": "Stage"
+    },
+    "cabinet-input-right": {
+      "kind": "variable",
+      "name": "input right",
+      "scope": "Stage"
+    },
+    "cabinet-input-up": {
+      "kind": "variable",
+      "name": "input up",
+      "scope": "Stage"
+    },
+    "cabinet-pilot-dir": {
+      "kind": "variable",
+      "name": "pilot dir",
+      "scope": "Stage"
+    },
     "debug-ground-index": {
       "kind": "variable",
       "name": "debug ground index",
