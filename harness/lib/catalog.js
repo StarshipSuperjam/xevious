@@ -821,6 +821,15 @@ export const SCENARIOS = [
       // bullet — `bullet alloc result` becomes that slot and stays non-zero after the first fire. (A
       // bullet flies and culls within one headless pump, so the allocation result is the stable signal;
       // the bullet actually killing the craft is a rendered collision, the operator playtest's.)
+      // Force every spawnable flying type to the SHOOTING Toroid (type 0x0B = 11) so a shooter spawns and
+      // fires almost immediately (~2 pumps) instead of waiting for the wave scheduler to pick a shooter —
+      // that spawn-wait is what flaked red on a slow/loaded CI runner, where each wall-clock-bounded pump
+      // (see harness.js header) advances fewer internal ticks. The window must stay SHORT and cannot be
+      // widened to compensate: past ~60 pumps the game scrolls into the Andor Genesis boss, whose ports
+      // fire through the same shared alloc signal and would break the negative's isolation. A slow runner
+      // only helps both margins — the forced Toroid still fires early while the boss onset moves later.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 11;
       // Suppress ground spawns (a live Logram fires through the same alloc signal) and reset it (a ground
       // firer may have tripped it during settling), so only a live shooting Toroid can move it.
       suppressGroundSpawns(vm);
