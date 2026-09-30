@@ -214,6 +214,21 @@
       "name": "terrain column",
       "scope": "Stage"
     },
+    "attract-display-divisor": {
+      "kind": "variable",
+      "name": "attract divisor",
+      "scope": "start_screen"
+    },
+    "attract-display-place": {
+      "kind": "variable",
+      "name": "attract place",
+      "scope": "start_screen"
+    },
+    "attract-display-role": {
+      "kind": "variable",
+      "name": "attract role",
+      "scope": "start_screen"
+    },
     "bacura-clone-slot": {
       "kind": "variable",
       "name": "bacura clone slot",
@@ -257,6 +272,66 @@
     "bullet-cursor": {
       "kind": "variable",
       "name": "bullet cursor",
+      "scope": "Stage"
+    },
+    "cabinet-attract": {
+      "kind": "variable",
+      "name": "attract",
+      "scope": "Stage"
+    },
+    "cabinet-attract-epoch": {
+      "kind": "variable",
+      "name": "attract epoch",
+      "scope": "Stage"
+    },
+    "cabinet-attract-stage": {
+      "kind": "variable",
+      "name": "attract stage",
+      "scope": "Stage"
+    },
+    "cabinet-coin-edge": {
+      "kind": "variable",
+      "name": "coin edge",
+      "scope": "Stage"
+    },
+    "cabinet-coin-key-held": {
+      "kind": "variable",
+      "name": "coin key held",
+      "scope": "Stage"
+    },
+    "cabinet-credits": {
+      "kind": "variable",
+      "name": "credits",
+      "scope": "Stage"
+    },
+    "cabinet-input-down": {
+      "kind": "variable",
+      "name": "input down",
+      "scope": "Stage"
+    },
+    "cabinet-input-fire": {
+      "kind": "variable",
+      "name": "input fire",
+      "scope": "Stage"
+    },
+    "cabinet-input-left": {
+      "kind": "variable",
+      "name": "input left",
+      "scope": "Stage"
+    },
+    "cabinet-input-right": {
+      "kind": "variable",
+      "name": "input right",
+      "scope": "Stage"
+    },
+    "cabinet-input-up": {
+      "kind": "variable",
+      "name": "input up",
+      "scope": "Stage"
+    },
+    "cabinet-pilot-dir": {
+      "kind": "variable",
+      "name": "pilot dir",
       "scope": "Stage"
     },
     "debug-ground-index": {

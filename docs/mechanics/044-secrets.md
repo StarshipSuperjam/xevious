@@ -101,15 +101,18 @@
     (`FLAG_AWARDS_CRAFT_ID`), in the same four-marker placeholder convention as the other cabinet options. True
     → the extra-craft arm (craft +1, "craft changed", no "extend"); false → `award value = 10,000` through the
     single `score` proc.
-  - **Port necessity — the credit is a single generated bitmap in a port-generated font, and attract removal
-    is unreachable.** No ground object before this drew text. The credit is a dedicated `easter-egg` render
-    target whose ORIGINAL (zero clones) shows one pre-composed two-line costume at a fixed screen position
-    while the `easter egg showing` signal is 1 — keeping the port at its existing 300-clone ceiling untouched.
-    The wording is this project's own placeholder ("XEVIOUS PORT / BY STARSHIP SUPERJAM"), rendered in a
-    port-generated 5×7 pixel font (`tools/hud_glyphs.py`), because the arcade HUD font manifest crops only the
-    letters the HUD readouts use (it lacks X/T/Y/J/B) and the credit is original content. The arcade
-    attract-mode silent-removal branch has no analog — the port has no attract/demo mode — so only the
-    real-play reveal path is built.
+  - **Port necessity — the credit is a single generated bitmap.** No ground object before this drew text. The
+    credit is a dedicated `easter-egg` render target whose ORIGINAL (zero clones) shows one pre-composed
+    two-line costume at a fixed screen position while the `easter egg showing` signal is 1 — keeping the port at
+    its existing 300-clone ceiling untouched. The wording is this project's own placeholder ("XEVIOUS PORT / BY
+    STARSHIP SUPERJAM"), but the letterforms are rendered from the SAME high-res Xevious HUD font sheet the HUD
+    readouts and the CAB-01 attract text use (`tools/hud_glyphs.py` `render_credit`; "Xevious HUD font
+    recreation" by Patrick H. Lauke, CC-BY 3.0): the operator chose to render all of the port's text from the
+    one Xevious font already in the project. The sheet carries the full A-Z set the wording needs (the arcade
+    HUD *manifest* crops only the readout subset, so `SHEET_TEXT_RECTS` adds the rest from the same sheet), and
+    the credit is set at a smaller cell than the attract text so its longest line stays on the 480px stage. The
+    arcade attract-mode silent-removal branch is now wired since slice 17 added the port attract mode (see
+    [049](049-cabinet-attract.md)).
   - **State mapping.** The arcade's active `_STATE=2` and hit `_STATE=3` map to the port's `SLOT_ACTIVE=1` and
     `SLOT_HIT=2`, the mapping the shared ground detector already uses. Each family's phase is carried in the
     port's `slot flag`: the Sol Tower's hidden / rising / risen (0 / 1 / 2), the flag's hidden / revealed
@@ -178,20 +181,22 @@
   spec and the data files, and no reference source text, credit strings, or media were reproduced. The Sol
   Tower and Bonus Flag sprite crops are credited in `src/xevious/assets/provenance.json`
   (https://www.spriters-resource.com/arcade/xevious/); the bonus-flag pickup sound is credited in the same
-  provenance; the hidden-credit overlay is fully port-original content (a generated bitmap in a port-generated
-  font) and carries project-original provenance with no third-party source.
+  provenance; the hidden-credit overlay's WORDING is port-original content, but its letterforms are rendered
+  from the credited CC-BY Xevious HUD font sheet the HUD and attract text also use, so it carries the same
+  font attribution (credited in `src/xevious/assets/provenance.json`).
 
 - Known deviations or uncertainty: this leaf **corrects the locked `secrets.md`** where its prose diverged from
   the source (the source wins), so this PR carries a **`guardrail-ack`**: the spec had described the bonus-flag
   reveal-bomb as scoring nothing, but `handle_54_Bonus_Flag` / the shared detector score its 1,000-point
   `_PTS=48` value on the reveal bomb (and the fly-over collection then awards the craft-or-10,000 separately),
   so the spec is corrected to match. The four port necessities above (the artwork-baked Sol Tower growth; the
-  frame-stepped clocks; the DIP award as a config marker; and the single-costume credit in a port-generated
-  font with attract removal unreachable) are structural translations into Scratch's flat slot lists, tick
-  convention, and clone budget, not behavioural changes. Two source features are inherently absent in the port:
-  the arcade **attract-mode** silent-removal branch (`handle_53_Easter_Egg` 5990–5992) has no analog because
-  the port has no attract/demo mode, and the original **copyright-tamper trigger** was already stubbed in the
-  reference itself (`check_copyright_strings` 6003–6005, "no point doing that now"). The credit **wording** is
+  frame-stepped clocks; the DIP award as a config marker; and the single-costume credit) are structural
+  translations into Scratch's flat slot lists, tick convention, and clone budget, not behavioural changes. The
+  arcade **attract-mode** silent-removal branch (`handle_53_Easter_Egg` 5989–5992) is now wired since slice 17
+  added the port attract mode — the egg is removed the tick its slot is dispatched while `attract==1`
+  (`game_director.py` update-easter-egg proc; see [049](049-cabinet-attract.md)). The original
+  **copyright-tamper trigger** remains inherently absent: it was already stubbed in the reference itself
+  (`check_copyright_strings` 6003–6005, "no point doing that now"). The credit **wording** is
   this project's own placeholder, never the arcade's credit strings, per `docs/REFERENCE_POLICY.md`. The exact
   on-screen rhythm of the Sol Tower rise, the fly-over collection feel, and the credit's readability remain for
   the operator playtest to confirm, along with the operator's pixel-verification of the Sol Tower rise frames

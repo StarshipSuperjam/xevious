@@ -20,7 +20,9 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count = hg.check_repository()
-        self.assertEqual(33, count)
+        # 47: the 33 HUD/credit/sound outputs + the 14 slice-17 CAB-01 attract overlays on
+        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels + best-five table).
+        self.assertEqual(47, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -143,24 +145,40 @@ class HudGlyphsTests(unittest.TestCase):
         life = hg.render_life_icon(self.manifest)
         _sound, _data, sound_filename = hg.render_extend_sound(self.manifest)
         game_sounds = hg.render_game_sounds()
-        credit = hg.render_credit()
+        sheet = hg._load_font_sheet(self.manifest)
+        threshold = self.manifest["glyph_threshold"]
+        credit = hg.render_credit(sheet, threshold)
+        attract = hg.render_attract_costumes(sheet, threshold)
+        attract_filenames = {output.filename for output in attract}
         expected_filenames = {output.filename for output in glyphs} | {
             life.filename,
             sound_filename,
             credit.filename,
-        } | {output.filename for output in game_sounds}
+        } | {output.filename for output in game_sounds} | attract_filenames
         self.assertEqual(expected_filenames, set(provenance["outputs"]))
+        sheet_license = self.manifest["font_sheet"]["license"]
         for filename in expected_filenames:
             self.assertIn(filename, overlay)
             record = overlay[filename]
             self.assertTrue(record["origin"].strip())
             self.assertTrue(record["license"].strip())
             if filename == credit.filename:
-                # SEC-03: the hidden-credit overlay is the port's OWN original content, so it does
-                # NOT carry the third-party "did not create" disclaimer — it must instead declare
-                # its port-original provenance and that it is not arcade art.
+                # SEC-03: the hidden-credit overlay's WORDING is the port's own original content, but
+                # since the operator chose to render all text from the one credited Xevious HUD font
+                # sheet, its letterforms are that CC-BY font — so the record carries BOTH the
+                # third-party "did not create the font" attribution AND the project-original stance
+                # for the wording (operator's own content, not arcade art).
+                self.assertEqual(sheet_license, record["license"])
+                self.assertIn("did not create the font", record["notes"])
                 self.assertIn("operator's own content", record["notes"])
                 self.assertIn("NOT arcade art", record["notes"])
+            elif filename in attract_filenames:
+                # CAB-01 (slice 17): the attract overlays render from the SAME credited CC-BY sheet,
+                # so they carry the font attribution; their CONTENT (prompts, placeholder initials)
+                # is still project-original — never the ROM default name strings.
+                self.assertEqual(sheet_license, record["license"])
+                self.assertIn("did not create the font", record["notes"])
+                self.assertIn("NOT the ROM default name strings", record["notes"])
             else:
                 self.assertIn("did not create", record["notes"])
 
@@ -238,7 +256,9 @@ class HudGlyphsTests(unittest.TestCase):
         glyphs = hg.render_glyphs(self.manifest)
         life = hg.render_life_icon(self.manifest)
         sound, _data, _filename = hg.render_extend_sound(self.manifest)
-        credit = hg.render_credit()
+        credit = hg.render_credit(
+            hg._load_font_sheet(self.manifest), self.manifest["glyph_threshold"]
+        )
         with self.assertRaisesRegex(hg.HudGlyphsError, "no hud target"):
             hg.expected_project(project, glyphs, life, self.manifest, sound, credit)
 

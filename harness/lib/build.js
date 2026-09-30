@@ -37,10 +37,23 @@ const stateOf = (vm) => readVar(vm, 'game-director-state');
  * clear it (`writeVar(vm,'invuln',0)`) to exercise real player death. Space is HELD (not tapped) and
  * we stop at the first playing tick — a tap pumps once more after release and could overshoot.
  */
+/**
+ * Insert `count` coins by tapping the coin key (C). Each tap is a press+release cycle; the Stage's
+ * always-on coin poll registers the rising edge and adds one credit (capped at 99), so after this call
+ * `credits` has grown by `count` (fewer if the cap is hit). CAB-02 (slice 17).
+ */
+export function insertCoin(vm, count = 1) {
+  for (let i = 0; i < count; i += 1) tapKey(vm, 'c');
+}
+
 export function reachPlaying(vm, budget = 150) {
   greenFlag(vm);
   step(vm, 1);
   writeVar(vm, 'invuln', 1);
+  // CAB-02 (slice 17): the title->ready start now costs a credit, so bank one first. Tapping C lets the
+  // Stage's always-on coin poll register the rising edge and raise `credits` to 1; without it the
+  // credit-gated start hat is a silent no-op and the craft never leaves the title.
+  insertCoin(vm, 1);
   // Tap start (press + release) so the title->ready edge fires but space is NOT held into playing —
   // a held space would make the blaster fire on the first playing tick, leaving stray shots that a
   // later scenario would see kill enemies. `invuln` keeps the craft alive so the reach is reliable.

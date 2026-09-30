@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import scratch_project as scratch  # noqa: E402
 import check_mechanics_record as mechanics  # noqa: E402
 import game_director as director  # noqa: E402
+import hud_glyphs  # noqa: E402
 
 
 def _proc_body_blocks(stage: dict, proccode: str) -> list:
@@ -288,15 +289,24 @@ class ScratchProjectTests(unittest.TestCase):
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
         # bacura / sheonite / bonus_flag cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md) + the 1 generated hidden-credit
-        # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
-        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset)
+        # overlay PNG (SEC-03; the port's own two-line credit WORDING rendered by tools/hud_glyphs.py from the
+        # credited CC-BY Xevious HUD font sheet, attached to the easter-egg target)
         # + the 17 Andor Genesis part PNGs (BOSS-01: 9 armor plates + 4 gun ports + 4 core flip-orientation
         # costumes, the last four derived by deterministic transpose of one credited core crop) and the Andor
         # source sheet itself, which the sprite_sheets reference target displays whole (so it counts once)
         # + the 4 Bragza fly PNGs (BOSS-03: the destroyed core's fly-up form, handle_Bragza codes 0xb8..0xbb
         # at CLUT 0x15; swapping the source sheet for the taller 96x128 Bragza-bearing render is net-zero on
-        # the count, so slice 16 adds exactly the 4 new crops).
-        self.assertEqual(207, len(assets))
+        # the count, so slice 16 adds exactly the 4 new crops)
+        # + the 4 NEW slice-17 CAB-01 attract-overlay PNGs on start_screen (the CREDIT / PUSH START /
+        # INSERT COIN labels + the best-five table), rendered by tools/hud_glyphs.py from the SAME credited
+        # Xevious HUD font sheet as the HUD readouts (extra glyphs cropped via SHEET_TEXT_RECTS); the
+        # prompt/initials CONTENT is project-original. The 10 attract credit-counter digits are NOT new
+        # assets: rendered from the same sheet with the same digit crops as the HUD score digits, they are
+        # byte-identical PNGs and dedup to the HUD's own digit files (content-addressed naming, the same
+        # harmless consequence as the O/0 share in docs/mechanics/010) — so slice 17 adds exactly 4 distinct
+        # attract PNGs, not 14. (Count fell 221 -> 211 when SEC-03 + attract text moved onto the one credited
+        # font: the 10 digit costumes stopped being their own port-font PNGs and now reuse the HUD digits.)
+        self.assertEqual(211, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -424,6 +434,16 @@ class ScratchProjectTests(unittest.TestCase):
                 # terrain scroll counters) added on top of their historical content.
                 expected.pop("variables")
                 actual.pop("variables")
+            elif target["name"] == "start_screen":
+                # CAB-01 (slice 17): start_screen gains the attract-display sprite-local
+                # variables (attract role/place/divisor) and hud_glyphs.py APPENDS the
+                # attract-overlay costumes (the CREDIT line, credit digits, prompts,
+                # best-five table) after the historical logo costume at index 0. Drop the
+                # added variables and truncate the costumes back to the historical set,
+                # then compare the rest.
+                expected.pop("variables")
+                actual.pop("variables")
+                actual["costumes"] = actual["costumes"][: len(expected["costumes"])]
             self.assert_ordered_json_equal(
                 expected,
                 actual,
@@ -1041,6 +1061,19 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             director.generate()
 
+    # roadmap-evidence: CAB-02 success  (credit/coin classification below pins `credits` as economy state
+    #   and `coin key held` as machinery; harness coins-bank-credits + one-player-start-costs-a-credit prove
+    #   the coin bank, the 99 cap, and the credit-gated 1P start spend)
+    # roadmap-evidence: CAB-02 failure  (harness coins-bank-credits negative neutralizes the coin poll;
+    #   one-player-start-costs-a-credit negative freezes the credit change so neither coin nor start lands)
+    # roadmap-evidence: CAB-01 success  (the allowed-transition + attract-machinery classification below pins
+    #   the attract state machine; harness attract-title-launches-demo, attract-demo-death-to-best-five,
+    #   attract-scores-launches-second-demo, and attract-second-demo-death-returns-to-title drive the full
+    #   title -> demo -> best-five -> demo -> title cycle live, with attract-coin-aborts-to-title and
+    #   attract-cleared-on-credited-start proving the coin-abort and the atomic clear on a credited start)
+    # roadmap-evidence: CAB-01 failure  (each attract scenario's negative removes the exact edge it relies on
+    #   — title->playing, playing->attract-scores, attract-scores->playing, playing->title — so the cycle
+    #   stalls; attract-cleared-on-credited-start pins `attract` set to 1 so a started game reads as a demo)
     def test_game_director_has_one_stage_owned_transition_path(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         stage = next(target for target in project["targets"] if target["isStage"])
@@ -1121,6 +1154,30 @@ class ScratchProjectTests(unittest.TestCase):
             # Stage state (both default 0; the harness never presses P, so the walk runs every tick).
             "debug paused",
             "debug pause key held",
+            # CAB-02 (slice 17): the coin key's previous-tick sample for rising-edge (tap) coin detection —
+            # a transient input register like the debug-key held samples, not durable Stage state (the
+            # credit bank it feeds is economy state, below). Written by the always-on coin poll.
+            "coin key held",
+            # CAB-01 (slice 17): the attract-cycle machinery. `coin edge` is the one-tick coin-inserted pulse
+            # the non-warp coin loop reads to run the coin-abort. `attract` is the 0/1 flag that marks the whole
+            # attract cycle (title/demo/best-five/demo); `attract epoch` is the state-epoch snapshot guarding
+            # the cancellable hold timers; `attract stage` (1 or 2) records which demo is running so a demo
+            # death routes to best-five or the title. All transient machinery, not durable Stage state.
+            "coin edge",
+            "attract",
+            "attract epoch",
+            "attract stage",
+            # CAB-01 (slice 17): the auto-pilot's virtual input register. `input up/down/left/right/fire` are
+            # the 0/1 flags `install_attract_pilot` drives while the cabinet demos (attract==1), read through
+            # `input_active` in place of the keyboard by the solvalou/blaster seams; `pilot dir` is the held
+            # 0..8 direction the redraw decomposes into them. All Stage-written by the pilot proc, re-zeroed
+            # with the world, never sprite-written — transient input machinery, not durable state.
+            "input up",
+            "input down",
+            "input left",
+            "input right",
+            "input fire",
+            "pilot dir",
             # WPN-04 (slice 9): the in-flight bomb's accelerating scroll-axis velocity — a transient
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
@@ -1180,6 +1237,10 @@ class ScratchProjectTests(unittest.TestCase):
             # `dswb` bit 1. Stage-owned (its power-on default is the placeholder DIP position; the harness flips
             # it to exercise both award arms), read by the Stage `update bonus flag` proc, never sprite-written.
             "flag awards craft",
+            # CAB-02 (slice 17): the credit bank (0..99). Stage-written by the always-on coin poll (+1 per
+            # coin, capped) and by the credit-gated start (-1); read by the HUD credit display only, never
+            # sprite-written. Economy state like `score`/`craft`; cleared only at power-on, not on any reset.
+            "credits",
         }
         # AREA-01/AREA-02 area state — durable Stage-owned position/schedule authority read
         # across ticks and across the death/reset boundary. It is NOT machinery (the
@@ -1241,6 +1302,12 @@ class ScratchProjectTests(unittest.TestCase):
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
+                # CAB-01 (slice 17) attract cycle: the demo reuses `playing` under attract==1.
+                "title -> playing",
+                "playing -> attract-scores",
+                "attract-scores -> playing",
+                "playing -> title",
+                "attract-scores -> title",
             ],
             stage["lists"][director.ALLOWED_ID][1],
         )
@@ -1356,6 +1423,13 @@ class ScratchProjectTests(unittest.TestCase):
             director.RESOLVE_HIT_PROCCODE,
             director.SCORE_PROCCODE,
             director.CHECK_BONUS_PROCCODE,
+            # CAB-02 (slice 17): the always-on coin poll, called every tick from the Stage's green-flag
+            # coin loop (not the walk). It banks credits and reads the coin key; it writes no game state.
+            director.COIN_POLL_PROCCODE,
+            # CAB-01 (slice 17): the attract auto-pilot, called first in the walk tick_body but only while a
+            # demo runs (attract==1). It draws the shared RNG to redraw/hold the demo's direction and fire,
+            # writing only the virtual input register (machinery); a real game never calls it.
+            director.ATTRACT_PILOT_PROCCODE,
             # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
             # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
             # shared RNG step the spawn draw now consumes (its first live consumer).
@@ -14071,6 +14145,26 @@ class ScratchProjectTests(unittest.TestCase):
             body.append(cur)
             cur = blocks[cur]["next"]
 
+        # CAB-01 (slice 17): the entire scoring path is wrapped in `if attract == 0`, so a demo kill accrues
+        # neither score nor a bonus craft. Require that gate, then descend into it to check the scoring body
+        # itself — a missing or mis-conditioned gate is a scoring-in-attract regression.
+        if len(body) == 1 and blocks[body[0]]["opcode"] == "control_if":
+            gate = blocks[body[0]]
+            cond = blocks[gate["inputs"]["CONDITION"][1]]
+            if (
+                cond["opcode"] == "operator_equals"
+                and refs(cond["inputs"].get("OPERAND1"), director.ATTRACT_ID)
+                and cond["inputs"].get("OPERAND2") == [1, [4, 0]]
+            ):
+                body, cur = [], gate["inputs"].get("SUBSTACK", [None, None])[1]
+                while cur:
+                    body.append(cur)
+                    cur = blocks[cur]["next"]
+            else:
+                failures.add("attract-score-gate")
+        else:
+            failures.add("attract-score-gate")
+
         # award -> score: `change score by (award value)`. (NOT `set score = score + award
         # value`: a `set var = operator(...)` value-input does not evaluate in the Scratch VM,
         # so the score path adds via `change ... by` the award-value variable directly.)
@@ -14544,25 +14638,95 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("craft-changed-listener")
 
-        # A flashing "1UP" is a loop whose body both shows and hides.
-        def has_flash_loop() -> bool:
+        # Walk a substack chain from `start`, descending into any nested if/if-else/loop
+        # bodies (SUBSTACK/SUBSTACK2), yielding every block node. The 1UP flash's `hide`
+        # now sits inside an `if attract==0`, so the flash checks must see nested nodes.
+        def walk_body(start):
+            cursor = start
+            while cursor:
+                node = blocks[cursor]
+                yield node
+                for key in ("SUBSTACK", "SUBSTACK2"):
+                    inner = node["inputs"].get(key)
+                    if (
+                        isinstance(inner, list)
+                        and len(inner) > 1
+                        and isinstance(inner[1], str)
+                    ):
+                        yield from walk_body(inner[1])
+                cursor = node["next"]
+
+        # A flashing "1UP" is a loop whose body both shows and hides (the hide may be
+        # nested inside a gate — see the attract-gate guard below).
+        def flash_loop_body():
             for b in blocks.values():
                 if b["opcode"] not in ("control_repeat_until", "control_repeat"):
                     continue
                 substack = b["inputs"].get("SUBSTACK")
                 if not substack:
                     continue
-                cursor, opcodes = substack[1], set()
-                while cursor:
-                    node = blocks[cursor]
-                    opcodes.add(node["opcode"])
-                    cursor = node["next"]
-                if {"looks_show", "looks_hide"} <= opcodes:
-                    return True
-            return False
+                body = list(walk_body(substack[1]))
+                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in body}:
+                    return substack[1], body
+            return None
 
-        if not has_flash_loop():
+        if flash_loop_body() is None:
             failures.add("flashing-1up")
+
+        # CAB-01 (slice 17): the blank (hide) half of the 1UP/2UP flash is gated on
+        # `attract == 0`, so the attract demo shows the indicator STEADY and only a real
+        # game flashes it — the arcade `flash_1up_2up` (src/xevious_sub.68k 769-776) ANDs
+        # the flash-timer bit with the real-game flag before writing the blank string. The
+        # `show` half is never gated, so a demo clone is never left hidden.
+        # roadmap-evidence: CAB-01 success
+        def flash_hide_attract_gated() -> bool:
+            found = flash_loop_body()
+            if found is None:
+                return False
+            direct_start, body = found
+            # The hide must sit inside an `if <attract == 0>` gate.
+            gated_hide = False
+            for node in body:
+                if node["opcode"] != "control_if":
+                    continue
+                cond = node["inputs"].get("CONDITION")
+                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
+                    continue
+                eq = blocks.get(cond[1])
+                if eq is None or eq["opcode"] != "operator_equals":
+                    continue
+                operands = (eq["inputs"].get("OPERAND1"), eq["inputs"].get("OPERAND2"))
+                refs_attract = any(refs(o, director.ATTRACT_ID) for o in operands)
+                has_zero = any(
+                    isinstance(o, list)
+                    and len(o) > 1
+                    and isinstance(o[1], list)
+                    and len(o[1]) > 1
+                    and str(o[1][1]) == "0"
+                    for o in operands
+                )
+                inner = node["inputs"].get("SUBSTACK")
+                hides = (
+                    isinstance(inner, list)
+                    and len(inner) > 1
+                    and isinstance(inner[1], str)
+                    and any(n["opcode"] == "looks_hide" for n in walk_body(inner[1]))
+                )
+                if refs_attract and has_zero and hides:
+                    gated_hide = True
+            # `show` must stay UNgated (on the loop's direct chain), so the demo clone is
+            # never left hidden even though its hide never runs.
+            direct_show = False
+            cursor = direct_start
+            while cursor:
+                node = blocks[cursor]
+                if node["opcode"] == "looks_show":
+                    direct_show = True
+                cursor = node["next"]
+            return gated_hide and direct_show
+
+        if not flash_hide_attract_gated():
+            failures.add("flash-1up-attract-gated")
 
         # Regression guard for the "header flashes then vanishes" bug: a clone's keep-alive
         # `repeat until` must LOOP while the HUD is visible and stop only on return to
@@ -14713,25 +14877,63 @@ class ScratchProjectTests(unittest.TestCase):
                         director.MESSAGES["director stop"],
                     ]
 
+        def walk_body(blocks: dict, start):
+            cursor = start
+            while cursor:
+                node = blocks[cursor]
+                yield node
+                for key in ("SUBSTACK", "SUBSTACK2"):
+                    inner = node["inputs"].get(key)
+                    if (
+                        isinstance(inner, list)
+                        and len(inner) > 1
+                        and isinstance(inner[1], str)
+                    ):
+                        yield from walk_body(blocks, inner[1])
+                cursor = node["next"]
+
         def break_flash(p: dict) -> None:
             blocks = hud_blocks(p)
-            for b in blocks.values():
+            for b in list(blocks.values()):
                 if b["opcode"] not in ("control_repeat_until", "control_repeat"):
                     continue
                 substack = b["inputs"].get("SUBSTACK")
                 if not substack:
                     continue
-                cursor, nodes = substack[1], []
-                opcodes = set()
-                while cursor:
-                    node = blocks[cursor]
-                    opcodes.add(node["opcode"])
-                    nodes.append(node)
-                    cursor = node["next"]
-                if {"looks_show", "looks_hide"} <= opcodes:
+                nodes = list(walk_body(blocks, substack[1]))
+                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}:
                     for node in nodes:
                         if node["opcode"] == "looks_hide":
                             node["opcode"] = "looks_show"
+
+        def break_flash_gate(p: dict) -> None:
+            # Ungate the flash's hide: neutralise the `attract == 0` condition so the
+            # attract demo would flash the 1UP/2UP indicator like a real game.
+            blocks = hud_blocks(p)
+            for b in list(blocks.values()):
+                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                    continue
+                substack = b["inputs"].get("SUBSTACK")
+                if not substack:
+                    continue
+                nodes = list(walk_body(blocks, substack[1]))
+                if not ({"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}):
+                    continue
+                for node in nodes:
+                    if node["opcode"] != "control_if":
+                        continue
+                    cond = node["inputs"].get("CONDITION")
+                    if not (
+                        isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)
+                    ):
+                        continue
+                    eq = blocks.get(cond[1])
+                    if eq is None or eq["opcode"] != "operator_equals":
+                        continue
+                    for slot in ("OPERAND1", "OPERAND2"):
+                        if refs(eq["inputs"].get(slot), director.ATTRACT_ID):
+                            eq["inputs"][slot] = [1, [4, 0]]
+                return
 
         def break_write_only_local(p: dict) -> None:
             blocks = hud_blocks(p)
@@ -14804,6 +15006,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("craft-referenced", break_craft_reference),
             ("craft-changed-listener", break_craft_changed),
             ("flashing-1up", break_flash),
+            # roadmap-evidence: CAB-01 failure
+            ("flash-1up-attract-gated", break_flash_gate),
             ("hud-writes-only-local", break_write_only_local),
             ("hud-life-spawn-loop-capped", break_life_spawn_loop_cap),
             ("hud-life-count-capped", break_life_count_cap),
@@ -16212,6 +16416,190 @@ class ScratchProjectTests(unittest.TestCase):
         expected = data["tables"]["high_score_defaults"]["scores"]
         self.assertEqual(expected, by_name["high score table"])
 
+    def test_attract_default_initials_are_project_original_and_font_covered(self) -> None:
+        # CAB-01 (slice 17): the attract best-five initials are project-original placeholders that
+        # live as a source constant (hud_glyphs.ATTRACT_DEFAULT_INITIALS) — NOT in the
+        # reference-extracted, digest-guarded docs/spec/data/scores.json (that file is decode-only
+        # and carries only the reference-derived default scores the initials pair with). Pin them
+        # paired one-for-one with those scores, and pin that every glyph they use has a Xevious HUD
+        # font sheet crop (SHEET_TEXT_RECTS) — the "unknown glyph fails loudly" font-coverage guard.
+        # roadmap-evidence: CAB-01 success  (the default best-five initials are present as a
+        #   project-original constant, paired with the arcade scores, and fully covered by the Xevious HUD font sheet)
+        data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
+        scores = data["tables"]["high_score_defaults"]["scores"]
+        # The initials are project-original: they must NOT have leaked into the reference data file.
+        self.assertNotIn(
+            "port_default_initials",
+            data["tables"]["high_score_defaults"],
+            "project-original initials must not live in the reference-extracted scores.json",
+        )
+        initials = hud_glyphs.ATTRACT_DEFAULT_INITIALS
+        self.assertEqual(
+            len(initials),
+            len(scores),
+            "each default best-five score must have exactly one initials entry",
+        )
+        self.assertEqual(len(initials), len(director.HIGH_SCORE_DEFAULTS))
+        for entry in initials:
+            self.assertEqual(len(entry), 3, f"best-five initials {entry!r} must be three glyphs")
+            for glyph in entry:
+                self.assertIn(
+                    glyph,
+                    hud_glyphs.SHEET_TEXT_RECTS,
+                    f"initials glyph {glyph!r} has no SHEET_TEXT_RECTS entry (would render nothing)",
+                )
+
+    @staticmethod
+    def _attract_display_failures(project: dict) -> set:
+        """CAB-01/CAB-02 attract displays on start_screen — the port-font costumes, the
+        clone spawn/dispatch, the four role branches (CREDIT label, credit digit, prompt,
+        best-five), the credit-digit costume EXPRESSION, and the static label costume
+        switches (structure only; the pixels and on-screen layout are the operator's
+        playtest). Mirrors the HUD render guard for the attract-display clone family."""
+        failures = set()
+        ss = next(t for t in project["targets"] if t.get("name") == "start_screen")
+        blocks = ss["blocks"]
+        costumes = {c["name"] for c in ss["costumes"]}
+
+        required = {"credit-label", "push-start", "insert-coin", "best-five"}
+        required |= {f"digit/{d}" for d in range(10)}
+        for name in sorted(required):
+            if name not in costumes:
+                failures.add(f"costume-missing:{name}")
+
+        if not any(b["opcode"] == "control_create_clone_of" for b in blocks.values()):
+            failures.add("attract-spawns-clones")
+        if not any(b["opcode"] == "control_start_as_clone" for b in blocks.values()):
+            failures.add("attract-clone-handler")
+
+        role_id = director.ATTRACT_DISPLAY_ROLE_ID
+
+        def role_dispatch(role_value: int) -> bool:
+            # A role branch is `attract role == <value>`: operator_equals with the role
+            # variable on the left and the literal role value on the right.
+            for b in blocks.values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                rhs_spec = rhs[1] if isinstance(rhs, list) else None
+                is_role = (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == role_id
+                )
+                is_val = isinstance(rhs_spec, list) and str(rhs_spec[1]) == str(role_value)
+                if is_role and is_val:
+                    return True
+            return False
+
+        for label, value in (
+            ("credit-label-role-dispatch", director.ATTRACT_ROLE_CREDIT_LABEL),
+            ("credit-digit-role-dispatch", director.ATTRACT_ROLE_CREDIT_DIGIT),
+            ("prompt-role-dispatch", director.ATTRACT_ROLE_PROMPT),
+            ("best-five-role-dispatch", director.ATTRACT_ROLE_BEST_FIVE),
+        ):
+            if not role_dispatch(value):
+                failures.add(label)
+
+        # The credit digit renders through a costume EXPRESSION: a switch-costume block fed
+        # by join("digit/", <digit>) — not a static costume name (that is how a per-place
+        # digit tracks the live credit count).
+        def digit_expr_switch() -> bool:
+            for b in blocks.values():
+                if b["opcode"] != "looks_switchcostumeto":
+                    continue
+                ci = b["inputs"].get("COSTUME")
+                if isinstance(ci, list) and isinstance(ci[1], str):
+                    fed = blocks.get(ci[1])
+                    if fed is not None and fed["opcode"] == "operator_join":
+                        return True
+            return False
+
+        if not digit_expr_switch():
+            failures.add("credit-digit-costume-expr")
+
+        # The static labels (CREDIT line, the two prompts, the table) switch to a named
+        # port-font costume via a costume-menu shadow.
+        label_switch_names = {
+            b["fields"]["COSTUME"][0]
+            for b in blocks.values()
+            if b["opcode"] == "looks_costume" and b.get("fields", {}).get("COSTUME")
+        }
+        for name in ("credit-label", "push-start", "insert-coin", "best-five"):
+            if name not in label_switch_names:
+                failures.add(f"label-switch-missing:{name}")
+
+        return failures
+
+    def test_attract_display_wiring_present(self) -> None:
+        # CAB-01/CAB-02 (slice 17): the attract-display clone family is wired onto
+        # start_screen — the port-font costumes, the clone spawn/dispatch, the four role
+        # branches, the credit-digit costume expression, and the static label switches.
+        # roadmap-evidence: CAB-01 success  (the attract displays are structurally present:
+        #   costumes attached, clones spawned/dispatched, every role branch and switch wired)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._attract_display_failures(project))
+
+    def test_attract_display_negative_fixtures(self) -> None:
+        # roadmap-evidence: CAB-01 failure  (each severing fixture makes the matching
+        #   attract-display structural guard report its failure — the guard binds)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._attract_display_failures(base))
+
+        def ss_blocks(p: dict) -> dict:
+            return next(t for t in p["targets"] if t.get("name") == "start_screen")["blocks"]
+
+        def break_spawn(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] == "control_create_clone_of":
+                    b["opcode"] = "control_create_clone_of_disabled"
+
+        def break_handler(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] == "control_start_as_clone":
+                    b["opcode"] = "control_start_as_clone_disabled"
+
+        def break_best_five_dispatch(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                if (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == director.ATTRACT_DISPLAY_ROLE_ID
+                    and isinstance(rhs, list)
+                    and isinstance(rhs[1], list)
+                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_BEST_FIVE)
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "999"]]
+
+        def break_digit_expr(p: dict) -> None:
+            for b in ss_blocks(p).values():
+                if b["opcode"] == "operator_join":
+                    b["opcode"] = "operator_join_disabled"
+
+        def drop_best_five_costume(p: dict) -> None:
+            ss = next(t for t in p["targets"] if t.get("name") == "start_screen")
+            ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "best-five"]
+
+        for label, mutate_fn in (
+            ("attract-spawns-clones", break_spawn),
+            ("attract-clone-handler", break_handler),
+            ("best-five-role-dispatch", break_best_five_dispatch),
+            ("credit-digit-costume-expr", break_digit_expr),
+            ("costume-missing:best-five", drop_best_five_costume),
+        ):
+            project = load_source(scratch.SOURCE_DIR)
+            mutate_fn(project)
+            self.assertIn(label, self._attract_display_failures(project), label)
+
     def test_game_over_negative_fixtures(self) -> None:
         base = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._eco04_failures(base))
@@ -17152,10 +17540,10 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(
             set(), sensed & arrow_keys, "the Stage walk must not steer the bomb sight by arrow keys"
         )
-        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, the debug-ground 'g' poll, and the
-        # debug-pause 'p' poll are expected Stage key reads ('t'/'g'/'p' are temporary dev tools tracked
-        # for removal, #119).
-        self.assertLessEqual(sensed, {"b", "t", "g", "p"}, sensed)
+        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, the debug-ground 'g' poll, the
+        # debug-pause 'p' poll, and the CAB-02 coin 'c' poll are expected Stage key reads ('t'/'g'/'p'
+        # are temporary dev tools tracked for removal, #119; 'c' is the permanent coin key — slice 17).
+        self.assertLessEqual(sensed, {"b", "t", "g", "p", "c"}, sensed)
 
         # Negative: re-add an arrow-key branch (an arrow-key poll on the Stage) → the guard fires.
         corrupt = copy.deepcopy(project)
@@ -17504,7 +17892,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "bac2e557b8e7262182f6ab6fe4f3ed176395975f0303401a5d9e9fe17f4a4e97",
+            "be562103ed8622cc050dac8bb59e9dbec2e1a22483cc158cdf62f5bedd8adbe7",
             build_hash,
         )
 

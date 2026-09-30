@@ -23,7 +23,7 @@ import {
   constants,
   variable,
 } from './harness.js';
-import { reachPlaying, stateOf } from './build.js';
+import { reachPlaying, stateOf, insertCoin } from './build.js';
 import * as mutate from './mutate.js';
 
 // The committed RNG fixture (the shared LFSR's byte stream from each seed) — the model the live
@@ -93,6 +93,53 @@ function seedCraftHit(vm, enemySlot = 63) {
   put('slot-dx', enemySlot, 0);
   put('slot-dy', enemySlot, 0);
   put('slot-flag', enemySlot, 0);
+}
+
+// CAB-01 (slice 17): green-flag and step past the title hold to the first attract demo (playing with the
+// attract flag still raised). The arcade title stage runs 744 frames before it auto-advances to the demo;
+// at FRAMES_PER_TICK=2 that is 372 ticks, so a 500-tick budget clears it. The title ticks are cheap (the
+// walk only runs while playing). Returns true once the cabinet is demonstrating a game to an empty arcade.
+function reachDemo(vm) {
+  vm.greenFlag();
+  step(vm, 1);
+  let t = 0;
+  while (!(state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && t < 600) {
+    step(vm, 1);
+    t += 1;
+  }
+  return state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
+}
+
+// CAB-01 (slice 17): drive a live demo craft to its death and on to the attract sub-state it routes to. A
+// demo runs with the craft vulnerable (`invuln` stays 0, unlike `reachPlaying`), so a Toroid seeded on the
+// craft's cell each tick forces the death the arcade demo reaches when `scroll_disabled` fires. Steps until
+// `dest` (or the budget) and reports whether it landed. The demo-death branch never spends a craft.
+function killDemoToState(vm, dest, budget = 40) {
+  let reached = false;
+  for (let i = 0; i < budget && !reached; i += 1) {
+    seedCraftHit(vm);
+    step(vm, 1);
+    if (state(vm) === dest) reached = true;
+  }
+  return reached;
+}
+
+// reachDemo, then kill the first demo into the best-five (attract-scores) screen it routes to after demo 1.
+function reachScores(vm) {
+  if (!reachDemo(vm)) return false;
+  return killDemoToState(vm, 'attract-scores');
+}
+
+// reachScores, then step past the 512-frame (~256-tick) best-five hold into the SECOND demo — playing, with
+// the attract flag still raised and the stage index advanced to 2 (the two-demos-per-cycle arcade loop).
+function reachSecondDemo(vm) {
+  if (!reachScores(vm)) return false;
+  let t = 0;
+  while (!(state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && t < 400) {
+    step(vm, 1);
+    t += 1;
+  }
+  return state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
 }
 
 // Every read resolves through a manifest id (hard-errors on a rename), including the
@@ -247,7 +294,9 @@ export const SCENARIOS = [
       step(vm, 3);
       const gatedHeld = state(vm) === 'title' && epoch(vm) === epochBefore;
       // Hold start and stop at the first playing tick (a tap overshoots — see reachPlaying); keep the
-      // craft alive so it does not die back to the title before we observe playing.
+      // craft alive so it does not die back to the title before we observe playing. CAB-02 (slice 17):
+      // the start now costs a credit, so bank one first or the held start is a silent no-op.
+      insertCoin(vm, 1);
       writeVar(vm, 'invuln', 1);
       keyDown(vm, ' ');
       let reached = false;
@@ -265,6 +314,451 @@ export const SCENARIOS = [
     },
     // Remove title -> ready so start can never reach playing → assertion fails.
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'title -> ready'),
+  },
+  {
+    // CAB-02 (cabinet.attract-credits, slice 17), coin side: the always-on coin poll adds one credit per
+    // coin on the rising edge, and the bank caps at 99 (arcade `cmp.b #0x99` BCD ceiling; sub 171-206).
+    key: 'coins-bank-credits',
+    behavior: 'Each coin banks one credit; the credit bank caps at 99',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      const boot = readVar(vm, 'cabinet-credits'); // 0 at power-on
+      insertCoin(vm, 2);
+      const afterTwo = readVar(vm, 'cabinet-credits'); // two coins -> two credits
+      // Seed one below the cap and insert two: one lands, the second is rejected at the ceiling.
+      writeVar(vm, 'cabinet-credits', 98);
+      insertCoin(vm, 2);
+      const capped = readVar(vm, 'cabinet-credits'); // 99, not 100
+      return { boot, afterTwo, capped };
+    },
+    assert(obs) {
+      assert.equal(obs.boot, 0, 'no credits at power-on');
+      assert.equal(obs.afterTwo, 2, 'two coins bank two credits');
+      assert.equal(obs.capped, 99, 'the credit bank caps at 99');
+    },
+    // Sever the coin poll body: coins can no longer bank → afterTwo is 0, the assertion fails.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'cabinet coin poll'),
+  },
+  {
+    // CAB-02, start side: a 1-player start is credit-gated — ignored at 0 credits, and when a credit is
+    // banked it spends exactly one and begins the game (arcade `cmp.b #1,(num_credits) ; jcs` then `sbcd`).
+    key: 'one-player-start-costs-a-credit',
+    behavior: 'A 1P start is ignored without a credit, and spends exactly one when it has it',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      // A start press with an empty bank is ignored: the machine stays at the title.
+      tapKey(vm, ' ');
+      step(vm, 3);
+      const noCreditState = state(vm); // 'title'
+      // Bank one credit, then start: it reaches playing and the bank drops back to 0.
+      insertCoin(vm, 1);
+      writeVar(vm, 'invuln', 1);
+      tapKey(vm, ' ');
+      let started = false;
+      for (let i = 0; i < 120 && !started; i += 1) {
+        step(vm, 1);
+        if (state(vm) === 'playing') started = true;
+      }
+      const spent = readVar(vm, 'cabinet-credits'); // 0 after spending the one credit
+      return { noCreditState, started, spent };
+    },
+    assert(obs) {
+      assert.equal(obs.noCreditState, 'title', 'a start with no credit is ignored');
+      assert.equal(obs.started, true, 'a start with a credit reaches playing');
+      assert.equal(obs.spent, 0, 'a 1P start spends exactly one credit');
+    },
+    // Freeze every `change credits` (the +1 coin and the -1 start) → the banked coin never lands, the
+    // credited start never fires, `started` is false: the assertion fails.
+    negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'credits'),
+  },
+  {
+    // CAB-01 (cabinet.attract-credits, slice 17): an idle cabinet auto-launches its demo. The title stage
+    // holds 744 frames (~372 ticks) then advances to `playing` with the attract flag still raised — a game
+    // demonstrated to an empty arcade, not a real game. (arcade `attract_mode_main_loop` main 359-370; the
+    // title stage is main 1217-1296.)
+    key: 'attract-title-launches-demo',
+    behavior: 'An idle title auto-launches the attract demo (playing, with the attract flag still raised)',
+    playtestStep: 1,
+    async drive(vm) {
+      const launched = reachDemo(vm); // steps past the ~372-tick title hold
+      return { launched, st: state(vm), attract: readVar(vm, 'cabinet-attract') };
+    },
+    assert(obs) {
+      assert.equal(obs.launched, true, 'the idle title auto-advances to the demo');
+      assert.equal(obs.st, 'playing', 'the demo runs on the playing state');
+      assert.equal(obs.attract, 1, 'the demo keeps the attract flag raised');
+    },
+    // Remove the title -> playing edge so the auto-launch is a silent no-op → the demo never starts.
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'title -> playing'),
+  },
+  {
+    // CAB-01: the demo ends the way the arcade demo does — the craft dies (no timer). A demo death routes to
+    // the best-five (attract-scores) screen, spends no craft, and keeps the attract cycle running; it never
+    // hits the real death paths (respawn / game-over). (demo exit main 1298-1328; the death branch spends no
+    // life because the score/lives setup runs only on the credited-start path, `coined_up` main 398-417.)
+    key: 'attract-demo-death-to-best-five',
+    behavior: 'A demo death routes to the best-five screen, spends no craft, and stays in the attract cycle',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachDemo(vm), 'precondition: the demo is running');
+      const routed = killDemoToState(vm, 'attract-scores');
+      return { routed, st: state(vm), attract: readVar(vm, 'cabinet-attract') };
+    },
+    assert(obs) {
+      assert.equal(obs.routed, true, 'a demo death reaches the best-five screen');
+      assert.equal(obs.st, 'attract-scores', 'the demo does not fall through to a real death path');
+      assert.equal(obs.attract, 1, 'the attract cycle keeps running through the best-five screen');
+    },
+    // Remove the playing -> attract-scores edge so a demo death cannot route to the best-five screen.
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'playing -> attract-scores'),
+  },
+  {
+    // CAB-01: the best-five screen is itself timed (512 frames, ~256 ticks) and then launches the SECOND
+    // demo of the cycle — two demos per attract cycle, title -> demo -> best-five -> demo -> title. The
+    // second demo runs at stage index 2. (best-five stage main 1336-1344; the shared demo handler is
+    // `attract_mode_jump_tbl` main 1211-1216, dispatched for both demo slots.)
+    key: 'attract-scores-launches-second-demo',
+    behavior: 'The best-five screen is timed and launches the second demo of the attract cycle',
+    playtestStep: 1,
+    async drive(vm) {
+      const launched = reachSecondDemo(vm); // demo 1 -> best-five hold -> demo 2
+      return {
+        launched,
+        st: state(vm),
+        attract: readVar(vm, 'cabinet-attract'),
+        stage: readVar(vm, 'cabinet-attract-stage'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.launched, true, 'the best-five hold advances to the second demo');
+      assert.equal(obs.st, 'playing', 'the second demo runs on the playing state');
+      assert.equal(obs.attract, 1, 'the second demo keeps the attract flag raised');
+      assert.equal(obs.stage, 2, 'the second demo runs at attract stage index 2');
+    },
+    // Remove the attract-scores -> playing edge so the best-five hold can never launch the second demo.
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'attract-scores -> playing'),
+  },
+  {
+    // CAB-01: after the SECOND demo the cycle returns to the title (not back to the best-five) — the demo
+    // death handler reads the stage index (2, not 1) and routes to `title`, closing the loop. The attract
+    // flag stays raised: the cabinet is still idling.
+    key: 'attract-second-demo-death-returns-to-title',
+    behavior: 'The second demo death closes the cycle back to the title, still idling',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachSecondDemo(vm), 'precondition: the second demo is running');
+      const routed = killDemoToState(vm, 'title');
+      return { routed, st: state(vm), attract: readVar(vm, 'cabinet-attract') };
+    },
+    assert(obs) {
+      assert.equal(obs.routed, true, 'the second demo death reaches the title');
+      assert.equal(obs.st, 'title', 'the cycle closes back to the title, not the best-five screen');
+      assert.equal(obs.attract, 1, 'the cabinet stays in its attract cycle');
+    },
+    // Remove the playing -> title edge so the second demo death cannot close the cycle back to the title.
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'playing -> title'),
+  },
+  {
+    // CAB-02: inserting a coin during the attract cycle resets the machine to the title and banks the credit
+    // (it does not start a game — that still needs a start press). The attract flag stays raised: the coin
+    // returns to the title but the cabinet is still in its attract cycle. (arcade `coined_up` main 377-388
+    // resets the attract state on coin-in from any attract sub-state.)
+    key: 'attract-coin-aborts-to-title',
+    behavior: 'A coin during the demo returns to the title and banks the credit, still idling',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachDemo(vm), 'precondition: the demo is running');
+      const before = readVar(vm, 'cabinet-credits'); // 0 — no credits banked yet this power-on
+      insertCoin(vm, 1); // the always-on poll banks the credit AND the abort fires on the same edge tick
+      step(vm, 3); // let the abort transition's reset/enter broadcasts settle onto the title
+      return {
+        before,
+        credits: readVar(vm, 'cabinet-credits'),
+        st: state(vm),
+        attract: readVar(vm, 'cabinet-attract'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.before, 0, 'the demo runs with no credits banked');
+      assert.equal(obs.st, 'title', 'a coin during the demo returns to the title');
+      assert.equal(obs.credits, 1, 'the inserted coin is banked, not lost');
+      assert.equal(obs.attract, 1, 'the coin returns to the title but stays in the attract cycle');
+    },
+    // Remove the playing -> title edge so the coin abort is a silent no-op → the demo keeps running.
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'playing -> title'),
+  },
+  {
+    // CAB-02: a credit-gated real start atomically clears the attract flag, so a started game can never
+    // inherit the attract cycle (no auto-pilot, scoring, real deaths). `reachPlaying` is the shared start
+    // path (~20 scenarios), so this also pins that every gameplay scenario runs a REAL game, not a demo.
+    key: 'attract-cleared-on-credited-start',
+    behavior: 'A credited start clears the attract flag — a started game is a real game, never a demo',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: a credited start reaches playing');
+      return { st: state(vm), attract: readVar(vm, 'cabinet-attract') };
+    },
+    assert(obs) {
+      assert.equal(obs.st, 'playing', 'the credited start reaches playing');
+      assert.equal(obs.attract, 0, 'the started game clears the attract flag (a real game, not a demo)');
+    },
+    // Pin `attract` set to 1 so the credited start cannot clear it → the started game looks like a demo.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'attract', 1),
+  },
+  {
+    // CAB-01 (cabinet.attract-credits, slice 17): the self-playing demo's auto-pilot actually drives the
+    // craft. During a demo the six keyboard reads are replaced by the virtual input register (`input up/
+    // down/left/right/fire`) that `install_attract_pilot` writes each tick, so the craft moves with no keys
+    // touched. Steps a live demo (invuln pinned so it does not die and route away mid-observation) and
+    // watches the craft's logical position (`player-row`/`player-col`) wander from where it entered.
+    // (arcade auto-pilot `gen_rnd_dir` xevious_main 2156-2165, dispatched when `attract_mode_stage != 0`.)
+    // roadmap-evidence: CAB-01 success  (the demo craft moves only because the auto-pilot feeds the virtual
+    //   input register the movement seams read via input_active)
+    key: 'attract-pilot-drives-craft',
+    behavior: 'The demo auto-pilot drives the craft — it moves with no keyboard input',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachDemo(vm), 'precondition: the demo is running');
+      const r0 = readVar(vm, 'player-row');
+      const c0 = readVar(vm, 'player-col');
+      let maxRowDev = 0;
+      let maxColDev = 0;
+      for (let i = 0; i < 64; i += 1) {
+        writeVar(vm, 'invuln', 1); // keep the demo craft alive so we watch it move, not die
+        step(vm, 1);
+        maxRowDev = Math.max(maxRowDev, Math.abs(readVar(vm, 'player-row') - r0));
+        maxColDev = Math.max(maxColDev, Math.abs(readVar(vm, 'player-col') - c0));
+      }
+      return { maxRowDev, maxColDev, attract: readVar(vm, 'cabinet-attract') };
+    },
+    assert(obs) {
+      assert.equal(obs.attract, 1, 'the craft moves while still in the attract demo');
+      assert.ok(
+        obs.maxRowDev > 0 || obs.maxColDev > 0,
+        'the auto-pilot moves the demo craft (no keyboard input)',
+      );
+    },
+    // Sever the auto-pilot: the virtual input register stays at its demo-entry zero, so no movement seam
+    // ever fires and the craft never moves → both deviations are 0, the assertion fails.
+    // roadmap-evidence: CAB-01 failure  (neutralizing the pilot proc leaves the craft motionless)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'attract pilot'),
+  },
+  {
+    // CAB-01 / SYS-04 (cabinet-flow reproducibility): the auto-pilot is deterministic — two demos seeded
+    // from the same RNG cold-start replay the identical input stream. The pilot draws direction and fire
+    // from the shared RNG (`rng out`) at a fixed position in the ordered walk, so its output is a pure
+    // function of (seed, tick). This captures that output DIRECTLY (a tick-pump that seeds the seed, sets
+    // `tick`, runs the `attract pilot` proc, and reads its six output flags) rather than per-`step()`
+    // craft sampling — one `step()` settles a machine-dependent number of internal ticks, so a live sample
+    // is not a stable stream (deterministic-per-tick-testing-of-walk-procs). Two identical pumps from the
+    // same seed must yield byte-identical traces; the direction stays in the reject-sampled 0..8 range and
+    // decomposes into the four flags exactly per `dir_delta_tbl` (xevious_main 2156-2180); fire is the
+    // 1-in-16 draw (`gen_rnd_shot` 2351-2354). RNG_COLD_START_SEED = 0x4A39, the demo-entry reseed value.
+    // roadmap-evidence: CAB-01 success  (two seeded pilot runs replay the identical, source-faithful stream)
+    key: 'attract-pilot-reproducible',
+    behavior: 'Two seeded auto-pilot runs replay the identical input stream (0..8 dir, exact flag decomposition, 1-in-16 fire)',
+    playtestStep: 1,
+    async drive(vm) {
+      const inputs = [
+        'cabinet-input-up',
+        'cabinet-input-down',
+        'cabinet-input-left',
+        'cabinet-input-right',
+        'cabinet-input-fire',
+      ];
+      // A deterministic tick-pump: reseed to the demo-entry cold-start, then for each tick set `tick`,
+      // run the pilot proc, and record [dir, up, down, left, right, fire]. No greenFlag, so the only
+      // thread is the one the proc call pushes — nothing else advances state (a clean, fixed environment).
+      const pump = (ticks) => {
+        writeVar(vm, 'rng-state', 0x4a39); // RNG_COLD_START_SEED
+        writeVar(vm, 'cabinet-pilot-dir', 8); // neutral, as the demo-entry reset leaves it
+        for (const id of inputs) writeVar(vm, id, 0);
+        const trace = [];
+        for (let t = 0; t < ticks; t += 1) {
+          writeVar(vm, 'tick', t);
+          callProc(vm, 'Stage', 'attract pilot');
+          step(vm, 1);
+          trace.push([
+            readVar(vm, 'cabinet-pilot-dir'),
+            readVar(vm, 'cabinet-input-up'),
+            readVar(vm, 'cabinet-input-down'),
+            readVar(vm, 'cabinet-input-left'),
+            readVar(vm, 'cabinet-input-right'),
+            readVar(vm, 'cabinet-input-fire'),
+          ]);
+        }
+        return trace;
+      };
+      const traceA = pump(64);
+      const traceB = pump(64); // re-seeds internally, so this is a second demo from the same cold-start
+      return { traceA, traceB };
+    },
+    assert(obs) {
+      assert.deepEqual(obs.traceA, obs.traceB, 'two seeded demos replay the identical input stream');
+      const dirs = obs.traceA.map((e) => e[0]);
+      assert.ok(
+        dirs.every((d) => Number.isInteger(d) && d >= 0 && d <= 8),
+        'every drawn direction is reject-sampled into 0..8',
+      );
+      assert.ok(
+        dirs.some((d) => d < 8),
+        'the pilot actually steers (at least one non-neutral direction)',
+      );
+      // Each direction decomposes into the four flags exactly per dir_delta_tbl (U / U+R / R / D+R / D /
+      // D+L / L / U+L / none): up={0,1,7}, right={1,2,3}, down={3,4,5}, left={5,6,7}, dir 8 = none.
+      for (const [d, up, down, left, right, fire] of obs.traceA) {
+        assert.equal(up, d === 0 || d === 1 || d === 7 ? 1 : 0, `up flag matches dir ${d}`);
+        assert.equal(right, d === 1 || d === 2 || d === 3 ? 1 : 0, `right flag matches dir ${d}`);
+        assert.equal(down, d === 3 || d === 4 || d === 5 ? 1 : 0, `down flag matches dir ${d}`);
+        assert.equal(left, d === 5 || d === 6 || d === 7 ? 1 : 0, `left flag matches dir ${d}`);
+        assert.ok(fire === 0 || fire === 1, 'fire is a clean 0/1 flag');
+      }
+      assert.ok(
+        obs.traceA.some((e) => e[5] === 1),
+        'the 1-in-16 fire draw presses the button over the window',
+      );
+    },
+    // Sever the pilot: the proc runs to a no-op, so `pilot dir` stays neutral (8) and every input flag
+    // stays 0 for the whole trace → the "at least one non-neutral direction" assertion fails.
+    // roadmap-evidence: CAB-01 failure  (a severed pilot produces an all-neutral, non-steering stream)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'attract pilot'),
+  },
+  {
+    // CAB-01 / SEC-03 coupling (slice 17): the arcade silently removes the hidden-credit object during
+    // attract — `handle_53_Easter_Egg` (xevious_main 5989) checks `tst.w attract_mode_stage` and jumps to
+    // `remove_easter_egg` (6013-6016) before any of its logic. The demo shares the playing state and runs
+    // the same area schedule, so a scheduled Credit CAN be stamped into a ground slot during a demo; the
+    // attract gate in `update easter egg` culls it the tick its slot is dispatched, lowering the display
+    // signal — the demo can never arm a bomb-reveal target. Seeds a hidden Credit into a ground slot during
+    // a demo (with ground spawns suppressed so nothing refills it) and confirms it is culled, signal down.
+    // roadmap-evidence: CAB-01 success  (a Credit seeded into a demo is culled, its overlay signal cleared)
+    key: 'attract-suppresses-hidden-credit',
+    behavior: 'The hidden-credit object is silently removed during a demo (SEC-03 attract coupling)',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachDemo(vm), 'precondition: the demo is running');
+      suppressGroundSpawns(vm); // nothing refills the slot after the cull
+      const put = (id, i, v) => {
+        const a = readVar(vm, id);
+        a[i] = v;
+      };
+      const SLOT = 8; // a mid ground slot (Scratch 1..16 = JS 0..15; obj-0 flag slot stays free)
+      put('slot-type', SLOT, 83); // EASTER_EGG_TYPE (0x53), hidden Credit
+      put('slot-state', SLOT, 1); // ACTIVE
+      put('slot-flag', SLOT, 0); // HIDDEN phase
+      put('slot-timer', SLOT, 0);
+      put('slot-x', SLOT, 3000);
+      put('slot-y', SLOT, 3000);
+      const seededType = readVar(vm, 'slot-type')[SLOT];
+      for (let i = 0; i < 4; i += 1) {
+        writeVar(vm, 'invuln', 1); // keep the demo alive so the walk keeps dispatching the slot
+        step(vm, 1);
+      }
+      return {
+        seededType,
+        culledType: readVar(vm, 'slot-type')[SLOT],
+        culledState: readVar(vm, 'slot-state')[SLOT],
+        showing: readVar(vm, 'sec-easter-egg-showing'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.seededType, 83, 'the hidden Credit was seeded into the demo');
+      assert.equal(obs.culledType, 0, 'the Credit slot is culled (type cleared) during the demo');
+      assert.equal(obs.culledState, 0, 'the Credit slot is freed during the demo');
+      assert.equal(obs.showing, 0, 'the credit overlay signal is never raised in attract');
+    },
+    // Sever the whole `update easter egg` proc (which carries the attract cull gate): the seeded Credit is
+    // never removed, so its slot type stays 83 → the assertion fails.
+    // roadmap-evidence: CAB-01 failure  (without the attract gate the Credit survives into the demo)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update easter egg'),
+  },
+  {
+    // CAB-01 (cabinet.attract-credits, slice 17): the best-five table renders during the attract-scores
+    // sub-state, and the live gameplay HUD is held OFF while it shows. The port draws the table with the
+    // start_screen clone-role idiom (the arcade HUD font lacks the letters, so it uses the 5×7 port font, as
+    // SEC-03 does): a `best-five` role clone (attract role == 4) switches to the pre-composed `best-five`
+    // costume and shows only in attract-scores. The HUD spawn is excluded during attract-scores (its gate
+    // gained `game state != "attract-scores"`) so the live score/high-score digit clones do not draw over
+    // the table. Drives to the best-five screen and reads the start_screen clones and the hud digit clones.
+    // roadmap-evidence: CAB-01 success  (the best-five clone dresses itself and the HUD is suppressed here)
+    key: 'attract-scores-render',
+    behavior:
+      'The best-five table renders during attract-scores (a port-font clone) and the live HUD digits are held off',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
+      step(vm, 3); // let the transition retire the demo HUD clones and the best-five clone dress itself
+      const roleName = variable('attract-display-role').name; // "attract role"
+      const bestFive = cloneReports(vm, 'start_screen', [roleName]).filter(
+        (r) => r.vars[roleName] === 4 && r.costume === 'best-five' && r.visible,
+      );
+      const hudDigits = cloneReports(vm, 'hud').filter((r) => /^digit\/[0-9]$/.test(r.costume || ''));
+      return { st: state(vm), bestFiveShown: bestFive.length, hudDigits: hudDigits.length };
+    },
+    assert(obs) {
+      assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
+      assert.equal(obs.bestFiveShown, 1, 'exactly one best-five clone shows the best-five table costume');
+      assert.equal(obs.hudDigits, 0, 'the live HUD score digits are held off while the table shows');
+    },
+    // Break the best-five dispatch (`attract role == 4`): the best-five clone never matches its role branch,
+    // so it never switches to the `best-five` costume nor shows → the table-present assertion fails.
+    // roadmap-evidence: CAB-01 failure  (a broken role dispatch leaves the best-five table unrendered)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 4, 5),
+  },
+  {
+    // CAB-01 (cabinet.attract-credits, slice 17): the attract-display clones do not leak across cycles. The
+    // start_screen static clones (the CREDIT label, the best-five table) have no self-delete; they rely on
+    // `common_stop(clones=True)` retiring every clone on each state transition. Without that the port would
+    // accumulate a fresh CREDIT/best-five clone every title -> demo -> best-five -> demo -> title lap — a
+    // slow leak the single-state playing census can never see (feasibility plan-review S4). Runs three full
+    // attract laps, sampling the start_screen clone count at the same phase (a settled title) each lap, and
+    // asserts the count returns to its baseline instead of climbing.
+    // roadmap-evidence: CAB-01 success  (per-transition clone retirement keeps the count flat across laps)
+    key: 'attract-clone-no-leak',
+    behavior: 'The attract-display clones retire per transition — their count returns to baseline each cycle',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      const atDemo = () => state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
+      const stepUntil = (pred, budget) => {
+        let t = 0;
+        while (!pred() && t < budget) {
+          step(vm, 1);
+          t += 1;
+        }
+        return pred();
+      };
+      const samples = [];
+      for (let cycle = 0; cycle < 3; cycle += 1) {
+        assert.ok(stepUntil(() => state(vm) === 'title', 600), `cycle ${cycle}: the cabinet rests at title`);
+        step(vm, 3); // let the title spawn its CREDIT/digit/prompt clones before sampling
+        samples.push(cloneCount(vm, 'start_screen'));
+        assert.ok(stepUntil(atDemo, 600), `cycle ${cycle}: the title hold launches demo 1`);
+        assert.ok(killDemoToState(vm, 'attract-scores'), `cycle ${cycle}: demo 1 death routes to best-five`);
+        assert.ok(stepUntil(atDemo, 400), `cycle ${cycle}: the best-five hold launches demo 2`);
+        assert.ok(killDemoToState(vm, 'title'), `cycle ${cycle}: demo 2 death returns to title`);
+      }
+      return { samples };
+    },
+    assert(obs) {
+      assert.ok(obs.samples[0] > 0, 'the title spawns its attract-display clones');
+      for (let i = 1; i < obs.samples.length; i += 1) {
+        assert.ok(
+          obs.samples[i] <= obs.samples[0],
+          `no attract-clone leak: lap ${i} holds ${obs.samples[i]} clones vs the ${obs.samples[0]} baseline`,
+        );
+      }
+    },
+    // Remove every `delete this clone` on start_screen so no attract clone is ever retired: each title lap
+    // stacks fresh CREDIT/digit/prompt clones on the un-retired previous ones → the count climbs past
+    // baseline and the no-leak assertion fails.
+    // roadmap-evidence: CAB-01 failure  (without clone retirement the attract displays accumulate each lap)
+    negativeMutation: (p) => mutate.removeDeleteThisClone(p, 'start_screen'),
   },
   {
     key: 'death-respawn',
@@ -327,6 +821,15 @@ export const SCENARIOS = [
       // bullet — `bullet alloc result` becomes that slot and stays non-zero after the first fire. (A
       // bullet flies and culls within one headless pump, so the allocation result is the stable signal;
       // the bullet actually killing the craft is a rendered collision, the operator playtest's.)
+      // Force every spawnable flying type to the SHOOTING Toroid (type 0x0B = 11) so a shooter spawns and
+      // fires almost immediately (~2 pumps) instead of waiting for the wave scheduler to pick a shooter —
+      // that spawn-wait is what flaked red on a slow/loaded CI runner, where each wall-clock-bounded pump
+      // (see harness.js header) advances fewer internal ticks. The window must stay SHORT and cannot be
+      // widened to compensate: past ~60 pumps the game scrolls into the Andor Genesis boss, whose ports
+      // fire through the same shared alloc signal and would break the negative's isolation. A slow runner
+      // only helps both margins — the forced Toroid still fires early while the boss onset moves later.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 11;
       // Suppress ground spawns (a live Logram fires through the same alloc signal) and reset it (a ground
       // firer may have tripped it during settling), so only a live shooting Toroid can move it.
       suppressGroundSpawns(vm);

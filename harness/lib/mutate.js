@@ -278,6 +278,45 @@ export function removeClearGraphicEffects(project, spriteName) {
 }
 
 /**
+ * Delete every `delete this clone` block on a sprite, so its clones never retire. On start_screen this
+ * severs the attract-display clone lifecycle: the `common_stop(clones=True)` director-stop handler (which
+ * deletes each clone on the next state transition) and the digit/prompt role loops' own tail-deletes all
+ * stop firing, so the credit line, digits, prompt, and best-five clones ACCUMULATE across every
+ * title -> demo -> best-five -> demo -> title cycle instead of being retired. The severing negative for
+ * `attract-clone-no-leak`: with the deletes gone the per-cycle clone count climbs instead of returning to
+ * baseline. Each block is spliced out of its chain like removeClearGraphicEffects (it is a cap block, so
+ * its `next` is null and the parent simply loses its tail).
+ */
+export function removeDeleteThisClone(project, spriteName) {
+  const t = target(project, spriteName);
+  const ids = Object.keys(t.blocks).filter(
+    (id) => t.blocks[id].opcode === 'control_delete_this_clone',
+  );
+  if (!ids.length) throw new Error(`mutate: no control_delete_this_clone on ${spriteName}`);
+  for (const id of ids) {
+    const b = t.blocks[id];
+    const nextId = b.next || null;
+    const parentId = b.parent;
+    if (parentId && t.blocks[parentId]) {
+      const par = t.blocks[parentId];
+      if (par.next === id) {
+        par.next = nextId;
+      } else if (par.inputs) {
+        for (const k of Object.keys(par.inputs)) {
+          const inp = par.inputs[k];
+          if (Array.isArray(inp) && inp.some((e) => e === id)) {
+            if (nextId) par.inputs[k] = inp.map((e) => (e === id ? nextId : e));
+            else delete par.inputs[k];
+          }
+        }
+      }
+    }
+    if (nextId && t.blocks[nextId]) t.blocks[nextId].parent = parentId;
+    delete t.blocks[id];
+  }
+}
+
+/**
  * Splice a `set <varName> = <constValue>` block onto the FRONT of a proc's body. Used to bite an
  * omission-based invariant: some contracts are realized by NOT writing a variable (the Sheonite is inert
  * because `update sheonite` writes no `player hit`), so there is no existing block to neutralize — the
