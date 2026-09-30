@@ -13,3 +13,18 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Slice 18 — two-player start facet delivered (`CAB-02.two-player`)
+
+The two-player start facet deferred above is delivered this slice as part of `cabinet.two-player`
+(CAB-03). The generalized start gate now reads a title 1P/2P selector (left/right arrows choose the
+mode, Space confirms) and honours only the affordable requested mode — one player deducts one credit,
+two players deduct two — recording the mode in the `two player` director variable and copying the fresh
+player-1 context into the other-player block on a two-player start, faithful to
+`sub_fn_4__handle_credits_and_start` (the requested-count credit gate) and `coined_up` (the start-always-
+player-1 clear and the player-1→other copy). The credit economy, cap, and no-free-play rule are unchanged.
+
+The full behavior, source citations, and Scratch evidence for the two-player start, alternation, and
+banner live in the CAB-03 record ([051](051-cabinet-two-player.md)). With `CAB-02.two-player` now built,
+**CAB-02 remains `partial` only because the coin sound is still deferred** pending the operator's
+provenance decision — the credit/cap/gate/start logic ships complete for both one- and two-player.
