@@ -1088,6 +1088,11 @@ class ScratchProjectTests(unittest.TestCase):
             "reset scope",
             "death outcome",
             "bomb in flight",
+            # CAB-03 (slice 18): two-player alternation control. `curr player` (0/1) is the active player
+            # index; `two player` (0/1) marks a two-player game. Director-control state the HUD reads (label/
+            # column, 2UP gating), Stage-only-written (write-forbidden below), reset only on a world reset.
+            "curr player",
+            "two player",
         }
         machinery_names = {
             "rng state",
@@ -1225,6 +1230,9 @@ class ScratchProjectTests(unittest.TestCase):
             # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
             # Transient display machinery like `bomb dx`, never sprite-written and never durable state.
             "easter egg showing",
+            # CAB-03 (slice 18): the single scratch register `swap players` uses to exchange a per-player
+            # field pair (custom blocks have no locals). Transient working register, never durable state.
+            "swap tmp",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1273,6 +1281,15 @@ class ScratchProjectTests(unittest.TestCase):
             "fire mask domogram",
             "fire mask andor genesis",
         }
+        # CAB-03 (slice 18): the second player's shadow of every durable per-player field. Each is the
+        # frozen copy of a swapped gameplay/economy/area/difficulty var (score, craft, area number, …),
+        # held while the OTHER player is active and exchanged by `swap players` on each alternation.
+        # Durable Stage-owned state (never sprite-written; the HUD 2UP row reads `other score`), so it
+        # is its own category — not machinery — and is added to `director_variable_ids` below so the
+        # sprite-write-forbid guard covers it.
+        player_context_names = {
+            shadow_name for _live, _live_id, shadow_name, _shadow_id in director.PLAYER_CONTEXT_FIELDS
+        }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
         self.assertTrue(
@@ -1283,13 +1300,23 @@ class ScratchProjectTests(unittest.TestCase):
                 machinery_names | director_state_names | economy_names | area_state_names
             )
         )
+        self.assertTrue(
+            player_context_names.isdisjoint(
+                machinery_names
+                | director_state_names
+                | economy_names
+                | area_state_names
+                | difficulty_state_names
+            )
+        )
         stage_variable_names = {name for name, _value in stage["variables"].values()}
         self.assertEqual(
             director_state_names
             | machinery_names
             | economy_names
             | area_state_names
-            | difficulty_state_names,
+            | difficulty_state_names
+            | player_context_names,
             stage_variable_names,
         )
         self.assertEqual(
@@ -1657,6 +1684,13 @@ class ScratchProjectTests(unittest.TestCase):
             director.FORMATION_TYPE_OFFSET_ID,
             director.GROUND_STOP_FIRING_ROW_ID,
             *(mask_id for _suffix, _name, mask_id in director.FIRE_MASK_FAMILIES),
+            # CAB-03 (slice 18): the two-player alternation controls and every `other <x>` shadow of a
+            # durable per-player field. Stage-only-written — the swap/copy procs (Stage) exchange them
+            # on alternation; the 2UP HUD only READS `other score`, which this guard permits. Adding the
+            # shadow IDs here — not the name-set category — is what forbids any sprite from writing them.
+            director.CURR_PLAYER_ID,
+            director.TWO_PLAYER_ID,
+            *(shadow_id for _live, _live_id, _shadow_name, shadow_id in director.PLAYER_CONTEXT_FIELDS),
         }
         # Read-only reference tables: ingested, hash-pinned authority data no sprite may
         # mutate (the mutable slot lists are deliberately excluded — allocators write those).
@@ -17892,7 +17926,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "be562103ed8622cc050dac8bb59e9dbec2e1a22483cc158cdf62f5bedd8adbe7",
+            "134f4db3b7c9d9d04a64b65e1b072e3f9ba33e44fb8ec6ca9b78f5b13141f274",
             build_hash,
         )
 

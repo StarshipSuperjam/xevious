@@ -1055,6 +1055,48 @@ ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
 ATTRACT_COSTUME_PUSH_START = "push-start"
 ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
 ATTRACT_COSTUME_BEST_FIVE = "best-five"
+# CAB-03 (cabinet.two-player, slice 18): two-player alternation state. `curr player` (0/1) is the active
+# player index; `two player` (0/1) marks a two-player game. Both are director-control state the HUD READS
+# (the 1UP/2UP label + column, the 2UP-row gating) but NO sprite writes — write-forbidden below, exactly
+# like `game state`. `swap tmp` is the single scratch register `swap players` needs to exchange a pair
+# (custom blocks have no locals): transient machinery, not durable state.
+CURR_PLAYER_ID = "cabinet-curr-player"
+TWO_PLAYER_ID = "cabinet-two-player"
+SWAP_TMP_ID = "cabinet-swap-tmp"
+SWAP_PLAYERS_PROCCODE = "swap players"
+COPY_PLAYERS_PROCCODE = "copy players"
+# The per-player context, faithful to the arcade's swapped 64-byte block (swap_curr_other_player,
+# xevious_main 671-679). The port keeps the CURRENT player in the existing live vars and one `other <x>`
+# shadow per persistent per-player field holding the INACTIVE player's saved value. `swap players` exchanges
+# every pair on each craft-death alternation; `copy players` seeds `other` from the current player at a 2P
+# start (coined_up 454-460). The set is the 14 persistent fields the arcade swaps — score, craft, next bonus,
+# area number, ai level, ground-stop-firing row, and the 8 fire masks — verified complete against the arcade
+# block by the reference-fidelity pass (2026-09-30): the block's `solvalou_number` and `bonus_life_none` have
+# NO distinct port variable (the score-adaptive AI divides score/craft, both swapped; "bonuses off" is the
+# BONUS_DISABLED sentinel inside `next bonus`, swapped), so no per-player field leaks. The derived position/
+# schedule fields (area progress, scroll row, terrain column, schedule cursor/fired) are NOT swapped — they
+# are rebuilt from `area number` by `_enter_area_top` on the incoming player's re-top. Each shadow is durable
+# per-player state the HUD may READ (the 2UP score row reads `other score`) but no sprite writes
+# (write-forbidden below), so the shadows form their own `player context` category, NOT machinery.
+PLAYER_CONTEXT_FIELDS = [
+    # (live name, live id, shadow name, shadow id)
+    ("score", SCORE_ID, "other score", "other-score"),
+    ("craft", LIVES_ID, "other craft", "other-craft"),
+    ("next bonus", NEXT_BONUS_ID, "other next bonus", "other-next-bonus"),
+    ("area number", AREA_NUMBER_ID, "other area number", "other-area-number"),
+    ("ai level", AI_LEVEL_ID, "other ai level", "other-ai-level"),
+    (
+        "ground stop firing row",
+        GROUND_STOP_FIRING_ROW_ID,
+        "other ground stop firing row",
+        "other-ground-stop-firing-row",
+    ),
+    # The 8 fire-mask shadows, derived from FIRE_MASK_FAMILIES so they never drift if a family is renamed.
+    *(
+        (name, mask_id, f"other {name}", f"other-{mask_id}")
+        for _suffix, name, mask_id in FIRE_MASK_FAMILIES
+    ),
+]
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -8522,6 +8564,16 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
             ),
         ),
         blocks.set_var("schedule fired", SCHEDULE_FIRED_ID, number(0)),
+        # CAB-03 (cabinet.two-player, slice 18): clear the incoming wave registers on every area-top entry,
+        # exactly as the arcade's enter-area-top routine clears num_flying_enemies + flying_enemy_type_tbl_offset
+        # (xevious_main 484-485) in the SAME block that clears num_bacura (486-487, mirrored just below). The
+        # schedule's set-formation/raise records recompute these from `ai level` before the spawner reads them,
+        # so this is a no-op under the committed 1P schedules; it hardens the port against a stale wave size/
+        # offset bleeding across an area boundary or a respawn — and, load-bearingly for two-player, stops an
+        # OUTGOING player's formation registers carrying into the INCOMING player's first post-swap re-top
+        # (the swap set carries only `ai level`; these transient registers are rebuilt, never swapped).
+        blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
+        blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
         # AIR-11: re-top the Bacura spawn state alongside the schedule cursor, so each area rebuilds its
         # slab population from its own set/reset_bacura_count records and no count bleeds across an area
         # boundary or a respawn. (Under the committed schedules every Bacura window resets num_bacura to 0
@@ -9600,6 +9652,42 @@ def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
     return definition
 
 
+def install_swap_players(blocks: Blocks) -> None:
+    # CAB-03 (cabinet.two-player, slice 18): exchange the current and inactive players' saved state — the
+    # port's `swap_curr_other_player` (xevious_main 671-679). For each of the 14 persistent per-player fields
+    # (PLAYER_CONTEXT_FIELDS), swap the live var with its `other <x>` shadow through the single `swap tmp`
+    # scratch register (custom blocks have no locals). It touches ONLY those 14 pairs — never `rng state`
+    # (shared/global), never any director/machinery var — so a 2P game stays deterministic from one shared
+    # RNG stream. Called by the alternation path on each craft death (C3); defined here with no trigger yet.
+    definition = _install_warp_proc(blocks, SWAP_PLAYERS_PROCCODE)
+    body: list[str] = []
+    for live_name, live_id, shadow_name, shadow_id in PLAYER_CONTEXT_FIELDS:
+        body.extend(
+            [
+                blocks.set_var("swap tmp", SWAP_TMP_ID, variable(shadow_name, shadow_id)),
+                blocks.set_var(shadow_name, shadow_id, variable(live_name, live_id)),
+                blocks.set_var(live_name, live_id, variable("swap tmp", SWAP_TMP_ID)),
+            ]
+        )
+    blocks.chain(definition, body)
+
+
+def install_copy_players(blocks: Blocks) -> None:
+    # CAB-03 (cabinet.two-player, slice 18): seed the inactive player's saved state from the current player —
+    # the port's `coined_up` P2 seed (xevious_main 454-460), where a 2P start copies the freshly-built P1
+    # block into the other-player block so P2 begins identical-fresh. Copies the same 14 persistent fields
+    # current -> other; never touches `rng state` or any shared/director var. Called on a 2P start (C2);
+    # defined here with no trigger yet.
+    definition = _install_warp_proc(blocks, COPY_PLAYERS_PROCCODE)
+    blocks.chain(
+        definition,
+        [
+            blocks.set_var(shadow_name, shadow_id, variable(live_name, live_id))
+            for live_name, live_id, shadow_name, shadow_id in PLAYER_CONTEXT_FIELDS
+        ],
+    )
+
+
 def install_score(blocks: Blocks) -> None:
     # ECO-01: the single scoring path everything routes through, so scoring can never
     # double-count or bypass the cap. Add the pending award to the score, pin it at the
@@ -9788,6 +9876,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_emit_radiating_bullet(blocks)
     install_coin_poll(blocks)  # CAB-02 (cabinet.attract-credits, slice 17)
     install_attract_pilot(blocks)  # CAB-01 auto-pilot (cabinet.attract-credits, slice 17)
+    install_swap_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
+    install_copy_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
 
     flag = blocks.flag()
     blocks.chain(
@@ -13743,6 +13833,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AI_ADJUST_ID,
         GROUND_STOP_FIRING_ROW_ID,
         *(mask_id for _suffix, _name, mask_id in FIRE_MASK_FAMILIES),
+        # CAB-03 (cabinet.two-player, slice 18): the active-player index and two-player flag (director state,
+        # write-forbidden), the swap scratch register (machinery), and the 14 `other <x>` per-player shadows.
+        CURR_PLAYER_ID,
+        TWO_PLAYER_ID,
+        SWAP_TMP_ID,
+        *(shadow_id for _ln, _li, _sn, shadow_id in PLAYER_CONTEXT_FIELDS),
         # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
         # cached craft cell, and the spawner's cursor/attempt/found/type registers.
         AIM_DX_DIFF_ID,
@@ -13901,6 +13997,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # enemy slices (8+). All reset to 0 on a world reset, alongside the AI level and formation.
         GROUND_STOP_FIRING_ROW_ID: ["ground stop firing row", 0],
         **{mask_id: [name, 0] for _suffix, name, mask_id in FIRE_MASK_FAMILIES},
+        # CAB-03 (cabinet.two-player, slice 18): the active-player index (0/1) and the two-player-game flag
+        # (0/1) — director-control state, sprite-read, write-forbidden. Both default 0 (player one, one-player
+        # game), reset only on a world reset (cold-start forces P1/1P). `swap tmp` is `swap players`'s scratch
+        # register (machinery). The 14 `other <x>` shadows hold the inactive player's saved state, all default
+        # 0 (untouched until a 2P game seeds `other` via `copy players`). They persist across death/respawn.
+        CURR_PLAYER_ID: ["curr player", 0],
+        TWO_PLAYER_ID: ["two player", 0],
+        SWAP_TMP_ID: ["swap tmp", 0],
+        **{
+            shadow_id: [shadow_name, 0]
+            for _ln, _li, shadow_name, shadow_id in PLAYER_CONTEXT_FIELDS
+        },
         # AIR-01 Toroid live-combat machinery (slice 8). The aim quantizer intermediates, the cached
         # craft cell (player row/col), and the spawner's registers — all transient, all default 0.
         AIM_DX_DIFF_ID: ["aim dx diff", 0],

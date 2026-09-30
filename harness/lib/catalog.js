@@ -7223,6 +7223,77 @@ export const SCENARIOS = [
     // Neutralize the walk so the on-cell overlap is never checked → the on-cell assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'advance slots'),
   },
+  {
+    // CAB-03 (cabinet.two-player, slice 18): the `swap players` primitive — the port's
+    // swap_curr_other_player (xevious_main 671-679). It exchanges every one of the 14 persistent
+    // per-player fields between the current player's live vars and the inactive player's `other <x>`
+    // shadow, and touches nothing else. This commit installs the proc with no trigger yet; the
+    // alternation that calls it (and its CAB-03 acceptance evidence) arrive in a later commit.
+    key: 'player-context-swap',
+    behavior:
+      '`swap players` exchanges all 14 persistent per-player fields (score, craft, next bonus, area, ai level, ground-stop row, 8 fire masks) with the inactive-player shadow and leaves the shared RNG seed untouched',
+    playtestStep: 1,
+    async drive(vm) {
+      // The 14 persistent per-player fields as (live id, shadow id) pairs — the same set the
+      // generator derives from PLAYER_CONTEXT_FIELDS. Seed each live var and its `other <x>` shadow to
+      // DISJOINT sentinel ranges (live = 100+i, shadow = 200+i) so that a field left un-swapped, or one
+      // whose value leaks in from a different field, is caught by that field's exact assertion. If a
+      // field were ever dropped from the swap set its shadow id would vanish and readVar would hard-error
+      // here — so this positive is itself the guard against a silently missed field.
+      const fields = [
+        ['eco-score', 'other-score'],
+        ['eco-craft', 'other-craft'],
+        ['eco-next-bonus', 'other-next-bonus'],
+        ['area-number', 'other-area-number'],
+        ['difficulty-ai-level', 'other-ai-level'],
+        ['ground-stop-firing-row', 'other-ground-stop-firing-row'],
+        ['fire-mask-derota', 'other-fire-mask-derota'],
+        ['fire-mask-logram', 'other-fire-mask-logram'],
+        ['fire-mask-zoshi', 'other-fire-mask-zoshi'],
+        ['fire-mask-terrazi', 'other-fire-mask-terrazi'],
+        ['fire-mask-kapi', 'other-fire-mask-kapi'],
+        ['fire-mask-boza-logram', 'other-fire-mask-boza-logram'],
+        ['fire-mask-domogram', 'other-fire-mask-domogram'],
+        ['fire-mask-andor-genesis', 'other-fire-mask-andor-genesis'],
+      ];
+      // The shared RNG seed sits OUTSIDE the arcade's swapped 64-byte block (pseudo_random_seed,
+      // xevious_ram 120), so a 2P game stays deterministic from one stream — swap must NOT touch it.
+      const rngBefore = 4242;
+      writeVar(vm, 'rng-state', rngBefore);
+      fields.forEach(([liveId, shadowId], i) => {
+        writeVar(vm, liveId, 100 + i);
+        writeVar(vm, shadowId, 200 + i);
+      });
+      callProc(vm, 'Stage', 'swap players'); // warp proc — runs to completion in one step
+      step(vm, 1);
+      const after = fields.map(([liveId, shadowId]) => [readVar(vm, liveId), readVar(vm, shadowId)]);
+      return { fields, after, rngBefore, rngAfter: readVar(vm, 'rng-state') };
+    },
+    assert(obs) {
+      obs.fields.forEach(([liveId, shadowId], i) => {
+        const [live, shadow] = obs.after[i];
+        assert.equal(
+          Number(live),
+          200 + i,
+          `swap players moves the inactive-player value into live '${liveId}'`,
+        );
+        assert.equal(
+          Number(shadow),
+          100 + i,
+          `swap players moves the current value into shadow '${shadowId}'`,
+        );
+      });
+      assert.equal(
+        Number(obs.rngAfter),
+        obs.rngBefore,
+        'swap players leaves the shared RNG seed untouched (a 2P game stays one deterministic stream)',
+      );
+    },
+    // Pin the live `score` write so `swap players` can no longer move the shadow score back into it →
+    // the score field's exact per-field assertion (live == 200+0) fails, proving the per-field checks
+    // bite (omit one field from the swap and that field's own assertion goes red, not a coarse one).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'score', -1),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"
