@@ -306,7 +306,10 @@ class ScratchProjectTests(unittest.TestCase):
         # harmless consequence as the O/0 share in docs/mechanics/010) — so slice 17 adds exactly 4 distinct
         # attract PNGs, not 14. (Count fell 221 -> 211 when SEC-03 + attract text moved onto the one credited
         # font: the 10 digit costumes stopped being their own port-font PNGs and now reuse the HUD digits.)
-        self.assertEqual(211, len(assets))
+        # + the 2 NEW slice-18 CAB-02 1P/2P start-selector label PNGs on start_screen ("1 PLAYER" /
+        # "2 PLAYERS"), rendered from the same credited Xevious HUD font sheet (glyphs already in
+        # SHEET_TEXT_RECTS); port-original control text, so 211 -> 213.
+        self.assertEqual(213, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -1233,6 +1236,9 @@ class ScratchProjectTests(unittest.TestCase):
             # CAB-03 (slice 18): the single scratch register `swap players` uses to exchange a per-player
             # field pair (custom blocks have no locals). Transient working register, never durable state.
             "swap tmp",
+            # CAB-02 (slice 18): the title-screen 1P/2P selection (1 or 2). A UI register the selector hats
+            # set and the selector display reads — a port necessity, not durable per-player game state.
+            "start selection",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1457,6 +1463,11 @@ class ScratchProjectTests(unittest.TestCase):
             # demo runs (attract==1). It draws the shared RNG to redraw/hold the demo's direction and fire,
             # writing only the virtual input register (machinery); a real game never calls it.
             director.ATTRACT_PILOT_PROCCODE,
+            # CAB-03 (slice 18): the per-player context primitives. `copy players` is called from the 2P
+            # start gate to seed the inactive player from the fresh player 1; `swap players` is called from
+            # the death-alternation path (slice 18 C3). Both write only the per-player shadow set.
+            director.COPY_PLAYERS_PROCCODE,
+            director.SWAP_PLAYERS_PROCCODE,
             # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
             # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
             # shared RNG step the spawn draw now consumes (its first live consumer).
@@ -17926,7 +17937,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "134f4db3b7c9d9d04a64b65e1b072e3f9ba33e44fb8ec6ca9b78f5b13141f274",
+            "57568491312ca8256d832f04e8721d42243158947da9192680797c658b5257ef",
             build_hash,
         )
 

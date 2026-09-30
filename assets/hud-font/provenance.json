@@ -368,6 +368,16 @@
       "name": "insert-coin",
       "generator_version": 1
     },
+    "354569b790c69cdadce66b5456bb8a17.png": {
+      "kind": "attract",
+      "name": "select-1p",
+      "generator_version": 1
+    },
+    "a39ab9a1a58246e6d5082dd4c0ebeadc.png": {
+      "kind": "attract",
+      "name": "select-2p",
+      "generator_version": 1
+    },
     "15aca2d5855be4482b716580cbe14575.png": {
       "kind": "attract",
       "name": "best-five",

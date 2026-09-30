@@ -1055,6 +1055,21 @@ ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
 ATTRACT_COSTUME_PUSH_START = "push-start"
 ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
 ATTRACT_COSTUME_BEST_FIVE = "best-five"
+# CAB-02 (cabinet.two-player, slice 18): the title 1P/2P selector display. Two more start_screen clone
+# roles — one per option label (tools/hud_glyphs.py ATTRACT_SELECTOR_LABELS) — spawned at the title beside
+# the CREDIT line and PUSH START prompt. Both labels always show so the choice is discoverable; the clone
+# whose option matches the live `start selection` renders at full opacity and the other is dimmed by the
+# ghost effect, re-evaluated every tick so a left/right arrow press updates the display live. Placement is
+# the port's own (no reference basis for this port-original control), operator-tunable at playtest exactly
+# like the CAB-01 credit-line/best-five geometry.
+ATTRACT_ROLE_SELECTOR_1P = 5  # the "1 PLAYER" option label (bright when start selection == 1)
+ATTRACT_ROLE_SELECTOR_2P = 6  # the "2 PLAYERS" option label (bright when start selection == 2)
+ATTRACT_COSTUME_SELECTOR_1P = "select-1p"
+ATTRACT_COSTUME_SELECTOR_2P = "select-2p"
+ATTRACT_SELECTOR_X = 0
+ATTRACT_SELECTOR_1P_Y = -75  # stacked above the PUSH START prompt (-120), below the centred logo
+ATTRACT_SELECTOR_2P_Y = -97  # one 22px line-pitch below the 1P label
+ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed (selected) option
 # CAB-03 (cabinet.two-player, slice 18): two-player alternation state. `curr player` (0/1) is the active
 # player index; `two player` (0/1) marks a two-player game. Both are director-control state the HUD READS
 # (the 1UP/2UP label + column, the 2UP-row gating) but NO sprite writes — write-forbidden below, exactly
@@ -1065,6 +1080,12 @@ TWO_PLAYER_ID = "cabinet-two-player"
 SWAP_TMP_ID = "cabinet-swap-tmp"
 SWAP_PLAYERS_PROCCODE = "swap players"
 COPY_PLAYERS_PROCCODE = "copy players"
+# CAB-02 (cabinet.two-player, slice 18): the title-screen 1P/2P choice (1 or 2, default 1). A port
+# necessity — the arcade picked 1P/2P by two dedicated start buttons keyed to credit count; this port has
+# no cabinet buttons, so the left/right arrows set the choice at the title and Space starts it (recorded in
+# docs/spec/core-game-systems.md). Stage-written by the title selector hats, read by the selector display;
+# a title-screen UI register, reset to 1 at cold-start. Machinery, not durable per-player state.
+START_SELECTION_ID = "cabinet-start-selection"
 # The per-player context, faithful to the arcade's swapped 64-byte block (swap_curr_other_player,
 # xevious_main 671-679). The port keeps the CURRENT player in the existing live vars and one `other <x>`
 # shadow per persistent per-player field holding the INACTIVE player's saved value. `swap players` exchanges
@@ -9940,33 +9961,66 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.chain(coin_flag, [coin_loop])
 
-    # CAB-02: a 1-player start now costs a credit. The Space start hat fires only at the title, and only
-    # when at least one credit is banked; it deducts one and begins the game. A press at 0 credits is
-    # silently ignored (arcade `cmp.b #1,(num_credits) ; jcs` — start below cost returns).
+    # CAB-02 (slice 18): the title 1P/2P selector. A port necessity — the arcade chose 1P/2P by two
+    # dedicated start buttons keyed to credit count; this port has none, so the left/right arrows set the
+    # choice at the title and Space starts it (docs/spec/core-game-systems.md). The arrow hats fire only at
+    # the title; each sets `start selection` to its bound (left = 1P, right = 2P), so holding a key is
+    # idempotent (it re-sets the same value, never oscillates). During play the same arrows drive the craft
+    # through solvalou's movement loop (gated on `playing`), so there is no conflict.
+    for key, choice in (("left arrow", 1), ("right arrow", 2)):
+        arrow = blocks.key(key)
+        blocks.chain(
+            arrow,
+            [
+                blocks.if_state(
+                    "title",
+                    [blocks.set_var("start selection", START_SELECTION_ID, number(choice))],
+                )
+            ],
+        )
+
+    # CAB-02: the credit-gated start. The Space start hat fires only at the title; it reads `start selection`
+    # and starts that mode when enough credits are banked — 1P costs one credit, 2P costs two — deducting the
+    # cost and beginning the game. A press below the selected cost is silently ignored (arcade
+    # `cmp.b #N,(num_credits) ; jcs` — start below cost returns). The two branches are mutually exclusive on
+    # `start selection`, so at most one runs per press.
     space = blocks.key("space")
-    blocks.chain(
-        space,
+    one_player_start = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("start selection", START_SELECTION_ID), number(1)),
+            blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+        ),
         [
-            blocks.if_state(
-                "title",
-                [
-                    blocks.if_reporter(
-                        blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
-                        [
-                            blocks.change_var("credits", CREDITS_ID, -1),
-                            # CAB-01: clear the attract flag atomically on the credited start, in the same
-                            # branch that deducts the credit — a started game can never inherit attract==1, so
-                            # it always runs as a real game (scoring on, real death). This also closes the
-                            # title-hold-vs-Space race: the title-hold demo launch is epoch-guarded, and this
-                            # transition increments the epoch, so a start that wins the tick cancels the hold.
-                            blocks.set_var("attract", ATTRACT_ID, number(0)),
-                            blocks.call_transition("ready", "new-game"),
-                        ],
-                    )
-                ],
-            )
+            blocks.change_var("credits", CREDITS_ID, -1),
+            blocks.set_var("two player", TWO_PLAYER_ID, number(0)),
+            blocks.set_var("curr player", CURR_PLAYER_ID, number(0)),
+            # CAB-01: clear the attract flag atomically on the credited start, in the same branch that
+            # deducts the credit — a started game can never inherit attract==1, so it always runs as a real
+            # game (scoring on, real death). This also closes the title-hold-vs-Space race: the title-hold
+            # demo launch is epoch-guarded and this transition increments the epoch, cancelling the hold.
+            blocks.set_var("attract", ATTRACT_ID, number(0)),
+            blocks.call_transition("ready", "new-game"),
         ],
     )
+    two_player_start = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("start selection", START_SELECTION_ID), number(2)),
+            # `credits > 1` is `credits >= 2` — a two-player game costs two credits.
+            blocks.op_gt(variable("credits", CREDITS_ID), number(1)),
+        ),
+        [
+            blocks.change_var("credits", CREDITS_ID, -2),
+            blocks.set_var("two player", TWO_PLAYER_ID, number(1)),
+            blocks.set_var("curr player", CURR_PLAYER_ID, number(0)),
+            blocks.set_var("attract", ATTRACT_ID, number(0)),
+            # The new-game reset (broadcast-and-wait inside the transition) builds fresh player-1 state
+            # BEFORE this returns; copy players then seeds every `other <x>` shadow from that fresh P1, so
+            # player 2 begins identical-fresh — the arcade coined_up P2 seed (xevious_main 454-460).
+            blocks.call_transition("ready", "new-game"),
+            blocks.call_proc(COPY_PLAYERS_PROCCODE, warp=True),
+        ],
+    )
+    blocks.chain(space, [blocks.if_state("title", [one_player_start, two_player_start])])
 
     # AUDIO: sound-only receiver for the shot×Bacura bounce. The bounce runs on a blaster clone
     # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
@@ -10247,7 +10301,17 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[high_reset]["inputs"]["CONDITION"] = [2, high_scope]
     blocks.substack(
         high_reset,
-        [blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START))],
+        [
+            blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START)),
+            # CAB-02/CAB-03 (slice 18): the two-player cabinet controls are power-on / return-to-attract
+            # state, reset ONLY at cold-start — NOT new-game, so a 2P start's `two player = 1` (set just
+            # before its new-game transition) is never clobbered. A finished game transitions to the title
+            # via cold-start (game over complete), so this also returns the cabinet to a 1-player, player-1
+            # default for the next game. `start selection` defaults to 1P.
+            blocks.set_var("curr player", CURR_PLAYER_ID, number(0)),
+            blocks.set_var("two player", TWO_PLAYER_ID, number(0)),
+            blocks.set_var("start selection", START_SELECTION_ID, number(1)),
+        ],
     )
     blocks.chain(
         stage_reset,
@@ -10515,6 +10579,17 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_PROMPT)),
         blocks.go(ATTRACT_PROMPT_X, ATTRACT_PROMPT_Y),
         blocks.create_clone(),
+    ]
+    # CAB-02: stamp the two 1P/2P selector labels, one clone each, in the same one-frame batch.
+    title_body += [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SELECTOR_1P)),
+        blocks.go(ATTRACT_SELECTOR_X, ATTRACT_SELECTOR_1P_Y),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SELECTOR_2P)),
+        blocks.go(ATTRACT_SELECTOR_X, ATTRACT_SELECTOR_2P_Y),
+        blocks.create_clone(),
+    ]
+    title_body += [
         blocks.go(0, 250),  # back to the glide start; the logo glides in with the clones already stamped
         blocks.glide(1, 0, 0),
     ]
@@ -10622,9 +10697,53 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [blocks.switch_costume(ATTRACT_COSTUME_BEST_FIVE), blocks.to_front(), blocks.show()],
     )
 
+    # CAB-02: the two 1P/2P selector labels. Each clone wears its fixed option costume, shows, then loops
+    # while in title re-picking the ghost effect from the live `start selection`: 0 (opaque) when this
+    # clone's option is the armed one, ATTRACT_SELECTOR_DIM_GHOST (dimmed) otherwise — so a left/right
+    # arrow press flips which label is bright on the next tick. The loop yields once per iteration (like
+    # the credit-digit/prompt roles); it exits when the state leaves title, then the clone hides + deletes.
+    def selector_role(role: int, costume: str, option: int) -> str:
+        dim_loop = blocks.add("control_repeat_until")
+        blocks.blocks[dim_loop]["inputs"]["CONDITION"] = [2, blocks.not_state(dim_loop, "title")]
+        # ghost = DIM * (start selection != option): 0 when armed, DIM when not.
+        ghost_expr = blocks.op_mul(
+            number(ATTRACT_SELECTOR_DIM_GHOST),
+            blocks.op_not(
+                blocks.op_eq(variable("start selection", START_SELECTION_ID), number(option))
+            ),
+        )
+        blocks.substack(dim_loop, [blocks.set_effect("GHOST", ghost_expr)])
+        return blocks.if_var_equals(
+            "attract role", ATTRACT_DISPLAY_ROLE_ID, role,
+            [
+                blocks.switch_costume(costume),
+                blocks.to_front(),
+                blocks.show(),
+                dim_loop,
+                blocks.clear_graphic_effects(),  # leave no ghost on a reused clone
+                blocks.hide(),
+                blocks.add("control_delete_this_clone"),
+            ],
+        )
+
+    selector_1p_role = selector_role(
+        ATTRACT_ROLE_SELECTOR_1P, ATTRACT_COSTUME_SELECTOR_1P, 1
+    )
+    selector_2p_role = selector_role(
+        ATTRACT_ROLE_SELECTOR_2P, ATTRACT_COSTUME_SELECTOR_2P, 2
+    )
+
     blocks.chain(
         clone,
-        [hide_first, credit_label_role, credit_digit_role, prompt_role, best_five_role],
+        [
+            hide_first,
+            credit_label_role,
+            credit_digit_role,
+            prompt_role,
+            best_five_role,
+            selector_1p_role,
+            selector_2p_role,
+        ],
     )
     return blocks.blocks
 
@@ -13839,6 +13958,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TWO_PLAYER_ID,
         SWAP_TMP_ID,
         *(shadow_id for _ln, _li, _sn, shadow_id in PLAYER_CONTEXT_FIELDS),
+        # CAB-02 (slice 18): the title 1P/2P selection register (machinery).
+        START_SELECTION_ID,
         # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
         # cached craft cell, and the spawner's cursor/attempt/found/type registers.
         AIM_DX_DIFF_ID,
@@ -14009,6 +14130,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             shadow_id: [shadow_name, 0]
             for _ln, _li, shadow_name, shadow_id in PLAYER_CONTEXT_FIELDS
         },
+        # CAB-02 (slice 18): the title 1P/2P selection, default 1 (one-player) at power-on.
+        START_SELECTION_ID: ["start selection", 1],
         # AIR-01 Toroid live-combat machinery (slice 8). The aim quantizer intermediates, the cached
         # craft cell (player row/col), and the spawner's registers — all transient, all default 0.
         AIM_DX_DIFF_ID: ["aim dx diff", 0],

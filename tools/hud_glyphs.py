@@ -148,6 +148,18 @@ ATTRACT_LABELS = (
     ("push-start", "PUSH START"),
     ("insert-coin", "INSERT COIN"),
 )
+# CAB-02 (cabinet.two-player, slice 18): the title-screen 1P/2P selector labels, rendered from the SAME
+# credited Xevious HUD font as the CAB-01 attract prompts above — two whole-string costumes on the
+# start_screen target. game_director's title_blocks spawns one clone per label at the title and dims the
+# UNSELECTED one (via the ghost effect) by the live `start selection`, so the player sees both choices and
+# which one is armed. Port-original strings: the arcade had no on-screen 1P/2P selector (it chose the mode
+# by two dedicated cabinet start buttons keyed to credit count), so this is the port's own control text,
+# set in the credited font exactly like the CREDIT / PUSH START prompts. The strings use only glyphs
+# already in SHEET_TEXT_RECTS (digits, space, and the caps P L A Y E R S).
+ATTRACT_SELECTOR_LABELS = (
+    ("select-1p", "1 PLAYER"),
+    ("select-2p", "2 PLAYERS"),
+)
 # The default best-five INITIALS are this project's own placeholder content (the operator's choice),
 # NOT the arcade ROM's default name strings (docs/REFERENCE_POLICY.md forbids transcribing in-game
 # text). They live here as a source constant — the same home and stance as CREDIT_TEXT_LINES above —
@@ -600,6 +612,9 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
     ]
     for name, text in ATTRACT_LABELS:
         outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,)))
+    # CAB-02 (slice 18): the two title 1P/2P selector labels, same sheet and compositor.
+    for name, text in ATTRACT_SELECTOR_LABELS:
+        outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,)))
     initials, scores = _load_best_five()
     rows = tuple(
         _best_five_row(rank, ini, score)
@@ -655,8 +670,9 @@ def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
             f"SHEET_TEXT_RECTS, laid out on a {SHEET_TEXT_CELL_W}px monospace cell and "
             f"{SHEET_TEXT_DOWNSCALE}x nearest-neighbor decimated, white ink on transparent, "
             "bitmapResolution 1. Costumes on the start_screen target: the credit-counter digits, "
-            "the CREDIT / PUSH START / INSERT COIN prompts, and the default best-five table "
-            "(initials from the ATTRACT_DEFAULT_INITIALS source constant, the operator's "
+            "the CREDIT / PUSH START / INSERT COIN prompts, the CAB-02 1P/2P start-selector labels "
+            "(port-original control text — the arcade had no on-screen selector), and the default best-five "
+            "table (initials from the ATTRACT_DEFAULT_INITIALS source constant, the operator's "
             "placeholders, NOT the ROM default name strings; paired with the arcade default "
             "scores from docs/spec/data/scores.json)."
         ),

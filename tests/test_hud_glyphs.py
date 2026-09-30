@@ -20,9 +20,10 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count = hg.check_repository()
-        # 47: the 33 HUD/credit/sound outputs + the 14 slice-17 CAB-01 attract overlays on
-        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels + best-five table).
-        self.assertEqual(47, count)
+        # 49: the 33 HUD/credit/sound outputs + the 14 slice-17 CAB-01 attract overlays on
+        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels + best-five table)
+        # + the 2 slice-18 CAB-02 1P/2P start-selector labels ("1 PLAYER" / "2 PLAYERS").
+        self.assertEqual(49, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)

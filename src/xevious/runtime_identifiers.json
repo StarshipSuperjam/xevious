@@ -339,6 +339,11 @@
       "name": "pilot dir",
       "scope": "Stage"
     },
+    "cabinet-start-selection": {
+      "kind": "variable",
+      "name": "start selection",
+      "scope": "Stage"
+    },
     "cabinet-swap-tmp": {
       "kind": "variable",
       "name": "swap tmp",

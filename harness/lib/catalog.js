@@ -23,7 +23,7 @@ import {
   constants,
   variable,
 } from './harness.js';
-import { reachPlaying, stateOf, insertCoin } from './build.js';
+import { reachPlaying, reachPlaying2P, stateOf, insertCoin } from './build.js';
 import * as mutate from './mutate.js';
 
 // The committed RNG fixture (the shared LFSR's byte stream from each seed) — the model the live
@@ -7293,6 +7293,159 @@ export const SCENARIOS = [
     // the score field's exact per-field assertion (live == 200+0) fails, proving the per-field checks
     // bite (omit one field from the swap and that field's own assertion goes red, not a coarse one).
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'score', -1),
+  },
+  {
+    // CAB-02 (cabinet.two-player, slice 18): the title 1P/2P selector and the credit-gated 2P start. A
+    // port necessity (no cabinet start buttons): the arrows choose the mode at the title and Space starts
+    // it — 1P costs one credit, 2P costs two. On a 2P start `copy players` seeds player 2 identical-fresh
+    // from player 1 (the arcade coined_up P2 seed).
+    // roadmap-evidence: CAB-02 success  (right/left arrows pick 2P/1P at the title; a two-credit Space start
+    //   begins a two-player game with player 1 active and player 2 seeded fresh from player 1)
+    key: 'two-player-start',
+    behavior:
+      'The title left/right arrows select 1P/2P and a credit-gated Space starts the chosen mode — a 2P start needs two credits, sets two-player with player 1 active, and seeds player 2 fresh from player 1',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      // One boot pump: the selector key hats only start listening once the runtime has stepped, and the
+      // director-state var already reads 'title' from its initial value, so without this the wait loop
+      // exits at zero steps and the first arrow tap lands before the hats are live.
+      step(vm, 1);
+      let g = 0;
+      while (stateOf(vm) !== 'title' && g < 50) {
+        step(vm, 1);
+        g += 1;
+      }
+      writeVar(vm, 'invuln', 1);
+      // The selector: right -> 2P, left -> 1P. Each hat sets its bound, so the reads are exact.
+      tapKey(vm, 'ArrowRight');
+      const selAfterRight = readVar(vm, 'cabinet-start-selection');
+      tapKey(vm, 'ArrowLeft');
+      const selAfterLeft = readVar(vm, 'cabinet-start-selection');
+      // Choose 2P with only ONE credit banked: below the two-credit cost, so Space is a silent no-op.
+      tapKey(vm, 'ArrowRight');
+      insertCoin(vm, 1);
+      tapKey(vm, ' ');
+      const stateOneCredit = stateOf(vm);
+      const creditsOneCredit = readVar(vm, 'cabinet-credits');
+      // Bank the second credit and start the two-player game.
+      insertCoin(vm, 1);
+      tapKey(vm, ' ');
+      let t = 0;
+      while (stateOf(vm) !== 'playing' && t < 150) {
+        step(vm, 1);
+        t += 1;
+      }
+      return {
+        selAfterRight,
+        selAfterLeft,
+        stateOneCredit,
+        creditsOneCredit,
+        started: stateOf(vm) === 'playing',
+        twoPlayer: readVar(vm, 'cabinet-two-player'),
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        creditsAfter: readVar(vm, 'cabinet-credits'),
+        // copy players must have seeded each shadow from the fresh player-1 state:
+        craft: readVar(vm, 'eco-craft'),
+        otherCraft: readVar(vm, 'other-craft'),
+        area: readVar(vm, 'area-number'),
+        otherArea: readVar(vm, 'other-area-number'),
+        score: readVar(vm, 'eco-score'),
+        otherScore: readVar(vm, 'other-score'),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.selAfterRight), 2, 'the right arrow selects a two-player game');
+      assert.equal(Number(obs.selAfterLeft), 1, 'the left arrow selects a one-player game');
+      assert.equal(obs.stateOneCredit, 'title', 'a 2P start with only one credit does not start');
+      assert.equal(
+        Number(obs.creditsOneCredit),
+        1,
+        'an under-cost 2P Space press spends nothing and stays at the title',
+      );
+      assert.ok(obs.started, 'a 2P start with two credits reaches playing');
+      assert.equal(Number(obs.twoPlayer), 1, 'the started game is a two-player game');
+      assert.equal(Number(obs.currPlayer), 0, 'player 1 is the active player first');
+      assert.equal(Number(obs.creditsAfter), 0, 'a two-player start costs two credits');
+      // Player 1 is genuinely fresh, and player 2 was seeded from it (not left at a stale/zero shadow).
+      assert.equal(Number(obs.score), 0, 'player 1 starts at zero score');
+      assert.ok(Number(obs.craft) > 0, 'player 1 starts with craft');
+      assert.equal(Number(obs.otherCraft), Number(obs.craft), 'player 2 craft seeded fresh from player 1');
+      assert.equal(Number(obs.otherArea), Number(obs.area), 'player 2 area seeded fresh from player 1');
+      assert.equal(Number(obs.otherScore), Number(obs.score), 'player 2 score seeded fresh from player 1');
+    },
+    // Neutralize `copy players`: the 2P game still starts, but player 2's shadows are never seeded from
+    // player 1 — `other craft` stays 0 while player 1's fresh `craft` is > 0 → the seed assertion fails.
+    // roadmap-evidence: CAB-02 failure  (without the P2 seed, player 2 is not initialised from player 1)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'copy players'),
+  },
+  {
+    // CAB-02 (slice 18): the on-screen 1P/2P selector DISPLAY. At the title both option labels ("1 PLAYER"
+    // and "2 PLAYERS") are shown as start_screen clones; the one whose option matches the live
+    // `start selection` renders at full opacity (ghost 0) and the other is dimmed (ghost 60), re-picked
+    // every tick so a left/right arrow flips which label is armed on the next frame. This is the visible
+    // half of the selector — the two-player-start scenario above covers the start logic.
+    // roadmap-evidence: CAB-02 success  (the title shows both 1P/2P labels and highlights the armed one,
+    //   tracking the left/right arrow selection live)
+    key: 'two-player-selector-display',
+    behavior:
+      'At the title, both 1P and 2P selector labels are shown and the armed one (by start selection) is highlighted (ghost 0) while the other is dimmed, updating live as the left/right arrows change the choice',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1); // boot pump so the clone roles spawn and the selector hats go live
+      let g = 0;
+      while (stateOf(vm) !== 'title' && g < 50) {
+        step(vm, 1);
+        g += 1;
+      }
+      // Read the two selector clones by costume name: {ghost, visible} for each option label.
+      const readSelector = () => {
+        const out = {};
+        for (const t of vm.runtime.targets) {
+          if (t.isOriginal || t.isStage || !t.sprite || t.sprite.name !== 'start_screen') continue;
+          const costume = t.getCurrentCostume();
+          if (!costume) continue;
+          if (costume.name === 'select-1p') out.oneP = { ghost: t.effects.ghost, visible: t.visible };
+          if (costume.name === 'select-2p') out.twoP = { ghost: t.effects.ghost, visible: t.visible };
+        }
+        return out;
+      };
+      step(vm, 2); // let the dim loops settle on the default selection
+      const atDefault = readSelector();
+      tapKey(vm, 'ArrowRight'); // arm 2P
+      step(vm, 2);
+      const atTwoP = readSelector();
+      tapKey(vm, 'ArrowLeft'); // back to 1P
+      step(vm, 2);
+      const atOneP = readSelector();
+      return { atDefault, atTwoP, atOneP };
+    },
+    assert(obs) {
+      // Both labels are always present and visible so the choice is discoverable.
+      for (const [label, snap] of [
+        ['default', obs.atDefault],
+        ['after right', obs.atTwoP],
+        ['after left', obs.atOneP],
+      ]) {
+        assert.ok(snap.oneP && snap.twoP, `both selector labels are shown (${label})`);
+        assert.ok(snap.oneP.visible && snap.twoP.visible, `both selector labels are visible (${label})`);
+      }
+      // Default selection is 1P: the 1P label is highlighted, the 2P label dimmed.
+      assert.equal(Number(obs.atDefault.oneP.ghost), 0, 'the 1P label is highlighted by default');
+      assert.ok(Number(obs.atDefault.twoP.ghost) > 0, 'the 2P label is dimmed by default');
+      // Right arrow arms 2P: the highlight moves to the 2P label.
+      assert.equal(Number(obs.atTwoP.twoP.ghost), 0, 'the right arrow highlights the 2P label');
+      assert.ok(Number(obs.atTwoP.oneP.ghost) > 0, 'the 1P label dims when 2P is armed');
+      // Left arrow returns to 1P: the highlight moves back.
+      assert.equal(Number(obs.atOneP.oneP.ghost), 0, 'the left arrow highlights the 1P label again');
+      assert.ok(Number(obs.atOneP.twoP.ghost) > 0, 'the 2P label dims when 1P is armed');
+    },
+    // Break only the 2P display role's `start selection == 2` match (scoped to start_screen, so the Stage
+    // start gate is untouched): the 2P label can then never register as armed, so it stays dimmed even
+    // after the right arrow selects it — the "right arrow highlights the 2P label" assertion fails.
+    // roadmap-evidence: CAB-02 failure  (the display no longer tracks the armed selection)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'start selection', 2, 9),
   },
 ];
 

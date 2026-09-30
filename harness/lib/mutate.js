@@ -139,7 +139,14 @@ export function changeAddLiteral(project, spriteName, fromValue, toValue) {
  */
 export function changeVarEqualsOperand(project, spriteName, varName, fromValue, toValue) {
   const t = target(project, spriteName);
-  const vid = variableId(t, varName);
+  // A sprite may compare a Stage-owned global (referenced by the Stage's variable id) rather than a
+  // sprite-local var; resolve the id from the sprite first, then fall back to the Stage.
+  let vid;
+  try {
+    vid = variableId(t, varName);
+  } catch {
+    vid = variableId(target(project, 'Stage'), varName);
+  }
   let patched = 0;
   for (const id of Object.keys(t.blocks)) {
     const b = t.blocks[id];
