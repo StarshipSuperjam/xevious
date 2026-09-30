@@ -382,6 +382,16 @@
       "kind": "attract",
       "name": "best-five",
       "generator_version": 1
+    },
+    "50eaf3c87010b4719982089462db8f26.png": {
+      "kind": "banner",
+      "name": "game-over-player-1",
+      "generator_version": 1
+    },
+    "6dd488d84135f15cd22b4ec1c47d46cf.png": {
+      "kind": "banner",
+      "name": "game-over-player-2",
+      "generator_version": 1
     }
   }
 }

@@ -160,6 +160,18 @@ ATTRACT_SELECTOR_LABELS = (
     ("select-1p", "1 PLAYER"),
     ("select-2p", "2 PLAYERS"),
 )
+# CAB-03 (cabinet.two-player, slice 18): the two "GAME OVER PLAYER n" elimination-banner costumes. Unlike the
+# labels above these attach to the HUD target (not start_screen) — the banner shows on the game field during a
+# two-player handoff, where the HUD is the during-play overlay (game_director's HUD banner clone, gated on
+# `banner player`, switches to the matching costume). Same credited sheet + compositor; rendered at the credit
+# downscale (BANNER_DOWNSCALE) so the 18-char line stays on the 480-wide stage — the default attract downscale
+# would overflow it. All glyphs (G A M E O V R P L Y, space, and 1/2) are already in SHEET_TEXT_RECTS. The
+# wording is arcade-faithful English UI text, set in the credited font like every other port string.
+BANNER_LABELS = (
+    ("game-over-player-1", "GAME OVER PLAYER 1"),
+    ("game-over-player-2", "GAME OVER PLAYER 2"),
+)
+BANNER_COSTUME_NAMES = frozenset(name for name, _text in BANNER_LABELS)
 # The default best-five INITIALS are this project's own placeholder content (the operator's choice),
 # NOT the arcade ROM's default name strings (docs/REFERENCE_POLICY.md forbids transcribing in-game
 # text). They live here as a source constant — the same home and stance as CREDIT_TEXT_LINES above —
@@ -214,6 +226,11 @@ SHEET_TEXT_DOWNSCALE = 4  # 100 px cell -> 25 px costume cell, matching the HUD 
 SHEET_CREDIT_GLYPH_GAP = 10  # native columns between cells; 110 advance, divisible by 5
 SHEET_CREDIT_LINE_GAP = 20  # native rows between lines; 120 pitch, divisible by 5
 SHEET_CREDIT_DOWNSCALE = 5  # 100 px cell -> 20 px costume cell; keeps the widest credit line on-stage
+# CAB-03 banner: the "GAME OVER PLAYER n" line is 18 chars; at the attract advance (27 px) it is 18*27 = 486 px
+# and overflows the 480 stage, so the banner reuses the credit downscale/gaps (18 cells at the 22 px credit
+# advance -> ~387 px, on-stage). Aliased for intent; identical geometry to the SEC-03 credit above.
+BANNER_DOWNSCALE = SHEET_CREDIT_DOWNSCALE
+BANNER_GLYPH_GAP = SHEET_CREDIT_GLYPH_GAP
 
 
 @dataclass(frozen=True)
@@ -624,6 +641,23 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
     return outputs
 
 
+def render_banner_costumes(sheet: se.Image, threshold: int) -> list[CreditOutput]:
+    """The CAB-03 "GAME OVER PLAYER n" elimination-banner costumes, in the Xevious HUD font.
+
+    Two whole-string costumes (BANNER_LABELS) composited by the same sheet compositor as the
+    attract text, but rendered at the credit downscale (BANNER_DOWNSCALE) so the 18-char line
+    fits the 480 px stage. These attach to the HUD target (not start_screen): the banner shows
+    on the game field during a two-player handoff, where game_director's HUD banner clone —
+    gated on `banner player` — switches to the matching costume for BANNER_HOLD_TICKS."""
+    return [
+        render_sheet_text_costume(
+            sheet, threshold, name, (text,),
+            glyph_gap=BANNER_GLYPH_GAP, downscale=BANNER_DOWNSCALE,
+        )
+        for name, text in BANNER_LABELS
+    ]
+
+
 def _credit_costume(output: CreditOutput) -> dict:
     return {
         "name": output.name,
@@ -675,6 +709,27 @@ def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
             "table (initials from the ATTRACT_DEFAULT_INITIALS source constant, the operator's "
             "placeholders, NOT the ROM default name strings; paired with the arcade default "
             "scores from docs/spec/data/scores.json)."
+        ),
+    }
+
+
+def _overlay_banner_record(manifest: dict, output: CreditOutput) -> dict:
+    sheet = manifest["font_sheet"]
+    label = dict(BANNER_LABELS).get(output.name, "")
+    return {
+        "origin": (
+            f"Two-player elimination banner '{output.name}' (CAB-03) composited by "
+            f"tools/hud_glyphs.py (render_banner_costumes) from {sheet['source']}"
+        ),
+        "license": sheet["license"],
+        "notes": (
+            f"Credit: {sheet['credit']}. The repository operator did not create the font. "
+            f"Source {sheet['asset']} at SHA-256 {sheet['sha256']}; glyphs cropped by "
+            f"SHEET_TEXT_RECTS, laid out on a {SHEET_TEXT_CELL_W}px monospace cell and "
+            f"{BANNER_DOWNSCALE}x nearest-neighbor decimated, white ink on transparent, "
+            "bitmapResolution 1. Costume on the hud target: the game_director banner clone "
+            f"switches to it during a two-player handoff. The WORDING ({label}) is arcade-faithful "
+            "English UI text set in the credited font — not arcade art and not transcribed ROM text."
         ),
     }
 
@@ -867,6 +922,18 @@ def expected_project(
     if missing:
         raise HudGlyphsError(f"missing rendered costumes: {', '.join(sorted(missing))}")
     hud["costumes"] = [costumes_by_name[name] for name in COSTUME_ORDER]
+    # CAB-03 (slice 18): the two "GAME OVER PLAYER n" banner costumes attach to the HUD target
+    # (not start_screen) — the banner shows on the game field during a two-player handoff, and the
+    # HUD is the during-play overlay. They ride in the same overlay list as the attract costumes
+    # (below) but are split out by name here. Appended after the COSTUME_ORDER glyphs so the
+    # per-glyph HUD costumes keep their fixed indices; filtering by the banner names first keeps a
+    # re-run idempotent.
+    banner_outputs = [o for o in (attract_outputs or []) if o.name in BANNER_COSTUME_NAMES]
+    if banner_outputs:
+        hud["costumes"] = [
+            costume for costume in hud["costumes"]
+            if costume.get("name") not in BANNER_COSTUME_NAMES
+        ] + [_credit_costume(output) for output in banner_outputs]
     # SEC-03: attach the single generated credit costume to game_director's easter-egg target,
     # whose blocks switch to it while the hidden credit is revealed (game_director owns the target
     # + its empty-costume placeholder; this module fills the one costume).
@@ -884,8 +951,11 @@ def expected_project(
     # the default); this module appends the generated overlays. Filtering by the attract names
     # first keeps this idempotent — a re-run drops the prior overlays before re-appending, so the
     # logo stays index 0 and the order never drifts.
-    attract_outputs = attract_outputs or []
-    if attract_outputs:
+    # start_screen gets every overlay EXCEPT the CAB-03 banners routed to the HUD above.
+    start_screen_outputs = [
+        o for o in (attract_outputs or []) if o.name not in BANNER_COSTUME_NAMES
+    ]
+    if start_screen_outputs:
         start_screen = next(
             (t for t in result["targets"] if t.get("name") == ATTRACT_TARGET), None
         )
@@ -893,12 +963,12 @@ def expected_project(
             raise HudGlyphsError(
                 f"Scratch project has no {ATTRACT_TARGET} target; run tools/game_director.py generate first"
             )
-        attract_names = {output.name for output in attract_outputs}
+        attract_names = {output.name for output in start_screen_outputs}
         start_screen["costumes"] = [
             costume
             for costume in start_screen["costumes"]
             if costume.get("name") not in attract_names
-        ] + [_credit_costume(output) for output in attract_outputs]
+        ] + [_credit_costume(output) for output in start_screen_outputs]
     stage = next(target for target in result["targets"] if target.get("isStage"))
     # Rebuild the Stage's added sounds deterministically: keep the base music/start sounds, then
     # `extend`, then the gameplay SFX in name order. Filtering by name first keeps this idempotent
@@ -1030,7 +1100,8 @@ def _derivative_provenance(
         }
     for output in attract_outputs or []:
         outputs[output.filename] = {
-            "kind": "attract",
+            # CAB-03 banners ride in the same overlay list but are a distinct kind (HUD target).
+            "kind": "banner" if output.name in BANNER_COSTUME_NAMES else "attract",
             "name": output.name,
             "generator_version": GENERATOR_VERSION,
         }
@@ -1063,7 +1134,12 @@ def _expected_state() -> tuple[
     sheet = _load_font_sheet(manifest)
     threshold = manifest["glyph_threshold"]
     credit_output = render_credit(sheet, threshold)
-    attract_outputs = render_attract_costumes(sheet, threshold)
+    # One flat overlay list flows through the asset-write/provenance machinery (target-agnostic,
+    # keyed by content-hash filename); expected_project and the record helpers split the CAB-03
+    # banners (HUD target) from the CAB-01/CAB-02 attract overlays (start_screen) by name.
+    attract_outputs = render_attract_costumes(sheet, threshold) + render_banner_costumes(
+        sheet, threshold
+    )
     prior_outputs = set(_prior_output_records())
     current_project = _read_json(PROJECT_PATH)
     project_bytes = se._ordered_json_bytes(
@@ -1106,7 +1182,10 @@ def _expected_state() -> tuple[
         assets[output.filename] = _overlay_game_sound_record(output)
     assets[credit_output.filename] = _overlay_credit_record(manifest, credit_output)
     for output in attract_outputs:
-        assets[output.filename] = _overlay_attract_record(manifest, output)
+        if output.name in BANNER_COSTUME_NAMES:
+            assets[output.filename] = _overlay_banner_record(manifest, output)
+        else:
+            assets[output.filename] = _overlay_attract_record(manifest, output)
     assets = dict(sorted(assets.items()))
     overlay_bytes = se._ordered_json_bytes({"version": 1, "assets": assets})
     derivative_provenance_bytes = se._ordered_json_bytes(

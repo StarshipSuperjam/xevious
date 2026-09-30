@@ -309,7 +309,10 @@ class ScratchProjectTests(unittest.TestCase):
         # + the 2 NEW slice-18 CAB-02 1P/2P start-selector label PNGs on start_screen ("1 PLAYER" /
         # "2 PLAYERS"), rendered from the same credited Xevious HUD font sheet (glyphs already in
         # SHEET_TEXT_RECTS); port-original control text, so 211 -> 213.
-        self.assertEqual(213, len(assets))
+        # + the 2 NEW slice-18 CAB-03 "GAME OVER PLAYER n" elimination-banner PNGs on the HUD target
+        # ("GAME OVER PLAYER 1" / "GAME OVER PLAYER 2"), rendered from the same credited font at the
+        # credit downscale so the 18-char line fits the stage; port-original UI text, so 213 -> 215.
+        self.assertEqual(215, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -1239,6 +1242,10 @@ class ScratchProjectTests(unittest.TestCase):
             # CAB-02 (slice 18): the title-screen 1P/2P selection (1 or 2). A UI register the selector hats
             # set and the selector display reads — a port necessity, not durable per-player game state.
             "start selection",
+            # CAB-03 (slice 18): which player the elimination banner names (0/1, or -1 = hidden). A transient
+            # display register the death handler raises during a two-player handoff and clears after the hold;
+            # read by the HUD banner clone. Display machinery like `easter egg showing`, not durable state.
+            "banner player",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -15628,28 +15635,38 @@ class ScratchProjectTests(unittest.TestCase):
             b["inputs"]["VALUE"] = [1, [4, 1]]
 
         def break_checkpoint_low(p):
+            # CAB-03 (slice 18): the near-end checkpoint window now appears at TWO sites — area_reset's
+            # new-life branch AND the two-player death-complete alternation path — both emitted from the
+            # one shared `_at_area_checkpoint` helper, so they are always byte-identical and cannot drift.
+            # The validator passes if ANY valid window exists, so the fixture must corrupt EVERY window to
+            # prove a malformed low bound is caught.
             s = stage_of(p)
-            b = next(
+            matches = [
                 b
                 for b in s["blocks"].values()
                 if b["opcode"] == "operator_gt"
                 and isinstance(b["inputs"].get("OPERAND1"), list)
                 and b["inputs"]["OPERAND1"][1][2:3] == [director.SCROLL_ROW_ID]
                 and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_LOW_EXCL
-            )
-            b["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
+            ]
+            assert matches, "no checkpoint low-bound block found to corrupt"
+            for b in matches:
+                b["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
 
         def break_checkpoint_high(p):
+            # See break_checkpoint_low: corrupt every shared-helper checkpoint window (two sites).
             s = stage_of(p)
-            b = next(
+            matches = [
                 b
                 for b in s["blocks"].values()
                 if b["opcode"] == "operator_gt"
                 and (b["inputs"].get("OPERAND1") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_HIGH_EXCL
                 and isinstance(b["inputs"].get("OPERAND2"), list)
                 and b["inputs"]["OPERAND2"][1][2:3] == [director.SCROLL_ROW_ID]
-            )
-            b["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
+            ]
+            assert matches, "no checkpoint high-bound block found to corrupt"
+            for b in matches:
+                b["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
 
         cases = [
             ("advance-area-before-slots", break_phase_order),
@@ -17937,7 +17954,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "57568491312ca8256d832f04e8721d42243158947da9192680797c658b5257ef",
+            "21372de4bd6e21cba781a2a7217b196a114194d9f18a4053d1dc6fb1f7a6a3fb",
             build_hash,
         )
 

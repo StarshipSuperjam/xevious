@@ -289,6 +289,11 @@
       "name": "attract stage",
       "scope": "Stage"
     },
+    "cabinet-banner-player": {
+      "kind": "variable",
+      "name": "banner player",
+      "scope": "Stage"
+    },
     "cabinet-coin-edge": {
       "kind": "variable",
       "name": "coin edge",

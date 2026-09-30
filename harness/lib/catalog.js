@@ -7447,6 +7447,216 @@ export const SCENARIOS = [
     // roadmap-evidence: CAB-02 failure  (the display no longer tracks the armed selection)
     negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'start selection', 2, 9),
   },
+  {
+    // CAB-03 (cabinet.two-player, slice 18): alternation on craft death — the port's `next_player`
+    // (xevious_main 674: swap_curr_other_player + eor curr_player). On a craft death in a two-player game,
+    // if the OTHER player still holds craft, the handler swaps the two players' saved state and toggles
+    // `curr player`, so control passes to the other player — strict alternating play. Driven in isolation
+    // (fireBroadcast 'death complete' against an injected player-dead state), the same director-receiver
+    // isolation the near-end-checkpoint scenario uses: a live death->respawn completes within one headless
+    // pump and cannot be paused to read the handoff.
+    // roadmap-evidence: CAB-03 success  (a craft death with the other player alive swaps state and toggles
+    //   the active player; a second death swaps back)
+    key: 'two-player-alternation',
+    behavior:
+      'On a craft death in a two-player game with the other player still holding craft, the handler swaps the saved player state and toggles the active player — and a second death swaps back',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      // Two-player game, player 1 active, both players holding craft; distinct P1 (live) and P2 (other/shadow)
+      // score + area so the swap is observable per field. `scroll row` sits BELOW the near-end window so the
+      // outgoing player's checkpoint does not advance their area (which would confound the saved-area read).
+      const setupDead = (currPlayer) => {
+        writeVar(vm, 'game-director-state', 'player-dead');
+        writeVar(vm, 'cabinet-two-player', 1);
+        writeVar(vm, 'cabinet-curr-player', currPlayer);
+        writeVar(vm, 'area-scroll-row', 0);
+      };
+      writeVar(vm, 'eco-craft', 2); // P1 (live) still has craft: a non-terminal death, so no banner
+      writeVar(vm, 'other-craft', 3); // P2 (other) has craft: the other can take over -> alternate
+      writeVar(vm, 'eco-score', 1111);
+      writeVar(vm, 'other-score', 2222);
+      writeVar(vm, 'area-number', 5);
+      writeVar(vm, 'other-area-number', 9);
+      setupDead(0);
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3); // swap+toggle complete on the first stepped frame; the rest settle the incoming re-top
+      const afterFirst = {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveScore: readVar(vm, 'eco-score'),
+        liveArea: readVar(vm, 'area-number'),
+        otherScore: readVar(vm, 'other-score'),
+        otherCraft: readVar(vm, 'other-craft'),
+        bannerPlayer: readVar(vm, 'cabinet-banner-player'),
+      };
+      // Second death: player 2 is now active and both still hold craft -> alternation swaps back to player 1.
+      setupDead(1);
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3);
+      const afterSecond = {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveScore: readVar(vm, 'eco-score'),
+        liveArea: readVar(vm, 'area-number'),
+      };
+      return { afterFirst, afterSecond };
+    },
+    assert(obs) {
+      // First death: active player toggles 0 -> 1, player 2's saved state is now live, player 1's is saved.
+      assert.equal(Number(obs.afterFirst.currPlayer), 1, 'a craft death toggles the active player to player 2');
+      assert.equal(Number(obs.afterFirst.liveScore), 2222, 'player 2 score becomes the live score after the swap');
+      assert.equal(Number(obs.afterFirst.liveArea), 9, 'player 2 area becomes the live area after the swap');
+      assert.equal(Number(obs.afterFirst.otherScore), 1111, 'player 1 score is saved to the shadow');
+      assert.equal(Number(obs.afterFirst.otherCraft), 2, 'player 1 craft is saved to the shadow');
+      assert.equal(Number(obs.afterFirst.bannerPlayer), -1, 'a non-terminal death shows no elimination banner');
+      // Second death swaps back: strict alternating play.
+      assert.equal(Number(obs.afterSecond.currPlayer), 0, 'a second craft death toggles back to player 1');
+      assert.equal(Number(obs.afterSecond.liveScore), 1111, 'player 1 state returns to live on the swap back');
+      assert.equal(Number(obs.afterSecond.liveArea), 5, 'player 1 area returns to live on the swap back');
+    },
+    // Neutralize `swap players`: the active player still toggles, but the saved per-player state never moves,
+    // so player 2's score never becomes live -> the swap assertion fails.
+    // roadmap-evidence: CAB-03 failure  (without the state swap, alternation carries the wrong player's game)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'swap players'),
+  },
+  {
+    // CAB-03 (slice 18): solo continuation — when the OTHER player is already out, a craft death does NOT
+    // alternate; the current player simply respawns and plays on (the swap is gated on the other player still
+    // holding craft, xevious_main 682). Same director-receiver isolation as two-player-alternation.
+    // roadmap-evidence: CAB-03 success  (with the other player out, a death respawns the current player with
+    //   no swap and no active-player toggle)
+    key: 'two-player-solo-continue',
+    behavior:
+      'When the other player is already out, a craft death in a two-player game respawns the current player with no swap and no active-player toggle',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'player-dead');
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'eco-craft', 2); // the current player still has craft -> respawn
+      writeVar(vm, 'other-craft', 0); // the other player is OUT -> no alternation
+      writeVar(vm, 'eco-score', 1111);
+      writeVar(vm, 'other-score', 2222);
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3);
+      return {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveScore: readVar(vm, 'eco-score'),
+        otherScore: readVar(vm, 'other-score'),
+        outcome: outcome(vm),
+        reachedState: state(vm),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.currPlayer), 0, 'the active player does NOT toggle when the other is out');
+      assert.equal(Number(obs.liveScore), 1111, 'the current player state is untouched (no swap)');
+      assert.equal(Number(obs.otherScore), 2222, 'the out player shadow is untouched');
+      assert.equal(obs.outcome, 'respawn', 'a solo continuation records the respawn outcome');
+      // The solo respawn path has no timed hold, so within these steps it has already run
+      // respawning -> new-life -> resetting -> playing; the meaningful check is that the
+      // survivor progressed past the death rather than the exact intermediate state.
+      assert.ok(
+        ['respawning', 'resetting', 'playing'].includes(obs.reachedState),
+        'the current player respawns back toward play (does not stall at player-dead)',
+      );
+    },
+    // Remove player-dead -> respawning so the solo continuation cannot respawn -> the respawn assertion fails.
+    // roadmap-evidence: CAB-03 failure  (the survivor cannot continue solo)
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> respawning'),
+  },
+  {
+    // CAB-03 (slice 18): both players out -> game over, and the cabinet returns to a one-player, player-1
+    // default (`game_over_1_player` xevious_main 68B forces curr_player=0). Driven live (like death-game-over)
+    // because reaching the title needs the full game-over hold + `game over complete` + cold-start chain the
+    // solvalou drives; the isolation scenarios above cover the handler's immediate branch. The other player is
+    // seeded out and the current player left on its last craft, so one death is terminal for the whole game.
+    // roadmap-evidence: CAB-03 success  (the last craft of a two-player game ends it, returns to the title, and
+    //   resets the cabinet to one-player / player 1)
+    key: 'two-player-both-out-gameover',
+    behavior:
+      'When both players are out, a two-player game reaches game over, returns to the title, and resets the cabinet to a one-player, player-1 default',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      // Contact kills (invuln off); the other player is already out and the current player is on its last
+      // craft, so this death is terminal for the whole game.
+      writeVar(vm, 'invuln', 0);
+      writeVar(vm, 'other-craft', 0);
+      writeVar(vm, 'eco-craft', 1);
+      let reachedTitle = false;
+      for (let i = 0; i < 60 && !reachedTitle; i += 1) {
+        seedCraftHit(vm);
+        step(vm, 1);
+        if (state(vm) === 'title') reachedTitle = true;
+      }
+      return {
+        reachedTitle,
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        twoPlayer: readVar(vm, 'cabinet-two-player'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.reachedTitle, true, 'both players out returns to the title');
+      assert.equal(Number(obs.currPlayer), 0, 'game over resets the active player to player 1');
+      assert.equal(Number(obs.twoPlayer), 0, 'game over returns the cabinet to a one-player default');
+    },
+    // Pin `two player` so the cold-start game-over reset can never clear it: the game still ends and reaches
+    // the title, but the cabinet stays two-player -> the one-player-reset assertion fails.
+    // roadmap-evidence: CAB-03 failure  (the cabinet never returns to its one-player default after a 2P game)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'two player', 1),
+  },
+  {
+    // CAB-03 (slice 18): the "GAME OVER PLAYER n" elimination banner. When a player loses their last craft but
+    // the OTHER player is still in, the arcade shows a brief "GAME OVER PLAYER n" banner during the handoff
+    // before the survivor takes over (game_over xevious_main 549-591). The handler raises `banner player` to
+    // the eliminated player for BANNER_HOLD_TICKS (a real-frame hold, since the banner must dwell), then lowers
+    // it and swaps to the survivor. Same director-receiver isolation as the alternation scenarios.
+    // roadmap-evidence: CAB-03 success  (eliminating a player with the other still in raises the banner naming
+    //   that player for the hold, then clears it and hands off to the survivor)
+    key: 'two-player-banner',
+    behavior:
+      'Eliminating a player while the other is still in raises the "GAME OVER PLAYER n" banner naming the eliminated player for the hold, then clears it and hands off to the survivor',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'player-dead');
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'eco-craft', 0); // the current player (player 1) is ELIMINATED
+      writeVar(vm, 'other-craft', 3); // the other player (player 2) is still in -> banner + handoff
+      fireBroadcast(vm, 'death complete');
+      step(vm, 1); // into the banner hold: `banner player` now names the eliminated player
+      const bannerDuringHold = readVar(vm, 'cabinet-banner-player');
+      const currDuringHold = readVar(vm, 'cabinet-curr-player');
+      // Exhaust the banner hold, then a margin so the deferred swap/toggle run. The hold is
+      // `hold_frames(BANNER_HOLD_TICKS)` with BANNER_HOLD_TICKS == GAME_OVER_HOLD_TICKS == 64
+      // arcade half-frames; `hold_frames` paces one iteration per 2 headless `_step` calls
+      // (FRAMES_PER_TICK == 2, as the attract dwells do), so the hold clears at ~128 frames.
+      step(vm, 140);
+      return {
+        bannerDuringHold,
+        currDuringHold,
+        bannerAfter: readVar(vm, 'cabinet-banner-player'),
+        currAfter: readVar(vm, 'cabinet-curr-player'),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.bannerDuringHold), 0, 'the banner names the eliminated player (player 1) during the hold');
+      assert.equal(Number(obs.currDuringHold), 0, 'the active player has not yet handed off while the banner shows');
+      assert.equal(Number(obs.bannerAfter), -1, 'the banner clears after the hold');
+      assert.equal(Number(obs.currAfter), 1, 'the survivor (player 2) is active after the handoff');
+    },
+    // Pin `banner player` so it can never be raised to the eliminated player: the banner never shows during the
+    // hold -> the "banner names the eliminated player" assertion fails. (The swap/toggle still run, so this
+    // bites the banner specifically, not the handoff.)
+    // roadmap-evidence: CAB-03 failure  (the elimination banner never appears)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'banner player', -1),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"
