@@ -324,6 +324,18 @@ HUD_ROLE_LABEL_1UP = 4
 HUD_ROLE_LABEL_HIGH_SCORE = 5
 HUD_ROLE_GAME_OVER_GLYPH = 6  # ECO-04: the "GAME OVER" text, distinct from every other role
 HUD_ROLE_BANNER = 7  # CAB-03: the "GAME OVER PLAYER n" two-player elimination banner, gated on `banner player`
+# ECO-02 two-player HUD (slice 18). The PRIMARY group (score digits + the flashing LABEL_1UP) always shows the
+# ACTIVE player: its digits read the live `score`, and its label's leading glyph is `digit/(curr player + 1)`, so
+# it reads "1UP" when player 1 is active and "2UP" when player 2 is. The SECONDARY group is spawned ONLY in a
+# two-player game and shows the OTHER (swapped-out, frozen) player: its digits read `other score` and its label's
+# leading glyph is `digit/(2 - curr player)`, steady (no flash). This "active is primary/flashing" arrangement is
+# the port's deliberate simplification of the arcade's fixed-per-player columns (display_player_scores /
+# display_1UP_2UP, xevious_main 1888-1901 + xevious_sub 737-767: the arcade keeps player 1's group in its own
+# column and player 2's in its own, and flashes whichever is active); the divergence is recorded in the ECO-02
+# mechanics record. In a one-player game `two player` is 0, so no secondary clone spawns and the 1P HUD (curr
+# player always 0 -> a flashing "1UP" over the live score) is byte-identical to before this slice.
+HUD_ROLE_OTHER_SCORE_DIGIT = 8  # ECO-02: a secondary score-row digit reading `other score` (two-player only)
+HUD_ROLE_LABEL_2UP = 9  # ECO-02: the secondary (other-player) steady nUP label (two-player only)
 HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
 HUD_DIGIT_SPACING = 14
 # Project-defined top-band layout (stage -240..240 x, -180..180 y, +y up); the operator
@@ -334,6 +346,13 @@ HUD_HIGH_SCORE_LEFT_X = -20
 HUD_HIGH_SCORE_Y = 155
 HUD_LABEL_Y = 172
 HUD_1UP_LEFT_X = -192
+# ECO-02: the two-player secondary group sits on the RIGHT of the top band, mirroring the primary group's
+# label-over-score offset (label 28px right of the score's leftmost place, as 1UP=-192 is 28px right of
+# score=-220). The rightmost secondary digit ends at 96 + 6*14 = 180, clear of the 240 stage edge, and the
+# whole group sits right of the centred HIGH SCORE group (which ends near x=64). Operator fine-tunes exact
+# placement at playtest, as with the primary group (no reference basis — the port layout is project-defined).
+HUD_OTHER_SCORE_LEFT_X = 96  # place 6 (leftmost, most significant digit) of the secondary score row
+HUD_2UP_LEFT_X = 124  # leading glyph of the secondary nUP label (HUD_OTHER_SCORE_LEFT_X + 28, as 1UP is off score)
 HUD_HIGH_SCORE_LABEL_LEFT_X = -40
 HUD_LIFE_LEFT_X = -220
 HUD_LIFE_Y = 128
@@ -11436,14 +11455,37 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.go(x, HUD_HIGH_SCORE_Y),
             blocks.create_clone(),
         ]
-    for glyph, slot in HUD_1UP_LABEL:
-        x = HUD_1UP_LEFT_X + slot * HUD_DIGIT_SPACING
-        spawn_body += [
-            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LABEL_1UP)),
-            blocks.switch_costume(glyph),
-            blocks.go(x, HUD_LABEL_Y),
+    # ECO-02 (slice 18): an nUP label spawner shared by the primary (active, flashing) and secondary (other,
+    # steady) groups. The leading glyph is a per-group reporter (`digit/(curr player + 1)` for the active label,
+    # `digit/(2 - curr player)` for the other), so the label reads the right player's number; the trailing "U"/
+    # "P" come from HUD_1UP_LABEL. curr player is a spawn-time snapshot: every transition rebuilds these clones
+    # (director stop/enter) and the alternation handoff toggles curr player BEFORE the respawn transition, so the
+    # snapshot always names the correct player. Each call passes a FRESH leading reporter (a reporter reused
+    # across two costume inputs would be stolen by the second).
+    def up_label_spawn(role: int, left_x: int, leading_digit: str) -> list[str]:
+        body = [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(role)),
+            blocks.switch_costume_expr(leading_digit),
+            blocks.go(left_x, HUD_LABEL_Y),
             blocks.create_clone(),
         ]
+        for glyph, slot in HUD_1UP_LABEL[1:]:
+            body += [
+                blocks.set_var("hud role", HUD_ROLE_ID, number(role)),
+                blocks.switch_costume(glyph),
+                blocks.go(left_x + slot * HUD_DIGIT_SPACING, HUD_LABEL_Y),
+                blocks.create_clone(),
+            ]
+        return body
+
+    spawn_body += up_label_spawn(
+        HUD_ROLE_LABEL_1UP,
+        HUD_1UP_LEFT_X,
+        blocks.op_join(
+            text("digit/"),
+            blocks.op_add(variable("curr player", CURR_PLAYER_ID), number(1)),
+        ),
+    )
     for glyph, slot in HUD_HIGH_SCORE_LABEL:
         x = HUD_HIGH_SCORE_LABEL_LEFT_X + slot * HUD_DIGIT_SPACING
         spawn_body += [
@@ -11479,6 +11521,31 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
                 blocks.create_clone(),
             ],
         )
+    )
+    # ECO-02 (slice 18): the SECONDARY score row + nUP label — the OTHER (swapped-out) player — spawned ONLY in
+    # a two-player game, on the RIGHT of the top band. Its 7 digits read `other score` (frozen at that player's
+    # last swap-out) and its label is steady (HUD_ROLE_LABEL_2UP, no flash) with a `digit/(2 - curr player)`
+    # leading glyph — the other player's number. Gating the whole group on `two player == 1` keeps the one-player
+    # HUD and its clone census byte-identical; a two-player game adds 7 + 3 = 10 clones here.
+    secondary_body: list[str] = []
+    for place in range(HUD_DIGIT_PLACES):
+        x = HUD_OTHER_SCORE_LEFT_X + (HUD_DIGIT_PLACES - 1 - place) * HUD_DIGIT_SPACING
+        secondary_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_OTHER_SCORE_DIGIT)),
+            blocks.set_var("hud place", HUD_PLACE_ID, number(place)),
+            blocks.go(x, HUD_SCORE_Y),
+            blocks.create_clone(),
+        ]
+    secondary_body += up_label_spawn(
+        HUD_ROLE_LABEL_2UP,
+        HUD_2UP_LEFT_X,
+        blocks.op_join(
+            text("digit/"),
+            blocks.op_sub(number(2), variable("curr player", CURR_PLAYER_ID)),
+        ),
+    )
+    spawn_body.append(
+        blocks.if_var_equals("two player", TWO_PLAYER_ID, 1, secondary_body)
     )
     # The life-icon row is spawned by the shared proc below (also used on `craft changed`).
     spawn_body.append(blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True))
@@ -11557,6 +11624,16 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_HIGH_SCORE_DIGIT,
         digit_role_body("high score", HIGH_SCORE_ID),
     )
+    # ECO-02 (slice 18): the secondary score row reads `other score` with the same per-tick digit idiom as the
+    # primary row (the value is frozen during the current player's turn, so the read is constant until the next
+    # swap-out; reading it live costs nothing and needs no extra broadcast). These clones exist only in a
+    # two-player game (spawned under the `two player == 1` gate above).
+    other_score_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_OTHER_SCORE_DIGIT,
+        digit_role_body("other score", OTHER_SCORE_ID),
+    )
     # A life clone must SHOW the ship icon — switch to it explicitly rather than inherit
     # whatever costume the sprite last held at spawn (which is a label glyph).
     life_role = blocks.if_var_equals(
@@ -11607,6 +11684,15 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_LABEL_HIGH_SCORE,
         [blocks.to_front(), blocks.show()],
     )
+    # ECO-02 (slice 18): the secondary (other-player) nUP label is STEADY — the active player's label carries the
+    # flash (arcade `flash_1up_2up`: only the active nUP flashes, the other is steady). Static once spawned, like
+    # the HIGH SCORE label; common_stop's clone-clear retires it on the next transition.
+    label_2up_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LABEL_2UP,
+        [blocks.to_front(), blocks.show()],
+    )
     # ECO-04: each "GAME OVER" glyph clone is static once spawned (like the "HIGH SCORE"
     # label above) — director-stop's clone-clear (common_stop) retires it on the next
     # transition, so it never needs to delete itself here.
@@ -11654,9 +11740,11 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             mark_clone,
             score_role,
             high_role,
+            other_score_role,
             life_role,
             label_1up_role,
             label_hs_role,
+            label_2up_role,
             game_over_glyph_role,
             banner_role,
         ],

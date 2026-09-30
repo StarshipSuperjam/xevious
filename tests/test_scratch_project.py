@@ -14865,6 +14865,42 @@ class ScratchProjectTests(unittest.TestCase):
             and hs_names <= costume_menu_names
         ):
             failures.add("hud-high-score-label-yellow")
+
+        # ECO-02 two-player HUD (slice 18 C4): in a two-player game the HUD adds the other player's
+        # frozen second score row and their steady "2UP" label, and each nUP label reads the current
+        # player. Structure only — the column layout and the pixels stay the operator's playtest.
+        # roadmap-evidence: ECO-02 success  (the second score row reads `other score`, both new roles dispatch, and the secondary group is two-player-gated)
+        def role_dispatched(role_value: int) -> bool:
+            return any(
+                b["opcode"] == "control_if"
+                and isinstance(b["inputs"].get("CONDITION"), list)
+                and len(b["inputs"]["CONDITION"]) > 1
+                and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_equals"
+                and refs(
+                    blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1"),
+                    director.HUD_ROLE_ID,
+                )
+                and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+                == [1, [4, role_value]]
+                for b in blocks.values()
+            )
+
+        # The second score row switches its digit costumes off `other score` (the frozen swap-out
+        # score) through the same floor(value/divisor) mod 10 -> "digit/<n>" chain the live score uses.
+        if not digit_costume_chain(director.OTHER_SCORE_ID):
+            failures.add("other-score-digit-costume")
+        # Both new roles are dispatched in the clone handler: the other-score digit and the 2UP label.
+        if not role_dispatched(director.HUD_ROLE_OTHER_SCORE_DIGIT):
+            failures.add("hud-other-score-role-dispatch")
+        if not role_dispatched(director.HUD_ROLE_LABEL_2UP):
+            failures.add("hud-2up-role-dispatch")
+        # The 2UP label + second row spawn ONLY in a two-player game (gated on `two player == 1`), so a
+        # one-player HUD is byte-unchanged — the secondary group hangs off an `if two player == 1` gate.
+        if not any(
+            b["opcode"] == "operator_equals" and refs(b["inputs"].get("OPERAND1"), director.TWO_PLAYER_ID)
+            for b in blocks.values()
+        ):
+            failures.add("hud-secondary-two-player-gated")
         return failures
 
     def test_hud_render_present(self) -> None:
@@ -15050,6 +15086,39 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["fields"]["COSTUME"][0] = "digit/0"
 
+        # ECO-02 two-player HUD (C4) negatives.
+        def break_other_score_digit(p: dict) -> None:
+            # Cut the second score row's digits off `other score`, so its costume chain no longer reads it.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("NUM1"), director.OTHER_SCORE_ID
+                ):
+                    b["inputs"]["NUM1"] = [1, [4, 0]]
+
+        def break_other_score_role(p: dict) -> None:
+            # Misnumber the other-score role in the clone dispatch so its branch is never taken.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.HUD_ROLE_ID
+                ) and b["inputs"].get("OPERAND2") == [1, [4, director.HUD_ROLE_OTHER_SCORE_DIGIT]]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 99]]
+
+        def break_2up_role(p: dict) -> None:
+            # Misnumber the 2UP-label role in the clone dispatch so its branch is never taken.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.HUD_ROLE_ID
+                ) and b["inputs"].get("OPERAND2") == [1, [4, director.HUD_ROLE_LABEL_2UP]]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 99]]
+
+        def break_secondary_gate(p: dict) -> None:
+            # Sever the `two player == 1` gate so the secondary group would spawn unconditionally.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.TWO_PLAYER_ID
+                ):
+                    b["inputs"]["OPERAND1"] = [1, [4, 1]]
+
         cases = [
             ("hud-spawns-clones", break_spawn),
             ("hud-clone-handler", break_clone_handler),
@@ -15066,6 +15135,11 @@ class ScratchProjectTests(unittest.TestCase):
             ("hud-high-score-label-yellow", break_high_score_label_yellow),
             ("hud-loop-inverted", break_loop_inverted),
             ("life-ship-costume", break_life_ship_costume),
+            # roadmap-evidence: ECO-02 failure  (the two-player second row / 2UP label / gate)
+            ("other-score-digit-costume", break_other_score_digit),
+            ("hud-other-score-role-dispatch", break_other_score_role),
+            ("hud-2up-role-dispatch", break_2up_role),
+            ("hud-secondary-two-player-gated", break_secondary_gate),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -17954,7 +18028,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "21372de4bd6e21cba781a2a7217b196a114194d9f18a4053d1dc6fb1f7a6a3fb",
+            "d062a9291154ad3208b4b018436b9787cb83215aeda5c45d9538f973fb64ecdf",
             build_hash,
         )
 

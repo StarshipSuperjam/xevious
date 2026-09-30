@@ -23,7 +23,7 @@ import {
   constants,
   variable,
 } from './harness.js';
-import { reachPlaying, reachPlaying2P, stateOf, insertCoin } from './build.js';
+import { reachPlaying, reachPlaying2P, stateOf, insertCoin, loadArtifact } from './build.js';
 import * as mutate from './mutate.js';
 
 // The committed RNG fixture (the shared LFSR's byte stream from each seed) — the model the live
@@ -7656,6 +7656,165 @@ export const SCENARIOS = [
     // bites the banner specifically, not the handoff.)
     // roadmap-evidence: CAB-03 failure  (the elimination banner never appears)
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'banner player', -1),
+  },
+  {
+    key: 'two-player-hud-render',
+    behavior:
+      'A two-player game draws the active player\'s nUP label AND the other player\'s steady nUP label plus their frozen second score row, each nUP label reading the correct player number; a one-player game draws only the single 1UP label and no second row',
+    // roadmap-evidence: ECO-02 success  (the 2P HUD adds the second score row + 2UP label; 1P has neither)
+    playtestStep: 6,
+    async drive(vm) {
+      // Clone roles emitted by tools/game_director.py's HUD dispatch (the HUD_ROLE_* constants):
+      const ROLE_PRIMARY_LABEL = 4; //   HUD_ROLE_LABEL_1UP        — the active player's nUP (flashing)
+      const ROLE_OTHER_SCORE = 8; //     HUD_ROLE_OTHER_SCORE_DIGIT — the other player's frozen score row
+      const ROLE_SECONDARY_LABEL = 9; // HUD_ROLE_LABEL_2UP        — the other player's nUP (steady)
+      const roleName = variable('hud-role').name;
+      // A label group is three clones {digit/N, glyph/U, glyph/P}; its leading `digit/N` names the player.
+      const labelLead = (v, role) =>
+        cloneReports(v, 'hud', [roleName])
+          .filter((r) => Number(r.vars[roleName]) === role)
+          .map((r) => r.costume)
+          .find((c) => /^digit\//.test(c || ''));
+      const roleCount = (v, role) =>
+        cloneReports(v, 'hud', [roleName]).filter((r) => Number(r.vars[roleName]) === role).length;
+
+      // The build under test (possibly mutated) in a two-player game, player 1 active.
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      step(vm, 30);
+      const twoP = {
+        two: Number(readVar(vm, 'cabinet-two-player')),
+        curr: Number(readVar(vm, 'cabinet-curr-player')),
+        primaryLead: labelLead(vm, ROLE_PRIMARY_LABEL),
+        secondaryLead: labelLead(vm, ROLE_SECONDARY_LABEL),
+        otherScoreDigits: roleCount(vm, ROLE_OTHER_SCORE),
+      };
+
+      // A clean, unmutated one-player game for the negative-space comparison: no second row, no 2UP label.
+      const vm1 = await loadArtifact();
+      assert.ok(reachPlaying(vm1), 'precondition: a one-player game reaches playing');
+      step(vm1, 30);
+      const oneP = {
+        two: Number(readVar(vm1, 'cabinet-two-player')),
+        primaryLead: labelLead(vm1, ROLE_PRIMARY_LABEL),
+        secondaryLabels: roleCount(vm1, ROLE_SECONDARY_LABEL),
+        otherScoreDigits: roleCount(vm1, ROLE_OTHER_SCORE),
+      };
+      return { twoP, oneP };
+    },
+    assert(obs) {
+      // Two-player, player 1 active: primary label reads "1UP", the steady other label reads "2UP",
+      // and the other player's frozen 7-digit score row is present.
+      assert.equal(obs.twoP.two, 1, 'the build under test is in a two-player game');
+      assert.equal(obs.twoP.curr, 0, 'player 1 is the active player at a fresh 2P start');
+      assert.equal(obs.twoP.primaryLead, 'digit/1', 'the active player\'s label reads 1UP');
+      assert.equal(obs.twoP.secondaryLead, 'digit/2', 'the other player\'s steady label reads 2UP');
+      assert.equal(obs.twoP.otherScoreDigits, 7, 'the other player\'s frozen 7-digit score row is drawn');
+      // One-player: only the single 1UP label — no 2UP label and no second score row.
+      assert.equal(obs.oneP.two, 0, 'the comparison build is a one-player game');
+      assert.equal(obs.oneP.primaryLead, 'digit/1', 'the sole label reads 1UP');
+      assert.equal(obs.oneP.secondaryLabels, 0, 'a one-player game draws no 2UP label');
+      assert.equal(obs.oneP.otherScoreDigits, 0, 'a one-player game draws no second score row');
+    },
+    // Pin `two player` to 0 so the two-player-only secondary group (the 2UP label + the other score row)
+    // never spawns in the build under test — the 2P assertions fail. The 1P comparison vm is loaded fresh
+    // and unmutated, so the negative bites only the 2P side, exactly the ECO-02 addition.
+    // roadmap-evidence: ECO-02 failure  (the 2P HUD loses its second row and 2UP label)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'two player', 0),
+  },
+  {
+    key: 'two-player-clone-no-leak',
+    behavior:
+      'The two-player HUD peak clone census sits well under the scratch-vm ceiling, and the count returns to that baseline across repeated alternations (no clones leak); the active nUP label tracks the current player across each handoff',
+    // roadmap-evidence: ECO-02 success  (2P peak census stays under the ceiling and returns to baseline; label follows curr player)
+    playtestStep: 6,
+    async drive(vm) {
+      const ROLE_PRIMARY_LABEL = 4; //   HUD_ROLE_LABEL_1UP  — the active player's nUP
+      const ROLE_SECONDARY_LABEL = 9; // HUD_ROLE_LABEL_2UP  — the other player's nUP
+      const roleName = variable('hud-role').name;
+      const labelLead = (role) =>
+        cloneReports(vm, 'hud', [roleName])
+          .filter((r) => Number(r.vars[roleName]) === role)
+          .map((r) => r.costume)
+          .find((c) => /^digit\//.test(c || ''));
+      const totalClones = () => {
+        let n = 0;
+        for (const c of vm.runtime.targets) if (!c.isStage && !c.isOriginal && c.sprite) n += 1;
+        return n;
+      };
+      const clearEnemy = (slot = 63) => {
+        const a = readVar(vm, 'slot-state');
+        a[slot] = 0;
+      };
+      // One alternation: keep both players stocked and vulnerable, seed a contact hit until the active
+      // player leaves 'playing' (a death registered), then stop seeding, restore invulnerability, and let
+      // the swap+respawn carry the incoming player back to a populated 'playing' state.
+      const alternate = (killBudget = 160, recoverBudget = 300) => {
+        const before = Number(readVar(vm, 'cabinet-curr-player'));
+        let killed = false;
+        for (let i = 0; i < killBudget && !killed; i += 1) {
+          writeVar(vm, 'other-craft', 3);
+          writeVar(vm, 'eco-craft', 3);
+          writeVar(vm, 'invuln', 0);
+          seedCraftHit(vm);
+          step(vm, 1);
+          if (Number(readVar(vm, 'cabinet-curr-player')) !== before) killed = true;
+        }
+        clearEnemy();
+        writeVar(vm, 'invuln', 1);
+        for (let i = 0; i < recoverBudget; i += 1) {
+          writeVar(vm, 'other-craft', 3);
+          writeVar(vm, 'eco-craft', 3);
+          clearEnemy();
+          step(vm, 1);
+          if (stateOf(vm) === 'playing') {
+            step(vm, 150); // let the incoming player's field repopulate to its steady census
+            return { killed, curr: Number(readVar(vm, 'cabinet-curr-player')) };
+          }
+        }
+        return { killed, curr: Number(readVar(vm, 'cabinet-curr-player')) };
+      };
+
+      // reachPlaying is a ONE-player start, so the existing ground-pool census (which uses it) never sees
+      // the 2P peak. Reach the two-player peak explicitly and census THAT.
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      step(vm, 40);
+      const base = {
+        total: totalClones(),
+        hud: cloneCount(vm, 'hud'),
+        curr: Number(readVar(vm, 'cabinet-curr-player')),
+        primaryLead: labelLead(ROLE_PRIMARY_LABEL),
+        secondaryLead: labelLead(ROLE_SECONDARY_LABEL),
+      };
+      const alt1 = alternate(); // player 1 -> player 2
+      const afterAlt1 = { total: totalClones(), hud: cloneCount(vm, 'hud'), curr: alt1.curr, primaryLead: labelLead(ROLE_PRIMARY_LABEL) };
+      const alt2 = alternate(); // player 2 -> player 1
+      const afterAlt2 = { total: totalClones(), hud: cloneCount(vm, 'hud'), curr: alt2.curr, primaryLead: labelLead(ROLE_PRIMARY_LABEL) };
+      return { base, afterAlt1, afterAlt2 };
+    },
+    assert(obs) {
+      // Peak 2P census sits under the scratch-vm MAX_CLONE_COUNT (300) with ample headroom — the plan's
+      // explicit `300 - total >= 50` at the 2P peak, which the 1P ground-pool census never reaches.
+      const peak = Math.max(obs.base.total, obs.afterAlt1.total, obs.afterAlt2.total);
+      assert.ok(peak < 250, `two-player peak clone census stays well under the ceiling (peak=${peak})`);
+      assert.ok(300 - peak >= 50, `two-player peak leaves >=50 clone headroom (headroom=${300 - peak})`);
+      // No leak: the HUD clone count returns to its 2P baseline after each alternation.
+      assert.equal(obs.afterAlt1.hud, obs.base.hud, 'HUD clone count returns to baseline after the first handoff');
+      assert.equal(obs.afterAlt2.hud, obs.base.hud, 'HUD clone count returns to baseline after the second handoff');
+      assert.equal(obs.afterAlt1.total, obs.base.total, 'total clone count returns to baseline after the first handoff');
+      assert.equal(obs.afterAlt2.total, obs.base.total, 'total clone count returns to baseline after the second handoff');
+      // The active nUP label tracks the current player across each handoff (1UP -> 2UP -> 1UP).
+      assert.equal(obs.base.curr, 0, 'player 1 is active at 2P start');
+      assert.equal(obs.base.primaryLead, 'digit/1', 'the active label reads 1UP for player 1');
+      assert.equal(obs.afterAlt1.curr, 1, 'player 2 is active after the first handoff');
+      assert.equal(obs.afterAlt1.primaryLead, 'digit/2', 'the active label reads 2UP for player 2');
+      assert.equal(obs.afterAlt2.curr, 0, 'player 1 is active again after the second handoff');
+      assert.equal(obs.afterAlt2.primaryLead, 'digit/1', 'the active label reads 1UP again for player 1');
+    },
+    // Pin `curr player` to 0 so a handoff can never make player 2 active: the active label never flips to
+    // "2UP" and `afterAlt1.curr == 1` fails. (The clone census would still hold, so this bites the
+    // active-label-tracks-current-player half specifically.)
+    // roadmap-evidence: ECO-02 failure  (the active nUP label no longer follows the current player)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'curr player', 0),
   },
 ];
 
