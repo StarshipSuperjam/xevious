@@ -122,67 +122,25 @@ class GameSoundOutput:
 # SEC-03 hidden-credit overlay (secrets.hidden-credit #93; game_director.py easter_egg_blocks / display_easter_egg
 # xevious_main.68k 6018-6048). game_director owns the `easter-egg` target's existence + blocks; this module owns
 # its single COSTUME — a pre-composed two-line credit bitmap the overlay shows for ~2 s when the hidden Credit is
-# bombed. It is rendered here (not by the arcade HUD/sprite pipeline) in a PORT-GENERATED pixel font, NOT the
-# arcade font: the arcade HUD font manifest crops only the letters the HUD readouts use (it lacks X/T/Y/J/B that
-# the wording needs), and its crops are operator-verified. Since the credit is this project's OWN original content
-# (never the arcade str_program_by_EVEZOO text — docs/REFERENCE_POLICY.md), a self-contained generated font is
-# both honest and unblocked. Recorded as a port necessity in docs/mechanics/044.
+# bombed. The WORDING is this project's own original content (never the arcade str_program_by_EVEZOO text —
+# docs/REFERENCE_POLICY.md), but the letterforms are rendered from the SAME high-res Xevious HUD font sheet the
+# HUD readouts and the CAB-01 attract text use (assets/hud-font/xevious_hud_font.png, "Xevious HUD font
+# recreation" by Patrick H. Lauke, CC-BY 3.0). The operator chose to reuse the one Xevious font already in the
+# project everywhere rather than keep a second, self-contained pixel font; the sheet carries the full A-Z set the
+# wording needs (the arcade HUD *manifest* only crops the readout subset, but SHEET_TEXT_RECTS below adds the
+# rest from the same sheet). Recorded as a port necessity in docs/mechanics/044.
 CREDIT_TARGET = "easter-egg"
 CREDIT_COSTUME_NAME = "credit"
 # This project's own original placeholder wording (operator's choice), uppercase, two lines.
 CREDIT_TEXT_LINES = ("XEVIOUS PORT", "BY STARSHIP SUPERJAM")
 CREDIT_INK = (255, 255, 255, 255)  # white, legible over the play field
 CREDIT_TRANSPARENT = (0, 0, 0, 0)
-CREDIT_SCALE = 3  # nearest-neighbor upscale of the 5x7 cells (keeps the widest line within the 480px stage)
-CREDIT_GLYPH_W = 5
-CREDIT_GLYPH_H = 7
-CREDIT_GLYPH_GAP = 1  # blank columns between glyphs
-CREDIT_LINE_GAP = 2  # blank rows between the two lines
-# A compact 5x7 uppercase pixel font, defined only for the glyphs the wording uses (a guard rejects any character
-# without an entry, so a reworded credit fails loudly rather than dropping letters). '#': ink, '.': transparent.
-CREDIT_FONT = {
-    " ": (".....", ".....", ".....", ".....", ".....", ".....", "....."),
-    "A": (".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
-    "B": ("####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."),
-    "C": (".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."),
-    "D": ("####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."),
-    "E": ("#####", "#....", "#....", "####.", "#....", "#....", "#####"),
-    "H": ("#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
-    "I": ("#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####"),
-    "J": ("..###", "...#.", "...#.", "...#.", "#..#.", "#..#.", ".##.."),
-    "K": ("#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"),
-    "M": ("#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"),
-    "N": ("#...#", "##..#", "#.#.#", "#.#.#", "#.#.#", "#..##", "#...#"),
-    "O": (".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."),
-    "P": ("####.", "#...#", "#...#", "####.", "#....", "#....", "#...."),
-    "R": ("####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"),
-    "S": (".####", "#....", "#....", ".###.", "....#", "....#", "####."),
-    "T": ("#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."),
-    "U": ("#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."),
-    "V": ("#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."),
-    "X": ("#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"),
-    "Y": ("#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."),
-    # Digits 0-9 (credit counter, best-five ranks and scores) and the period (default initials
-    # M.N / S.O / S.K). Same 5x7 cell and style as the letters; 0 carries a slash so it never
-    # reads as the letter O.
-    "0": (".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."),
-    "1": ("..#..", ".##..", "..#..", "..#..", "..#..", "..#..", "#####"),
-    "2": (".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"),
-    "3": ("#####", "...#.", "..#..", "...#.", "....#", "#...#", ".###."),
-    "4": ("...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."),
-    "5": ("#####", "#....", "####.", "....#", "....#", "#...#", ".###."),
-    "6": (".###.", "#....", "#....", "####.", "#...#", "#...#", ".###."),
-    "7": ("#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."),
-    "8": (".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."),
-    "9": (".###.", "#...#", "#...#", ".####", "....#", "....#", ".###."),
-    ".": (".....", ".....", ".....", ".....", ".....", ".##..", ".##.."),
-}
 
-# CAB-01 attract-screen overlays on the start_screen target (slice 17). Same self-contained port
-# font as the SEC-03 credit above and the same project-original stance: the credit counter, the
-# CREDIT / PUSH START / INSERT COIN prompts, and the default best-five table are the port's own
-# content, NOT the arcade HUD font crops and NOT the ROM's default name strings. See docs/mechanics
-# 037 (CAB-01).
+# CAB-01 attract-screen overlays on the start_screen target (slice 17). Rendered from the SAME high-res
+# Xevious HUD font sheet as the SEC-03 credit above and the HUD readouts, and the same project-original
+# stance for the CONTENT: the credit counter, the CREDIT / PUSH START / INSERT COIN prompts, and the
+# default best-five table are the port's own strings, NOT the ROM's default name strings; only the
+# letterforms are the credited CC-BY font. See docs/mechanics 037 (CAB-01).
 ATTRACT_TARGET = "start_screen"
 ATTRACT_BEST_FIVE_NAME = "best-five"
 ATTRACT_LABELS = (
@@ -195,10 +153,55 @@ ATTRACT_LABELS = (
 # text). They live here as a source constant — the same home and stance as CREDIT_TEXT_LINES above —
 # rather than in the reference-extracted docs/spec/data/scores.json (that file is decode-only, guarded
 # by a digest manifest). Only the SCORES they pair with are the reference-derived arcade defaults, and
-# those are read from scores.json. Every glyph used here must have a CREDIT_FONT entry (a test pins it);
-# high-score-entry that would let a player set these stays slice 19 (CAB-04).
+# those are read from scores.json. Every glyph used here must have a SHEET_TEXT_RECTS entry (a test pins
+# it); high-score-entry that would let a player set these stays slice 19 (CAB-04).
 ATTRACT_DEFAULT_INITIALS = ("STK", "M.N", "EVE", "S.O", "S.K")
 SCORES_DATA_PATH = ROOT / "docs" / "spec" / "data" / "scores.json"
+
+# CAB-01 attract text renders from the SAME high-res Xevious HUD font sheet the HUD score/label
+# readouts use (assets/hud-font/xevious_hud_font.png, "Xevious HUD font recreation" by Patrick H.
+# Lauke, CC-BY 3.0), NOT a separate port pixel font: the operator chose to reuse the Xevious font
+# already in the project rather than add a second one. The sheet carries the full A-Z / 0-9 /
+# punctuation set; the HUD manifest only crops the subset the readouts use (see COSTUME_ORDER), so
+# these rects add the remaining glyphs the attract strings need — cropped from the same sheet, with
+# the same operator-verified crop convention as the manifest (inclusive [x0, y0, x1, y1], the full
+# row-band height so every glyph shares one baseline). Bottom-aligning the crops in a fixed cell
+# puts caps/digits on that baseline and drops the period to it as a low dot. Segmented from the
+# credited sheet and cross-checked against the manifest's own rects (A/C/I match exactly).
+SHEET_TEXT_RECTS = {
+    "A": [13, 12, 110, 109], "B": [125, 12, 222, 109], "C": [237, 12, 334, 109],
+    "D": [349, 12, 446, 109], "E": [461, 12, 558, 109], "F": [573, 12, 670, 109],
+    "G": [685, 12, 782, 109], "H": [797, 12, 894, 109], "I": [937, 12, 978, 109],
+    "J": [1021, 12, 1090, 109], "K": [1133, 12, 1230, 109], "L": [1245, 12, 1342, 109],
+    "M": [1357, 12, 1454, 109], "N": [1469, 12, 1566, 109], "O": [1581, 12, 1678, 109],
+    "P": [1693, 12, 1790, 109], "Q": [1805, 12, 1902, 109], "R": [1917, 12, 2014, 109],
+    "S": [13, 138, 110, 235], "T": [125, 138, 222, 235], "U": [237, 138, 334, 235],
+    "V": [349, 138, 446, 235], "W": [461, 138, 558, 235], "X": [573, 138, 670, 235],
+    "Y": [685, 138, 782, 235], "Z": [797, 138, 894, 235],
+    "0": [909, 138, 1006, 235], "1": [1035, 138, 1090, 235], "2": [1133, 138, 1230, 235],
+    "3": [1245, 138, 1342, 235], "4": [1357, 138, 1454, 235], "5": [1469, 138, 1566, 235],
+    "6": [1581, 138, 1678, 235], "7": [1693, 138, 1790, 235], "8": [1805, 138, 1902, 235],
+    "9": [1917, 138, 2014, 235],
+    ".": [27, 572, 54, 613],
+}
+# Native (sheet-pixel) cell the crops are laid out on before decimation. 100 clears the widest
+# measured glyph rect (98 px) with a symmetric 1 px margin and divides evenly by the downscale, so
+# the decimation is exact (mirrors the HUD manifest's 100/4 geometry). One space char = one empty
+# advance. Monospace so the best-five rank/initials/score columns line up.
+SHEET_TEXT_CELL_W = 100
+SHEET_TEXT_CELL_H = 100
+SHEET_TEXT_GLYPH_GAP = 8  # native columns between cells; 108 total advance, divisible by 4
+SHEET_TEXT_LINE_GAP = 20  # native rows between lines; 120 total, divisible by 4
+SHEET_TEXT_DOWNSCALE = 4  # 100 px cell -> 25 px costume cell, matching the HUD glyph pixel size
+
+# The SEC-03 hidden-credit overlay uses the SAME sheet and compositor, but its longest line
+# ("BY STARSHIP SUPERJAM", 20 chars) will not fit the 480 px stage at the 27 px attract advance
+# (20 * 27 > 540). Render it at a smaller cell so the two-line credit sits within the stage:
+# 100 px cell / downscale 5 -> 20 px cells, 22 px advance, so line 2 is 20 * 110 - 10 = 2190 native
+# -> 438 px < 480. Gaps chosen divisible by the downscale so the decimation stays exact.
+SHEET_CREDIT_GLYPH_GAP = 10  # native columns between cells; 110 advance, divisible by 5
+SHEET_CREDIT_LINE_GAP = 20  # native rows between lines; 120 pitch, divisible by 5
+SHEET_CREDIT_DOWNSCALE = 5  # 100 px cell -> 20 px costume cell; keeps the widest credit line on-stage
 
 
 @dataclass(frozen=True)
@@ -415,20 +418,29 @@ def _glyph_source(manifest: dict, name: str) -> tuple[dict, str]:
     return glyph, recolor
 
 
-def render_glyphs(manifest: dict) -> list[GlyphOutput]:
-    validate_manifest(manifest)
-    sheet_record = manifest["font_sheet"]
-    sheet_path = FONT_DIR / sheet_record["asset"]
+def _load_font_sheet(manifest: dict) -> se.Image:
+    """Decode the HUD font sheet, verifying it against its recorded SHA-256.
+
+    Shared by render_glyphs (the HUD glyph subset) and render_attract_costumes (the
+    attract text lines): both crop the same credited sheet, so both must see the same
+    integrity check and the same decoded pixels."""
+    record = manifest["font_sheet"]
+    sheet_path = FONT_DIR / record["asset"]
     try:
         sheet_bytes = sheet_path.read_bytes()
     except OSError as exc:
         raise HudGlyphsError(f"cannot read font sheet {sheet_path}: {exc}") from exc
     actual_hash = se._sha256(sheet_bytes)
-    if actual_hash != sheet_record["sha256"]:
+    if actual_hash != record["sha256"]:
         raise HudGlyphsError(
-            f"font sheet hash changed: expected {sheet_record['sha256']}, found {actual_hash}"
+            f"font sheet hash changed: expected {record['sha256']}, found {actual_hash}"
         )
-    sheet = se.decode_png(sheet_bytes, "HUD font sheet")
+    return se.decode_png(sheet_bytes, "HUD font sheet")
+
+
+def render_glyphs(manifest: dict) -> list[GlyphOutput]:
+    validate_manifest(manifest)
+    sheet = _load_font_sheet(manifest)
     canvas = tuple(manifest["cell_canvas"])
     anchor = tuple(manifest["cell_anchor"])
     factor = manifest["downscale"]
@@ -475,63 +487,20 @@ def render_life_icon(manifest: dict) -> LifeIconOutput:
     return LifeIconOutput(life_icon["name"], f"{se._md5(png)}.png", png, canvas, anchor)
 
 
-def _upscale_nearest(image: se.Image, factor: int) -> se.Image:
-    if factor < 1:
-        raise HudGlyphsError("upscale factor must be >= 1")
-    new_width = image.width * factor
-    new_height = image.height * factor
-    pixels = [
-        image.pixel(x // factor, y // factor)
-        for y in range(new_height)
-        for x in range(new_width)
-    ]
-    return se.Image(new_width, new_height, tuple(pixels))
-
-
-def render_font_costume(name: str, lines: tuple[str, ...]) -> CreditOutput:
-    """Compose one costume of centered port-font text lines from the built-in CREDIT_FONT.
-
-    The single compositor for every port-generated text overlay — the SEC-03 hidden-credit
-    (render_credit) and the CAB-01 attract displays (render_attract_costumes). All are the
-    port's OWN content rendered in a self-contained pixel font, NOT arcade art and NOT the
-    arcade HUD font crops (see the CREDIT_* block above). A missing glyph fails loudly so a
-    reworded overlay never silently drops a letter."""
-    cell_w = CREDIT_GLYPH_W + CREDIT_GLYPH_GAP
-    line_h = CREDIT_GLYPH_H + CREDIT_LINE_GAP
-    for line in lines:
-        for char in line:
-            if char not in CREDIT_FONT:
-                raise HudGlyphsError(
-                    f"overlay text {name!r} needs glyph {char!r}, which has no CREDIT_FONT entry"
-                )
-
-    def line_width(line: str) -> int:
-        # each glyph occupies its 5 columns plus a trailing gap, minus the final gap
-        return max(0, len(line) * cell_w - CREDIT_GLYPH_GAP)
-
-    base_width = max(line_width(line) for line in lines)
-    base_height = len(lines) * line_h - CREDIT_LINE_GAP
-    pixels = [CREDIT_TRANSPARENT] * (base_width * base_height)
-    for row, line in enumerate(lines):
-        x_start = (base_width - line_width(line)) // 2  # center each line horizontally
-        y_start = row * line_h
-        for col, char in enumerate(line):
-            glyph = CREDIT_FONT[char]
-            gx = x_start + col * cell_w
-            for gy in range(CREDIT_GLYPH_H):
-                pattern = glyph[gy]
-                for px in range(CREDIT_GLYPH_W):
-                    if pattern[px] == "#":
-                        pixels[(y_start + gy) * base_width + (gx + px)] = CREDIT_INK
-    base = se.Image(base_width, base_height, tuple(pixels))
-    scaled = _upscale_nearest(base, CREDIT_SCALE)
-    png = se.encode_png(scaled)
-    return CreditOutput(name, f"{se._md5(png)}.png", png, scaled.width, scaled.height)
-
-
-def render_credit() -> CreditOutput:
-    """Compose the two-line hidden-credit overlay bitmap (SEC-03) from the built-in port font."""
-    return render_font_costume(CREDIT_COSTUME_NAME, CREDIT_TEXT_LINES)
+def render_credit(sheet: se.Image, threshold: int) -> CreditOutput:
+    """Compose the two-line hidden-credit overlay bitmap (SEC-03) from the high-res Xevious HUD
+    font sheet — the same sheet and compositor as the attract text, at the smaller SEC-03 cell
+    so the widest line ("BY STARSHIP SUPERJAM") stays within the 480 px stage. The wording is the
+    port's own original content; only the letterforms are the credited CC-BY font."""
+    return render_sheet_text_costume(
+        sheet,
+        threshold,
+        CREDIT_COSTUME_NAME,
+        CREDIT_TEXT_LINES,
+        glyph_gap=SHEET_CREDIT_GLYPH_GAP,
+        line_gap=SHEET_CREDIT_LINE_GAP,
+        downscale=SHEET_CREDIT_DOWNSCALE,
+    )
 
 
 def _load_best_five() -> tuple[list[str], list[int]]:
@@ -561,22 +530,82 @@ def _best_five_row(rank: int, initials: str, score: int) -> str:
     return f"{rank}  {initials}  {score}"
 
 
-def render_attract_costumes() -> list[CreditOutput]:
-    """The CAB-01 attract-screen overlays on the start_screen target, in the port font.
+def render_sheet_text_costume(
+    sheet: se.Image,
+    threshold: int,
+    name: str,
+    lines: tuple[str, ...],
+    *,
+    cell_w: int = SHEET_TEXT_CELL_W,
+    cell_h: int = SHEET_TEXT_CELL_H,
+    glyph_gap: int = SHEET_TEXT_GLYPH_GAP,
+    line_gap: int = SHEET_TEXT_LINE_GAP,
+    downscale: int = SHEET_TEXT_DOWNSCALE,
+) -> CreditOutput:
+    """Compose one costume of centered text lines from the high-res Xevious HUD font sheet.
+
+    The single compositor for every sheet-font overlay — the CAB-01 attract text
+    (render_attract_costumes, at the default attract geometry) and the SEC-03 hidden credit
+    (render_credit, at a smaller cell so its longest line stays on-stage). Each glyph is
+    cropped from the credited sheet by its SHEET_TEXT_RECTS entry, placed in a fixed monospace
+    cell — centered horizontally, bottom-aligned to a shared baseline — and the assembled lines
+    are decimated by `downscale`. Monospace so the best-five columns align; a space is one empty
+    advance. A character with no rect fails loudly so a reworded overlay never silently drops a
+    glyph (the sheet only lacks lowercase, which these strings never use)."""
+    for line in lines:
+        for char in line:
+            if char != " " and char not in SHEET_TEXT_RECTS:
+                raise HudGlyphsError(
+                    f"overlay text {name!r} needs glyph {char!r}, which has no SHEET_TEXT_RECTS entry"
+                )
+    advance = cell_w + glyph_gap
+    line_pitch = cell_h + line_gap
+
+    def line_width(line: str) -> int:
+        return max(0, len(line) * advance - glyph_gap)
+
+    base_width = max(line_width(line) for line in lines)
+    base_height = len(lines) * line_pitch - line_gap
+    pixels = [CREDIT_TRANSPARENT] * (base_width * base_height)
+    for row, line in enumerate(lines):
+        x_start = (base_width - line_width(line)) // 2  # center each line horizontally
+        y_start = row * line_pitch
+        for col, char in enumerate(line):
+            if char == " ":
+                continue
+            crop = _binarize_glyph(sheet, tuple(SHEET_TEXT_RECTS[char]), threshold, CREDIT_INK)
+            cx = x_start + col * advance + (cell_w - crop.width) // 2
+            cy = y_start + (cell_h - crop.height)  # bottom-align to the baseline
+            for gy in range(crop.height):
+                for gx in range(crop.width):
+                    pixel = crop.pixel(gx, gy)
+                    if pixel[3]:
+                        pixels[(cy + gy) * base_width + (cx + gx)] = pixel
+    base = se.Image(base_width, base_height, tuple(pixels))
+    scaled = _downscale_nearest(base, downscale)
+    png = se.encode_png(scaled)
+    return CreditOutput(name, f"{se._md5(png)}.png", png, scaled.width, scaled.height)
+
+
+def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutput]:
+    """The CAB-01 attract-screen overlays on the start_screen target, in the Xevious HUD font.
 
     Digit costumes drive the live credit counter (title_blocks switches a digit clone to
     `digit/<n>` each tick); the CREDIT / PUSH START / INSERT COIN labels and the default
-    best-five table are static. All project-original (the arcade HUD font lacks these
-    glyphs; the best-five initials are the operator's placeholders, not the ROM strings)."""
-    outputs = [render_font_costume(f"digit/{d}", (str(d),)) for d in range(10)]
+    best-five table are static. Rendered from the same credited HUD font sheet the score/label
+    readouts use (render_sheet_text_costume); the best-five initials are the operator's
+    placeholders (ATTRACT_DEFAULT_INITIALS), not the ROM's default name strings."""
+    outputs = [
+        render_sheet_text_costume(sheet, threshold, f"digit/{d}", (str(d),)) for d in range(10)
+    ]
     for name, text in ATTRACT_LABELS:
-        outputs.append(render_font_costume(name, (text,)))
+        outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,)))
     initials, scores = _load_best_five()
     rows = tuple(
         _best_five_row(rank, ini, score)
         for rank, (ini, score) in enumerate(zip(initials, scores), start=1)
     )
-    outputs.append(render_font_costume(ATTRACT_BEST_FIVE_NAME, rows))
+    outputs.append(render_sheet_text_costume(sheet, threshold, ATTRACT_BEST_FIVE_NAME, rows))
     return outputs
 
 
@@ -592,40 +621,44 @@ def _credit_costume(output: CreditOutput) -> dict:
     }
 
 
-def _overlay_credit_record(output: CreditOutput) -> dict:
+def _overlay_credit_record(manifest: dict, output: CreditOutput) -> dict:
+    sheet = manifest["font_sheet"]
     return {
         "origin": (
-            "Original two-line hidden-credit overlay rendered by tools/hud_glyphs.py "
-            "in a port-generated 5x7 pixel font (render_credit); not derived from any "
-            "third-party source"
+            f"Hidden-credit overlay '{output.name}' (SEC-03) composited by tools/hud_glyphs.py "
+            f"(render_credit) from {sheet['source']}"
         ),
-        "license": "Project-original (no third-party source)",
+        "license": sheet["license"],
         "notes": (
-            f"The repository operator's own content: {' / '.join(CREDIT_TEXT_LINES)}. "
-            "NOT arcade art and NOT the arcade str_program_by_EVEZOO credit; the port's "
-            f"own placeholder wording. {CREDIT_SCALE}x nearest-neighbor upscale of the "
-            "built-in CREDIT_FONT, white ink on transparent, bitmapResolution 1."
+            f"Credit: {sheet['credit']}. The repository operator did not create the font. "
+            f"Source {sheet['asset']} at SHA-256 {sheet['sha256']}; glyphs cropped by "
+            f"SHEET_TEXT_RECTS, laid out on a {SHEET_TEXT_CELL_W}px monospace cell and "
+            f"{SHEET_CREDIT_DOWNSCALE}x nearest-neighbor decimated, white ink on transparent, "
+            "bitmapResolution 1. The two-line WORDING is the repository operator's own content: "
+            f"{' / '.join(CREDIT_TEXT_LINES)} — NOT arcade art and NOT the arcade "
+            "str_program_by_EVEZOO credit; the port's own placeholder text set in the credited font."
         ),
     }
 
 
-def _overlay_attract_record(output: CreditOutput) -> dict:
+def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
+    sheet = manifest["font_sheet"]
     return {
         "origin": (
-            "Original attract-screen text overlay rendered by tools/hud_glyphs.py in a "
-            "port-generated 5x7 pixel font (render_attract_costumes); not derived from any "
-            "third-party source"
+            f"Attract-screen text overlay '{output.name}' composited by tools/hud_glyphs.py "
+            f"(render_attract_costumes) from {sheet['source']}"
         ),
-        "license": "Project-original (no third-party source)",
+        "license": sheet["license"],
         "notes": (
-            f"Port attract display costume '{output.name}' on the start_screen target. NOT "
-            "arcade art and NOT the arcade HUD font crops: the credit-counter digits, the "
-            "CREDIT / PUSH START / INSERT COIN prompts, and the project-original default "
-            "best-five table (initials from the ATTRACT_DEFAULT_INITIALS source constant, the "
-            "operator's placeholders, NOT the ROM default name strings; paired with the arcade "
-            "default scores from docs/spec/data/scores.json). "
-            f"{CREDIT_SCALE}x nearest-neighbor upscale of the built-in CREDIT_FONT, white ink "
-            "on transparent, bitmapResolution 1."
+            f"Credit: {sheet['credit']}. The repository operator did not create the font. "
+            f"Source {sheet['asset']} at SHA-256 {sheet['sha256']}; glyphs cropped by "
+            f"SHEET_TEXT_RECTS, laid out on a {SHEET_TEXT_CELL_W}px monospace cell and "
+            f"{SHEET_TEXT_DOWNSCALE}x nearest-neighbor decimated, white ink on transparent, "
+            "bitmapResolution 1. Costumes on the start_screen target: the credit-counter digits, "
+            "the CREDIT / PUSH START / INSERT COIN prompts, and the default best-five table "
+            "(initials from the ATTRACT_DEFAULT_INITIALS source constant, the operator's "
+            "placeholders, NOT the ROM default name strings; paired with the arcade default "
+            "scores from docs/spec/data/scores.json)."
         ),
     }
 
@@ -1011,8 +1044,10 @@ def _expected_state() -> tuple[
     life_output = render_life_icon(manifest)
     sound, sound_bytes, sound_filename = render_extend_sound(manifest)
     game_sounds = render_game_sounds()
-    credit_output = render_credit()
-    attract_outputs = render_attract_costumes()
+    sheet = _load_font_sheet(manifest)
+    threshold = manifest["glyph_threshold"]
+    credit_output = render_credit(sheet, threshold)
+    attract_outputs = render_attract_costumes(sheet, threshold)
     prior_outputs = set(_prior_output_records())
     current_project = _read_json(PROJECT_PATH)
     project_bytes = se._ordered_json_bytes(
@@ -1053,9 +1088,9 @@ def _expected_state() -> tuple[
     assets[sound_filename] = _overlay_sound_record(manifest, sound_filename)
     for output in game_sounds:
         assets[output.filename] = _overlay_game_sound_record(output)
-    assets[credit_output.filename] = _overlay_credit_record(credit_output)
+    assets[credit_output.filename] = _overlay_credit_record(manifest, credit_output)
     for output in attract_outputs:
-        assets[output.filename] = _overlay_attract_record(output)
+        assets[output.filename] = _overlay_attract_record(manifest, output)
     assets = dict(sorted(assets.items()))
     overlay_bytes = se._ordered_json_bytes({"version": 1, "assets": assets})
     derivative_provenance_bytes = se._ordered_json_bytes(

@@ -221753,7 +221753,7 @@
               1,
               [
                 4,
-                -52
+                -40
               ]
             ],
             "Y": [
@@ -221849,7 +221849,7 @@
               1,
               [
                 4,
-                44
+                108
               ]
             ],
             "Y": [
@@ -221945,7 +221945,7 @@
               1,
               [
                 4,
-                26
+                81
               ]
             ],
             "Y": [
@@ -223233,127 +223233,127 @@
           "name": "digit/0",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "f55752da33442c0972b74106fdb463c3",
-          "md5ext": "f55752da33442c0972b74106fdb463c3.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "cbf90468afb2dabb97cbf1df898cd95f",
+          "md5ext": "cbf90468afb2dabb97cbf1df898cd95f.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/1",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "aabcf248fb300f65689237cf8e2e7205",
-          "md5ext": "aabcf248fb300f65689237cf8e2e7205.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "b0608508202b4397dc189274fcca80e1",
+          "md5ext": "b0608508202b4397dc189274fcca80e1.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/2",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "52ccf3c6f6355c8ae886df1cd0c7c33d",
-          "md5ext": "52ccf3c6f6355c8ae886df1cd0c7c33d.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "a233dc7ba98dac275bf399e4561b5da9",
+          "md5ext": "a233dc7ba98dac275bf399e4561b5da9.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/3",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "a3097e53637a726768eb44a96f39e867",
-          "md5ext": "a3097e53637a726768eb44a96f39e867.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "09dca855bb94485eee48db4ba2e094f5",
+          "md5ext": "09dca855bb94485eee48db4ba2e094f5.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/4",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "66804e059730a8950c4db1bec37bd62e",
-          "md5ext": "66804e059730a8950c4db1bec37bd62e.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "fe1aa016a3a1d92ccb63844421849e0d",
+          "md5ext": "fe1aa016a3a1d92ccb63844421849e0d.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/5",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "fe608d76fe8959a0f98ea4edcaa08961",
-          "md5ext": "fe608d76fe8959a0f98ea4edcaa08961.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "af3408847196a388f672ebccc936329c",
+          "md5ext": "af3408847196a388f672ebccc936329c.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/6",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "12099fba27f77b99ad484943bfeb20d3",
-          "md5ext": "12099fba27f77b99ad484943bfeb20d3.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "3c47eae3a7644d9ac07a0fdbf24b77ba",
+          "md5ext": "3c47eae3a7644d9ac07a0fdbf24b77ba.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/7",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "559579afe6d66a801714f6502e2baa90",
-          "md5ext": "559579afe6d66a801714f6502e2baa90.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "e99219178b188a992e565a8612a4718c",
+          "md5ext": "e99219178b188a992e565a8612a4718c.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/8",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "663496d9b5920e38535fee4bde6c30ff",
-          "md5ext": "663496d9b5920e38535fee4bde6c30ff.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "f58953535c4ad299bfd50ecdec6e333b",
+          "md5ext": "f58953535c4ad299bfd50ecdec6e333b.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "digit/9",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "e5a5be1fcc20c8480e11271505470f08",
-          "md5ext": "e5a5be1fcc20c8480e11271505470f08.png",
-          "rotationCenterX": 7,
-          "rotationCenterY": 10
+          "assetId": "280e8021ad8e300ce17d6b75447f1fa7",
+          "md5ext": "280e8021ad8e300ce17d6b75447f1fa7.png",
+          "rotationCenterX": 12,
+          "rotationCenterY": 12
         },
         {
           "name": "credit-label",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "8db224654904a0dc1d850c68b7e388cf",
-          "md5ext": "8db224654904a0dc1d850c68b7e388cf.png",
-          "rotationCenterX": 52,
-          "rotationCenterY": 10
+          "assetId": "9d107e0867ae1298021fc7677a109508",
+          "md5ext": "9d107e0867ae1298021fc7677a109508.png",
+          "rotationCenterX": 80,
+          "rotationCenterY": 12
         },
         {
           "name": "push-start",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "fe2cb2790a178a43913d7118dfdd08b5",
-          "md5ext": "fe2cb2790a178a43913d7118dfdd08b5.png",
-          "rotationCenterX": 88,
-          "rotationCenterY": 10
+          "assetId": "3cf858979f5b1e740c8b4466e2e9020c",
+          "md5ext": "3cf858979f5b1e740c8b4466e2e9020c.png",
+          "rotationCenterX": 134,
+          "rotationCenterY": 12
         },
         {
           "name": "insert-coin",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "3b0808386f291290e262bf8d8b28976a",
-          "md5ext": "3b0808386f291290e262bf8d8b28976a.png",
-          "rotationCenterX": 97,
-          "rotationCenterY": 10
+          "assetId": "2bee762948b0f7d96692a50fa5ad0a38",
+          "md5ext": "2bee762948b0f7d96692a50fa5ad0a38.png",
+          "rotationCenterX": 147,
+          "rotationCenterY": 12
         },
         {
           "name": "best-five",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "b54c09ad7f9581c9c189e5d60ec2da32",
-          "md5ext": "b54c09ad7f9581c9c189e5d60ec2da32.png",
-          "rotationCenterX": 115,
-          "rotationCenterY": 64
+          "assetId": "15aca2d5855be4482b716580cbe14575",
+          "md5ext": "15aca2d5855be4482b716580cbe14575.png",
+          "rotationCenterX": 174,
+          "rotationCenterY": 72
         }
       ],
       "sounds": [
@@ -253307,10 +253307,10 @@
           "name": "credit",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "dbf5ac47ae66759af3a212c0240c1c14",
-          "md5ext": "dbf5ac47ae66759af3a212c0240c1c14.png",
-          "rotationCenterX": 178,
-          "rotationCenterY": 24
+          "assetId": "4db3bb63b8e8f84b713b9c2c33b67562",
+          "md5ext": "4db3bb63b8e8f84b713b9c2c33b67562.png",
+          "rotationCenterX": 219,
+          "rotationCenterY": 22
         }
       ],
       "sounds": [],

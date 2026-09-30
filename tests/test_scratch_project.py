@@ -289,18 +289,24 @@ class ScratchProjectTests(unittest.TestCase):
         # gameplay-SFX wavs (AUDIO: the real air_destroy / ground_destroy / zakato-teleport / garu_zakato /
         # bacura / sheonite / bonus_flag cues, committed under assets/game-sounds/ and attached to the Stage by
         # tools/hud_glyphs.py; see docs/mechanics/040-arcade-sound-cues.md) + the 1 generated hidden-credit
-        # overlay PNG (SEC-03; the port's own two-line credit rendered by tools/hud_glyphs.py in a
-        # port-generated pixel font, attached to the easter-egg target — the first fully port-original asset)
+        # overlay PNG (SEC-03; the port's own two-line credit WORDING rendered by tools/hud_glyphs.py from the
+        # credited CC-BY Xevious HUD font sheet, attached to the easter-egg target)
         # + the 17 Andor Genesis part PNGs (BOSS-01: 9 armor plates + 4 gun ports + 4 core flip-orientation
         # costumes, the last four derived by deterministic transpose of one credited core crop) and the Andor
         # source sheet itself, which the sprite_sheets reference target displays whole (so it counts once)
         # + the 4 Bragza fly PNGs (BOSS-03: the destroyed core's fly-up form, handle_Bragza codes 0xb8..0xbb
         # at CLUT 0x15; swapping the source sheet for the taller 96x128 Bragza-bearing render is net-zero on
         # the count, so slice 16 adds exactly the 4 new crops)
-        # + the 14 slice-17 CAB-01 attract-overlay PNGs on start_screen (10 credit-counter digits + the
-        # CREDIT / PUSH START / INSERT COIN labels + the best-five table), all rendered by tools/hud_glyphs.py
-        # in the port-generated 5x7 font — project-original, distinct from the HUD glyph crops.
-        self.assertEqual(221, len(assets))
+        # + the 4 NEW slice-17 CAB-01 attract-overlay PNGs on start_screen (the CREDIT / PUSH START /
+        # INSERT COIN labels + the best-five table), rendered by tools/hud_glyphs.py from the SAME credited
+        # Xevious HUD font sheet as the HUD readouts (extra glyphs cropped via SHEET_TEXT_RECTS); the
+        # prompt/initials CONTENT is project-original. The 10 attract credit-counter digits are NOT new
+        # assets: rendered from the same sheet with the same digit crops as the HUD score digits, they are
+        # byte-identical PNGs and dedup to the HUD's own digit files (content-addressed naming, the same
+        # harmless consequence as the O/0 share in docs/mechanics/010) — so slice 17 adds exactly 4 distinct
+        # attract PNGs, not 14. (Count fell 221 -> 211 when SEC-03 + attract text moved onto the one credited
+        # font: the 10 digit costumes stopped being their own port-font PNGs and now reuse the HUD digits.)
+        self.assertEqual(211, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -16415,10 +16421,10 @@ class ScratchProjectTests(unittest.TestCase):
         # live as a source constant (hud_glyphs.ATTRACT_DEFAULT_INITIALS) — NOT in the
         # reference-extracted, digest-guarded docs/spec/data/scores.json (that file is decode-only
         # and carries only the reference-derived default scores the initials pair with). Pin them
-        # paired one-for-one with those scores, and pin that every glyph they use has a port-font
-        # (CREDIT_FONT) entry — the "unknown glyph fails loudly" font-coverage guard.
+        # paired one-for-one with those scores, and pin that every glyph they use has a Xevious HUD
+        # font sheet crop (SHEET_TEXT_RECTS) — the "unknown glyph fails loudly" font-coverage guard.
         # roadmap-evidence: CAB-01 success  (the default best-five initials are present as a
-        #   project-original constant, paired with the arcade scores, and fully covered by the port font)
+        #   project-original constant, paired with the arcade scores, and fully covered by the Xevious HUD font sheet)
         data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
         scores = data["tables"]["high_score_defaults"]["scores"]
         # The initials are project-original: they must NOT have leaked into the reference data file.
@@ -16439,8 +16445,8 @@ class ScratchProjectTests(unittest.TestCase):
             for glyph in entry:
                 self.assertIn(
                     glyph,
-                    hud_glyphs.CREDIT_FONT,
-                    f"initials glyph {glyph!r} has no CREDIT_FONT entry (would render nothing)",
+                    hud_glyphs.SHEET_TEXT_RECTS,
+                    f"initials glyph {glyph!r} has no SHEET_TEXT_RECTS entry (would render nothing)",
                 )
 
     @staticmethod
@@ -17886,7 +17892,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "cb517fbb144d0492e85d8f8d9e9cfa8614cf0c95d679f9b426f7d66a2be8aedd",
+            "be562103ed8622cc050dac8bb59e9dbec2e1a22483cc158cdf62f5bedd8adbe7",
             build_hash,
         )
 

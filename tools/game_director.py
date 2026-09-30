@@ -1037,11 +1037,15 @@ ATTRACT_ROLE_BEST_FIVE = 4  # the static default best-five table
 ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
 # Project-defined placement (stage -240..240 x, -180..180 y, +y up); the operator fine-tunes exact
 # placement at playtest, exactly as the ECO-02 HUD layout notes (no reference basis for the port's own
-# credit-line/best-five geometry — the arcade layout does not carry over to the port font).
-ATTRACT_CREDIT_LABEL_X = -52
+# credit-line/best-five geometry — the arcade layout does not carry over to the port's text rendering).
+# The credit line reads "CREDIT NN" as one centred monospace group: the static "CREDIT" label spans
+# cells 0-5, cell 6 is the space, and the two live digit clones sit at cells 7-8. With the Xevious HUD
+# font (hud_glyphs SHEET_TEXT_*: 25px cell, 27px pitch), that group is centred on x=0 with the label at
+# -40 (its 160px costume's centre over cells 0-5) and the units/tens digits at +108 / +81.
+ATTRACT_CREDIT_LABEL_X = -40
 ATTRACT_CREDIT_LINE_Y = -150
-ATTRACT_CREDIT_DIGIT_UNITS_X = 44  # place 0 (units); each higher place sits one spacing to its left
-ATTRACT_CREDIT_DIGIT_SPACING = 18
+ATTRACT_CREDIT_DIGIT_UNITS_X = 108  # place 0 (units); each higher place sits one pitch to its left
+ATTRACT_CREDIT_DIGIT_SPACING = 27  # one monospace pitch (SHEET_TEXT advance 108 / downscale 4)
 ATTRACT_PROMPT_X = 0
 ATTRACT_PROMPT_Y = -120
 ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
