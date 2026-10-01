@@ -51,11 +51,13 @@ top of that player's current area (the death-restart rule in
 high-score check runs; the survivor plays on. When both are out, the combined GAME OVER shows, state
 returns to player 1, and the cabinet resumes attract (556–591).
 
-**High-score entry (CAB-04).** A score beating fifth place in the best-five table enters initials: ten
+**High-score entry (CAB-04).** A score reaching or beating fifth place in the best-five table enters
+initials (a score tying the fifth entry still places, shifting it down): ten
 characters from a 27-symbol set (A–Z and space, wrapping both directions; a lowercase variant exists
 behind a DIP bit recorded as uncertain in practical reach), with entry auto-completing on the tenth
-character or on an idle timeout of roughly 68 seconds (derived from the compound frame gating,
-medium-confidence) (`check_for_high_score` through name entry 1618–1793). Insertion shifts lower entries
+character or when a fixed overall time limit of roughly 68 seconds — counted from when entry begins and
+**not** reset by input — runs out (derived from the compound frame gating, medium-confidence)
+(`check_for_high_score` through name entry 1618–1793). Insertion shifts lower entries
 down; the table always holds exactly five. Table values and defaults are owned by
 [Scoring, lives, and game over](scoring-lives-and-game-over.md). Pause and persistent high-score storage are port
 conveniences in the reference and are excluded (catalog EX-05) — a power cycle starts fresh, like the cabinet.

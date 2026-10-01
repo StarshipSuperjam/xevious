@@ -75,7 +75,8 @@ and the flashing 1UP/2UP indicator for the active player (`display_player_scores
 737–767). Displayed values always match internal state.
 
 **Game over (ECO-04).** Losing the last craft first runs the high-score check
-(`check_for_high_score` 1618–1672): the five-entry best-five table admits any score beating fifth place,
+(`check_for_high_score` 1618–1672): the five-entry best-five table admits any score reaching or beating
+fifth place (a score tying the fifth entry still places, at `move_high_score_entry_down`),
 shifting lower entries down; a qualifying score enters the initials screen
 ([Cabinet flow](cabinet-flow.md)); a non-qualifying score goes straight to GAME OVER. The GAME OVER
 message holds 128 frames (~2.1 s, `game_over` 549–591) before the cabinet returns to attract. In a

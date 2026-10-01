@@ -179,7 +179,15 @@ temporary `G` (playtest-only, issue #119) does the same for the built ground fam
 band from the top and advancing to the next only after the current one scrolls off or is bombed (Barra →
 Zolbak → … → Boza Logram → wrap), and while either `T` or `G` is held the normal enemy stream is suppressed so
 only the debug family is on screen; a temporary `P` (playtest-only, issue #119) is a freeze/resume toggle —
-a tap freezes the tick for a screenshot, a second tap resumes. A rebinding is a spec amendment.
+a tap freezes the tick for a screenshot, a second tap resumes. On the **high-score initials-entry screen**
+(reached when a finished game's score qualifies for the five-entry table — see [Cabinet flow](cabinet-flow.md)),
+the **up/down arrows scroll the current initial** through the 27-symbol set (A–Z and space, wrapping both ways)
+and **Space confirms the current letter and advances to the next of the ten cells**; entry is forward-only (no
+cursor-back or rubout) and **auto-completes on the tenth letter or when a fixed overall time limit (about 68
+seconds, counted from when entry begins and not reset by input) runs out** (a control remap recorded like the
+`C` coin key — the arcade cycled letters with the joystick left/right and committed with the fire button; this
+port remaps that to the up/down scroll + Space-commit idiom, the same up/down axis as the title 1P/2P selector,
+chosen for consistency with that selector). A rebinding is a spec amendment.
 
 ## Acceptance criteria
 
