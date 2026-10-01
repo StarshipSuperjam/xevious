@@ -1142,6 +1142,44 @@ ATTRACT_SELECTOR_X = 0
 ATTRACT_SELECTOR_1P_Y = -72  # stacked above the PUSH START prompt (-118), below the centred logo
 ATTRACT_SELECTOR_2P_Y = -94  # one ~22px line-pitch below the 1P label (16px glyph + gap)
 ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed (selected) option
+# CAB-04 (cabinet.high-scores, slice 19): the initials-entry screen. A NEW `game state` the game-over
+# routing enters when a score ranks in. The player cycles the active letter with Up/Down over a 27-symbol
+# ring (A-Z then space, wrapping both ways) and commits each with Space — forward-only, no cursor-back,
+# matching the arcade (xevious_main.68k:1736-1795). Four new start_screen clone roles dress the screen: the
+# CONGRATULATIONS header, the ENTER YOUR INITIALS sub-header, the PLAYER-n tag (two-player only), and ten
+# name cells that render the in-progress `name buffer` a letter at a time (the per-glyph idiom the live
+# best-five table uses). The active cell ghost-pulses off the entry timer, so the cursor is visible without
+# a new cursor glyph.
+HIGH_SCORE_ENTRY_STATE = "high-score-entry"
+ENTRY_RING = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "  # 27 symbols: A-Z (ring 1..26) then space (ring 27)
+ENTRY_RING_SIZE = 27
+ENTRY_NAME_LEN = 10  # ten characters (move.b #10,(name_entry_char_cnt) xevious_main.68k:1700; name field ds.b 10)
+# A fixed TOTAL countdown armed once at entry start and decremented one per frame — NOT an idle reset: the
+# reference seeds countdown_timer_1 = 0x80 once (xevious_main.68k:1701) and decrements it unconditionally
+# every 32 frames at 60fps (:1721-1728), with no input path (:1736-1781) resetting it. 0x80 * 32 / 60 ~= 68s.
+# The port halves arcade frame counts to its 30fps ticks (one port tick == two arcade frames, like
+# BANNER_HOLD_TICKS), so the faithful port count is 4096 / 2 = 2048 frames ~= 68s at the 30fps step. The
+# countdown loop paces one decrement per frame (a wait-0 per iteration), so this is that frame count.
+ENTRY_TIMEOUT_FRAMES = 2048
+ENTRY_PULSE_DIV = 8  # active-cell ghost pulse half-period in frames (floor(entry timer / 8) parity)
+ENTRY_PULSE_GHOST = 50  # ghost amount on the pulse's "off" half (the cursor dims, never vanishes)
+ATTRACT_ROLE_ENTRY_NAME = 10  # one initials-entry name cell (place 1..10)
+ATTRACT_ROLE_ENTRY_HEADER = 11  # the CONGRATULATIONS header
+ATTRACT_ROLE_ENTRY_SUBHEADER = 12  # the ENTER YOUR INITIALS sub-header
+ATTRACT_ROLE_ENTRY_PLAYER = 13  # the PLAYER-n tag (two-player only)
+ATTRACT_COSTUME_ENTRY_HEADER = "entry-congrats"
+ATTRACT_COSTUME_ENTRY_SUBHEADER = "entry-initials"
+ATTRACT_COSTUME_ENTRY_PLAYER_1 = "entry-player-1"
+ATTRACT_COSTUME_ENTRY_PLAYER_2 = "entry-player-2"
+# Entry-screen placement (project-defined, operator-tunable at playtest exactly like the rest of the attract
+# geometry — the resolver pins only the structure, never the pixels). The ten name cells sit on one centred
+# monospace line at the SMALL_TEXT_GEOM pitch, with the two headers and the PLAYER-n tag stacked above.
+ATTRACT_ENTRY_HEADER_Y = 110
+ATTRACT_ENTRY_SUBHEADER_Y = 78
+ATTRACT_ENTRY_PLAYER_Y = 40
+ATTRACT_ENTRY_CELLS_Y = -20
+ATTRACT_ENTRY_CELL_PITCH_X = 17  # SMALL_TEXT_GEOM advance (119 native / downscale 7), matching the table
+ATTRACT_ENTRY_CENTER_CELL = 4.5  # the ten cells (0..9) are centred on x=0
 # CAB-03 (cabinet.two-player, slice 18): two-player alternation state. `curr player` (0/1) is the active
 # player index; `two player` (0/1) marks a two-player game. Both are director-control state the HUD READS
 # (the 1UP/2UP label + column, the 2UP-row gating) but NO sprite writes — write-forbidden below, exactly
@@ -10262,6 +10300,68 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.chain(space, [blocks.if_state("title", [one_player_start, two_player_start])])
 
+    # CAB-04 (slice 19): the initials-entry input. Each hat is gated `if_state("high-score-entry")`, the
+    # isolation that keeps it from colliding with the title selector (title-gated, above) or the craft
+    # movement (playing-gated, in solvalou_blocks) — Scratch fires every matching hat, so the state gate is
+    # what makes these fire only on the entry screen. Up/Down cycle the active letter over the 27-symbol ring
+    # (A-Z then space), wrapping both ways: Scratch's operator_mod is a floored mod, so (char - 1) mod 27 of 0
+    # is 26 (space) and (char + 1) mod 27 of 26 is 0 (A), giving the arcade's both-way wrap at the ring limits
+    # (xevious_main.68k:1736-1744,1773-1781) in one expression.
+    for key, delta in (("up arrow", 1), ("down arrow", -1)):
+        arrow = blocks.key(key)
+        blocks.chain(
+            arrow,
+            [
+                blocks.if_state(
+                    HIGH_SCORE_ENTRY_STATE,
+                    [
+                        blocks.set_var_expr(
+                            "entry char",
+                            ENTRY_CHAR_ID,
+                            blocks.op_mod(
+                                blocks.op_add(
+                                    variable("entry char", ENTRY_CHAR_ID), number(delta)
+                                ),
+                                number(ENTRY_RING_SIZE),
+                            ),
+                        )
+                    ],
+                )
+            ],
+        )
+
+    # Space commits the active letter. The ring is 1-based for letter-of (entry char 0 -> letter 1 = 'A'), so
+    # append letter (entry char + 1) of the ring to `name buffer`; a space (ring index 26 -> letter 27) appends
+    # a blank advance, which the name cells render as nothing (the sheet font has no space glyph) — faithful to
+    # the forward-only cursor that can advance past a space. Advance the cursor, reset the active letter to 'A'
+    # for the next cell, and finish on the tenth committed character (append_char advances the pointer and ends
+    # at the tenth, :1745-1769). `name buffer` is a plain string, so the append is a join and the compositor
+    # reads it a letter at a time. `change entry cell by 1` is used (NOT `set entry cell = add(...)`): a
+    # `set var = operator(...)` value-input is left unread by the runtime, `change ... by` evaluates.
+    entry_space = blocks.key("space")
+    entry_commit = [
+        blocks.set_var_expr(
+            "name buffer",
+            ENTRY_NAME_BUFFER_ID,
+            blocks.op_join(
+                variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                blocks.op_letter_of(
+                    blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                    text(ENTRY_RING),
+                ),
+            ),
+        ),
+        blocks.change_var("entry cell", ENTRY_CELL_ID, 1),
+        blocks.set_var("entry char", ENTRY_CHAR_ID, number(0)),
+        blocks.if_reporter(
+            blocks.op_not(
+                blocks.op_lt(variable("entry cell", ENTRY_CELL_ID), number(ENTRY_NAME_LEN))
+            ),
+            _high_score_finish(blocks),
+        ),
+    ]
+    blocks.chain(entry_space, [blocks.if_state(HIGH_SCORE_ENTRY_STATE, entry_commit)])
+
     # AUDIO: sound-only receiver for the shot×Bacura bounce. The bounce runs on a blaster clone
     # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
     # and the Stage plays BACURA_HIT_SND here (src deactivate_shot xevious_main.68k:2559).
@@ -10452,6 +10552,39 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
     blocks.chain(attract_enter, [attract_snapshot, title_hold, scores_hold])
+
+    # CAB-04 (slice 19): the fixed TOTAL entry countdown — its own `director enter` receiver (the attract-hold
+    # pattern). On entering high-score-entry it counts `entry timer` (armed by the entry-scope reset) down one
+    # per frame and finishes when it reaches zero, committing whatever was typed (name_entry_finished
+    # xevious_main.68k:1757-1769). It is NOT idle-reset: no input path touches `entry timer`, so the ~68s is
+    # fixed from entry start. The loop paces real frames (a wait-0 per iteration, the hold_frames idiom) and is
+    # safe to pace here — the Stage walk runs only while `playing`, so outside play there is nothing to
+    # throttle. The `broadcast and wait` inside `_high_score_finish` runs in this non-warp thread (the coin-abort
+    # precedent). The loop exits the moment the state leaves high-score-entry — on this finish, or on the Space
+    # hat's tenth-char finish — so there is no double commit (the loser's next condition check exits first).
+    entry_enter = blocks.receive("director enter")
+    countdown = blocks.add("control_repeat_until")
+    blocks.blocks[countdown]["inputs"]["CONDITION"] = [
+        2,
+        blocks.not_state(countdown, HIGH_SCORE_ENTRY_STATE),
+    ]
+    timer_branch = blocks.add("control_if_else")
+    timer_done = blocks.op_not(
+        blocks.op_gt(variable("entry timer", ENTRY_TIMER_ID), number(0))
+    )
+    blocks.blocks[timer_done]["parent"] = timer_branch
+    blocks.blocks[timer_branch]["inputs"]["CONDITION"] = [2, timer_done]
+    blocks.substack(timer_branch, _high_score_finish(blocks))
+    blocks.substack(
+        timer_branch,
+        [
+            blocks.change_var("entry timer", ENTRY_TIMER_ID, -1),
+            blocks.add("control_wait", inputs={"DURATION": number(0)}),
+        ],
+        name="SUBSTACK2",
+    )
+    blocks.substack(countdown, [timer_branch])
+    blocks.chain(entry_enter, [blocks.if_state(HIGH_SCORE_ENTRY_STATE, [countdown])])
 
     enter = blocks.receive("director enter")
     start_sound = blocks.add(
@@ -10745,6 +10878,28 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
+    # CAB-04 (slice 19): the initials-entry reset — its OWN `director reset` receiver (like the per-concern
+    # receivers above), firing only on the "entry" scope the game-over routing uses to open the entry screen.
+    # It ARMS the entry machinery WITHOUT disturbing the score or the table that `rank in` just wrote: the
+    # cursor, the live letter, the typed buffer, and the fixed total countdown. `entry row` / `entry player` /
+    # `entry score` are set by the routing caller just before the transition (C4), so they are NOT touched
+    # here. The "entry" scope is not cold-start / new-game / new-life, so none of the high/area/difficulty
+    # receivers above fire for it — `score`, `high score`, and both high-score lists are preserved.
+    entry_reset = blocks.receive("director reset")
+    entry_scope = blocks.add("control_if")
+    entry_scope_cond = blocks.scope_is(entry_scope, "entry")
+    blocks.blocks[entry_scope]["inputs"]["CONDITION"] = [2, entry_scope_cond]
+    blocks.substack(
+        entry_scope,
+        [
+            blocks.set_var("entry char", ENTRY_CHAR_ID, number(0)),
+            blocks.set_var("name buffer", ENTRY_NAME_BUFFER_ID, text("")),
+            blocks.set_var("entry cell", ENTRY_CELL_ID, number(0)),
+            blocks.set_var("entry timer", ENTRY_TIMER_ID, number(ENTRY_TIMEOUT_FRAMES)),
+        ],
+    )
+    blocks.chain(entry_reset, [entry_scope])
+
     return blocks.blocks
 
 
@@ -10781,6 +10936,26 @@ def _attract_epoch_state(blocks: Blocks, state: str) -> str:
     )
     state_ok = blocks.op_eq(variable("game state", STATE_ID), text(state))
     return blocks.op_and(epoch, state_ok)
+
+
+def _high_score_finish(blocks: Blocks) -> list[str]:
+    # CAB-04 (slice 19): commit the entered initials and leave the entry screen. Write the typed `name
+    # buffer` into the row `rank in` placed the score at — in place, faithful to the reference's name_entry_ptr
+    # (xevious_main.68k) — then raise `attract` and return the cabinet to its attract cycle at the title. This
+    # is reached both ways the arcade finishes name entry: the tenth committed character (the Space hat) and
+    # the fixed total-countdown expiry (the entry-timer loop), which commits whatever was typed so far
+    # (name_entry_finished :1757-1769). Each caller mints its own copy of these blocks (custom blocks have no
+    # shared bodies). C4 (two-player sequential entry) extends this tail with the other-player re-check.
+    return [
+        blocks.list_replace(
+            "high score names",
+            HIGH_SCORE_NAMES_ID,
+            variable("entry row", ENTRY_ROW_ID),
+            variable("name buffer", ENTRY_NAME_BUFFER_ID),
+        ),
+        blocks.set_var("attract", ATTRACT_ID, number(1)),
+        blocks.call_transition("title", "cold-start"),
+    ]
 
 
 def solvalou_blocks() -> dict[str, dict[str, Any]]:
@@ -10954,7 +11129,45 @@ def title_blocks() -> dict[str, dict[str, Any]]:
                 blocks.create_clone(),
             ]
     scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
-    blocks.chain(enter, [title, scores])
+
+    # CAB-04 (slice 19): the initials-entry screen. On entering high-score-entry, stamp the two headers, the
+    # PLAYER-n tag (two-player only), and the ten name cells in one frame — each cell snapshotting its 1-based
+    # place before create_clone, then reading `name buffer` / `entry char` live (the live-table idiom). The
+    # cells sit on one centred monospace line; the headers stack above.
+    def entry_cell_x(cell: int) -> int:
+        return int(round((cell - ATTRACT_ENTRY_CENTER_CELL) * ATTRACT_ENTRY_CELL_PITCH_X))
+
+    entry_body: list[str] = [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_HEADER)),
+        blocks.go(0, ATTRACT_ENTRY_HEADER_Y),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_SUBHEADER)),
+        blocks.go(0, ATTRACT_ENTRY_SUBHEADER_Y),
+        blocks.create_clone(),
+    ]
+    # The PLAYER-n tag disambiguates whose initials are being entered; a one-player game needs no tag, so it is
+    # spawned only in a two-player game. The clone reads `entry player` to pick PLAYER 1 / PLAYER 2.
+    entry_body.append(
+        blocks.if_reporter(
+            blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
+            [
+                blocks.set_var(
+                    "attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_PLAYER)
+                ),
+                blocks.go(0, ATTRACT_ENTRY_PLAYER_Y),
+                blocks.create_clone(),
+            ],
+        )
+    )
+    for cell in range(ENTRY_NAME_LEN):
+        entry_body += [
+            blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_NAME)),
+            blocks.set_var("attract place", ATTRACT_DISPLAY_PLACE_ID, number(cell + 1)),
+            blocks.go(entry_cell_x(cell), ATTRACT_ENTRY_CELLS_Y),
+            blocks.create_clone(),
+        ]
+    entry = blocks.if_state(HIGH_SCORE_ENTRY_STATE, entry_body)
+    blocks.chain(enter, [title, scores, entry])
 
     # start-as-clone: dispatch on the snapshotted role. The clone inherits the visible original, so it hides
     # first and each role shows itself only once it has switched to its own costume (no logo flash).
@@ -11166,6 +11379,149 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [name_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
     )
 
+    # CAB-04 (slice 19): the initials-entry screen clone roles. The two headers and the PLAYER-n tag are
+    # static (switch once, show) — common_stop retires them on the next transition, exactly like the CREDIT
+    # label. The player tag picks its costume from `entry player`. The ten name cells are LIVE: each loops
+    # while in high-score-entry rendering its place against the running `name buffer` / `entry char`, then
+    # hides + deletes when the state leaves (common_stop is the backstop).
+    entry_header_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_HEADER,
+        [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_HEADER), blocks.to_front(), blocks.show()],
+    )
+    entry_subheader_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_SUBHEADER,
+        [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_SUBHEADER), blocks.to_front(), blocks.show()],
+    )
+    entry_player_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_PLAYER,
+        [
+            blocks.if_reporter(
+                blocks.op_eq(variable("entry player", ENTRY_PLAYER_ID), number(0)),
+                [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_PLAYER_1)],
+            ),
+            blocks.if_reporter(
+                blocks.op_eq(variable("entry player", ENTRY_PLAYER_ID), number(1)),
+                [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_PLAYER_2)],
+            ),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+
+    # A name cell renders `attract char` (cached once per tick) as glyph/<c>, or hides on a blank/space cell
+    # (the sheet font has no space glyph). Fresh reporters per call — a reporter reused across two `if` inputs
+    # is stolen by the second, leaving the first empty.
+    def entry_is_blank() -> str:
+        return blocks.op_or(
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text("")),
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text(" ")),
+        )
+
+    def entry_render_char() -> list[str]:
+        return [
+            blocks.if_reporter(
+                blocks.op_not(entry_is_blank()),
+                [
+                    blocks.switch_costume_expr(
+                        blocks.op_join(
+                            text(ATTRACT_GLYPH_PREFIX),
+                            variable("attract char", ATTRACT_DISPLAY_CHAR_ID),
+                        )
+                    ),
+                    blocks.to_front(),
+                    blocks.show(),
+                ],
+            ),
+            blocks.if_reporter(entry_is_blank(), [blocks.hide()]),
+        ]
+
+    def entry_name_tick() -> str:
+        loop = blocks.add("control_repeat_until")
+        blocks.blocks[loop]["inputs"]["CONDITION"] = [
+            2,
+            blocks.not_state(loop, HIGH_SCORE_ENTRY_STATE),
+        ]
+        # committed cell (place <= entry cell): the typed letter, steady (ghost 0).
+        committed = blocks.add("control_if")
+        committed_cond = blocks.op_not(
+            blocks.op_gt(
+                variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+                variable("entry cell", ENTRY_CELL_ID),
+            )
+        )
+        blocks.blocks[committed_cond]["parent"] = committed
+        blocks.blocks[committed]["inputs"]["CONDITION"] = [2, committed_cond]
+        blocks.substack(
+            committed,
+            [
+                blocks.set_var_expr(
+                    "attract char",
+                    ATTRACT_DISPLAY_CHAR_ID,
+                    blocks.op_letter_of(
+                        variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+                        variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                    ),
+                ),
+                blocks.set_effect("GHOST", number(0)),
+                *entry_render_char(),
+            ],
+        )
+        # active cell (place == entry cell + 1): the live ring letter, ghost-pulsing off the entry timer.
+        active = blocks.add("control_if")
+        active_cond = blocks.op_eq(
+            variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+            blocks.op_add(variable("entry cell", ENTRY_CELL_ID), number(1)),
+        )
+        blocks.blocks[active_cond]["parent"] = active
+        blocks.blocks[active]["inputs"]["CONDITION"] = [2, active_cond]
+        pulse = blocks.op_mul(
+            number(ENTRY_PULSE_GHOST),
+            blocks.op_mod(
+                blocks.op_floor(
+                    blocks.op_div(
+                        variable("entry timer", ENTRY_TIMER_ID), number(ENTRY_PULSE_DIV)
+                    )
+                ),
+                number(2),
+            ),
+        )
+        blocks.substack(
+            active,
+            [
+                blocks.set_var_expr(
+                    "attract char",
+                    ATTRACT_DISPLAY_CHAR_ID,
+                    blocks.op_letter_of(
+                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                        text(ENTRY_RING),
+                    ),
+                ),
+                blocks.set_effect("GHOST", pulse),
+                *entry_render_char(),
+            ],
+        )
+        # future cell (place > entry cell + 1): blank.
+        future = blocks.add("control_if")
+        future_cond = blocks.op_gt(
+            variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+            blocks.op_add(variable("entry cell", ENTRY_CELL_ID), number(1)),
+        )
+        blocks.blocks[future_cond]["parent"] = future
+        blocks.blocks[future]["inputs"]["CONDITION"] = [2, future_cond]
+        blocks.substack(future, [blocks.hide()])
+        blocks.substack(loop, [committed, active, future])
+        return loop
+
+    entry_name_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_NAME,
+        [
+            entry_name_tick(),
+            blocks.clear_graphic_effects(),  # leave no ghost on a reused clone
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
     # CAB-02: the two 1P/2P selector labels. Each clone wears its fixed option costume, shows, then loops
     # while in title re-picking the ghost effect from the live `start selection`: 0 (opaque) when this
     # clone's option is the armed one, ATTRACT_SELECTOR_DIM_GHOST (dimmed) otherwise — so a left/right
@@ -11214,6 +11570,10 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             table_score_role,
             selector_1p_role,
             selector_2p_role,
+            entry_header_role,
+            entry_subheader_role,
+            entry_player_role,
+            entry_name_role,
         ],
     )
     return blocks.blocks

@@ -27,7 +27,10 @@ class HudGlyphsTests(unittest.TestCase):
         # + the 27 slice-19 CAB-04 per-letter name-cell glyphs on start_screen (A-Z and "."), which
         # render the LIVE best-five names/scores; the slice-17 single baked "best-five" table costume
         # is retired (so the slice-17 attract overlay count drops 14 -> 13). 51 - 1 + 27 = 77.
-        self.assertEqual(77, count)
+        # + the 4 slice-19 CAB-04 initials-entry screen costumes on start_screen (CONGRATULATIONS /
+        # ENTER YOUR INITIALS headers and the PLAYER 1 / PLAYER 2 tags), port-original UI text in the
+        # credited font at the SMALL_TEXT_GEOM cell (glyphs already in SHEET_TEXT_RECTS). 77 + 4 = 81.
+        self.assertEqual(81, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)

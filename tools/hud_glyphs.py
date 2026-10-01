@@ -180,6 +180,21 @@ BANNER_LABELS = (
     ("game-over-player-2", "GAME OVER PLAYER 2"),
 )
 BANNER_COSTUME_NAMES = frozenset(name for name, _text in BANNER_LABELS)
+# CAB-04 (cabinet.high-scores, slice 19): the initials-entry screen headers + PLAYER-n tags, rendered from
+# the SAME credited Xevious HUD font as the attract prompts above — four whole-string costumes on the
+# start_screen target. game_director's title_blocks spawns one clone per costume on entering high-score-entry
+# (the headers static, the PLAYER-n tag picked from `entry player`, two-player only). PROJECT-ORIGINAL English
+# UI text: the arcade's own entry-screen wording is in-game text docs/REFERENCE_POLICY.md forbids transcribing,
+# so this is the port's own wording in the credited font, exactly like the CREDIT / PUSH START / 1P-2P
+# selector strings (the operator confirms the wording at playtest). All glyphs used (C O N G R A T U L I S E Y P,
+# space, and 1/2) are already in SHEET_TEXT_RECTS; the longest line (ENTER YOUR INITIALS, 19 chars) is
+# 19 * 17 = 323 px < 480, so it fits the stage at the SMALL_TEXT_GEOM advance.
+ATTRACT_ENTRY_LABELS = (
+    ("entry-congrats", "CONGRATULATIONS"),
+    ("entry-initials", "ENTER YOUR INITIALS"),
+    ("entry-player-1", "PLAYER 1"),
+    ("entry-player-2", "PLAYER 2"),
+)
 # The default best-five INITIALS are this project's own placeholder content (the operator's choice),
 # NOT the arcade ROM's default name strings (docs/REFERENCE_POLICY.md forbids transcribing in-game text).
 # They live here as a source constant — the same home and stance as CREDIT_TEXT_LINES above. CAB-04
@@ -631,6 +646,9 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
         outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
     # CAB-02 (slice 18): the two title 1P/2P selector labels, same sheet and compositor.
     for name, text in ATTRACT_SELECTOR_LABELS:
+        outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
+    # CAB-04 (slice 19): the initials-entry headers + PLAYER-n tags, same sheet and compositor.
+    for name, text in ATTRACT_ENTRY_LABELS:
         outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
     # CAB-04 (slice 19): per-letter name-cell costumes for the LIVE best-five table (replaces the single
     # pre-baked table costume). A-Z and "." — one glyph/<c> costume each, at the same cell as the digits.

@@ -498,6 +498,26 @@
       "name": "select-2p",
       "generator_version": 1
     },
+    "375a326f1f448dc1b780c78fa1ac116d.png": {
+      "kind": "attract",
+      "name": "entry-congrats",
+      "generator_version": 1
+    },
+    "18e1e92ac6224d2b146f30a14808112e.png": {
+      "kind": "attract",
+      "name": "entry-initials",
+      "generator_version": 1
+    },
+    "fcc8c28f0a9da94d0cfe55ea3501389e.png": {
+      "kind": "attract",
+      "name": "entry-player-1",
+      "generator_version": 1
+    },
+    "03c15250a4524504ed2e95dcfce8e2f2.png": {
+      "kind": "attract",
+      "name": "entry-player-2",
+      "generator_version": 1
+    },
     "d63109882d5335375d61e1717aa92a2a.png": {
       "kind": "attract",
       "name": "glyph/A",

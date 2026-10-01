@@ -151,6 +151,29 @@ const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
 const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
 const shotSlotTypes = (vm) => readVar(vm, 'slot-type').slice(36, 39);
 
+// CAB-04 (cabinet.high-scores, slice 19): drop the cabinet directly into the high-score-entry screen in
+// isolation. The game-over routing that reaches it in real play arrives in C4; until then the C3 entry
+// screen is driven on its own. We arm the entry scope the way the real routing will — set the reset scope,
+// fire `director reset` so entry_reset inits the entry machinery (char/buffer/cell = 0, timer = the full
+// 2048-frame countdown), seed the rank-in result (`entry row`/`entry player`) the finish writes back, set
+// the state and (optionally) override the countdown, then fire `director enter` so the entry_enter countdown
+// loop starts. A boot step after green flag is required before any key press: scratch-vm "when key pressed"
+// hats only arm after the first step (keypress-hats-need-boot-step), and a second step lets the enter loop
+// take hold. Returns true once the cabinet is on the entry screen.
+function enterEntry(vm, { row = 3, player = 0, timer } = {}) {
+  vm.greenFlag();
+  step(vm, 2); // settle boot->title AND arm the key hats (boot step)
+  writeVar(vm, 'game-director-reset-scope', 'entry');
+  fireBroadcast(vm, 'director reset'); // entry_reset: entry char/buffer/cell = 0, entry timer = full countdown
+  writeVar(vm, 'cabinet-entry-row', row);
+  writeVar(vm, 'cabinet-entry-player', player);
+  writeVar(vm, 'game-director-state', 'high-score-entry');
+  if (timer !== undefined) writeVar(vm, 'cabinet-entry-timer', timer);
+  fireBroadcast(vm, 'director enter'); // entry_enter: start the fixed-countdown loop
+  step(vm, 1);
+  return state(vm) === 'high-score-entry';
+}
+
 // --- BOSS-01 / andor.lifecycle (#94) shared scenario helpers -------------------------------------------
 // Geometry read straight from tools/game_director.py (source-verified against the pin). The master's
 // shared anchor `andor master x` descends from ANDOR_START_X (off the top edge) toward ANDOR_HOLD_X by
@@ -987,6 +1010,115 @@ export const SCENARIOS = [
     // the spawn to the ceiling, so present reads 300). Ceiling- and role-independent.
     // roadmap-evidence: CAB-04 failure  (without clone retirement the live table cells survive the transition)
     negativeMutation: (p) => mutate.removeDeleteThisClone(p, 'start_screen'),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the initials-entry INPUT — riskiest seam #5. On the entry screen
+    // Up/Down cycle the active letter over the 27-symbol ring (A-Z then space), wrapping both ways (the floored
+    // mod: Down from A -> the space at index 26, Up from the space -> A; xevious_main.68k:1736-1744,1773-1781);
+    // Space commits the active ring letter onto `name buffer`, advances the cursor and resets the active letter,
+    // and the tenth committed character finishes entry — writing the typed name into `high score names` at the
+    // rank `rank in` recorded (`entry row`) and returning to the attract cycle (attract=1 -> title). The hats are
+    // state-gated to high-score-entry, so they never fight the title selector or the craft. Driven directly into
+    // the entry screen (the game-over routing that reaches it in real play arrives in C4). A boot step before the
+    // first press is required (keypress-hats-need-boot-step), handled inside enterEntry.
+    // roadmap-evidence: CAB-04 success  (Up/Down cycles the ring with both-way wrap; Space commits + advances;
+    //   the tenth character finishes and the typed initials land in high score names at the entry rank)
+    key: 'high-score-entry-letters',
+    behavior: 'Up/Down cycle the entry ring (both-way wrap), Space commits, and the tenth char finishes into the table',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(enterEntry(vm, { row: 3, timer: 1000000 }), 'precondition: the cabinet reaches the entry screen');
+      // Seed a known names list so the finished name can be read back at its rank row (rank 3 -> JS index 2).
+      const names = readVar(vm, 'eco-high-score-names');
+      names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
+
+      const char = () => readVar(vm, 'cabinet-entry-char');
+      const start = char(); // a fresh entry sits on the first ring letter (A, index 0)
+      tapKey(vm, 'ArrowDown'); // wrap down: 0 -> 26 (space)
+      const wrapDown = char();
+      tapKey(vm, 'ArrowUp'); // wrap up: 26 -> 0 (A)
+      const wrapUp = char();
+      tapKey(vm, 'ArrowUp'); // 0 -> 1 (B)
+      tapKey(vm, 'ArrowUp'); // 1 -> 2 (C)
+      const climbed = char();
+
+      // Type "ABABABABAB": even cells A (no move), odd cells B (one Up). Each Space commit resets the active
+      // letter to A, so a B cell needs exactly one Up first. The tenth commit finishes entry.
+      writeVar(vm, 'cabinet-entry-char', 0); // clean start on A after the climb above
+      const typed = 'ABABABABAB';
+      for (let i = 0; i < typed.length; i += 1) {
+        if (typed[i] === 'B') tapKey(vm, 'ArrowUp');
+        tapKey(vm, ' ');
+      }
+      return {
+        start,
+        wrapDown,
+        wrapUp,
+        climbed,
+        stateAfter: state(vm),
+        landed: readVar(vm, 'eco-high-score-names')[2],
+        attract: readVar(vm, 'cabinet-attract'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.start, 0, 'a fresh entry starts on the first ring letter (A)');
+      assert.equal(obs.wrapDown, 26, 'Down from A wraps to the last ring symbol (space, index 26)');
+      assert.equal(obs.wrapUp, 0, 'Up from the last symbol wraps back to A');
+      assert.equal(obs.climbed, 2, 'two Up presses advance the active letter to C (index 2)');
+      assert.equal(obs.stateAfter, 'title', 'the tenth committed character finishes entry and returns to the title');
+      assert.equal(obs.landed, 'ABABABABAB', 'the typed initials land in high score names at the entry rank');
+      assert.equal(obs.attract, 1, 'finishing entry re-raises the attract flag for the cabinet cycle');
+    },
+    // Pin `name buffer` to "" so no committed letter ever accumulates: the tenth-char finish then writes an empty
+    // name and the typed-initials assertion fails (the cursor/cell machinery is untouched, so only the buffer
+    // accumulation — the behaviour this scenario proves — breaks).
+    // roadmap-evidence: CAB-04 failure  (with name buffer pinned empty the committed initials never accumulate)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'name buffer', ''),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the FIXED total countdown. `entry timer` is armed once at entry
+    // start (the entry-scope reset) and counts down one per frame, never reset by input (countdown_timer_1 is
+    // seeded once and decremented unconditionally, xevious_main.68k:1701,1721-1728). When it reaches zero it
+    // commits whatever was typed so far and leaves the screen (name_entry_finished :1757-1769). We type a partial
+    // name, arm a short countdown and let it expire; the partial must land at the entry rank and the cabinet must
+    // return to the title. This is the timeout half of riskiest-seam #5 (the letters scenario is the input half).
+    // roadmap-evidence: CAB-04 success  (the fixed countdown expiring commits the partial name and routes to title)
+    key: 'high-score-entry-timeout',
+    behavior: 'The fixed entry countdown expiring commits the partial name and returns to the attract cycle',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(enterEntry(vm, { row: 4 }), 'precondition: the cabinet reaches the entry screen');
+      const names = readVar(vm, 'eco-high-score-names');
+      names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
+      // Type a partial "AB" (2 of 10 cells), then let the fixed countdown run out.
+      writeVar(vm, 'cabinet-entry-char', 0);
+      tapKey(vm, ' '); // commit A
+      tapKey(vm, 'ArrowUp'); // -> B
+      tapKey(vm, ' '); // commit B
+      const partial = readVar(vm, 'cabinet-entry-name-buffer');
+      writeVar(vm, 'cabinet-entry-timer', 2); // arm a short countdown; the loop decrements it to zero
+      let t = 0;
+      while (state(vm) === 'high-score-entry' && t < 60) {
+        step(vm, 1);
+        t += 1;
+      }
+      return {
+        partial,
+        stateAfter: state(vm),
+        landed: readVar(vm, 'eco-high-score-names')[3], // rank 4 -> JS index 3
+        attract: readVar(vm, 'cabinet-attract'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.partial, 'AB', 'the partial name accumulates as cells are committed before the timeout');
+      assert.equal(obs.stateAfter, 'title', 'the fixed countdown expiring finishes entry and returns to the title');
+      assert.equal(obs.landed, 'AB', 'the timeout commits whatever was typed so far into the entry rank');
+      assert.equal(obs.attract, 1, 'the timeout finish re-raises the attract flag');
+    },
+    // Freeze `change entry timer by` so the countdown never decrements: the timer stays positive, the entry never
+    // finishes, and the cabinet never leaves high-score-entry → the return-to-title assertion fails.
+    // roadmap-evidence: CAB-04 failure  (without the decrement the fixed countdown never expires and entry hangs)
+    negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'entry timer'),
   },
   {
     key: 'death-respawn',

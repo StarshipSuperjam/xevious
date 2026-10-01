@@ -322,7 +322,10 @@ class ScratchProjectTests(unittest.TestCase):
         # SMALL_TEXT_GEOM cell (the rank/score columns reuse the existing start_screen digit/0-9 costumes).
         # 26 of the 27 are new distinct PNGs; glyph/O is byte-identical to digit/0 at this cell (the font's
         # letter O and zero share one bitmap) and dedups to it. Net: -1 (best-five) + 26 = +25, so 225 -> 250.
-        self.assertEqual(250, len(assets))
+        # + the 4 slice-19 CAB-04 initials-entry screen costumes on start_screen (CONGRATULATIONS /
+        # ENTER YOUR INITIALS headers, PLAYER 1 / PLAYER 2 tags), all distinct whole-string PNGs in the
+        # credited font at the SMALL_TEXT_GEOM cell. 250 + 4 = 254.
+        self.assertEqual(254, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -16871,6 +16874,309 @@ class ScratchProjectTests(unittest.TestCase):
             mutate_fn(project)
             self.assertIn(label, self._attract_display_failures(project), label)
 
+    @staticmethod
+    def _high_score_entry_failures(project: dict) -> set:
+        """CAB-04 (slice 19) initials-entry screen + input — structure only (the glyphs,
+        pixels and on-screen layout are the operator's playtest). The four static entry
+        costumes and their role branches live on start_screen (the attract-display clone
+        family); the Up/Down letter cycle, the Space commit, the finish-write into
+        `high score names` and the fixed total-countdown live on the Stage. The harness
+        high-score-entry-letters / high-score-entry-timeout scenarios drive the behaviour
+        live; this guard pins that the wiring is present (and its negatives below prove it
+        binds). The live name cells reuse the glyph/<letter> costume EXPRESSION proven by
+        `_attract_display_failures` (table-name-glyph-expr), so it is not re-pinned here."""
+        failures = set()
+        ss = next(t for t in project["targets"] if t.get("name") == "start_screen")
+        ss_blocks = ss["blocks"]
+        ss_costumes = {c["name"] for c in ss["costumes"]}
+        stage = next(t for t in project["targets"] if t["isStage"])
+        sb = stage["blocks"]
+
+        # The four static entry-screen costumes (the operator confirms the project-original
+        # wording — CONGRATULATIONS / ENTER YOUR INITIALS / PLAYER 1 / PLAYER 2 — at playtest).
+        for name in (
+            director.ATTRACT_COSTUME_ENTRY_HEADER,
+            director.ATTRACT_COSTUME_ENTRY_SUBHEADER,
+            director.ATTRACT_COSTUME_ENTRY_PLAYER_1,
+            director.ATTRACT_COSTUME_ENTRY_PLAYER_2,
+        ):
+            if name not in ss_costumes:
+                failures.add(f"costume-missing:{name}")
+
+        role_id = director.ATTRACT_DISPLAY_ROLE_ID
+
+        def role_dispatch(role_value: int) -> bool:
+            for b in ss_blocks.values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                rhs_spec = rhs[1] if isinstance(rhs, list) else None
+                is_role = (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == role_id
+                )
+                is_val = isinstance(rhs_spec, list) and str(rhs_spec[1]) == str(role_value)
+                if is_role and is_val:
+                    return True
+            return False
+
+        for label, value in (
+            ("entry-name-role-dispatch", director.ATTRACT_ROLE_ENTRY_NAME),
+            ("entry-header-role-dispatch", director.ATTRACT_ROLE_ENTRY_HEADER),
+            ("entry-subheader-role-dispatch", director.ATTRACT_ROLE_ENTRY_SUBHEADER),
+            ("entry-player-role-dispatch", director.ATTRACT_ROLE_ENTRY_PLAYER),
+        ):
+            if not role_dispatch(value):
+                failures.add(label)
+
+        def set_var_to(var_id: str) -> list:
+            return [
+                b
+                for b in sb.values()
+                if b["opcode"] == "data_setvariableto"
+                and b.get("fields", {}).get("VARIABLE", [None, None])[1] == var_id
+            ]
+
+        # Up/Down cycle: a `set entry char = (entry char +/- 1) mod 27` — the set is fed by an
+        # operator_mod whose divisor is the 27-symbol ring size (the floored-mod both-way wrap).
+        def entry_char_cycle() -> bool:
+            for b in set_var_to(director.ENTRY_CHAR_ID):
+                val = b["inputs"].get("VALUE")
+                if not (isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str)):
+                    continue
+                fed = sb.get(val[1])
+                if fed is None or fed["opcode"] != "operator_mod":
+                    continue
+                rhs = fed["inputs"].get("NUM2")
+                if (
+                    isinstance(rhs, list)
+                    and isinstance(rhs[1], list)
+                    and str(rhs[1][1]) == str(director.ENTRY_RING_SIZE)
+                ):
+                    return True
+            return False
+
+        if not entry_char_cycle():
+            failures.add("entry-char-cycle")
+
+        # Space commit: `set name buffer = join(name buffer, letter (entry char + 1) of RING)`
+        # — a name-buffer set fed by a join whose second operand is a letter-of over the ring text.
+        def commit_ring() -> bool:
+            for b in set_var_to(director.ENTRY_NAME_BUFFER_ID):
+                val = b["inputs"].get("VALUE")
+                if not (isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str)):
+                    continue
+                join = sb.get(val[1])
+                if join is None or join["opcode"] != "operator_join":
+                    continue
+                s2 = join["inputs"].get("STRING2")
+                if not (isinstance(s2, list) and isinstance(s2[1], str)):
+                    continue
+                lo = sb.get(s2[1])
+                if lo is None or lo["opcode"] != "operator_letter_of":
+                    continue
+                st = lo["inputs"].get("STRING")
+                if (
+                    isinstance(st, list)
+                    and isinstance(st[1], list)
+                    and st[1][1] == director.ENTRY_RING
+                ):
+                    return True
+            return False
+
+        if not commit_ring():
+            failures.add("entry-commit-ring")
+
+        # Finish: the typed `name buffer` is written in place into `high score names` (distinct
+        # from `rank in`'s lockstep shifts, whose items are list reads, not the name-buffer var).
+        def finish_write() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "data_replaceitemoflist":
+                    continue
+                if b.get("fields", {}).get("LIST", [None, None])[1] != director.HIGH_SCORE_NAMES_ID:
+                    continue
+                item = b["inputs"].get("ITEM")
+                spec = item[1] if isinstance(item, list) else None
+                if (
+                    isinstance(spec, list)
+                    and len(spec) >= 3
+                    and spec[0] == 12
+                    and spec[2] == director.ENTRY_NAME_BUFFER_ID
+                ):
+                    return True
+            return False
+
+        if not finish_write():
+            failures.add("entry-finish-names-write")
+
+        # Total countdown: `change entry timer by <negative>` — the fixed per-frame decrement that
+        # expires the entry (NOT reset on input; a fixed total, faithful to countdown_timer_1).
+        def timer_countdown() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "data_changevariableby":
+                    continue
+                if b.get("fields", {}).get("VARIABLE", [None, None])[1] != director.ENTRY_TIMER_ID:
+                    continue
+                val = b["inputs"].get("VALUE")
+                if isinstance(val, list) and isinstance(val[1], list):
+                    try:
+                        if float(val[1][1]) < 0:
+                            return True
+                    except (TypeError, ValueError):
+                        pass
+            return False
+
+        if not timer_countdown():
+            failures.add("entry-timer-countdown")
+
+        # The input/finish machinery is state-gated to high-score-entry (the isolation that keeps
+        # the Up/Down/Space hats off the title selector and the craft) — at least one such gate.
+        def state_gate() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                rhs_spec = rhs[1] if isinstance(rhs, list) else None
+                is_state = (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == director.STATE_ID
+                )
+                is_val = (
+                    isinstance(rhs_spec, list)
+                    and str(rhs_spec[1]) == director.HIGH_SCORE_ENTRY_STATE
+                )
+                if is_state and is_val:
+                    return True
+            return False
+
+        if not state_gate():
+            failures.add("entry-state-gate")
+
+        return failures
+
+    def test_high_score_entry_present(self) -> None:
+        # CAB-04 (slice 19): the initials-entry screen + input is wired — the four static entry
+        # costumes and their role branches on start_screen, the Up/Down letter cycle over the
+        # 27-symbol ring, the Space commit appending the ring letter to `name buffer`, the
+        # in-place finish-write into `high score names`, the fixed total countdown, all state-gated.
+        # roadmap-evidence: CAB-04 success  (this structural guard pins the entry screen + input +
+        #   finish wiring present; the harness high-score-entry-letters drives the Up/Down ring
+        #   cycle incl. both-way wrap, the Space commit + cursor advance, and the tenth-char finish
+        #   that lands the typed name in high score names[entry row]; high-score-entry-timeout runs
+        #   the fixed total countdown to zero and commits the partial, routing back to the title)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._high_score_entry_failures(project))
+
+    def test_high_score_entry_negative_fixtures(self) -> None:
+        # roadmap-evidence: CAB-04 failure  (each severing fixture makes the matching entry-screen
+        #   structural guard report its failure, and each harness entry scenario's negative — the
+        #   name-buffer pin and the entry-timer freeze — stalls the behaviour it proves)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._high_score_entry_failures(base))
+
+        def ss_of(p: dict) -> dict:
+            return next(t for t in p["targets"] if t.get("name") == "start_screen")
+
+        def stage_of(p: dict) -> dict:
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def drop_header_costume(p: dict) -> None:
+            ss = ss_of(p)
+            ss["costumes"] = [
+                c for c in ss["costumes"] if c["name"] != director.ATTRACT_COSTUME_ENTRY_HEADER
+            ]
+
+        def break_name_role_dispatch(p: dict) -> None:
+            for b in ss_of(p)["blocks"].values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                if (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == director.ATTRACT_DISPLAY_ROLE_ID
+                    and isinstance(rhs, list)
+                    and isinstance(rhs[1], list)
+                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_ENTRY_NAME)
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "999"]]
+
+        def break_char_cycle(p: dict) -> None:
+            # Disable every operator_mod feeding an `entry char` set (both the +1 and -1 hats), so
+            # the cycle wiring is no longer recognisable — only this key should bite.
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "data_setvariableto":
+                    continue
+                if b.get("fields", {}).get("VARIABLE", [None, None])[1] != director.ENTRY_CHAR_ID:
+                    continue
+                val = b["inputs"].get("VALUE")
+                if isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str):
+                    fed = sb.get(val[1])
+                    if fed is not None and fed["opcode"] == "operator_mod":
+                        fed["opcode"] = "operator_mod_disabled"
+
+        def break_commit_ring(p: dict) -> None:
+            # Rewrite the ring text the commit's letter-of indexes, so the join no longer appends
+            # a ring letter (the active-cell render's letter-of is on start_screen, untouched).
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "operator_letter_of":
+                    continue
+                st = b["inputs"].get("STRING")
+                if isinstance(st, list) and isinstance(st[1], list) and st[1][1] == director.ENTRY_RING:
+                    st[1][1] = "nope"
+
+        def break_finish_write(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if b["opcode"] != "data_replaceitemoflist":
+                    continue
+                item = b["inputs"].get("ITEM")
+                spec = item[1] if isinstance(item, list) else None
+                if (
+                    isinstance(spec, list)
+                    and len(spec) >= 3
+                    and spec[0] == 12
+                    and spec[2] == director.ENTRY_NAME_BUFFER_ID
+                ):
+                    b["fields"]["LIST"] = ["high score table", director.HIGH_SCORE_TABLE_ID]
+
+        def break_timer_countdown(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if b["opcode"] != "data_changevariableby":
+                    continue
+                if b.get("fields", {}).get("VARIABLE", [None, None])[1] == director.ENTRY_TIMER_ID:
+                    val = b["inputs"].get("VALUE")
+                    if isinstance(val, list) and isinstance(val[1], list):
+                        try:
+                            if float(val[1][1]) < 0:
+                                b["fields"]["VARIABLE"] = ["entry row", director.ENTRY_ROW_ID]
+                        except (TypeError, ValueError):
+                            pass
+
+        for label, mutate_fn in (
+            (f"costume-missing:{director.ATTRACT_COSTUME_ENTRY_HEADER}", drop_header_costume),
+            ("entry-name-role-dispatch", break_name_role_dispatch),
+            ("entry-char-cycle", break_char_cycle),
+            ("entry-commit-ring", break_commit_ring),
+            ("entry-finish-names-write", break_finish_write),
+            ("entry-timer-countdown", break_timer_countdown),
+        ):
+            project = load_source(scratch.SOURCE_DIR)
+            mutate_fn(project)
+            self.assertIn(label, self._high_score_entry_failures(project), label)
+
     def test_game_over_negative_fixtures(self) -> None:
         base = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._eco04_failures(base))
@@ -18163,7 +18469,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "a9d363069d19db9a9f5d09628d004851563d072dc87a546f83e98687de90e0b7",
+            "cc21a8153b2ee4ed4ff64e92ef2872eaedc401f4eec416d301364a3670088438",
             build_hash,
         )
 
