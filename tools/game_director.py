@@ -457,10 +457,24 @@ REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABL
 QUALIFIED_ID = "eco-qualified"
 HIGH_SCORE_TABLE_ID = "eco-high-score-table"
 HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
-# The CAB-01 best-five table initials are project-original placeholders that live where they are
-# rendered — tools/hud_glyphs.py ATTRACT_DEFAULT_INITIALS — baked into the static 'best-five'
-# costume. game_director only switches the best-five clone to that pre-baked costume, so it holds
-# no copy of the initials here.
+# CAB-04/ECO-04 (slice 19): the LIVE best-five table's NAMES column, parallel to HIGH_SCORE_TABLE_ID's
+# scores. Five strings; a qualifying end-of-game score ranks into BOTH lists in lockstep (`rank in`), and
+# the player then types their ten initials into `high score names`[entry row] in place. The defaults are
+# this project's own placeholder initials — the SAME values tools/hud_glyphs.py ATTRACT_DEFAULT_INITIALS
+# renders in the (now live) best-five display. game_director does not import hud_glyphs (it owns blocks,
+# that module owns costumes — the solvalou/hud split), so the constant is declared locally and a
+# cross-module equality test (tests/test_game_director.py) pins the two equal so they never drift.
+HIGH_SCORE_NAMES_ID = "eco-high-score-names"
+HIGH_SCORE_NAME_DEFAULTS = ["STK", "M.N", "EVE", "S.O", "S.K"]
+# CAB-04 (slice 19): the rank-in insertion procedure. It reads the qualifying score from `entry score`
+# (set by the caller — the current player's `score` or the other player's `other score` — so one proc serves
+# both the 1P and the 2P-sequential pass; a no-arg warp proc like `score`, which reads `award value`, so the
+# harness can drive it with callProc). It walks the five ranks bottom-up, finds the highest rank the score
+# reaches-or-beats (`>=`, so a tie places, matching the arcade `move_high_score_entry_down` fall-through at
+# xevious_main.68k:1653-1656), shifts the scores AND names below it down one in lockstep (dropping the old
+# fifth), inserts the score with a BLANK name at that rank, and records the rank in `entry row` so the entry
+# screen writes the typed name in place. Stage-owned, so the two lists stay Stage-written only.
+RANK_IN_PROCCODE = "rank in"
 
 # AREA-01 area scroll clock (docs/spec/area-progression-and-terrain.md, locked). One
 # monotonic per-area position drives the terrain, the object scheduler, and the area loop.
@@ -1130,6 +1144,29 @@ START_SELECTION_ID = "cabinet-start-selection"
 BANNER_PLAYER_ID = "cabinet-banner-player"
 BANNER_PLAYER_NONE = -1
 BANNER_HOLD_TICKS = GAME_OVER_HOLD_TICKS  # 64 port ticks == the arcade 128-frame GAME OVER PLAYER n dwell
+# CAB-04 (cabinet.high-scores, slice 19): the high-score initials-entry machinery — all Stage-written, read
+# by the entry-screen compositor clones (sprites), never sprite-written. They are the entry screen's working
+# and UI registers, the same stance as `start selection` / `attract epoch`: transient, not durable game
+# state. `entry char` is the current letter's index into the 27-symbol ring (0..25 = A..Z, 26 = space);
+# `name buffer` is the committed initials so far, a STRING the compositor renders a letter at a time (never a
+# Stage-list surface); `entry cell` is the 0..9 cursor/count; `entry row` is the table rank `rank in` placed
+# the score at (so the typed name is written into `high score names`[entry row] in place); `entry player` is
+# which player (0/1) is entering, for the PLAYER-n tag and the 2P sequential pass; `entry timer` is the fixed
+# TOTAL countdown armed once at entry start and decremented unconditionally — NOT an idle timeout (the
+# reference `countdown_timer_1` is seeded once at xevious_main.68k:1701 and decremented at :1721-1728 with no
+# input reset). `rank cursor` is the single scratch loop register `rank in` needs (custom blocks have no
+# locals), like `swap tmp`. These six entry vars are their OWN classification category (added to
+# `director_variable_ids` so no sprite may write them, like the area/difficulty/player-context state); the
+# loop-scratch `rank cursor` is plain machinery. `entry score` is the qualifying score `rank in` reads (set
+# by the caller to `score` or `other score`); entry machinery too.
+ENTRY_CHAR_ID = "cabinet-entry-char"
+ENTRY_NAME_BUFFER_ID = "cabinet-entry-name-buffer"
+ENTRY_CELL_ID = "cabinet-entry-cell"
+ENTRY_ROW_ID = "cabinet-entry-row"
+ENTRY_PLAYER_ID = "cabinet-entry-player"
+ENTRY_TIMER_ID = "cabinet-entry-timer"
+ENTRY_SCORE_ID = "cabinet-entry-score"
+RANK_CURSOR_ID = "cabinet-rank-cursor"
 # The per-player context, faithful to the arcade's swapped 64-byte block (swap_curr_other_player,
 # xevious_main 671-679). The port keeps the CURRENT player in the existing live vars and one `other <x>`
 # shadow per persistent per-player field holding the INACTIVE player's saved value. `swap players` exchanges
@@ -9776,6 +9813,97 @@ def install_copy_players(blocks: Blocks) -> None:
     )
 
 
+def install_rank_in(blocks: Blocks) -> None:
+    # CAB-04/ECO-04 (cabinet.high-scores, slice 19): rank a qualifying score into the LIVE best-five table.
+    # Reads `entry score` (the caller sets it to the current player's `score` or the other player's `other
+    # score`, so one proc serves both the 1P and the 2P-sequential pass). Pass 1 scans ranks 5..1 and keeps
+    # the SMALLEST rank the score reaches-or-beats (`>=`, a tie places — the arcade move_high_score_entry_down
+    # fall-through, xevious_main.68k:1653-1656); `entry row` = 0 means it did not place (the routing then skips
+    # the entry screen). Pass 2, only when it placed, shifts the scores AND names below that rank down one in
+    # lockstep (bottom-up so nothing is clobbered before it is copied, dropping the old fifth) and inserts the
+    # score with a BLANK name, leaving `entry row` for the entry screen to write the typed name in place.
+    # Numeric compare replaces the reference's BCD byte compare — observationally identical on these values.
+    # Warp, Stage-owned (`rank cursor` is the single scratch loop register, custom blocks have no locals).
+    definition = _install_warp_proc(blocks, RANK_IN_PROCCODE)
+
+    # Pass 1 — find the insertion rank (scan ranks 5..1; cursor starts at 5 and counts down).
+    find = blocks.add("control_repeat", inputs={"TIMES": number(5)})
+    reaches = blocks.op_not(
+        blocks.op_lt(
+            variable("entry score", ENTRY_SCORE_ID),
+            blocks.list_item(
+                "high score table", HIGH_SCORE_TABLE_ID, variable("rank cursor", RANK_CURSOR_ID)
+            ),
+        )
+    )
+    note_rank = blocks.if_reporter(
+        reaches,
+        [blocks.set_var("entry row", ENTRY_ROW_ID, variable("rank cursor", RANK_CURSOR_ID))],
+    )
+    blocks.substack(find, [note_rank, blocks.change_var("rank cursor", RANK_CURSOR_ID, -1)])
+
+    # Pass 2 — shift down + insert. The shift loop walks cursor 5..2, moving item(cursor) <- item(cursor-1)
+    # for every rank strictly below the insertion point (cursor > entry row), bottom-up.
+    shift = blocks.add("control_repeat", inputs={"TIMES": number(4)})
+    move_down = blocks.if_reporter(
+        blocks.op_gt(
+            variable("rank cursor", RANK_CURSOR_ID), variable("entry row", ENTRY_ROW_ID)
+        ),
+        [
+            blocks.list_replace(
+                "high score table",
+                HIGH_SCORE_TABLE_ID,
+                variable("rank cursor", RANK_CURSOR_ID),
+                blocks.list_item(
+                    "high score table",
+                    HIGH_SCORE_TABLE_ID,
+                    blocks.op_sub(variable("rank cursor", RANK_CURSOR_ID), number(1)),
+                ),
+            ),
+            blocks.list_replace(
+                "high score names",
+                HIGH_SCORE_NAMES_ID,
+                variable("rank cursor", RANK_CURSOR_ID),
+                blocks.list_item(
+                    "high score names",
+                    HIGH_SCORE_NAMES_ID,
+                    blocks.op_sub(variable("rank cursor", RANK_CURSOR_ID), number(1)),
+                ),
+            ),
+        ],
+    )
+    blocks.substack(shift, [move_down, blocks.change_var("rank cursor", RANK_CURSOR_ID, -1)])
+    placed = blocks.if_reporter(
+        blocks.op_gt(variable("entry row", ENTRY_ROW_ID), number(0)),
+        [
+            blocks.set_var("rank cursor", RANK_CURSOR_ID, number(5)),
+            shift,
+            blocks.list_replace(
+                "high score table",
+                HIGH_SCORE_TABLE_ID,
+                variable("entry row", ENTRY_ROW_ID),
+                variable("entry score", ENTRY_SCORE_ID),
+            ),
+            blocks.list_replace(
+                "high score names",
+                HIGH_SCORE_NAMES_ID,
+                variable("entry row", ENTRY_ROW_ID),
+                text(""),
+            ),
+        ],
+    )
+
+    blocks.chain(
+        definition,
+        [
+            blocks.set_var("entry row", ENTRY_ROW_ID, number(0)),
+            blocks.set_var("rank cursor", RANK_CURSOR_ID, number(5)),
+            find,
+            placed,
+        ],
+    )
+
+
 def install_score(blocks: Blocks) -> None:
     # ECO-01: the single scoring path everything routes through, so scoring can never
     # double-count or bypass the cap. Add the pending award to the score, pin it at the
@@ -9966,6 +10094,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_attract_pilot(blocks)  # CAB-01 auto-pilot (cabinet.attract-credits, slice 17)
     install_swap_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
     install_copy_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
+    install_rank_in(blocks)  # CAB-04 (cabinet.high-scores, slice 19) — routing caller wired in C4
 
     flag = blocks.flag()
     blocks.chain(
@@ -10438,14 +10567,24 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # and starts the frame clock at zero.
     stage_reset = blocks.receive("director reset")
     # High score is the RUNNING best: it persists across a new game and is restored to the
-    # default top entry only at cold start (power-on). Score restarts every new game.
+    # best-five table's TOP entry only at cold start (power-on / return-to-attract). Score restarts every
+    # new game. CAB-04 (slice 19) coherence fix: seed from `high score table` item 1, NOT a fixed constant —
+    # verified faithful at init_high_score_table (xevious_main.68k:1565-1576), where the displayed high score
+    # and the table-top default are the SAME value by construction and the displayed value tracks the running
+    # max, never reverting to a constant mid-session. On a fresh power-on the table holds its defaults so item
+    # 1 == the old HIGH_SCORE_START (40000); within a session a ranked-in top score has lifted item 1, so the
+    # HUD high score returns to that achieved top rather than dropping back to 40000 after a game ends.
     high_reset = blocks.add("control_if")
     high_scope = blocks.scope_is(high_reset, "cold-start")
     blocks.blocks[high_reset]["inputs"]["CONDITION"] = [2, high_scope]
     blocks.substack(
         high_reset,
         [
-            blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START)),
+            blocks.set_var_expr(
+                "high score",
+                HIGH_SCORE_ID,
+                blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(1)),
+            ),
             # CAB-02/CAB-03 (slice 18): the two-player cabinet controls are power-on / return-to-attract
             # state, reset ONLY at cold-start — NOT new-game, so a 2P start's `two player = 1` (set just
             # before its new-game transition) is never clobbered. A finished game transitions to the title
@@ -14223,6 +14362,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         START_SELECTION_ID,
         # CAB-03 (slice 18): the elimination-banner display signal (machinery, like `easter egg showing`).
         BANNER_PLAYER_ID,
+        # CAB-04 (slice 19): the high-score initials-entry machinery (+ `rank in`'s scratch cursor and the
+        # `entry score` it ranks). Director-owned, so they are rebuilt here each generate rather than preserved.
+        ENTRY_CHAR_ID,
+        ENTRY_NAME_BUFFER_ID,
+        ENTRY_CELL_ID,
+        ENTRY_ROW_ID,
+        ENTRY_PLAYER_ID,
+        ENTRY_TIMER_ID,
+        ENTRY_SCORE_ID,
+        RANK_CURSOR_ID,
         # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
         # cached craft cell, and the spawner's cursor/attempt/found/type registers.
         AIM_DX_DIFF_ID,
@@ -14398,6 +14547,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # CAB-03 (slice 18): the elimination-banner signal, default "none" (no banner). Raised to the
         # eliminated player's index during a two-player handoff, cleared after the dwell and on every reset.
         BANNER_PLAYER_ID: ["banner player", BANNER_PLAYER_NONE],
+        # CAB-04 (slice 19): the high-score initials-entry machinery (all default 0 / empty; armed on entry).
+        # `name buffer` is a STRING the compositor renders a letter at a time; `rank cursor` is `rank in`'s
+        # scratch loop register; `entry score` is the score `rank in` ranks. See the ID comments above.
+        ENTRY_CHAR_ID: ["entry char", 0],
+        ENTRY_NAME_BUFFER_ID: ["name buffer", ""],
+        ENTRY_CELL_ID: ["entry cell", 0],
+        ENTRY_ROW_ID: ["entry row", 0],
+        ENTRY_PLAYER_ID: ["entry player", 0],
+        ENTRY_TIMER_ID: ["entry timer", 0],
+        ENTRY_SCORE_ID: ["entry score", 0],
+        RANK_CURSOR_ID: ["rank cursor", 0],
         # AIR-01 Toroid live-combat machinery (slice 8). The aim quantizer intermediates, the cached
         # craft cell (player row/col), and the spawner's registers — all transient, all default 0.
         AIM_DX_DIFF_ID: ["aim dx diff", 0],
@@ -14501,6 +14661,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         REPEAT_BONUS_123_ID,
         REPEAT_BONUS_5_ID,
         HIGH_SCORE_TABLE_ID,
+        HIGH_SCORE_NAMES_ID,
         AREA_MAP_COLUMN_ID,
         SCHEDULE_HANDLER_ID,
         SCHEDULE_TRIGGER_ROW_ID,
@@ -14544,6 +14705,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
+                # CAB-04 (slice 19): a qualifying end-of-game score routes game-over -> high-score-entry (the
+                # initials screen) instead of straight to the title; on finish the entry returns to the title.
+                # A non-qualifying score keeps the existing game-over -> title edge above.
+                "game-over -> high-score-entry",
+                "high-score-entry -> title",
                 # CAB-01 attract cycle (title -> demo1 -> best-five -> demo2 -> title). The demo reuses the
                 # `playing` state under attract==1; a demo death routes by `attract stage`, and a coin during
                 # any attract sub-state aborts to the title. These edges are only ever taken while attract==1.
@@ -14592,6 +14758,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # in rank order; position 5 (1-based) is the fifth-place cutoff the game-over-complete
         # receiver compares the final score against.
         HIGH_SCORE_TABLE_ID: ["high score table", list(HIGH_SCORE_DEFAULTS)],
+        # CAB-04 (slice 19): the LIVE best-five NAMES column, parallel to the scores above. `rank in` writes
+        # it (Stage-owned), the entry screen writes the typed initials into [entry row], the compositor renders
+        # it. INTENTIONALLY NOT reset by `clear slots` / any director reset scope — within-session persistence
+        # is the reference behavior (an entered score shows in attract and can be beaten); scratch-vm restores
+        # this list's declared defaults on project RELOAD, which gives the faithful power-cycle-fresh reset
+        # (there is no OSD persistent store — OPT_ENABLE_HIGH_SCORE_IO, excluded as catalog EX-05). The same
+        # holds for `high score table` above. Do NOT fold either into `clear slots`.
+        HIGH_SCORE_NAMES_ID: ["high score names", list(HIGH_SCORE_NAME_DEFAULTS)],
         # AREA-01 per-area terrain start columns (docs/spec/data/terrain.json
         # area_offset_in_map_tbl), indexed by area number 1-16. Ingested, not authored; a
         # read-only reference table set on area entry, never written by a sprite.

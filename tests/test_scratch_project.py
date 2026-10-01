@@ -1264,6 +1264,10 @@ class ScratchProjectTests(unittest.TestCase):
             # display register the death handler raises during a two-player handoff and clears after the hold;
             # read by the HUD banner clone. Display machinery like `easter egg showing`, not durable state.
             "banner player",
+            # CAB-04 (slice 19): `rank in`'s single scratch loop register (custom blocks have no locals), like
+            # `swap tmp`. A pure Stage-internal working register — NOT part of the entry category below (those
+            # are sprite-READ and write-forbidden); nothing outside `rank in` touches it.
+            "rank cursor",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1321,6 +1325,20 @@ class ScratchProjectTests(unittest.TestCase):
         player_context_names = {
             shadow_name for _live, _live_id, shadow_name, _shadow_id in director.PLAYER_CONTEXT_FIELDS
         }
+        # CAB-04 (slice 19): the high-score initials-entry machinery — its OWN category, like area/difficulty/
+        # player-context state: Stage-written, sprite-READ (the entry-screen compositor clones), and
+        # write-forbidden below (added to `director_variable_ids`). `name buffer` is a STRING the compositor
+        # renders a letter at a time (never a Stage-list surface). `entry score` is the score `rank in` ranks;
+        # `rank cursor` is `rank in`'s scratch loop register — that one is plain machinery (above), not here.
+        high_score_entry_names = {
+            "entry char",
+            "name buffer",
+            "entry cell",
+            "entry row",
+            "entry player",
+            "entry timer",
+            "entry score",
+        }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
         self.assertTrue(
@@ -1340,6 +1358,16 @@ class ScratchProjectTests(unittest.TestCase):
                 | difficulty_state_names
             )
         )
+        self.assertTrue(
+            high_score_entry_names.isdisjoint(
+                machinery_names
+                | director_state_names
+                | economy_names
+                | area_state_names
+                | difficulty_state_names
+                | player_context_names
+            )
+        )
         stage_variable_names = {name for name, _value in stage["variables"].values()}
         self.assertEqual(
             director_state_names
@@ -1347,7 +1375,8 @@ class ScratchProjectTests(unittest.TestCase):
             | economy_names
             | area_state_names
             | difficulty_state_names
-            | player_context_names,
+            | player_context_names
+            | high_score_entry_names,
             stage_variable_names,
         )
         self.assertEqual(
@@ -1360,6 +1389,9 @@ class ScratchProjectTests(unittest.TestCase):
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
+                # CAB-04 (slice 19): a qualifying score routes game-over -> high-score-entry, then back to title.
+                "game-over -> high-score-entry",
+                "high-score-entry -> title",
                 # CAB-01 (slice 17) attract cycle: the demo reuses `playing` under attract==1.
                 "title -> playing",
                 "playing -> attract-scores",
@@ -1415,6 +1447,8 @@ class ScratchProjectTests(unittest.TestCase):
                 "repeat bonus 123",
                 "repeat bonus 5",
                 "high score table",
+                # CAB-04 (slice 19): the LIVE best-five names column, parallel to `high score table`.
+                "high score names",
                 "area map column",
                 "schedule handler",
                 "schedule trigger row",
@@ -1493,6 +1527,10 @@ class ScratchProjectTests(unittest.TestCase):
             # the death-alternation path (slice 18 C3). Both write only the per-player shadow set.
             director.COPY_PLAYERS_PROCCODE,
             director.SWAP_PLAYERS_PROCCODE,
+            # CAB-04 (slice 19): the high-score rank-in insertion proc. Reads `entry score`, inserts into the
+            # two best-five lists in lockstep, records the rank in `entry row`. Writes only the Stage lists +
+            # entry machinery; its routing caller is wired in C4 (defined now, driven by the C1 harness).
+            director.RANK_IN_PROCCODE,
             # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
             # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
             # shared RNG step the spawn draw now consumes (its first live consumer).
@@ -1727,9 +1765,23 @@ class ScratchProjectTests(unittest.TestCase):
             director.CURR_PLAYER_ID,
             director.TWO_PLAYER_ID,
             *(shadow_id for _live, _live_id, _shadow_name, shadow_id in director.PLAYER_CONTEXT_FIELDS),
+            # CAB-04 (slice 19): the high-score initials-entry machinery — Stage-written, sprite-READ (the
+            # entry-screen compositor clones read them; reads are permitted), never sprite-written. Adding the
+            # IDs here forbids any sprite from writing them, the same guard the area/difficulty/player-context
+            # state gets. `rank cursor` is Stage-internal (machinery), never sprite-read, so it is NOT listed.
+            director.ENTRY_CHAR_ID,
+            director.ENTRY_NAME_BUFFER_ID,
+            director.ENTRY_CELL_ID,
+            director.ENTRY_ROW_ID,
+            director.ENTRY_PLAYER_ID,
+            director.ENTRY_TIMER_ID,
+            director.ENTRY_SCORE_ID,
         }
-        # Read-only reference tables: ingested, hash-pinned authority data no sprite may
-        # mutate (the mutable slot lists are deliberately excluded — allocators write those).
+        # Sprite-write-forbidden Stage lists: mostly ingested, hash-pinned authority data no sprite may mutate
+        # (the mutable slot lists are deliberately excluded — allocators write those). The two best-five lists
+        # (`high score table` / `high score names`) are the exception: as of CAB-04 (slice 19) the STAGE mutates
+        # them at runtime via `rank in`, so they are not immutable reference data — but no SPRITE may write them,
+        # which is exactly what this guard enforces (it scans non-Stage targets), so they belong here.
         reference_list_ids = {
             director.VALUE_TABLE_ID,
             director.STARTING_LIVES_ID,
@@ -1738,6 +1790,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.REPEAT_BONUS_123_ID,
             director.REPEAT_BONUS_5_ID,
             director.HIGH_SCORE_TABLE_ID,
+            director.HIGH_SCORE_NAMES_ID,
             director.AREA_MAP_COLUMN_ID,
             director.SCHEDULE_HANDLER_ID,
             director.SCHEDULE_TRIGGER_ROW_ID,
@@ -16569,6 +16622,10 @@ class ScratchProjectTests(unittest.TestCase):
         data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
         expected = data["tables"]["high_score_defaults"]["scores"]
         self.assertEqual(expected, by_name["high score table"])
+        # CAB-04 (slice 19): the parallel LIVE names list is generated from the project-original defaults,
+        # one name per score, so the best-five table has a complete (score, name) row set at power-on.
+        self.assertEqual(director.HIGH_SCORE_NAME_DEFAULTS, by_name["high score names"])
+        self.assertEqual(len(by_name["high score table"]), len(by_name["high score names"]))
 
     def test_attract_default_initials_are_project_original_and_font_covered(self) -> None:
         # CAB-01 (slice 17): the attract best-five initials are project-original placeholders that
@@ -16594,6 +16651,14 @@ class ScratchProjectTests(unittest.TestCase):
             "each default best-five score must have exactly one initials entry",
         )
         self.assertEqual(len(initials), len(director.HIGH_SCORE_DEFAULTS))
+        # CAB-04 (slice 19): the LIVE names list defaults (game_director.HIGH_SCORE_NAME_DEFAULTS) must equal
+        # the attract initials one-for-one. game_director does not import hud_glyphs (blocks/costume split), so
+        # it declares the defaults locally; this cross-module equality is what keeps the two from drifting.
+        self.assertEqual(
+            list(initials),
+            director.HIGH_SCORE_NAME_DEFAULTS,
+            "the live names-list defaults must match hud_glyphs.ATTRACT_DEFAULT_INITIALS exactly",
+        )
         for entry in initials:
             self.assertEqual(len(entry), 3, f"best-five initials {entry!r} must be three glyphs")
             for glyph in entry:
@@ -18046,7 +18111,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3875bad63dc0efce66c96cd8e1052bdbcd749e20eae5ae051a8878ff36fad46e",
+            "dd4ecb7d500f25759b92d5a6a48690d467ba8ea1200e92405c2b0928913036f6",
             build_hash,
         )
 

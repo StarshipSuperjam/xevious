@@ -761,6 +761,105 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeDeleteThisClone(p, 'start_screen'),
   },
   {
+    // CAB-04/ECO-04 (cabinet.high-scores, slice 19): the LIVE best-five table. `rank in` is a no-arg Stage warp
+    // proc that reads `entry score` (the game-over routing sets it to the finishing player's score), scans ranks
+    // 5..1 for the smallest rank the score reaches-or-beats (`>=`, a tie places — move_high_score_entry_down's
+    // fall-through, xevious_main.68k:1653-1656), and on a place shifts the scores AND `high score names` down one
+    // in lockstep (dropping the old fifth) and inserts the score with a blank name, leaving the rank in
+    // `entry row` (0 = did not place). This is the C1 guard for riskiest-seam #2 — an off-by-one in the lockstep
+    // shift silently corrupts the table or desyncs names<->scores; the exact expected-table/names assertions
+    // below bind to the whole shift, not just a count. Driven in isolation via callProc over a seeded table (no
+    // play state — rank in reads only Stage lists/vars). The real game calls rank in through a warp
+    // procedures_call (atomic), but the harness's callProc pushes a thread directly on the definition, which
+    // runs in NON-warp mode — so its repeat loops yield and a single step advances only part way. We therefore
+    // drive it with NO green flag (nothing else competes for the step budget) and pump to completion; the final
+    // list state is warp-independent, so the settled result equals the atomic one.
+    // roadmap-evidence: CAB-04 success  (a qualifying score ranks in; the table stays length 5 and names track)
+    key: 'high-score-rank-insert',
+    behavior: 'rank in places a qualifying score into the live best-five table, shifting names in lockstep',
+    playtestStep: 1,
+    async drive(vm) {
+      // Seed a known table + names by mutating the live arrays in place (not replacing the references).
+      const seed = (id, vals) => {
+        const a = readVar(vm, id);
+        a.splice(0, a.length, ...vals);
+      };
+      // Run rank in to completion over a fresh seed and report the settled state. 40 pumps is far past the
+      // ~9 loop iterations, and once the thread finishes extra pumps are no-ops, so the result is deterministic.
+      const rankIn = (table, names, score) => {
+        seed('eco-high-score-table', table);
+        seed('eco-high-score-names', names);
+        writeVar(vm, 'cabinet-entry-score', score);
+        callProc(vm, 'Stage', 'rank in');
+        step(vm, 40);
+        return {
+          row: readVar(vm, 'cabinet-entry-row'),
+          table: readVar(vm, 'eco-high-score-table').slice(),
+          names: readVar(vm, 'eco-high-score-names').slice(),
+        };
+      };
+      // Qualifying score lands at rank 3 (beats 30000, below 35000).
+      const placed = rankIn(
+        [40000, 35000, 30000, 25000, 20000],
+        ['STK', 'M.N', 'EVE', 'S.O', 'S.K'],
+        32000,
+      );
+      // A non-qualifying score (below the current fifth place) must NOT place and must leave both lists intact.
+      const skipped = rankIn(
+        [40000, 35000, 32000, 30000, 25000],
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        10000,
+      );
+      // A tie with the current fifth place still places (>= semantics), at rank 5.
+      const tied = rankIn(
+        [40000, 35000, 32000, 30000, 25000],
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        25000,
+      );
+      return { placed, skipped, tied };
+    },
+    assert(obs) {
+      // Qualifying: rank 3, scores shift down + old fifth dropped, names shift in lockstep, new row name blank.
+      assert.equal(obs.placed.row, 3, 'a qualifying score records its insertion rank');
+      assert.deepEqual(
+        obs.placed.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'the score inserts at rank 3 and lower entries shift down one, dropping the old fifth',
+      );
+      assert.deepEqual(
+        obs.placed.names,
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        'names shift down in lockstep with scores and the new row blanks its name',
+      );
+      assert.equal(obs.placed.table.length, 5, 'the table stays exactly five entries');
+      assert.equal(obs.placed.names.length, 5, 'the names list stays exactly five entries');
+      // Non-qualifying: entry row 0 (did not place) and both lists untouched.
+      assert.equal(obs.skipped.row, 0, 'a sub-fifth score does not place (entry row 0)');
+      assert.deepEqual(
+        obs.skipped.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'a non-qualifying score leaves the table unchanged',
+      );
+      assert.deepEqual(
+        obs.skipped.names,
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        'a non-qualifying score leaves the names unchanged',
+      );
+      // Tie with fifth place places at rank 5 (>= semantics, the arcade fall-through).
+      assert.equal(obs.tied.row, 5, 'a score tying fifth place still places, at rank 5');
+      assert.deepEqual(
+        obs.tied.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'the tie places at rank 5 (an equal score takes the last slot)',
+      );
+    },
+    // Empty the `rank in` proc body: a qualifying score then never ranks in, so entry row stays 0 and the table
+    // is untouched → the placement assertions fail. Surgical to this proc (its callers and all other state are
+    // left intact).
+    // roadmap-evidence: CAB-04 failure  (with rank in neutralized a qualifying score never enters the table)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rank in'),
+  },
+  {
     key: 'death-respawn',
     behavior: 'A flying enemy touching the craft runs death -> respawn and returns to playing',
     playtestStep: 5,
