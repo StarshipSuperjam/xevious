@@ -1121,6 +1121,154 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'entry timer'),
   },
   {
+    // ECO-04 (economy.game-over-routing, slice 19): the game-over ROUTING acts on the qualification verdict.
+    // A qualifying end-of-game score (>= fifth place) ranks into the live table and transitions game-over ->
+    // high-score-entry, tagging the entering player/row/score; a sub-fifth score skips entry and returns
+    // straight to the attract cycle at the title (the existing game-over -> title edge). Driven by firing the
+    // `game over complete` receiver directly over a seeded table + score (the director-receiver isolation
+    // death-game-over exercises through a real death), so the routing is tested without a 64-tick death hold.
+    // roadmap-evidence: ECO-04 success  (a qualifying score routes game-over -> high-score-entry and ranks in
+    //   at its rank; a sub-fifth score skips entry and returns to the title)
+    key: 'high-score-qualify-enters',
+    behavior:
+      'A qualifying end-of-game score routes game-over into the initials screen and ranks in; a sub-fifth score skips entry and returns to the title',
+    playtestStep: 6,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2); // boot to the title and arm the director receivers
+      const seed = (id, vals) => {
+        const a = readVar(vm, id);
+        a.splice(0, a.length, ...vals);
+      };
+      const route = (score, { twoPlayer = 0, currPlayer = 0, otherScore = 0 } = {}) => {
+        seed('eco-high-score-table', [40000, 35000, 30000, 25000, 20000]);
+        seed('eco-high-score-names', ['STK', 'M.N', 'EVE', 'S.O', 'S.K']);
+        writeVar(vm, 'eco-score', score);
+        writeVar(vm, 'other-score', otherScore);
+        writeVar(vm, 'cabinet-two-player', twoPlayer);
+        writeVar(vm, 'cabinet-curr-player', currPlayer);
+        writeVar(vm, 'cabinet-entry-row', 0);
+        writeVar(vm, 'cabinet-entry-player', 9); // sentinel: the routing must set it
+        writeVar(vm, 'game-director-state', 'game-over');
+        fireBroadcast(vm, 'game over complete');
+        step(vm, 6);
+        return {
+          state: state(vm),
+          qualified: Number(readVar(vm, 'eco-qualified')),
+          row: readVar(vm, 'cabinet-entry-row'),
+          player: Number(readVar(vm, 'cabinet-entry-player')),
+          entryScore: Number(readVar(vm, 'cabinet-entry-score')),
+          table: readVar(vm, 'eco-high-score-table').slice(),
+        };
+      };
+      // Qualifying one-player score 32000 (>= 20000 fifth) ranks at rank 3 (beats 30000, below 35000).
+      const qualify = route(32000);
+      // Sub-fifth one-player score 10000 (< 20000 fifth) does not qualify.
+      const skip = route(10000);
+      return { qualify, skip };
+    },
+    assert(obs) {
+      assert.equal(obs.qualify.state, 'high-score-entry', 'a qualifying score routes into the initials screen');
+      assert.equal(obs.qualify.qualified, 1, 'the qualification verdict is set for a qualifying score');
+      assert.equal(obs.qualify.row, 3, 'the qualifying score ranks in at its rank (3)');
+      assert.equal(obs.qualify.player, 0, 'the entering player is the current (last-dier) player');
+      assert.equal(obs.qualify.entryScore, 32000, 'the entry score is the qualifying player score');
+      assert.deepEqual(
+        obs.qualify.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'the qualifying score ranks into the live table before entry',
+      );
+      assert.equal(obs.skip.state, 'title', 'a sub-fifth score skips entry and returns to the title');
+      assert.equal(obs.skip.qualified, 0, 'a sub-fifth score does not qualify');
+    },
+    // Remove the game-over -> high-score-entry edge: the qualifying score's transition is then a no-op, so the
+    // cabinet never reaches the entry screen → the routing assertion fails. The sub-fifth -> title path (the
+    // separate game-over -> title edge) is untouched, so only the routing-to-entry behaviour breaks.
+    // roadmap-evidence: ECO-04 failure  (without the routing edge a qualifying score cannot reach the entry screen)
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'game-over -> high-score-entry'),
+  },
+  {
+    // ECO-04 (economy.game-over-routing, slice 19): two-player SEQUENTIAL entry. At a two-player both-out the
+    // routing enters the CURRENT player first (rank in, arm `entry recheck`); on finish `_high_score_finish`
+    // consumes the flag, re-checks the OTHER player against the now-shifted fifth place, and re-arms the entry
+    // screen for them via a high-score-entry -> high-score-entry self-transition (so the PLAYER-2 tag re-reads
+    // `entry player`). The port batches the arcade's per-player-at-own-game-over entries at this single both-out
+    // point (recorded divergence). Both finishes here are the tenth-char Space finish; each typed name lands at
+    // its own rank. A boot step arms the key hats (keypress-hats-need-boot-step); the self-transition re-arms.
+    // roadmap-evidence: ECO-04 success  (both qualifying players enter sequentially — current first, then the
+    //   other after a self-transition re-arm — and each typed name lands at its correct rank)
+    key: 'high-score-two-player-both',
+    behavior:
+      'A two-player both-out where both scores qualify runs two sequential initials entries (current then other), each name landing at its own rank',
+    playtestStep: 6,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      const seed = (id, vals) => {
+        const a = readVar(vm, id);
+        a.splice(0, a.length, ...vals);
+      };
+      seed('eco-high-score-table', [40000, 35000, 30000, 25000, 20000]);
+      seed('eco-high-score-names', ['STK', 'M.N', 'EVE', 'S.O', 'S.K']);
+      writeVar(vm, 'eco-score', 32000); // current player (curr player 0) — ranks at 3
+      writeVar(vm, 'other-score', 28000); // other player (player 1) — ranks at 5 after the first insert
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'game-director-state', 'game-over');
+      fireBroadcast(vm, 'game over complete');
+      step(vm, 6);
+      const firstState = state(vm);
+      const firstPlayer = Number(readVar(vm, 'cabinet-entry-player'));
+      const firstRow = readVar(vm, 'cabinet-entry-row');
+
+      // Finish player 1's entry: ten 'A's (the active letter resets to A after each commit, so each cell is a
+      // bare Space). The tenth commit finishes and the recheck re-arms the screen for player 2.
+      writeVar(vm, 'cabinet-entry-char', 0);
+      for (let i = 0; i < 10; i += 1) tapKey(vm, ' ');
+      step(vm, 2); // let the self-transition settle into the second entry
+      const midState = state(vm);
+      const midPlayer = Number(readVar(vm, 'cabinet-entry-player'));
+      const midRow = readVar(vm, 'cabinet-entry-row');
+
+      // Finish player 2's entry: ten 'B's (one Up then Space per cell). The tenth commit finishes with the
+      // recheck already consumed, so the cabinet returns to the attract cycle at the title.
+      writeVar(vm, 'cabinet-entry-char', 0);
+      for (let i = 0; i < 10; i += 1) {
+        tapKey(vm, 'ArrowUp');
+        tapKey(vm, ' ');
+      }
+      step(vm, 2);
+      return {
+        firstState,
+        firstPlayer,
+        firstRow,
+        midState,
+        midPlayer,
+        midRow,
+        finalState: state(vm),
+        names: readVar(vm, 'eco-high-score-names').slice(),
+        attract: Number(readVar(vm, 'cabinet-attract')),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.firstState, 'high-score-entry', 'the current player enters first');
+      assert.equal(obs.firstPlayer, 0, 'the first entrant is the current player (player 0)');
+      assert.equal(obs.firstRow, 3, 'the current player ranks in at rank 3');
+      assert.equal(obs.midState, 'high-score-entry', 'finishing the first entry re-arms the screen for the other player');
+      assert.equal(obs.midPlayer, 1, 'the second entrant is the other player (player 1)');
+      assert.equal(obs.midRow, 5, 'the other player ranks in at rank 5 against the now-shifted fifth place');
+      assert.equal(obs.names[2], 'AAAAAAAAAA', 'the first player name lands at its rank (3 -> index 2)');
+      assert.equal(obs.names[4], 'BBBBBBBBBB', 'the second player name lands at its rank (5 -> index 4)');
+      assert.equal(obs.finalState, 'title', 'both entries done, the cabinet returns to the attract cycle at the title');
+      assert.equal(obs.attract, 1, 'the final finish re-raises the attract flag');
+    },
+    // Remove the high-score-entry -> high-score-entry self-edge: after the first player finishes, the re-arm
+    // transition is a no-op, so the other player never enters and the second name never lands → the sequential
+    // assertions fail. The first entry (via game-over -> high-score-entry) is untouched.
+    // roadmap-evidence: ECO-04 failure  (without the self-edge the second qualifying player's re-arm cannot fire)
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'high-score-entry -> high-score-entry'),
+  },
+  {
     key: 'death-respawn',
     behavior: 'A flying enemy touching the craft runs death -> respawn and returns to playing',
     playtestStep: 5,

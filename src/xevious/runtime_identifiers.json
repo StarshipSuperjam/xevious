@@ -344,6 +344,11 @@
       "name": "entry player",
       "scope": "Stage"
     },
+    "cabinet-entry-recheck": {
+      "kind": "variable",
+      "name": "entry recheck",
+      "scope": "Stage"
+    },
     "cabinet-entry-row": {
       "kind": "variable",
       "name": "entry row",

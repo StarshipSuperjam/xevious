@@ -288,6 +288,10 @@
           "entry score",
           0
         ],
+        "cabinet-entry-recheck": [
+          "entry recheck",
+          0
+        ],
         "cabinet-rank-cursor": [
           "rank cursor",
           0
@@ -507,6 +511,7 @@
             "game-over -> title",
             "game-over -> high-score-entry",
             "high-score-entry -> title",
+            "high-score-entry -> high-score-entry",
             "title -> playing",
             "playing -> attract-scores",
             "attract-scores -> playing",
@@ -214357,7 +214362,7 @@
         },
         "gd-stage-8866": {
           "opcode": "event_whenkeypressed",
-          "next": "gd-stage-8879",
+          "next": "gd-stage-8893",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -214450,7 +214455,7 @@
         "gd-stage-8870": {
           "opcode": "data_setvariableto",
           "next": "gd-stage-8871",
-          "parent": "gd-stage-8879",
+          "parent": "gd-stage-8893",
           "inputs": {
             "VALUE": [
               3,
@@ -214494,7 +214499,7 @@
         },
         "gd-stage-8872": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-8878",
+          "next": "gd-stage-8892",
           "parent": "gd-stage-8871",
           "inputs": {
             "VALUE": [
@@ -214546,7 +214551,7 @@
         "gd-stage-8874": {
           "opcode": "operator_not",
           "next": null,
-          "parent": "gd-stage-8878",
+          "parent": "gd-stage-8892",
           "inputs": {
             "OPERAND": [
               2,
@@ -214558,281 +214563,19 @@
           "topLevel": false
         },
         "gd-stage-8875": {
-          "opcode": "data_replaceitemoflist",
-          "next": "gd-stage-8876",
-          "parent": "gd-stage-8878",
-          "inputs": {
-            "INDEX": [
-              3,
-              [
-                12,
-                "entry row",
-                "cabinet-entry-row"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "ITEM": [
-              3,
-              [
-                12,
-                "name buffer",
-                "cabinet-entry-name-buffer"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "high score names",
-              "eco-high-score-names"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8876": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8877",
-          "parent": "gd-stage-8875",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                4,
-                1
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "attract",
-              "cabinet-attract"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8877": {
-          "opcode": "procedures_call",
+          "opcode": "control_if_else",
           "next": null,
-          "parent": "gd-stage-8876",
-          "inputs": {
-            "director-destination": [
-              1,
-              [
-                10,
-                "title"
-              ]
-            ],
-            "director-scope": [
-              1,
-              [
-                10,
-                "cold-start"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "transition to %s reset %s",
-            "argumentids": "[\"director-destination\",\"director-scope\"]",
-            "warp": "false"
-          }
-        },
-        "gd-stage-8878": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8872",
+          "parent": "gd-stage-8891",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8874"
+              "gd-stage-8876"
             ],
             "SUBSTACK": [
-              2,
-              "gd-stage-8875"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8879": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8866",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8880"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8870"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8880": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8879",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "high-score-entry"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8881": {
-          "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-8883",
-          "parent": null,
-          "inputs": {},
-          "fields": {
-            "BROADCAST_OPTION": [
-              "sfx bacura",
-              "broadcastMsgId-sfx-bacura"
-            ]
-          },
-          "shadow": false,
-          "topLevel": true,
-          "x": 20,
-          "y": 12920
-        },
-        "gd-stage-8882": {
-          "opcode": "sound_sounds_menu",
-          "next": null,
-          "parent": "gd-stage-8883",
-          "inputs": {},
-          "fields": {
-            "SOUND_MENU": [
-              "bacura",
-              null
-            ]
-          },
-          "shadow": true,
-          "topLevel": false
-        },
-        "gd-stage-8883": {
-          "opcode": "sound_play",
-          "next": null,
-          "parent": "gd-stage-8881",
-          "inputs": {
-            "SOUND_MENU": [
-              1,
-              "gd-stage-8882"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8884": {
-          "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-8886",
-          "parent": null,
-          "inputs": {},
-          "fields": {
-            "BROADCAST_OPTION": [
-              "ready complete",
-              "broadcastMsgId-ready-complete"
-            ]
-          },
-          "shadow": false,
-          "topLevel": true,
-          "x": 20,
-          "y": 13070
-        },
-        "gd-stage-8885": {
-          "opcode": "procedures_call",
-          "next": null,
-          "parent": "gd-stage-8886",
-          "inputs": {
-            "director-destination": [
-              1,
-              [
-                10,
-                "playing"
-              ]
-            ],
-            "director-scope": [
-              1,
-              [
-                10,
-                "none"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "transition to %s reset %s",
-            "argumentids": "[\"director-destination\",\"director-scope\"]",
-            "warp": "false"
-          }
-        },
-        "gd-stage-8886": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8884",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8887"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8885"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8887": {
-          "opcode": "operator_or",
-          "next": null,
-          "parent": "gd-stage-8886",
-          "inputs": {
-            "OPERAND1": [
               2,
               "gd-stage-8888"
             ],
-            "OPERAND2": [
+            "SUBSTACK2": [
               2,
               "gd-stage-8889"
             ]
@@ -214841,436 +214584,17 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8888": {
+        "gd-stage-8876": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8887",
+          "parent": "gd-stage-8875",
           "inputs": {
             "OPERAND1": [
               3,
               [
                 12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "ready"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8889": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8887",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "respawning"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8890": {
-          "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-8921",
-          "parent": null,
-          "inputs": {},
-          "fields": {
-            "BROADCAST_OPTION": [
-              "death complete",
-              "broadcastMsgId-death-complete"
-            ]
-          },
-          "shadow": false,
-          "topLevel": true,
-          "x": 20,
-          "y": 13220
-        },
-        "gd-stage-8891": {
-          "opcode": "operator_and",
-          "next": null,
-          "parent": "gd-stage-8898",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-8892"
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8893"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8892": {
-          "opcode": "operator_gt",
-          "next": null,
-          "parent": "gd-stage-8891",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "scroll row",
-                "area-scroll-row"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                13
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8893": {
-          "opcode": "operator_gt",
-          "next": null,
-          "parent": "gd-stage-8891",
-          "inputs": {
-            "OPERAND1": [
-              1,
-              [
-                4,
-                68
-              ]
-            ],
-            "OPERAND2": [
-              3,
-              [
-                12,
-                "scroll row",
-                "area-scroll-row"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8894": {
-          "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-stage-8898",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8895"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8896"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-stage-8897"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8895": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8894",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "area number",
-                "area-number"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                16
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8896": {
-          "opcode": "data_setvariableto",
-          "next": null,
-          "parent": "gd-stage-8894",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                4,
-                7
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "area number",
-              "area-number"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8897": {
-          "opcode": "data_changevariableby",
-          "next": null,
-          "parent": "gd-stage-8894",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                4,
-                1
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "area number",
-              "area-number"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8898": {
-          "opcode": "control_if",
-          "next": "gd-stage-8899",
-          "parent": "gd-stage-8905",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8891"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8894"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8899": {
-          "opcode": "control_if",
-          "next": "gd-stage-8909",
-          "parent": "gd-stage-8898",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8900"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8901"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8900": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8899",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "craft",
-                "eco-craft"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                0
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8901": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8902",
-          "parent": "gd-stage-8899",
-          "inputs": {
-            "VALUE": [
-              3,
-              [
-                12,
-                "curr player",
-                "cabinet-curr-player"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "banner player",
-              "cabinet-banner-player"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8902": {
-          "opcode": "control_repeat",
-          "next": "gd-stage-8904",
-          "parent": "gd-stage-8901",
-          "inputs": {
-            "TIMES": [
-              1,
-              [
-                4,
-                64
-              ]
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8903"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8903": {
-          "opcode": "control_wait",
-          "next": null,
-          "parent": "gd-stage-8902",
-          "inputs": {
-            "DURATION": [
-              1,
-              [
-                4,
-                0
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8904": {
-          "opcode": "data_setvariableto",
-          "next": null,
-          "parent": "gd-stage-8902",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                4,
-                -1
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "banner player",
-              "cabinet-banner-player"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8905": {
-          "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-stage-8921",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8908"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8898"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-stage-8915"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8906": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8908",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "two player",
-                "cabinet-two-player"
+                "entry recheck",
+                "cabinet-entry-recheck"
               ],
               [
                 10,
@@ -215289,17 +214613,61 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8907": {
-          "opcode": "operator_gt",
+        "gd-stage-8877": {
+          "opcode": "control_if_else",
           "next": null,
-          "parent": "gd-stage-8908",
+          "parent": "gd-stage-8888",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8880"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8881"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-8886"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8878": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-stage-8879",
+          "inputs": {
+            "INDEX": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "high score table",
+              "eco-high-score-table"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8879": {
+          "opcode": "operator_lt",
+          "next": null,
+          "parent": "gd-stage-8880",
           "inputs": {
             "OPERAND1": [
               3,
               [
                 12,
-                "other craft",
-                "other-craft"
+                "other score",
+                "other-score"
               ],
               [
                 10,
@@ -215307,55 +214675,59 @@
               ]
             ],
             "OPERAND2": [
-              1,
+              2,
+              "gd-stage-8878"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8880": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-8877",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-8879"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8881": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8883",
+          "parent": "gd-stage-8877",
+          "inputs": {
+            "VALUE": [
+              3,
               [
-                4,
-                0
+                12,
+                "other score",
+                "other-score"
+              ],
+              [
+                10,
+                ""
               ]
             ]
           },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8908": {
-          "opcode": "operator_and",
-          "next": null,
-          "parent": "gd-stage-8905",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-8906"
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8907"
+          "fields": {
+            "VARIABLE": [
+              "entry score",
+              "cabinet-entry-score"
             ]
           },
-          "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8909": {
-          "opcode": "procedures_call",
-          "next": "gd-stage-8911",
-          "parent": "gd-stage-8899",
-          "inputs": {},
-          "fields": {},
-          "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "swap players",
-            "argumentids": "[]",
-            "warp": "true"
-          }
-        },
-        "gd-stage-8910": {
+        "gd-stage-8882": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-stage-8911",
+          "parent": "gd-stage-8883",
           "inputs": {
             "NUM1": [
               1,
@@ -215381,14 +214753,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8911": {
+        "gd-stage-8883": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-8912",
-          "parent": "gd-stage-8909",
+          "next": "gd-stage-8884",
+          "parent": "gd-stage-8881",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-8910",
+              "gd-stage-8882",
               [
                 10,
                 ""
@@ -215397,496 +214769,64 @@
           },
           "fields": {
             "VARIABLE": [
-              "curr player",
-              "cabinet-curr-player"
+              "entry player",
+              "cabinet-entry-player"
             ]
           },
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8912": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8913",
-          "parent": "gd-stage-8911",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                4,
-                13
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "scroll row",
-              "area-scroll-row"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8913": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8914",
-          "parent": "gd-stage-8912",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                10,
-                "respawn"
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "death outcome",
-              "game-director-death-outcome"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8914": {
+        "gd-stage-8884": {
           "opcode": "procedures_call",
-          "next": null,
-          "parent": "gd-stage-8913",
-          "inputs": {
-            "director-destination": [
-              1,
-              [
-                10,
-                "respawning"
-              ]
-            ],
-            "director-scope": [
-              1,
-              [
-                10,
-                "new-life"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "transition to %s reset %s",
-            "argumentids": "[\"director-destination\",\"director-scope\"]",
-            "warp": "false"
-          }
-        },
-        "gd-stage-8915": {
-          "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-stage-8905",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8916"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8917"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-stage-8919"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8916": {
-          "opcode": "operator_gt",
-          "next": null,
-          "parent": "gd-stage-8915",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "craft",
-                "eco-craft"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                0
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8917": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8918",
-          "parent": "gd-stage-8915",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                10,
-                "respawn"
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "death outcome",
-              "game-director-death-outcome"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8918": {
-          "opcode": "procedures_call",
-          "next": null,
-          "parent": "gd-stage-8917",
-          "inputs": {
-            "director-destination": [
-              1,
-              [
-                10,
-                "respawning"
-              ]
-            ],
-            "director-scope": [
-              1,
-              [
-                10,
-                "new-life"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "transition to %s reset %s",
-            "argumentids": "[\"director-destination\",\"director-scope\"]",
-            "warp": "false"
-          }
-        },
-        "gd-stage-8919": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8920",
-          "parent": "gd-stage-8915",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                10,
-                "game-over"
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "death outcome",
-              "game-director-death-outcome"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8920": {
-          "opcode": "procedures_call",
-          "next": null,
-          "parent": "gd-stage-8919",
-          "inputs": {
-            "director-destination": [
-              1,
-              [
-                10,
-                "game-over"
-              ]
-            ],
-            "director-scope": [
-              1,
-              [
-                10,
-                "game-over"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "transition to %s reset %s",
-            "argumentids": "[\"director-destination\",\"director-scope\"]",
-            "warp": "false"
-          }
-        },
-        "gd-stage-8921": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8890",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8922"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8905"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8922": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8921",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "player-dead"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8923": {
-          "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-8934",
-          "parent": null,
+          "next": "gd-stage-8885",
+          "parent": "gd-stage-8883",
           "inputs": {},
-          "fields": {
-            "BROADCAST_OPTION": [
-              "game over complete",
-              "broadcastMsgId-game-over-complete"
-            ]
-          },
+          "fields": {},
           "shadow": false,
-          "topLevel": true,
-          "x": 20,
-          "y": 13370
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "rank in",
+            "argumentids": "[]",
+            "warp": "true"
+          }
         },
-        "gd-stage-8924": {
-          "opcode": "data_itemoflist",
+        "gd-stage-8885": {
+          "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-8926",
+          "parent": "gd-stage-8884",
           "inputs": {
-            "INDEX": [
+            "director-destination": [
               1,
               [
-                4,
-                5
+                10,
+                "high-score-entry"
               ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "high score table",
-              "eco-high-score-table"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8925": {
-          "opcode": "data_itemoflist",
-          "next": null,
-          "parent": "gd-stage-8928",
-          "inputs": {
-            "INDEX": [
+            ],
+            "director-scope": [
               1,
               [
-                4,
-                5
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "high score table",
-              "eco-high-score-table"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8926": {
-          "opcode": "operator_gt",
-          "next": null,
-          "parent": "gd-stage-8930",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "score",
-                "eco-score"
-              ],
-              [
                 10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8924"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8927": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8929",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "two player",
-                "cabinet-two-player"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                1
+                "entry"
               ]
             ]
           },
           "fields": {},
           "shadow": false,
-          "topLevel": false
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
         },
-        "gd-stage-8928": {
-          "opcode": "operator_gt",
-          "next": null,
-          "parent": "gd-stage-8929",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "other score",
-                "other-score"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8925"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8929": {
-          "opcode": "operator_and",
-          "next": null,
-          "parent": "gd-stage-8930",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-8927"
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8928"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8930": {
-          "opcode": "operator_or",
-          "next": null,
-          "parent": "gd-stage-8931",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-8926"
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8929"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8931": {
+        "gd-stage-8886": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-8932",
-          "parent": "gd-stage-8934",
-          "inputs": {
-            "VALUE": [
-              3,
-              "gd-stage-8930",
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "qualified",
-              "eco-qualified"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8932": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8933",
-          "parent": "gd-stage-8931",
+          "next": "gd-stage-8887",
+          "parent": "gd-stage-8877",
           "inputs": {
             "VALUE": [
               1,
@@ -215905,10 +214845,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8933": {
+        "gd-stage-8887": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-8932",
+          "parent": "gd-stage-8886",
           "inputs": {
             "director-destination": [
               1,
@@ -215936,123 +214876,12 @@
             "warp": "false"
           }
         },
-        "gd-stage-8934": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8923",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8935"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8931"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8935": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8934",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "game-over"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8936": {
-          "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-8937",
-          "parent": null,
-          "inputs": {},
-          "fields": {
-            "BROADCAST_OPTION": [
-              "director enter",
-              "broadcastMsgId-director-enter"
-            ]
-          },
-          "shadow": false,
-          "topLevel": true,
-          "x": 20,
-          "y": 13520
-        },
-        "gd-stage-8937": {
+        "gd-stage-8888": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-8946",
-          "parent": "gd-stage-8936",
+          "next": "gd-stage-8877",
+          "parent": "gd-stage-8875",
           "inputs": {
             "VALUE": [
-              3,
-              [
-                12,
-                "state epoch",
-                "game-director-epoch"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "attract epoch",
-              "cabinet-attract-epoch"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8938": {
-          "opcode": "control_repeat",
-          "next": "gd-stage-8945",
-          "parent": "gd-stage-8946",
-          "inputs": {
-            "TIMES": [
-              1,
-              [
-                4,
-                372
-              ]
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8939"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8939": {
-          "opcode": "control_wait",
-          "next": null,
-          "parent": "gd-stage-8938",
-          "inputs": {
-            "DURATION": [
               1,
               [
                 4,
@@ -216060,95 +214889,19 @@
               ]
             ]
           },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8940": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8942",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "attract epoch",
-                "cabinet-attract-epoch"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              3,
-              [
-                12,
-                "state epoch",
-                "game-director-epoch"
-              ],
-              [
-                10,
-                ""
-              ]
+          "fields": {
+            "VARIABLE": [
+              "entry recheck",
+              "cabinet-entry-recheck"
             ]
           },
-          "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8941": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8942",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "title"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8942": {
-          "opcode": "operator_and",
-          "next": null,
-          "parent": "gd-stage-8945",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-8940"
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8941"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8943": {
+        "gd-stage-8889": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-8944",
-          "parent": "gd-stage-8945",
+          "next": "gd-stage-8890",
+          "parent": "gd-stage-8875",
           "inputs": {
             "VALUE": [
               1,
@@ -216160,267 +214913,30 @@
           },
           "fields": {
             "VARIABLE": [
-              "attract stage",
-              "cabinet-attract-stage"
+              "attract",
+              "cabinet-attract"
             ]
           },
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8944": {
+        "gd-stage-8890": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-8943",
+          "parent": "gd-stage-8889",
           "inputs": {
             "director-destination": [
-              1,
-              [
-                10,
-                "playing"
-              ]
-            ],
-            "director-scope": [
-              1,
-              [
-                10,
-                "new-game"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "transition to %s reset %s",
-            "argumentids": "[\"director-destination\",\"director-scope\"]",
-            "warp": "false"
-          }
-        },
-        "gd-stage-8945": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8938",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8942"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8943"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8946": {
-          "opcode": "control_if",
-          "next": "gd-stage-8956",
-          "parent": "gd-stage-8937",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8947"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8938"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8947": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8946",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
               1,
               [
                 10,
                 "title"
               ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8948": {
-          "opcode": "control_repeat",
-          "next": "gd-stage-8955",
-          "parent": "gd-stage-8956",
-          "inputs": {
-            "TIMES": [
-              1,
-              [
-                4,
-                256
-              ]
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8949"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8949": {
-          "opcode": "control_wait",
-          "next": null,
-          "parent": "gd-stage-8948",
-          "inputs": {
-            "DURATION": [
-              1,
-              [
-                4,
-                0
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8950": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8952",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "attract epoch",
-                "cabinet-attract-epoch"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              3,
-              [
-                12,
-                "state epoch",
-                "game-director-epoch"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8951": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8952",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "attract-scores"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8952": {
-          "opcode": "operator_and",
-          "next": null,
-          "parent": "gd-stage-8955",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-8950"
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-8951"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8953": {
-          "opcode": "data_setvariableto",
-          "next": "gd-stage-8954",
-          "parent": "gd-stage-8955",
-          "inputs": {
-            "VALUE": [
-              1,
-              [
-                4,
-                2
-              ]
-            ]
-          },
-          "fields": {
-            "VARIABLE": [
-              "attract stage",
-              "cabinet-attract-stage"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8954": {
-          "opcode": "procedures_call",
-          "next": null,
-          "parent": "gd-stage-8953",
-          "inputs": {
-            "director-destination": [
-              1,
-              [
-                10,
-                "playing"
-              ]
             ],
             "director-scope": [
               1,
               [
                 10,
-                "new-game"
+                "cold-start"
               ]
             ]
           },
@@ -216435,217 +214951,10 @@
             "warp": "false"
           }
         },
-        "gd-stage-8955": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8948",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8952"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8953"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8956": {
-          "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-8946",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8957"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8948"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8957": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8956",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "attract-scores"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8958": {
-          "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-8970",
-          "parent": null,
-          "inputs": {},
-          "fields": {
-            "BROADCAST_OPTION": [
-              "director enter",
-              "broadcastMsgId-director-enter"
-            ]
-          },
-          "shadow": false,
-          "topLevel": true,
-          "x": 20,
-          "y": 13670
-        },
-        "gd-stage-8959": {
-          "opcode": "control_repeat_until",
-          "next": null,
-          "parent": "gd-stage-8970",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8960"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8962"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8960": {
-          "opcode": "operator_not",
-          "next": null,
-          "parent": "gd-stage-8959",
-          "inputs": {
-            "OPERAND": [
-              2,
-              "gd-stage-8961"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8961": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-8960",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "game state",
-                "game-director-state"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                10,
-                "high-score-entry"
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8962": {
-          "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-stage-8959",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8964"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8965"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-stage-8968"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8963": {
-          "opcode": "operator_gt",
-          "next": null,
-          "parent": "gd-stage-8964",
-          "inputs": {
-            "OPERAND1": [
-              3,
-              [
-                12,
-                "entry timer",
-                "cabinet-entry-timer"
-              ],
-              [
-                10,
-                ""
-              ]
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                0
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8964": {
-          "opcode": "operator_not",
-          "next": null,
-          "parent": "gd-stage-8962",
-          "inputs": {
-            "OPERAND": [
-              2,
-              "gd-stage-8963"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-8965": {
+        "gd-stage-8891": {
           "opcode": "data_replaceitemoflist",
-          "next": "gd-stage-8966",
-          "parent": "gd-stage-8962",
+          "next": "gd-stage-8875",
+          "parent": "gd-stage-8892",
           "inputs": {
             "INDEX": [
               3,
@@ -216681,10 +214990,1683 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8966": {
+        "gd-stage-8892": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8872",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8874"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8891"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8893": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8866",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8894"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8870"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8894": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8893",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "high-score-entry"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8895": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-stage-8897",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "sfx bacura",
+              "broadcastMsgId-sfx-bacura"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 12920
+        },
+        "gd-stage-8896": {
+          "opcode": "sound_sounds_menu",
+          "next": null,
+          "parent": "gd-stage-8897",
+          "inputs": {},
+          "fields": {
+            "SOUND_MENU": [
+              "bacura",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-stage-8897": {
+          "opcode": "sound_play",
+          "next": null,
+          "parent": "gd-stage-8895",
+          "inputs": {
+            "SOUND_MENU": [
+              1,
+              "gd-stage-8896"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8898": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-stage-8900",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "ready complete",
+              "broadcastMsgId-ready-complete"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 13070
+        },
+        "gd-stage-8899": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8900",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "playing"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "none"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8900": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8898",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8901"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8899"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8901": {
+          "opcode": "operator_or",
+          "next": null,
+          "parent": "gd-stage-8900",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-8902"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8903"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8902": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8901",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "ready"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8903": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8901",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "respawning"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8904": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-stage-8935",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "death complete",
+              "broadcastMsgId-death-complete"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 13220
+        },
+        "gd-stage-8905": {
+          "opcode": "operator_and",
+          "next": null,
+          "parent": "gd-stage-8912",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-8906"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8907"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8906": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-stage-8905",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "scroll row",
+                "area-scroll-row"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                13
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8907": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-stage-8905",
+          "inputs": {
+            "OPERAND1": [
+              1,
+              [
+                4,
+                68
+              ]
+            ],
+            "OPERAND2": [
+              3,
+              [
+                12,
+                "scroll row",
+                "area-scroll-row"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8908": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-8912",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8909"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8910"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-8911"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8909": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8908",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "area number",
+                "area-number"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                16
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8910": {
           "opcode": "data_setvariableto",
+          "next": null,
+          "parent": "gd-stage-8908",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                7
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "area number",
+              "area-number"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8911": {
+          "opcode": "data_changevariableby",
+          "next": null,
+          "parent": "gd-stage-8908",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "area number",
+              "area-number"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8912": {
+          "opcode": "control_if",
+          "next": "gd-stage-8913",
+          "parent": "gd-stage-8919",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8905"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8908"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8913": {
+          "opcode": "control_if",
+          "next": "gd-stage-8923",
+          "parent": "gd-stage-8912",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8914"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8915"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8914": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8913",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "craft",
+                "eco-craft"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8915": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8916",
+          "parent": "gd-stage-8913",
+          "inputs": {
+            "VALUE": [
+              3,
+              [
+                12,
+                "curr player",
+                "cabinet-curr-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "banner player",
+              "cabinet-banner-player"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8916": {
+          "opcode": "control_repeat",
+          "next": "gd-stage-8918",
+          "parent": "gd-stage-8915",
+          "inputs": {
+            "TIMES": [
+              1,
+              [
+                4,
+                64
+              ]
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8917"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8917": {
+          "opcode": "control_wait",
+          "next": null,
+          "parent": "gd-stage-8916",
+          "inputs": {
+            "DURATION": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8918": {
+          "opcode": "data_setvariableto",
+          "next": null,
+          "parent": "gd-stage-8916",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                -1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "banner player",
+              "cabinet-banner-player"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8919": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-8935",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8922"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8912"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-8929"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8920": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8922",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "two player",
+                "cabinet-two-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8921": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-stage-8922",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "other craft",
+                "other-craft"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8922": {
+          "opcode": "operator_and",
+          "next": null,
+          "parent": "gd-stage-8919",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-8920"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8921"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8923": {
+          "opcode": "procedures_call",
+          "next": "gd-stage-8925",
+          "parent": "gd-stage-8913",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "swap players",
+            "argumentids": "[]",
+            "warp": "true"
+          }
+        },
+        "gd-stage-8924": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-stage-8925",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                1
+              ]
+            ],
+            "NUM2": [
+              3,
+              [
+                12,
+                "curr player",
+                "cabinet-curr-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8925": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8926",
+          "parent": "gd-stage-8923",
+          "inputs": {
+            "VALUE": [
+              3,
+              "gd-stage-8924",
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "curr player",
+              "cabinet-curr-player"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8926": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8927",
+          "parent": "gd-stage-8925",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                13
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "scroll row",
+              "area-scroll-row"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8927": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8928",
+          "parent": "gd-stage-8926",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                10,
+                "respawn"
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "death outcome",
+              "game-director-death-outcome"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8928": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8927",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "respawning"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "new-life"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8929": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-8919",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8930"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8931"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-8933"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8930": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-stage-8929",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "craft",
+                "eco-craft"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8931": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8932",
+          "parent": "gd-stage-8929",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                10,
+                "respawn"
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "death outcome",
+              "game-director-death-outcome"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8932": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8931",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "respawning"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "new-life"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8933": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8934",
+          "parent": "gd-stage-8929",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                10,
+                "game-over"
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "death outcome",
+              "game-director-death-outcome"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8934": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8933",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "game-over"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "game-over"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8935": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8904",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8936"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8919"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8936": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8935",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "player-dead"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8937": {
+          "opcode": "event_whenbroadcastreceived",
           "next": "gd-stage-8967",
-          "parent": "gd-stage-8965",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "game over complete",
+              "broadcastMsgId-game-over-complete"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 13370
+        },
+        "gd-stage-8938": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-stage-8940",
+          "inputs": {
+            "INDEX": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "high score table",
+              "eco-high-score-table"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8939": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-stage-8943",
+          "inputs": {
+            "INDEX": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "high score table",
+              "eco-high-score-table"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8940": {
+          "opcode": "operator_lt",
+          "next": null,
+          "parent": "gd-stage-8941",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "score",
+                "eco-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8938"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8941": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-8946",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-8940"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8942": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8945",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "two player",
+                "cabinet-two-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8943": {
+          "opcode": "operator_lt",
+          "next": null,
+          "parent": "gd-stage-8944",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "other score",
+                "other-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8939"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8944": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-8945",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-8943"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8945": {
+          "opcode": "operator_and",
+          "next": null,
+          "parent": "gd-stage-8946",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-8942"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8944"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8946": {
+          "opcode": "operator_or",
+          "next": null,
+          "parent": "gd-stage-8947",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-8941"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8945"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8947": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8963",
+          "parent": "gd-stage-8967",
+          "inputs": {
+            "VALUE": [
+              3,
+              "gd-stage-8946",
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "qualified",
+              "eco-qualified"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8948": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-8963",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8951"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8952"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-8957"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8949": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-stage-8950",
+          "inputs": {
+            "INDEX": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "high score table",
+              "eco-high-score-table"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8950": {
+          "opcode": "operator_lt",
+          "next": null,
+          "parent": "gd-stage-8951",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "score",
+                "eco-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8949"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8951": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-8948",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-8950"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8952": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8953",
+          "parent": "gd-stage-8948",
+          "inputs": {
+            "VALUE": [
+              3,
+              [
+                12,
+                "score",
+                "eco-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry score",
+              "cabinet-entry-score"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8953": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8954",
+          "parent": "gd-stage-8952",
+          "inputs": {
+            "VALUE": [
+              3,
+              [
+                12,
+                "curr player",
+                "cabinet-curr-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry player",
+              "cabinet-entry-player"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8954": {
+          "opcode": "procedures_call",
+          "next": "gd-stage-8955",
+          "parent": "gd-stage-8953",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "rank in",
+            "argumentids": "[]",
+            "warp": "true"
+          }
+        },
+        "gd-stage-8955": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8956",
+          "parent": "gd-stage-8954",
+          "inputs": {
+            "VALUE": [
+              3,
+              [
+                12,
+                "two player",
+                "cabinet-two-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry recheck",
+              "cabinet-entry-recheck"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8956": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8955",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "high-score-entry"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "entry"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8957": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8959",
+          "parent": "gd-stage-8948",
+          "inputs": {
+            "VALUE": [
+              3,
+              [
+                12,
+                "other score",
+                "other-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry score",
+              "cabinet-entry-score"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8958": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-stage-8959",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                1
+              ]
+            ],
+            "NUM2": [
+              3,
+              [
+                12,
+                "curr player",
+                "cabinet-curr-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8959": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8960",
+          "parent": "gd-stage-8957",
+          "inputs": {
+            "VALUE": [
+              3,
+              "gd-stage-8958",
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry player",
+              "cabinet-entry-player"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8960": {
+          "opcode": "procedures_call",
+          "next": "gd-stage-8961",
+          "parent": "gd-stage-8959",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "rank in",
+            "argumentids": "[]",
+            "warp": "true"
+          }
+        },
+        "gd-stage-8961": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8962",
+          "parent": "gd-stage-8960",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry recheck",
+              "cabinet-entry-recheck"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8962": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8961",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "high-score-entry"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "entry"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8963": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-8947",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8964"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8948"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-8965"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8964": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8963",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "qualified",
+                "eco-qualified"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8965": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8966",
+          "parent": "gd-stage-8963",
           "inputs": {
             "VALUE": [
               1,
@@ -216703,10 +216685,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8967": {
+        "gd-stage-8966": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-8966",
+          "parent": "gd-stage-8965",
           "inputs": {
             "director-destination": [
               1,
@@ -216734,32 +216716,121 @@
             "warp": "false"
           }
         },
-        "gd-stage-8968": {
-          "opcode": "data_changevariableby",
-          "next": "gd-stage-8969",
-          "parent": "gd-stage-8962",
+        "gd-stage-8967": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8937",
           "inputs": {
-            "VALUE": [
+            "CONDITION": [
+              2,
+              "gd-stage-8968"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8947"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8968": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8967",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
               1,
               [
-                4,
-                -1
+                10,
+                "game-over"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8969": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-stage-8970",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director enter",
+              "broadcastMsgId-director-enter"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 13520
+        },
+        "gd-stage-8970": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8979",
+          "parent": "gd-stage-8969",
+          "inputs": {
+            "VALUE": [
+              3,
+              [
+                12,
+                "state epoch",
+                "game-director-epoch"
+              ],
+              [
+                10,
+                ""
               ]
             ]
           },
           "fields": {
             "VARIABLE": [
-              "entry timer",
-              "cabinet-entry-timer"
+              "attract epoch",
+              "cabinet-attract-epoch"
             ]
           },
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8969": {
+        "gd-stage-8971": {
+          "opcode": "control_repeat",
+          "next": "gd-stage-8978",
+          "parent": "gd-stage-8979",
+          "inputs": {
+            "TIMES": [
+              1,
+              [
+                4,
+                372
+              ]
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8972"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8972": {
           "opcode": "control_wait",
           "next": null,
-          "parent": "gd-stage-8968",
+          "parent": "gd-stage-8971",
           "inputs": {
             "DURATION": [
               1,
@@ -216773,28 +216844,494 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8970": {
-          "opcode": "control_if",
+        "gd-stage-8973": {
+          "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8958",
+          "parent": "gd-stage-8975",
           "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-8971"
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "attract epoch",
+                "cabinet-attract-epoch"
+              ],
+              [
+                10,
+                ""
+              ]
             ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-8959"
+            "OPERAND2": [
+              3,
+              [
+                12,
+                "state epoch",
+                "game-director-epoch"
+              ],
+              [
+                10,
+                ""
+              ]
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8971": {
+        "gd-stage-8974": {
           "opcode": "operator_equals",
           "next": null,
+          "parent": "gd-stage-8975",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8975": {
+          "opcode": "operator_and",
+          "next": null,
+          "parent": "gd-stage-8978",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-8973"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8974"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8976": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8977",
+          "parent": "gd-stage-8978",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "attract stage",
+              "cabinet-attract-stage"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8977": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8976",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "playing"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "new-game"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8978": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8971",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8975"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8976"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8979": {
+          "opcode": "control_if",
+          "next": "gd-stage-8989",
           "parent": "gd-stage-8970",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8980"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8971"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8980": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8979",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8981": {
+          "opcode": "control_repeat",
+          "next": "gd-stage-8988",
+          "parent": "gd-stage-8989",
+          "inputs": {
+            "TIMES": [
+              1,
+              [
+                4,
+                256
+              ]
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8982"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8982": {
+          "opcode": "control_wait",
+          "next": null,
+          "parent": "gd-stage-8981",
+          "inputs": {
+            "DURATION": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8983": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8985",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "attract epoch",
+                "cabinet-attract-epoch"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              3,
+              [
+                12,
+                "state epoch",
+                "game-director-epoch"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8984": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8985",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "attract-scores"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8985": {
+          "opcode": "operator_and",
+          "next": null,
+          "parent": "gd-stage-8988",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-8983"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-8984"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8986": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-8987",
+          "parent": "gd-stage-8988",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "attract stage",
+              "cabinet-attract-stage"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8987": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-8986",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "playing"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "new-game"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-8988": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8981",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8985"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8986"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8989": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8979",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8990"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8981"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8990": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8989",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "attract-scores"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8991": {
+          "opcode": "event_whenbroadcastreceived",
+          "next": "gd-stage-9017",
+          "parent": null,
+          "inputs": {},
+          "fields": {
+            "BROADCAST_OPTION": [
+              "director enter",
+              "broadcastMsgId-director-enter"
+            ]
+          },
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 13670
+        },
+        "gd-stage-8992": {
+          "opcode": "control_repeat_until",
+          "next": null,
+          "parent": "gd-stage-9017",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8993"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8995"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8993": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-8992",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-8994"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8994": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8993",
           "inputs": {
             "OPERAND1": [
               3,
@@ -216820,9 +217357,588 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8972": {
+        "gd-stage-8995": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-8992",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8997"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-9014"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-9015"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8996": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-stage-8997",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "entry timer",
+                "cabinet-entry-timer"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8997": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-8995",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-8996"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8998": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-9014",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-8999"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-9011"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-9012"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-8999": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-8998",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "entry recheck",
+                "cabinet-entry-recheck"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9000": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-stage-9011",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-9003"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-9004"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-stage-9009"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9001": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-stage-9002",
+          "inputs": {
+            "INDEX": [
+              1,
+              [
+                4,
+                5
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "high score table",
+              "eco-high-score-table"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9002": {
+          "opcode": "operator_lt",
+          "next": null,
+          "parent": "gd-stage-9003",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "other score",
+                "other-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-9001"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9003": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-9000",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-9002"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9004": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-9006",
+          "parent": "gd-stage-9000",
+          "inputs": {
+            "VALUE": [
+              3,
+              [
+                12,
+                "other score",
+                "other-score"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry score",
+              "cabinet-entry-score"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9005": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-stage-9006",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                1
+              ]
+            ],
+            "NUM2": [
+              3,
+              [
+                12,
+                "curr player",
+                "cabinet-curr-player"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9006": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-9007",
+          "parent": "gd-stage-9004",
+          "inputs": {
+            "VALUE": [
+              3,
+              "gd-stage-9005",
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry player",
+              "cabinet-entry-player"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9007": {
+          "opcode": "procedures_call",
+          "next": "gd-stage-9008",
+          "parent": "gd-stage-9006",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "rank in",
+            "argumentids": "[]",
+            "warp": "true"
+          }
+        },
+        "gd-stage-9008": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-9007",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "high-score-entry"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "entry"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-9009": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-9010",
+          "parent": "gd-stage-9000",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "attract",
+              "cabinet-attract"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9010": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-9009",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "cold-start"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-9011": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-9000",
+          "parent": "gd-stage-8998",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry recheck",
+              "cabinet-entry-recheck"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9012": {
+          "opcode": "data_setvariableto",
+          "next": "gd-stage-9013",
+          "parent": "gd-stage-8998",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "attract",
+              "cabinet-attract"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9013": {
+          "opcode": "procedures_call",
+          "next": null,
+          "parent": "gd-stage-9012",
+          "inputs": {
+            "director-destination": [
+              1,
+              [
+                10,
+                "title"
+              ]
+            ],
+            "director-scope": [
+              1,
+              [
+                10,
+                "cold-start"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false,
+          "mutation": {
+            "tagName": "mutation",
+            "children": [],
+            "proccode": "transition to %s reset %s",
+            "argumentids": "[\"director-destination\",\"director-scope\"]",
+            "warp": "false"
+          }
+        },
+        "gd-stage-9014": {
+          "opcode": "data_replaceitemoflist",
+          "next": "gd-stage-8998",
+          "parent": "gd-stage-8995",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "entry row",
+                "cabinet-entry-row"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "ITEM": [
+              3,
+              [
+                12,
+                "name buffer",
+                "cabinet-entry-name-buffer"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "high score names",
+              "eco-high-score-names"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9015": {
+          "opcode": "data_changevariableby",
+          "next": "gd-stage-9016",
+          "parent": "gd-stage-8995",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                -1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "entry timer",
+              "cabinet-entry-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9016": {
+          "opcode": "control_wait",
+          "next": null,
+          "parent": "gd-stage-9015",
+          "inputs": {
+            "DURATION": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9017": {
+          "opcode": "control_if",
+          "next": null,
+          "parent": "gd-stage-8991",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-9018"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-8992"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9018": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-9017",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "game state",
+                "game-director-state"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                10,
+                "high-score-entry"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-9019": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-8982",
+          "next": "gd-stage-9029",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -216836,10 +217952,10 @@
           "x": 20,
           "y": 13820
         },
-        "gd-stage-8973": {
+        "gd-stage-9020": {
           "opcode": "sound_sounds_menu",
           "next": null,
-          "parent": "gd-stage-8974",
+          "parent": "gd-stage-9021",
           "inputs": {},
           "fields": {
             "SOUND_MENU": [
@@ -216850,56 +217966,56 @@
           "shadow": true,
           "topLevel": false
         },
-        "gd-stage-8974": {
+        "gd-stage-9021": {
           "opcode": "sound_playuntildone",
           "next": null,
-          "parent": "gd-stage-8981",
+          "parent": "gd-stage-9028",
           "inputs": {
             "SOUND_MENU": [
               1,
-              "gd-stage-8973"
+              "gd-stage-9020"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8975": {
+        "gd-stage-9022": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-stage-8981",
+          "parent": "gd-stage-9028",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8976"
+              "gd-stage-9023"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-8979"
+              "gd-stage-9026"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8976": {
+        "gd-stage-9023": {
           "opcode": "operator_not",
           "next": null,
-          "parent": "gd-stage-8975",
+          "parent": "gd-stage-9022",
           "inputs": {
             "OPERAND": [
               2,
-              "gd-stage-8977"
+              "gd-stage-9024"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8977": {
+        "gd-stage-9024": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8976",
+          "parent": "gd-stage-9023",
           "inputs": {
             "OPERAND1": [
               3,
@@ -216925,10 +218041,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8978": {
+        "gd-stage-9025": {
           "opcode": "sound_sounds_menu",
           "next": null,
-          "parent": "gd-stage-8979",
+          "parent": "gd-stage-9026",
           "inputs": {},
           "fields": {
             "SOUND_MENU": [
@@ -216939,24 +218055,24 @@
           "shadow": true,
           "topLevel": false
         },
-        "gd-stage-8979": {
+        "gd-stage-9026": {
           "opcode": "sound_playuntildone",
           "next": null,
-          "parent": "gd-stage-8975",
+          "parent": "gd-stage-9022",
           "inputs": {
             "SOUND_MENU": [
               1,
-              "gd-stage-8978"
+              "gd-stage-9025"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8980": {
+        "gd-stage-9027": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8981",
+          "parent": "gd-stage-9028",
           "inputs": {
             "OPERAND1": [
               3,
@@ -216982,46 +218098,46 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8981": {
+        "gd-stage-9028": {
           "opcode": "control_if",
-          "next": "gd-stage-8975",
-          "parent": "gd-stage-8982",
+          "next": "gd-stage-9022",
+          "parent": "gd-stage-9029",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8980"
+              "gd-stage-9027"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-8974"
+              "gd-stage-9021"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8982": {
+        "gd-stage-9029": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-8972",
+          "parent": "gd-stage-9019",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8983"
+              "gd-stage-9030"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-8981"
+              "gd-stage-9028"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8983": {
+        "gd-stage-9030": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8982",
+          "parent": "gd-stage-9029",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217047,9 +218163,9 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8984": {
+        "gd-stage-9031": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-9021",
+          "next": "gd-stage-9068",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -217063,42 +218179,42 @@
           "x": 20,
           "y": 13970
         },
-        "gd-stage-8985": {
+        "gd-stage-9032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-stage-9021",
+          "parent": "gd-stage-9068",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8986"
+              "gd-stage-9033"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9020"
+              "gd-stage-9067"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8986": {
+        "gd-stage-9033": {
           "opcode": "operator_not",
           "next": null,
-          "parent": "gd-stage-8985",
+          "parent": "gd-stage-9032",
           "inputs": {
             "OPERAND": [
               2,
-              "gd-stage-8987"
+              "gd-stage-9034"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8987": {
+        "gd-stage-9034": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8986",
+          "parent": "gd-stage-9033",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217124,32 +218240,32 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8988": {
+        "gd-stage-9035": {
           "opcode": "control_if_else",
           "next": null,
-          "parent": "gd-stage-8992",
+          "parent": "gd-stage-9039",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8989"
+              "gd-stage-9036"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-8990"
+              "gd-stage-9037"
             ],
             "SUBSTACK2": [
               2,
-              "gd-stage-8991"
+              "gd-stage-9038"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8989": {
+        "gd-stage-9036": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8988",
+          "parent": "gd-stage-9035",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217175,10 +218291,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8990": {
+        "gd-stage-9037": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-8988",
+          "parent": "gd-stage-9035",
           "inputs": {
             "director-destination": [
               1,
@@ -217206,10 +218322,10 @@
             "warp": "false"
           }
         },
-        "gd-stage-8991": {
+        "gd-stage-9038": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-8988",
+          "parent": "gd-stage-9035",
           "inputs": {
             "director-destination": [
               1,
@@ -217237,32 +218353,32 @@
             "warp": "false"
           }
         },
-        "gd-stage-8992": {
+        "gd-stage-9039": {
           "opcode": "control_if_else",
           "next": null,
-          "parent": "gd-stage-9000",
+          "parent": "gd-stage-9047",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8993"
+              "gd-stage-9040"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-8988"
+              "gd-stage-9035"
             ],
             "SUBSTACK2": [
               2,
-              "gd-stage-8994"
+              "gd-stage-9041"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8993": {
+        "gd-stage-9040": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8992",
+          "parent": "gd-stage-9039",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217288,10 +218404,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8994": {
+        "gd-stage-9041": {
           "opcode": "data_changevariableby",
-          "next": "gd-stage-8995",
-          "parent": "gd-stage-8992",
+          "next": "gd-stage-9042",
+          "parent": "gd-stage-9039",
           "inputs": {
             "VALUE": [
               1,
@@ -217310,10 +218426,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8995": {
+        "gd-stage-9042": {
           "opcode": "event_broadcast",
-          "next": "gd-stage-8996",
-          "parent": "gd-stage-8994",
+          "next": "gd-stage-9043",
+          "parent": "gd-stage-9041",
           "inputs": {
             "BROADCAST_INPUT": [
               1,
@@ -217328,10 +218444,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8996": {
+        "gd-stage-9043": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-8995",
+          "parent": "gd-stage-9042",
           "inputs": {
             "director-destination": [
               1,
@@ -217359,10 +218475,10 @@
             "warp": "false"
           }
         },
-        "gd-stage-8997": {
+        "gd-stage-9044": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8999",
+          "parent": "gd-stage-9046",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217388,10 +218504,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8998": {
+        "gd-stage-9045": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-8999",
+          "parent": "gd-stage-9046",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217417,28 +218533,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-8999": {
+        "gd-stage-9046": {
           "opcode": "operator_and",
           "next": null,
-          "parent": "gd-stage-9001",
+          "parent": "gd-stage-9048",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-8997"
+              "gd-stage-9044"
             ],
             "OPERAND2": [
               2,
-              "gd-stage-8998"
+              "gd-stage-9045"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9000": {
+        "gd-stage-9047": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-8992",
-          "parent": "gd-stage-9001",
+          "next": "gd-stage-9039",
+          "parent": "gd-stage-9048",
           "inputs": {
             "VALUE": [
               1,
@@ -217457,28 +218573,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9001": {
+        "gd-stage-9048": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-9006",
+          "parent": "gd-stage-9053",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-8999"
+              "gd-stage-9046"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9000"
+              "gd-stage-9047"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9002": {
+        "gd-stage-9049": {
           "opcode": "sensing_keyoptions",
           "next": null,
-          "parent": "gd-stage-9003",
+          "parent": "gd-stage-9050",
           "inputs": {},
           "fields": {
             "KEY_OPTION": [
@@ -217489,38 +218605,38 @@
           "shadow": true,
           "topLevel": false
         },
-        "gd-stage-9003": {
+        "gd-stage-9050": {
           "opcode": "sensing_keypressed",
           "next": null,
-          "parent": "gd-stage-9004",
+          "parent": "gd-stage-9051",
           "inputs": {
             "KEY_OPTION": [
               1,
-              "gd-stage-9002"
+              "gd-stage-9049"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9004": {
+        "gd-stage-9051": {
           "opcode": "operator_not",
           "next": null,
-          "parent": "gd-stage-9006",
+          "parent": "gd-stage-9053",
           "inputs": {
             "OPERAND": [
               2,
-              "gd-stage-9003"
+              "gd-stage-9050"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9005": {
+        "gd-stage-9052": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-9006",
+          "parent": "gd-stage-9053",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217533,28 +218649,28 @@
             "warp": "true"
           }
         },
-        "gd-stage-9006": {
+        "gd-stage-9053": {
           "opcode": "control_if",
-          "next": "gd-stage-9001",
-          "parent": "gd-stage-9017",
+          "next": "gd-stage-9048",
+          "parent": "gd-stage-9064",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9004"
+              "gd-stage-9051"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9005"
+              "gd-stage-9052"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9007": {
+        "gd-stage-9054": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9009",
+          "parent": "gd-stage-9056",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217580,10 +218696,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9008": {
+        "gd-stage-9055": {
           "opcode": "procedures_call",
           "next": null,
-          "parent": "gd-stage-9009",
+          "parent": "gd-stage-9056",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217596,28 +218712,28 @@
             "warp": "true"
           }
         },
-        "gd-stage-9009": {
+        "gd-stage-9056": {
           "opcode": "control_if",
-          "next": "gd-stage-9010",
-          "parent": "gd-stage-9019",
+          "next": "gd-stage-9057",
+          "parent": "gd-stage-9066",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9007"
+              "gd-stage-9054"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9008"
+              "gd-stage-9055"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9010": {
+        "gd-stage-9057": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9011",
-          "parent": "gd-stage-9009",
+          "next": "gd-stage-9058",
+          "parent": "gd-stage-9056",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217630,10 +218746,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9011": {
+        "gd-stage-9058": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9012",
-          "parent": "gd-stage-9010",
+          "next": "gd-stage-9059",
+          "parent": "gd-stage-9057",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217646,10 +218762,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9012": {
+        "gd-stage-9059": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9013",
-          "parent": "gd-stage-9011",
+          "next": "gd-stage-9060",
+          "parent": "gd-stage-9058",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217662,10 +218778,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9013": {
+        "gd-stage-9060": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9014",
-          "parent": "gd-stage-9012",
+          "next": "gd-stage-9061",
+          "parent": "gd-stage-9059",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217678,10 +218794,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9014": {
+        "gd-stage-9061": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9015",
-          "parent": "gd-stage-9013",
+          "next": "gd-stage-9062",
+          "parent": "gd-stage-9060",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217694,10 +218810,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9015": {
+        "gd-stage-9062": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9016",
-          "parent": "gd-stage-9014",
+          "next": "gd-stage-9063",
+          "parent": "gd-stage-9061",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217710,10 +218826,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9016": {
+        "gd-stage-9063": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9017",
-          "parent": "gd-stage-9015",
+          "next": "gd-stage-9064",
+          "parent": "gd-stage-9062",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217726,10 +218842,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9017": {
+        "gd-stage-9064": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9006",
-          "parent": "gd-stage-9016",
+          "next": "gd-stage-9053",
+          "parent": "gd-stage-9063",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217742,10 +218858,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9018": {
+        "gd-stage-9065": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9019",
+          "parent": "gd-stage-9066",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217771,28 +218887,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9019": {
+        "gd-stage-9066": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-9020",
+          "parent": "gd-stage-9067",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9018"
+              "gd-stage-9065"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9009"
+              "gd-stage-9056"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9020": {
+        "gd-stage-9067": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9019",
-          "parent": "gd-stage-8985",
+          "next": "gd-stage-9066",
+          "parent": "gd-stage-9032",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -217805,28 +218921,28 @@
             "warp": "true"
           }
         },
-        "gd-stage-9021": {
+        "gd-stage-9068": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-8984",
+          "parent": "gd-stage-9031",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9022"
+              "gd-stage-9069"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-8985"
+              "gd-stage-9032"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9022": {
+        "gd-stage-9069": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9021",
+          "parent": "gd-stage-9068",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217852,9 +218968,9 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9023": {
+        "gd-stage-9070": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-9031",
+          "next": "gd-stage-9078",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -217868,28 +218984,28 @@
           "x": 20,
           "y": 14120
         },
-        "gd-stage-9024": {
+        "gd-stage-9071": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-9050",
+          "parent": "gd-stage-9097",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9025"
+              "gd-stage-9072"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9027"
+              "gd-stage-9074"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9025": {
+        "gd-stage-9072": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9024",
+          "parent": "gd-stage-9071",
           "inputs": {
             "OPERAND1": [
               3,
@@ -217915,10 +219031,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9026": {
+        "gd-stage-9073": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-9027",
+          "parent": "gd-stage-9074",
           "inputs": {
             "INDEX": [
               1,
@@ -217937,14 +219053,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9027": {
+        "gd-stage-9074": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9028",
-          "parent": "gd-stage-9024",
+          "next": "gd-stage-9075",
+          "parent": "gd-stage-9071",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-9026",
+              "gd-stage-9073",
               [
                 10,
                 ""
@@ -217960,10 +219076,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9028": {
+        "gd-stage-9075": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9029",
-          "parent": "gd-stage-9027",
+          "next": "gd-stage-9076",
+          "parent": "gd-stage-9074",
           "inputs": {
             "VALUE": [
               1,
@@ -217982,10 +219098,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9029": {
+        "gd-stage-9076": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9030",
-          "parent": "gd-stage-9028",
+          "next": "gd-stage-9077",
+          "parent": "gd-stage-9075",
           "inputs": {
             "VALUE": [
               1,
@@ -218004,10 +219120,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9030": {
+        "gd-stage-9077": {
           "opcode": "data_setvariableto",
           "next": null,
-          "parent": "gd-stage-9029",
+          "parent": "gd-stage-9076",
           "inputs": {
             "VALUE": [
               1,
@@ -218026,10 +219142,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9031": {
+        "gd-stage-9078": {
           "opcode": "procedures_call",
-          "next": "gd-stage-9032",
-          "parent": "gd-stage-9023",
+          "next": "gd-stage-9079",
+          "parent": "gd-stage-9070",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -218042,10 +219158,10 @@
             "warp": "true"
           }
         },
-        "gd-stage-9032": {
+        "gd-stage-9079": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9033",
-          "parent": "gd-stage-9031",
+          "next": "gd-stage-9080",
+          "parent": "gd-stage-9078",
           "inputs": {
             "VALUE": [
               1,
@@ -218064,10 +219180,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9033": {
+        "gd-stage-9080": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9034",
-          "parent": "gd-stage-9032",
+          "next": "gd-stage-9081",
+          "parent": "gd-stage-9079",
           "inputs": {
             "VALUE": [
               1,
@@ -218086,10 +219202,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9034": {
+        "gd-stage-9081": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9035",
-          "parent": "gd-stage-9033",
+          "next": "gd-stage-9082",
+          "parent": "gd-stage-9080",
           "inputs": {
             "VALUE": [
               1,
@@ -218108,10 +219224,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9035": {
+        "gd-stage-9082": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9050",
-          "parent": "gd-stage-9034",
+          "next": "gd-stage-9097",
+          "parent": "gd-stage-9081",
           "inputs": {
             "VALUE": [
               1,
@@ -218130,10 +219246,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9036": {
+        "gd-stage-9083": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9037",
-          "parent": "gd-stage-9050",
+          "next": "gd-stage-9084",
+          "parent": "gd-stage-9097",
           "inputs": {
             "VALUE": [
               1,
@@ -218152,10 +219268,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9037": {
+        "gd-stage-9084": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9038",
-          "parent": "gd-stage-9036",
+          "next": "gd-stage-9085",
+          "parent": "gd-stage-9083",
           "inputs": {
             "VALUE": [
               1,
@@ -218174,10 +219290,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9038": {
+        "gd-stage-9085": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9039",
-          "parent": "gd-stage-9037",
+          "next": "gd-stage-9086",
+          "parent": "gd-stage-9084",
           "inputs": {
             "VALUE": [
               1,
@@ -218196,10 +219312,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9039": {
+        "gd-stage-9086": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9040",
-          "parent": "gd-stage-9038",
+          "next": "gd-stage-9087",
+          "parent": "gd-stage-9085",
           "inputs": {
             "VALUE": [
               1,
@@ -218218,10 +219334,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9040": {
+        "gd-stage-9087": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9041",
-          "parent": "gd-stage-9039",
+          "next": "gd-stage-9088",
+          "parent": "gd-stage-9086",
           "inputs": {
             "VALUE": [
               1,
@@ -218240,10 +219356,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9041": {
+        "gd-stage-9088": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9042",
-          "parent": "gd-stage-9040",
+          "next": "gd-stage-9089",
+          "parent": "gd-stage-9087",
           "inputs": {
             "VALUE": [
               1,
@@ -218262,10 +219378,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9042": {
+        "gd-stage-9089": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9043",
-          "parent": "gd-stage-9041",
+          "next": "gd-stage-9090",
+          "parent": "gd-stage-9088",
           "inputs": {
             "VALUE": [
               1,
@@ -218284,10 +219400,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9043": {
+        "gd-stage-9090": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9044",
-          "parent": "gd-stage-9042",
+          "next": "gd-stage-9091",
+          "parent": "gd-stage-9089",
           "inputs": {
             "VALUE": [
               1,
@@ -218306,10 +219422,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9044": {
+        "gd-stage-9091": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9045",
-          "parent": "gd-stage-9043",
+          "next": "gd-stage-9092",
+          "parent": "gd-stage-9090",
           "inputs": {
             "VALUE": [
               1,
@@ -218328,10 +219444,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9045": {
+        "gd-stage-9092": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9047",
-          "parent": "gd-stage-9044",
+          "next": "gd-stage-9094",
+          "parent": "gd-stage-9091",
           "inputs": {
             "VALUE": [
               1,
@@ -218350,10 +219466,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9046": {
+        "gd-stage-9093": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-9047",
+          "parent": "gd-stage-9094",
           "inputs": {
             "INDEX": [
               1,
@@ -218372,14 +219488,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9047": {
+        "gd-stage-9094": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9049",
-          "parent": "gd-stage-9045",
+          "next": "gd-stage-9096",
+          "parent": "gd-stage-9092",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-9046",
+              "gd-stage-9093",
               [
                 10,
                 ""
@@ -218395,10 +219511,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9048": {
+        "gd-stage-9095": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-9049",
+          "parent": "gd-stage-9096",
           "inputs": {
             "INDEX": [
               1,
@@ -218417,14 +219533,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9049": {
+        "gd-stage-9096": {
           "opcode": "data_setvariableto",
           "next": null,
-          "parent": "gd-stage-9047",
+          "parent": "gd-stage-9094",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-9048",
+              "gd-stage-9095",
               [
                 10,
                 ""
@@ -218440,46 +219556,46 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9050": {
+        "gd-stage-9097": {
           "opcode": "control_if",
-          "next": "gd-stage-9024",
-          "parent": "gd-stage-9035",
+          "next": "gd-stage-9071",
+          "parent": "gd-stage-9082",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9051"
+              "gd-stage-9098"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9036"
+              "gd-stage-9083"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9051": {
+        "gd-stage-9098": {
           "opcode": "operator_or",
           "next": null,
-          "parent": "gd-stage-9050",
+          "parent": "gd-stage-9097",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-9052"
+              "gd-stage-9099"
             ],
             "OPERAND2": [
               2,
-              "gd-stage-9053"
+              "gd-stage-9100"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9052": {
+        "gd-stage-9099": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9051",
+          "parent": "gd-stage-9098",
           "inputs": {
             "OPERAND1": [
               3,
@@ -218505,10 +219621,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9053": {
+        "gd-stage-9100": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9051",
+          "parent": "gd-stage-9098",
           "inputs": {
             "OPERAND1": [
               3,
@@ -218534,9 +219650,9 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9054": {
+        "gd-stage-9101": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-9069",
+          "next": "gd-stage-9116",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -218550,10 +219666,10 @@
           "x": 20,
           "y": 14270
         },
-        "gd-stage-9055": {
+        "gd-stage-9102": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9056",
-          "parent": "gd-stage-9069",
+          "next": "gd-stage-9103",
+          "parent": "gd-stage-9116",
           "inputs": {
             "VALUE": [
               1,
@@ -218572,10 +219688,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9056": {
+        "gd-stage-9103": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9057",
-          "parent": "gd-stage-9055",
+          "next": "gd-stage-9104",
+          "parent": "gd-stage-9102",
           "inputs": {
             "VALUE": [
               1,
@@ -218594,10 +219710,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9057": {
+        "gd-stage-9104": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9059",
-          "parent": "gd-stage-9056",
+          "next": "gd-stage-9106",
+          "parent": "gd-stage-9103",
           "inputs": {
             "VALUE": [
               1,
@@ -218616,10 +219732,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9058": {
+        "gd-stage-9105": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-9059",
+          "parent": "gd-stage-9106",
           "inputs": {
             "INDEX": [
               3,
@@ -218643,14 +219759,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9059": {
+        "gd-stage-9106": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9061",
-          "parent": "gd-stage-9057",
+          "next": "gd-stage-9108",
+          "parent": "gd-stage-9104",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-9058",
+              "gd-stage-9105",
               [
                 10,
                 ""
@@ -218666,10 +219782,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9060": {
+        "gd-stage-9107": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-9061",
+          "parent": "gd-stage-9108",
           "inputs": {
             "INDEX": [
               3,
@@ -218693,14 +219809,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9061": {
+        "gd-stage-9108": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9062",
-          "parent": "gd-stage-9059",
+          "next": "gd-stage-9109",
+          "parent": "gd-stage-9106",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-9060",
+              "gd-stage-9107",
               [
                 10,
                 ""
@@ -218716,10 +219832,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9062": {
+        "gd-stage-9109": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9063",
-          "parent": "gd-stage-9061",
+          "next": "gd-stage-9110",
+          "parent": "gd-stage-9108",
           "inputs": {
             "VALUE": [
               1,
@@ -218738,10 +219854,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9063": {
+        "gd-stage-9110": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9064",
-          "parent": "gd-stage-9062",
+          "next": "gd-stage-9111",
+          "parent": "gd-stage-9109",
           "inputs": {
             "VALUE": [
               1,
@@ -218760,10 +219876,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9064": {
+        "gd-stage-9111": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9065",
-          "parent": "gd-stage-9063",
+          "next": "gd-stage-9112",
+          "parent": "gd-stage-9110",
           "inputs": {
             "VALUE": [
               1,
@@ -218782,10 +219898,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9065": {
+        "gd-stage-9112": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9066",
-          "parent": "gd-stage-9064",
+          "next": "gd-stage-9113",
+          "parent": "gd-stage-9111",
           "inputs": {
             "VALUE": [
               1,
@@ -218804,10 +219920,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9066": {
+        "gd-stage-9113": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9067",
-          "parent": "gd-stage-9065",
+          "next": "gd-stage-9114",
+          "parent": "gd-stage-9112",
           "inputs": {
             "VALUE": [
               1,
@@ -218826,10 +219942,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9067": {
+        "gd-stage-9114": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9068",
-          "parent": "gd-stage-9066",
+          "next": "gd-stage-9115",
+          "parent": "gd-stage-9113",
           "inputs": {
             "VALUE": [
               1,
@@ -218848,10 +219964,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9068": {
+        "gd-stage-9115": {
           "opcode": "data_setvariableto",
           "next": null,
-          "parent": "gd-stage-9067",
+          "parent": "gd-stage-9114",
           "inputs": {
             "VALUE": [
               1,
@@ -218870,46 +219986,46 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9069": {
+        "gd-stage-9116": {
           "opcode": "control_if",
-          "next": "gd-stage-9073",
-          "parent": "gd-stage-9054",
+          "next": "gd-stage-9120",
+          "parent": "gd-stage-9101",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9070"
+              "gd-stage-9117"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9055"
+              "gd-stage-9102"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9070": {
+        "gd-stage-9117": {
           "opcode": "operator_or",
           "next": null,
-          "parent": "gd-stage-9069",
+          "parent": "gd-stage-9116",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-9071"
+              "gd-stage-9118"
             ],
             "OPERAND2": [
               2,
-              "gd-stage-9072"
+              "gd-stage-9119"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9071": {
+        "gd-stage-9118": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9070",
+          "parent": "gd-stage-9117",
           "inputs": {
             "OPERAND1": [
               3,
@@ -218935,10 +220051,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9072": {
+        "gd-stage-9119": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9070",
+          "parent": "gd-stage-9117",
           "inputs": {
             "OPERAND1": [
               3,
@@ -218964,28 +220080,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9073": {
+        "gd-stage-9120": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-9069",
+          "parent": "gd-stage-9116",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9074"
+              "gd-stage-9121"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9082"
+              "gd-stage-9129"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9074": {
+        "gd-stage-9121": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9073",
+          "parent": "gd-stage-9120",
           "inputs": {
             "OPERAND1": [
               3,
@@ -219011,28 +220127,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9075": {
+        "gd-stage-9122": {
           "opcode": "operator_and",
           "next": null,
-          "parent": "gd-stage-9082",
+          "parent": "gd-stage-9129",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-9076"
+              "gd-stage-9123"
             ],
             "OPERAND2": [
               2,
-              "gd-stage-9077"
+              "gd-stage-9124"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9076": {
+        "gd-stage-9123": {
           "opcode": "operator_gt",
           "next": null,
-          "parent": "gd-stage-9075",
+          "parent": "gd-stage-9122",
           "inputs": {
             "OPERAND1": [
               3,
@@ -219058,10 +220174,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9077": {
+        "gd-stage-9124": {
           "opcode": "operator_gt",
           "next": null,
-          "parent": "gd-stage-9075",
+          "parent": "gd-stage-9122",
           "inputs": {
             "OPERAND1": [
               1,
@@ -219087,32 +220203,32 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9078": {
+        "gd-stage-9125": {
           "opcode": "control_if_else",
           "next": null,
-          "parent": "gd-stage-9082",
+          "parent": "gd-stage-9129",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9079"
+              "gd-stage-9126"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9080"
+              "gd-stage-9127"
             ],
             "SUBSTACK2": [
               2,
-              "gd-stage-9081"
+              "gd-stage-9128"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9079": {
+        "gd-stage-9126": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9078",
+          "parent": "gd-stage-9125",
           "inputs": {
             "OPERAND1": [
               3,
@@ -219138,10 +220254,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9080": {
+        "gd-stage-9127": {
           "opcode": "data_setvariableto",
           "next": null,
-          "parent": "gd-stage-9078",
+          "parent": "gd-stage-9125",
           "inputs": {
             "VALUE": [
               1,
@@ -219160,10 +220276,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9081": {
+        "gd-stage-9128": {
           "opcode": "data_changevariableby",
           "next": null,
-          "parent": "gd-stage-9078",
+          "parent": "gd-stage-9125",
           "inputs": {
             "VALUE": [
               1,
@@ -219182,28 +220298,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9082": {
+        "gd-stage-9129": {
           "opcode": "control_if",
-          "next": "gd-stage-9083",
-          "parent": "gd-stage-9073",
+          "next": "gd-stage-9130",
+          "parent": "gd-stage-9120",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9075"
+              "gd-stage-9122"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9078"
+              "gd-stage-9125"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9083": {
+        "gd-stage-9130": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9084",
-          "parent": "gd-stage-9082",
+          "next": "gd-stage-9131",
+          "parent": "gd-stage-9129",
           "inputs": {
             "VALUE": [
               1,
@@ -219222,10 +220338,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9084": {
+        "gd-stage-9131": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9086",
-          "parent": "gd-stage-9083",
+          "next": "gd-stage-9133",
+          "parent": "gd-stage-9130",
           "inputs": {
             "VALUE": [
               1,
@@ -219244,10 +220360,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9085": {
+        "gd-stage-9132": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-9086",
+          "parent": "gd-stage-9133",
           "inputs": {
             "INDEX": [
               3,
@@ -219271,14 +220387,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9086": {
+        "gd-stage-9133": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9088",
-          "parent": "gd-stage-9084",
+          "next": "gd-stage-9135",
+          "parent": "gd-stage-9131",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-9085",
+              "gd-stage-9132",
               [
                 10,
                 ""
@@ -219294,10 +220410,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9087": {
+        "gd-stage-9134": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-9088",
+          "parent": "gd-stage-9135",
           "inputs": {
             "INDEX": [
               3,
@@ -219321,14 +220437,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9088": {
+        "gd-stage-9135": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9089",
-          "parent": "gd-stage-9086",
+          "next": "gd-stage-9136",
+          "parent": "gd-stage-9133",
           "inputs": {
             "VALUE": [
               3,
-              "gd-stage-9087",
+              "gd-stage-9134",
               [
                 10,
                 ""
@@ -219344,10 +220460,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9089": {
+        "gd-stage-9136": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9090",
-          "parent": "gd-stage-9088",
+          "next": "gd-stage-9137",
+          "parent": "gd-stage-9135",
           "inputs": {
             "VALUE": [
               1,
@@ -219366,10 +220482,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9090": {
+        "gd-stage-9137": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9091",
-          "parent": "gd-stage-9089",
+          "next": "gd-stage-9138",
+          "parent": "gd-stage-9136",
           "inputs": {
             "VALUE": [
               1,
@@ -219388,10 +220504,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9091": {
+        "gd-stage-9138": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9092",
-          "parent": "gd-stage-9090",
+          "next": "gd-stage-9139",
+          "parent": "gd-stage-9137",
           "inputs": {
             "VALUE": [
               1,
@@ -219410,10 +220526,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9092": {
+        "gd-stage-9139": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9093",
-          "parent": "gd-stage-9091",
+          "next": "gd-stage-9140",
+          "parent": "gd-stage-9138",
           "inputs": {
             "VALUE": [
               1,
@@ -219432,10 +220548,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9093": {
+        "gd-stage-9140": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9094",
-          "parent": "gd-stage-9092",
+          "next": "gd-stage-9141",
+          "parent": "gd-stage-9139",
           "inputs": {
             "VALUE": [
               1,
@@ -219454,10 +220570,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9094": {
+        "gd-stage-9141": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9095",
-          "parent": "gd-stage-9093",
+          "next": "gd-stage-9142",
+          "parent": "gd-stage-9140",
           "inputs": {
             "VALUE": [
               1,
@@ -219476,10 +220592,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9095": {
+        "gd-stage-9142": {
           "opcode": "data_setvariableto",
           "next": null,
-          "parent": "gd-stage-9094",
+          "parent": "gd-stage-9141",
           "inputs": {
             "VALUE": [
               1,
@@ -219498,9 +220614,9 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9096": {
+        "gd-stage-9143": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-9109",
+          "next": "gd-stage-9156",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -219514,10 +220630,10 @@
           "x": 20,
           "y": 14420
         },
-        "gd-stage-9097": {
+        "gd-stage-9144": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9098",
-          "parent": "gd-stage-9109",
+          "next": "gd-stage-9145",
+          "parent": "gd-stage-9156",
           "inputs": {
             "VALUE": [
               1,
@@ -219536,10 +220652,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9098": {
+        "gd-stage-9145": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9099",
-          "parent": "gd-stage-9097",
+          "next": "gd-stage-9146",
+          "parent": "gd-stage-9144",
           "inputs": {
             "VALUE": [
               1,
@@ -219558,10 +220674,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9099": {
+        "gd-stage-9146": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9100",
-          "parent": "gd-stage-9098",
+          "next": "gd-stage-9147",
+          "parent": "gd-stage-9145",
           "inputs": {
             "VALUE": [
               1,
@@ -219580,10 +220696,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9100": {
+        "gd-stage-9147": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9101",
-          "parent": "gd-stage-9099",
+          "next": "gd-stage-9148",
+          "parent": "gd-stage-9146",
           "inputs": {
             "VALUE": [
               1,
@@ -219602,10 +220718,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9101": {
+        "gd-stage-9148": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9102",
-          "parent": "gd-stage-9100",
+          "next": "gd-stage-9149",
+          "parent": "gd-stage-9147",
           "inputs": {
             "VALUE": [
               1,
@@ -219624,10 +220740,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9102": {
+        "gd-stage-9149": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9103",
-          "parent": "gd-stage-9101",
+          "next": "gd-stage-9150",
+          "parent": "gd-stage-9148",
           "inputs": {
             "VALUE": [
               1,
@@ -219646,10 +220762,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9103": {
+        "gd-stage-9150": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9104",
-          "parent": "gd-stage-9102",
+          "next": "gd-stage-9151",
+          "parent": "gd-stage-9149",
           "inputs": {
             "VALUE": [
               1,
@@ -219668,10 +220784,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9104": {
+        "gd-stage-9151": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9105",
-          "parent": "gd-stage-9103",
+          "next": "gd-stage-9152",
+          "parent": "gd-stage-9150",
           "inputs": {
             "VALUE": [
               1,
@@ -219690,10 +220806,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9105": {
+        "gd-stage-9152": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9106",
-          "parent": "gd-stage-9104",
+          "next": "gd-stage-9153",
+          "parent": "gd-stage-9151",
           "inputs": {
             "VALUE": [
               1,
@@ -219712,10 +220828,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9106": {
+        "gd-stage-9153": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9107",
-          "parent": "gd-stage-9105",
+          "next": "gd-stage-9154",
+          "parent": "gd-stage-9152",
           "inputs": {
             "VALUE": [
               1,
@@ -219734,10 +220850,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9107": {
+        "gd-stage-9154": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9108",
-          "parent": "gd-stage-9106",
+          "next": "gd-stage-9155",
+          "parent": "gd-stage-9153",
           "inputs": {
             "VALUE": [
               1,
@@ -219756,10 +220872,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9108": {
+        "gd-stage-9155": {
           "opcode": "data_setvariableto",
           "next": null,
-          "parent": "gd-stage-9107",
+          "parent": "gd-stage-9154",
           "inputs": {
             "VALUE": [
               1,
@@ -219778,46 +220894,46 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9109": {
+        "gd-stage-9156": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-9096",
+          "parent": "gd-stage-9143",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9110"
+              "gd-stage-9157"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9097"
+              "gd-stage-9144"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9110": {
+        "gd-stage-9157": {
           "opcode": "operator_or",
           "next": null,
-          "parent": "gd-stage-9109",
+          "parent": "gd-stage-9156",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-9111"
+              "gd-stage-9158"
             ],
             "OPERAND2": [
               2,
-              "gd-stage-9112"
+              "gd-stage-9159"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9111": {
+        "gd-stage-9158": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9110",
+          "parent": "gd-stage-9157",
           "inputs": {
             "OPERAND1": [
               3,
@@ -219843,10 +220959,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9112": {
+        "gd-stage-9159": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9110",
+          "parent": "gd-stage-9157",
           "inputs": {
             "OPERAND1": [
               3,
@@ -219872,9 +220988,9 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9113": {
+        "gd-stage-9160": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-stage-9114",
+          "next": "gd-stage-9161",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -219888,28 +221004,28 @@
           "x": 20,
           "y": 14570
         },
-        "gd-stage-9114": {
+        "gd-stage-9161": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-9113",
+          "parent": "gd-stage-9160",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-9115"
+              "gd-stage-9162"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-9116"
+              "gd-stage-9163"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9115": {
+        "gd-stage-9162": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-9114",
+          "parent": "gd-stage-9161",
           "inputs": {
             "OPERAND1": [
               3,
@@ -219935,10 +221051,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9116": {
+        "gd-stage-9163": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9117",
-          "parent": "gd-stage-9114",
+          "next": "gd-stage-9164",
+          "parent": "gd-stage-9161",
           "inputs": {
             "VALUE": [
               1,
@@ -219957,10 +221073,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9117": {
+        "gd-stage-9164": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9118",
-          "parent": "gd-stage-9116",
+          "next": "gd-stage-9165",
+          "parent": "gd-stage-9163",
           "inputs": {
             "VALUE": [
               1,
@@ -219979,10 +221095,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9118": {
+        "gd-stage-9165": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-9119",
-          "parent": "gd-stage-9117",
+          "next": "gd-stage-9166",
+          "parent": "gd-stage-9164",
           "inputs": {
             "VALUE": [
               1,
@@ -220001,10 +221117,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-9119": {
+        "gd-stage-9166": {
           "opcode": "data_setvariableto",
           "next": null,
-          "parent": "gd-stage-9118",
+          "parent": "gd-stage-9165",
           "inputs": {
             "VALUE": [
               1,

@@ -1348,6 +1348,9 @@ class ScratchProjectTests(unittest.TestCase):
             "entry player",
             "entry timer",
             "entry score",
+            # ECO-04 (slice 19): the one-shot two-player-sequential-entry flag (the game-over routing arms it,
+            # `_high_score_finish` consumes it to re-check the other player). Director-owned entry machinery.
+            "entry recheck",
         }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
@@ -1400,8 +1403,10 @@ class ScratchProjectTests(unittest.TestCase):
                 "respawning -> playing",
                 "game-over -> title",
                 # CAB-04 (slice 19): a qualifying score routes game-over -> high-score-entry, then back to title.
+                # The self-edge re-arms the screen for a second qualifying player (ECO-04 2P sequential entry).
                 "game-over -> high-score-entry",
                 "high-score-entry -> title",
+                "high-score-entry -> high-score-entry",
                 # CAB-01 (slice 17) attract cycle: the demo reuses `playing` under attract==1.
                 "title -> playing",
                 "playing -> attract-scores",
@@ -16584,16 +16589,30 @@ class ScratchProjectTests(unittest.TestCase):
 
         # The comparison reporter is nested inside the set-`qualified` VALUE input (not on
         # the command next-chain `body` walks), so it is found by shape, like ECO-01's
-        # score-add-award/cap/high-score-track checks scan `blocks.values()` directly.
-        compares_fifth = any(
-            b["opcode"] == "operator_gt"
-            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
-            and is_fifth_place_item(b["inputs"].get("OPERAND2"))
-            for b in stage_blocks.values()
-        )
+        # score-add-award/cap/high-score-track checks scan `blocks.values()` directly. CAB-04
+        # (slice 19) corrected the compare to `>=` fifth place (a tie places, the arcade
+        # move_high_score_entry_down fall-through) — so the shape is now `not(score < item5)`.
+        def is_ge_fifth(block) -> bool:
+            if block["opcode"] != "operator_not":
+                return False
+            inner = block["inputs"].get("OPERAND")
+            inner_id = inner[1] if isinstance(inner, list) and len(inner) > 1 else None
+            lt = stage_blocks.get(inner_id) if isinstance(inner_id, str) else None
+            return (
+                lt is not None
+                and lt["opcode"] == "operator_lt"
+                and refs(lt["inputs"].get("OPERAND1"), director.SCORE_ID)
+                and is_fifth_place_item(lt["inputs"].get("OPERAND2"))
+            )
+
+        compares_fifth = any(is_ge_fifth(b) for b in stage_blocks.values())
         if not compares_fifth:
             failures.add("qualified-compares-fifth-place")
 
+        # The set-`qualified` must still reach the transition procedure call — but as of CAB-04
+        # the routing that follows it is an if_else (qualify -> entry / else -> title), so the
+        # transition calls are nested in substacks, not on a linear next-chain. Walk the full
+        # reachable graph from the qualify block (next + substacks), as the `body` walk above does.
         qualify_block = next(
             (
                 bid
@@ -16606,16 +16625,14 @@ class ScratchProjectTests(unittest.TestCase):
         )
         reaches_transition = False
         if qualify_block is not None:
-            cursor, steps = stage_blocks[qualify_block]["next"], 0
-            while cursor and steps < 10:
-                b = stage_blocks[cursor]
+            for bid in reachable(qualify_block):
+                b = stage_blocks[bid]
                 if (
                     b["opcode"] == "procedures_call"
                     and b.get("mutation", {}).get("proccode") == director.PROCCODE
                 ):
                     reaches_transition = True
                     break
-                cursor, steps = b["next"], steps + 1
         if qualify_block is None or not reaches_transition:
             failures.add("qualified-is-set")
 
@@ -17299,6 +17316,228 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._eco04_failures(project), label)
+
+    @staticmethod
+    def _eco04_routing_failures(project: dict) -> set:
+        """ECO-04 (slice 19) game-over ROUTING + two-player sequential entry — structure only
+        (the live behaviour is the harness high-score-qualify-enters / high-score-two-player-both /
+        high-score-non-qualify-skips scenarios). A qualifying end-of-game score no longer returns
+        straight to the title: the `game over complete` receiver ranks the qualifying score into the
+        live table and transitions to the initials-entry screen, arming `entry recheck` so a second
+        qualifying player (a two-player both-out) is re-checked and re-entered on finish via a
+        `high-score-entry -> high-score-entry` self-transition. This guard pins that wiring is present;
+        its negatives below prove each strand binds."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        sb = stage["blocks"]
+
+        def reachable(start) -> set:
+            seen, stack = set(), [start] if start else []
+            while stack:
+                bid = stack.pop()
+                if bid is None or bid in seen or bid not in sb:
+                    continue
+                seen.add(bid)
+                b = sb[bid]
+                if b.get("next"):
+                    stack.append(b["next"])
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    val = b["inputs"].get(slot)
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            return seen
+
+        receiver = next(
+            (
+                bid
+                for bid, b in sb.items()
+                if b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "game over complete"
+            ),
+            None,
+        )
+        body = reachable(receiver)
+
+        def is_rank_in_call(b) -> bool:
+            return (
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.RANK_IN_PROCCODE
+            )
+
+        def is_entry_transition(b) -> bool:
+            return (
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.PROCCODE
+                and b["inputs"].get(director.ARG_IDS[0])
+                == [1, [10, director.HIGH_SCORE_ENTRY_STATE]]
+            )
+
+        # The routing ranks the qualifying score in and transitions to the entry screen (both
+        # reachable from the receiver — not merely present somewhere on the Stage).
+        if not any(is_rank_in_call(sb[bid]) for bid in body):
+            failures.add("routing-ranks-in")
+        if not any(is_entry_transition(sb[bid]) for bid in body):
+            failures.add("routing-enters-entry")
+
+        # The two-player arm: `entry recheck = two player` (a set on ENTRY_RECHECK_ID fed by the
+        # `two player` variable) — distinct from the finish's consume-to-0.
+        def refs_two_player(spec) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == director.TWO_PLAYER_ID
+            )
+
+        arms_recheck = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.ENTRY_RECHECK_ID
+            and refs_two_player(b["inputs"].get("VALUE"))
+            for b in sb.values()
+        )
+        if not arms_recheck:
+            failures.add("routing-arms-recheck")
+
+        # The finish re-check gate: an if_else on `entry recheck == 1` whose THEN consumes the flag
+        # (sets ENTRY_RECHECK_ID to 0) and reaches a high-score-entry self-transition (the re-arm).
+        def gate_ok() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cond_id = cond[1] if isinstance(cond, list) and len(cond) > 1 else None
+                eq = sb.get(cond_id) if isinstance(cond_id, str) else None
+                if eq is None or eq["opcode"] != "operator_equals":
+                    continue
+                op1 = eq["inputs"].get("OPERAND1")
+                is_recheck = (
+                    isinstance(op1, list)
+                    and isinstance(op1[1], list)
+                    and len(op1[1]) >= 3
+                    and op1[1][0] == 12
+                    and op1[1][2] == director.ENTRY_RECHECK_ID
+                )
+                is_one = str(eq["inputs"].get("OPERAND2", [None, [None, None]])[1][1]) == "1"
+                if not (is_recheck and is_one):
+                    continue
+                then = b["inputs"].get("SUBSTACK")
+                then_reach = reachable(then[1]) if isinstance(then, list) and len(then) > 1 else set()
+                consumes = any(
+                    sb[bid]["opcode"] == "data_setvariableto"
+                    and sb[bid]["fields"].get("VARIABLE", [None, None])[1]
+                    == director.ENTRY_RECHECK_ID
+                    and sb[bid]["inputs"].get("VALUE", [None, [None, None]])[1][1] in (0, "0")
+                    for bid in then_reach
+                )
+                re_arms = any(is_entry_transition(sb[bid]) for bid in then_reach)
+                if consumes and re_arms:
+                    return True
+            return False
+
+        if not gate_ok():
+            failures.add("finish-recheck-gate")
+
+        # The self-edge that lets the finish re-arm the entry screen for the second player.
+        allowed = stage["lists"][director.ALLOWED_ID][1]
+        if "high-score-entry -> high-score-entry" not in allowed:
+            failures.add("self-edge-present")
+
+        return failures
+
+    def test_high_score_routing_present(self) -> None:
+        # ECO-04 (slice 19): the game-over routing acts on the qualification verdict — a qualifying
+        # score ranks in and enters the initials screen, and a second qualifying player (two-player
+        # both-out) is re-checked and re-entered on finish via the high-score-entry self-transition.
+        # roadmap-evidence: ECO-04 success  (this structural guard pins the routing + 2P sequential
+        #   re-arm wiring present; the harness high-score-qualify-enters drives a qualifying score
+        #   from game-over into high-score-entry and a sub-fifth score straight to the title, and
+        #   high-score-two-player-both drives both players through two sequential entries that land
+        #   each name in its correct rank)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco04_routing_failures(project))
+
+    def test_high_score_routing_negative_fixtures(self) -> None:
+        # roadmap-evidence: ECO-04 failure  (each severing fixture makes the matching routing guard
+        #   report its failure, and each harness routing scenario's negative — removing the
+        #   game-over -> high-score-entry edge, and the self-edge — stalls the behaviour it proves)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco04_routing_failures(base))
+
+        def stage_of(p: dict) -> dict:
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def break_rank_in(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.RANK_IN_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "rank in disabled"
+
+        def break_enter_dest(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.PROCCODE
+                    and b["inputs"].get(director.ARG_IDS[0])
+                    == [1, [10, director.HIGH_SCORE_ENTRY_STATE]]
+                ):
+                    b["inputs"][director.ARG_IDS[0]] = [1, [10, "title"]]
+
+        def break_recheck_arm(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.ENTRY_RECHECK_ID
+                ):
+                    val = b["inputs"].get("VALUE")
+                    if (
+                        isinstance(val, list)
+                        and isinstance(val[1], list)
+                        and len(val[1]) >= 3
+                        and val[1][0] == 12
+                        and val[1][2] == director.TWO_PLAYER_ID
+                    ):
+                        b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_recheck_gate(p: dict) -> None:
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cond_id = cond[1] if isinstance(cond, list) and len(cond) > 1 else None
+                eq = sb.get(cond_id) if isinstance(cond_id, str) else None
+                if eq is None or eq["opcode"] != "operator_equals":
+                    continue
+                op1 = eq["inputs"].get("OPERAND1")
+                if (
+                    isinstance(op1, list)
+                    and isinstance(op1[1], list)
+                    and len(op1[1]) >= 3
+                    and op1[1][0] == 12
+                    and op1[1][2] == director.ENTRY_RECHECK_ID
+                ):
+                    eq["inputs"]["OPERAND2"] = [1, [10, "999"]]
+
+        def break_self_edge(p: dict) -> None:
+            lst = stage_of(p)["lists"][director.ALLOWED_ID][1]
+            stage_of(p)["lists"][director.ALLOWED_ID][1] = [
+                e for e in lst if e != "high-score-entry -> high-score-entry"
+            ]
+
+        for label, corrupt in (
+            ("routing-ranks-in", break_rank_in),
+            ("routing-enters-entry", break_enter_dest),
+            ("routing-arms-recheck", break_recheck_arm),
+            ("finish-recheck-gate", break_recheck_gate),
+            ("self-edge-present", break_self_edge),
+        ):
+            project = load_source(scratch.SOURCE_DIR)
+            corrupt(project)
+            self.assertIn(label, self._eco04_routing_failures(project), label)
 
     @staticmethod
     def _rng_reseed_guard_scopes(project: dict) -> set:
@@ -18469,7 +18708,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "cc21a8153b2ee4ed4ff64e92ef2872eaedc401f4eec416d301364a3670088438",
+            "712b1180db237f11a843d82f3a44b0e417601356fc0fd2604dc6ff0f2e9bb93e",
             build_hash,
         )
 
