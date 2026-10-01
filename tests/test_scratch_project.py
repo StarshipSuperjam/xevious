@@ -297,16 +297,25 @@ class ScratchProjectTests(unittest.TestCase):
         # + the 4 Bragza fly PNGs (BOSS-03: the destroyed core's fly-up form, handle_Bragza codes 0xb8..0xbb
         # at CLUT 0x15; swapping the source sheet for the taller 96x128 Bragza-bearing render is net-zero on
         # the count, so slice 16 adds exactly the 4 new crops)
-        # + the 4 NEW slice-17 CAB-01 attract-overlay PNGs on start_screen (the CREDIT / PUSH START /
-        # INSERT COIN labels + the best-five table), rendered by tools/hud_glyphs.py from the SAME credited
-        # Xevious HUD font sheet as the HUD readouts (extra glyphs cropped via SHEET_TEXT_RECTS); the
-        # prompt/initials CONTENT is project-original. The 10 attract credit-counter digits are NOT new
-        # assets: rendered from the same sheet with the same digit crops as the HUD score digits, they are
-        # byte-identical PNGs and dedup to the HUD's own digit files (content-addressed naming, the same
-        # harmless consequence as the O/0 share in docs/mechanics/010) — so slice 17 adds exactly 4 distinct
-        # attract PNGs, not 14. (Count fell 221 -> 211 when SEC-03 + attract text moved onto the one credited
-        # font: the 10 digit costumes stopped being their own port-font PNGs and now reuse the HUD digits.)
-        self.assertEqual(211, len(assets))
+        # + the slice-17 CAB-01 attract-overlay PNGs on start_screen (the CREDIT / PUSH START / INSERT COIN
+        # labels, the 10 credit-counter digits, and the best-five table), rendered by tools/hud_glyphs.py from
+        # the SAME credited Xevious HUD font sheet as the HUD readouts (extra glyphs cropped via
+        # SHEET_TEXT_RECTS); the prompt/initials CONTENT is project-original. In slice 17 the 10 credit-counter
+        # digits were byte-identical to the HUD score digits (same sheet, same crop, same ds4 cell) and deduped
+        # to the HUD's own digit files, so slice 17 added only 4 distinct attract PNGs (3 labels + best-five).
+        # Slice-18 PLAYTEST SCALE CORRECTION: the title-screen text (the 10 credit digits, the 3 prompts, and
+        # the CAB-02 selector labels below) now renders at the smaller hud_glyphs SMALL_TEXT_GEOM cell (~16px,
+        # ds7) instead of ds4, so the 10 digits are NO LONGER byte-identical to the 25px HUD digits — they
+        # become 10 distinct start_screen PNGs of their own (+10). The 3 prompt labels and best-five stay
+        # distinct (their pixels change but the count does not). (Count 211 -> 221 for the un-deduped digits.)
+        # + the 2 slice-18 CAB-02 1P/2P start-selector label PNGs on start_screen ("1 PLAYER" / "2 PLAYERS"),
+        # same credited sheet at the SMALL_TEXT_GEOM cell (glyphs already in SHEET_TEXT_RECTS); port-original
+        # control text, so 221 -> 223.
+        # + the 2 slice-18 CAB-03 "GAME OVER PLAYER n" elimination-banner PNGs on the HUD target
+        # ("GAME OVER PLAYER 1" / "GAME OVER PLAYER 2"), same credited sheet at the SMALL_TEXT_GEOM cell
+        # (slice-18 scale correction — was the larger credit downscale) so the banner matches the plain GAME
+        # OVER screen and the 18-char line still fits the stage; port-original UI text, so 223 -> 225.
+        self.assertEqual(225, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -1088,6 +1097,19 @@ class ScratchProjectTests(unittest.TestCase):
             "reset scope",
             "death outcome",
             "bomb in flight",
+            # CAB-03 (slice 18): two-player alternation control. `curr player` (0/1) is the active player
+            # index; `two player` (0/1) marks a two-player game. Director-control state the HUD reads (label/
+            # column, 2UP gating), Stage-only-written (write-forbidden below), reset only on a world reset.
+            # roadmap-evidence: CAB-03 success  (these alternation controls, the `swap players`/`copy players`
+            #   procs, and every `other <x>` per-player shadow are classified and Stage-write-forbidden below;
+            #   the harness two-player-alternation toggles `curr player` on a craft death and brings the other
+            #   player's saved score/area live, and two-player-banner raises the "GAME OVER PLAYER n" banner on
+            #   an elimination handoff)
+            # roadmap-evidence: CAB-03 failure  (the harness two-player-alternation negative neutralizes
+            #   `swap players` so alternation carries the wrong player's game; the two-player-banner negative
+            #   drops the elimination banner)
+            "curr player",
+            "two player",
         }
         machinery_names = {
             "rng state",
@@ -1225,6 +1247,23 @@ class ScratchProjectTests(unittest.TestCase):
             # easter-egg target's original to show/hide the credit costume, and cleared on stage_reset.
             # Transient display machinery like `bomb dx`, never sprite-written and never durable state.
             "easter egg showing",
+            # CAB-03 (slice 18): the single scratch register `swap players` uses to exchange a per-player
+            # field pair (custom blocks have no locals). Transient working register, never durable state.
+            "swap tmp",
+            # CAB-02 (slice 18): the title-screen 1P/2P selection (1 or 2). A UI register the selector hats
+            # set and the selector display reads — a port necessity, not durable per-player game state.
+            # roadmap-evidence: CAB-02 success  (this `start selection` machinery classification, the 2P-start
+            #   copy-players wiring, and the title selector display are proven present and Stage-owned here and in
+            #   test_game_director.py; the harness two-player-start arms 2P through the title selector and seeds
+            #   player 2 identical-fresh from player 1, and two-player-selector-display tracks the armed choice)
+            # roadmap-evidence: CAB-02 failure  (the harness two-player-start negative omits the P2 seed so
+            #   player 2 is not initialised from player 1; the two-player-selector-display negative stops the
+            #   title from tracking the armed selection)
+            "start selection",
+            # CAB-03 (slice 18): which player the elimination banner names (0/1, or -1 = hidden). A transient
+            # display register the death handler raises during a two-player handoff and clears after the hold;
+            # read by the HUD banner clone. Display machinery like `easter egg showing`, not durable state.
+            "banner player",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1273,6 +1312,15 @@ class ScratchProjectTests(unittest.TestCase):
             "fire mask domogram",
             "fire mask andor genesis",
         }
+        # CAB-03 (slice 18): the second player's shadow of every durable per-player field. Each is the
+        # frozen copy of a swapped gameplay/economy/area/difficulty var (score, craft, area number, …),
+        # held while the OTHER player is active and exchanged by `swap players` on each alternation.
+        # Durable Stage-owned state (never sprite-written; the HUD 2UP row reads `other score`), so it
+        # is its own category — not machinery — and is added to `director_variable_ids` below so the
+        # sprite-write-forbid guard covers it.
+        player_context_names = {
+            shadow_name for _live, _live_id, shadow_name, _shadow_id in director.PLAYER_CONTEXT_FIELDS
+        }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
         self.assertTrue(
@@ -1283,13 +1331,23 @@ class ScratchProjectTests(unittest.TestCase):
                 machinery_names | director_state_names | economy_names | area_state_names
             )
         )
+        self.assertTrue(
+            player_context_names.isdisjoint(
+                machinery_names
+                | director_state_names
+                | economy_names
+                | area_state_names
+                | difficulty_state_names
+            )
+        )
         stage_variable_names = {name for name, _value in stage["variables"].values()}
         self.assertEqual(
             director_state_names
             | machinery_names
             | economy_names
             | area_state_names
-            | difficulty_state_names,
+            | difficulty_state_names
+            | player_context_names,
             stage_variable_names,
         )
         self.assertEqual(
@@ -1430,6 +1488,11 @@ class ScratchProjectTests(unittest.TestCase):
             # demo runs (attract==1). It draws the shared RNG to redraw/hold the demo's direction and fire,
             # writing only the virtual input register (machinery); a real game never calls it.
             director.ATTRACT_PILOT_PROCCODE,
+            # CAB-03 (slice 18): the per-player context primitives. `copy players` is called from the 2P
+            # start gate to seed the inactive player from the fresh player 1; `swap players` is called from
+            # the death-alternation path (slice 18 C3). Both write only the per-player shadow set.
+            director.COPY_PLAYERS_PROCCODE,
+            director.SWAP_PLAYERS_PROCCODE,
             # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
             # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
             # shared RNG step the spawn draw now consumes (its first live consumer).
@@ -1657,6 +1720,13 @@ class ScratchProjectTests(unittest.TestCase):
             director.FORMATION_TYPE_OFFSET_ID,
             director.GROUND_STOP_FIRING_ROW_ID,
             *(mask_id for _suffix, _name, mask_id in director.FIRE_MASK_FAMILIES),
+            # CAB-03 (slice 18): the two-player alternation controls and every `other <x>` shadow of a
+            # durable per-player field. Stage-only-written — the swap/copy procs (Stage) exchange them
+            # on alternation; the 2UP HUD only READS `other score`, which this guard permits. Adding the
+            # shadow IDs here — not the name-set category — is what forbids any sprite from writing them.
+            director.CURR_PLAYER_ID,
+            director.TWO_PLAYER_ID,
+            *(shadow_id for _live, _live_id, _shadow_name, shadow_id in director.PLAYER_CONTEXT_FIELDS),
         }
         # Read-only reference tables: ingested, hash-pinned authority data no sprite may
         # mutate (the mutable slot lists are deliberately excluded — allocators write those).
@@ -14813,6 +14883,42 @@ class ScratchProjectTests(unittest.TestCase):
             and hs_names <= costume_menu_names
         ):
             failures.add("hud-high-score-label-yellow")
+
+        # ECO-02 two-player HUD (slice 18 C4): in a two-player game the HUD adds the other player's
+        # frozen second score row and their steady "2UP" label, and each nUP label reads the current
+        # player. Structure only — the column layout and the pixels stay the operator's playtest.
+        # roadmap-evidence: ECO-02 success  (the second score row reads `other score`, both new roles dispatch, and the secondary group is two-player-gated)
+        def role_dispatched(role_value: int) -> bool:
+            return any(
+                b["opcode"] == "control_if"
+                and isinstance(b["inputs"].get("CONDITION"), list)
+                and len(b["inputs"]["CONDITION"]) > 1
+                and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_equals"
+                and refs(
+                    blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1"),
+                    director.HUD_ROLE_ID,
+                )
+                and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2")
+                == [1, [4, role_value]]
+                for b in blocks.values()
+            )
+
+        # The second score row switches its digit costumes off `other score` (the frozen swap-out
+        # score) through the same floor(value/divisor) mod 10 -> "digit/<n>" chain the live score uses.
+        if not digit_costume_chain(director.OTHER_SCORE_ID):
+            failures.add("other-score-digit-costume")
+        # Both new roles are dispatched in the clone handler: the other-score digit and the 2UP label.
+        if not role_dispatched(director.HUD_ROLE_OTHER_SCORE_DIGIT):
+            failures.add("hud-other-score-role-dispatch")
+        if not role_dispatched(director.HUD_ROLE_LABEL_2UP):
+            failures.add("hud-2up-role-dispatch")
+        # The 2UP label + second row spawn ONLY in a two-player game (gated on `two player == 1`), so a
+        # one-player HUD is byte-unchanged — the secondary group hangs off an `if two player == 1` gate.
+        if not any(
+            b["opcode"] == "operator_equals" and refs(b["inputs"].get("OPERAND1"), director.TWO_PLAYER_ID)
+            for b in blocks.values()
+        ):
+            failures.add("hud-secondary-two-player-gated")
         return failures
 
     def test_hud_render_present(self) -> None:
@@ -14998,6 +15104,39 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["fields"]["COSTUME"][0] = "digit/0"
 
+        # ECO-02 two-player HUD (C4) negatives.
+        def break_other_score_digit(p: dict) -> None:
+            # Cut the second score row's digits off `other score`, so its costume chain no longer reads it.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("NUM1"), director.OTHER_SCORE_ID
+                ):
+                    b["inputs"]["NUM1"] = [1, [4, 0]]
+
+        def break_other_score_role(p: dict) -> None:
+            # Misnumber the other-score role in the clone dispatch so its branch is never taken.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.HUD_ROLE_ID
+                ) and b["inputs"].get("OPERAND2") == [1, [4, director.HUD_ROLE_OTHER_SCORE_DIGIT]]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 99]]
+
+        def break_2up_role(p: dict) -> None:
+            # Misnumber the 2UP-label role in the clone dispatch so its branch is never taken.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.HUD_ROLE_ID
+                ) and b["inputs"].get("OPERAND2") == [1, [4, director.HUD_ROLE_LABEL_2UP]]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 99]]
+
+        def break_secondary_gate(p: dict) -> None:
+            # Sever the `two player == 1` gate so the secondary group would spawn unconditionally.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.TWO_PLAYER_ID
+                ):
+                    b["inputs"]["OPERAND1"] = [1, [4, 1]]
+
         cases = [
             ("hud-spawns-clones", break_spawn),
             ("hud-clone-handler", break_clone_handler),
@@ -15014,6 +15153,11 @@ class ScratchProjectTests(unittest.TestCase):
             ("hud-high-score-label-yellow", break_high_score_label_yellow),
             ("hud-loop-inverted", break_loop_inverted),
             ("life-ship-costume", break_life_ship_costume),
+            # roadmap-evidence: ECO-02 failure  (the two-player second row / 2UP label / gate)
+            ("other-score-digit-costume", break_other_score_digit),
+            ("hud-other-score-role-dispatch", break_other_score_role),
+            ("hud-2up-role-dispatch", break_2up_role),
+            ("hud-secondary-two-player-gated", break_secondary_gate),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -15583,28 +15727,38 @@ class ScratchProjectTests(unittest.TestCase):
             b["inputs"]["VALUE"] = [1, [4, 1]]
 
         def break_checkpoint_low(p):
+            # CAB-03 (slice 18): the near-end checkpoint window now appears at TWO sites — area_reset's
+            # new-life branch AND the two-player death-complete alternation path — both emitted from the
+            # one shared `_at_area_checkpoint` helper, so they are always byte-identical and cannot drift.
+            # The validator passes if ANY valid window exists, so the fixture must corrupt EVERY window to
+            # prove a malformed low bound is caught.
             s = stage_of(p)
-            b = next(
+            matches = [
                 b
                 for b in s["blocks"].values()
                 if b["opcode"] == "operator_gt"
                 and isinstance(b["inputs"].get("OPERAND1"), list)
                 and b["inputs"]["OPERAND1"][1][2:3] == [director.SCROLL_ROW_ID]
                 and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_LOW_EXCL
-            )
-            b["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
+            ]
+            assert matches, "no checkpoint low-bound block found to corrupt"
+            for b in matches:
+                b["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
 
         def break_checkpoint_high(p):
+            # See break_checkpoint_low: corrupt every shared-helper checkpoint window (two sites).
             s = stage_of(p)
-            b = next(
+            matches = [
                 b
                 for b in s["blocks"].values()
                 if b["opcode"] == "operator_gt"
                 and (b["inputs"].get("OPERAND1") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_HIGH_EXCL
                 and isinstance(b["inputs"].get("OPERAND2"), list)
                 and b["inputs"]["OPERAND2"][1][2:3] == [director.SCROLL_ROW_ID]
-            )
-            b["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
+            ]
+            assert matches, "no checkpoint high-bound block found to corrupt"
+            for b in matches:
+                b["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
 
         cases = [
             ("advance-area-before-slots", break_phase_order),
@@ -17892,7 +18046,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "be562103ed8622cc050dac8bb59e9dbec2e1a22483cc158cdf62f5bedd8adbe7",
+            "3875bad63dc0efce66c96cd8e1052bdbcd749e20eae5ae051a8878ff36fad46e",
             build_hash,
         )
 

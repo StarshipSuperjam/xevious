@@ -20,9 +20,11 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count = hg.check_repository()
-        # 47: the 33 HUD/credit/sound outputs + the 14 slice-17 CAB-01 attract overlays on
-        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels + best-five table).
-        self.assertEqual(47, count)
+        # 51: the 33 HUD/credit/sound outputs + the 14 slice-17 CAB-01 attract overlays on
+        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels + best-five table)
+        # + the 2 slice-18 CAB-02 1P/2P start-selector labels ("1 PLAYER" / "2 PLAYERS")
+        # + the 2 slice-18 CAB-03 "GAME OVER PLAYER n" elimination-banner costumes on the HUD target.
+        self.assertEqual(51, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -110,8 +112,11 @@ class HudGlyphsTests(unittest.TestCase):
         # media-only commit, populated from the ECO-02 HUD-render commit on) are
         # game_director.py's territory — see tests/test_scratch_project.py instead.
         self.assertEqual("don't rotate", hud["rotationStyle"])
+        # CAB-03 (slice 18): the two "GAME OVER PLAYER n" banner costumes are appended to the HUD
+        # target AFTER the fixed COSTUME_ORDER glyphs (so the per-glyph indices never shift), in
+        # BANNER_LABELS order — the game_director banner clone switches to them by name.
         self.assertEqual(
-            hg.COSTUME_ORDER,
+            hg.COSTUME_ORDER + [name for name, _text in hg.BANNER_LABELS],
             [costume["name"] for costume in hud["costumes"]],
         )
         for name in ("digit/0", "digit/9", "glyph/A", "glyph/V", "hs/H", "hs/S"):
@@ -150,11 +155,13 @@ class HudGlyphsTests(unittest.TestCase):
         credit = hg.render_credit(sheet, threshold)
         attract = hg.render_attract_costumes(sheet, threshold)
         attract_filenames = {output.filename for output in attract}
+        banner = hg.render_banner_costumes(sheet, threshold)
+        banner_filenames = {output.filename for output in banner}
         expected_filenames = {output.filename for output in glyphs} | {
             life.filename,
             sound_filename,
             credit.filename,
-        } | {output.filename for output in game_sounds} | attract_filenames
+        } | {output.filename for output in game_sounds} | attract_filenames | banner_filenames
         self.assertEqual(expected_filenames, set(provenance["outputs"]))
         sheet_license = self.manifest["font_sheet"]["license"]
         for filename in expected_filenames:
@@ -172,6 +179,13 @@ class HudGlyphsTests(unittest.TestCase):
                 self.assertIn("did not create the font", record["notes"])
                 self.assertIn("operator's own content", record["notes"])
                 self.assertIn("NOT arcade art", record["notes"])
+            elif filename in banner_filenames:
+                # CAB-03 (slice 18): the "GAME OVER PLAYER n" banners render from the SAME credited
+                # CC-BY sheet, so they carry the font attribution; their WORDING is arcade-faithful
+                # English UI text set in that font — not arcade art and not transcribed ROM text.
+                self.assertEqual(sheet_license, record["license"])
+                self.assertIn("did not create the font", record["notes"])
+                self.assertIn("not transcribed ROM text", record["notes"])
             elif filename in attract_filenames:
                 # CAB-01 (slice 17): the attract overlays render from the SAME credited CC-BY sheet,
                 # so they carry the font attribution; their CONTENT (prompts, placeholder initials)

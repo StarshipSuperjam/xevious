@@ -52,12 +52,42 @@ export function reachPlaying(vm, budget = 150) {
   writeVar(vm, 'invuln', 1);
   // CAB-02 (slice 17): the title->ready start now costs a credit, so bank one first. Tapping C lets the
   // Stage's always-on coin poll register the rising edge and raise `credits` to 1; without it the
-  // credit-gated start hat is a silent no-op and the craft never leaves the title.
+  // credit-gated start hat is a silent no-op and the craft never leaves the title. `start selection`
+  // defaults to 1 (one-player), so no arrow press is needed here (CAB-02 slice 18).
   insertCoin(vm, 1);
   // Tap start (press + release) so the title->ready edge fires but space is NOT held into playing —
   // a held space would make the blaster fire on the first playing tick, leaving stray shots that a
   // later scenario would see kill enemies. `invuln` keeps the craft alive so the reach is reliable.
   tapKey(vm, ' ');
+  let t = 0;
+  while (stateOf(vm) !== 'playing' && t < budget) {
+    step(vm, 1);
+    t += 1;
+  }
+  return stateOf(vm) === 'playing';
+}
+
+/**
+ * Reach a TWO-PLAYER game (CAB-02/CAB-03, slice 18): wait for the title, bank two credits, choose 2P at
+ * the title with the down-arrow selector, and start with Space. Mirrors reachPlaying but for the 2P path
+ * — the precondition the 2UP HUD and alternation scenarios build on. The craft is made invulnerable for
+ * the run, exactly like reachPlaying.
+ */
+export function reachPlaying2P(vm, budget = 150) {
+  greenFlag(vm);
+  // One boot pump after the green flag: the "when key pressed" selector hats only become live once the
+  // runtime has stepped, and the director-state var reads 'title' from its initial value, so the wait loop
+  // below would otherwise exit at zero steps and the arrow tap would land before the hats are listening.
+  step(vm, 1);
+  let g = 0;
+  while (stateOf(vm) !== 'title' && g < 50) {
+    step(vm, 1);
+    g += 1;
+  }
+  writeVar(vm, 'invuln', 1);
+  insertCoin(vm, 2); // a two-player start costs two credits
+  tapKey(vm, 'ArrowDown'); // title selector: choose 2P (start selection -> 2)
+  tapKey(vm, ' '); // start the two-player game
   let t = 0;
   while (stateOf(vm) !== 'playing' && t < budget) {
     step(vm, 1);

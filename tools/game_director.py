@@ -323,6 +323,19 @@ HUD_ROLE_LIFE = 3
 HUD_ROLE_LABEL_1UP = 4
 HUD_ROLE_LABEL_HIGH_SCORE = 5
 HUD_ROLE_GAME_OVER_GLYPH = 6  # ECO-04: the "GAME OVER" text, distinct from every other role
+HUD_ROLE_BANNER = 7  # CAB-03: the "GAME OVER PLAYER n" two-player elimination banner, gated on `banner player`
+# ECO-02 two-player HUD (slice 18). The PRIMARY group (score digits + the flashing LABEL_1UP) always shows the
+# ACTIVE player: its digits read the live `score`, and its label's leading glyph is `digit/(curr player + 1)`, so
+# it reads "1UP" when player 1 is active and "2UP" when player 2 is. The SECONDARY group is spawned ONLY in a
+# two-player game and shows the OTHER (swapped-out, frozen) player: its digits read `other score` and its label's
+# leading glyph is `digit/(2 - curr player)`, steady (no flash). This "active is primary/flashing" arrangement is
+# the port's deliberate simplification of the arcade's fixed-per-player columns (display_player_scores /
+# display_1UP_2UP, xevious_main 1888-1901 + xevious_sub 737-767: the arcade keeps player 1's group in its own
+# column and player 2's in its own, and flashes whichever is active); the divergence is recorded in the ECO-02
+# mechanics record. In a one-player game `two player` is 0, so no secondary clone spawns and the 1P HUD (curr
+# player always 0 -> a flashing "1UP" over the live score) is byte-identical to before this slice.
+HUD_ROLE_OTHER_SCORE_DIGIT = 8  # ECO-02: a secondary score-row digit reading `other score` (two-player only)
+HUD_ROLE_LABEL_2UP = 9  # ECO-02: the secondary (other-player) steady nUP label (two-player only)
 HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
 HUD_DIGIT_SPACING = 14
 # Project-defined top-band layout (stage -240..240 x, -180..180 y, +y up); the operator
@@ -333,6 +346,13 @@ HUD_HIGH_SCORE_LEFT_X = -20
 HUD_HIGH_SCORE_Y = 155
 HUD_LABEL_Y = 172
 HUD_1UP_LEFT_X = -192
+# ECO-02: the two-player secondary group sits on the RIGHT of the top band, mirroring the primary group's
+# label-over-score offset (label 28px right of the score's leftmost place, as 1UP=-192 is 28px right of
+# score=-220). The rightmost secondary digit ends at 96 + 6*14 = 180, clear of the 240 stage edge, and the
+# whole group sits right of the centred HIGH SCORE group (which ends near x=64). Operator fine-tunes exact
+# placement at playtest, as with the primary group (no reference basis — the port layout is project-defined).
+HUD_OTHER_SCORE_LEFT_X = 96  # place 6 (leftmost, most significant digit) of the secondary score row
+HUD_2UP_LEFT_X = 124  # leading glyph of the secondary nUP label (HUD_OTHER_SCORE_LEFT_X + 28, as 1UP is off score)
 HUD_HIGH_SCORE_LABEL_LEFT_X = -40
 HUD_LIFE_LEFT_X = -220
 HUD_LIFE_Y = 128
@@ -363,6 +383,14 @@ HUD_GAME_OVER_LABEL = (
     ("glyph/G", 0), ("glyph/A", 1), ("glyph/M", 2), ("glyph/E", 3),
     ("glyph/O", 5), ("glyph/V", 6), ("glyph/E", 7), ("glyph/R", 8),
 )
+# CAB-03: the two-player "GAME OVER PLAYER n" banner is a single WHOLE-STRING costume (rendered by
+# tools/hud_glyphs.py render_banner_costumes on the same credited HUD font sheet; the 18-char line uses that
+# module's SHEET_TEXT_RECTS, which has every glyph, and its credit downscale so the line stays on the 480-wide
+# stage). One banner clone (HUD_ROLE_BANNER) switches to the costume for the eliminated player and shows it,
+# centered on the field, while `banner player` is set; unlike the per-glyph GAME OVER row above it needs no
+# slot table. Costume names by player index: 0 -> "game-over-player-1", 1 -> "game-over-player-2".
+HUD_BANNER_COSTUME_PREFIX = "game-over-player-"
+HUD_BANNER_Y = 8  # centered on the play field, at the GAME OVER row height
 HUD_SPAWN_CRAFT_PROCCODE = "hud spawn craft"
 
 # ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
@@ -1039,15 +1067,17 @@ ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-ze
 # placement at playtest, exactly as the ECO-02 HUD layout notes (no reference basis for the port's own
 # credit-line/best-five geometry — the arcade layout does not carry over to the port's text rendering).
 # The credit line reads "CREDIT NN" as one centred monospace group: the static "CREDIT" label spans
-# cells 0-5, cell 6 is the space, and the two live digit clones sit at cells 7-8. With the Xevious HUD
-# font (hud_glyphs SHEET_TEXT_*: 25px cell, 27px pitch), that group is centred on x=0 with the label at
-# -40 (its 160px costume's centre over cells 0-5) and the units/tens digits at +108 / +81.
-ATTRACT_CREDIT_LABEL_X = -40
-ATTRACT_CREDIT_LINE_Y = -150
-ATTRACT_CREDIT_DIGIT_UNITS_X = 108  # place 0 (units); each higher place sits one pitch to its left
-ATTRACT_CREDIT_DIGIT_SPACING = 27  # one monospace pitch (SHEET_TEXT advance 108 / downscale 4)
+# cells 0-5, cell 6 is the space, and the two live digit clones sit at cells 7-8. Slice-18 playtest scale
+# correction: the title text now renders at the smaller hud_glyphs SMALL_TEXT_GEOM cell (16px glyph, 17px
+# advance), so this group is re-tightened — centred on x=0 with the label at -26 (its 101px costume's centre
+# over cells 0-5) and the units/tens digits at +68 / +51, and the whole title stack given a ~22px line pitch
+# so the lines no longer overlap.
+ATTRACT_CREDIT_LABEL_X = -26
+ATTRACT_CREDIT_LINE_Y = -142
+ATTRACT_CREDIT_DIGIT_UNITS_X = 68  # place 0 (units); each higher place sits one pitch to its left
+ATTRACT_CREDIT_DIGIT_SPACING = 17  # one monospace pitch (SMALL_TEXT_GEOM advance 119 / downscale 7)
 ATTRACT_PROMPT_X = 0
-ATTRACT_PROMPT_Y = -120
+ATTRACT_PROMPT_Y = -118
 ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
 ATTRACT_BEST_FIVE_X = 0
 ATTRACT_BEST_FIVE_Y = 0
@@ -1055,6 +1085,91 @@ ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
 ATTRACT_COSTUME_PUSH_START = "push-start"
 ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
 ATTRACT_COSTUME_BEST_FIVE = "best-five"
+# CAB-02 (cabinet.two-player, slice 18): the title 1P/2P selector display. Two more start_screen clone
+# roles — one per option label (tools/hud_glyphs.py ATTRACT_SELECTOR_LABELS) — spawned at the title beside
+# the CREDIT line and PUSH START prompt. Both labels always show so the choice is discoverable; the clone
+# whose option matches the live `start selection` renders at full opacity and the other is dimmed by the
+# ghost effect, re-evaluated every tick so an up/down arrow press updates the display live. Placement is
+# the port's own (no reference basis for this port-original control), operator-tunable at playtest exactly
+# like the CAB-01 credit-line/best-five geometry. The options are stacked vertically (1P over 2P), so the
+# selector input is the UP/DOWN arrows (slice-18 playtest correction — was left/right, which read wrong
+# against a vertical list).
+ATTRACT_ROLE_SELECTOR_1P = 5  # the "1 PLAYER" option label (bright when start selection == 1)
+ATTRACT_ROLE_SELECTOR_2P = 6  # the "2 PLAYERS" option label (bright when start selection == 2)
+ATTRACT_COSTUME_SELECTOR_1P = "select-1p"
+ATTRACT_COSTUME_SELECTOR_2P = "select-2p"
+ATTRACT_SELECTOR_X = 0
+ATTRACT_SELECTOR_1P_Y = -72  # stacked above the PUSH START prompt (-118), below the centred logo
+ATTRACT_SELECTOR_2P_Y = -94  # one ~22px line-pitch below the 1P label (16px glyph + gap)
+ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed (selected) option
+# CAB-03 (cabinet.two-player, slice 18): two-player alternation state. `curr player` (0/1) is the active
+# player index; `two player` (0/1) marks a two-player game. Both are director-control state the HUD READS
+# (the 1UP/2UP label + column, the 2UP-row gating) but NO sprite writes — write-forbidden below, exactly
+# like `game state`. `swap tmp` is the single scratch register `swap players` needs to exchange a pair
+# (custom blocks have no locals): transient machinery, not durable state.
+CURR_PLAYER_ID = "cabinet-curr-player"
+TWO_PLAYER_ID = "cabinet-two-player"
+SWAP_TMP_ID = "cabinet-swap-tmp"
+SWAP_PLAYERS_PROCCODE = "swap players"
+COPY_PLAYERS_PROCCODE = "copy players"
+# CAB-02 (cabinet.two-player, slice 18): the title-screen 1P/2P choice (1 or 2, default 1). A port
+# necessity — the arcade picked 1P/2P by two dedicated start buttons keyed to credit count; this port has
+# no cabinet buttons, so the up/down arrows set the choice at the title and Space starts it (recorded in
+# docs/spec/core-game-systems.md). Stage-written by the title selector hats, read by the selector display;
+# a title-screen UI register, reset to 1 at cold-start. Machinery, not durable per-player state.
+START_SELECTION_ID = "cabinet-start-selection"
+# CAB-03 (cabinet.two-player, slice 18): the "GAME OVER PLAYER n" elimination banner. `banner player` holds
+# the eliminated player's index (0/1) while the handoff banner shows during a two-player craft-out, else
+# BANNER_PLAYER_NONE. Stage-written by the death-complete alternation path (raised, held BANNER_HOLD_TICKS,
+# then cleared) and lowered on every reset scope; read by the HUD banner clone, which switches to the matching
+# "GAME OVER PLAYER 1/2" costume and shows it. A transient display signal like `easter egg showing`, not
+# durable per-player state — machinery, not write-forbidden. BANNER_HOLD_TICKS mirrors the arcade's 128-frame
+# game_over banner dwell (`game_over` main 549-562), the same 60->30 fps halving as GAME_OVER_HOLD_TICKS. The
+# banner shows only on the two-player HANDOFF (the outgoing player is out but the OTHER still has craft); the
+# final both-out elimination uses the existing game-over GAME OVER glyph, matching the operator's scoping.
+BANNER_PLAYER_ID = "cabinet-banner-player"
+BANNER_PLAYER_NONE = -1
+BANNER_HOLD_TICKS = GAME_OVER_HOLD_TICKS  # 64 port ticks == the arcade 128-frame GAME OVER PLAYER n dwell
+# The per-player context, faithful to the arcade's swapped 64-byte block (swap_curr_other_player,
+# xevious_main 671-679). The port keeps the CURRENT player in the existing live vars and one `other <x>`
+# shadow per persistent per-player field holding the INACTIVE player's saved value. `swap players` exchanges
+# every pair on each craft-death alternation; `copy players` seeds `other` from the current player at a 2P
+# start (coined_up 454-460). The set is the 14 persistent fields the arcade swaps — score, craft, next bonus,
+# area number, ai level, ground-stop-firing row, and the 8 fire masks — verified complete against the arcade
+# block by the reference-fidelity pass (2026-09-30): the block's `solvalou_number` and `bonus_life_none` have
+# NO distinct port variable (the score-adaptive AI divides score/craft, both swapped; "bonuses off" is the
+# BONUS_DISABLED sentinel inside `next bonus`, swapped), so no per-player field leaks. The derived position/
+# schedule fields (area progress, scroll row, terrain column, schedule cursor/fired) are NOT swapped — they
+# are rebuilt from `area number` by `_enter_area_top` on the incoming player's re-top. Each shadow is durable
+# per-player state the HUD may READ (the 2UP score row reads `other score`) but no sprite writes
+# (write-forbidden below), so the shadows form their own `player context` category, NOT machinery.
+PLAYER_CONTEXT_FIELDS = [
+    # (live name, live id, shadow name, shadow id)
+    ("score", SCORE_ID, "other score", "other-score"),
+    ("craft", LIVES_ID, "other craft", "other-craft"),
+    ("next bonus", NEXT_BONUS_ID, "other next bonus", "other-next-bonus"),
+    ("area number", AREA_NUMBER_ID, "other area number", "other-area-number"),
+    ("ai level", AI_LEVEL_ID, "other ai level", "other-ai-level"),
+    (
+        "ground stop firing row",
+        GROUND_STOP_FIRING_ROW_ID,
+        "other ground stop firing row",
+        "other-ground-stop-firing-row",
+    ),
+    # The 8 fire-mask shadows, derived from FIRE_MASK_FAMILIES so they never drift if a family is renamed.
+    *(
+        (name, mask_id, f"other {name}", f"other-{mask_id}")
+        for _suffix, name, mask_id in FIRE_MASK_FAMILIES
+    ),
+]
+# The two `other <x>` shadow ids the alternation/game-over handlers read directly, looked up by their live
+# counterpart so they can never drift from the swap set above: `other craft` gates the alternation (the other
+# player must still have craft to take over) and `other score` feeds the both-player high-score verdict.
+_PLAYER_CONTEXT_BY_LIVE_ID = {
+    live_id: shadow_id for _ln, live_id, _sn, shadow_id in PLAYER_CONTEXT_FIELDS
+}
+OTHER_SCORE_ID = _PLAYER_CONTEXT_BY_LIVE_ID[SCORE_ID]
+OTHER_CRAFT_ID = _PLAYER_CONTEXT_BY_LIVE_ID[LIVES_ID]
 # The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
 # formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
 TERRAZI_FORMATION_OFFSET = 78
@@ -8488,6 +8603,21 @@ def _advance_area_number(blocks: Blocks) -> str:
     return branch
 
 
+def _at_area_checkpoint(blocks: Blocks) -> str:
+    # ARCH-5 (slice 18): the near-end "advance area" band test — the frozen death-tick `scroll row` lies in
+    # [0x0E, 0x43] (strictly greater than AREA_CHECKPOINT_LOW_EXCL and strictly less than
+    # AREA_CHECKPOINT_HIGH_EXCL), so a death near the end of an area advances to the next area on the new life
+    # instead of restarting the current one (docs/mechanics 003, 013). One source, called from the new-life
+    # area re-top (`area_reset`) AND the two-player alternation handoff (`death complete`), so the two sites
+    # can never drift on the band constants. Returns the operator_and reporter id.
+    near_end = blocks.add("operator_and")
+    low = blocks.greater(near_end, "scroll row", SCROLL_ROW_ID, AREA_CHECKPOINT_LOW_EXCL)
+    high = blocks.op_gt(number(AREA_CHECKPOINT_HIGH_EXCL), variable("scroll row", SCROLL_ROW_ID))
+    blocks.blocks[high]["parent"] = near_end
+    blocks.blocks[near_end]["inputs"] = {"OPERAND1": [2, low], "OPERAND2": [2, high]}
+    return near_end
+
+
 def _set_scroll_row(blocks: Blocks) -> str:
     # scroll row = floor(((AREA_COUNTER_INIT - area progress) mod AREA_COUNTER_WRAP) / 256),
     # built through the centralized operator helpers (never inline operator blocks — wrong
@@ -8522,6 +8652,16 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
             ),
         ),
         blocks.set_var("schedule fired", SCHEDULE_FIRED_ID, number(0)),
+        # CAB-03 (cabinet.two-player, slice 18): clear the incoming wave registers on every area-top entry,
+        # exactly as the arcade's enter-area-top routine clears num_flying_enemies + flying_enemy_type_tbl_offset
+        # (xevious_main 484-485) in the SAME block that clears num_bacura (486-487, mirrored just below). The
+        # schedule's set-formation/raise records recompute these from `ai level` before the spawner reads them,
+        # so this is a no-op under the committed 1P schedules; it hardens the port against a stale wave size/
+        # offset bleeding across an area boundary or a respawn — and, load-bearingly for two-player, stops an
+        # OUTGOING player's formation registers carrying into the INCOMING player's first post-swap re-top
+        # (the swap set carries only `ai level`; these transient registers are rebuilt, never swapped).
+        blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
+        blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
         # AIR-11: re-top the Bacura spawn state alongside the schedule cursor, so each area rebuilds its
         # slab population from its own set/reset_bacura_count records and no count bleeds across an area
         # boundary or a respawn. (Under the committed schedules every Bacura window resets num_bacura to 0
@@ -9600,6 +9740,42 @@ def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
     return definition
 
 
+def install_swap_players(blocks: Blocks) -> None:
+    # CAB-03 (cabinet.two-player, slice 18): exchange the current and inactive players' saved state — the
+    # port's `swap_curr_other_player` (xevious_main 671-679). For each of the 14 persistent per-player fields
+    # (PLAYER_CONTEXT_FIELDS), swap the live var with its `other <x>` shadow through the single `swap tmp`
+    # scratch register (custom blocks have no locals). It touches ONLY those 14 pairs — never `rng state`
+    # (shared/global), never any director/machinery var — so a 2P game stays deterministic from one shared
+    # RNG stream. Called by the alternation path on each craft death (C3); defined here with no trigger yet.
+    definition = _install_warp_proc(blocks, SWAP_PLAYERS_PROCCODE)
+    body: list[str] = []
+    for live_name, live_id, shadow_name, shadow_id in PLAYER_CONTEXT_FIELDS:
+        body.extend(
+            [
+                blocks.set_var("swap tmp", SWAP_TMP_ID, variable(shadow_name, shadow_id)),
+                blocks.set_var(shadow_name, shadow_id, variable(live_name, live_id)),
+                blocks.set_var(live_name, live_id, variable("swap tmp", SWAP_TMP_ID)),
+            ]
+        )
+    blocks.chain(definition, body)
+
+
+def install_copy_players(blocks: Blocks) -> None:
+    # CAB-03 (cabinet.two-player, slice 18): seed the inactive player's saved state from the current player —
+    # the port's `coined_up` P2 seed (xevious_main 454-460), where a 2P start copies the freshly-built P1
+    # block into the other-player block so P2 begins identical-fresh. Copies the same 14 persistent fields
+    # current -> other; never touches `rng state` or any shared/director var. Called on a 2P start (C2);
+    # defined here with no trigger yet.
+    definition = _install_warp_proc(blocks, COPY_PLAYERS_PROCCODE)
+    blocks.chain(
+        definition,
+        [
+            blocks.set_var(shadow_name, shadow_id, variable(live_name, live_id))
+            for live_name, live_id, shadow_name, shadow_id in PLAYER_CONTEXT_FIELDS
+        ],
+    )
+
+
 def install_score(blocks: Blocks) -> None:
     # ECO-01: the single scoring path everything routes through, so scoring can never
     # double-count or bypass the cap. Add the pending award to the score, pin it at the
@@ -9788,6 +9964,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_emit_radiating_bullet(blocks)
     install_coin_poll(blocks)  # CAB-02 (cabinet.attract-credits, slice 17)
     install_attract_pilot(blocks)  # CAB-01 auto-pilot (cabinet.attract-credits, slice 17)
+    install_swap_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
+    install_copy_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
 
     flag = blocks.flag()
     blocks.chain(
@@ -9850,33 +10028,68 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.chain(coin_flag, [coin_loop])
 
-    # CAB-02: a 1-player start now costs a credit. The Space start hat fires only at the title, and only
-    # when at least one credit is banked; it deducts one and begins the game. A press at 0 credits is
-    # silently ignored (arcade `cmp.b #1,(num_credits) ; jcs` — start below cost returns).
+    # CAB-02 (slice 18): the title 1P/2P selector. A port necessity — the arcade chose 1P/2P by two
+    # dedicated start buttons keyed to credit count; this port has none, so the up/down arrows set the
+    # choice at the title and Space starts it (docs/spec/core-game-systems.md). The options are stacked
+    # vertically (1P over 2P), so the input is up/down (slice-18 playtest correction — was left/right, which
+    # read wrong against a vertical list). The arrow hats fire only at the title; each sets `start selection`
+    # to its bound (up = 1P the top option, down = 2P the bottom option), so holding a key is idempotent (it
+    # re-sets the same value, never oscillates). During play the same arrows drive the craft through
+    # solvalou's movement loop (gated on `playing`), so there is no conflict.
+    for key, choice in (("up arrow", 1), ("down arrow", 2)):
+        arrow = blocks.key(key)
+        blocks.chain(
+            arrow,
+            [
+                blocks.if_state(
+                    "title",
+                    [blocks.set_var("start selection", START_SELECTION_ID, number(choice))],
+                )
+            ],
+        )
+
+    # CAB-02: the credit-gated start. The Space start hat fires only at the title; it reads `start selection`
+    # and starts that mode when enough credits are banked — 1P costs one credit, 2P costs two — deducting the
+    # cost and beginning the game. A press below the selected cost is silently ignored (arcade
+    # `cmp.b #N,(num_credits) ; jcs` — start below cost returns). The two branches are mutually exclusive on
+    # `start selection`, so at most one runs per press.
     space = blocks.key("space")
-    blocks.chain(
-        space,
+    one_player_start = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("start selection", START_SELECTION_ID), number(1)),
+            blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+        ),
         [
-            blocks.if_state(
-                "title",
-                [
-                    blocks.if_reporter(
-                        blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
-                        [
-                            blocks.change_var("credits", CREDITS_ID, -1),
-                            # CAB-01: clear the attract flag atomically on the credited start, in the same
-                            # branch that deducts the credit — a started game can never inherit attract==1, so
-                            # it always runs as a real game (scoring on, real death). This also closes the
-                            # title-hold-vs-Space race: the title-hold demo launch is epoch-guarded, and this
-                            # transition increments the epoch, so a start that wins the tick cancels the hold.
-                            blocks.set_var("attract", ATTRACT_ID, number(0)),
-                            blocks.call_transition("ready", "new-game"),
-                        ],
-                    )
-                ],
-            )
+            blocks.change_var("credits", CREDITS_ID, -1),
+            blocks.set_var("two player", TWO_PLAYER_ID, number(0)),
+            blocks.set_var("curr player", CURR_PLAYER_ID, number(0)),
+            # CAB-01: clear the attract flag atomically on the credited start, in the same branch that
+            # deducts the credit — a started game can never inherit attract==1, so it always runs as a real
+            # game (scoring on, real death). This also closes the title-hold-vs-Space race: the title-hold
+            # demo launch is epoch-guarded and this transition increments the epoch, cancelling the hold.
+            blocks.set_var("attract", ATTRACT_ID, number(0)),
+            blocks.call_transition("ready", "new-game"),
         ],
     )
+    two_player_start = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("start selection", START_SELECTION_ID), number(2)),
+            # `credits > 1` is `credits >= 2` — a two-player game costs two credits.
+            blocks.op_gt(variable("credits", CREDITS_ID), number(1)),
+        ),
+        [
+            blocks.change_var("credits", CREDITS_ID, -2),
+            blocks.set_var("two player", TWO_PLAYER_ID, number(1)),
+            blocks.set_var("curr player", CURR_PLAYER_ID, number(0)),
+            blocks.set_var("attract", ATTRACT_ID, number(0)),
+            # The new-game reset (broadcast-and-wait inside the transition) builds fresh player-1 state
+            # BEFORE this returns; copy players then seeds every `other <x>` shadow from that fresh P1, so
+            # player 2 begins identical-fresh — the arcade coined_up P2 seed (xevious_main 454-460).
+            blocks.call_transition("ready", "new-game"),
+            blocks.call_proc(COPY_PLAYERS_PROCCODE, warp=True),
+        ],
+    )
+    blocks.chain(space, [blocks.if_state("title", [one_player_start, two_player_start])])
 
     # AUDIO: sound-only receiver for the shot×Bacura bounce. The bounce runs on a blaster clone
     # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
@@ -9902,9 +10115,71 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
 
     death = blocks.receive("death complete")
-    # Decide from the craft counter (PLY-02): a craft left means respawn; none left means game
-    # over. `death outcome` now RECORDS the decision (kept, not removed, so the transition-cleanup
-    # opcode sequence and the reset-scope matrix stay byte-identical) — it is no longer the input.
+    # CAB-03 (cabinet.two-player, slice 18): alternation on craft death. The arcade alternates on EVERY craft
+    # death — after a craft is lost, if the OTHER player still has craft (`main_gameplay_loop_cont` main:682,
+    # `game_over` main:670) it swaps to them (`next_player` main:674: swap_curr_other_player + eor curr_player)
+    # and they play; the current player continues solo only once the other is out; both out -> game over
+    # (`game_over_1_player` main:68B). This handler tries that alternate path first, then falls back to the
+    # existing one-player decision.
+    #
+    # ALTERNATE path — two-player game AND the other player still has craft to take over:
+    #   * The outgoing player's own near-end checkpoint is applied to THEIR area number FIRST, while `scroll
+    #     row` still holds their frozen death-tick row and `area number` is still theirs — the same
+    #     `_at_area_checkpoint` band the one-player new-life re-top uses (ARCH-5). It must run before the swap:
+    #     `area_reset` re-tops the INCOMING player after the transition and would otherwise advance the wrong
+    #     player's area.
+    #   * If the outgoing player is ELIMINATED (craft == 0), raise the "GAME OVER PLAYER n" banner for the
+    #     eliminated player and hold BANNER_HOLD_TICKS so it shows during the handoff, then lower it. The hold
+    #     PACES real frames (hold_frames): `player-dead` is not `playing`, so the Stage walk is off and there is
+    #     nothing to throttle (unlike an in-play hold) — a collapsing hold_ticks would flash the banner by in a
+    #     single step. On a non-elimination alternation (the outgoing player still has craft) there is no banner.
+    #   * Swap the two players' saved state (`swap players`) and toggle `curr player` (1 - curr player), so the
+    #     incoming player's context is now live. Reset `scroll row` to AREA_TOP_ROW so the incoming player's
+    #     new-life re-top runs `_enter_area_top` (re-tops their area) rather than re-running the checkpoint
+    #     (0x0D is not > 0x0D, so `_at_area_checkpoint` is false for them). Then respawn into their new life.
+    checkpoint = blocks.if_reporter(_at_area_checkpoint(blocks), [_advance_area_number(blocks)])
+    banner = blocks.add("control_if")
+    eliminated = blocks.op_eq(variable("craft", LIVES_ID), number(0))
+    blocks.blocks[eliminated]["parent"] = banner
+    blocks.blocks[banner]["inputs"]["CONDITION"] = [2, eliminated]
+    blocks.substack(
+        banner,
+        [
+            blocks.set_var(
+                "banner player", BANNER_PLAYER_ID, variable("curr player", CURR_PLAYER_ID)
+            ),
+            blocks.hold_frames(BANNER_HOLD_TICKS),
+            blocks.set_var("banner player", BANNER_PLAYER_ID, number(BANNER_PLAYER_NONE)),
+        ],
+    )
+    alt = blocks.add("control_if_else")
+    alt_cond = blocks.op_and(
+        blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
+        blocks.op_gt(variable("other craft", OTHER_CRAFT_ID), number(0)),
+    )
+    blocks.blocks[alt_cond]["parent"] = alt
+    blocks.blocks[alt]["inputs"]["CONDITION"] = [2, alt_cond]
+    blocks.substack(
+        alt,
+        [
+            checkpoint,
+            banner,
+            blocks.call_proc(SWAP_PLAYERS_PROCCODE, warp=True),
+            blocks.set_var_expr(
+                "curr player",
+                CURR_PLAYER_ID,
+                blocks.op_sub(number(1), variable("curr player", CURR_PLAYER_ID)),
+            ),
+            blocks.set_var("scroll row", SCROLL_ROW_ID, number(AREA_TOP_ROW)),
+            blocks.set_var("death outcome", OUTCOME_ID, text("respawn")),
+            blocks.call_transition("respawning", "new-life"),
+        ],
+    )
+    # SOLO / one-player path (the ELSE branch): the existing decision from the craft counter (PLY-02) — a craft
+    # left means respawn; none left means game over. This is reached for a one-player game and for the last
+    # player of a two-player game (the other already out, so the alternate condition above is false). `death
+    # outcome` RECORDS the decision (kept, not removed, so the transition-cleanup opcode sequence and the
+    # reset-scope matrix stay byte-identical) — it is no longer the input.
     decide = blocks.add("control_if_else")
     has_craft = blocks.greater(decide, "craft", LIVES_ID, 0)
     blocks.blocks[decide]["inputs"]["CONDITION"] = [2, has_craft]
@@ -9923,19 +10198,31 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
         name="SUBSTACK2",
     )
-    blocks.chain(death, [blocks.if_state("player-dead", [decide])])
+    blocks.substack(alt, [decide], name="SUBSTACK2")
+    blocks.chain(death, [blocks.if_state("player-dead", [alt])])
 
     game_over = blocks.receive("game over complete")
-    # ECO-04 best-five check: qualified = the final score beats fifth place in the ingested
-    # high-score table. A verdict only (the initials-entry screen a qualifying score would show
-    # is deferred to the cabinet-flow slice, 19) — computed here, before the transition back to
-    # title resets `reset scope` and (via the cold-start scope) the score itself.
+    # ECO-04 best-five check: qualified = the final score beats fifth place in the ingested high-score table.
+    # A verdict only (the initials-entry screen a qualifying score would show is deferred to the cabinet-flow
+    # slice, 19) — computed here, before the transition back to title resets `reset scope` and (via the
+    # cold-start scope) the score itself.
+    # CAB-03 (slice 18): a two-player game reaches game-over only when the LAST player is out; at that point
+    # `score` is the last dier's final and `other score` is the other player's final (frozen at their last
+    # swap-out). Either beating fifth place qualifies, so the verdict is OR'd over both — but only when
+    # `two player` is set (a one-player game has no meaningful `other score`, so its arm is gated off and the
+    # verdict is exactly the one-player check). The per-player initials-entry that distinguishes WHICH player
+    # qualified is slice-19 work; this slice computes the single game verdict only.
+    fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
+    other_fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
     set_qualified = blocks.set_var_expr(
         "qualified",
         QUALIFIED_ID,
-        blocks.op_gt(
-            variable("score", SCORE_ID),
-            blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5)),
+        blocks.op_or(
+            blocks.op_gt(variable("score", SCORE_ID), fifth_place),
+            blocks.op_and(
+                blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
+                blocks.op_gt(variable("other score", OTHER_SCORE_ID), other_fifth_place),
+            ),
         ),
     )
     blocks.chain(
@@ -10157,7 +10444,17 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[high_reset]["inputs"]["CONDITION"] = [2, high_scope]
     blocks.substack(
         high_reset,
-        [blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START))],
+        [
+            blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START)),
+            # CAB-02/CAB-03 (slice 18): the two-player cabinet controls are power-on / return-to-attract
+            # state, reset ONLY at cold-start — NOT new-game, so a 2P start's `two player = 1` (set just
+            # before its new-game transition) is never clobbered. A finished game transitions to the title
+            # via cold-start (game over complete), so this also returns the cabinet to a 1-player, player-1
+            # default for the next game. `start selection` defaults to 1P.
+            blocks.set_var("curr player", CURR_PLAYER_ID, number(0)),
+            blocks.set_var("two player", TWO_PLAYER_ID, number(0)),
+            blocks.set_var("start selection", START_SELECTION_ID, number(1)),
+        ],
     )
     blocks.chain(
         stage_reset,
@@ -10172,6 +10469,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # credit still holding when a death/transition/new-game clears the field (clear slots above frees the
             # egg's slot without running `update easter egg`) can never linger into the next playing state.
             blocks.set_var("easter egg showing", EASTER_EGG_SHOWING_ID, number(0)),
+            # CAB-03 (slice 18): lower the elimination banner on every reset scope, so the "GAME OVER PLAYER n"
+            # banner (raised and cleared inline by the alternation handoff) can never linger past a transition —
+            # the same defensive per-scope clear as `easter egg showing` above.
+            blocks.set_var("banner player", BANNER_PLAYER_ID, number(BANNER_PLAYER_NONE)),
             reset_if(
                 blocks,
                 ("cold-start", "new-game"),
@@ -10231,12 +10532,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     new_life = blocks.add("control_if")
     new_life_scope = blocks.scope_is(new_life, "new-life")
     blocks.blocks[new_life]["inputs"]["CONDITION"] = [2, new_life_scope]
-    near_end = blocks.add("operator_and")
-    low = blocks.greater(near_end, "scroll row", SCROLL_ROW_ID, AREA_CHECKPOINT_LOW_EXCL)
-    high = blocks.op_gt(number(AREA_CHECKPOINT_HIGH_EXCL), variable("scroll row", SCROLL_ROW_ID))
-    blocks.blocks[high]["parent"] = near_end
-    blocks.blocks[near_end]["inputs"] = {"OPERAND1": [2, low], "OPERAND2": [2, high]}
-    checkpoint = blocks.if_reporter(near_end, [_advance_area_number(blocks)])
+    # ARCH-5: the near-end checkpoint band test is shared with the two-player alternation handoff.
+    checkpoint = blocks.if_reporter(_at_area_checkpoint(blocks), [_advance_area_number(blocks)])
     blocks.substack(new_life, [checkpoint, *_enter_area_top(blocks)])
     blocks.chain(area_reset, [world_area, new_life])
 
@@ -10425,6 +10722,17 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_PROMPT)),
         blocks.go(ATTRACT_PROMPT_X, ATTRACT_PROMPT_Y),
         blocks.create_clone(),
+    ]
+    # CAB-02: stamp the two 1P/2P selector labels, one clone each, in the same one-frame batch.
+    title_body += [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SELECTOR_1P)),
+        blocks.go(ATTRACT_SELECTOR_X, ATTRACT_SELECTOR_1P_Y),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SELECTOR_2P)),
+        blocks.go(ATTRACT_SELECTOR_X, ATTRACT_SELECTOR_2P_Y),
+        blocks.create_clone(),
+    ]
+    title_body += [
         blocks.go(0, 250),  # back to the glide start; the logo glides in with the clones already stamped
         blocks.glide(1, 0, 0),
     ]
@@ -10532,9 +10840,53 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [blocks.switch_costume(ATTRACT_COSTUME_BEST_FIVE), blocks.to_front(), blocks.show()],
     )
 
+    # CAB-02: the two 1P/2P selector labels. Each clone wears its fixed option costume, shows, then loops
+    # while in title re-picking the ghost effect from the live `start selection`: 0 (opaque) when this
+    # clone's option is the armed one, ATTRACT_SELECTOR_DIM_GHOST (dimmed) otherwise — so a left/right
+    # arrow press flips which label is bright on the next tick. The loop yields once per iteration (like
+    # the credit-digit/prompt roles); it exits when the state leaves title, then the clone hides + deletes.
+    def selector_role(role: int, costume: str, option: int) -> str:
+        dim_loop = blocks.add("control_repeat_until")
+        blocks.blocks[dim_loop]["inputs"]["CONDITION"] = [2, blocks.not_state(dim_loop, "title")]
+        # ghost = DIM * (start selection != option): 0 when armed, DIM when not.
+        ghost_expr = blocks.op_mul(
+            number(ATTRACT_SELECTOR_DIM_GHOST),
+            blocks.op_not(
+                blocks.op_eq(variable("start selection", START_SELECTION_ID), number(option))
+            ),
+        )
+        blocks.substack(dim_loop, [blocks.set_effect("GHOST", ghost_expr)])
+        return blocks.if_var_equals(
+            "attract role", ATTRACT_DISPLAY_ROLE_ID, role,
+            [
+                blocks.switch_costume(costume),
+                blocks.to_front(),
+                blocks.show(),
+                dim_loop,
+                blocks.clear_graphic_effects(),  # leave no ghost on a reused clone
+                blocks.hide(),
+                blocks.add("control_delete_this_clone"),
+            ],
+        )
+
+    selector_1p_role = selector_role(
+        ATTRACT_ROLE_SELECTOR_1P, ATTRACT_COSTUME_SELECTOR_1P, 1
+    )
+    selector_2p_role = selector_role(
+        ATTRACT_ROLE_SELECTOR_2P, ATTRACT_COSTUME_SELECTOR_2P, 2
+    )
+
     blocks.chain(
         clone,
-        [hide_first, credit_label_role, credit_digit_role, prompt_role, best_five_role],
+        [
+            hide_first,
+            credit_label_role,
+            credit_digit_role,
+            prompt_role,
+            best_five_role,
+            selector_1p_role,
+            selector_2p_role,
+        ],
     )
     return blocks.blocks
 
@@ -11109,14 +11461,37 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.go(x, HUD_HIGH_SCORE_Y),
             blocks.create_clone(),
         ]
-    for glyph, slot in HUD_1UP_LABEL:
-        x = HUD_1UP_LEFT_X + slot * HUD_DIGIT_SPACING
-        spawn_body += [
-            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LABEL_1UP)),
-            blocks.switch_costume(glyph),
-            blocks.go(x, HUD_LABEL_Y),
+    # ECO-02 (slice 18): an nUP label spawner shared by the primary (active, flashing) and secondary (other,
+    # steady) groups. The leading glyph is a per-group reporter (`digit/(curr player + 1)` for the active label,
+    # `digit/(2 - curr player)` for the other), so the label reads the right player's number; the trailing "U"/
+    # "P" come from HUD_1UP_LABEL. curr player is a spawn-time snapshot: every transition rebuilds these clones
+    # (director stop/enter) and the alternation handoff toggles curr player BEFORE the respawn transition, so the
+    # snapshot always names the correct player. Each call passes a FRESH leading reporter (a reporter reused
+    # across two costume inputs would be stolen by the second).
+    def up_label_spawn(role: int, left_x: int, leading_digit: str) -> list[str]:
+        body = [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(role)),
+            blocks.switch_costume_expr(leading_digit),
+            blocks.go(left_x, HUD_LABEL_Y),
             blocks.create_clone(),
         ]
+        for glyph, slot in HUD_1UP_LABEL[1:]:
+            body += [
+                blocks.set_var("hud role", HUD_ROLE_ID, number(role)),
+                blocks.switch_costume(glyph),
+                blocks.go(left_x + slot * HUD_DIGIT_SPACING, HUD_LABEL_Y),
+                blocks.create_clone(),
+            ]
+        return body
+
+    spawn_body += up_label_spawn(
+        HUD_ROLE_LABEL_1UP,
+        HUD_1UP_LEFT_X,
+        blocks.op_join(
+            text("digit/"),
+            blocks.op_add(variable("curr player", CURR_PLAYER_ID), number(1)),
+        ),
+    )
     for glyph, slot in HUD_HIGH_SCORE_LABEL:
         x = HUD_HIGH_SCORE_LABEL_LEFT_X + slot * HUD_DIGIT_SPACING
         spawn_body += [
@@ -11137,6 +11512,47 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.create_clone(),
         ]
     spawn_body.append(blocks.if_state("game-over", game_over_body))
+    # CAB-03 (slice 18): the two-player "GAME OVER PLAYER n" elimination banner clone — spawned ONLY in a
+    # two-player game. `banner player` is never raised in a one-player game, so gating the spawn on `two player`
+    # keeps the one-player HUD (and its clone census) byte-identical while giving a two-player game the single
+    # extra clone. One clone, centered on the field; it shows itself only while `banner player` names a player.
+    spawn_body.append(
+        blocks.if_var_equals(
+            "two player",
+            TWO_PLAYER_ID,
+            1,
+            [
+                blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_BANNER)),
+                blocks.go(0, HUD_BANNER_Y),
+                blocks.create_clone(),
+            ],
+        )
+    )
+    # ECO-02 (slice 18): the SECONDARY score row + nUP label — the OTHER (swapped-out) player — spawned ONLY in
+    # a two-player game, on the RIGHT of the top band. Its 7 digits read `other score` (frozen at that player's
+    # last swap-out) and its label is steady (HUD_ROLE_LABEL_2UP, no flash) with a `digit/(2 - curr player)`
+    # leading glyph — the other player's number. Gating the whole group on `two player == 1` keeps the one-player
+    # HUD and its clone census byte-identical; a two-player game adds 7 + 3 = 10 clones here.
+    secondary_body: list[str] = []
+    for place in range(HUD_DIGIT_PLACES):
+        x = HUD_OTHER_SCORE_LEFT_X + (HUD_DIGIT_PLACES - 1 - place) * HUD_DIGIT_SPACING
+        secondary_body += [
+            blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_OTHER_SCORE_DIGIT)),
+            blocks.set_var("hud place", HUD_PLACE_ID, number(place)),
+            blocks.go(x, HUD_SCORE_Y),
+            blocks.create_clone(),
+        ]
+    secondary_body += up_label_spawn(
+        HUD_ROLE_LABEL_2UP,
+        HUD_2UP_LEFT_X,
+        blocks.op_join(
+            text("digit/"),
+            blocks.op_sub(number(2), variable("curr player", CURR_PLAYER_ID)),
+        ),
+    )
+    spawn_body.append(
+        blocks.if_var_equals("two player", TWO_PLAYER_ID, 1, secondary_body)
+    )
     # The life-icon row is spawned by the shared proc below (also used on `craft changed`).
     spawn_body.append(blocks.call_proc(HUD_SPAWN_CRAFT_PROCCODE, warp=True))
     # CAB-01: exclude the render-only `attract-scores` state too — the best-five table owns the screen
@@ -11214,6 +11630,16 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_HIGH_SCORE_DIGIT,
         digit_role_body("high score", HIGH_SCORE_ID),
     )
+    # ECO-02 (slice 18): the secondary score row reads `other score` with the same per-tick digit idiom as the
+    # primary row (the value is frozen during the current player's turn, so the read is constant until the next
+    # swap-out; reading it live costs nothing and needs no extra broadcast). These clones exist only in a
+    # two-player game (spawned under the `two player == 1` gate above).
+    other_score_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_OTHER_SCORE_DIGIT,
+        digit_role_body("other score", OTHER_SCORE_ID),
+    )
     # A life clone must SHOW the ship icon — switch to it explicitly rather than inherit
     # whatever costume the sprite last held at spawn (which is a label glyph).
     life_role = blocks.if_var_equals(
@@ -11264,6 +11690,15 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_LABEL_HIGH_SCORE,
         [blocks.to_front(), blocks.show()],
     )
+    # ECO-02 (slice 18): the secondary (other-player) nUP label is STEADY — the active player's label carries the
+    # flash (arcade `flash_1up_2up`: only the active nUP flashes, the other is steady). Static once spawned, like
+    # the HIGH SCORE label; common_stop's clone-clear retires it on the next transition.
+    label_2up_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_LABEL_2UP,
+        [blocks.to_front(), blocks.show()],
+    )
     # ECO-04: each "GAME OVER" glyph clone is static once spawned (like the "HIGH SCORE"
     # label above) — director-stop's clone-clear (common_stop) retires it on the next
     # transition, so it never needs to delete itself here.
@@ -11273,16 +11708,51 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_GAME_OVER_GLYPH,
         [blocks.to_front(), blocks.show()],
     )
+    # CAB-03: the two-player elimination banner. Unlike the static GAME OVER glyphs, this clone re-reads
+    # `banner player` every tick while the HUD is visible (the digit-loop idiom) so the handoff banner appears
+    # the instant the death handler raises it and vanishes when it is lowered. With no player named it hides;
+    # otherwise it switches to that player's "GAME OVER PLAYER n" whole-string costume (n = banner player + 1)
+    # and shows in front. common_stop's clone-clear retires it on the next transition, so — like the flashing
+    # 1UP label — it hides + deletes itself only when the state returns to title/boot.
+    banner_tick = blocks.add("control_repeat_until")
+    banner_stop = blocks.either_state(banner_tick, "title", "boot")
+    blocks.blocks[banner_tick]["inputs"]["CONDITION"] = [2, banner_stop]
+    banner_visible = blocks.add("control_if_else")
+    banner_none = blocks.op_eq(
+        variable("banner player", BANNER_PLAYER_ID), number(BANNER_PLAYER_NONE)
+    )
+    blocks.blocks[banner_none]["parent"] = banner_visible
+    blocks.blocks[banner_visible]["inputs"]["CONDITION"] = [2, banner_none]
+    blocks.substack(banner_visible, [blocks.hide()])
+    banner_name = blocks.op_join(
+        text(HUD_BANNER_COSTUME_PREFIX),
+        blocks.op_add(variable("banner player", BANNER_PLAYER_ID), number(1)),
+    )
+    blocks.substack(
+        banner_visible,
+        [blocks.switch_costume_expr(banner_name), blocks.to_front(), blocks.show()],
+        name="SUBSTACK2",
+    )
+    blocks.substack(banner_tick, [banner_visible])
+    banner_role = blocks.if_var_equals(
+        "hud role",
+        HUD_ROLE_ID,
+        HUD_ROLE_BANNER,
+        [banner_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+    )
     blocks.chain(
         clone,
         [
             mark_clone,
             score_role,
             high_role,
+            other_score_role,
             life_role,
             label_1up_role,
             label_hs_role,
+            label_2up_role,
             game_over_glyph_role,
+            banner_role,
         ],
     )
 
@@ -13743,6 +14213,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AI_ADJUST_ID,
         GROUND_STOP_FIRING_ROW_ID,
         *(mask_id for _suffix, _name, mask_id in FIRE_MASK_FAMILIES),
+        # CAB-03 (cabinet.two-player, slice 18): the active-player index and two-player flag (director state,
+        # write-forbidden), the swap scratch register (machinery), and the 14 `other <x>` per-player shadows.
+        CURR_PLAYER_ID,
+        TWO_PLAYER_ID,
+        SWAP_TMP_ID,
+        *(shadow_id for _ln, _li, _sn, shadow_id in PLAYER_CONTEXT_FIELDS),
+        # CAB-02 (slice 18): the title 1P/2P selection register (machinery).
+        START_SELECTION_ID,
+        # CAB-03 (slice 18): the elimination-banner display signal (machinery, like `easter egg showing`).
+        BANNER_PLAYER_ID,
         # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
         # cached craft cell, and the spawner's cursor/attempt/found/type registers.
         AIM_DX_DIFF_ID,
@@ -13901,6 +14381,23 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # enemy slices (8+). All reset to 0 on a world reset, alongside the AI level and formation.
         GROUND_STOP_FIRING_ROW_ID: ["ground stop firing row", 0],
         **{mask_id: [name, 0] for _suffix, name, mask_id in FIRE_MASK_FAMILIES},
+        # CAB-03 (cabinet.two-player, slice 18): the active-player index (0/1) and the two-player-game flag
+        # (0/1) — director-control state, sprite-read, write-forbidden. Both default 0 (player one, one-player
+        # game), reset only on a world reset (cold-start forces P1/1P). `swap tmp` is `swap players`'s scratch
+        # register (machinery). The 14 `other <x>` shadows hold the inactive player's saved state, all default
+        # 0 (untouched until a 2P game seeds `other` via `copy players`). They persist across death/respawn.
+        CURR_PLAYER_ID: ["curr player", 0],
+        TWO_PLAYER_ID: ["two player", 0],
+        SWAP_TMP_ID: ["swap tmp", 0],
+        **{
+            shadow_id: [shadow_name, 0]
+            for _ln, _li, shadow_name, shadow_id in PLAYER_CONTEXT_FIELDS
+        },
+        # CAB-02 (slice 18): the title 1P/2P selection, default 1 (one-player) at power-on.
+        START_SELECTION_ID: ["start selection", 1],
+        # CAB-03 (slice 18): the elimination-banner signal, default "none" (no banner). Raised to the
+        # eliminated player's index during a two-player handoff, cleared after the dwell and on every reset.
+        BANNER_PLAYER_ID: ["banner player", BANNER_PLAYER_NONE],
         # AIR-01 Toroid live-combat machinery (slice 8). The aim quantizer intermediates, the cached
         # craft cell (player row/col), and the spawner's registers — all transient, all default 0.
         AIM_DX_DIFF_ID: ["aim dx diff", 0],

@@ -163,10 +163,11 @@ reticle reads the same movement input as the craft, and when it reaches the top 
 and backs the craft down with it — so the reticle can never leave the top of the screen and the craft stops
 with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
-port's own: arrow keys move during play; at the title screen the **left/right arrows choose between a
-one-player and a two-player game** (a port necessity — the arcade used two dedicated start buttons and let
-credit count pick the "1 PLAYER ONLY / 1 OR 2 PLAYERS" prompt; this port has no cabinet buttons, so the choice
-is an idle-at-title arrow selector, recorded like the `C`=coin key below). Space fires during play, and at the
+port's own: arrow keys move during play; at the title screen the **up/down arrows choose between a
+one-player (up) and a two-player (down) game** (a port necessity — the arcade used two dedicated start buttons
+and let credit count pick the "1 PLAYER ONLY / 1 OR 2 PLAYERS" prompt; this port has no cabinet buttons, so the
+choice is an idle-at-title arrow selector over a vertically-stacked 1P/2P option list, recorded like the `C`=coin
+key below). Space fires during play, and at the
 title screen **confirms the selected mode and starts it** — a one-player start costs one available credit and a
 two-player start costs two, each deducted on start (insufficient credits is a silent no-op; see
 [Cabinet flow](cabinet-flow.md)). B bombs, a permanent `C` inserts a coin (a port

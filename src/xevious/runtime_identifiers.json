@@ -289,6 +289,11 @@
       "name": "attract stage",
       "scope": "Stage"
     },
+    "cabinet-banner-player": {
+      "kind": "variable",
+      "name": "banner player",
+      "scope": "Stage"
+    },
     "cabinet-coin-edge": {
       "kind": "variable",
       "name": "coin edge",
@@ -302,6 +307,11 @@
     "cabinet-credits": {
       "kind": "variable",
       "name": "credits",
+      "scope": "Stage"
+    },
+    "cabinet-curr-player": {
+      "kind": "variable",
+      "name": "curr player",
       "scope": "Stage"
     },
     "cabinet-input-down": {
@@ -332,6 +342,21 @@
     "cabinet-pilot-dir": {
       "kind": "variable",
       "name": "pilot dir",
+      "scope": "Stage"
+    },
+    "cabinet-start-selection": {
+      "kind": "variable",
+      "name": "start selection",
+      "scope": "Stage"
+    },
+    "cabinet-swap-tmp": {
+      "kind": "variable",
+      "name": "swap tmp",
+      "scope": "Stage"
+    },
+    "cabinet-two-player": {
+      "kind": "variable",
+      "name": "two player",
       "scope": "Stage"
     },
     "debug-ground-index": {
@@ -667,6 +692,76 @@
     "one-second-cntr": {
       "kind": "variable",
       "name": "one second cntr",
+      "scope": "Stage"
+    },
+    "other-ai-level": {
+      "kind": "variable",
+      "name": "other ai level",
+      "scope": "Stage"
+    },
+    "other-area-number": {
+      "kind": "variable",
+      "name": "other area number",
+      "scope": "Stage"
+    },
+    "other-craft": {
+      "kind": "variable",
+      "name": "other craft",
+      "scope": "Stage"
+    },
+    "other-fire-mask-andor-genesis": {
+      "kind": "variable",
+      "name": "other fire mask andor genesis",
+      "scope": "Stage"
+    },
+    "other-fire-mask-boza-logram": {
+      "kind": "variable",
+      "name": "other fire mask boza logram",
+      "scope": "Stage"
+    },
+    "other-fire-mask-derota": {
+      "kind": "variable",
+      "name": "other fire mask derota",
+      "scope": "Stage"
+    },
+    "other-fire-mask-domogram": {
+      "kind": "variable",
+      "name": "other fire mask domogram",
+      "scope": "Stage"
+    },
+    "other-fire-mask-kapi": {
+      "kind": "variable",
+      "name": "other fire mask kapi",
+      "scope": "Stage"
+    },
+    "other-fire-mask-logram": {
+      "kind": "variable",
+      "name": "other fire mask logram",
+      "scope": "Stage"
+    },
+    "other-fire-mask-terrazi": {
+      "kind": "variable",
+      "name": "other fire mask terrazi",
+      "scope": "Stage"
+    },
+    "other-fire-mask-zoshi": {
+      "kind": "variable",
+      "name": "other fire mask zoshi",
+      "scope": "Stage"
+    },
+    "other-ground-stop-firing-row": {
+      "kind": "variable",
+      "name": "other ground stop firing row",
+      "scope": "Stage"
+    },
+    "other-next-bonus": {
+      "kind": "variable",
+      "name": "other next bonus",
+      "scope": "Stage"
+    },
+    "other-score": {
+      "kind": "variable",
+      "name": "other score",
       "scope": "Stage"
     },
     "player-col": {

@@ -23,7 +23,7 @@ import {
   constants,
   variable,
 } from './harness.js';
-import { reachPlaying, stateOf, insertCoin } from './build.js';
+import { reachPlaying, reachPlaying2P, stateOf, insertCoin, loadArtifact } from './build.js';
 import * as mutate from './mutate.js';
 
 // The committed RNG fixture (the shared LFSR's byte stream from each seed) — the model the live
@@ -7222,6 +7222,600 @@ export const SCENARIOS = [
     },
     // Neutralize the walk so the on-cell overlap is never checked → the on-cell assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'advance slots'),
+  },
+  {
+    // CAB-03 (cabinet.two-player, slice 18): the `swap players` primitive — the port's
+    // swap_curr_other_player (xevious_main 671-679). It exchanges every one of the 14 persistent
+    // per-player fields between the current player's live vars and the inactive player's `other <x>`
+    // shadow, and touches nothing else. This commit installs the proc with no trigger yet; the
+    // alternation that calls it (and its CAB-03 acceptance evidence) arrive in a later commit.
+    key: 'player-context-swap',
+    behavior:
+      '`swap players` exchanges all 14 persistent per-player fields (score, craft, next bonus, area, ai level, ground-stop row, 8 fire masks) with the inactive-player shadow and leaves the shared RNG seed untouched',
+    playtestStep: 1,
+    async drive(vm) {
+      // The 14 persistent per-player fields as (live id, shadow id) pairs — the same set the
+      // generator derives from PLAYER_CONTEXT_FIELDS. Seed each live var and its `other <x>` shadow to
+      // DISJOINT sentinel ranges (live = 100+i, shadow = 200+i) so that a field left un-swapped, or one
+      // whose value leaks in from a different field, is caught by that field's exact assertion. If a
+      // field were ever dropped from the swap set its shadow id would vanish and readVar would hard-error
+      // here — so this positive is itself the guard against a silently missed field.
+      const fields = [
+        ['eco-score', 'other-score'],
+        ['eco-craft', 'other-craft'],
+        ['eco-next-bonus', 'other-next-bonus'],
+        ['area-number', 'other-area-number'],
+        ['difficulty-ai-level', 'other-ai-level'],
+        ['ground-stop-firing-row', 'other-ground-stop-firing-row'],
+        ['fire-mask-derota', 'other-fire-mask-derota'],
+        ['fire-mask-logram', 'other-fire-mask-logram'],
+        ['fire-mask-zoshi', 'other-fire-mask-zoshi'],
+        ['fire-mask-terrazi', 'other-fire-mask-terrazi'],
+        ['fire-mask-kapi', 'other-fire-mask-kapi'],
+        ['fire-mask-boza-logram', 'other-fire-mask-boza-logram'],
+        ['fire-mask-domogram', 'other-fire-mask-domogram'],
+        ['fire-mask-andor-genesis', 'other-fire-mask-andor-genesis'],
+      ];
+      // The shared RNG seed sits OUTSIDE the arcade's swapped 64-byte block (pseudo_random_seed,
+      // xevious_ram 120), so a 2P game stays deterministic from one stream — swap must NOT touch it.
+      const rngBefore = 4242;
+      writeVar(vm, 'rng-state', rngBefore);
+      fields.forEach(([liveId, shadowId], i) => {
+        writeVar(vm, liveId, 100 + i);
+        writeVar(vm, shadowId, 200 + i);
+      });
+      callProc(vm, 'Stage', 'swap players'); // warp proc — runs to completion in one step
+      step(vm, 1);
+      const after = fields.map(([liveId, shadowId]) => [readVar(vm, liveId), readVar(vm, shadowId)]);
+      return { fields, after, rngBefore, rngAfter: readVar(vm, 'rng-state') };
+    },
+    assert(obs) {
+      obs.fields.forEach(([liveId, shadowId], i) => {
+        const [live, shadow] = obs.after[i];
+        assert.equal(
+          Number(live),
+          200 + i,
+          `swap players moves the inactive-player value into live '${liveId}'`,
+        );
+        assert.equal(
+          Number(shadow),
+          100 + i,
+          `swap players moves the current value into shadow '${shadowId}'`,
+        );
+      });
+      assert.equal(
+        Number(obs.rngAfter),
+        obs.rngBefore,
+        'swap players leaves the shared RNG seed untouched (a 2P game stays one deterministic stream)',
+      );
+    },
+    // Pin the live `score` write so `swap players` can no longer move the shadow score back into it →
+    // the score field's exact per-field assertion (live == 200+0) fails, proving the per-field checks
+    // bite (omit one field from the swap and that field's own assertion goes red, not a coarse one).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'score', -1),
+  },
+  {
+    // CAB-02 (cabinet.two-player, slice 18): the title 1P/2P selector and the credit-gated 2P start. A
+    // port necessity (no cabinet start buttons): the arrows choose the mode at the title and Space starts
+    // it — 1P costs one credit, 2P costs two. On a 2P start `copy players` seeds player 2 identical-fresh
+    // from player 1 (the arcade coined_up P2 seed).
+    // roadmap-evidence: CAB-02 success  (down/up arrows pick 2P/1P at the title; a two-credit Space start
+    //   begins a two-player game with player 1 active and player 2 seeded fresh from player 1)
+    key: 'two-player-start',
+    behavior:
+      'The title up/down arrows select 1P/2P and a credit-gated Space starts the chosen mode — a 2P start needs two credits, sets two-player with player 1 active, and seeds player 2 fresh from player 1',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      // One boot pump: the selector key hats only start listening once the runtime has stepped, and the
+      // director-state var already reads 'title' from its initial value, so without this the wait loop
+      // exits at zero steps and the first arrow tap lands before the hats are live.
+      step(vm, 1);
+      let g = 0;
+      while (stateOf(vm) !== 'title' && g < 50) {
+        step(vm, 1);
+        g += 1;
+      }
+      writeVar(vm, 'invuln', 1);
+      // The selector: down -> 2P (bottom option), up -> 1P (top option). Each hat sets its bound, so the
+      // reads are exact.
+      tapKey(vm, 'ArrowDown');
+      const selAfterDown = readVar(vm, 'cabinet-start-selection');
+      tapKey(vm, 'ArrowUp');
+      const selAfterUp = readVar(vm, 'cabinet-start-selection');
+      // Choose 2P with only ONE credit banked: below the two-credit cost, so Space is a silent no-op.
+      tapKey(vm, 'ArrowDown');
+      insertCoin(vm, 1);
+      tapKey(vm, ' ');
+      const stateOneCredit = stateOf(vm);
+      const creditsOneCredit = readVar(vm, 'cabinet-credits');
+      // Bank the second credit and start the two-player game.
+      insertCoin(vm, 1);
+      tapKey(vm, ' ');
+      let t = 0;
+      while (stateOf(vm) !== 'playing' && t < 150) {
+        step(vm, 1);
+        t += 1;
+      }
+      return {
+        selAfterDown,
+        selAfterUp,
+        stateOneCredit,
+        creditsOneCredit,
+        started: stateOf(vm) === 'playing',
+        twoPlayer: readVar(vm, 'cabinet-two-player'),
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        creditsAfter: readVar(vm, 'cabinet-credits'),
+        // copy players must have seeded each shadow from the fresh player-1 state:
+        craft: readVar(vm, 'eco-craft'),
+        otherCraft: readVar(vm, 'other-craft'),
+        area: readVar(vm, 'area-number'),
+        otherArea: readVar(vm, 'other-area-number'),
+        score: readVar(vm, 'eco-score'),
+        otherScore: readVar(vm, 'other-score'),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.selAfterDown), 2, 'the down arrow selects a two-player game');
+      assert.equal(Number(obs.selAfterUp), 1, 'the up arrow selects a one-player game');
+      assert.equal(obs.stateOneCredit, 'title', 'a 2P start with only one credit does not start');
+      assert.equal(
+        Number(obs.creditsOneCredit),
+        1,
+        'an under-cost 2P Space press spends nothing and stays at the title',
+      );
+      assert.ok(obs.started, 'a 2P start with two credits reaches playing');
+      assert.equal(Number(obs.twoPlayer), 1, 'the started game is a two-player game');
+      assert.equal(Number(obs.currPlayer), 0, 'player 1 is the active player first');
+      assert.equal(Number(obs.creditsAfter), 0, 'a two-player start costs two credits');
+      // Player 1 is genuinely fresh, and player 2 was seeded from it (not left at a stale/zero shadow).
+      assert.equal(Number(obs.score), 0, 'player 1 starts at zero score');
+      assert.ok(Number(obs.craft) > 0, 'player 1 starts with craft');
+      assert.equal(Number(obs.otherCraft), Number(obs.craft), 'player 2 craft seeded fresh from player 1');
+      assert.equal(Number(obs.otherArea), Number(obs.area), 'player 2 area seeded fresh from player 1');
+      assert.equal(Number(obs.otherScore), Number(obs.score), 'player 2 score seeded fresh from player 1');
+    },
+    // Neutralize `copy players`: the 2P game still starts, but player 2's shadows are never seeded from
+    // player 1 — `other craft` stays 0 while player 1's fresh `craft` is > 0 → the seed assertion fails.
+    // roadmap-evidence: CAB-02 failure  (without the P2 seed, player 2 is not initialised from player 1)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'copy players'),
+  },
+  {
+    // CAB-02 (slice 18): the on-screen 1P/2P selector DISPLAY. At the title both option labels ("1 PLAYER"
+    // and "2 PLAYERS") are shown as start_screen clones; the one whose option matches the live
+    // `start selection` renders at full opacity (ghost 0) and the other is dimmed (ghost 60), re-picked
+    // every tick so an up/down arrow flips which label is armed on the next frame. This is the visible
+    // half of the selector — the two-player-start scenario above covers the start logic.
+    // roadmap-evidence: CAB-02 success  (the title shows both 1P/2P labels and highlights the armed one,
+    //   tracking the up/down arrow selection live)
+    key: 'two-player-selector-display',
+    behavior:
+      'At the title, both 1P and 2P selector labels are shown and the armed one (by start selection) is highlighted (ghost 0) while the other is dimmed, updating live as the up/down arrows change the choice',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1); // boot pump so the clone roles spawn and the selector hats go live
+      let g = 0;
+      while (stateOf(vm) !== 'title' && g < 50) {
+        step(vm, 1);
+        g += 1;
+      }
+      // Read the two selector clones by costume name: {ghost, visible} for each option label.
+      const readSelector = () => {
+        const out = {};
+        for (const t of vm.runtime.targets) {
+          if (t.isOriginal || t.isStage || !t.sprite || t.sprite.name !== 'start_screen') continue;
+          const costume = t.getCurrentCostume();
+          if (!costume) continue;
+          if (costume.name === 'select-1p') out.oneP = { ghost: t.effects.ghost, visible: t.visible };
+          if (costume.name === 'select-2p') out.twoP = { ghost: t.effects.ghost, visible: t.visible };
+        }
+        return out;
+      };
+      step(vm, 2); // let the dim loops settle on the default selection
+      const atDefault = readSelector();
+      tapKey(vm, 'ArrowDown'); // arm 2P (bottom option)
+      step(vm, 2);
+      const atTwoP = readSelector();
+      tapKey(vm, 'ArrowUp'); // back to 1P (top option)
+      step(vm, 2);
+      const atOneP = readSelector();
+      return { atDefault, atTwoP, atOneP };
+    },
+    assert(obs) {
+      // Both labels are always present and visible so the choice is discoverable.
+      for (const [label, snap] of [
+        ['default', obs.atDefault],
+        ['after down', obs.atTwoP],
+        ['after up', obs.atOneP],
+      ]) {
+        assert.ok(snap.oneP && snap.twoP, `both selector labels are shown (${label})`);
+        assert.ok(snap.oneP.visible && snap.twoP.visible, `both selector labels are visible (${label})`);
+      }
+      // Default selection is 1P: the 1P label is highlighted, the 2P label dimmed.
+      assert.equal(Number(obs.atDefault.oneP.ghost), 0, 'the 1P label is highlighted by default');
+      assert.ok(Number(obs.atDefault.twoP.ghost) > 0, 'the 2P label is dimmed by default');
+      // Down arrow arms 2P: the highlight moves to the 2P label.
+      assert.equal(Number(obs.atTwoP.twoP.ghost), 0, 'the down arrow highlights the 2P label');
+      assert.ok(Number(obs.atTwoP.oneP.ghost) > 0, 'the 1P label dims when 2P is armed');
+      // Up arrow returns to 1P: the highlight moves back.
+      assert.equal(Number(obs.atOneP.oneP.ghost), 0, 'the up arrow highlights the 1P label again');
+      assert.ok(Number(obs.atOneP.twoP.ghost) > 0, 'the 2P label dims when 1P is armed');
+    },
+    // Break only the 2P display role's `start selection == 2` match (scoped to start_screen, so the Stage
+    // start gate is untouched): the 2P label can then never register as armed, so it stays dimmed even
+    // after the down arrow selects it — the "down arrow highlights the 2P label" assertion fails.
+    // roadmap-evidence: CAB-02 failure  (the display no longer tracks the armed selection)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'start selection', 2, 9),
+  },
+  {
+    // CAB-03 (cabinet.two-player, slice 18): alternation on craft death — the port's `next_player`
+    // (xevious_main 674: swap_curr_other_player + eor curr_player). On a craft death in a two-player game,
+    // if the OTHER player still holds craft, the handler swaps the two players' saved state and toggles
+    // `curr player`, so control passes to the other player — strict alternating play. Driven in isolation
+    // (fireBroadcast 'death complete' against an injected player-dead state), the same director-receiver
+    // isolation the near-end-checkpoint scenario uses: a live death->respawn completes within one headless
+    // pump and cannot be paused to read the handoff.
+    // roadmap-evidence: CAB-03 success  (a craft death with the other player alive swaps state and toggles
+    //   the active player; a second death swaps back)
+    key: 'two-player-alternation',
+    behavior:
+      'On a craft death in a two-player game with the other player still holding craft, the handler swaps the saved player state and toggles the active player — and a second death swaps back',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      // Two-player game, player 1 active, both players holding craft; distinct P1 (live) and P2 (other/shadow)
+      // score + area so the swap is observable per field. `scroll row` sits BELOW the near-end window so the
+      // outgoing player's checkpoint does not advance their area (which would confound the saved-area read).
+      const setupDead = (currPlayer) => {
+        writeVar(vm, 'game-director-state', 'player-dead');
+        writeVar(vm, 'cabinet-two-player', 1);
+        writeVar(vm, 'cabinet-curr-player', currPlayer);
+        writeVar(vm, 'area-scroll-row', 0);
+      };
+      writeVar(vm, 'eco-craft', 2); // P1 (live) still has craft: a non-terminal death, so no banner
+      writeVar(vm, 'other-craft', 3); // P2 (other) has craft: the other can take over -> alternate
+      writeVar(vm, 'eco-score', 1111);
+      writeVar(vm, 'other-score', 2222);
+      writeVar(vm, 'area-number', 5);
+      writeVar(vm, 'other-area-number', 9);
+      setupDead(0);
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3); // swap+toggle complete on the first stepped frame; the rest settle the incoming re-top
+      const afterFirst = {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveScore: readVar(vm, 'eco-score'),
+        liveArea: readVar(vm, 'area-number'),
+        otherScore: readVar(vm, 'other-score'),
+        otherCraft: readVar(vm, 'other-craft'),
+        bannerPlayer: readVar(vm, 'cabinet-banner-player'),
+      };
+      // Second death: player 2 is now active and both still hold craft -> alternation swaps back to player 1.
+      setupDead(1);
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3);
+      const afterSecond = {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveScore: readVar(vm, 'eco-score'),
+        liveArea: readVar(vm, 'area-number'),
+      };
+      return { afterFirst, afterSecond };
+    },
+    assert(obs) {
+      // First death: active player toggles 0 -> 1, player 2's saved state is now live, player 1's is saved.
+      assert.equal(Number(obs.afterFirst.currPlayer), 1, 'a craft death toggles the active player to player 2');
+      assert.equal(Number(obs.afterFirst.liveScore), 2222, 'player 2 score becomes the live score after the swap');
+      assert.equal(Number(obs.afterFirst.liveArea), 9, 'player 2 area becomes the live area after the swap');
+      assert.equal(Number(obs.afterFirst.otherScore), 1111, 'player 1 score is saved to the shadow');
+      assert.equal(Number(obs.afterFirst.otherCraft), 2, 'player 1 craft is saved to the shadow');
+      assert.equal(Number(obs.afterFirst.bannerPlayer), -1, 'a non-terminal death shows no elimination banner');
+      // Second death swaps back: strict alternating play.
+      assert.equal(Number(obs.afterSecond.currPlayer), 0, 'a second craft death toggles back to player 1');
+      assert.equal(Number(obs.afterSecond.liveScore), 1111, 'player 1 state returns to live on the swap back');
+      assert.equal(Number(obs.afterSecond.liveArea), 5, 'player 1 area returns to live on the swap back');
+    },
+    // Neutralize `swap players`: the active player still toggles, but the saved per-player state never moves,
+    // so player 2's score never becomes live -> the swap assertion fails.
+    // roadmap-evidence: CAB-03 failure  (without the state swap, alternation carries the wrong player's game)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'swap players'),
+  },
+  {
+    // CAB-03 (slice 18): solo continuation — when the OTHER player is already out, a craft death does NOT
+    // alternate; the current player simply respawns and plays on (the swap is gated on the other player still
+    // holding craft, xevious_main 682). Same director-receiver isolation as two-player-alternation.
+    // roadmap-evidence: CAB-03 success  (with the other player out, a death respawns the current player with
+    //   no swap and no active-player toggle)
+    key: 'two-player-solo-continue',
+    behavior:
+      'When the other player is already out, a craft death in a two-player game respawns the current player with no swap and no active-player toggle',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'player-dead');
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'eco-craft', 2); // the current player still has craft -> respawn
+      writeVar(vm, 'other-craft', 0); // the other player is OUT -> no alternation
+      writeVar(vm, 'eco-score', 1111);
+      writeVar(vm, 'other-score', 2222);
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3);
+      return {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveScore: readVar(vm, 'eco-score'),
+        otherScore: readVar(vm, 'other-score'),
+        outcome: outcome(vm),
+        reachedState: state(vm),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.currPlayer), 0, 'the active player does NOT toggle when the other is out');
+      assert.equal(Number(obs.liveScore), 1111, 'the current player state is untouched (no swap)');
+      assert.equal(Number(obs.otherScore), 2222, 'the out player shadow is untouched');
+      assert.equal(obs.outcome, 'respawn', 'a solo continuation records the respawn outcome');
+      // The solo respawn path has no timed hold, so within these steps it has already run
+      // respawning -> new-life -> resetting -> playing; the meaningful check is that the
+      // survivor progressed past the death rather than the exact intermediate state.
+      assert.ok(
+        ['respawning', 'resetting', 'playing'].includes(obs.reachedState),
+        'the current player respawns back toward play (does not stall at player-dead)',
+      );
+    },
+    // Remove player-dead -> respawning so the solo continuation cannot respawn -> the respawn assertion fails.
+    // roadmap-evidence: CAB-03 failure  (the survivor cannot continue solo)
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> respawning'),
+  },
+  {
+    // CAB-03 (slice 18): both players out -> game over, and the cabinet returns to a one-player, player-1
+    // default (`game_over_1_player` xevious_main 68B forces curr_player=0). Driven live (like death-game-over)
+    // because reaching the title needs the full game-over hold + `game over complete` + cold-start chain the
+    // solvalou drives; the isolation scenarios above cover the handler's immediate branch. The other player is
+    // seeded out and the current player left on its last craft, so one death is terminal for the whole game.
+    // roadmap-evidence: CAB-03 success  (the last craft of a two-player game ends it, returns to the title, and
+    //   resets the cabinet to one-player / player 1)
+    key: 'two-player-both-out-gameover',
+    behavior:
+      'When both players are out, a two-player game reaches game over, returns to the title, and resets the cabinet to a one-player, player-1 default',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      // Contact kills (invuln off); the other player is already out and the current player is on its last
+      // craft, so this death is terminal for the whole game.
+      writeVar(vm, 'invuln', 0);
+      writeVar(vm, 'other-craft', 0);
+      writeVar(vm, 'eco-craft', 1);
+      let reachedTitle = false;
+      for (let i = 0; i < 60 && !reachedTitle; i += 1) {
+        seedCraftHit(vm);
+        step(vm, 1);
+        if (state(vm) === 'title') reachedTitle = true;
+      }
+      return {
+        reachedTitle,
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        twoPlayer: readVar(vm, 'cabinet-two-player'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.reachedTitle, true, 'both players out returns to the title');
+      assert.equal(Number(obs.currPlayer), 0, 'game over resets the active player to player 1');
+      assert.equal(Number(obs.twoPlayer), 0, 'game over returns the cabinet to a one-player default');
+    },
+    // Pin `two player` so the cold-start game-over reset can never clear it: the game still ends and reaches
+    // the title, but the cabinet stays two-player -> the one-player-reset assertion fails.
+    // roadmap-evidence: CAB-03 failure  (the cabinet never returns to its one-player default after a 2P game)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'two player', 1),
+  },
+  {
+    // CAB-03 (slice 18): the "GAME OVER PLAYER n" elimination banner. When a player loses their last craft but
+    // the OTHER player is still in, the arcade shows a brief "GAME OVER PLAYER n" banner during the handoff
+    // before the survivor takes over (game_over xevious_main 549-591). The handler raises `banner player` to
+    // the eliminated player for BANNER_HOLD_TICKS (a real-frame hold, since the banner must dwell), then lowers
+    // it and swaps to the survivor. Same director-receiver isolation as the alternation scenarios.
+    // roadmap-evidence: CAB-03 success  (eliminating a player with the other still in raises the banner naming
+    //   that player for the hold, then clears it and hands off to the survivor)
+    key: 'two-player-banner',
+    behavior:
+      'Eliminating a player while the other is still in raises the "GAME OVER PLAYER n" banner naming the eliminated player for the hold, then clears it and hands off to the survivor',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'player-dead');
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'eco-craft', 0); // the current player (player 1) is ELIMINATED
+      writeVar(vm, 'other-craft', 3); // the other player (player 2) is still in -> banner + handoff
+      fireBroadcast(vm, 'death complete');
+      step(vm, 1); // into the banner hold: `banner player` now names the eliminated player
+      const bannerDuringHold = readVar(vm, 'cabinet-banner-player');
+      const currDuringHold = readVar(vm, 'cabinet-curr-player');
+      // Exhaust the banner hold, then a margin so the deferred swap/toggle run. The hold is
+      // `hold_frames(BANNER_HOLD_TICKS)` with BANNER_HOLD_TICKS == GAME_OVER_HOLD_TICKS == 64
+      // arcade half-frames; `hold_frames` paces one iteration per 2 headless `_step` calls
+      // (FRAMES_PER_TICK == 2, as the attract dwells do), so the hold clears at ~128 frames.
+      step(vm, 140);
+      return {
+        bannerDuringHold,
+        currDuringHold,
+        bannerAfter: readVar(vm, 'cabinet-banner-player'),
+        currAfter: readVar(vm, 'cabinet-curr-player'),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.bannerDuringHold), 0, 'the banner names the eliminated player (player 1) during the hold');
+      assert.equal(Number(obs.currDuringHold), 0, 'the active player has not yet handed off while the banner shows');
+      assert.equal(Number(obs.bannerAfter), -1, 'the banner clears after the hold');
+      assert.equal(Number(obs.currAfter), 1, 'the survivor (player 2) is active after the handoff');
+    },
+    // Pin `banner player` so it can never be raised to the eliminated player: the banner never shows during the
+    // hold -> the "banner names the eliminated player" assertion fails. (The swap/toggle still run, so this
+    // bites the banner specifically, not the handoff.)
+    // roadmap-evidence: CAB-03 failure  (the elimination banner never appears)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'banner player', -1),
+  },
+  {
+    key: 'two-player-hud-render',
+    behavior:
+      'A two-player game draws the active player\'s nUP label AND the other player\'s steady nUP label plus their frozen second score row, each nUP label reading the correct player number; a one-player game draws only the single 1UP label and no second row',
+    // roadmap-evidence: ECO-02 success  (the 2P HUD adds the second score row + 2UP label; 1P has neither)
+    playtestStep: 6,
+    async drive(vm) {
+      // Clone roles emitted by tools/game_director.py's HUD dispatch (the HUD_ROLE_* constants):
+      const ROLE_PRIMARY_LABEL = 4; //   HUD_ROLE_LABEL_1UP        — the active player's nUP (flashing)
+      const ROLE_OTHER_SCORE = 8; //     HUD_ROLE_OTHER_SCORE_DIGIT — the other player's frozen score row
+      const ROLE_SECONDARY_LABEL = 9; // HUD_ROLE_LABEL_2UP        — the other player's nUP (steady)
+      const roleName = variable('hud-role').name;
+      // A label group is three clones {digit/N, glyph/U, glyph/P}; its leading `digit/N` names the player.
+      const labelLead = (v, role) =>
+        cloneReports(v, 'hud', [roleName])
+          .filter((r) => Number(r.vars[roleName]) === role)
+          .map((r) => r.costume)
+          .find((c) => /^digit\//.test(c || ''));
+      const roleCount = (v, role) =>
+        cloneReports(v, 'hud', [roleName]).filter((r) => Number(r.vars[roleName]) === role).length;
+
+      // The build under test (possibly mutated) in a two-player game, player 1 active.
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      step(vm, 30);
+      const twoP = {
+        two: Number(readVar(vm, 'cabinet-two-player')),
+        curr: Number(readVar(vm, 'cabinet-curr-player')),
+        primaryLead: labelLead(vm, ROLE_PRIMARY_LABEL),
+        secondaryLead: labelLead(vm, ROLE_SECONDARY_LABEL),
+        otherScoreDigits: roleCount(vm, ROLE_OTHER_SCORE),
+      };
+
+      // A clean, unmutated one-player game for the negative-space comparison: no second row, no 2UP label.
+      const vm1 = await loadArtifact();
+      assert.ok(reachPlaying(vm1), 'precondition: a one-player game reaches playing');
+      step(vm1, 30);
+      const oneP = {
+        two: Number(readVar(vm1, 'cabinet-two-player')),
+        primaryLead: labelLead(vm1, ROLE_PRIMARY_LABEL),
+        secondaryLabels: roleCount(vm1, ROLE_SECONDARY_LABEL),
+        otherScoreDigits: roleCount(vm1, ROLE_OTHER_SCORE),
+      };
+      return { twoP, oneP };
+    },
+    assert(obs) {
+      // Two-player, player 1 active: primary label reads "1UP", the steady other label reads "2UP",
+      // and the other player's frozen 7-digit score row is present.
+      assert.equal(obs.twoP.two, 1, 'the build under test is in a two-player game');
+      assert.equal(obs.twoP.curr, 0, 'player 1 is the active player at a fresh 2P start');
+      assert.equal(obs.twoP.primaryLead, 'digit/1', 'the active player\'s label reads 1UP');
+      assert.equal(obs.twoP.secondaryLead, 'digit/2', 'the other player\'s steady label reads 2UP');
+      assert.equal(obs.twoP.otherScoreDigits, 7, 'the other player\'s frozen 7-digit score row is drawn');
+      // One-player: only the single 1UP label — no 2UP label and no second score row.
+      assert.equal(obs.oneP.two, 0, 'the comparison build is a one-player game');
+      assert.equal(obs.oneP.primaryLead, 'digit/1', 'the sole label reads 1UP');
+      assert.equal(obs.oneP.secondaryLabels, 0, 'a one-player game draws no 2UP label');
+      assert.equal(obs.oneP.otherScoreDigits, 0, 'a one-player game draws no second score row');
+    },
+    // Pin `two player` to 0 so the two-player-only secondary group (the 2UP label + the other score row)
+    // never spawns in the build under test — the 2P assertions fail. The 1P comparison vm is loaded fresh
+    // and unmutated, so the negative bites only the 2P side, exactly the ECO-02 addition.
+    // roadmap-evidence: ECO-02 failure  (the 2P HUD loses its second row and 2UP label)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'two player', 0),
+  },
+  {
+    key: 'two-player-clone-no-leak',
+    behavior:
+      'The two-player HUD peak clone census sits well under the scratch-vm ceiling, and the count returns to that baseline across repeated alternations (no clones leak); the active nUP label tracks the current player across each handoff',
+    // roadmap-evidence: ECO-02 success  (2P peak census stays under the ceiling and returns to baseline; label follows curr player)
+    playtestStep: 6,
+    async drive(vm) {
+      const ROLE_PRIMARY_LABEL = 4; //   HUD_ROLE_LABEL_1UP  — the active player's nUP
+      const ROLE_SECONDARY_LABEL = 9; // HUD_ROLE_LABEL_2UP  — the other player's nUP
+      const roleName = variable('hud-role').name;
+      const labelLead = (role) =>
+        cloneReports(vm, 'hud', [roleName])
+          .filter((r) => Number(r.vars[roleName]) === role)
+          .map((r) => r.costume)
+          .find((c) => /^digit\//.test(c || ''));
+      const totalClones = () => {
+        let n = 0;
+        for (const c of vm.runtime.targets) if (!c.isStage && !c.isOriginal && c.sprite) n += 1;
+        return n;
+      };
+      const clearEnemy = (slot = 63) => {
+        const a = readVar(vm, 'slot-state');
+        a[slot] = 0;
+      };
+      // One alternation: keep both players stocked and vulnerable, seed a contact hit until the active
+      // player leaves 'playing' (a death registered), then stop seeding, restore invulnerability, and let
+      // the swap+respawn carry the incoming player back to a populated 'playing' state.
+      const alternate = (killBudget = 160, recoverBudget = 300) => {
+        const before = Number(readVar(vm, 'cabinet-curr-player'));
+        let killed = false;
+        for (let i = 0; i < killBudget && !killed; i += 1) {
+          writeVar(vm, 'other-craft', 3);
+          writeVar(vm, 'eco-craft', 3);
+          writeVar(vm, 'invuln', 0);
+          seedCraftHit(vm);
+          step(vm, 1);
+          if (Number(readVar(vm, 'cabinet-curr-player')) !== before) killed = true;
+        }
+        clearEnemy();
+        writeVar(vm, 'invuln', 1);
+        for (let i = 0; i < recoverBudget; i += 1) {
+          writeVar(vm, 'other-craft', 3);
+          writeVar(vm, 'eco-craft', 3);
+          clearEnemy();
+          step(vm, 1);
+          if (stateOf(vm) === 'playing') {
+            step(vm, 150); // let the incoming player's field repopulate to its steady census
+            return { killed, curr: Number(readVar(vm, 'cabinet-curr-player')) };
+          }
+        }
+        return { killed, curr: Number(readVar(vm, 'cabinet-curr-player')) };
+      };
+
+      // reachPlaying is a ONE-player start, so the existing ground-pool census (which uses it) never sees
+      // the 2P peak. Reach the two-player peak explicitly and census THAT.
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      step(vm, 40);
+      const base = {
+        total: totalClones(),
+        hud: cloneCount(vm, 'hud'),
+        curr: Number(readVar(vm, 'cabinet-curr-player')),
+        primaryLead: labelLead(ROLE_PRIMARY_LABEL),
+        secondaryLead: labelLead(ROLE_SECONDARY_LABEL),
+      };
+      const alt1 = alternate(); // player 1 -> player 2
+      const afterAlt1 = { total: totalClones(), hud: cloneCount(vm, 'hud'), curr: alt1.curr, primaryLead: labelLead(ROLE_PRIMARY_LABEL) };
+      const alt2 = alternate(); // player 2 -> player 1
+      const afterAlt2 = { total: totalClones(), hud: cloneCount(vm, 'hud'), curr: alt2.curr, primaryLead: labelLead(ROLE_PRIMARY_LABEL) };
+      return { base, afterAlt1, afterAlt2 };
+    },
+    assert(obs) {
+      // Peak 2P census sits under the scratch-vm MAX_CLONE_COUNT (300) with ample headroom — the plan's
+      // explicit `300 - total >= 50` at the 2P peak, which the 1P ground-pool census never reaches.
+      const peak = Math.max(obs.base.total, obs.afterAlt1.total, obs.afterAlt2.total);
+      assert.ok(peak < 250, `two-player peak clone census stays well under the ceiling (peak=${peak})`);
+      assert.ok(300 - peak >= 50, `two-player peak leaves >=50 clone headroom (headroom=${300 - peak})`);
+      // No leak: the HUD clone count returns to its 2P baseline after each alternation.
+      assert.equal(obs.afterAlt1.hud, obs.base.hud, 'HUD clone count returns to baseline after the first handoff');
+      assert.equal(obs.afterAlt2.hud, obs.base.hud, 'HUD clone count returns to baseline after the second handoff');
+      assert.equal(obs.afterAlt1.total, obs.base.total, 'total clone count returns to baseline after the first handoff');
+      assert.equal(obs.afterAlt2.total, obs.base.total, 'total clone count returns to baseline after the second handoff');
+      // The active nUP label tracks the current player across each handoff (1UP -> 2UP -> 1UP).
+      assert.equal(obs.base.curr, 0, 'player 1 is active at 2P start');
+      assert.equal(obs.base.primaryLead, 'digit/1', 'the active label reads 1UP for player 1');
+      assert.equal(obs.afterAlt1.curr, 1, 'player 2 is active after the first handoff');
+      assert.equal(obs.afterAlt1.primaryLead, 'digit/2', 'the active label reads 2UP for player 2');
+      assert.equal(obs.afterAlt2.curr, 0, 'player 1 is active again after the second handoff');
+      assert.equal(obs.afterAlt2.primaryLead, 'digit/1', 'the active label reads 1UP again for player 1');
+    },
+    // Pin `curr player` to 0 so a handoff can never make player 2 active: the active label never flips to
+    // "2UP" and `afterAlt1.curr == 1` fails. (The clone census would still hold, so this bites the
+    // active-label-tracks-current-player half specifically.)
+    // roadmap-evidence: ECO-02 failure  (the active nUP label no longer follows the current player)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'curr player', 0),
   },
 ];
 
