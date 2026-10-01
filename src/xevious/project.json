@@ -212743,7 +212743,7 @@
           "inputs": {},
           "fields": {
             "KEY_OPTION": [
-              "left arrow",
+              "up arrow",
               null
             ]
           },
@@ -212828,7 +212828,7 @@
           "inputs": {},
           "fields": {
             "KEY_OPTION": [
-              "right arrow",
+              "down arrow",
               null
             ]
           },
@@ -224796,14 +224796,14 @@
               1,
               [
                 4,
-                -40
+                -26
               ]
             ],
             "Y": [
               1,
               [
                 4,
-                -150
+                -142
               ]
             ]
           },
@@ -224892,14 +224892,14 @@
               1,
               [
                 4,
-                108
+                68
               ]
             ],
             "Y": [
               1,
               [
                 4,
-                -150
+                -142
               ]
             ]
           },
@@ -224988,14 +224988,14 @@
               1,
               [
                 4,
-                81
+                51
               ]
             ],
             "Y": [
               1,
               [
                 4,
-                -150
+                -142
               ]
             ]
           },
@@ -225069,7 +225069,7 @@
               1,
               [
                 4,
-                -120
+                -118
               ]
             ]
           },
@@ -225143,7 +225143,7 @@
               1,
               [
                 4,
-                -75
+                -72
               ]
             ]
           },
@@ -225217,7 +225217,7 @@
               1,
               [
                 4,
-                -97
+                -94
               ]
             ]
           },
@@ -226962,136 +226962,136 @@
           "name": "digit/0",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "cbf90468afb2dabb97cbf1df898cd95f",
-          "md5ext": "cbf90468afb2dabb97cbf1df898cd95f.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "3dd97ce85f8370f1c6f887e06d69b1a4",
+          "md5ext": "3dd97ce85f8370f1c6f887e06d69b1a4.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/1",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "b0608508202b4397dc189274fcca80e1",
-          "md5ext": "b0608508202b4397dc189274fcca80e1.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "6dfb27006741525e939cfadb53686df8",
+          "md5ext": "6dfb27006741525e939cfadb53686df8.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/2",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "a233dc7ba98dac275bf399e4561b5da9",
-          "md5ext": "a233dc7ba98dac275bf399e4561b5da9.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "7ff6f5a8efce3eebbf369b78d8e07fad",
+          "md5ext": "7ff6f5a8efce3eebbf369b78d8e07fad.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/3",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "09dca855bb94485eee48db4ba2e094f5",
-          "md5ext": "09dca855bb94485eee48db4ba2e094f5.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "8a285c4403a1d37310131dd3dd1abea2",
+          "md5ext": "8a285c4403a1d37310131dd3dd1abea2.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/4",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "fe1aa016a3a1d92ccb63844421849e0d",
-          "md5ext": "fe1aa016a3a1d92ccb63844421849e0d.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "a0dd90725e2dd1b9998836c4cc412522",
+          "md5ext": "a0dd90725e2dd1b9998836c4cc412522.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/5",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "af3408847196a388f672ebccc936329c",
-          "md5ext": "af3408847196a388f672ebccc936329c.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "900f3efbb8866c300b31f3f66be052f5",
+          "md5ext": "900f3efbb8866c300b31f3f66be052f5.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/6",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "3c47eae3a7644d9ac07a0fdbf24b77ba",
-          "md5ext": "3c47eae3a7644d9ac07a0fdbf24b77ba.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "b21b9f647edcaaabdf8fb81ea5a540d1",
+          "md5ext": "b21b9f647edcaaabdf8fb81ea5a540d1.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/7",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "e99219178b188a992e565a8612a4718c",
-          "md5ext": "e99219178b188a992e565a8612a4718c.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "0716394310d0aeb77739a4fad04417dd",
+          "md5ext": "0716394310d0aeb77739a4fad04417dd.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/8",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "f58953535c4ad299bfd50ecdec6e333b",
-          "md5ext": "f58953535c4ad299bfd50ecdec6e333b.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "a03094797702b1d9d4c6ed8f6b2afaa5",
+          "md5ext": "a03094797702b1d9d4c6ed8f6b2afaa5.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "digit/9",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "280e8021ad8e300ce17d6b75447f1fa7",
-          "md5ext": "280e8021ad8e300ce17d6b75447f1fa7.png",
-          "rotationCenterX": 12,
-          "rotationCenterY": 12
+          "assetId": "56613d5194231eee1f7e1dc4663cc82c",
+          "md5ext": "56613d5194231eee1f7e1dc4663cc82c.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         },
         {
           "name": "credit-label",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "9d107e0867ae1298021fc7677a109508",
-          "md5ext": "9d107e0867ae1298021fc7677a109508.png",
-          "rotationCenterX": 80,
-          "rotationCenterY": 12
+          "assetId": "9aefc80582f27742d45cc6f771bf2593",
+          "md5ext": "9aefc80582f27742d45cc6f771bf2593.png",
+          "rotationCenterX": 50,
+          "rotationCenterY": 8
         },
         {
           "name": "push-start",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "3cf858979f5b1e740c8b4466e2e9020c",
-          "md5ext": "3cf858979f5b1e740c8b4466e2e9020c.png",
-          "rotationCenterX": 134,
-          "rotationCenterY": 12
+          "assetId": "ae3f6961154f22ad742263d3b0810276",
+          "md5ext": "ae3f6961154f22ad742263d3b0810276.png",
+          "rotationCenterX": 84,
+          "rotationCenterY": 8
         },
         {
           "name": "insert-coin",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "2bee762948b0f7d96692a50fa5ad0a38",
-          "md5ext": "2bee762948b0f7d96692a50fa5ad0a38.png",
-          "rotationCenterX": 147,
-          "rotationCenterY": 12
+          "assetId": "64cd63fcbeb4a3e983c14afa15cb3b48",
+          "md5ext": "64cd63fcbeb4a3e983c14afa15cb3b48.png",
+          "rotationCenterX": 93,
+          "rotationCenterY": 8
         },
         {
           "name": "select-1p",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "354569b790c69cdadce66b5456bb8a17",
-          "md5ext": "354569b790c69cdadce66b5456bb8a17.png",
-          "rotationCenterX": 107,
-          "rotationCenterY": 12
+          "assetId": "f4050bb18b08de13fa547aae1880c6bb",
+          "md5ext": "f4050bb18b08de13fa547aae1880c6bb.png",
+          "rotationCenterX": 67,
+          "rotationCenterY": 8
         },
         {
           "name": "select-2p",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "a39ab9a1a58246e6d5082dd4c0ebeadc",
-          "md5ext": "a39ab9a1a58246e6d5082dd4c0ebeadc.png",
-          "rotationCenterX": 120,
-          "rotationCenterY": 12
+          "assetId": "a2c8ddcbb2bbafe9e6290eff65f4f80c",
+          "md5ext": "a2c8ddcbb2bbafe9e6290eff65f4f80c.png",
+          "rotationCenterX": 76,
+          "rotationCenterY": 8
         },
         {
           "name": "best-five",
@@ -237834,19 +237834,19 @@
           "name": "game-over-player-1",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "50eaf3c87010b4719982089462db8f26",
-          "md5ext": "50eaf3c87010b4719982089462db8f26.png",
-          "rotationCenterX": 197,
-          "rotationCenterY": 10
+          "assetId": "28b10c7d97bce2107812386c39a05f64",
+          "md5ext": "28b10c7d97bce2107812386c39a05f64.png",
+          "rotationCenterX": 152,
+          "rotationCenterY": 8
         },
         {
           "name": "game-over-player-2",
           "bitmapResolution": 1,
           "dataFormat": "png",
-          "assetId": "6dd488d84135f15cd22b4ec1c47d46cf",
-          "md5ext": "6dd488d84135f15cd22b4ec1c47d46cf.png",
-          "rotationCenterX": 197,
-          "rotationCenterY": 10
+          "assetId": "3d0d49990c3fd136e30b9652ff1d9531",
+          "md5ext": "3d0d49990c3fd136e30b9652ff1d9531.png",
+          "rotationCenterX": 152,
+          "rotationCenterY": 8
         }
       ],
       "sounds": [],

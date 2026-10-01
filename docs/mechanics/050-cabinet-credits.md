@@ -17,8 +17,8 @@
 ## Slice 18 — two-player start facet delivered (`CAB-02.two-player`)
 
 The two-player start facet deferred above is delivered this slice as part of `cabinet.two-player`
-(CAB-03). The generalized start gate now reads a title 1P/2P selector (left/right arrows choose the
-mode, Space confirms) and honours only the affordable requested mode — one player deducts one credit,
+(CAB-03). The generalized start gate now reads a title 1P/2P selector (up/down arrows choose the
+mode over a vertically-stacked option list, Space confirms) and honours only the affordable requested mode — one player deducts one credit,
 two players deduct two — recording the mode in the `two player` director variable and copying the fresh
 player-1 context into the other-player block on a two-player start, faithful to
 `sub_fn_4__handle_credits_and_start` (the requested-count credit gate) and `coined_up` (the start-always-

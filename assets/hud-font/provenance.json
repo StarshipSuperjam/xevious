@@ -88,8 +88,15 @@
       "generator_version": 1
     },
     "cbf90468afb2dabb97cbf1df898cd95f.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/0",
+      "rect": [
+        909,
+        138,
+        1006,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "622fe458e1d0246fcba8890df39db185.png": {
@@ -153,48 +160,111 @@
       "generator_version": 1
     },
     "b0608508202b4397dc189274fcca80e1.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/1",
+      "rect": [
+        1035,
+        138,
+        1090,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "a233dc7ba98dac275bf399e4561b5da9.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/2",
+      "rect": [
+        1133,
+        138,
+        1230,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "09dca855bb94485eee48db4ba2e094f5.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/3",
+      "rect": [
+        1245,
+        138,
+        1342,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "fe1aa016a3a1d92ccb63844421849e0d.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/4",
+      "rect": [
+        1357,
+        138,
+        1454,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "af3408847196a388f672ebccc936329c.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/5",
+      "rect": [
+        1469,
+        138,
+        1566,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "3c47eae3a7644d9ac07a0fdbf24b77ba.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/6",
+      "rect": [
+        1581,
+        138,
+        1678,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "e99219178b188a992e565a8612a4718c.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/7",
+      "rect": [
+        1693,
+        138,
+        1790,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "f58953535c4ad299bfd50ecdec6e333b.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/8",
+      "rect": [
+        1805,
+        138,
+        1902,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "280e8021ad8e300ce17d6b75447f1fa7.png": {
-      "kind": "attract",
+      "kind": "glyph",
       "name": "digit/9",
+      "rect": [
+        1917,
+        138,
+        2014,
+        235
+      ],
+      "recolor": "white",
       "generator_version": 1
     },
     "0ac742ba828ebc2ff6ef993bcfff4c40.png": {
@@ -353,27 +423,77 @@
       "name": "zakato",
       "generator_version": 1
     },
-    "9d107e0867ae1298021fc7677a109508.png": {
+    "3dd97ce85f8370f1c6f887e06d69b1a4.png": {
+      "kind": "attract",
+      "name": "digit/0",
+      "generator_version": 1
+    },
+    "6dfb27006741525e939cfadb53686df8.png": {
+      "kind": "attract",
+      "name": "digit/1",
+      "generator_version": 1
+    },
+    "7ff6f5a8efce3eebbf369b78d8e07fad.png": {
+      "kind": "attract",
+      "name": "digit/2",
+      "generator_version": 1
+    },
+    "8a285c4403a1d37310131dd3dd1abea2.png": {
+      "kind": "attract",
+      "name": "digit/3",
+      "generator_version": 1
+    },
+    "a0dd90725e2dd1b9998836c4cc412522.png": {
+      "kind": "attract",
+      "name": "digit/4",
+      "generator_version": 1
+    },
+    "900f3efbb8866c300b31f3f66be052f5.png": {
+      "kind": "attract",
+      "name": "digit/5",
+      "generator_version": 1
+    },
+    "b21b9f647edcaaabdf8fb81ea5a540d1.png": {
+      "kind": "attract",
+      "name": "digit/6",
+      "generator_version": 1
+    },
+    "0716394310d0aeb77739a4fad04417dd.png": {
+      "kind": "attract",
+      "name": "digit/7",
+      "generator_version": 1
+    },
+    "a03094797702b1d9d4c6ed8f6b2afaa5.png": {
+      "kind": "attract",
+      "name": "digit/8",
+      "generator_version": 1
+    },
+    "56613d5194231eee1f7e1dc4663cc82c.png": {
+      "kind": "attract",
+      "name": "digit/9",
+      "generator_version": 1
+    },
+    "9aefc80582f27742d45cc6f771bf2593.png": {
       "kind": "attract",
       "name": "credit-label",
       "generator_version": 1
     },
-    "3cf858979f5b1e740c8b4466e2e9020c.png": {
+    "ae3f6961154f22ad742263d3b0810276.png": {
       "kind": "attract",
       "name": "push-start",
       "generator_version": 1
     },
-    "2bee762948b0f7d96692a50fa5ad0a38.png": {
+    "64cd63fcbeb4a3e983c14afa15cb3b48.png": {
       "kind": "attract",
       "name": "insert-coin",
       "generator_version": 1
     },
-    "354569b790c69cdadce66b5456bb8a17.png": {
+    "f4050bb18b08de13fa547aae1880c6bb.png": {
       "kind": "attract",
       "name": "select-1p",
       "generator_version": 1
     },
-    "a39ab9a1a58246e6d5082dd4c0ebeadc.png": {
+    "a2c8ddcbb2bbafe9e6290eff65f4f80c.png": {
       "kind": "attract",
       "name": "select-2p",
       "generator_version": 1
@@ -383,12 +503,12 @@
       "name": "best-five",
       "generator_version": 1
     },
-    "50eaf3c87010b4719982089462db8f26.png": {
+    "28b10c7d97bce2107812386c39a05f64.png": {
       "kind": "banner",
       "name": "game-over-player-1",
       "generator_version": 1
     },
-    "6dd488d84135f15cd22b4ec1c47d46cf.png": {
+    "3d0d49990c3fd136e30b9652ff1d9531.png": {
       "kind": "banner",
       "name": "game-over-player-2",
       "generator_version": 1

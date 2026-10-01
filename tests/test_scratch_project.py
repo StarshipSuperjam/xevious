@@ -297,22 +297,25 @@ class ScratchProjectTests(unittest.TestCase):
         # + the 4 Bragza fly PNGs (BOSS-03: the destroyed core's fly-up form, handle_Bragza codes 0xb8..0xbb
         # at CLUT 0x15; swapping the source sheet for the taller 96x128 Bragza-bearing render is net-zero on
         # the count, so slice 16 adds exactly the 4 new crops)
-        # + the 4 NEW slice-17 CAB-01 attract-overlay PNGs on start_screen (the CREDIT / PUSH START /
-        # INSERT COIN labels + the best-five table), rendered by tools/hud_glyphs.py from the SAME credited
-        # Xevious HUD font sheet as the HUD readouts (extra glyphs cropped via SHEET_TEXT_RECTS); the
-        # prompt/initials CONTENT is project-original. The 10 attract credit-counter digits are NOT new
-        # assets: rendered from the same sheet with the same digit crops as the HUD score digits, they are
-        # byte-identical PNGs and dedup to the HUD's own digit files (content-addressed naming, the same
-        # harmless consequence as the O/0 share in docs/mechanics/010) — so slice 17 adds exactly 4 distinct
-        # attract PNGs, not 14. (Count fell 221 -> 211 when SEC-03 + attract text moved onto the one credited
-        # font: the 10 digit costumes stopped being their own port-font PNGs and now reuse the HUD digits.)
-        # + the 2 NEW slice-18 CAB-02 1P/2P start-selector label PNGs on start_screen ("1 PLAYER" /
-        # "2 PLAYERS"), rendered from the same credited Xevious HUD font sheet (glyphs already in
-        # SHEET_TEXT_RECTS); port-original control text, so 211 -> 213.
-        # + the 2 NEW slice-18 CAB-03 "GAME OVER PLAYER n" elimination-banner PNGs on the HUD target
-        # ("GAME OVER PLAYER 1" / "GAME OVER PLAYER 2"), rendered from the same credited font at the
-        # credit downscale so the 18-char line fits the stage; port-original UI text, so 213 -> 215.
-        self.assertEqual(215, len(assets))
+        # + the slice-17 CAB-01 attract-overlay PNGs on start_screen (the CREDIT / PUSH START / INSERT COIN
+        # labels, the 10 credit-counter digits, and the best-five table), rendered by tools/hud_glyphs.py from
+        # the SAME credited Xevious HUD font sheet as the HUD readouts (extra glyphs cropped via
+        # SHEET_TEXT_RECTS); the prompt/initials CONTENT is project-original. In slice 17 the 10 credit-counter
+        # digits were byte-identical to the HUD score digits (same sheet, same crop, same ds4 cell) and deduped
+        # to the HUD's own digit files, so slice 17 added only 4 distinct attract PNGs (3 labels + best-five).
+        # Slice-18 PLAYTEST SCALE CORRECTION: the title-screen text (the 10 credit digits, the 3 prompts, and
+        # the CAB-02 selector labels below) now renders at the smaller hud_glyphs SMALL_TEXT_GEOM cell (~16px,
+        # ds7) instead of ds4, so the 10 digits are NO LONGER byte-identical to the 25px HUD digits — they
+        # become 10 distinct start_screen PNGs of their own (+10). The 3 prompt labels and best-five stay
+        # distinct (their pixels change but the count does not). (Count 211 -> 221 for the un-deduped digits.)
+        # + the 2 slice-18 CAB-02 1P/2P start-selector label PNGs on start_screen ("1 PLAYER" / "2 PLAYERS"),
+        # same credited sheet at the SMALL_TEXT_GEOM cell (glyphs already in SHEET_TEXT_RECTS); port-original
+        # control text, so 221 -> 223.
+        # + the 2 slice-18 CAB-03 "GAME OVER PLAYER n" elimination-banner PNGs on the HUD target
+        # ("GAME OVER PLAYER 1" / "GAME OVER PLAYER 2"), same credited sheet at the SMALL_TEXT_GEOM cell
+        # (slice-18 scale correction — was the larger credit downscale) so the banner matches the plain GAME
+        # OVER screen and the 18-char line still fits the stage; port-original UI text, so 223 -> 225.
+        self.assertEqual(225, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -18028,7 +18031,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d062a9291154ad3208b4b018436b9787cb83215aeda5c45d9538f973fb64ecdf",
+            "3875bad63dc0efce66c96cd8e1052bdbcd749e20eae5ae051a8878ff36fad46e",
             build_hash,
         )
 

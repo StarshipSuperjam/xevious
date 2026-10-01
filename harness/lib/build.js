@@ -69,7 +69,7 @@ export function reachPlaying(vm, budget = 150) {
 
 /**
  * Reach a TWO-PLAYER game (CAB-02/CAB-03, slice 18): wait for the title, bank two credits, choose 2P at
- * the title with the right-arrow selector, and start with Space. Mirrors reachPlaying but for the 2P path
+ * the title with the down-arrow selector, and start with Space. Mirrors reachPlaying but for the 2P path
  * — the precondition the 2UP HUD and alternation scenarios build on. The craft is made invulnerable for
  * the run, exactly like reachPlaying.
  */
@@ -86,7 +86,7 @@ export function reachPlaying2P(vm, budget = 150) {
   }
   writeVar(vm, 'invuln', 1);
   insertCoin(vm, 2); // a two-player start costs two credits
-  tapKey(vm, 'ArrowRight'); // title selector: choose 2P (start selection -> 2)
+  tapKey(vm, 'ArrowDown'); // title selector: choose 2P (start selection -> 2)
   tapKey(vm, ' '); // start the two-player game
   let t = 0;
   while (stateOf(vm) !== 'playing' && t < budget) {

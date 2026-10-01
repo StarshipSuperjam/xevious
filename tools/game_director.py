@@ -1067,15 +1067,17 @@ ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-ze
 # placement at playtest, exactly as the ECO-02 HUD layout notes (no reference basis for the port's own
 # credit-line/best-five geometry — the arcade layout does not carry over to the port's text rendering).
 # The credit line reads "CREDIT NN" as one centred monospace group: the static "CREDIT" label spans
-# cells 0-5, cell 6 is the space, and the two live digit clones sit at cells 7-8. With the Xevious HUD
-# font (hud_glyphs SHEET_TEXT_*: 25px cell, 27px pitch), that group is centred on x=0 with the label at
-# -40 (its 160px costume's centre over cells 0-5) and the units/tens digits at +108 / +81.
-ATTRACT_CREDIT_LABEL_X = -40
-ATTRACT_CREDIT_LINE_Y = -150
-ATTRACT_CREDIT_DIGIT_UNITS_X = 108  # place 0 (units); each higher place sits one pitch to its left
-ATTRACT_CREDIT_DIGIT_SPACING = 27  # one monospace pitch (SHEET_TEXT advance 108 / downscale 4)
+# cells 0-5, cell 6 is the space, and the two live digit clones sit at cells 7-8. Slice-18 playtest scale
+# correction: the title text now renders at the smaller hud_glyphs SMALL_TEXT_GEOM cell (16px glyph, 17px
+# advance), so this group is re-tightened — centred on x=0 with the label at -26 (its 101px costume's centre
+# over cells 0-5) and the units/tens digits at +68 / +51, and the whole title stack given a ~22px line pitch
+# so the lines no longer overlap.
+ATTRACT_CREDIT_LABEL_X = -26
+ATTRACT_CREDIT_LINE_Y = -142
+ATTRACT_CREDIT_DIGIT_UNITS_X = 68  # place 0 (units); each higher place sits one pitch to its left
+ATTRACT_CREDIT_DIGIT_SPACING = 17  # one monospace pitch (SMALL_TEXT_GEOM advance 119 / downscale 7)
 ATTRACT_PROMPT_X = 0
-ATTRACT_PROMPT_Y = -120
+ATTRACT_PROMPT_Y = -118
 ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
 ATTRACT_BEST_FIVE_X = 0
 ATTRACT_BEST_FIVE_Y = 0
@@ -1087,16 +1089,18 @@ ATTRACT_COSTUME_BEST_FIVE = "best-five"
 # roles — one per option label (tools/hud_glyphs.py ATTRACT_SELECTOR_LABELS) — spawned at the title beside
 # the CREDIT line and PUSH START prompt. Both labels always show so the choice is discoverable; the clone
 # whose option matches the live `start selection` renders at full opacity and the other is dimmed by the
-# ghost effect, re-evaluated every tick so a left/right arrow press updates the display live. Placement is
+# ghost effect, re-evaluated every tick so an up/down arrow press updates the display live. Placement is
 # the port's own (no reference basis for this port-original control), operator-tunable at playtest exactly
-# like the CAB-01 credit-line/best-five geometry.
+# like the CAB-01 credit-line/best-five geometry. The options are stacked vertically (1P over 2P), so the
+# selector input is the UP/DOWN arrows (slice-18 playtest correction — was left/right, which read wrong
+# against a vertical list).
 ATTRACT_ROLE_SELECTOR_1P = 5  # the "1 PLAYER" option label (bright when start selection == 1)
 ATTRACT_ROLE_SELECTOR_2P = 6  # the "2 PLAYERS" option label (bright when start selection == 2)
 ATTRACT_COSTUME_SELECTOR_1P = "select-1p"
 ATTRACT_COSTUME_SELECTOR_2P = "select-2p"
 ATTRACT_SELECTOR_X = 0
-ATTRACT_SELECTOR_1P_Y = -75  # stacked above the PUSH START prompt (-120), below the centred logo
-ATTRACT_SELECTOR_2P_Y = -97  # one 22px line-pitch below the 1P label
+ATTRACT_SELECTOR_1P_Y = -72  # stacked above the PUSH START prompt (-118), below the centred logo
+ATTRACT_SELECTOR_2P_Y = -94  # one ~22px line-pitch below the 1P label (16px glyph + gap)
 ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed (selected) option
 # CAB-03 (cabinet.two-player, slice 18): two-player alternation state. `curr player` (0/1) is the active
 # player index; `two player` (0/1) marks a two-player game. Both are director-control state the HUD READS
@@ -1110,7 +1114,7 @@ SWAP_PLAYERS_PROCCODE = "swap players"
 COPY_PLAYERS_PROCCODE = "copy players"
 # CAB-02 (cabinet.two-player, slice 18): the title-screen 1P/2P choice (1 or 2, default 1). A port
 # necessity — the arcade picked 1P/2P by two dedicated start buttons keyed to credit count; this port has
-# no cabinet buttons, so the left/right arrows set the choice at the title and Space starts it (recorded in
+# no cabinet buttons, so the up/down arrows set the choice at the title and Space starts it (recorded in
 # docs/spec/core-game-systems.md). Stage-written by the title selector hats, read by the selector display;
 # a title-screen UI register, reset to 1 at cold-start. Machinery, not durable per-player state.
 START_SELECTION_ID = "cabinet-start-selection"
@@ -10025,12 +10029,14 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.chain(coin_flag, [coin_loop])
 
     # CAB-02 (slice 18): the title 1P/2P selector. A port necessity — the arcade chose 1P/2P by two
-    # dedicated start buttons keyed to credit count; this port has none, so the left/right arrows set the
-    # choice at the title and Space starts it (docs/spec/core-game-systems.md). The arrow hats fire only at
-    # the title; each sets `start selection` to its bound (left = 1P, right = 2P), so holding a key is
-    # idempotent (it re-sets the same value, never oscillates). During play the same arrows drive the craft
-    # through solvalou's movement loop (gated on `playing`), so there is no conflict.
-    for key, choice in (("left arrow", 1), ("right arrow", 2)):
+    # dedicated start buttons keyed to credit count; this port has none, so the up/down arrows set the
+    # choice at the title and Space starts it (docs/spec/core-game-systems.md). The options are stacked
+    # vertically (1P over 2P), so the input is up/down (slice-18 playtest correction — was left/right, which
+    # read wrong against a vertical list). The arrow hats fire only at the title; each sets `start selection`
+    # to its bound (up = 1P the top option, down = 2P the bottom option), so holding a key is idempotent (it
+    # re-sets the same value, never oscillates). During play the same arrows drive the craft through
+    # solvalou's movement loop (gated on `playing`), so there is no conflict.
+    for key, choice in (("up arrow", 1), ("down arrow", 2)):
         arrow = blocks.key(key)
         blocks.chain(
             arrow,
