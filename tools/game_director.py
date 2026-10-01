@@ -1072,10 +1072,21 @@ ATTRACT_PILOT_DIR_HOLD_TICKS = 8  # = 16 arcade frames // 2 frames-per-tick
 ATTRACT_DISPLAY_ROLE_ID = "attract-display-role"
 ATTRACT_DISPLAY_PLACE_ID = "attract-display-place"
 ATTRACT_DISPLAY_DIVISOR_ID = "attract-display-divisor"
+ATTRACT_DISPLAY_ROW_ID = "attract-display-row"  # CAB-04: a table cell's best-five row (1..5)
+ATTRACT_DISPLAY_CHAR_ID = "attract-display-char"  # CAB-04: a name cell's current letter, cached per tick
 ATTRACT_ROLE_CREDIT_LABEL = 1  # the static "CREDIT" word
 ATTRACT_ROLE_CREDIT_DIGIT = 2  # one credit-counter digit (reads `credits`); place 0 = units
 ATTRACT_ROLE_PROMPT = 3  # flashing PUSH START (credits>=1) / INSERT COIN (credits==0)
-ATTRACT_ROLE_BEST_FIVE = 4  # the static default best-five table
+# CAB-04 (slice 19): the LIVE best-five table. Role 4 (the single pre-baked `best-five` costume) is
+# retired — an arbitrary live table and typed names cannot be pre-rendered, so each cell is its own
+# per-glyph clone (the HUD score-digit idiom), reading the two Stage lists. Three cell roles, one per
+# column kind: a rank digit (= the row number), up to ten name letters (letter-of-string over
+# `high score names`), and the seven score digits (digit-of-number over `high score table`). Each cell
+# snapshots its row (1..5) and place at creation and re-reads its list every tick while in
+# attract-scores, so the display tracks a score that ranks in mid-session.
+ATTRACT_ROLE_TABLE_RANK = 7  # one best-five rank digit (costume digit/<row>)
+ATTRACT_ROLE_TABLE_NAME = 8  # one best-five name letter (letter `place` of names[row])
+ATTRACT_ROLE_TABLE_SCORE = 9  # one best-five score digit (digit `place` of table[row])
 ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
 # Project-defined placement (stage -240..240 x, -180..180 y, +y up); the operator fine-tunes exact
 # placement at playtest, exactly as the ECO-02 HUD layout notes (no reference basis for the port's own
@@ -1093,12 +1104,27 @@ ATTRACT_CREDIT_DIGIT_SPACING = 17  # one monospace pitch (SMALL_TEXT_GEOM advanc
 ATTRACT_PROMPT_X = 0
 ATTRACT_PROMPT_Y = -118
 ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
-ATTRACT_BEST_FIVE_X = 0
-ATTRACT_BEST_FIVE_Y = 0
+# CAB-04 (slice 19): the live best-five grid. Five rows, each laid out as a monospace cell line at the
+# SMALL_TEXT_GEOM pitch (17px advance, matching the credit digits): a rank digit, a two-cell gap, up to
+# ten name letters, a one-cell gap, then the seven leading-zero score digits (HUD_DIGIT_PLACES). The
+# whole 20-cell line is centred on x=0 (cell 9.5) and the five rows are centred on y=0. Project-defined
+# placement, operator-tunable at playtest exactly like the credit line (no reference basis for the port's
+# own text geometry); the resolver pins only the structure, never the pixels/layout.
+ATTRACT_TABLE_ROWS = 5
+ATTRACT_TABLE_NAME_CELLS = 10  # ten-character names (xevious_ram.68k name field is ds.b 10)
+ATTRACT_TABLE_SCORE_CELLS = HUD_DIGIT_PLACES  # seven leading-zero digits, matching the HUD score row
+ATTRACT_TABLE_CELL_PITCH_X = 17  # SMALL_TEXT_GEOM advance (119 native / downscale 7)
+ATTRACT_TABLE_ROW_PITCH_Y = 20  # 16px glyph + 4px gap between rows
+ATTRACT_TABLE_RANK_COL = 0  # the rank digit sits at the leftmost cell
+ATTRACT_TABLE_NAME_COL0 = 2  # name letter 0 starts after a two-cell gap
+ATTRACT_TABLE_SCORE_COL0 = 13  # the most-significant score digit, after a one-cell gap past the names
+ATTRACT_TABLE_CENTER_COL = 9.5  # the 20-cell line (cols 0..19) is centred on x=0
+ATTRACT_TABLE_CENTER_Y = 0  # the five rows are centred vertically on y=0
 ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
 ATTRACT_COSTUME_PUSH_START = "push-start"
 ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
-ATTRACT_COSTUME_BEST_FIVE = "best-five"
+ATTRACT_GLYPH_PREFIX = "glyph/"  # per-letter name-cell costumes glyph/<A-Z> and glyph/. (sheet font)
+ATTRACT_DIGIT_PREFIX = "digit/"  # per-digit rank/score-cell costumes digit/<0-9> (shared with credits)
 # CAB-02 (cabinet.two-player, slice 18): the title 1P/2P selector display. Two more start_screen clone
 # roles — one per option label (tools/hud_glyphs.py ATTRACT_SELECTOR_LABELS) — spawned at the title beside
 # the CREDIT line and PUSH START prompt. Both labels always show so the choice is discoverable; the clone
@@ -3471,6 +3497,22 @@ class Blocks:
         block_id = self.add("operator_join")
         inputs: dict[str, Any] = {}
         for slot, spec in (("STRING1", a), ("STRING2", b)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
+
+    def op_letter_of(self, letter: Any, string: Any) -> str:
+        # `operator_letter_of`: the 1-based LETTER index and the STRING it indexes. scratch-vm
+        # returns "" when the index is past the string's end, which the name cells rely on to
+        # blank unused cells. Both operands take a value-input spec (number()/variable()) or a
+        # nested reporter's block id (str), wired like op_join's STRING1/STRING2.
+        block_id = self.add("operator_letter_of")
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("LETTER", letter), ("STRING", string)):
             if isinstance(spec, str):
                 inputs[slot] = [2, spec]
                 self.blocks[spec]["parent"] = block_id
@@ -10876,13 +10918,41 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.glide(1, 0, 0),
     ]
     title = blocks.if_state("title", title_body)
-    # The default best-five table renders during attract-scores as one static clone. The original stays
-    # hidden here (the preceding director stop hid it); only the clone shows the table.
-    scores_body = [
-        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_BEST_FIVE)),
-        blocks.go(ATTRACT_BEST_FIVE_X, ATTRACT_BEST_FIVE_Y),
-        blocks.create_clone(),
-    ]
+    # CAB-04: the LIVE best-five table. Each cell is its own clone (the credit-digit idiom) — a rank digit,
+    # up to ten name letters, and seven score digits per row — stamped in one frame, each snapshotting its
+    # row (and, for letter/score cells, its place) before create_clone, then reading the Stage lists live.
+    def cell_x(col: float) -> int:
+        return int(round((col - ATTRACT_TABLE_CENTER_COL) * ATTRACT_TABLE_CELL_PITCH_X))
+
+    scores_body: list[str] = []
+    for table_row in range(1, ATTRACT_TABLE_ROWS + 1):
+        row_y = ATTRACT_TABLE_CENTER_Y + (2 - (table_row - 1)) * ATTRACT_TABLE_ROW_PITCH_Y
+        # rank digit (costume digit/<row>)
+        scores_body += [
+            blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_RANK)),
+            blocks.set_var("attract row", ATTRACT_DISPLAY_ROW_ID, number(table_row)),
+            blocks.go(cell_x(ATTRACT_TABLE_RANK_COL), row_y),
+            blocks.create_clone(),
+        ]
+        # name letters: place = 1-based letter index 1..10, laid out left-to-right from NAME_COL0
+        for name_cell in range(ATTRACT_TABLE_NAME_CELLS):
+            scores_body += [
+                blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_NAME)),
+                blocks.set_var("attract row", ATTRACT_DISPLAY_ROW_ID, number(table_row)),
+                blocks.set_var("attract place", ATTRACT_DISPLAY_PLACE_ID, number(name_cell + 1)),
+                blocks.go(cell_x(ATTRACT_TABLE_NAME_COL0 + name_cell), row_y),
+                blocks.create_clone(),
+            ]
+        # score digits: place 0 (units) .. 6 (millions); the most-significant digit sits at SCORE_COL0
+        for place in range(ATTRACT_TABLE_SCORE_CELLS):
+            col = ATTRACT_TABLE_SCORE_COL0 + (ATTRACT_TABLE_SCORE_CELLS - 1 - place)
+            scores_body += [
+                blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_SCORE)),
+                blocks.set_var("attract row", ATTRACT_DISPLAY_ROW_ID, number(table_row)),
+                blocks.set_var("attract place", ATTRACT_DISPLAY_PLACE_ID, number(place)),
+                blocks.go(cell_x(col), row_y),
+                blocks.create_clone(),
+            ]
     scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
     blocks.chain(enter, [title, scores])
 
@@ -10973,10 +11043,127 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [prompt_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
     )
 
-    # Best-five table (static): switches to the composed table costume and shows; common_stop retires it.
-    best_five_role = blocks.if_var_equals(
-        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_BEST_FIVE,
-        [blocks.switch_costume(ATTRACT_COSTUME_BEST_FIVE), blocks.to_front(), blocks.show()],
+    # CAB-04: the three LIVE best-five cell roles. Each cell re-reads the Stage lists every tick while in
+    # attract-scores (the credit-digit idiom), so a score that ranks in mid-session shows live; when the
+    # state leaves attract-scores the loop exits and the cell hides + deletes itself (common_stop is the
+    # backstop). Placement/pixels are the operator's playtest; the structure here is what the tests pin.
+    def table_tick(body: list[str]) -> str:
+        loop = blocks.add("control_repeat_until")
+        blocks.blocks[loop]["inputs"]["CONDITION"] = [2, blocks.not_state(loop, ATTRACT_SCORES_STATE)]
+        blocks.substack(loop, body)
+        return loop
+
+    # Rank digit: costume digit/<row>. The row is fixed per clone, but it is re-switched each tick so the
+    # three cell roles share one self-retiring loop shape.
+    rank_tick = table_tick(
+        [
+            blocks.switch_costume_expr(
+                blocks.op_join(
+                    text(ATTRACT_DIGIT_PREFIX), variable("attract row", ATTRACT_DISPLAY_ROW_ID)
+                )
+            )
+        ]
+    )
+    table_rank_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_RANK,
+        [
+            blocks.to_front(),
+            blocks.show(),
+            rank_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
+    # Score digit: digit = floor(table[row] / 10^place) mod 10, shown as digit/<d> (leading-zero preserving,
+    # matching the HUD score row). 10^place is computed once at clone start into `attract divisor`.
+    set_score_divisor = blocks.set_var("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID, number(1))
+    score_divisor_loop = blocks.add(
+        "control_repeat", inputs={"TIMES": variable("attract place", ATTRACT_DISPLAY_PLACE_ID)}
+    )
+    blocks.substack(
+        score_divisor_loop,
+        [
+            blocks.set_var_expr(
+                "attract divisor",
+                ATTRACT_DISPLAY_DIVISOR_ID,
+                blocks.op_mul(
+                    variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID), number(10)
+                ),
+            )
+        ],
+    )
+    score_digit_expr = blocks.op_mod(
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item(
+                    "high score table",
+                    HIGH_SCORE_TABLE_ID,
+                    variable("attract row", ATTRACT_DISPLAY_ROW_ID),
+                ),
+                variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID),
+            )
+        ),
+        number(10),
+    )
+    score_tick = table_tick(
+        [blocks.switch_costume_expr(blocks.op_join(text(ATTRACT_DIGIT_PREFIX), score_digit_expr))]
+    )
+    table_score_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_SCORE,
+        [
+            set_score_divisor,
+            score_divisor_loop,
+            blocks.to_front(),
+            blocks.show(),
+            score_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
+    # Name letter: cache `attract char` = letter `place` of names[row] once per tick, then branch on the
+    # cache (so the list is read once, not five times). A non-blank letter shows glyph/<c>; a blank letter
+    # (past the name's end, "") or a space (the sheet font has no space glyph) hides the cell. The letter
+    # reporter is minted fresh for the cache write; the branch tests read the cached variable.
+    def name_char() -> str:
+        return blocks.op_letter_of(
+            variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+            blocks.list_item(
+                "high score names",
+                HIGH_SCORE_NAMES_ID,
+                variable("attract row", ATTRACT_DISPLAY_ROW_ID),
+            ),
+        )
+
+    def is_blank_char() -> str:
+        return blocks.op_or(
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text("")),
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text(" ")),
+        )
+
+    name_tick = table_tick(
+        [
+            blocks.set_var_expr("attract char", ATTRACT_DISPLAY_CHAR_ID, name_char()),
+            blocks.if_reporter(
+                blocks.op_not(is_blank_char()),
+                [
+                    blocks.switch_costume_expr(
+                        blocks.op_join(
+                            text(ATTRACT_GLYPH_PREFIX),
+                            variable("attract char", ATTRACT_DISPLAY_CHAR_ID),
+                        )
+                    ),
+                    blocks.to_front(),
+                    blocks.show(),
+                ],
+            ),
+            blocks.if_reporter(is_blank_char(), [blocks.hide()]),
+        ]
+    )
+    table_name_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_NAME,
+        [name_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
     )
 
     # CAB-02: the two 1P/2P selector labels. Each clone wears its fixed option costume, shows, then loops
@@ -11022,7 +11209,9 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             credit_label_role,
             credit_digit_role,
             prompt_role,
-            best_five_role,
+            table_rank_role,
+            table_name_role,
+            table_score_role,
             selector_1p_role,
             selector_2p_role,
         ],
@@ -14887,6 +15076,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 ATTRACT_DISPLAY_ROLE_ID: ["attract role", 0],
                 ATTRACT_DISPLAY_PLACE_ID: ["attract place", 0],
                 ATTRACT_DISPLAY_DIVISOR_ID: ["attract divisor", 1],
+                # CAB-04: which best-five row (1..5) a table-cell clone renders, snapshotted at creation,
+                # and a name cell's per-tick cached letter (read once, then tested/rendered from the cache).
+                ATTRACT_DISPLAY_ROW_ID: ["attract row", 0],
+                ATTRACT_DISPLAY_CHAR_ID: ["attract char", ""],
             }
         elif target["name"] == "hud":
             # ECO-02: all HUD state is sprite-local (never a Stage variable) — the role

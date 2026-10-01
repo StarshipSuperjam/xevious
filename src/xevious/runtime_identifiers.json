@@ -214,6 +214,11 @@
       "name": "terrain column",
       "scope": "Stage"
     },
+    "attract-display-char": {
+      "kind": "variable",
+      "name": "attract char",
+      "scope": "start_screen"
+    },
     "attract-display-divisor": {
       "kind": "variable",
       "name": "attract divisor",
@@ -227,6 +232,11 @@
     "attract-display-role": {
       "kind": "variable",
       "name": "attract role",
+      "scope": "start_screen"
+    },
+    "attract-display-row": {
+      "kind": "variable",
+      "name": "attract row",
       "scope": "start_screen"
     },
     "bacura-clone-slot": {

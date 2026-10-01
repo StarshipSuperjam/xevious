@@ -677,46 +677,55 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update easter egg'),
   },
   {
-    // CAB-01 (cabinet.attract-credits, slice 17): the best-five table renders during the attract-scores
-    // sub-state, and the live gameplay HUD is held OFF while it shows. The port draws the table with the
-    // start_screen clone-role idiom (the arcade HUD font lacks the letters, so it uses the 5×7 port font, as
-    // SEC-03 does): a `best-five` role clone (attract role == 4) switches to the pre-composed `best-five`
-    // costume and shows only in attract-scores. The HUD spawn is excluded during attract-scores (its gate
-    // gained `game state != "attract-scores"`) so the live score/high-score digit clones do not draw over
-    // the table. Drives to the best-five screen and reads the start_screen clones and the hud digit clones.
-    // roadmap-evidence: CAB-01 success  (the best-five clone dresses itself and the HUD is suppressed here)
+    // CAB-04 (cabinet.high-scores, slice 19): the LIVE best-five table renders during the attract-scores
+    // sub-state, and the live gameplay HUD is held OFF while it shows. Slice 17's single baked `best-five`
+    // costume is retired: the table is now drawn cell-by-cell with the start_screen clone-role idiom — a rank
+    // digit clone (attract role == 7, costume digit/<row>) per row, plus name-letter (role 8) and score-digit
+    // (role 9) cells — each reading the `high score table`/`high score names` Stage lists live. This scenario
+    // pins the CAB-01 compositional invariant that survives: the five rank digits show (so the table is on
+    // screen) and the HUD spawn is excluded during attract-scores (its gate carries
+    // `game state != "attract-scores"`), so the live score/high-score digit clones do not draw over the table.
+    // The exact glyph/liveness mapping is pinned by high-score-table-live below.
+    // roadmap-evidence: CAB-04 success  (the live table's rank digits dress themselves and the HUD is suppressed)
     key: 'attract-scores-render',
     behavior:
-      'The best-five table renders during attract-scores (a port-font clone) and the live HUD digits are held off',
+      'The live best-five table renders during attract-scores (per-cell port-font clones) and the HUD digits are held off',
     playtestStep: 1,
     async drive(vm) {
       assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
-      step(vm, 3); // let the transition retire the demo HUD clones and the best-five clone dress itself
+      step(vm, 3); // let the transition retire the demo HUD clones and the table cells dress themselves
       const roleName = variable('attract-display-role').name; // "attract role"
-      const bestFive = cloneReports(vm, 'start_screen', [roleName]).filter(
-        (r) => r.vars[roleName] === 4 && r.costume === 'best-five' && r.visible,
+      const rowName = variable('attract-display-row').name; // "attract row"
+      const rankCells = cloneReports(vm, 'start_screen', [roleName, rowName]).filter(
+        (r) => r.vars[roleName] === 7 && r.visible && /^digit\/[1-5]$/.test(r.costume || ''),
       );
+      const rankCostumes = rankCells.map((r) => r.costume).sort();
       const hudDigits = cloneReports(vm, 'hud').filter((r) => /^digit\/[0-9]$/.test(r.costume || ''));
-      return { st: state(vm), bestFiveShown: bestFive.length, hudDigits: hudDigits.length };
+      return { st: state(vm), rankCostumes, hudDigits: hudDigits.length };
     },
     assert(obs) {
       assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
-      assert.equal(obs.bestFiveShown, 1, 'exactly one best-five clone shows the best-five table costume');
+      assert.deepEqual(
+        obs.rankCostumes,
+        ['digit/1', 'digit/2', 'digit/3', 'digit/4', 'digit/5'],
+        'all five rank-digit cells show (the live table is on screen, one rank per row)',
+      );
       assert.equal(obs.hudDigits, 0, 'the live HUD score digits are held off while the table shows');
     },
-    // Break the best-five dispatch (`attract role == 4`): the best-five clone never matches its role branch,
-    // so it never switches to the `best-five` costume nor shows → the table-present assertion fails.
-    // roadmap-evidence: CAB-01 failure  (a broken role dispatch leaves the best-five table unrendered)
-    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 4, 5),
+    // Break the rank-cell dispatch (`attract role == 7`): the rank clones never match their role branch, so
+    // none switches to its digit/<row> costume nor shows → the five-rank-digits assertion fails.
+    // roadmap-evidence: CAB-04 failure  (a broken rank-role dispatch leaves the live table's ranks unrendered)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 7, 999),
   },
   {
     // CAB-01 (cabinet.attract-credits, slice 17): the attract-display clones do not leak across cycles. The
-    // start_screen static clones (the CREDIT label, the best-five table) have no self-delete; they rely on
-    // `common_stop(clones=True)` retiring every clone on each state transition. Without that the port would
-    // accumulate a fresh CREDIT/best-five clone every title -> demo -> best-five -> demo -> title lap — a
-    // slow leak the single-state playing census can never see (feasibility plan-review S4). Runs three full
+    // start_screen static clones (the CREDIT label, the credit digits, the prompt) have no self-delete; they
+    // rely on `common_stop(clones=True)` retiring every clone on each state transition. Without that the port
+    // would accumulate a fresh CREDIT/digit/prompt clone every title -> demo -> best-five -> demo -> title lap
+    // — a slow leak the single-state playing census can never see (feasibility plan-review S4). Runs three full
     // attract laps, sampling the start_screen clone count at the same phase (a settled title) each lap, and
-    // asserts the count returns to its baseline instead of climbing.
+    // asserts the count returns to its baseline instead of climbing. (The CAB-04 live best-five table cells are
+    // created in attract-scores, not title; high-score-clone-no-leak samples those.)
     // roadmap-evidence: CAB-01 success  (per-transition clone retirement keeps the count flat across laps)
     key: 'attract-clone-no-leak',
     behavior: 'The attract-display clones retire per transition — their count returns to baseline each cycle',
@@ -858,6 +867,126 @@ export const SCENARIOS = [
     // left intact).
     // roadmap-evidence: CAB-04 failure  (with rank in neutralized a qualifying score never enters the table)
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rank in'),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the LIVE best-five compositor — riskiest seam #1. Each table
+    // cell is a start_screen clone that re-reads the Stage lists EVERY tick (the credit-digit idiom), so the
+    // table tracks a mid-session rank-in with no re-entry. A name cell shows glyph/<letter> for the live
+    // letter and HIDES past the name's end (letter_of → "") or on a space (the sheet font has no space glyph);
+    // a score cell shows digit/<d> for the live place digit (leading-zero-preserving, matching the HUD row);
+    // a rank cell shows digit/<row>. This scenario pins the exact costume mapping for a default row AND proves
+    // liveness: mutating the lists in place (not replacing the references) and stepping twice re-dresses the
+    // cells. Default row 1 is "STK" / 40000 (HIGH_SCORE_NAME_DEFAULTS[0] / HIGH_SCORE_DEFAULTS[0]).
+    // roadmap-evidence: CAB-04 success  (the live cells map list values to glyph/digit costumes and track edits)
+    key: 'high-score-table-live',
+    behavior: 'The live best-five cells render the Stage lists as glyph/digit costumes and re-read them each tick',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
+      step(vm, 3); // let the table cells dress from the default lists
+      const roleName = variable('attract-display-role').name; // "attract role"
+      const rowName = variable('attract-display-row').name; // "attract row"
+      const placeName = variable('attract-display-place').name; // "attract place"
+      // A name/score cell is identified by (role, row, place); a rank cell by (role, row).
+      const cell = (role, row, place) =>
+        cloneReports(vm, 'start_screen', [roleName, rowName, placeName]).find(
+          (r) =>
+            r.vars[roleName] === role &&
+            r.vars[rowName] === row &&
+            (place === undefined || r.vars[placeName] === place),
+        ) || null;
+      const name = (row, place) => cell(8, row, place); // place is the 1-based letter index
+      const score = (row, place) => cell(9, row, place); // place 0 = units .. 6 = millions
+      const snap = (c) => (c ? { costume: c.costume, visible: c.visible } : null);
+      // Default render of row 1: name "STK", score 40000 ("0040000").
+      const def = {
+        rank1: snap(cell(7, 1)),
+        n1: snap(name(1, 1)),
+        n2: snap(name(1, 2)),
+        n3: snap(name(1, 3)),
+        n4: snap(name(1, 4)), // past "STK" -> blank -> hidden
+        sUnits: snap(score(1, 0)), // 40000 -> units digit 0
+        sTenK: snap(score(1, 4)), // 40000 -> ten-thousands digit 4
+      };
+      // Liveness: edit the lists IN PLACE, then step so the looping cells re-read and re-dress.
+      const names = readVar(vm, 'eco-high-score-names');
+      const table = readVar(vm, 'eco-high-score-table');
+      names[0] = 'ZZ'; // row 1 name now two letters
+      table[0] = 12345; // row 1 score now "0012345"
+      step(vm, 2);
+      const live = {
+        n1: snap(name(1, 1)), // -> Z
+        n2: snap(name(1, 2)), // -> Z
+        n3: snap(name(1, 3)), // past "ZZ" -> now hidden
+        sUnits: snap(score(1, 0)), // 12345 -> units digit 5
+      };
+      return { st: state(vm), def, live };
+    },
+    assert(obs) {
+      assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
+      // Default row 1 render.
+      assert.deepEqual(obs.def.rank1, { costume: 'digit/1', visible: true }, 'rank cell shows digit/<row>');
+      assert.deepEqual(obs.def.n1, { costume: 'glyph/S', visible: true }, 'name letter 1 of "STK" is S');
+      assert.deepEqual(obs.def.n2, { costume: 'glyph/T', visible: true }, 'name letter 2 of "STK" is T');
+      assert.deepEqual(obs.def.n3, { costume: 'glyph/K', visible: true }, 'name letter 3 of "STK" is K');
+      assert.equal(obs.def.n4 && obs.def.n4.visible, false, 'a name cell past the name end is hidden');
+      assert.deepEqual(obs.def.sUnits, { costume: 'digit/0', visible: true }, '40000 units digit is 0');
+      assert.deepEqual(obs.def.sTenK, { costume: 'digit/4', visible: true }, '40000 ten-thousands digit is 4');
+      // Live edits are picked up without re-entering attract-scores.
+      assert.deepEqual(obs.live.n1, { costume: 'glyph/Z', visible: true }, 'name letter 1 tracks the live edit (Z)');
+      assert.deepEqual(obs.live.n2, { costume: 'glyph/Z', visible: true }, 'name letter 2 tracks the live edit (Z)');
+      assert.equal(obs.live.n3 && obs.live.n3.visible, false, 'the now-past-end letter 3 hides live');
+      assert.deepEqual(obs.live.sUnits, { costume: 'digit/5', visible: true }, 'the score units digit tracks the live edit (5)');
+    },
+    // Break the name-cell dispatch (`attract role == 8`): the name clones never match their role branch, so
+    // they never switch to a glyph/<letter> costume nor show → the default-name assertions fail.
+    // roadmap-evidence: CAB-04 failure  (a broken name-role dispatch leaves the live table's names unrendered)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 8, 999),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the LIVE table cells do not leak. Entering attract-scores stamps
+    // exactly 90 cell clones (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9); they must ALL retire on
+    // the transition out — each cell self-deletes when its loop exits (`repeat until not attract-scores` → hide
+    // → delete this clone) AND common_stop(clones=True) is the backstop. Without retirement every best-five
+    // visit would stack a fresh 90-cell table on the previous one, climbing toward the scratch-vm 300-clone
+    // ceiling. We assert retirement DIRECTLY (table-role clone count is 90 on screen, then 0 after the screen
+    // advances to demo 2) rather than comparing counts across laps — a cross-lap climb is masked once the 300
+    // ceiling caps clone creation, so a flat-count assertion would not bind. Companion to attract-clone-no-leak
+    // (which samples the title-state CREDIT/digit/prompt clones, absent here).
+    // roadmap-evidence: CAB-04 success  (the ~90 table cells are all retired on the transition out of attract-scores)
+    key: 'high-score-clone-no-leak',
+    behavior: 'The live best-five table cells are all retired on the transition out of attract-scores',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
+      step(vm, 3); // let the best-five screen stamp its table cells
+      // Count the WHOLE start_screen clone pool, not role-filtered: a leak build blows past the 300-clone
+      // ceiling and overwrites the leaked clones' `attract role` var, so a role filter reads 0 and misses
+      // them. The total census is immune to both — the field is torn down in attract-scores, so the only
+      // start_screen clones alive are this screen's 90 table cells.
+      const present = cloneCount(vm, 'start_screen');
+      // The best-five hold auto-advances to demo 2 (~256 ticks); step until the screen leaves attract-scores.
+      let t = 0;
+      while (state(vm) === 'attract-scores' && t < 400) {
+        step(vm, 1);
+        t += 1;
+      }
+      assert.notEqual(state(vm), 'attract-scores', 'the best-five screen advances out within budget');
+      step(vm, 5); // let the transition's director-stop retire the cells
+      return { present, stateAfter: state(vm), afterExit: cloneCount(vm, 'start_screen') };
+    },
+    assert(obs) {
+      assert.equal(obs.present, 90, 'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7))');
+      // Demo 2 keeps only the handful of ordinary attract clones (≈6); the table cells are all gone. A
+      // leak build carries all 90 cells (capped at the 300 ceiling) past the transition → far above this.
+      assert.ok(obs.afterExit < 30, `the table cells are retired on leaving attract-scores (saw ${obs.afterExit})`);
+    },
+    // Remove every `delete this clone` on start_screen (the per-cell self-delete AND the common_stop backstop)
+    // so no table cell is ever retired: the 90 cells survive past the transition out → afterExit stays pinned
+    // at the 300 ceiling and the retirement assertion fails. The present==90 half also bites (the leak re-runs
+    // the spawn to the ceiling, so present reads 300). Ceiling- and role-independent.
+    // roadmap-evidence: CAB-04 failure  (without clone retirement the live table cells survive the transition)
+    negativeMutation: (p) => mutate.removeDeleteThisClone(p, 'start_screen'),
   },
   {
     key: 'death-respawn',

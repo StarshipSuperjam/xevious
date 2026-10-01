@@ -315,7 +315,14 @@ class ScratchProjectTests(unittest.TestCase):
         # ("GAME OVER PLAYER 1" / "GAME OVER PLAYER 2"), same credited sheet at the SMALL_TEXT_GEOM cell
         # (slice-18 scale correction — was the larger credit downscale) so the banner matches the plain GAME
         # OVER screen and the 18-char line still fits the stage; port-original UI text, so 223 -> 225.
-        self.assertEqual(225, len(assets))
+        # + the slice-19 CAB-04 per-letter name-cell glyphs on start_screen: the slice-17 single baked
+        # "best-five" table costume is RETIRED (-1) and the live best-five table now renders arbitrary
+        # runtime names/ranks/scores with per-glyph clones. The name column needs one costume per letter,
+        # so 27 per-letter glyphs (A-Z and ".") are rendered from the SAME credited HUD font sheet at the
+        # SMALL_TEXT_GEOM cell (the rank/score columns reuse the existing start_screen digit/0-9 costumes).
+        # 26 of the 27 are new distinct PNGs; glyph/O is byte-identical to digit/0 at this cell (the font's
+        # letter O and zero share one bitmap) and dedups to it. Net: -1 (best-five) + 26 = +25, so 225 -> 250.
+        self.assertEqual(250, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -16670,18 +16677,24 @@ class ScratchProjectTests(unittest.TestCase):
 
     @staticmethod
     def _attract_display_failures(project: dict) -> set:
-        """CAB-01/CAB-02 attract displays on start_screen — the port-font costumes, the
-        clone spawn/dispatch, the four role branches (CREDIT label, credit digit, prompt,
-        best-five), the credit-digit costume EXPRESSION, and the static label costume
-        switches (structure only; the pixels and on-screen layout are the operator's
-        playtest). Mirrors the HUD render guard for the attract-display clone family."""
+        """CAB-01/CAB-02/CAB-04 attract displays on start_screen — the port-font costumes,
+        the clone spawn/dispatch, the role branches (CREDIT label, credit digit, prompt, and
+        the three LIVE best-five cell roles: rank digit, name letter, score digit), the
+        credit-digit/score costume EXPRESSION, the name-letter glyph EXPRESSION, and the
+        static label costume switches (structure only; the pixels and on-screen layout are
+        the operator's playtest). Mirrors the HUD render guard for the attract-display clone
+        family. CAB-04: the slice-17 single baked "best-five" table costume is retired; the
+        table is now rendered live from the `high score table`/`high score names` Stage lists
+        via per-glyph clones, so the name column needs one costume per letter (glyph/A..Z and
+        glyph/.)."""
         failures = set()
         ss = next(t for t in project["targets"] if t.get("name") == "start_screen")
         blocks = ss["blocks"]
         costumes = {c["name"] for c in ss["costumes"]}
 
-        required = {"credit-label", "push-start", "insert-coin", "best-five"}
+        required = {"credit-label", "push-start", "insert-coin"}
         required |= {f"digit/{d}" for d in range(10)}
+        required |= {f"glyph/{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ."}
         for name in sorted(required):
             if name not in costumes:
                 failures.add(f"costume-missing:{name}")
@@ -16718,36 +16731,51 @@ class ScratchProjectTests(unittest.TestCase):
             ("credit-label-role-dispatch", director.ATTRACT_ROLE_CREDIT_LABEL),
             ("credit-digit-role-dispatch", director.ATTRACT_ROLE_CREDIT_DIGIT),
             ("prompt-role-dispatch", director.ATTRACT_ROLE_PROMPT),
-            ("best-five-role-dispatch", director.ATTRACT_ROLE_BEST_FIVE),
+            ("table-rank-role-dispatch", director.ATTRACT_ROLE_TABLE_RANK),
+            ("table-name-role-dispatch", director.ATTRACT_ROLE_TABLE_NAME),
+            ("table-score-role-dispatch", director.ATTRACT_ROLE_TABLE_SCORE),
         ):
             if not role_dispatch(value):
                 failures.add(label)
 
-        # The credit digit renders through a costume EXPRESSION: a switch-costume block fed
-        # by join("digit/", <digit>) — not a static costume name (that is how a per-place
-        # digit tracks the live credit count).
-        def digit_expr_switch() -> bool:
+        # A live cell renders through a costume EXPRESSION: a switch-costume block fed by
+        # join(<prefix>, <reporter>) — not a static costume name. The credit/rank/score digits
+        # join the "digit/" prefix (tracking a live count / table value); the name letters join
+        # the "glyph/" prefix (tracking a live names-list letter). `prefix` selects which.
+        def expr_switch(prefix: str) -> bool:
             for b in blocks.values():
                 if b["opcode"] != "looks_switchcostumeto":
                     continue
                 ci = b["inputs"].get("COSTUME")
-                if isinstance(ci, list) and isinstance(ci[1], str):
-                    fed = blocks.get(ci[1])
-                    if fed is not None and fed["opcode"] == "operator_join":
-                        return True
+                if not (isinstance(ci, list) and isinstance(ci[1], str)):
+                    continue
+                fed = blocks.get(ci[1])
+                if fed is None or fed["opcode"] != "operator_join":
+                    continue
+                first = fed["inputs"].get("STRING1")
+                # join's first operand is the literal prefix (a text shadow [1, [10, "<prefix>"]]).
+                if (
+                    isinstance(first, list)
+                    and isinstance(first[1], list)
+                    and first[1][1] == prefix
+                ):
+                    return True
             return False
 
-        if not digit_expr_switch():
+        if not expr_switch(director.ATTRACT_DIGIT_PREFIX):
             failures.add("credit-digit-costume-expr")
+        if not expr_switch(director.ATTRACT_GLYPH_PREFIX):
+            failures.add("table-name-glyph-expr")
 
-        # The static labels (CREDIT line, the two prompts, the table) switch to a named
-        # port-font costume via a costume-menu shadow.
+        # The static labels (CREDIT line, the two prompts) switch to a named port-font costume
+        # via a costume-menu shadow. (The live table cells use costume EXPRESSIONS above, not a
+        # static switch — the slice-17 baked "best-five" costume is retired.)
         label_switch_names = {
             b["fields"]["COSTUME"][0]
             for b in blocks.values()
             if b["opcode"] == "looks_costume" and b.get("fields", {}).get("COSTUME")
         }
-        for name in ("credit-label", "push-start", "insert-coin", "best-five"):
+        for name in ("credit-label", "push-start", "insert-coin"):
             if name not in label_switch_names:
                 failures.add(f"label-switch-missing:{name}")
 
@@ -16781,7 +16809,7 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "control_start_as_clone":
                     b["opcode"] = "control_start_as_clone_disabled"
 
-        def break_best_five_dispatch(p: dict) -> None:
+        def break_table_name_dispatch(p: dict) -> None:
             for b in ss_blocks(p).values():
                 if b["opcode"] != "operator_equals":
                     continue
@@ -16795,25 +16823,49 @@ class ScratchProjectTests(unittest.TestCase):
                     and lhs_spec[2] == director.ATTRACT_DISPLAY_ROLE_ID
                     and isinstance(rhs, list)
                     and isinstance(rhs[1], list)
-                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_BEST_FIVE)
+                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_TABLE_NAME)
                 ):
                     b["inputs"]["OPERAND2"] = [1, [10, "999"]]
 
         def break_digit_expr(p: dict) -> None:
+            # Rewrite the digit prefix so no join feeds "digit/" any more (the glyph prefix is
+            # untouched, so only the digit-expr guard should bite).
             for b in ss_blocks(p).values():
-                if b["opcode"] == "operator_join":
-                    b["opcode"] = "operator_join_disabled"
+                if b["opcode"] != "operator_join":
+                    continue
+                first = b["inputs"].get("STRING1")
+                if (
+                    isinstance(first, list)
+                    and isinstance(first[1], list)
+                    and first[1][1] == director.ATTRACT_DIGIT_PREFIX
+                ):
+                    first[1][1] = "nope/"
 
-        def drop_best_five_costume(p: dict) -> None:
+        def break_glyph_expr(p: dict) -> None:
+            # Rewrite the name-cell glyph prefix so no join feeds the "glyph/" prefix any more
+            # (the digit prefix is untouched, so only the glyph-expr guard should bite).
+            for b in ss_blocks(p).values():
+                if b["opcode"] != "operator_join":
+                    continue
+                first = b["inputs"].get("STRING1")
+                if (
+                    isinstance(first, list)
+                    and isinstance(first[1], list)
+                    and first[1][1] == director.ATTRACT_GLYPH_PREFIX
+                ):
+                    first[1][1] = "nope/"
+
+        def drop_glyph_costume(p: dict) -> None:
             ss = next(t for t in p["targets"] if t.get("name") == "start_screen")
-            ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "best-five"]
+            ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "glyph/A"]
 
         for label, mutate_fn in (
             ("attract-spawns-clones", break_spawn),
             ("attract-clone-handler", break_handler),
-            ("best-five-role-dispatch", break_best_five_dispatch),
+            ("table-name-role-dispatch", break_table_name_dispatch),
             ("credit-digit-costume-expr", break_digit_expr),
-            ("costume-missing:best-five", drop_best_five_costume),
+            ("table-name-glyph-expr", break_glyph_expr),
+            ("costume-missing:glyph/A", drop_glyph_costume),
         ):
             project = load_source(scratch.SOURCE_DIR)
             mutate_fn(project)
@@ -18111,7 +18163,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "dd4ecb7d500f25759b92d5a6a48690d467ba8ea1200e92405c2b0928913036f6",
+            "a9d363069d19db9a9f5d09628d004851563d072dc87a546f83e98687de90e0b7",
             build_hash,
         )
 
