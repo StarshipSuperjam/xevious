@@ -1100,6 +1100,14 @@ class ScratchProjectTests(unittest.TestCase):
             # CAB-03 (slice 18): two-player alternation control. `curr player` (0/1) is the active player
             # index; `two player` (0/1) marks a two-player game. Director-control state the HUD reads (label/
             # column, 2UP gating), Stage-only-written (write-forbidden below), reset only on a world reset.
+            # roadmap-evidence: CAB-03 success  (these alternation controls, the `swap players`/`copy players`
+            #   procs, and every `other <x>` per-player shadow are classified and Stage-write-forbidden below;
+            #   the harness two-player-alternation toggles `curr player` on a craft death and brings the other
+            #   player's saved score/area live, and two-player-banner raises the "GAME OVER PLAYER n" banner on
+            #   an elimination handoff)
+            # roadmap-evidence: CAB-03 failure  (the harness two-player-alternation negative neutralizes
+            #   `swap players` so alternation carries the wrong player's game; the two-player-banner negative
+            #   drops the elimination banner)
             "curr player",
             "two player",
         }
@@ -1244,6 +1252,13 @@ class ScratchProjectTests(unittest.TestCase):
             "swap tmp",
             # CAB-02 (slice 18): the title-screen 1P/2P selection (1 or 2). A UI register the selector hats
             # set and the selector display reads — a port necessity, not durable per-player game state.
+            # roadmap-evidence: CAB-02 success  (this `start selection` machinery classification, the 2P-start
+            #   copy-players wiring, and the title selector display are proven present and Stage-owned here and in
+            #   test_game_director.py; the harness two-player-start arms 2P through the title selector and seeds
+            #   player 2 identical-fresh from player 1, and two-player-selector-display tracks the armed choice)
+            # roadmap-evidence: CAB-02 failure  (the harness two-player-start negative omits the P2 seed so
+            #   player 2 is not initialised from player 1; the two-player-selector-display negative stops the
+            #   title from tracking the armed selection)
             "start selection",
             # CAB-03 (slice 18): which player the elimination banner names (0/1, or -1 = hidden). A transient
             # display register the death handler raises during a two-player handoff and clears after the hold;
