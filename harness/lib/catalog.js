@@ -150,12 +150,24 @@ const outcome = (vm) => readVar(vm, 'game-director-death-outcome');
 const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
 const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
 const shotSlotTypes = (vm) => readVar(vm, 'slot-type').slice(36, 39);
+// Step until `pred(vm)` holds or the budget runs out; returns whether it held. Used where a finish now
+// routes through the terminal GAME OVER hold (high-score-entry -> game-over -> title) rather than straight
+// to the title, so reaching the title takes more than a couple of pumps.
+function stepUntil(vm, pred, budget = 240) {
+  let t = 0;
+  while (!pred(vm) && t < budget) {
+    step(vm, 1);
+    t += 1;
+  }
+  return pred(vm);
+}
 
 // CAB-04 (cabinet.high-scores, slice 19): drop the cabinet directly into the high-score-entry screen in
 // isolation. The game-over routing that reaches it in real play arrives in C4; until then the C3 entry
 // screen is driven on its own. We arm the entry scope the way the real routing will — set the reset scope,
-// fire `director reset` so entry_reset inits the entry machinery (char/buffer/cell = 0, timer = the full
-// 2048-frame countdown), seed the rank-in result (`entry row`/`entry player`) the finish writes back, set
+// fire `director reset` so entry_reset inits the entry machinery (char = space/ring index 26 — the blanked
+// cell — buffer = '', cell = 0, timer = the full 2048-frame countdown), seed the rank-in result
+// (`entry row`/`entry player`) the finish writes back, set
 // the state and (optionally) override the countdown, then fire `director enter` so the entry_enter countdown
 // loop starts. A boot step after green flag is required before any key press: scratch-vm "when key pressed"
 // hats only arm after the first step (keypress-hats-need-boot-step), and a second step lets the enter loop
@@ -164,7 +176,7 @@ function enterEntry(vm, { row = 3, player = 0, timer } = {}) {
   vm.greenFlag();
   step(vm, 2); // settle boot->title AND arm the key hats (boot step)
   writeVar(vm, 'game-director-reset-scope', 'entry');
-  fireBroadcast(vm, 'director reset'); // entry_reset: entry char/buffer/cell = 0, entry timer = full countdown
+  fireBroadcast(vm, 'director reset'); // entry_reset: entry char = space (26), buffer = '', cell = 0, timer = full
   writeVar(vm, 'cabinet-entry-row', row);
   writeVar(vm, 'cabinet-entry-player', player);
   writeVar(vm, 'game-director-state', 'high-score-entry');
@@ -1033,41 +1045,46 @@ export const SCENARIOS = [
       names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
 
       const char = () => readVar(vm, 'cabinet-entry-char');
-      const start = char(); // a fresh entry sits on the first ring letter (A, index 0)
-      tapKey(vm, 'ArrowDown'); // wrap down: 0 -> 26 (space)
-      const wrapDown = char();
-      tapKey(vm, 'ArrowUp'); // wrap up: 26 -> 0 (A)
+      const start = char(); // a fresh cell sits on the blanked SPACE symbol (ring index 26)
+      tapKey(vm, 'ArrowUp'); // wrap up: 26 (space) -> 0 (A)
       const wrapUp = char();
+      tapKey(vm, 'ArrowDown'); // wrap down: 0 (A) -> 26 (space)
+      const wrapDown = char();
+      tapKey(vm, 'ArrowUp'); // 26 -> 0 (A)
       tapKey(vm, 'ArrowUp'); // 0 -> 1 (B)
       tapKey(vm, 'ArrowUp'); // 1 -> 2 (C)
       const climbed = char();
 
-      // Type "ABABABABAB": even cells A (no move), odd cells B (one Up). Each Space commit resets the active
-      // letter to A, so a B cell needs exactly one Up first. The tenth commit finishes entry.
-      writeVar(vm, 'cabinet-entry-char', 0); // clean start on A after the climb above
+      // Type "ABABABABAB". Each cell's active letter is set explicitly, then Space commits it (after a commit
+      // the hat resets the active letter to SPACE — the blanked next cell — so selecting per cell is robust to
+      // that reset). The tenth commit finishes entry; the finish then runs the terminal GAME OVER hold.
       const typed = 'ABABABABAB';
       for (let i = 0; i < typed.length; i += 1) {
-        if (typed[i] === 'B') tapKey(vm, 'ArrowUp');
+        writeVar(vm, 'cabinet-entry-char', typed[i] === 'B' ? 1 : 0);
         tapKey(vm, ' ');
       }
+      // The name lands (list_replace) before the finish transitions out of the entry screen; the cabinet then
+      // runs high-score-entry -> game-over (the GAME OVER hold) -> title, raising attract in the terminal hold.
+      const landed = readVar(vm, 'eco-high-score-names')[2];
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
       return {
         start,
-        wrapDown,
         wrapUp,
+        wrapDown,
         climbed,
-        stateAfter: state(vm),
-        landed: readVar(vm, 'eco-high-score-names')[2],
+        stateAfter: reachedTitle ? 'title' : state(vm),
+        landed,
         attract: readVar(vm, 'cabinet-attract'),
       };
     },
     assert(obs) {
-      assert.equal(obs.start, 0, 'a fresh entry starts on the first ring letter (A)');
-      assert.equal(obs.wrapDown, 26, 'Down from A wraps to the last ring symbol (space, index 26)');
-      assert.equal(obs.wrapUp, 0, 'Up from the last symbol wraps back to A');
-      assert.equal(obs.climbed, 2, 'two Up presses advance the active letter to C (index 2)');
-      assert.equal(obs.stateAfter, 'title', 'the tenth committed character finishes entry and returns to the title');
+      assert.equal(obs.start, 26, 'a fresh cell starts on the blanked SPACE symbol (ring index 26)');
+      assert.equal(obs.wrapUp, 0, 'Up from the space wraps to the first letter (A)');
+      assert.equal(obs.wrapDown, 26, 'Down from A wraps back to the space (index 26)');
+      assert.equal(obs.climbed, 2, 'two further Up presses advance the active letter to C (index 2)');
       assert.equal(obs.landed, 'ABABABABAB', 'the typed initials land in high score names at the entry rank');
-      assert.equal(obs.attract, 1, 'finishing entry re-raises the attract flag for the cabinet cycle');
+      assert.equal(obs.stateAfter, 'title', 'the tenth character finishes entry; after the GAME OVER hold the cabinet is back at the title');
+      assert.equal(obs.attract, 1, 'the terminal GAME OVER hold re-raises the attract flag for the cabinet cycle');
     },
     // Pin `name buffer` to "" so no committed letter ever accumulates: the tenth-char finish then writes an empty
     // name and the typed-initials assertion fails (the cursor/cell machinery is untouched, so only the buffer
@@ -1084,36 +1101,38 @@ export const SCENARIOS = [
     // return to the title. This is the timeout half of riskiest-seam #5 (the letters scenario is the input half).
     // roadmap-evidence: CAB-04 success  (the fixed countdown expiring commits the partial name and routes to title)
     key: 'high-score-entry-timeout',
-    behavior: 'The fixed entry countdown expiring commits the partial name and returns to the attract cycle',
+    behavior:
+      'The fixed entry countdown expiring commits the typed cells AND the letter scrolled but not yet confirmed, then returns to the attract cycle',
     playtestStep: 1,
     async drive(vm) {
       assert.ok(enterEntry(vm, { row: 4 }), 'precondition: the cabinet reaches the entry screen');
       const names = readVar(vm, 'eco-high-score-names');
       names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
-      // Type a partial "AB" (2 of 10 cells), then let the fixed countdown run out.
+      // Type a partial "AB" (2 of 10 cells committed with Space); each cell's letter is set explicitly, since a
+      // commit resets the active letter to the blanked space for the next cell.
       writeVar(vm, 'cabinet-entry-char', 0);
       tapKey(vm, ' '); // commit A
-      tapKey(vm, 'ArrowUp'); // -> B
+      writeVar(vm, 'cabinet-entry-char', 1);
       tapKey(vm, ' '); // commit B
-      const partial = readVar(vm, 'cabinet-entry-name-buffer');
-      writeVar(vm, 'cabinet-entry-timer', 2); // arm a short countdown; the loop decrements it to zero
-      let t = 0;
-      while (state(vm) === 'high-score-entry' && t < 60) {
-        step(vm, 1);
-        t += 1;
-      }
+      const committed = readVar(vm, 'cabinet-entry-name-buffer');
+      // Scroll the third cell to 'C' but do NOT Space-confirm it, then let the fixed countdown expire. The
+      // commit-in-flight on finish keeps this scrolled-but-unconfirmed letter (faithful to name_entry_finished,
+      // which stops on whatever letter is showing) — so the landed name is "ABC", not "AB".
+      writeVar(vm, 'cabinet-entry-char', 2); // 'C', in flight (not Space-committed)
+      writeVar(vm, 'cabinet-entry-timer', 2); // arm a short countdown; the entry loop decrements it to zero
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
       return {
-        partial,
-        stateAfter: state(vm),
+        committed,
+        stateAfter: reachedTitle ? 'title' : state(vm),
         landed: readVar(vm, 'eco-high-score-names')[3], // rank 4 -> JS index 3
         attract: readVar(vm, 'cabinet-attract'),
       };
     },
     assert(obs) {
-      assert.equal(obs.partial, 'AB', 'the partial name accumulates as cells are committed before the timeout');
-      assert.equal(obs.stateAfter, 'title', 'the fixed countdown expiring finishes entry and returns to the title');
-      assert.equal(obs.landed, 'AB', 'the timeout commits whatever was typed so far into the entry rank');
-      assert.equal(obs.attract, 1, 'the timeout finish re-raises the attract flag');
+      assert.equal(obs.committed, 'AB', 'the Space-committed cells accumulate into the name buffer before the timeout');
+      assert.equal(obs.stateAfter, 'title', 'the fixed countdown expiring finishes entry and (via the GAME OVER hold) returns to the title');
+      assert.equal(obs.landed, 'ABC', 'the timeout commits the typed cells AND the in-flight scrolled letter into the entry rank');
+      assert.equal(obs.attract, 1, 'the terminal GAME OVER hold after the timeout finish re-raises the attract flag');
     },
     // Freeze `change entry timer by` so the countdown never decrements: the timer stays positive, the entry never
     // finishes, and the cabinet never leaves high-score-entry → the return-to-title assertion fails.
@@ -1121,17 +1140,20 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'entry timer'),
   },
   {
-    // ECO-04 (economy.game-over-routing, slice 19): the game-over ROUTING acts on the qualification verdict.
-    // A qualifying end-of-game score (>= fifth place) ranks into the live table and transitions game-over ->
-    // high-score-entry, tagging the entering player/row/score; a sub-fifth score skips entry and returns
-    // straight to the attract cycle at the title (the existing game-over -> title edge). Driven by firing the
-    // `game over complete` receiver directly over a seeded table + score (the director-receiver isolation
-    // death-game-over exercises through a real death), so the routing is tested without a 64-tick death hold.
-    // roadmap-evidence: ECO-04 success  (a qualifying score routes game-over -> high-score-entry and ranks in
-    //   at its rank; a sub-fifth score skips entry and returns to the title)
+    // ECO-04 (economy.game-over-routing, slice 19): the end-of-game ROUTING acts on the qualification verdict,
+    // and it runs at the DEATH decision (state player-dead, the last craft gone), BEFORE any GAME OVER hold —
+    // faithful to the arcade, which calls check_for_high_score the instant the game ends and reaches the
+    // game_over hold only after name entry (xevious_main.68k:546, :1671-1672, :1757-1769). A qualifying score
+    // (>= fifth place) ranks into the live table and transitions player-dead -> high-score-entry, tagging the
+    // entering player/row/score; a sub-fifth score skips entry and runs player-dead -> game-over, whose terminal
+    // hold returns to the attract cycle at the title. Driven by firing the `death complete` receiver directly
+    // over a seeded table + score with the craft counter drained (the terminal branch), so the routing is tested
+    // at its real decision point without a rendered collision.
+    // roadmap-evidence: ECO-04 success  (a qualifying score routes player-dead -> high-score-entry and ranks in
+    //   at its rank; a sub-fifth score skips entry and returns to the title via the terminal GAME OVER hold)
     key: 'high-score-qualify-enters',
     behavior:
-      'A qualifying end-of-game score routes game-over into the initials screen and ranks in; a sub-fifth score skips entry and returns to the title',
+      'A qualifying end-of-game score routes the death decision into the initials screen and ranks in; a sub-fifth score skips entry and returns to the title',
     playtestStep: 6,
     async drive(vm) {
       vm.greenFlag();
@@ -1147,11 +1169,13 @@ export const SCENARIOS = [
         writeVar(vm, 'other-score', otherScore);
         writeVar(vm, 'cabinet-two-player', twoPlayer);
         writeVar(vm, 'cabinet-curr-player', currPlayer);
+        writeVar(vm, 'eco-craft', 0); // no craft left: the death decision is terminal (reaches the route)
+        writeVar(vm, 'other-craft', 0); // and the other player is out too, so the 2P alternate path is skipped
         writeVar(vm, 'cabinet-entry-row', 0);
         writeVar(vm, 'cabinet-entry-player', 9); // sentinel: the routing must set it
-        writeVar(vm, 'game-director-state', 'game-over');
-        fireBroadcast(vm, 'game over complete');
-        step(vm, 6);
+        writeVar(vm, 'game-director-state', 'player-dead');
+        fireBroadcast(vm, 'death complete');
+        stepUntil(vm, (v) => state(v) === 'high-score-entry' || state(v) === 'title');
         return {
           state: state(vm),
           qualified: Number(readVar(vm, 'eco-qualified')),
@@ -1181,20 +1205,22 @@ export const SCENARIOS = [
       assert.equal(obs.skip.state, 'title', 'a sub-fifth score skips entry and returns to the title');
       assert.equal(obs.skip.qualified, 0, 'a sub-fifth score does not qualify');
     },
-    // Remove the game-over -> high-score-entry edge: the qualifying score's transition is then a no-op, so the
-    // cabinet never reaches the entry screen → the routing assertion fails. The sub-fifth -> title path (the
-    // separate game-over -> title edge) is untouched, so only the routing-to-entry behaviour breaks.
+    // Remove the player-dead -> high-score-entry edge: the qualifying score's transition is then a no-op, so the
+    // cabinet never reaches the entry screen → the routing assertion fails. The sub-fifth -> game-over -> title
+    // path is untouched, so only the routing-to-entry behaviour breaks.
     // roadmap-evidence: ECO-04 failure  (without the routing edge a qualifying score cannot reach the entry screen)
-    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'game-over -> high-score-entry'),
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> high-score-entry'),
   },
   {
-    // ECO-04 (economy.game-over-routing, slice 19): two-player SEQUENTIAL entry. At a two-player both-out the
-    // routing enters the CURRENT player first (rank in, arm `entry recheck`); on finish `_high_score_finish`
-    // consumes the flag, re-checks the OTHER player against the now-shifted fifth place, and re-arms the entry
-    // screen for them via a high-score-entry -> high-score-entry self-transition (so the PLAYER-2 tag re-reads
-    // `entry player`). The port batches the arcade's per-player-at-own-game-over entries at this single both-out
-    // point (recorded divergence). Both finishes here are the tenth-char Space finish; each typed name lands at
-    // its own rank. A boot step arms the key hats (keypress-hats-need-boot-step); the self-transition re-arms.
+    // ECO-04 (economy.game-over-routing, slice 19): two-player SEQUENTIAL entry. At a two-player both-out (state
+    // player-dead, both craft counters drained) the routing runs at the DEATH decision and enters the CURRENT
+    // player first (rank in, arm `entry recheck`) via player-dead -> high-score-entry; on finish
+    // `_high_score_finish` consumes the flag, re-checks the OTHER player against the now-shifted fifth place, and
+    // re-arms the entry screen for them via a high-score-entry -> high-score-entry self-transition (so the
+    // PLAYER-2 tag re-reads `entry player`). The port batches the arcade's per-player-at-own-game-over entries at
+    // this single both-out point (recorded divergence). Both finishes here are the tenth-char Space finish; each
+    // typed name lands at its own rank. A boot step arms the key hats (keypress-hats-need-boot-step); the
+    // self-transition re-arms.
     // roadmap-evidence: ECO-04 success  (both qualifying players enter sequentially — current first, then the
     //   other after a self-transition re-arm — and each typed name lands at its correct rank)
     key: 'high-score-two-player-both',
@@ -1214,30 +1240,34 @@ export const SCENARIOS = [
       writeVar(vm, 'other-score', 28000); // other player (player 1) — ranks at 5 after the first insert
       writeVar(vm, 'cabinet-two-player', 1);
       writeVar(vm, 'cabinet-curr-player', 0);
-      writeVar(vm, 'game-director-state', 'game-over');
-      fireBroadcast(vm, 'game over complete');
-      step(vm, 6);
+      writeVar(vm, 'eco-craft', 0); // both craft counters drained: terminal, both-out
+      writeVar(vm, 'other-craft', 0); // → the 2P alternate (hand-off) path is skipped, reaching the route
+      writeVar(vm, 'game-director-state', 'player-dead');
+      fireBroadcast(vm, 'death complete');
+      stepUntil(vm, (v) => state(v) === 'high-score-entry' || state(v) === 'title');
       const firstState = state(vm);
       const firstPlayer = Number(readVar(vm, 'cabinet-entry-player'));
       const firstRow = readVar(vm, 'cabinet-entry-row');
 
-      // Finish player 1's entry: ten 'A's (the active letter resets to A after each commit, so each cell is a
-      // bare Space). The tenth commit finishes and the recheck re-arms the screen for player 2.
-      writeVar(vm, 'cabinet-entry-char', 0);
-      for (let i = 0; i < 10; i += 1) tapKey(vm, ' ');
-      step(vm, 2); // let the self-transition settle into the second entry
+      // Finish player 1's entry: ten 'A's. Each cell's active letter is set explicitly (a commit resets the
+      // active letter to the blanked space), then Space commits it. The tenth commit finishes and the recheck
+      // re-arms the screen for player 2.
+      for (let i = 0; i < 10; i += 1) {
+        writeVar(vm, 'cabinet-entry-char', 0); // 'A'
+        tapKey(vm, ' ');
+      }
+      stepUntil(vm, (v) => state(v) === 'high-score-entry' || state(v) === 'title'); // settle into the second entry
       const midState = state(vm);
       const midPlayer = Number(readVar(vm, 'cabinet-entry-player'));
       const midRow = readVar(vm, 'cabinet-entry-row');
 
-      // Finish player 2's entry: ten 'B's (one Up then Space per cell). The tenth commit finishes with the
-      // recheck already consumed, so the cabinet returns to the attract cycle at the title.
-      writeVar(vm, 'cabinet-entry-char', 0);
+      // Finish player 2's entry: ten 'B's (set 'B' per cell, Space commit). The tenth commit finishes with the
+      // recheck already consumed, so the cabinet runs the terminal GAME OVER hold back to the title.
       for (let i = 0; i < 10; i += 1) {
-        tapKey(vm, 'ArrowUp');
+        writeVar(vm, 'cabinet-entry-char', 1); // 'B'
         tapKey(vm, ' ');
       }
-      step(vm, 2);
+      stepUntil(vm, (v) => state(v) === 'title');
       return {
         firstState,
         firstPlayer,
@@ -1305,11 +1335,10 @@ export const SCENARIOS = [
       writeVar(vm, 'invuln', 0);
       writeVar(vm, 'eco-craft', 1);
       seedCraftHit(vm);
-      let reachedTitle = false;
-      for (let i = 0; i < 20 && !reachedTitle; i += 1) {
-        step(vm, 1);
-        if (state(vm) === 'title') reachedTitle = true;
-      }
+      // The terminal death runs the best-five route at the death decision; a non-qualifying score (the fresh
+      // craft scores nothing) records the game-over outcome and transitions player-dead -> game-over, whose
+      // terminal hold returns to the title. stepUntil rides through the extra routing transition and the hold.
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
       return { reachedTitle };
     },
     assert(obs) {

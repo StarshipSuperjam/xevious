@@ -10338,11 +10338,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # Space commits the active letter. The ring is 1-based for letter-of (entry char 0 -> letter 1 = 'A'), so
     # append letter (entry char + 1) of the ring to `name buffer`; a space (ring index 26 -> letter 27) appends
     # a blank advance, which the name cells render as nothing (the sheet font has no space glyph) — faithful to
-    # the forward-only cursor that can advance past a space. Advance the cursor, reset the active letter to 'A'
-    # for the next cell, and finish on the tenth committed character (append_char advances the pointer and ends
-    # at the tenth, :1745-1769). `name buffer` is a plain string, so the append is a join and the compositor
-    # reads it a letter at a time. `change entry cell by 1` is used (NOT `set entry cell = add(...)`): a
-    # `set var = operator(...)` value-input is left unread by the runtime, `change ... by` evaluates.
+    # the forward-only cursor that can advance past a space. Advance the cursor, reset the active letter to SPACE
+    # (ring index 26) for the next cell — the arcade blanks each name cell to 0x24 before the joystick scrolls it
+    # (buffer pre-blanked at :1624-1628; inc from space wraps to 'A' at :1272-1290) — and finish on the tenth
+    # committed character (append_char advances the pointer and ends at the tenth, :1745-1769). `name buffer` is
+    # a plain string, so the append is a join and the compositor reads it a letter at a time. `change entry cell
+    # by 1` is used (NOT `set entry cell = add(...)`): a `set var = operator(...)` value-input is left unread by
+    # the runtime, `change ... by` evaluates.
     entry_space = blocks.key("space")
     entry_commit = [
         blocks.set_var_expr(
@@ -10357,7 +10359,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             ),
         ),
         blocks.change_var("entry cell", ENTRY_CELL_ID, 1),
-        blocks.set_var("entry char", ENTRY_CHAR_ID, number(0)),
+        blocks.set_var("entry char", ENTRY_CHAR_ID, number(ENTRY_RING_SIZE - 1)),
         blocks.if_reporter(
             blocks.op_not(
                 blocks.op_lt(variable("entry cell", ENTRY_CELL_ID), number(ENTRY_NAME_LEN))
@@ -10452,10 +10454,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
     # SOLO / one-player path (the ELSE branch): the existing decision from the craft counter (PLY-02) — a craft
-    # left means respawn; none left means game over. This is reached for a one-player game and for the last
-    # player of a two-player game (the other already out, so the alternate condition above is false). `death
-    # outcome` RECORDS the decision (kept, not removed, so the transition-cleanup opcode sequence and the
-    # reset-scope matrix stay byte-identical) — it is no longer the input.
+    # left means respawn; none left means the game is over. This is reached for a one-player game and for the
+    # last player of a two-player game (the other already out, so the alternate condition above is false). On
+    # the no-craft branch the ECO-04 best-five check + initials routing run HERE, at the death decision, BEFORE
+    # any GAME OVER hold — faithful to the arcade, which calls check_for_high_score the instant the game ends
+    # and reaches the game_over hold only after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
+    # RECORDS the decision (kept on both branches, not removed, so the transition-cleanup opcode sequence and
+    # the reset-scope matrix stay byte-identical) — it is no longer the input.
     decide = blocks.add("control_if_else")
     has_craft = blocks.greater(decide, "craft", LIVES_ID, 0)
     blocks.blocks[decide]["inputs"]["CONDITION"] = [2, has_craft]
@@ -10468,107 +10473,30 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.substack(
         decide,
-        [
-            blocks.set_var("death outcome", OUTCOME_ID, text("game-over")),
-            blocks.call_transition("game-over", "game-over"),
-        ],
+        _game_over_route(blocks),
         name="SUBSTACK2",
     )
     blocks.substack(alt, [decide], name="SUBSTACK2")
     blocks.chain(death, [blocks.if_state("player-dead", [alt])])
 
     game_over = blocks.receive("game over complete")
-    # ECO-04 best-five check + routing: qualified = the final score REACHES-OR-BEATS fifth place in the live
-    # high-score table (`>=`, a tie places — the arcade move_high_score_entry_down fall-through,
-    # xevious_main.68k:1653-1656). When nobody qualifies the cabinet returns straight to the attract cycle; when
-    # someone does, the game routes to the initials-entry screen (this slice makes that verdict ACT, where slice
-    # 18 only computed it).
-    # CAB-03 (slice 18): a two-player game reaches game-over only when the LAST player is out; at that point
-    # `score` is the last dier's (`curr player`) final and `other score` is the other player's final (frozen at
-    # their last swap-out). Either reaching fifth place qualifies, so the verdict is OR'd over both — but only
-    # when `two player` is set (a one-player game has no meaningful `other score`, so its arm is gated off and
-    # the verdict is exactly the one-player check).
-    fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
-    other_fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
-    set_qualified = blocks.set_var_expr(
-        "qualified",
-        QUALIFIED_ID,
-        blocks.op_or(
-            blocks.op_not(blocks.op_lt(variable("score", SCORE_ID), fifth_place)),
-            blocks.op_and(
-                blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
-                blocks.op_not(
-                    blocks.op_lt(variable("other score", OTHER_SCORE_ID), other_fifth_place)
-                ),
-            ),
-        ),
-    )
-    # ECO-04: the per-player routing. The verdict above gates it; inside, the CURRENT player (the last dier,
-    # `score`) enters FIRST when they reach fifth place — `rank in` places their score (blank name), `entry
-    # player`/`entry score` tag the entry screen, and `entry recheck = two player` arms the other-player
-    # re-check that `_high_score_finish` runs on finish (0 in a one-player game, so that game ends at the
-    # title). When the current player did NOT reach fifth place but the verdict still held, it was the OTHER
-    # player (a two-player both-out) — they enter directly with no further re-check. `rank cursor`-based `rank
-    # in` reads `entry score`; the entry scope reset (its own receiver) preserves `score`/the table so rank-in's
-    # read is intact. This batches the arcade's per-player-at-own-game-over entries at the port's single
-    # both-out point (recorded divergence, CAB-04 record).
-    cur_enters = blocks.add("control_if_else")
-    cur_cond = blocks.op_not(
-        blocks.op_lt(
-            variable("score", SCORE_ID),
-            blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5)),
-        )
-    )
-    blocks.blocks[cur_cond]["parent"] = cur_enters
-    blocks.blocks[cur_enters]["inputs"]["CONDITION"] = [2, cur_cond]
-    blocks.substack(
-        cur_enters,
-        [
-            blocks.set_var("entry score", ENTRY_SCORE_ID, variable("score", SCORE_ID)),
-            blocks.set_var("entry player", ENTRY_PLAYER_ID, variable("curr player", CURR_PLAYER_ID)),
-            blocks.call_proc(RANK_IN_PROCCODE, warp=True),
-            blocks.set_var("entry recheck", ENTRY_RECHECK_ID, variable("two player", TWO_PLAYER_ID)),
-            blocks.call_transition(HIGH_SCORE_ENTRY_STATE, "entry"),
-        ],
-    )
-    blocks.substack(
-        cur_enters,
-        [
-            blocks.set_var("entry score", ENTRY_SCORE_ID, variable("other score", OTHER_SCORE_ID)),
-            blocks.set_var_expr(
-                "entry player",
-                ENTRY_PLAYER_ID,
-                blocks.op_sub(number(1), variable("curr player", CURR_PLAYER_ID)),
-            ),
-            blocks.call_proc(RANK_IN_PROCCODE, warp=True),
-            blocks.set_var("entry recheck", ENTRY_RECHECK_ID, number(0)),
-            blocks.call_transition(HIGH_SCORE_ENTRY_STATE, "entry"),
-        ],
-        name="SUBSTACK2",
-    )
-    route = blocks.add("control_if_else")
-    route_cond = blocks.op_eq(variable("qualified", QUALIFIED_ID), number(1))
-    blocks.blocks[route_cond]["parent"] = route
-    blocks.blocks[route]["inputs"]["CONDITION"] = [2, route_cond]
-    blocks.substack(route, [cur_enters])
-    blocks.substack(
-        route,
-        [
-            # CAB-01: nobody qualifies — a finished real game returns the cabinet to its attract cycle; raise
-            # `attract` before the transition to the title so the following title hold launches a demo again.
-            blocks.set_var("attract", ATTRACT_ID, number(1)),
-            blocks.call_transition("title", "cold-start"),
-        ],
-        name="SUBSTACK2",
-    )
+    # ECO-04 (slice 19): the GAME OVER hold is now TERMINAL. The best-five check and the initials routing run
+    # earlier, at the DEATH decision (`death complete`, `_game_over_route`), so by the time the `game-over`
+    # state is reached the entry (if any) is already done — faithful to the arcade order (check_for_high_score
+    # the instant the game ends, name entry, THEN the game_over hold: xevious_main.68k:546, :1757-1769). Every
+    # path that reaches `game-over` ends here: a non-qualifying game routed straight from the death decision, or
+    # a qualifying game after `_high_score_finish` transitions out of the entry screen. The solvalou `over`
+    # block holds GAME OVER for 64 ticks and then broadcasts this; raise `attract` and return the cabinet to its
+    # attract cycle at the title (which is where `score` itself resets, cold-start), so the following title hold
+    # launches a demo again.
     blocks.chain(
         game_over,
         [
             blocks.if_state(
                 "game-over",
                 [
-                    set_qualified,
-                    route,
+                    blocks.set_var("attract", ATTRACT_ID, number(1)),
+                    blocks.call_transition("title", "cold-start"),
                 ],
             )
         ],
@@ -10954,7 +10882,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(
         entry_scope,
         [
-            blocks.set_var("entry char", ENTRY_CHAR_ID, number(0)),
+            # Start the first cell on SPACE (ring index 26), not 'A': the arcade blanks the whole name field to
+            # 0x24 at rank-in (:1624-1628) and shows a blank cursor cell until the joystick scrolls it.
+            blocks.set_var("entry char", ENTRY_CHAR_ID, number(ENTRY_RING_SIZE - 1)),
             blocks.set_var("name buffer", ENTRY_NAME_BUFFER_ID, text("")),
             blocks.set_var("entry cell", ENTRY_CELL_ID, number(0)),
             blocks.set_var("entry timer", ENTRY_TIMER_ID, number(ENTRY_TIMEOUT_FRAMES)),
@@ -11000,14 +10930,112 @@ def _attract_epoch_state(blocks: Blocks, state: str) -> str:
     return blocks.op_and(epoch, state_ok)
 
 
+def _game_over_route(blocks: Blocks) -> list[str]:
+    # ECO-04 (slice 19): the end-of-game best-five check + initials routing, run at the DEATH decision (the last
+    # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade, which
+    # calls check_for_high_score the instant the game ends and reaches the game_over hold only after name entry
+    # (xevious_main.68k:546 jra check_for_high_score; :1671-1672 a non-qualifier -> game_over; :1757-1769
+    # name_entry_finished -> game_over). `qualified` = the final score REACHES-OR-BEATS fifth place in the live
+    # table (`>=`, a tie places — the move_high_score_entry_down fall-through, :1653-1656), OR'd over the OTHER
+    # player in a two-player both-out; the second arm is gated off in a one-player game, where `other score` is
+    # meaningless (CAB-03: a two-player game reaches this point only when the LAST player is out, so `score` is
+    # the last dier's final and `other score` is the other player's final, frozen at their last swap-out).
+    #
+    # The verdict gates the routing. The CURRENT player (the last dier, `score`) enters FIRST when they reach
+    # fifth place — `rank in` places their score (blank name), `entry player`/`entry score` tag the entry
+    # screen, and `entry recheck = two player` arms the other-player re-check `_high_score_finish` runs on finish
+    # (0 in a one-player game, so that game's entry ends with the GAME OVER hold). When the current player did
+    # NOT reach fifth place but the verdict still held, it was the OTHER player (a two-player both-out) — they
+    # enter directly with no further re-check. `rank cursor`-based `rank in` reads `entry score`; the entry-scope
+    # reset preserves `score`/the table so rank-in's read is intact. This batches the arcade's
+    # per-player-at-own-game-over entries at the port's single both-out point (recorded divergence, CAB-04
+    # record). When NOBODY qualifies the game records the outcome and runs the GAME OVER hold, which on finish
+    # returns the cabinet to its attract cycle at the title.
+    fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
+    other_fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
+    set_qualified = blocks.set_var_expr(
+        "qualified",
+        QUALIFIED_ID,
+        blocks.op_or(
+            blocks.op_not(blocks.op_lt(variable("score", SCORE_ID), fifth_place)),
+            blocks.op_and(
+                blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
+                blocks.op_not(
+                    blocks.op_lt(variable("other score", OTHER_SCORE_ID), other_fifth_place)
+                ),
+            ),
+        ),
+    )
+    cur_enters = blocks.add("control_if_else")
+    cur_cond = blocks.op_not(
+        blocks.op_lt(
+            variable("score", SCORE_ID),
+            blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5)),
+        )
+    )
+    blocks.blocks[cur_cond]["parent"] = cur_enters
+    blocks.blocks[cur_enters]["inputs"]["CONDITION"] = [2, cur_cond]
+    blocks.substack(
+        cur_enters,
+        [
+            blocks.set_var("entry score", ENTRY_SCORE_ID, variable("score", SCORE_ID)),
+            blocks.set_var("entry player", ENTRY_PLAYER_ID, variable("curr player", CURR_PLAYER_ID)),
+            blocks.call_proc(RANK_IN_PROCCODE, warp=True),
+            blocks.set_var("entry recheck", ENTRY_RECHECK_ID, variable("two player", TWO_PLAYER_ID)),
+            blocks.call_transition(HIGH_SCORE_ENTRY_STATE, "entry"),
+        ],
+    )
+    blocks.substack(
+        cur_enters,
+        [
+            blocks.set_var("entry score", ENTRY_SCORE_ID, variable("other score", OTHER_SCORE_ID)),
+            blocks.set_var_expr(
+                "entry player",
+                ENTRY_PLAYER_ID,
+                blocks.op_sub(number(1), variable("curr player", CURR_PLAYER_ID)),
+            ),
+            blocks.call_proc(RANK_IN_PROCCODE, warp=True),
+            blocks.set_var("entry recheck", ENTRY_RECHECK_ID, number(0)),
+            blocks.call_transition(HIGH_SCORE_ENTRY_STATE, "entry"),
+        ],
+        name="SUBSTACK2",
+    )
+    route = blocks.add("control_if_else")
+    route_cond = blocks.op_eq(variable("qualified", QUALIFIED_ID), number(1))
+    blocks.blocks[route_cond]["parent"] = route
+    blocks.blocks[route]["inputs"]["CONDITION"] = [2, route_cond]
+    blocks.substack(route, [cur_enters])
+    blocks.substack(
+        route,
+        [
+            # Nobody qualifies: record the outcome (write-only, kept for opcode continuity with the respawn
+            # branch) and run the GAME OVER hold; its terminal receiver returns the cabinet to the title.
+            blocks.set_var("death outcome", OUTCOME_ID, text("game-over")),
+            blocks.call_transition("game-over", "game-over"),
+        ],
+        name="SUBSTACK2",
+    )
+    return [set_qualified, route]
+
+
 def _high_score_finish(blocks: Blocks) -> list[str]:
-    # CAB-04 (slice 19): commit the entered initials and leave the entry screen. Write the typed `name
-    # buffer` into the row `rank in` placed the score at — in place, faithful to the reference's name_entry_ptr
-    # (xevious_main.68k) — then raise `attract` and return the cabinet to its attract cycle at the title. This
-    # is reached both ways the arcade finishes name entry: the tenth committed character (the Space hat) and
-    # the fixed total-countdown expiry (the entry-timer loop), which commits whatever was typed so far
-    # (name_entry_finished :1757-1769). Each caller mints its own copy of these blocks (custom blocks have no
-    # shared bodies).
+    # CAB-04 (slice 19): commit the entered initials and leave the entry screen. First commit the IN-FLIGHT
+    # letter (the one the cursor is parked on but not yet Space-committed) when a cell is still active
+    # (`entry cell` < ENTRY_NAME_LEN): the arcade writes the current letter into the name buffer live as the
+    # joystick scrolls it (name_entry_inc_char/dec_char `move.b d0,(a0)`, xevious_main.68k:1272-1290,1239-1248),
+    # so a timeout keeps whatever letter was showing (name_entry_finished :1757-1769 just stops). The port's
+    # `name buffer` only grows on a Space commit, so without this append a timeout would drop the parked letter;
+    # the gate makes the timeout faithful. On the tenth-character Space finish `entry cell` has already reached
+    # ENTRY_NAME_LEN, so the gate is false and nothing is double-appended. Then write the typed `name buffer`
+    # into the row `rank in` placed the score at — in place, faithful to name_entry_ptr — and leave the screen.
+    # This is reached both ways the arcade finishes name entry: the tenth committed character (the Space hat) and
+    # the fixed total-countdown expiry (the entry-timer loop). Each caller mints its own copy of these blocks
+    # (custom blocks have no shared bodies).
+    #
+    # Leaving the screen runs the GAME OVER hold (`high-score-entry -> game-over`): faithful to the arcade, which
+    # reaches the game_over hold only after name entry (:1757-1769 name_entry_finished -> game_over). The hold's
+    # terminal receiver raises `attract` and returns to the title — so neither exit below raises `attract`
+    # itself; both just transition to `game-over`.
     #
     # ECO-04 (slice 19) two-player sequential entry: when `entry recheck` was armed (a two-player both-out where
     # the CURRENT player entered first), the OTHER player may still qualify now that this score has shifted the
@@ -11047,8 +11075,9 @@ def _high_score_finish(blocks: Blocks) -> list[str]:
     blocks.substack(
         other_enters,
         [
-            blocks.set_var("attract", ATTRACT_ID, number(1)),
-            blocks.call_transition("title", "cold-start"),
+            # The other player does not (also) qualify: the game is over — run the GAME OVER hold, whose terminal
+            # receiver raises `attract` and returns to the title.
+            blocks.call_transition("game-over", "game-over"),
         ],
         name="SUBSTACK2",
     )
@@ -11062,12 +11091,47 @@ def _high_score_finish(blocks: Blocks) -> list[str]:
     blocks.substack(
         recheck,
         [
-            blocks.set_var("attract", ATTRACT_ID, number(1)),
-            blocks.call_transition("title", "cold-start"),
+            # Nothing to re-check (one-player game, or the current player was the other player's re-check): the
+            # game is over — run the GAME OVER hold, whose terminal receiver raises `attract` and returns home.
+            blocks.call_transition("game-over", "game-over"),
         ],
         name="SUBSTACK2",
     )
+    # Commit-in-flight (faithful to `name_entry_finished`, xevious_main.68k:1757-1769): the arcade's inc/dec
+    # write the current letter straight into the name buffer (`move.b d0,(a0)`), so a finish — tenth-cell Space
+    # or timeout — keeps whatever letter the cursor is scrolled to. Here each Space commit appends the committed
+    # letter, but a finish can arrive while the player has scrolled a cell they have NOT yet Space-committed; this
+    # appends that one trailing in-flight letter so it is not lost. Gated on BOTH (a) there is still a free cell
+    # (`entry cell < ENTRY_NAME_LEN`) and (b) the active letter is a real scrolled glyph, not the blanked space
+    # the cursor rests on by default (`entry char != space index`, ring index ENTRY_RING_SIZE-1) — so a finish on
+    # an untouched/blank cell commits nothing, and the tenth-cell Space (which resets `entry char` to space and
+    # leaves `entry cell == ENTRY_NAME_LEN`) never double-appends.
+    commit_in_flight = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_lt(variable("entry cell", ENTRY_CELL_ID), number(ENTRY_NAME_LEN)),
+            blocks.op_not(
+                blocks.op_eq(
+                    variable("entry char", ENTRY_CHAR_ID),
+                    number(ENTRY_RING_SIZE - 1),
+                )
+            ),
+        ),
+        [
+            blocks.set_var_expr(
+                "name buffer",
+                ENTRY_NAME_BUFFER_ID,
+                blocks.op_join(
+                    variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                    blocks.op_letter_of(
+                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                        text(ENTRY_RING),
+                    ),
+                ),
+            )
+        ],
+    )
     return [
+        commit_in_flight,
         blocks.list_replace(
             "high score names",
             HIGH_SCORE_NAMES_ID,
@@ -15376,14 +15440,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
-                # CAB-04 (slice 19): a qualifying end-of-game score routes game-over -> high-score-entry (the
-                # initials screen) instead of straight to the title; on finish the entry returns to the title.
-                # A non-qualifying score keeps the existing game-over -> title edge above. The self-edge re-arms
-                # the entry screen for a SECOND qualifying player (ECO-04 two-player sequential entry): the
-                # finish re-fires `director reset` ("entry" scope) + `director enter`, re-spawning the clones so
-                # the static PLAYER-n tag re-reads `entry player`.
-                "game-over -> high-score-entry",
-                "high-score-entry -> title",
+                # CAB-04 / ECO-04 (slice 19): a qualifying FINAL score routes to the initials screen at the
+                # DEATH decision (player-dead -> high-score-entry), BEFORE the GAME OVER hold — faithful to the
+                # arcade order (check_for_high_score runs the moment the game ends, and the GAME OVER hold is
+                # reached only AFTER name entry: xevious_main.68k:546 jra check_for_high_score; :1671-1672 a
+                # non-qualifier -> game_over; :1757-1769 name_entry_finished -> game_over). A non-qualifying
+                # score takes the existing player-dead -> game-over edge above. On finish the entry runs the
+                # GAME OVER hold (high-score-entry -> game-over) and that terminal hold returns to the title
+                # (game-over -> title). The self-edge re-arms the entry screen for a SECOND qualifying player
+                # (ECO-04 two-player sequential entry): the finish re-fires `director reset` ("entry" scope) +
+                # `director enter`, re-spawning the clones so the static PLAYER-n tag re-reads `entry player`.
+                "player-dead -> high-score-entry",
+                "high-score-entry -> game-over",
                 "high-score-entry -> high-score-entry",
                 # CAB-01 attract cycle (title -> demo1 -> best-five -> demo2 -> title). The demo reuses the
                 # `playing` state under attract==1; a demo death routes by `attract stage`, and a coin during

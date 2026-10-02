@@ -1402,10 +1402,12 @@ class ScratchProjectTests(unittest.TestCase):
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
-                # CAB-04 (slice 19): a qualifying score routes game-over -> high-score-entry, then back to title.
+                # CAB-04 / ECO-04 (slice 19): a qualifying FINAL score routes to the initials screen at the DEATH
+                # decision (player-dead -> high-score-entry), BEFORE the GAME OVER hold; on finish the entry runs
+                # the GAME OVER hold (high-score-entry -> game-over) and that terminal hold returns to the title.
                 # The self-edge re-arms the screen for a second qualifying player (ECO-04 2P sequential entry).
-                "game-over -> high-score-entry",
-                "high-score-entry -> title",
+                "player-dead -> high-score-entry",
+                "high-score-entry -> game-over",
                 "high-score-entry -> high-score-entry",
                 # CAB-01 (slice 17) attract cycle: the demo reuses `playing` under attract==1.
                 "title -> playing",
@@ -16546,9 +16548,13 @@ class ScratchProjectTests(unittest.TestCase):
         if not role_dispatch:
             failures.add("hud-game-over-role-dispatch")
 
-        # Best-five check: `score > high score table item 5`, and the set-`qualified` that
-        # follows it reaches the transition-procedure call in the `game over complete` receiver
-        # (computed before the transition resets `reset scope` and, via cold-start, the score).
+        # Best-five check: `score >= high score table item 5`, and the set-`qualified` that
+        # follows it reaches the transition-procedure call in the `death complete` receiver — as of
+        # ECO-04 (slice 19) the best-five check and routing run at the DEATH decision, BEFORE the
+        # GAME OVER hold (faithful arcade order: check_for_high_score the instant the game ends, name
+        # entry, THEN the game_over hold — xevious_main.68k:546, :1757-1769), so the verdict is
+        # computed while `score` is still the final (cold-start, which resets it, is reached only via
+        # the terminal GAME OVER hold afterwards).
         def reachable(start) -> set:
             seen, stack = set(), [start] if start else []
             while stack:
@@ -16570,7 +16576,7 @@ class ScratchProjectTests(unittest.TestCase):
                 bid
                 for bid, b in stage_blocks.items()
                 if b["opcode"] == "event_whenbroadcastreceived"
-                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "game over complete"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death complete"
             ),
             None,
         )
@@ -16609,10 +16615,10 @@ class ScratchProjectTests(unittest.TestCase):
         if not compares_fifth:
             failures.add("qualified-compares-fifth-place")
 
-        # The set-`qualified` must still reach the transition procedure call — but as of CAB-04
-        # the routing that follows it is an if_else (qualify -> entry / else -> title), so the
-        # transition calls are nested in substacks, not on a linear next-chain. Walk the full
-        # reachable graph from the qualify block (next + substacks), as the `body` walk above does.
+        # The set-`qualified` must still reach the transition procedure call — the routing that
+        # follows it is an if_else (qualify -> entry / else -> game-over hold), so the transition
+        # calls are nested in substacks, not on a linear next-chain. Walk the full reachable graph
+        # from the qualify block (next + substacks), as the `body` walk above does.
         qualify_block = next(
             (
                 bid
@@ -17088,7 +17094,8 @@ class ScratchProjectTests(unittest.TestCase):
         #   finish wiring present; the harness high-score-entry-letters drives the Up/Down ring
         #   cycle incl. both-way wrap, the Space commit + cursor advance, and the tenth-char finish
         #   that lands the typed name in high score names[entry row]; high-score-entry-timeout runs
-        #   the fixed total countdown to zero and commits the partial, routing back to the title)
+        #   the fixed total countdown to zero, commits the in-flight letter, and routes through the
+        #   GAME OVER hold back to the title)
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._high_score_entry_failures(project))
 
@@ -17322,11 +17329,12 @@ class ScratchProjectTests(unittest.TestCase):
         """ECO-04 (slice 19) game-over ROUTING + two-player sequential entry — structure only
         (the live behaviour is the harness high-score-qualify-enters / high-score-two-player-both /
         high-score-non-qualify-skips scenarios). A qualifying end-of-game score no longer returns
-        straight to the title: the `game over complete` receiver ranks the qualifying score into the
-        live table and transitions to the initials-entry screen, arming `entry recheck` so a second
-        qualifying player (a two-player both-out) is re-checked and re-entered on finish via a
-        `high-score-entry -> high-score-entry` self-transition. This guard pins that wiring is present;
-        its negatives below prove each strand binds."""
+        straight to the title: at the DEATH decision (the `death complete` receiver, BEFORE the GAME
+        OVER hold — faithful arcade order, xevious_main.68k:546, :1757-1769) the routing ranks the
+        qualifying score into the live table and transitions to the initials-entry screen, arming
+        `entry recheck` so a second qualifying player (a two-player both-out) is re-checked and
+        re-entered on finish via a `high-score-entry -> high-score-entry` self-transition. This guard
+        pins that wiring is present; its negatives below prove each strand binds."""
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         sb = stage["blocks"]
@@ -17352,7 +17360,7 @@ class ScratchProjectTests(unittest.TestCase):
                 bid
                 for bid, b in sb.items()
                 if b["opcode"] == "event_whenbroadcastreceived"
-                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "game over complete"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death complete"
             ),
             None,
         )
@@ -17461,7 +17469,7 @@ class ScratchProjectTests(unittest.TestCase):
     def test_high_score_routing_negative_fixtures(self) -> None:
         # roadmap-evidence: ECO-04 failure  (each severing fixture makes the matching routing guard
         #   report its failure, and each harness routing scenario's negative — removing the
-        #   game-over -> high-score-entry edge, and the self-edge — stalls the behaviour it proves)
+        #   player-dead -> high-score-entry edge, and the self-edge — stalls the behaviour it proves)
         base = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._eco04_routing_failures(base))
 
@@ -18708,7 +18716,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "712b1180db237f11a843d82f3a44b0e417601356fc0fd2604dc6ff0f2e9bb93e",
+            "9955936414915a8d19e065c612fe0c6e0941b8b9aa440c91984ab8a646f40335",
             build_hash,
         )
 
