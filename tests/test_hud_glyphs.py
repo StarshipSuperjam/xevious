@@ -20,11 +20,17 @@ class HudGlyphsTests(unittest.TestCase):
 
     def test_manifest_and_committed_outputs_are_current(self) -> None:
         count = hg.check_repository()
-        # 51: the 33 HUD/credit/sound outputs + the 14 slice-17 CAB-01 attract overlays on
-        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels + best-five table)
+        # 77: the 33 HUD/credit/sound outputs + the 13 slice-17 CAB-01 attract overlays on
+        # start_screen (10 credit digits + CREDIT/PUSH START/INSERT COIN labels)
         # + the 2 slice-18 CAB-02 1P/2P start-selector labels ("1 PLAYER" / "2 PLAYERS")
-        # + the 2 slice-18 CAB-03 "GAME OVER PLAYER n" elimination-banner costumes on the HUD target.
-        self.assertEqual(51, count)
+        # + the 2 slice-18 CAB-03 "GAME OVER PLAYER n" elimination-banner costumes on the HUD target
+        # + the 27 slice-19 CAB-04 per-letter name-cell glyphs on start_screen (A-Z and "."), which
+        # render the LIVE best-five names/scores; the slice-17 single baked "best-five" table costume
+        # is retired (so the slice-17 attract overlay count drops 14 -> 13). 51 - 1 + 27 = 77.
+        # + the 4 slice-19 CAB-04 initials-entry screen costumes on start_screen (CONGRATULATIONS /
+        # ENTER YOUR INITIALS headers and the PLAYER 1 / PLAYER 2 tags), port-original UI text in the
+        # credited font at the SMALL_TEXT_GEOM cell (glyphs already in SHEET_TEXT_RECTS). 77 + 4 = 81.
+        self.assertEqual(81, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)

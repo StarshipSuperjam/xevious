@@ -457,10 +457,24 @@ REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABL
 QUALIFIED_ID = "eco-qualified"
 HIGH_SCORE_TABLE_ID = "eco-high-score-table"
 HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
-# The CAB-01 best-five table initials are project-original placeholders that live where they are
-# rendered — tools/hud_glyphs.py ATTRACT_DEFAULT_INITIALS — baked into the static 'best-five'
-# costume. game_director only switches the best-five clone to that pre-baked costume, so it holds
-# no copy of the initials here.
+# CAB-04/ECO-04 (slice 19): the LIVE best-five table's NAMES column, parallel to HIGH_SCORE_TABLE_ID's
+# scores. Five strings; a qualifying end-of-game score ranks into BOTH lists in lockstep (`rank in`), and
+# the player then types their ten initials into `high score names`[entry row] in place. The defaults are
+# this project's own placeholder initials — the SAME values tools/hud_glyphs.py ATTRACT_DEFAULT_INITIALS
+# renders in the (now live) best-five display. game_director does not import hud_glyphs (it owns blocks,
+# that module owns costumes — the solvalou/hud split), so the constant is declared locally and a
+# cross-module equality test (tests/test_game_director.py) pins the two equal so they never drift.
+HIGH_SCORE_NAMES_ID = "eco-high-score-names"
+HIGH_SCORE_NAME_DEFAULTS = ["STK", "M.N", "EVE", "S.O", "S.K"]
+# CAB-04 (slice 19): the rank-in insertion procedure. It reads the qualifying score from `entry score`
+# (set by the caller — the current player's `score` or the other player's `other score` — so one proc serves
+# both the 1P and the 2P-sequential pass; a no-arg warp proc like `score`, which reads `award value`, so the
+# harness can drive it with callProc). It walks the five ranks bottom-up, finds the highest rank the score
+# reaches-or-beats (`>=`, so a tie places, matching the arcade `move_high_score_entry_down` fall-through at
+# xevious_main.68k:1653-1656), shifts the scores AND names below it down one in lockstep (dropping the old
+# fifth), inserts the score with a BLANK name at that rank, and records the rank in `entry row` so the entry
+# screen writes the typed name in place. Stage-owned, so the two lists stay Stage-written only.
+RANK_IN_PROCCODE = "rank in"
 
 # AREA-01 area scroll clock (docs/spec/area-progression-and-terrain.md, locked). One
 # monotonic per-area position drives the terrain, the object scheduler, and the area loop.
@@ -1058,10 +1072,21 @@ ATTRACT_PILOT_DIR_HOLD_TICKS = 8  # = 16 arcade frames // 2 frames-per-tick
 ATTRACT_DISPLAY_ROLE_ID = "attract-display-role"
 ATTRACT_DISPLAY_PLACE_ID = "attract-display-place"
 ATTRACT_DISPLAY_DIVISOR_ID = "attract-display-divisor"
+ATTRACT_DISPLAY_ROW_ID = "attract-display-row"  # CAB-04: a table cell's best-five row (1..5)
+ATTRACT_DISPLAY_CHAR_ID = "attract-display-char"  # CAB-04: a name cell's current letter, cached per tick
 ATTRACT_ROLE_CREDIT_LABEL = 1  # the static "CREDIT" word
 ATTRACT_ROLE_CREDIT_DIGIT = 2  # one credit-counter digit (reads `credits`); place 0 = units
 ATTRACT_ROLE_PROMPT = 3  # flashing PUSH START (credits>=1) / INSERT COIN (credits==0)
-ATTRACT_ROLE_BEST_FIVE = 4  # the static default best-five table
+# CAB-04 (slice 19): the LIVE best-five table. Role 4 (the single pre-baked `best-five` costume) is
+# retired — an arbitrary live table and typed names cannot be pre-rendered, so each cell is its own
+# per-glyph clone (the HUD score-digit idiom), reading the two Stage lists. Three cell roles, one per
+# column kind: a rank digit (= the row number), up to ten name letters (letter-of-string over
+# `high score names`), and the seven score digits (digit-of-number over `high score table`). Each cell
+# snapshots its row (1..5) and place at creation and re-reads its list every tick while in
+# attract-scores, so the display tracks a score that ranks in mid-session.
+ATTRACT_ROLE_TABLE_RANK = 7  # one best-five rank digit (costume digit/<row>)
+ATTRACT_ROLE_TABLE_NAME = 8  # one best-five name letter (letter `place` of names[row])
+ATTRACT_ROLE_TABLE_SCORE = 9  # one best-five score digit (digit `place` of table[row])
 ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
 # Project-defined placement (stage -240..240 x, -180..180 y, +y up); the operator fine-tunes exact
 # placement at playtest, exactly as the ECO-02 HUD layout notes (no reference basis for the port's own
@@ -1079,12 +1104,27 @@ ATTRACT_CREDIT_DIGIT_SPACING = 17  # one monospace pitch (SMALL_TEXT_GEOM advanc
 ATTRACT_PROMPT_X = 0
 ATTRACT_PROMPT_Y = -118
 ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
-ATTRACT_BEST_FIVE_X = 0
-ATTRACT_BEST_FIVE_Y = 0
+# CAB-04 (slice 19): the live best-five grid. Five rows, each laid out as a monospace cell line at the
+# SMALL_TEXT_GEOM pitch (17px advance, matching the credit digits): a rank digit, a two-cell gap, up to
+# ten name letters, a one-cell gap, then the seven leading-zero score digits (HUD_DIGIT_PLACES). The
+# whole 20-cell line is centred on x=0 (cell 9.5) and the five rows are centred on y=0. Project-defined
+# placement, operator-tunable at playtest exactly like the credit line (no reference basis for the port's
+# own text geometry); the resolver pins only the structure, never the pixels/layout.
+ATTRACT_TABLE_ROWS = 5
+ATTRACT_TABLE_NAME_CELLS = 10  # ten-character names (xevious_ram.68k name field is ds.b 10)
+ATTRACT_TABLE_SCORE_CELLS = HUD_DIGIT_PLACES  # seven leading-zero digits, matching the HUD score row
+ATTRACT_TABLE_CELL_PITCH_X = 17  # SMALL_TEXT_GEOM advance (119 native / downscale 7)
+ATTRACT_TABLE_ROW_PITCH_Y = 20  # 16px glyph + 4px gap between rows
+ATTRACT_TABLE_RANK_COL = 0  # the rank digit sits at the leftmost cell
+ATTRACT_TABLE_NAME_COL0 = 2  # name letter 0 starts after a two-cell gap
+ATTRACT_TABLE_SCORE_COL0 = 13  # the most-significant score digit, after a one-cell gap past the names
+ATTRACT_TABLE_CENTER_COL = 9.5  # the 20-cell line (cols 0..19) is centred on x=0
+ATTRACT_TABLE_CENTER_Y = 0  # the five rows are centred vertically on y=0
 ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
 ATTRACT_COSTUME_PUSH_START = "push-start"
 ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
-ATTRACT_COSTUME_BEST_FIVE = "best-five"
+ATTRACT_GLYPH_PREFIX = "glyph/"  # per-letter name-cell costumes glyph/<A-Z> and glyph/. (sheet font)
+ATTRACT_DIGIT_PREFIX = "digit/"  # per-digit rank/score-cell costumes digit/<0-9> (shared with credits)
 # CAB-02 (cabinet.two-player, slice 18): the title 1P/2P selector display. Two more start_screen clone
 # roles — one per option label (tools/hud_glyphs.py ATTRACT_SELECTOR_LABELS) — spawned at the title beside
 # the CREDIT line and PUSH START prompt. Both labels always show so the choice is discoverable; the clone
@@ -1102,6 +1142,44 @@ ATTRACT_SELECTOR_X = 0
 ATTRACT_SELECTOR_1P_Y = -72  # stacked above the PUSH START prompt (-118), below the centred logo
 ATTRACT_SELECTOR_2P_Y = -94  # one ~22px line-pitch below the 1P label (16px glyph + gap)
 ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed (selected) option
+# CAB-04 (cabinet.high-scores, slice 19): the initials-entry screen. A NEW `game state` the game-over
+# routing enters when a score ranks in. The player cycles the active letter with Up/Down over a 27-symbol
+# ring (A-Z then space, wrapping both ways) and commits each with Space — forward-only, no cursor-back,
+# matching the arcade (xevious_main.68k:1736-1795). Four new start_screen clone roles dress the screen: the
+# CONGRATULATIONS header, the ENTER YOUR INITIALS sub-header, the PLAYER-n tag (two-player only), and ten
+# name cells that render the in-progress `name buffer` a letter at a time (the per-glyph idiom the live
+# best-five table uses). The active cell ghost-pulses off the entry timer, so the cursor is visible without
+# a new cursor glyph.
+HIGH_SCORE_ENTRY_STATE = "high-score-entry"
+ENTRY_RING = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "  # 27 symbols: A-Z (ring 1..26) then space (ring 27)
+ENTRY_RING_SIZE = 27
+ENTRY_NAME_LEN = 10  # ten characters (move.b #10,(name_entry_char_cnt) xevious_main.68k:1700; name field ds.b 10)
+# A fixed TOTAL countdown armed once at entry start and decremented one per frame — NOT an idle reset: the
+# reference seeds countdown_timer_1 = 0x80 once (xevious_main.68k:1701) and decrements it unconditionally
+# every 32 frames at 60fps (:1721-1728), with no input path (:1736-1781) resetting it. 0x80 * 32 / 60 ~= 68s.
+# The port halves arcade frame counts to its 30fps ticks (one port tick == two arcade frames, like
+# BANNER_HOLD_TICKS), so the faithful port count is 4096 / 2 = 2048 frames ~= 68s at the 30fps step. The
+# countdown loop paces one decrement per frame (a wait-0 per iteration), so this is that frame count.
+ENTRY_TIMEOUT_FRAMES = 2048
+ENTRY_PULSE_DIV = 8  # active-cell ghost pulse half-period in frames (floor(entry timer / 8) parity)
+ENTRY_PULSE_GHOST = 50  # ghost amount on the pulse's "off" half (the cursor dims, never vanishes)
+ATTRACT_ROLE_ENTRY_NAME = 10  # one initials-entry name cell (place 1..10)
+ATTRACT_ROLE_ENTRY_HEADER = 11  # the CONGRATULATIONS header
+ATTRACT_ROLE_ENTRY_SUBHEADER = 12  # the ENTER YOUR INITIALS sub-header
+ATTRACT_ROLE_ENTRY_PLAYER = 13  # the PLAYER-n tag (two-player only)
+ATTRACT_COSTUME_ENTRY_HEADER = "entry-congrats"
+ATTRACT_COSTUME_ENTRY_SUBHEADER = "entry-initials"
+ATTRACT_COSTUME_ENTRY_PLAYER_1 = "entry-player-1"
+ATTRACT_COSTUME_ENTRY_PLAYER_2 = "entry-player-2"
+# Entry-screen placement (project-defined, operator-tunable at playtest exactly like the rest of the attract
+# geometry — the resolver pins only the structure, never the pixels). The ten name cells sit on one centred
+# monospace line at the SMALL_TEXT_GEOM pitch, with the two headers and the PLAYER-n tag stacked above.
+ATTRACT_ENTRY_HEADER_Y = 110
+ATTRACT_ENTRY_SUBHEADER_Y = 78
+ATTRACT_ENTRY_PLAYER_Y = 40
+ATTRACT_ENTRY_CELLS_Y = -20
+ATTRACT_ENTRY_CELL_PITCH_X = 17  # SMALL_TEXT_GEOM advance (119 native / downscale 7), matching the table
+ATTRACT_ENTRY_CENTER_CELL = 4.5  # the ten cells (0..9) are centred on x=0
 # CAB-03 (cabinet.two-player, slice 18): two-player alternation state. `curr player` (0/1) is the active
 # player index; `two player` (0/1) marks a two-player game. Both are director-control state the HUD READS
 # (the 1UP/2UP label + column, the 2UP-row gating) but NO sprite writes — write-forbidden below, exactly
@@ -1130,6 +1208,34 @@ START_SELECTION_ID = "cabinet-start-selection"
 BANNER_PLAYER_ID = "cabinet-banner-player"
 BANNER_PLAYER_NONE = -1
 BANNER_HOLD_TICKS = GAME_OVER_HOLD_TICKS  # 64 port ticks == the arcade 128-frame GAME OVER PLAYER n dwell
+# CAB-04 (cabinet.high-scores, slice 19): the high-score initials-entry machinery — all Stage-written, read
+# by the entry-screen compositor clones (sprites), never sprite-written. They are the entry screen's working
+# and UI registers, the same stance as `start selection` / `attract epoch`: transient, not durable game
+# state. `entry char` is the current letter's index into the 27-symbol ring (0..25 = A..Z, 26 = space);
+# `name buffer` is the committed initials so far, a STRING the compositor renders a letter at a time (never a
+# Stage-list surface); `entry cell` is the 0..9 cursor/count; `entry row` is the table rank `rank in` placed
+# the score at (so the typed name is written into `high score names`[entry row] in place); `entry player` is
+# which player (0/1) is entering, for the PLAYER-n tag and the 2P sequential pass; `entry timer` is the fixed
+# TOTAL countdown armed once at entry start and decremented unconditionally — NOT an idle timeout (the
+# reference `countdown_timer_1` is seeded once at xevious_main.68k:1701 and decremented at :1721-1728 with no
+# input reset). `rank cursor` is the single scratch loop register `rank in` needs (custom blocks have no
+# locals), like `swap tmp`. These six entry vars are their OWN classification category (added to
+# `director_variable_ids` so no sprite may write them, like the area/difficulty/player-context state); the
+# loop-scratch `rank cursor` is plain machinery. `entry score` is the qualifying score `rank in` reads (set
+# by the caller to `score` or `other score`); entry machinery too.
+ENTRY_CHAR_ID = "cabinet-entry-char"
+ENTRY_NAME_BUFFER_ID = "cabinet-entry-name-buffer"
+ENTRY_CELL_ID = "cabinet-entry-cell"
+ENTRY_ROW_ID = "cabinet-entry-row"
+ENTRY_PLAYER_ID = "cabinet-entry-player"
+ENTRY_TIMER_ID = "cabinet-entry-timer"
+ENTRY_SCORE_ID = "cabinet-entry-score"
+# ECO-04 (slice 19): a one-shot flag the game-over routing sets when a SECOND player's score may still
+# qualify after the first finishes entering (a two-player both-out). `_high_score_finish` consumes it (sets it
+# back to 0) and re-checks the other player against the now-updated fifth place, re-arming the entry screen for
+# them via a `high-score-entry -> high-score-entry` self-transition. Entry machinery too (director-owned).
+ENTRY_RECHECK_ID = "cabinet-entry-recheck"
+RANK_CURSOR_ID = "cabinet-rank-cursor"
 # The per-player context, faithful to the arcade's swapped 64-byte block (swap_curr_other_player,
 # xevious_main 671-679). The port keeps the CURRENT player in the existing live vars and one `other <x>`
 # shadow per persistent per-player field holding the INACTIVE player's saved value. `swap players` exchanges
@@ -3434,6 +3540,22 @@ class Blocks:
         block_id = self.add("operator_join")
         inputs: dict[str, Any] = {}
         for slot, spec in (("STRING1", a), ("STRING2", b)):
+            if isinstance(spec, str):
+                inputs[slot] = [2, spec]
+                self.blocks[spec]["parent"] = block_id
+            else:
+                inputs[slot] = spec
+        self.blocks[block_id]["inputs"] = inputs
+        return block_id
+
+    def op_letter_of(self, letter: Any, string: Any) -> str:
+        # `operator_letter_of`: the 1-based LETTER index and the STRING it indexes. scratch-vm
+        # returns "" when the index is past the string's end, which the name cells rely on to
+        # blank unused cells. Both operands take a value-input spec (number()/variable()) or a
+        # nested reporter's block id (str), wired like op_join's STRING1/STRING2.
+        block_id = self.add("operator_letter_of")
+        inputs: dict[str, Any] = {}
+        for slot, spec in (("LETTER", letter), ("STRING", string)):
             if isinstance(spec, str):
                 inputs[slot] = [2, spec]
                 self.blocks[spec]["parent"] = block_id
@@ -9776,6 +9898,97 @@ def install_copy_players(blocks: Blocks) -> None:
     )
 
 
+def install_rank_in(blocks: Blocks) -> None:
+    # CAB-04/ECO-04 (cabinet.high-scores, slice 19): rank a qualifying score into the LIVE best-five table.
+    # Reads `entry score` (the caller sets it to the current player's `score` or the other player's `other
+    # score`, so one proc serves both the 1P and the 2P-sequential pass). Pass 1 scans ranks 5..1 and keeps
+    # the SMALLEST rank the score reaches-or-beats (`>=`, a tie places — the arcade move_high_score_entry_down
+    # fall-through, xevious_main.68k:1653-1656); `entry row` = 0 means it did not place (the routing then skips
+    # the entry screen). Pass 2, only when it placed, shifts the scores AND names below that rank down one in
+    # lockstep (bottom-up so nothing is clobbered before it is copied, dropping the old fifth) and inserts the
+    # score with a BLANK name, leaving `entry row` for the entry screen to write the typed name in place.
+    # Numeric compare replaces the reference's BCD byte compare — observationally identical on these values.
+    # Warp, Stage-owned (`rank cursor` is the single scratch loop register, custom blocks have no locals).
+    definition = _install_warp_proc(blocks, RANK_IN_PROCCODE)
+
+    # Pass 1 — find the insertion rank (scan ranks 5..1; cursor starts at 5 and counts down).
+    find = blocks.add("control_repeat", inputs={"TIMES": number(5)})
+    reaches = blocks.op_not(
+        blocks.op_lt(
+            variable("entry score", ENTRY_SCORE_ID),
+            blocks.list_item(
+                "high score table", HIGH_SCORE_TABLE_ID, variable("rank cursor", RANK_CURSOR_ID)
+            ),
+        )
+    )
+    note_rank = blocks.if_reporter(
+        reaches,
+        [blocks.set_var("entry row", ENTRY_ROW_ID, variable("rank cursor", RANK_CURSOR_ID))],
+    )
+    blocks.substack(find, [note_rank, blocks.change_var("rank cursor", RANK_CURSOR_ID, -1)])
+
+    # Pass 2 — shift down + insert. The shift loop walks cursor 5..2, moving item(cursor) <- item(cursor-1)
+    # for every rank strictly below the insertion point (cursor > entry row), bottom-up.
+    shift = blocks.add("control_repeat", inputs={"TIMES": number(4)})
+    move_down = blocks.if_reporter(
+        blocks.op_gt(
+            variable("rank cursor", RANK_CURSOR_ID), variable("entry row", ENTRY_ROW_ID)
+        ),
+        [
+            blocks.list_replace(
+                "high score table",
+                HIGH_SCORE_TABLE_ID,
+                variable("rank cursor", RANK_CURSOR_ID),
+                blocks.list_item(
+                    "high score table",
+                    HIGH_SCORE_TABLE_ID,
+                    blocks.op_sub(variable("rank cursor", RANK_CURSOR_ID), number(1)),
+                ),
+            ),
+            blocks.list_replace(
+                "high score names",
+                HIGH_SCORE_NAMES_ID,
+                variable("rank cursor", RANK_CURSOR_ID),
+                blocks.list_item(
+                    "high score names",
+                    HIGH_SCORE_NAMES_ID,
+                    blocks.op_sub(variable("rank cursor", RANK_CURSOR_ID), number(1)),
+                ),
+            ),
+        ],
+    )
+    blocks.substack(shift, [move_down, blocks.change_var("rank cursor", RANK_CURSOR_ID, -1)])
+    placed = blocks.if_reporter(
+        blocks.op_gt(variable("entry row", ENTRY_ROW_ID), number(0)),
+        [
+            blocks.set_var("rank cursor", RANK_CURSOR_ID, number(5)),
+            shift,
+            blocks.list_replace(
+                "high score table",
+                HIGH_SCORE_TABLE_ID,
+                variable("entry row", ENTRY_ROW_ID),
+                variable("entry score", ENTRY_SCORE_ID),
+            ),
+            blocks.list_replace(
+                "high score names",
+                HIGH_SCORE_NAMES_ID,
+                variable("entry row", ENTRY_ROW_ID),
+                text(""),
+            ),
+        ],
+    )
+
+    blocks.chain(
+        definition,
+        [
+            blocks.set_var("entry row", ENTRY_ROW_ID, number(0)),
+            blocks.set_var("rank cursor", RANK_CURSOR_ID, number(5)),
+            find,
+            placed,
+        ],
+    )
+
+
 def install_score(blocks: Blocks) -> None:
     # ECO-01: the single scoring path everything routes through, so scoring can never
     # double-count or bypass the cap. Add the pending award to the score, pin it at the
@@ -9966,6 +10179,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_attract_pilot(blocks)  # CAB-01 auto-pilot (cabinet.attract-credits, slice 17)
     install_swap_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
     install_copy_players(blocks)  # CAB-03 (cabinet.two-player, slice 18) — no trigger yet (C1)
+    install_rank_in(blocks)  # CAB-04 (cabinet.high-scores, slice 19) — routing caller wired in C4
 
     flag = blocks.flag()
     blocks.chain(
@@ -10091,6 +10305,70 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.chain(space, [blocks.if_state("title", [one_player_start, two_player_start])])
 
+    # CAB-04 (slice 19): the initials-entry input. Each hat is gated `if_state("high-score-entry")`, the
+    # isolation that keeps it from colliding with the title selector (title-gated, above) or the craft
+    # movement (playing-gated, in solvalou_blocks) — Scratch fires every matching hat, so the state gate is
+    # what makes these fire only on the entry screen. Up/Down cycle the active letter over the 27-symbol ring
+    # (A-Z then space), wrapping both ways: Scratch's operator_mod is a floored mod, so (char - 1) mod 27 of 0
+    # is 26 (space) and (char + 1) mod 27 of 26 is 0 (A), giving the arcade's both-way wrap at the ring limits
+    # (xevious_main.68k:1736-1744,1773-1781) in one expression.
+    for key, delta in (("up arrow", 1), ("down arrow", -1)):
+        arrow = blocks.key(key)
+        blocks.chain(
+            arrow,
+            [
+                blocks.if_state(
+                    HIGH_SCORE_ENTRY_STATE,
+                    [
+                        blocks.set_var_expr(
+                            "entry char",
+                            ENTRY_CHAR_ID,
+                            blocks.op_mod(
+                                blocks.op_add(
+                                    variable("entry char", ENTRY_CHAR_ID), number(delta)
+                                ),
+                                number(ENTRY_RING_SIZE),
+                            ),
+                        )
+                    ],
+                )
+            ],
+        )
+
+    # Space commits the active letter. The ring is 1-based for letter-of (entry char 0 -> letter 1 = 'A'), so
+    # append letter (entry char + 1) of the ring to `name buffer`; a space (ring index 26 -> letter 27) appends
+    # a blank advance, which the name cells render as nothing (the sheet font has no space glyph) — faithful to
+    # the forward-only cursor that can advance past a space. Advance the cursor, reset the active letter to SPACE
+    # (ring index 26) for the next cell — the arcade blanks each name cell to 0x24 before the joystick scrolls it
+    # (buffer pre-blanked at :1624-1628; inc from space wraps to 'A' at :1777-1779) — and finish on the tenth
+    # committed character (append_char advances the pointer and ends at the tenth, :1745-1769). `name buffer` is
+    # a plain string, so the append is a join and the compositor reads it a letter at a time. `change entry cell
+    # by 1` is used (NOT `set entry cell = add(...)`): a `set var = operator(...)` value-input is left unread by
+    # the runtime, `change ... by` evaluates.
+    entry_space = blocks.key("space")
+    entry_commit = [
+        blocks.set_var_expr(
+            "name buffer",
+            ENTRY_NAME_BUFFER_ID,
+            blocks.op_join(
+                variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                blocks.op_letter_of(
+                    blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                    text(ENTRY_RING),
+                ),
+            ),
+        ),
+        blocks.change_var("entry cell", ENTRY_CELL_ID, 1),
+        blocks.set_var("entry char", ENTRY_CHAR_ID, number(ENTRY_RING_SIZE - 1)),
+        blocks.if_reporter(
+            blocks.op_not(
+                blocks.op_lt(variable("entry cell", ENTRY_CELL_ID), number(ENTRY_NAME_LEN))
+            ),
+            _high_score_finish(blocks),
+        ),
+    ]
+    blocks.chain(entry_space, [blocks.if_state(HIGH_SCORE_ENTRY_STATE, entry_commit)])
+
     # AUDIO: sound-only receiver for the shot×Bacura bounce. The bounce runs on a blaster clone
     # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
     # and the Stage plays BACURA_HIT_SND here (src deactivate_shot xevious_main.68k:2559).
@@ -10176,10 +10454,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
     # SOLO / one-player path (the ELSE branch): the existing decision from the craft counter (PLY-02) — a craft
-    # left means respawn; none left means game over. This is reached for a one-player game and for the last
-    # player of a two-player game (the other already out, so the alternate condition above is false). `death
-    # outcome` RECORDS the decision (kept, not removed, so the transition-cleanup opcode sequence and the
-    # reset-scope matrix stay byte-identical) — it is no longer the input.
+    # left means respawn; none left means the game is over. This is reached for a one-player game and for the
+    # last player of a two-player game (the other already out, so the alternate condition above is false). On
+    # the no-craft branch the ECO-04 best-five check + initials routing run HERE, at the death decision, BEFORE
+    # any GAME OVER hold — faithful to the arcade, which calls check_for_high_score the instant the game ends
+    # and reaches the game_over hold only after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
+    # RECORDS the decision (kept on both branches, not removed, so the transition-cleanup opcode sequence and
+    # the reset-scope matrix stay byte-identical) — it is no longer the input.
     decide = blocks.add("control_if_else")
     has_craft = blocks.greater(decide, "craft", LIVES_ID, 0)
     blocks.blocks[decide]["inputs"]["CONDITION"] = [2, has_craft]
@@ -10192,48 +10473,28 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     )
     blocks.substack(
         decide,
-        [
-            blocks.set_var("death outcome", OUTCOME_ID, text("game-over")),
-            blocks.call_transition("game-over", "game-over"),
-        ],
+        _game_over_route(blocks),
         name="SUBSTACK2",
     )
     blocks.substack(alt, [decide], name="SUBSTACK2")
     blocks.chain(death, [blocks.if_state("player-dead", [alt])])
 
     game_over = blocks.receive("game over complete")
-    # ECO-04 best-five check: qualified = the final score beats fifth place in the ingested high-score table.
-    # A verdict only (the initials-entry screen a qualifying score would show is deferred to the cabinet-flow
-    # slice, 19) — computed here, before the transition back to title resets `reset scope` and (via the
-    # cold-start scope) the score itself.
-    # CAB-03 (slice 18): a two-player game reaches game-over only when the LAST player is out; at that point
-    # `score` is the last dier's final and `other score` is the other player's final (frozen at their last
-    # swap-out). Either beating fifth place qualifies, so the verdict is OR'd over both — but only when
-    # `two player` is set (a one-player game has no meaningful `other score`, so its arm is gated off and the
-    # verdict is exactly the one-player check). The per-player initials-entry that distinguishes WHICH player
-    # qualified is slice-19 work; this slice computes the single game verdict only.
-    fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
-    other_fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
-    set_qualified = blocks.set_var_expr(
-        "qualified",
-        QUALIFIED_ID,
-        blocks.op_or(
-            blocks.op_gt(variable("score", SCORE_ID), fifth_place),
-            blocks.op_and(
-                blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
-                blocks.op_gt(variable("other score", OTHER_SCORE_ID), other_fifth_place),
-            ),
-        ),
-    )
+    # ECO-04 (slice 19): the GAME OVER hold is now TERMINAL. The best-five check and the initials routing run
+    # earlier, at the DEATH decision (`death complete`, `_game_over_route`), so by the time the `game-over`
+    # state is reached the entry (if any) is already done — faithful to the arcade order (check_for_high_score
+    # the instant the game ends, name entry, THEN the game_over hold: xevious_main.68k:546, :1757-1769). Every
+    # path that reaches `game-over` ends here: a non-qualifying game routed straight from the death decision, or
+    # a qualifying game after `_high_score_finish` transitions out of the entry screen. The solvalou `over`
+    # block holds GAME OVER for 64 ticks and then broadcasts this; raise `attract` and return the cabinet to its
+    # attract cycle at the title (which is where `score` itself resets, cold-start), so the following title hold
+    # launches a demo again.
     blocks.chain(
         game_over,
         [
             blocks.if_state(
                 "game-over",
                 [
-                    set_qualified,
-                    # CAB-01: a finished real game returns the cabinet to its attract cycle — raise `attract`
-                    # before the transition to the title so the following title hold launches a demo again.
                     blocks.set_var("attract", ATTRACT_ID, number(1)),
                     blocks.call_transition("title", "cold-start"),
                 ],
@@ -10281,6 +10542,39 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
     blocks.chain(attract_enter, [attract_snapshot, title_hold, scores_hold])
+
+    # CAB-04 (slice 19): the fixed TOTAL entry countdown — its own `director enter` receiver (the attract-hold
+    # pattern). On entering high-score-entry it counts `entry timer` (armed by the entry-scope reset) down one
+    # per frame and finishes when it reaches zero, committing whatever was typed (name_entry_finished
+    # xevious_main.68k:1757-1769). It is NOT idle-reset: no input path touches `entry timer`, so the ~68s is
+    # fixed from entry start. The loop paces real frames (a wait-0 per iteration, the hold_frames idiom) and is
+    # safe to pace here — the Stage walk runs only while `playing`, so outside play there is nothing to
+    # throttle. The `broadcast and wait` inside `_high_score_finish` runs in this non-warp thread (the coin-abort
+    # precedent). The loop exits the moment the state leaves high-score-entry — on this finish, or on the Space
+    # hat's tenth-char finish — so there is no double commit (the loser's next condition check exits first).
+    entry_enter = blocks.receive("director enter")
+    countdown = blocks.add("control_repeat_until")
+    blocks.blocks[countdown]["inputs"]["CONDITION"] = [
+        2,
+        blocks.not_state(countdown, HIGH_SCORE_ENTRY_STATE),
+    ]
+    timer_branch = blocks.add("control_if_else")
+    timer_done = blocks.op_not(
+        blocks.op_gt(variable("entry timer", ENTRY_TIMER_ID), number(0))
+    )
+    blocks.blocks[timer_done]["parent"] = timer_branch
+    blocks.blocks[timer_branch]["inputs"]["CONDITION"] = [2, timer_done]
+    blocks.substack(timer_branch, _high_score_finish(blocks))
+    blocks.substack(
+        timer_branch,
+        [
+            blocks.change_var("entry timer", ENTRY_TIMER_ID, -1),
+            blocks.add("control_wait", inputs={"DURATION": number(0)}),
+        ],
+        name="SUBSTACK2",
+    )
+    blocks.substack(countdown, [timer_branch])
+    blocks.chain(entry_enter, [blocks.if_state(HIGH_SCORE_ENTRY_STATE, [countdown])])
 
     enter = blocks.receive("director enter")
     start_sound = blocks.add(
@@ -10438,14 +10732,24 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # and starts the frame clock at zero.
     stage_reset = blocks.receive("director reset")
     # High score is the RUNNING best: it persists across a new game and is restored to the
-    # default top entry only at cold start (power-on). Score restarts every new game.
+    # best-five table's TOP entry only at cold start (power-on / return-to-attract). Score restarts every
+    # new game. CAB-04 (slice 19) coherence fix: seed from `high score table` item 1, NOT a fixed constant —
+    # verified faithful at init_high_score_table (xevious_main.68k:1565-1576), where the displayed high score
+    # and the table-top default are the SAME value by construction and the displayed value tracks the running
+    # max, never reverting to a constant mid-session. On a fresh power-on the table holds its defaults so item
+    # 1 == the old HIGH_SCORE_START (40000); within a session a ranked-in top score has lifted item 1, so the
+    # HUD high score returns to that achieved top rather than dropping back to 40000 after a game ends.
     high_reset = blocks.add("control_if")
     high_scope = blocks.scope_is(high_reset, "cold-start")
     blocks.blocks[high_reset]["inputs"]["CONDITION"] = [2, high_scope]
     blocks.substack(
         high_reset,
         [
-            blocks.set_var("high score", HIGH_SCORE_ID, number(HIGH_SCORE_START)),
+            blocks.set_var_expr(
+                "high score",
+                HIGH_SCORE_ID,
+                blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(1)),
+            ),
             # CAB-02/CAB-03 (slice 18): the two-player cabinet controls are power-on / return-to-attract
             # state, reset ONLY at cold-start — NOT new-game, so a 2P start's `two player = 1` (set just
             # before its new-game transition) is never clobbered. A finished game transitions to the title
@@ -10564,6 +10868,30 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
+    # CAB-04 (slice 19): the initials-entry reset — its OWN `director reset` receiver (like the per-concern
+    # receivers above), firing only on the "entry" scope the game-over routing uses to open the entry screen.
+    # It ARMS the entry machinery WITHOUT disturbing the score or the table that `rank in` just wrote: the
+    # cursor, the live letter, the typed buffer, and the fixed total countdown. `entry row` / `entry player` /
+    # `entry score` are set by the routing caller just before the transition (C4), so they are NOT touched
+    # here. The "entry" scope is not cold-start / new-game / new-life, so none of the high/area/difficulty
+    # receivers above fire for it — `score`, `high score`, and both high-score lists are preserved.
+    entry_reset = blocks.receive("director reset")
+    entry_scope = blocks.add("control_if")
+    entry_scope_cond = blocks.scope_is(entry_scope, "entry")
+    blocks.blocks[entry_scope]["inputs"]["CONDITION"] = [2, entry_scope_cond]
+    blocks.substack(
+        entry_scope,
+        [
+            # Start the first cell on SPACE (ring index 26), not 'A': the arcade blanks the whole name field to
+            # 0x24 at rank-in (:1624-1628) and shows a blank cursor cell until the joystick scrolls it.
+            blocks.set_var("entry char", ENTRY_CHAR_ID, number(ENTRY_RING_SIZE - 1)),
+            blocks.set_var("name buffer", ENTRY_NAME_BUFFER_ID, text("")),
+            blocks.set_var("entry cell", ENTRY_CELL_ID, number(0)),
+            blocks.set_var("entry timer", ENTRY_TIMER_ID, number(ENTRY_TIMEOUT_FRAMES)),
+        ],
+    )
+    blocks.chain(entry_reset, [entry_scope])
+
     return blocks.blocks
 
 
@@ -10600,6 +10928,218 @@ def _attract_epoch_state(blocks: Blocks, state: str) -> str:
     )
     state_ok = blocks.op_eq(variable("game state", STATE_ID), text(state))
     return blocks.op_and(epoch, state_ok)
+
+
+def _game_over_route(blocks: Blocks) -> list[str]:
+    # ECO-04 (slice 19): the end-of-game best-five check + initials routing, run at the DEATH decision (the last
+    # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade, which
+    # calls check_for_high_score the instant the game ends and reaches the game_over hold only after name entry
+    # (xevious_main.68k:546 jra check_for_high_score; :1671-1672 a non-qualifier -> game_over; :1757-1769
+    # name_entry_finished -> game_over). `qualified` = the final score REACHES-OR-BEATS fifth place in the live
+    # table (`>=`, a tie places — the move_high_score_entry_down fall-through, :1653-1656), OR'd over the OTHER
+    # player in a two-player both-out; the second arm is gated off in a one-player game, where `other score` is
+    # meaningless (CAB-03: a two-player game reaches this point only when the LAST player is out, so `score` is
+    # the last dier's final and `other score` is the other player's final, frozen at their last swap-out).
+    #
+    # The verdict gates the routing. The CURRENT player (the last dier, `score`) enters FIRST when they reach
+    # fifth place — `rank in` places their score (blank name), `entry player`/`entry score` tag the entry
+    # screen, and `entry recheck = two player` arms the other-player re-check `_high_score_finish` runs on finish
+    # (0 in a one-player game, so that game's entry ends with the GAME OVER hold). When the current player did
+    # NOT reach fifth place but the verdict still held, it was the OTHER player (a two-player both-out) — they
+    # enter directly with no further re-check. `rank cursor`-based `rank in` reads `entry score`; the entry-scope
+    # reset preserves `score`/the table so rank-in's read is intact. This batches the arcade's
+    # per-player-at-own-game-over entries at the port's single both-out point (recorded divergence, CAB-04
+    # record). When NOBODY qualifies the game records the outcome and runs the GAME OVER hold, which on finish
+    # returns the cabinet to its attract cycle at the title.
+    fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
+    other_fifth_place = blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5))
+    set_qualified = blocks.set_var_expr(
+        "qualified",
+        QUALIFIED_ID,
+        blocks.op_or(
+            blocks.op_not(blocks.op_lt(variable("score", SCORE_ID), fifth_place)),
+            blocks.op_and(
+                blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
+                blocks.op_not(
+                    blocks.op_lt(variable("other score", OTHER_SCORE_ID), other_fifth_place)
+                ),
+            ),
+        ),
+    )
+    cur_enters = blocks.add("control_if_else")
+    cur_cond = blocks.op_not(
+        blocks.op_lt(
+            variable("score", SCORE_ID),
+            blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5)),
+        )
+    )
+    blocks.blocks[cur_cond]["parent"] = cur_enters
+    blocks.blocks[cur_enters]["inputs"]["CONDITION"] = [2, cur_cond]
+    blocks.substack(
+        cur_enters,
+        [
+            blocks.set_var("entry score", ENTRY_SCORE_ID, variable("score", SCORE_ID)),
+            blocks.set_var("entry player", ENTRY_PLAYER_ID, variable("curr player", CURR_PLAYER_ID)),
+            blocks.call_proc(RANK_IN_PROCCODE, warp=True),
+            blocks.set_var("entry recheck", ENTRY_RECHECK_ID, variable("two player", TWO_PLAYER_ID)),
+            blocks.call_transition(HIGH_SCORE_ENTRY_STATE, "entry"),
+        ],
+    )
+    blocks.substack(
+        cur_enters,
+        [
+            blocks.set_var("entry score", ENTRY_SCORE_ID, variable("other score", OTHER_SCORE_ID)),
+            blocks.set_var_expr(
+                "entry player",
+                ENTRY_PLAYER_ID,
+                blocks.op_sub(number(1), variable("curr player", CURR_PLAYER_ID)),
+            ),
+            blocks.call_proc(RANK_IN_PROCCODE, warp=True),
+            blocks.set_var("entry recheck", ENTRY_RECHECK_ID, number(0)),
+            blocks.call_transition(HIGH_SCORE_ENTRY_STATE, "entry"),
+        ],
+        name="SUBSTACK2",
+    )
+    route = blocks.add("control_if_else")
+    route_cond = blocks.op_eq(variable("qualified", QUALIFIED_ID), number(1))
+    blocks.blocks[route_cond]["parent"] = route
+    blocks.blocks[route]["inputs"]["CONDITION"] = [2, route_cond]
+    blocks.substack(route, [cur_enters])
+    blocks.substack(
+        route,
+        [
+            # Nobody qualifies: record the outcome (write-only, kept for opcode continuity with the respawn
+            # branch) and run the GAME OVER hold; its terminal receiver returns the cabinet to the title.
+            blocks.set_var("death outcome", OUTCOME_ID, text("game-over")),
+            blocks.call_transition("game-over", "game-over"),
+        ],
+        name="SUBSTACK2",
+    )
+    return [set_qualified, route]
+
+
+def _high_score_finish(blocks: Blocks) -> list[str]:
+    # CAB-04 (slice 19): commit the entered initials and leave the entry screen. First commit the IN-FLIGHT
+    # letter (the one the cursor is parked on but not yet Space-committed) when a cell is still active
+    # (`entry cell` < ENTRY_NAME_LEN): the arcade writes the current letter into the name buffer live as the
+    # joystick scrolls it (name_entry_inc_char/dec_char `move.b d0,(a0)`, xevious_main.68k:1773-1781,1736-1744),
+    # so a timeout keeps whatever letter was showing (name_entry_finished :1757-1769 just stops). The port's
+    # `name buffer` only grows on a Space commit, so without this append a timeout would drop the parked letter;
+    # the gate makes the timeout faithful. On the tenth-character Space finish `entry cell` has already reached
+    # ENTRY_NAME_LEN, so the gate is false and nothing is double-appended. Then write the typed `name buffer`
+    # into the row `rank in` placed the score at — in place, faithful to name_entry_ptr — and leave the screen.
+    # This is reached both ways the arcade finishes name entry: the tenth committed character (the Space hat) and
+    # the fixed total-countdown expiry (the entry-timer loop). Each caller mints its own copy of these blocks
+    # (custom blocks have no shared bodies).
+    #
+    # Leaving the screen runs the GAME OVER hold (`high-score-entry -> game-over`): faithful to the arcade, which
+    # reaches the game_over hold only after name entry (:1757-1769 name_entry_finished -> game_over). The hold's
+    # terminal receiver raises `attract` and returns to the title — so neither exit below raises `attract`
+    # itself; both just transition to `game-over`.
+    #
+    # ECO-04 (slice 19) two-player sequential entry: when `entry recheck` was armed (a two-player both-out where
+    # the CURRENT player entered first), the OTHER player may still qualify now that this score has shifted the
+    # cutoff. Consume the one-shot flag, re-check `other score` against the now-updated fifth place (exactly the
+    # arcade's sequential per-player check), and if it reaches, `rank in` their score and re-arm the entry screen
+    # for them via a `high-score-entry -> high-score-entry` self-transition (the "entry" scope re-arms the cursor
+    # and the clones re-spawn with the PLAYER-2 tag). Otherwise (or when nothing was armed) the game is over —
+    # raise `attract` and return the cabinet to its attract cycle at the title. The other player is always
+    # `1 - curr player` here: `entry recheck` is only armed in the branch where the current player entered first,
+    # so `other score` holds the other player's final.
+    recheck = blocks.add("control_if_else")
+    recheck_cond = blocks.op_eq(variable("entry recheck", ENTRY_RECHECK_ID), number(1))
+    blocks.blocks[recheck_cond]["parent"] = recheck
+    blocks.blocks[recheck]["inputs"]["CONDITION"] = [2, recheck_cond]
+    other_enters = blocks.add("control_if_else")
+    other_cond = blocks.op_not(
+        blocks.op_lt(
+            variable("other score", OTHER_SCORE_ID),
+            blocks.list_item("high score table", HIGH_SCORE_TABLE_ID, number(5)),
+        )
+    )
+    blocks.blocks[other_cond]["parent"] = other_enters
+    blocks.blocks[other_enters]["inputs"]["CONDITION"] = [2, other_cond]
+    blocks.substack(
+        other_enters,
+        [
+            blocks.set_var("entry score", ENTRY_SCORE_ID, variable("other score", OTHER_SCORE_ID)),
+            blocks.set_var_expr(
+                "entry player",
+                ENTRY_PLAYER_ID,
+                blocks.op_sub(number(1), variable("curr player", CURR_PLAYER_ID)),
+            ),
+            blocks.call_proc(RANK_IN_PROCCODE, warp=True),
+            blocks.call_transition(HIGH_SCORE_ENTRY_STATE, "entry"),
+        ],
+    )
+    blocks.substack(
+        other_enters,
+        [
+            # The other player does not (also) qualify: the game is over — run the GAME OVER hold, whose terminal
+            # receiver raises `attract` and returns to the title.
+            blocks.call_transition("game-over", "game-over"),
+        ],
+        name="SUBSTACK2",
+    )
+    blocks.substack(
+        recheck,
+        [
+            blocks.set_var("entry recheck", ENTRY_RECHECK_ID, number(0)),
+            other_enters,
+        ],
+    )
+    blocks.substack(
+        recheck,
+        [
+            # Nothing to re-check (one-player game, or the current player was the other player's re-check): the
+            # game is over — run the GAME OVER hold, whose terminal receiver raises `attract` and returns home.
+            blocks.call_transition("game-over", "game-over"),
+        ],
+        name="SUBSTACK2",
+    )
+    # Commit-in-flight (faithful to `name_entry_finished`, xevious_main.68k:1757-1769): the arcade's inc/dec
+    # write the current letter straight into the name buffer (`move.b d0,(a0)`), so a finish — tenth-cell Space
+    # or timeout — keeps whatever letter the cursor is scrolled to. Here each Space commit appends the committed
+    # letter, but a finish can arrive while the player has scrolled a cell they have NOT yet Space-committed; this
+    # appends that one trailing in-flight letter so it is not lost. Gated on BOTH (a) there is still a free cell
+    # (`entry cell < ENTRY_NAME_LEN`) and (b) the active letter is a real scrolled glyph, not the blanked space
+    # the cursor rests on by default (`entry char != space index`, ring index ENTRY_RING_SIZE-1) — so a finish on
+    # an untouched/blank cell commits nothing, and the tenth-cell Space (which resets `entry char` to space and
+    # leaves `entry cell == ENTRY_NAME_LEN`) never double-appends.
+    commit_in_flight = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_lt(variable("entry cell", ENTRY_CELL_ID), number(ENTRY_NAME_LEN)),
+            blocks.op_not(
+                blocks.op_eq(
+                    variable("entry char", ENTRY_CHAR_ID),
+                    number(ENTRY_RING_SIZE - 1),
+                )
+            ),
+        ),
+        [
+            blocks.set_var_expr(
+                "name buffer",
+                ENTRY_NAME_BUFFER_ID,
+                blocks.op_join(
+                    variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                    blocks.op_letter_of(
+                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                        text(ENTRY_RING),
+                    ),
+                ),
+            )
+        ],
+    )
+    return [
+        commit_in_flight,
+        blocks.list_replace(
+            "high score names",
+            HIGH_SCORE_NAMES_ID,
+            variable("entry row", ENTRY_ROW_ID),
+            variable("name buffer", ENTRY_NAME_BUFFER_ID),
+        ),
+        recheck,
+    ]
 
 
 def solvalou_blocks() -> dict[str, dict[str, Any]]:
@@ -10737,15 +11277,81 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.glide(1, 0, 0),
     ]
     title = blocks.if_state("title", title_body)
-    # The default best-five table renders during attract-scores as one static clone. The original stays
-    # hidden here (the preceding director stop hid it); only the clone shows the table.
-    scores_body = [
-        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_BEST_FIVE)),
-        blocks.go(ATTRACT_BEST_FIVE_X, ATTRACT_BEST_FIVE_Y),
+    # CAB-04: the LIVE best-five table. Each cell is its own clone (the credit-digit idiom) — a rank digit,
+    # up to ten name letters, and seven score digits per row — stamped in one frame, each snapshotting its
+    # row (and, for letter/score cells, its place) before create_clone, then reading the Stage lists live.
+    def cell_x(col: float) -> int:
+        return int(round((col - ATTRACT_TABLE_CENTER_COL) * ATTRACT_TABLE_CELL_PITCH_X))
+
+    scores_body: list[str] = []
+    for table_row in range(1, ATTRACT_TABLE_ROWS + 1):
+        row_y = ATTRACT_TABLE_CENTER_Y + (2 - (table_row - 1)) * ATTRACT_TABLE_ROW_PITCH_Y
+        # rank digit (costume digit/<row>)
+        scores_body += [
+            blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_RANK)),
+            blocks.set_var("attract row", ATTRACT_DISPLAY_ROW_ID, number(table_row)),
+            blocks.go(cell_x(ATTRACT_TABLE_RANK_COL), row_y),
+            blocks.create_clone(),
+        ]
+        # name letters: place = 1-based letter index 1..10, laid out left-to-right from NAME_COL0
+        for name_cell in range(ATTRACT_TABLE_NAME_CELLS):
+            scores_body += [
+                blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_NAME)),
+                blocks.set_var("attract row", ATTRACT_DISPLAY_ROW_ID, number(table_row)),
+                blocks.set_var("attract place", ATTRACT_DISPLAY_PLACE_ID, number(name_cell + 1)),
+                blocks.go(cell_x(ATTRACT_TABLE_NAME_COL0 + name_cell), row_y),
+                blocks.create_clone(),
+            ]
+        # score digits: place 0 (units) .. 6 (millions); the most-significant digit sits at SCORE_COL0
+        for place in range(ATTRACT_TABLE_SCORE_CELLS):
+            col = ATTRACT_TABLE_SCORE_COL0 + (ATTRACT_TABLE_SCORE_CELLS - 1 - place)
+            scores_body += [
+                blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_SCORE)),
+                blocks.set_var("attract row", ATTRACT_DISPLAY_ROW_ID, number(table_row)),
+                blocks.set_var("attract place", ATTRACT_DISPLAY_PLACE_ID, number(place)),
+                blocks.go(cell_x(col), row_y),
+                blocks.create_clone(),
+            ]
+    scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
+
+    # CAB-04 (slice 19): the initials-entry screen. On entering high-score-entry, stamp the two headers, the
+    # PLAYER-n tag (two-player only), and the ten name cells in one frame — each cell snapshotting its 1-based
+    # place before create_clone, then reading `name buffer` / `entry char` live (the live-table idiom). The
+    # cells sit on one centred monospace line; the headers stack above.
+    def entry_cell_x(cell: int) -> int:
+        return int(round((cell - ATTRACT_ENTRY_CENTER_CELL) * ATTRACT_ENTRY_CELL_PITCH_X))
+
+    entry_body: list[str] = [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_HEADER)),
+        blocks.go(0, ATTRACT_ENTRY_HEADER_Y),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_SUBHEADER)),
+        blocks.go(0, ATTRACT_ENTRY_SUBHEADER_Y),
         blocks.create_clone(),
     ]
-    scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
-    blocks.chain(enter, [title, scores])
+    # The PLAYER-n tag disambiguates whose initials are being entered; a one-player game needs no tag, so it is
+    # spawned only in a two-player game. The clone reads `entry player` to pick PLAYER 1 / PLAYER 2.
+    entry_body.append(
+        blocks.if_reporter(
+            blocks.op_eq(variable("two player", TWO_PLAYER_ID), number(1)),
+            [
+                blocks.set_var(
+                    "attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_PLAYER)
+                ),
+                blocks.go(0, ATTRACT_ENTRY_PLAYER_Y),
+                blocks.create_clone(),
+            ],
+        )
+    )
+    for cell in range(ENTRY_NAME_LEN):
+        entry_body += [
+            blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_NAME)),
+            blocks.set_var("attract place", ATTRACT_DISPLAY_PLACE_ID, number(cell + 1)),
+            blocks.go(entry_cell_x(cell), ATTRACT_ENTRY_CELLS_Y),
+            blocks.create_clone(),
+        ]
+    entry = blocks.if_state(HIGH_SCORE_ENTRY_STATE, entry_body)
+    blocks.chain(enter, [title, scores, entry])
 
     # start-as-clone: dispatch on the snapshotted role. The clone inherits the visible original, so it hides
     # first and each role shows itself only once it has switched to its own costume (no logo flash).
@@ -10834,10 +11440,270 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [prompt_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
     )
 
-    # Best-five table (static): switches to the composed table costume and shows; common_stop retires it.
-    best_five_role = blocks.if_var_equals(
-        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_BEST_FIVE,
-        [blocks.switch_costume(ATTRACT_COSTUME_BEST_FIVE), blocks.to_front(), blocks.show()],
+    # CAB-04: the three LIVE best-five cell roles. Each cell re-reads the Stage lists every tick while in
+    # attract-scores (the credit-digit idiom), so a score that ranks in mid-session shows live; when the
+    # state leaves attract-scores the loop exits and the cell hides + deletes itself (common_stop is the
+    # backstop). Placement/pixels are the operator's playtest; the structure here is what the tests pin.
+    def table_tick(body: list[str]) -> str:
+        loop = blocks.add("control_repeat_until")
+        blocks.blocks[loop]["inputs"]["CONDITION"] = [2, blocks.not_state(loop, ATTRACT_SCORES_STATE)]
+        blocks.substack(loop, body)
+        return loop
+
+    # Rank digit: costume digit/<row>. The row is fixed per clone, but it is re-switched each tick so the
+    # three cell roles share one self-retiring loop shape.
+    rank_tick = table_tick(
+        [
+            blocks.switch_costume_expr(
+                blocks.op_join(
+                    text(ATTRACT_DIGIT_PREFIX), variable("attract row", ATTRACT_DISPLAY_ROW_ID)
+                )
+            )
+        ]
+    )
+    table_rank_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_RANK,
+        [
+            blocks.to_front(),
+            blocks.show(),
+            rank_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
+    # Score digit: digit = floor(table[row] / 10^place) mod 10, shown as digit/<d> (leading-zero preserving,
+    # matching the HUD score row). 10^place is computed once at clone start into `attract divisor`.
+    set_score_divisor = blocks.set_var("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID, number(1))
+    score_divisor_loop = blocks.add(
+        "control_repeat", inputs={"TIMES": variable("attract place", ATTRACT_DISPLAY_PLACE_ID)}
+    )
+    blocks.substack(
+        score_divisor_loop,
+        [
+            blocks.set_var_expr(
+                "attract divisor",
+                ATTRACT_DISPLAY_DIVISOR_ID,
+                blocks.op_mul(
+                    variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID), number(10)
+                ),
+            )
+        ],
+    )
+    score_digit_expr = blocks.op_mod(
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.list_item(
+                    "high score table",
+                    HIGH_SCORE_TABLE_ID,
+                    variable("attract row", ATTRACT_DISPLAY_ROW_ID),
+                ),
+                variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID),
+            )
+        ),
+        number(10),
+    )
+    score_tick = table_tick(
+        [blocks.switch_costume_expr(blocks.op_join(text(ATTRACT_DIGIT_PREFIX), score_digit_expr))]
+    )
+    table_score_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_SCORE,
+        [
+            set_score_divisor,
+            score_divisor_loop,
+            blocks.to_front(),
+            blocks.show(),
+            score_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
+    # Name letter: cache `attract char` = letter `place` of names[row] once per tick, then branch on the
+    # cache (so the list is read once, not five times). A non-blank letter shows glyph/<c>; a blank letter
+    # (past the name's end, "") or a space (the sheet font has no space glyph) hides the cell. The letter
+    # reporter is minted fresh for the cache write; the branch tests read the cached variable.
+    def name_char() -> str:
+        return blocks.op_letter_of(
+            variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+            blocks.list_item(
+                "high score names",
+                HIGH_SCORE_NAMES_ID,
+                variable("attract row", ATTRACT_DISPLAY_ROW_ID),
+            ),
+        )
+
+    def is_blank_char() -> str:
+        return blocks.op_or(
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text("")),
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text(" ")),
+        )
+
+    name_tick = table_tick(
+        [
+            blocks.set_var_expr("attract char", ATTRACT_DISPLAY_CHAR_ID, name_char()),
+            blocks.if_reporter(
+                blocks.op_not(is_blank_char()),
+                [
+                    blocks.switch_costume_expr(
+                        blocks.op_join(
+                            text(ATTRACT_GLYPH_PREFIX),
+                            variable("attract char", ATTRACT_DISPLAY_CHAR_ID),
+                        )
+                    ),
+                    blocks.to_front(),
+                    blocks.show(),
+                ],
+            ),
+            blocks.if_reporter(is_blank_char(), [blocks.hide()]),
+        ]
+    )
+    table_name_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_NAME,
+        [name_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+    )
+
+    # CAB-04 (slice 19): the initials-entry screen clone roles. The two headers and the PLAYER-n tag are
+    # static (switch once, show) — common_stop retires them on the next transition, exactly like the CREDIT
+    # label. The player tag picks its costume from `entry player`. The ten name cells are LIVE: each loops
+    # while in high-score-entry rendering its place against the running `name buffer` / `entry char`, then
+    # hides + deletes when the state leaves (common_stop is the backstop).
+    entry_header_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_HEADER,
+        [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_HEADER), blocks.to_front(), blocks.show()],
+    )
+    entry_subheader_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_SUBHEADER,
+        [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_SUBHEADER), blocks.to_front(), blocks.show()],
+    )
+    entry_player_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_PLAYER,
+        [
+            blocks.if_reporter(
+                blocks.op_eq(variable("entry player", ENTRY_PLAYER_ID), number(0)),
+                [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_PLAYER_1)],
+            ),
+            blocks.if_reporter(
+                blocks.op_eq(variable("entry player", ENTRY_PLAYER_ID), number(1)),
+                [blocks.switch_costume(ATTRACT_COSTUME_ENTRY_PLAYER_2)],
+            ),
+            blocks.to_front(),
+            blocks.show(),
+        ],
+    )
+
+    # A name cell renders `attract char` (cached once per tick) as glyph/<c>, or hides on a blank/space cell
+    # (the sheet font has no space glyph). Fresh reporters per call — a reporter reused across two `if` inputs
+    # is stolen by the second, leaving the first empty.
+    def entry_is_blank() -> str:
+        return blocks.op_or(
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text("")),
+            blocks.op_eq(variable("attract char", ATTRACT_DISPLAY_CHAR_ID), text(" ")),
+        )
+
+    def entry_render_char() -> list[str]:
+        return [
+            blocks.if_reporter(
+                blocks.op_not(entry_is_blank()),
+                [
+                    blocks.switch_costume_expr(
+                        blocks.op_join(
+                            text(ATTRACT_GLYPH_PREFIX),
+                            variable("attract char", ATTRACT_DISPLAY_CHAR_ID),
+                        )
+                    ),
+                    blocks.to_front(),
+                    blocks.show(),
+                ],
+            ),
+            blocks.if_reporter(entry_is_blank(), [blocks.hide()]),
+        ]
+
+    def entry_name_tick() -> str:
+        loop = blocks.add("control_repeat_until")
+        blocks.blocks[loop]["inputs"]["CONDITION"] = [
+            2,
+            blocks.not_state(loop, HIGH_SCORE_ENTRY_STATE),
+        ]
+        # committed cell (place <= entry cell): the typed letter, steady (ghost 0).
+        committed = blocks.add("control_if")
+        committed_cond = blocks.op_not(
+            blocks.op_gt(
+                variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+                variable("entry cell", ENTRY_CELL_ID),
+            )
+        )
+        blocks.blocks[committed_cond]["parent"] = committed
+        blocks.blocks[committed]["inputs"]["CONDITION"] = [2, committed_cond]
+        blocks.substack(
+            committed,
+            [
+                blocks.set_var_expr(
+                    "attract char",
+                    ATTRACT_DISPLAY_CHAR_ID,
+                    blocks.op_letter_of(
+                        variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+                        variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                    ),
+                ),
+                blocks.set_effect("GHOST", number(0)),
+                *entry_render_char(),
+            ],
+        )
+        # active cell (place == entry cell + 1): the live ring letter, ghost-pulsing off the entry timer.
+        active = blocks.add("control_if")
+        active_cond = blocks.op_eq(
+            variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+            blocks.op_add(variable("entry cell", ENTRY_CELL_ID), number(1)),
+        )
+        blocks.blocks[active_cond]["parent"] = active
+        blocks.blocks[active]["inputs"]["CONDITION"] = [2, active_cond]
+        pulse = blocks.op_mul(
+            number(ENTRY_PULSE_GHOST),
+            blocks.op_mod(
+                blocks.op_floor(
+                    blocks.op_div(
+                        variable("entry timer", ENTRY_TIMER_ID), number(ENTRY_PULSE_DIV)
+                    )
+                ),
+                number(2),
+            ),
+        )
+        blocks.substack(
+            active,
+            [
+                blocks.set_var_expr(
+                    "attract char",
+                    ATTRACT_DISPLAY_CHAR_ID,
+                    blocks.op_letter_of(
+                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                        text(ENTRY_RING),
+                    ),
+                ),
+                blocks.set_effect("GHOST", pulse),
+                *entry_render_char(),
+            ],
+        )
+        # future cell (place > entry cell + 1): blank.
+        future = blocks.add("control_if")
+        future_cond = blocks.op_gt(
+            variable("attract place", ATTRACT_DISPLAY_PLACE_ID),
+            blocks.op_add(variable("entry cell", ENTRY_CELL_ID), number(1)),
+        )
+        blocks.blocks[future_cond]["parent"] = future
+        blocks.blocks[future]["inputs"]["CONDITION"] = [2, future_cond]
+        blocks.substack(future, [blocks.hide()])
+        blocks.substack(loop, [committed, active, future])
+        return loop
+
+    entry_name_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_ENTRY_NAME,
+        [
+            entry_name_tick(),
+            blocks.clear_graphic_effects(),  # leave no ghost on a reused clone
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
     )
 
     # CAB-02: the two 1P/2P selector labels. Each clone wears its fixed option costume, shows, then loops
@@ -10883,9 +11749,15 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             credit_label_role,
             credit_digit_role,
             prompt_role,
-            best_five_role,
+            table_rank_role,
+            table_name_role,
+            table_score_role,
             selector_1p_role,
             selector_2p_role,
+            entry_header_role,
+            entry_subheader_role,
+            entry_player_role,
+            entry_name_role,
         ],
     )
     return blocks.blocks
@@ -14223,6 +15095,17 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         START_SELECTION_ID,
         # CAB-03 (slice 18): the elimination-banner display signal (machinery, like `easter egg showing`).
         BANNER_PLAYER_ID,
+        # CAB-04 (slice 19): the high-score initials-entry machinery (+ `rank in`'s scratch cursor and the
+        # `entry score` it ranks). Director-owned, so they are rebuilt here each generate rather than preserved.
+        ENTRY_CHAR_ID,
+        ENTRY_NAME_BUFFER_ID,
+        ENTRY_CELL_ID,
+        ENTRY_ROW_ID,
+        ENTRY_PLAYER_ID,
+        ENTRY_TIMER_ID,
+        ENTRY_SCORE_ID,
+        ENTRY_RECHECK_ID,
+        RANK_CURSOR_ID,
         # AIR-01 Toroid live-combat machinery (slice 8): the aim quantizer's working vars, the
         # cached craft cell, and the spawner's cursor/attempt/found/type registers.
         AIM_DX_DIFF_ID,
@@ -14398,6 +15281,18 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # CAB-03 (slice 18): the elimination-banner signal, default "none" (no banner). Raised to the
         # eliminated player's index during a two-player handoff, cleared after the dwell and on every reset.
         BANNER_PLAYER_ID: ["banner player", BANNER_PLAYER_NONE],
+        # CAB-04 (slice 19): the high-score initials-entry machinery (all default 0 / empty; armed on entry).
+        # `name buffer` is a STRING the compositor renders a letter at a time; `rank cursor` is `rank in`'s
+        # scratch loop register; `entry score` is the score `rank in` ranks. See the ID comments above.
+        ENTRY_CHAR_ID: ["entry char", 0],
+        ENTRY_NAME_BUFFER_ID: ["name buffer", ""],
+        ENTRY_CELL_ID: ["entry cell", 0],
+        ENTRY_ROW_ID: ["entry row", 0],
+        ENTRY_PLAYER_ID: ["entry player", 0],
+        ENTRY_TIMER_ID: ["entry timer", 0],
+        ENTRY_SCORE_ID: ["entry score", 0],
+        ENTRY_RECHECK_ID: ["entry recheck", 0],
+        RANK_CURSOR_ID: ["rank cursor", 0],
         # AIR-01 Toroid live-combat machinery (slice 8). The aim quantizer intermediates, the cached
         # craft cell (player row/col), and the spawner's registers — all transient, all default 0.
         AIM_DX_DIFF_ID: ["aim dx diff", 0],
@@ -14501,6 +15396,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         REPEAT_BONUS_123_ID,
         REPEAT_BONUS_5_ID,
         HIGH_SCORE_TABLE_ID,
+        HIGH_SCORE_NAMES_ID,
         AREA_MAP_COLUMN_ID,
         SCHEDULE_HANDLER_ID,
         SCHEDULE_TRIGGER_ROW_ID,
@@ -14544,6 +15440,19 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
+                # CAB-04 / ECO-04 (slice 19): a qualifying FINAL score routes to the initials screen at the
+                # DEATH decision (player-dead -> high-score-entry), BEFORE the GAME OVER hold — faithful to the
+                # arcade order (check_for_high_score runs the moment the game ends, and the GAME OVER hold is
+                # reached only AFTER name entry: xevious_main.68k:546 jra check_for_high_score; :1671-1672 a
+                # non-qualifier -> game_over; :1757-1769 name_entry_finished -> game_over). A non-qualifying
+                # score takes the existing player-dead -> game-over edge above. On finish the entry runs the
+                # GAME OVER hold (high-score-entry -> game-over) and that terminal hold returns to the title
+                # (game-over -> title). The self-edge re-arms the entry screen for a SECOND qualifying player
+                # (ECO-04 two-player sequential entry): the finish re-fires `director reset` ("entry" scope) +
+                # `director enter`, re-spawning the clones so the static PLAYER-n tag re-reads `entry player`.
+                "player-dead -> high-score-entry",
+                "high-score-entry -> game-over",
+                "high-score-entry -> high-score-entry",
                 # CAB-01 attract cycle (title -> demo1 -> best-five -> demo2 -> title). The demo reuses the
                 # `playing` state under attract==1; a demo death routes by `attract stage`, and a coin during
                 # any attract sub-state aborts to the title. These edges are only ever taken while attract==1.
@@ -14592,6 +15501,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # in rank order; position 5 (1-based) is the fifth-place cutoff the game-over-complete
         # receiver compares the final score against.
         HIGH_SCORE_TABLE_ID: ["high score table", list(HIGH_SCORE_DEFAULTS)],
+        # CAB-04 (slice 19): the LIVE best-five NAMES column, parallel to the scores above. `rank in` writes
+        # it (Stage-owned), the entry screen writes the typed initials into [entry row], the compositor renders
+        # it. INTENTIONALLY NOT reset by `clear slots` / any director reset scope — within-session persistence
+        # is the reference behavior (an entered score shows in attract and can be beaten); scratch-vm restores
+        # this list's declared defaults on project RELOAD, which gives the faithful power-cycle-fresh reset
+        # (there is no OSD persistent store — OPT_ENABLE_HIGH_SCORE_IO, excluded as catalog EX-05). The same
+        # holds for `high score table` above. Do NOT fold either into `clear slots`.
+        HIGH_SCORE_NAMES_ID: ["high score names", list(HIGH_SCORE_NAME_DEFAULTS)],
         # AREA-01 per-area terrain start columns (docs/spec/data/terrain.json
         # area_offset_in_map_tbl), indexed by area number 1-16. Ingested, not authored; a
         # read-only reference table set on area entry, never written by a sprite.
@@ -14713,6 +15630,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 ATTRACT_DISPLAY_ROLE_ID: ["attract role", 0],
                 ATTRACT_DISPLAY_PLACE_ID: ["attract place", 0],
                 ATTRACT_DISPLAY_DIVISOR_ID: ["attract divisor", 1],
+                # CAB-04: which best-five row (1..5) a table-cell clone renders, snapshotted at creation,
+                # and a name cell's per-tick cached letter (read once, then tested/rendered from the cache).
+                ATTRACT_DISPLAY_ROW_ID: ["attract row", 0],
+                ATTRACT_DISPLAY_CHAR_ID: ["attract char", ""],
             }
         elif target["name"] == "hud":
             # ECO-02: all HUD state is sprite-local (never a Stage variable) — the role

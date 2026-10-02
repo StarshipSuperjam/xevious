@@ -150,6 +150,41 @@ const outcome = (vm) => readVar(vm, 'game-director-death-outcome');
 const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
 const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
 const shotSlotTypes = (vm) => readVar(vm, 'slot-type').slice(36, 39);
+// Step until `pred(vm)` holds or the budget runs out; returns whether it held. Used where a finish now
+// routes through the terminal GAME OVER hold (high-score-entry -> game-over -> title) rather than straight
+// to the title, so reaching the title takes more than a couple of pumps.
+function stepUntil(vm, pred, budget = 240) {
+  let t = 0;
+  while (!pred(vm) && t < budget) {
+    step(vm, 1);
+    t += 1;
+  }
+  return pred(vm);
+}
+
+// CAB-04 (cabinet.high-scores, slice 19): drop the cabinet directly into the high-score-entry screen in
+// isolation. The game-over routing that reaches it in real play arrives in C4; until then the C3 entry
+// screen is driven on its own. We arm the entry scope the way the real routing will — set the reset scope,
+// fire `director reset` so entry_reset inits the entry machinery (char = space/ring index 26 — the blanked
+// cell — buffer = '', cell = 0, timer = the full 2048-frame countdown), seed the rank-in result
+// (`entry row`/`entry player`) the finish writes back, set
+// the state and (optionally) override the countdown, then fire `director enter` so the entry_enter countdown
+// loop starts. A boot step after green flag is required before any key press: scratch-vm "when key pressed"
+// hats only arm after the first step (keypress-hats-need-boot-step), and a second step lets the enter loop
+// take hold. Returns true once the cabinet is on the entry screen.
+function enterEntry(vm, { row = 3, player = 0, timer } = {}) {
+  vm.greenFlag();
+  step(vm, 2); // settle boot->title AND arm the key hats (boot step)
+  writeVar(vm, 'game-director-reset-scope', 'entry');
+  fireBroadcast(vm, 'director reset'); // entry_reset: entry char = space (26), buffer = '', cell = 0, timer = full
+  writeVar(vm, 'cabinet-entry-row', row);
+  writeVar(vm, 'cabinet-entry-player', player);
+  writeVar(vm, 'game-director-state', 'high-score-entry');
+  if (timer !== undefined) writeVar(vm, 'cabinet-entry-timer', timer);
+  fireBroadcast(vm, 'director enter'); // entry_enter: start the fixed-countdown loop
+  step(vm, 1);
+  return state(vm) === 'high-score-entry';
+}
 
 // --- BOSS-01 / andor.lifecycle (#94) shared scenario helpers -------------------------------------------
 // Geometry read straight from tools/game_director.py (source-verified against the pin). The master's
@@ -677,46 +712,55 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update easter egg'),
   },
   {
-    // CAB-01 (cabinet.attract-credits, slice 17): the best-five table renders during the attract-scores
-    // sub-state, and the live gameplay HUD is held OFF while it shows. The port draws the table with the
-    // start_screen clone-role idiom (the arcade HUD font lacks the letters, so it uses the 5×7 port font, as
-    // SEC-03 does): a `best-five` role clone (attract role == 4) switches to the pre-composed `best-five`
-    // costume and shows only in attract-scores. The HUD spawn is excluded during attract-scores (its gate
-    // gained `game state != "attract-scores"`) so the live score/high-score digit clones do not draw over
-    // the table. Drives to the best-five screen and reads the start_screen clones and the hud digit clones.
-    // roadmap-evidence: CAB-01 success  (the best-five clone dresses itself and the HUD is suppressed here)
+    // CAB-04 (cabinet.high-scores, slice 19): the LIVE best-five table renders during the attract-scores
+    // sub-state, and the live gameplay HUD is held OFF while it shows. Slice 17's single baked `best-five`
+    // costume is retired: the table is now drawn cell-by-cell with the start_screen clone-role idiom — a rank
+    // digit clone (attract role == 7, costume digit/<row>) per row, plus name-letter (role 8) and score-digit
+    // (role 9) cells — each reading the `high score table`/`high score names` Stage lists live. This scenario
+    // pins the CAB-01 compositional invariant that survives: the five rank digits show (so the table is on
+    // screen) and the HUD spawn is excluded during attract-scores (its gate carries
+    // `game state != "attract-scores"`), so the live score/high-score digit clones do not draw over the table.
+    // The exact glyph/liveness mapping is pinned by high-score-table-live below.
+    // roadmap-evidence: CAB-04 success  (the live table's rank digits dress themselves and the HUD is suppressed)
     key: 'attract-scores-render',
     behavior:
-      'The best-five table renders during attract-scores (a port-font clone) and the live HUD digits are held off',
+      'The live best-five table renders during attract-scores (per-cell port-font clones) and the HUD digits are held off',
     playtestStep: 1,
     async drive(vm) {
       assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
-      step(vm, 3); // let the transition retire the demo HUD clones and the best-five clone dress itself
+      step(vm, 3); // let the transition retire the demo HUD clones and the table cells dress themselves
       const roleName = variable('attract-display-role').name; // "attract role"
-      const bestFive = cloneReports(vm, 'start_screen', [roleName]).filter(
-        (r) => r.vars[roleName] === 4 && r.costume === 'best-five' && r.visible,
+      const rowName = variable('attract-display-row').name; // "attract row"
+      const rankCells = cloneReports(vm, 'start_screen', [roleName, rowName]).filter(
+        (r) => r.vars[roleName] === 7 && r.visible && /^digit\/[1-5]$/.test(r.costume || ''),
       );
+      const rankCostumes = rankCells.map((r) => r.costume).sort();
       const hudDigits = cloneReports(vm, 'hud').filter((r) => /^digit\/[0-9]$/.test(r.costume || ''));
-      return { st: state(vm), bestFiveShown: bestFive.length, hudDigits: hudDigits.length };
+      return { st: state(vm), rankCostumes, hudDigits: hudDigits.length };
     },
     assert(obs) {
       assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
-      assert.equal(obs.bestFiveShown, 1, 'exactly one best-five clone shows the best-five table costume');
+      assert.deepEqual(
+        obs.rankCostumes,
+        ['digit/1', 'digit/2', 'digit/3', 'digit/4', 'digit/5'],
+        'all five rank-digit cells show (the live table is on screen, one rank per row)',
+      );
       assert.equal(obs.hudDigits, 0, 'the live HUD score digits are held off while the table shows');
     },
-    // Break the best-five dispatch (`attract role == 4`): the best-five clone never matches its role branch,
-    // so it never switches to the `best-five` costume nor shows → the table-present assertion fails.
-    // roadmap-evidence: CAB-01 failure  (a broken role dispatch leaves the best-five table unrendered)
-    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 4, 5),
+    // Break the rank-cell dispatch (`attract role == 7`): the rank clones never match their role branch, so
+    // none switches to its digit/<row> costume nor shows → the five-rank-digits assertion fails.
+    // roadmap-evidence: CAB-04 failure  (a broken rank-role dispatch leaves the live table's ranks unrendered)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 7, 999),
   },
   {
     // CAB-01 (cabinet.attract-credits, slice 17): the attract-display clones do not leak across cycles. The
-    // start_screen static clones (the CREDIT label, the best-five table) have no self-delete; they rely on
-    // `common_stop(clones=True)` retiring every clone on each state transition. Without that the port would
-    // accumulate a fresh CREDIT/best-five clone every title -> demo -> best-five -> demo -> title lap — a
-    // slow leak the single-state playing census can never see (feasibility plan-review S4). Runs three full
+    // start_screen static clones (the CREDIT label, the credit digits, the prompt) have no self-delete; they
+    // rely on `common_stop(clones=True)` retiring every clone on each state transition. Without that the port
+    // would accumulate a fresh CREDIT/digit/prompt clone every title -> demo -> best-five -> demo -> title lap
+    // — a slow leak the single-state playing census can never see (feasibility plan-review S4). Runs three full
     // attract laps, sampling the start_screen clone count at the same phase (a settled title) each lap, and
-    // asserts the count returns to its baseline instead of climbing.
+    // asserts the count returns to its baseline instead of climbing. (The CAB-04 live best-five table cells are
+    // created in attract-scores, not title; high-score-clone-no-leak samples those.)
     // roadmap-evidence: CAB-01 success  (per-transition clone retirement keeps the count flat across laps)
     key: 'attract-clone-no-leak',
     behavior: 'The attract-display clones retire per transition — their count returns to baseline each cycle',
@@ -761,6 +805,500 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeDeleteThisClone(p, 'start_screen'),
   },
   {
+    // CAB-04/ECO-04 (cabinet.high-scores, slice 19): the LIVE best-five table. `rank in` is a no-arg Stage warp
+    // proc that reads `entry score` (the game-over routing sets it to the finishing player's score), scans ranks
+    // 5..1 for the smallest rank the score reaches-or-beats (`>=`, a tie places — move_high_score_entry_down's
+    // fall-through, xevious_main.68k:1653-1656), and on a place shifts the scores AND `high score names` down one
+    // in lockstep (dropping the old fifth) and inserts the score with a blank name, leaving the rank in
+    // `entry row` (0 = did not place). This is the C1 guard for riskiest-seam #2 — an off-by-one in the lockstep
+    // shift silently corrupts the table or desyncs names<->scores; the exact expected-table/names assertions
+    // below bind to the whole shift, not just a count. Driven in isolation via callProc over a seeded table (no
+    // play state — rank in reads only Stage lists/vars). The real game calls rank in through a warp
+    // procedures_call (atomic), but the harness's callProc pushes a thread directly on the definition, which
+    // runs in NON-warp mode — so its repeat loops yield and a single step advances only part way. We therefore
+    // drive it with NO green flag (nothing else competes for the step budget) and pump to completion; the final
+    // list state is warp-independent, so the settled result equals the atomic one.
+    // roadmap-evidence: CAB-04 success  (a qualifying score ranks in; the table stays length 5 and names track)
+    key: 'high-score-rank-insert',
+    behavior: 'rank in places a qualifying score into the live best-five table, shifting names in lockstep',
+    playtestStep: 1,
+    async drive(vm) {
+      // Seed a known table + names by mutating the live arrays in place (not replacing the references).
+      const seed = (id, vals) => {
+        const a = readVar(vm, id);
+        a.splice(0, a.length, ...vals);
+      };
+      // Run rank in to completion over a fresh seed and report the settled state. 40 pumps is far past the
+      // ~9 loop iterations, and once the thread finishes extra pumps are no-ops, so the result is deterministic.
+      const rankIn = (table, names, score) => {
+        seed('eco-high-score-table', table);
+        seed('eco-high-score-names', names);
+        writeVar(vm, 'cabinet-entry-score', score);
+        callProc(vm, 'Stage', 'rank in');
+        step(vm, 40);
+        return {
+          row: readVar(vm, 'cabinet-entry-row'),
+          table: readVar(vm, 'eco-high-score-table').slice(),
+          names: readVar(vm, 'eco-high-score-names').slice(),
+        };
+      };
+      // Qualifying score lands at rank 3 (beats 30000, below 35000).
+      const placed = rankIn(
+        [40000, 35000, 30000, 25000, 20000],
+        ['STK', 'M.N', 'EVE', 'S.O', 'S.K'],
+        32000,
+      );
+      // A non-qualifying score (below the current fifth place) must NOT place and must leave both lists intact.
+      const skipped = rankIn(
+        [40000, 35000, 32000, 30000, 25000],
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        10000,
+      );
+      // A tie with the current fifth place still places (>= semantics), at rank 5.
+      const tied = rankIn(
+        [40000, 35000, 32000, 30000, 25000],
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        25000,
+      );
+      return { placed, skipped, tied };
+    },
+    assert(obs) {
+      // Qualifying: rank 3, scores shift down + old fifth dropped, names shift in lockstep, new row name blank.
+      assert.equal(obs.placed.row, 3, 'a qualifying score records its insertion rank');
+      assert.deepEqual(
+        obs.placed.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'the score inserts at rank 3 and lower entries shift down one, dropping the old fifth',
+      );
+      assert.deepEqual(
+        obs.placed.names,
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        'names shift down in lockstep with scores and the new row blanks its name',
+      );
+      assert.equal(obs.placed.table.length, 5, 'the table stays exactly five entries');
+      assert.equal(obs.placed.names.length, 5, 'the names list stays exactly five entries');
+      // Non-qualifying: entry row 0 (did not place) and both lists untouched.
+      assert.equal(obs.skipped.row, 0, 'a sub-fifth score does not place (entry row 0)');
+      assert.deepEqual(
+        obs.skipped.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'a non-qualifying score leaves the table unchanged',
+      );
+      assert.deepEqual(
+        obs.skipped.names,
+        ['STK', 'M.N', '', 'EVE', 'S.O'],
+        'a non-qualifying score leaves the names unchanged',
+      );
+      // Tie with fifth place places at rank 5 (>= semantics, the arcade fall-through).
+      assert.equal(obs.tied.row, 5, 'a score tying fifth place still places, at rank 5');
+      assert.deepEqual(
+        obs.tied.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'the tie places at rank 5 (an equal score takes the last slot)',
+      );
+    },
+    // Empty the `rank in` proc body: a qualifying score then never ranks in, so entry row stays 0 and the table
+    // is untouched → the placement assertions fail. Surgical to this proc (its callers and all other state are
+    // left intact).
+    // roadmap-evidence: CAB-04 failure  (with rank in neutralized a qualifying score never enters the table)
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'rank in'),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the LIVE best-five compositor — riskiest seam #1. Each table
+    // cell is a start_screen clone that re-reads the Stage lists EVERY tick (the credit-digit idiom), so the
+    // table tracks a mid-session rank-in with no re-entry. A name cell shows glyph/<letter> for the live
+    // letter and HIDES past the name's end (letter_of → "") or on a space (the sheet font has no space glyph);
+    // a score cell shows digit/<d> for the live place digit (leading-zero-preserving, matching the HUD row);
+    // a rank cell shows digit/<row>. This scenario pins the exact costume mapping for a default row AND proves
+    // liveness: mutating the lists in place (not replacing the references) and stepping twice re-dresses the
+    // cells. Default row 1 is "STK" / 40000 (HIGH_SCORE_NAME_DEFAULTS[0] / HIGH_SCORE_DEFAULTS[0]).
+    // roadmap-evidence: CAB-04 success  (the live cells map list values to glyph/digit costumes and track edits)
+    key: 'high-score-table-live',
+    behavior: 'The live best-five cells render the Stage lists as glyph/digit costumes and re-read them each tick',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
+      step(vm, 3); // let the table cells dress from the default lists
+      const roleName = variable('attract-display-role').name; // "attract role"
+      const rowName = variable('attract-display-row').name; // "attract row"
+      const placeName = variable('attract-display-place').name; // "attract place"
+      // A name/score cell is identified by (role, row, place); a rank cell by (role, row).
+      const cell = (role, row, place) =>
+        cloneReports(vm, 'start_screen', [roleName, rowName, placeName]).find(
+          (r) =>
+            r.vars[roleName] === role &&
+            r.vars[rowName] === row &&
+            (place === undefined || r.vars[placeName] === place),
+        ) || null;
+      const name = (row, place) => cell(8, row, place); // place is the 1-based letter index
+      const score = (row, place) => cell(9, row, place); // place 0 = units .. 6 = millions
+      const snap = (c) => (c ? { costume: c.costume, visible: c.visible } : null);
+      // Default render of row 1: name "STK", score 40000 ("0040000").
+      const def = {
+        rank1: snap(cell(7, 1)),
+        n1: snap(name(1, 1)),
+        n2: snap(name(1, 2)),
+        n3: snap(name(1, 3)),
+        n4: snap(name(1, 4)), // past "STK" -> blank -> hidden
+        sUnits: snap(score(1, 0)), // 40000 -> units digit 0
+        sTenK: snap(score(1, 4)), // 40000 -> ten-thousands digit 4
+      };
+      // Liveness: edit the lists IN PLACE, then step so the looping cells re-read and re-dress.
+      const names = readVar(vm, 'eco-high-score-names');
+      const table = readVar(vm, 'eco-high-score-table');
+      names[0] = 'ZZ'; // row 1 name now two letters
+      table[0] = 12345; // row 1 score now "0012345"
+      step(vm, 2);
+      const live = {
+        n1: snap(name(1, 1)), // -> Z
+        n2: snap(name(1, 2)), // -> Z
+        n3: snap(name(1, 3)), // past "ZZ" -> now hidden
+        sUnits: snap(score(1, 0)), // 12345 -> units digit 5
+      };
+      return { st: state(vm), def, live };
+    },
+    assert(obs) {
+      assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
+      // Default row 1 render.
+      assert.deepEqual(obs.def.rank1, { costume: 'digit/1', visible: true }, 'rank cell shows digit/<row>');
+      assert.deepEqual(obs.def.n1, { costume: 'glyph/S', visible: true }, 'name letter 1 of "STK" is S');
+      assert.deepEqual(obs.def.n2, { costume: 'glyph/T', visible: true }, 'name letter 2 of "STK" is T');
+      assert.deepEqual(obs.def.n3, { costume: 'glyph/K', visible: true }, 'name letter 3 of "STK" is K');
+      assert.equal(obs.def.n4 && obs.def.n4.visible, false, 'a name cell past the name end is hidden');
+      assert.deepEqual(obs.def.sUnits, { costume: 'digit/0', visible: true }, '40000 units digit is 0');
+      assert.deepEqual(obs.def.sTenK, { costume: 'digit/4', visible: true }, '40000 ten-thousands digit is 4');
+      // Live edits are picked up without re-entering attract-scores.
+      assert.deepEqual(obs.live.n1, { costume: 'glyph/Z', visible: true }, 'name letter 1 tracks the live edit (Z)');
+      assert.deepEqual(obs.live.n2, { costume: 'glyph/Z', visible: true }, 'name letter 2 tracks the live edit (Z)');
+      assert.equal(obs.live.n3 && obs.live.n3.visible, false, 'the now-past-end letter 3 hides live');
+      assert.deepEqual(obs.live.sUnits, { costume: 'digit/5', visible: true }, 'the score units digit tracks the live edit (5)');
+    },
+    // Break the name-cell dispatch (`attract role == 8`): the name clones never match their role branch, so
+    // they never switch to a glyph/<letter> costume nor show → the default-name assertions fail.
+    // roadmap-evidence: CAB-04 failure  (a broken name-role dispatch leaves the live table's names unrendered)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 8, 999),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the LIVE table cells do not leak. Entering attract-scores stamps
+    // exactly 90 cell clones (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9); they must ALL retire on
+    // the transition out — each cell self-deletes when its loop exits (`repeat until not attract-scores` → hide
+    // → delete this clone) AND common_stop(clones=True) is the backstop. Without retirement every best-five
+    // visit would stack a fresh 90-cell table on the previous one, climbing toward the scratch-vm 300-clone
+    // ceiling. We assert retirement DIRECTLY (table-role clone count is 90 on screen, then 0 after the screen
+    // advances to demo 2) rather than comparing counts across laps — a cross-lap climb is masked once the 300
+    // ceiling caps clone creation, so a flat-count assertion would not bind. Companion to attract-clone-no-leak
+    // (which samples the title-state CREDIT/digit/prompt clones, absent here).
+    // roadmap-evidence: CAB-04 success  (the ~90 table cells are all retired on the transition out of attract-scores)
+    key: 'high-score-clone-no-leak',
+    behavior: 'The live best-five table cells are all retired on the transition out of attract-scores',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachScores(vm), 'precondition: the attract cycle reaches the best-five screen');
+      step(vm, 3); // let the best-five screen stamp its table cells
+      // Count the WHOLE start_screen clone pool, not role-filtered: a leak build blows past the 300-clone
+      // ceiling and overwrites the leaked clones' `attract role` var, so a role filter reads 0 and misses
+      // them. The total census is immune to both — the field is torn down in attract-scores, so the only
+      // start_screen clones alive are this screen's 90 table cells.
+      const present = cloneCount(vm, 'start_screen');
+      // The best-five hold auto-advances to demo 2 (~256 ticks); step until the screen leaves attract-scores.
+      let t = 0;
+      while (state(vm) === 'attract-scores' && t < 400) {
+        step(vm, 1);
+        t += 1;
+      }
+      assert.notEqual(state(vm), 'attract-scores', 'the best-five screen advances out within budget');
+      step(vm, 5); // let the transition's director-stop retire the cells
+      return { present, stateAfter: state(vm), afterExit: cloneCount(vm, 'start_screen') };
+    },
+    assert(obs) {
+      assert.equal(obs.present, 90, 'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7))');
+      // Demo 2 keeps only the handful of ordinary attract clones (≈6); the table cells are all gone. A
+      // leak build carries all 90 cells (capped at the 300 ceiling) past the transition → far above this.
+      assert.ok(obs.afterExit < 30, `the table cells are retired on leaving attract-scores (saw ${obs.afterExit})`);
+    },
+    // Remove every `delete this clone` on start_screen (the per-cell self-delete AND the common_stop backstop)
+    // so no table cell is ever retired: the 90 cells survive past the transition out → afterExit stays pinned
+    // at the 300 ceiling and the retirement assertion fails. The present==90 half also bites (the leak re-runs
+    // the spawn to the ceiling, so present reads 300). Ceiling- and role-independent.
+    // roadmap-evidence: CAB-04 failure  (without clone retirement the live table cells survive the transition)
+    negativeMutation: (p) => mutate.removeDeleteThisClone(p, 'start_screen'),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the initials-entry INPUT — riskiest seam #5. On the entry screen
+    // Up/Down cycle the active letter over the 27-symbol ring (A-Z then space), wrapping both ways (the floored
+    // mod: Down from A -> the space at index 26, Up from the space -> A; xevious_main.68k:1736-1744,1773-1781);
+    // Space commits the active ring letter onto `name buffer`, advances the cursor and resets the active letter,
+    // and the tenth committed character finishes entry — writing the typed name into `high score names` at the
+    // rank `rank in` recorded (`entry row`) and returning to the attract cycle (attract=1 -> title). The hats are
+    // state-gated to high-score-entry, so they never fight the title selector or the craft. Driven directly into
+    // the entry screen (the game-over routing that reaches it in real play arrives in C4). A boot step before the
+    // first press is required (keypress-hats-need-boot-step), handled inside enterEntry.
+    // roadmap-evidence: CAB-04 success  (Up/Down cycles the ring with both-way wrap; Space commits + advances;
+    //   the tenth character finishes and the typed initials land in high score names at the entry rank)
+    key: 'high-score-entry-letters',
+    behavior: 'Up/Down cycle the entry ring (both-way wrap), Space commits, and the tenth char finishes into the table',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(enterEntry(vm, { row: 3, timer: 1000000 }), 'precondition: the cabinet reaches the entry screen');
+      // Seed a known names list so the finished name can be read back at its rank row (rank 3 -> JS index 2).
+      const names = readVar(vm, 'eco-high-score-names');
+      names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
+
+      const char = () => readVar(vm, 'cabinet-entry-char');
+      const start = char(); // a fresh cell sits on the blanked SPACE symbol (ring index 26)
+      tapKey(vm, 'ArrowUp'); // wrap up: 26 (space) -> 0 (A)
+      const wrapUp = char();
+      tapKey(vm, 'ArrowDown'); // wrap down: 0 (A) -> 26 (space)
+      const wrapDown = char();
+      tapKey(vm, 'ArrowUp'); // 26 -> 0 (A)
+      tapKey(vm, 'ArrowUp'); // 0 -> 1 (B)
+      tapKey(vm, 'ArrowUp'); // 1 -> 2 (C)
+      const climbed = char();
+
+      // Type "ABABABABAB". Each cell's active letter is set explicitly, then Space commits it (after a commit
+      // the hat resets the active letter to SPACE — the blanked next cell — so selecting per cell is robust to
+      // that reset). The tenth commit finishes entry; the finish then runs the terminal GAME OVER hold.
+      const typed = 'ABABABABAB';
+      for (let i = 0; i < typed.length; i += 1) {
+        writeVar(vm, 'cabinet-entry-char', typed[i] === 'B' ? 1 : 0);
+        tapKey(vm, ' ');
+      }
+      // The name lands (list_replace) before the finish transitions out of the entry screen; the cabinet then
+      // runs high-score-entry -> game-over (the GAME OVER hold) -> title, raising attract in the terminal hold.
+      const landed = readVar(vm, 'eco-high-score-names')[2];
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
+      return {
+        start,
+        wrapUp,
+        wrapDown,
+        climbed,
+        stateAfter: reachedTitle ? 'title' : state(vm),
+        landed,
+        attract: readVar(vm, 'cabinet-attract'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.start, 26, 'a fresh cell starts on the blanked SPACE symbol (ring index 26)');
+      assert.equal(obs.wrapUp, 0, 'Up from the space wraps to the first letter (A)');
+      assert.equal(obs.wrapDown, 26, 'Down from A wraps back to the space (index 26)');
+      assert.equal(obs.climbed, 2, 'two further Up presses advance the active letter to C (index 2)');
+      assert.equal(obs.landed, 'ABABABABAB', 'the typed initials land in high score names at the entry rank');
+      assert.equal(obs.stateAfter, 'title', 'the tenth character finishes entry; after the GAME OVER hold the cabinet is back at the title');
+      assert.equal(obs.attract, 1, 'the terminal GAME OVER hold re-raises the attract flag for the cabinet cycle');
+    },
+    // Pin `name buffer` to "" so no committed letter ever accumulates: the tenth-char finish then writes an empty
+    // name and the typed-initials assertion fails (the cursor/cell machinery is untouched, so only the buffer
+    // accumulation — the behaviour this scenario proves — breaks).
+    // roadmap-evidence: CAB-04 failure  (with name buffer pinned empty the committed initials never accumulate)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'name buffer', ''),
+  },
+  {
+    // CAB-04 (cabinet.high-scores, slice 19): the FIXED total countdown. `entry timer` is armed once at entry
+    // start (the entry-scope reset) and counts down one per frame, never reset by input (countdown_timer_1 is
+    // seeded once and decremented unconditionally, xevious_main.68k:1701,1721-1728). When it reaches zero it
+    // commits whatever was typed so far and leaves the screen (name_entry_finished :1757-1769). We type a partial
+    // name, arm a short countdown and let it expire; the partial must land at the entry rank and the cabinet must
+    // return to the title. This is the timeout half of riskiest-seam #5 (the letters scenario is the input half).
+    // roadmap-evidence: CAB-04 success  (the fixed countdown expiring commits the partial name and routes to title)
+    key: 'high-score-entry-timeout',
+    behavior:
+      'The fixed entry countdown expiring commits the typed cells AND the letter scrolled but not yet confirmed, then returns to the attract cycle',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(enterEntry(vm, { row: 4 }), 'precondition: the cabinet reaches the entry screen');
+      const names = readVar(vm, 'eco-high-score-names');
+      names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
+      // Type a partial "AB" (2 of 10 cells committed with Space); each cell's letter is set explicitly, since a
+      // commit resets the active letter to the blanked space for the next cell.
+      writeVar(vm, 'cabinet-entry-char', 0);
+      tapKey(vm, ' '); // commit A
+      writeVar(vm, 'cabinet-entry-char', 1);
+      tapKey(vm, ' '); // commit B
+      const committed = readVar(vm, 'cabinet-entry-name-buffer');
+      // Scroll the third cell to 'C' but do NOT Space-confirm it, then let the fixed countdown expire. The
+      // commit-in-flight on finish keeps this scrolled-but-unconfirmed letter (faithful to name_entry_finished,
+      // which stops on whatever letter is showing) — so the landed name is "ABC", not "AB".
+      writeVar(vm, 'cabinet-entry-char', 2); // 'C', in flight (not Space-committed)
+      writeVar(vm, 'cabinet-entry-timer', 2); // arm a short countdown; the entry loop decrements it to zero
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
+      return {
+        committed,
+        stateAfter: reachedTitle ? 'title' : state(vm),
+        landed: readVar(vm, 'eco-high-score-names')[3], // rank 4 -> JS index 3
+        attract: readVar(vm, 'cabinet-attract'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.committed, 'AB', 'the Space-committed cells accumulate into the name buffer before the timeout');
+      assert.equal(obs.stateAfter, 'title', 'the fixed countdown expiring finishes entry and (via the GAME OVER hold) returns to the title');
+      assert.equal(obs.landed, 'ABC', 'the timeout commits the typed cells AND the in-flight scrolled letter into the entry rank');
+      assert.equal(obs.attract, 1, 'the terminal GAME OVER hold after the timeout finish re-raises the attract flag');
+    },
+    // Freeze `change entry timer by` so the countdown never decrements: the timer stays positive, the entry never
+    // finishes, and the cabinet never leaves high-score-entry → the return-to-title assertion fails.
+    // roadmap-evidence: CAB-04 failure  (without the decrement the fixed countdown never expires and entry hangs)
+    negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'entry timer'),
+  },
+  {
+    // ECO-04 (economy.game-over-routing, slice 19): the end-of-game ROUTING acts on the qualification verdict,
+    // and it runs at the DEATH decision (state player-dead, the last craft gone), BEFORE any GAME OVER hold —
+    // faithful to the arcade, which calls check_for_high_score the instant the game ends and reaches the
+    // game_over hold only after name entry (xevious_main.68k:546, :1671-1672, :1757-1769). A qualifying score
+    // (>= fifth place) ranks into the live table and transitions player-dead -> high-score-entry, tagging the
+    // entering player/row/score; a sub-fifth score skips entry and runs player-dead -> game-over, whose terminal
+    // hold returns to the attract cycle at the title. Driven by firing the `death complete` receiver directly
+    // over a seeded table + score with the craft counter drained (the terminal branch), so the routing is tested
+    // at its real decision point without a rendered collision.
+    // roadmap-evidence: ECO-04 success  (a qualifying score routes player-dead -> high-score-entry and ranks in
+    //   at its rank; a sub-fifth score skips entry and returns to the title via the terminal GAME OVER hold)
+    key: 'high-score-qualify-enters',
+    behavior:
+      'A qualifying end-of-game score routes the death decision into the initials screen and ranks in; a sub-fifth score skips entry and returns to the title',
+    playtestStep: 6,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2); // boot to the title and arm the director receivers
+      const seed = (id, vals) => {
+        const a = readVar(vm, id);
+        a.splice(0, a.length, ...vals);
+      };
+      const route = (score, { twoPlayer = 0, currPlayer = 0, otherScore = 0 } = {}) => {
+        seed('eco-high-score-table', [40000, 35000, 30000, 25000, 20000]);
+        seed('eco-high-score-names', ['STK', 'M.N', 'EVE', 'S.O', 'S.K']);
+        writeVar(vm, 'eco-score', score);
+        writeVar(vm, 'other-score', otherScore);
+        writeVar(vm, 'cabinet-two-player', twoPlayer);
+        writeVar(vm, 'cabinet-curr-player', currPlayer);
+        writeVar(vm, 'eco-craft', 0); // no craft left: the death decision is terminal (reaches the route)
+        writeVar(vm, 'other-craft', 0); // and the other player is out too, so the 2P alternate path is skipped
+        writeVar(vm, 'cabinet-entry-row', 0);
+        writeVar(vm, 'cabinet-entry-player', 9); // sentinel: the routing must set it
+        writeVar(vm, 'game-director-state', 'player-dead');
+        fireBroadcast(vm, 'death complete');
+        stepUntil(vm, (v) => state(v) === 'high-score-entry' || state(v) === 'title');
+        return {
+          state: state(vm),
+          qualified: Number(readVar(vm, 'eco-qualified')),
+          row: readVar(vm, 'cabinet-entry-row'),
+          player: Number(readVar(vm, 'cabinet-entry-player')),
+          entryScore: Number(readVar(vm, 'cabinet-entry-score')),
+          table: readVar(vm, 'eco-high-score-table').slice(),
+        };
+      };
+      // Qualifying one-player score 32000 (>= 20000 fifth) ranks at rank 3 (beats 30000, below 35000).
+      const qualify = route(32000);
+      // Sub-fifth one-player score 10000 (< 20000 fifth) does not qualify.
+      const skip = route(10000);
+      return { qualify, skip };
+    },
+    assert(obs) {
+      assert.equal(obs.qualify.state, 'high-score-entry', 'a qualifying score routes into the initials screen');
+      assert.equal(obs.qualify.qualified, 1, 'the qualification verdict is set for a qualifying score');
+      assert.equal(obs.qualify.row, 3, 'the qualifying score ranks in at its rank (3)');
+      assert.equal(obs.qualify.player, 0, 'the entering player is the current (last-dier) player');
+      assert.equal(obs.qualify.entryScore, 32000, 'the entry score is the qualifying player score');
+      assert.deepEqual(
+        obs.qualify.table,
+        [40000, 35000, 32000, 30000, 25000],
+        'the qualifying score ranks into the live table before entry',
+      );
+      assert.equal(obs.skip.state, 'title', 'a sub-fifth score skips entry and returns to the title');
+      assert.equal(obs.skip.qualified, 0, 'a sub-fifth score does not qualify');
+    },
+    // Remove the player-dead -> high-score-entry edge: the qualifying score's transition is then a no-op, so the
+    // cabinet never reaches the entry screen → the routing assertion fails. The sub-fifth -> game-over -> title
+    // path is untouched, so only the routing-to-entry behaviour breaks.
+    // roadmap-evidence: ECO-04 failure  (without the routing edge a qualifying score cannot reach the entry screen)
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> high-score-entry'),
+  },
+  {
+    // ECO-04 (economy.game-over-routing, slice 19): two-player SEQUENTIAL entry. At a two-player both-out (state
+    // player-dead, both craft counters drained) the routing runs at the DEATH decision and enters the CURRENT
+    // player first (rank in, arm `entry recheck`) via player-dead -> high-score-entry; on finish
+    // `_high_score_finish` consumes the flag, re-checks the OTHER player against the now-shifted fifth place, and
+    // re-arms the entry screen for them via a high-score-entry -> high-score-entry self-transition (so the
+    // PLAYER-2 tag re-reads `entry player`). The port batches the arcade's per-player-at-own-game-over entries at
+    // this single both-out point (recorded divergence). Both finishes here are the tenth-char Space finish; each
+    // typed name lands at its own rank. A boot step arms the key hats (keypress-hats-need-boot-step); the
+    // self-transition re-arms.
+    // roadmap-evidence: ECO-04 success  (both qualifying players enter sequentially — current first, then the
+    //   other after a self-transition re-arm — and each typed name lands at its correct rank)
+    key: 'high-score-two-player-both',
+    behavior:
+      'A two-player both-out where both scores qualify runs two sequential initials entries (current then other), each name landing at its own rank',
+    playtestStep: 6,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      const seed = (id, vals) => {
+        const a = readVar(vm, id);
+        a.splice(0, a.length, ...vals);
+      };
+      seed('eco-high-score-table', [40000, 35000, 30000, 25000, 20000]);
+      seed('eco-high-score-names', ['STK', 'M.N', 'EVE', 'S.O', 'S.K']);
+      writeVar(vm, 'eco-score', 32000); // current player (curr player 0) — ranks at 3
+      writeVar(vm, 'other-score', 28000); // other player (player 1) — ranks at 5 after the first insert
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'eco-craft', 0); // both craft counters drained: terminal, both-out
+      writeVar(vm, 'other-craft', 0); // → the 2P alternate (hand-off) path is skipped, reaching the route
+      writeVar(vm, 'game-director-state', 'player-dead');
+      fireBroadcast(vm, 'death complete');
+      stepUntil(vm, (v) => state(v) === 'high-score-entry' || state(v) === 'title');
+      const firstState = state(vm);
+      const firstPlayer = Number(readVar(vm, 'cabinet-entry-player'));
+      const firstRow = readVar(vm, 'cabinet-entry-row');
+
+      // Finish player 1's entry: ten 'A's. Each cell's active letter is set explicitly (a commit resets the
+      // active letter to the blanked space), then Space commits it. The tenth commit finishes and the recheck
+      // re-arms the screen for player 2.
+      for (let i = 0; i < 10; i += 1) {
+        writeVar(vm, 'cabinet-entry-char', 0); // 'A'
+        tapKey(vm, ' ');
+      }
+      stepUntil(vm, (v) => state(v) === 'high-score-entry' || state(v) === 'title'); // settle into the second entry
+      const midState = state(vm);
+      const midPlayer = Number(readVar(vm, 'cabinet-entry-player'));
+      const midRow = readVar(vm, 'cabinet-entry-row');
+
+      // Finish player 2's entry: ten 'B's (set 'B' per cell, Space commit). The tenth commit finishes with the
+      // recheck already consumed, so the cabinet runs the terminal GAME OVER hold back to the title.
+      for (let i = 0; i < 10; i += 1) {
+        writeVar(vm, 'cabinet-entry-char', 1); // 'B'
+        tapKey(vm, ' ');
+      }
+      stepUntil(vm, (v) => state(v) === 'title');
+      return {
+        firstState,
+        firstPlayer,
+        firstRow,
+        midState,
+        midPlayer,
+        midRow,
+        finalState: state(vm),
+        names: readVar(vm, 'eco-high-score-names').slice(),
+        attract: Number(readVar(vm, 'cabinet-attract')),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.firstState, 'high-score-entry', 'the current player enters first');
+      assert.equal(obs.firstPlayer, 0, 'the first entrant is the current player (player 0)');
+      assert.equal(obs.firstRow, 3, 'the current player ranks in at rank 3');
+      assert.equal(obs.midState, 'high-score-entry', 'finishing the first entry re-arms the screen for the other player');
+      assert.equal(obs.midPlayer, 1, 'the second entrant is the other player (player 1)');
+      assert.equal(obs.midRow, 5, 'the other player ranks in at rank 5 against the now-shifted fifth place');
+      assert.equal(obs.names[2], 'AAAAAAAAAA', 'the first player name lands at its rank (3 -> index 2)');
+      assert.equal(obs.names[4], 'BBBBBBBBBB', 'the second player name lands at its rank (5 -> index 4)');
+      assert.equal(obs.finalState, 'title', 'both entries done, the cabinet returns to the attract cycle at the title');
+      assert.equal(obs.attract, 1, 'the final finish re-raises the attract flag');
+    },
+    // Remove the high-score-entry -> high-score-entry self-edge: after the first player finishes, the re-arm
+    // transition is a no-op, so the other player never enters and the second name never lands → the sequential
+    // assertions fail. The first entry (via game-over -> high-score-entry) is untouched.
+    // roadmap-evidence: ECO-04 failure  (without the self-edge the second qualifying player's re-arm cannot fire)
+    negativeMutation: (p) => mutate.removeAllowedTransition(p, 'high-score-entry -> high-score-entry'),
+  },
+  {
     key: 'death-respawn',
     behavior: 'A flying enemy touching the craft runs death -> respawn and returns to playing',
     playtestStep: 5,
@@ -797,11 +1335,10 @@ export const SCENARIOS = [
       writeVar(vm, 'invuln', 0);
       writeVar(vm, 'eco-craft', 1);
       seedCraftHit(vm);
-      let reachedTitle = false;
-      for (let i = 0; i < 20 && !reachedTitle; i += 1) {
-        step(vm, 1);
-        if (state(vm) === 'title') reachedTitle = true;
-      }
+      // The terminal death runs the best-five route at the death decision; a non-qualifying score (the fresh
+      // craft scores nothing) records the game-over outcome and transitions player-dead -> game-over, whose
+      // terminal hold returns to the title. stepUntil rides through the extra routing transition and the hold.
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
       return { reachedTitle };
     },
     assert(obs) {

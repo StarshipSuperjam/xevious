@@ -315,7 +315,17 @@ class ScratchProjectTests(unittest.TestCase):
         # ("GAME OVER PLAYER 1" / "GAME OVER PLAYER 2"), same credited sheet at the SMALL_TEXT_GEOM cell
         # (slice-18 scale correction — was the larger credit downscale) so the banner matches the plain GAME
         # OVER screen and the 18-char line still fits the stage; port-original UI text, so 223 -> 225.
-        self.assertEqual(225, len(assets))
+        # + the slice-19 CAB-04 per-letter name-cell glyphs on start_screen: the slice-17 single baked
+        # "best-five" table costume is RETIRED (-1) and the live best-five table now renders arbitrary
+        # runtime names/ranks/scores with per-glyph clones. The name column needs one costume per letter,
+        # so 27 per-letter glyphs (A-Z and ".") are rendered from the SAME credited HUD font sheet at the
+        # SMALL_TEXT_GEOM cell (the rank/score columns reuse the existing start_screen digit/0-9 costumes).
+        # 26 of the 27 are new distinct PNGs; glyph/O is byte-identical to digit/0 at this cell (the font's
+        # letter O and zero share one bitmap) and dedups to it. Net: -1 (best-five) + 26 = +25, so 225 -> 250.
+        # + the 4 slice-19 CAB-04 initials-entry screen costumes on start_screen (CONGRATULATIONS /
+        # ENTER YOUR INITIALS headers, PLAYER 1 / PLAYER 2 tags), all distinct whole-string PNGs in the
+        # credited font at the SMALL_TEXT_GEOM cell. 250 + 4 = 254.
+        self.assertEqual(254, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -1264,6 +1274,10 @@ class ScratchProjectTests(unittest.TestCase):
             # display register the death handler raises during a two-player handoff and clears after the hold;
             # read by the HUD banner clone. Display machinery like `easter egg showing`, not durable state.
             "banner player",
+            # CAB-04 (slice 19): `rank in`'s single scratch loop register (custom blocks have no locals), like
+            # `swap tmp`. A pure Stage-internal working register — NOT part of the entry category below (those
+            # are sprite-READ and write-forbidden); nothing outside `rank in` touches it.
+            "rank cursor",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1321,6 +1335,23 @@ class ScratchProjectTests(unittest.TestCase):
         player_context_names = {
             shadow_name for _live, _live_id, shadow_name, _shadow_id in director.PLAYER_CONTEXT_FIELDS
         }
+        # CAB-04 (slice 19): the high-score initials-entry machinery — its OWN category, like area/difficulty/
+        # player-context state: Stage-written, sprite-READ (the entry-screen compositor clones), and
+        # write-forbidden below (added to `director_variable_ids`). `name buffer` is a STRING the compositor
+        # renders a letter at a time (never a Stage-list surface). `entry score` is the score `rank in` ranks;
+        # `rank cursor` is `rank in`'s scratch loop register — that one is plain machinery (above), not here.
+        high_score_entry_names = {
+            "entry char",
+            "name buffer",
+            "entry cell",
+            "entry row",
+            "entry player",
+            "entry timer",
+            "entry score",
+            # ECO-04 (slice 19): the one-shot two-player-sequential-entry flag (the game-over routing arms it,
+            # `_high_score_finish` consumes it to re-check the other player). Director-owned entry machinery.
+            "entry recheck",
+        }
         self.assertTrue(director_state_names.isdisjoint(machinery_names))
         self.assertTrue(economy_names.isdisjoint(machinery_names | director_state_names))
         self.assertTrue(
@@ -1340,6 +1371,16 @@ class ScratchProjectTests(unittest.TestCase):
                 | difficulty_state_names
             )
         )
+        self.assertTrue(
+            high_score_entry_names.isdisjoint(
+                machinery_names
+                | director_state_names
+                | economy_names
+                | area_state_names
+                | difficulty_state_names
+                | player_context_names
+            )
+        )
         stage_variable_names = {name for name, _value in stage["variables"].values()}
         self.assertEqual(
             director_state_names
@@ -1347,7 +1388,8 @@ class ScratchProjectTests(unittest.TestCase):
             | economy_names
             | area_state_names
             | difficulty_state_names
-            | player_context_names,
+            | player_context_names
+            | high_score_entry_names,
             stage_variable_names,
         )
         self.assertEqual(
@@ -1360,6 +1402,13 @@ class ScratchProjectTests(unittest.TestCase):
                 "player-dead -> game-over",
                 "respawning -> playing",
                 "game-over -> title",
+                # CAB-04 / ECO-04 (slice 19): a qualifying FINAL score routes to the initials screen at the DEATH
+                # decision (player-dead -> high-score-entry), BEFORE the GAME OVER hold; on finish the entry runs
+                # the GAME OVER hold (high-score-entry -> game-over) and that terminal hold returns to the title.
+                # The self-edge re-arms the screen for a second qualifying player (ECO-04 2P sequential entry).
+                "player-dead -> high-score-entry",
+                "high-score-entry -> game-over",
+                "high-score-entry -> high-score-entry",
                 # CAB-01 (slice 17) attract cycle: the demo reuses `playing` under attract==1.
                 "title -> playing",
                 "playing -> attract-scores",
@@ -1415,6 +1464,8 @@ class ScratchProjectTests(unittest.TestCase):
                 "repeat bonus 123",
                 "repeat bonus 5",
                 "high score table",
+                # CAB-04 (slice 19): the LIVE best-five names column, parallel to `high score table`.
+                "high score names",
                 "area map column",
                 "schedule handler",
                 "schedule trigger row",
@@ -1493,6 +1544,10 @@ class ScratchProjectTests(unittest.TestCase):
             # the death-alternation path (slice 18 C3). Both write only the per-player shadow set.
             director.COPY_PLAYERS_PROCCODE,
             director.SWAP_PLAYERS_PROCCODE,
+            # CAB-04 (slice 19): the high-score rank-in insertion proc. Reads `entry score`, inserts into the
+            # two best-five lists in lockstep, records the rank in `entry row`. Writes only the Stage lists +
+            # entry machinery; its routing caller is wired in C4 (defined now, driven by the C1 harness).
+            director.RANK_IN_PROCCODE,
             # AIR-01 Toroid live-combat machinery (slice 8), all warp, no state write: the aim
             # quantizer, the craft-cell read, the spawner and its Toroid init/update/cull, and the
             # shared RNG step the spawn draw now consumes (its first live consumer).
@@ -1727,9 +1782,23 @@ class ScratchProjectTests(unittest.TestCase):
             director.CURR_PLAYER_ID,
             director.TWO_PLAYER_ID,
             *(shadow_id for _live, _live_id, _shadow_name, shadow_id in director.PLAYER_CONTEXT_FIELDS),
+            # CAB-04 (slice 19): the high-score initials-entry machinery — Stage-written, sprite-READ (the
+            # entry-screen compositor clones read them; reads are permitted), never sprite-written. Adding the
+            # IDs here forbids any sprite from writing them, the same guard the area/difficulty/player-context
+            # state gets. `rank cursor` is Stage-internal (machinery), never sprite-read, so it is NOT listed.
+            director.ENTRY_CHAR_ID,
+            director.ENTRY_NAME_BUFFER_ID,
+            director.ENTRY_CELL_ID,
+            director.ENTRY_ROW_ID,
+            director.ENTRY_PLAYER_ID,
+            director.ENTRY_TIMER_ID,
+            director.ENTRY_SCORE_ID,
         }
-        # Read-only reference tables: ingested, hash-pinned authority data no sprite may
-        # mutate (the mutable slot lists are deliberately excluded — allocators write those).
+        # Sprite-write-forbidden Stage lists: mostly ingested, hash-pinned authority data no sprite may mutate
+        # (the mutable slot lists are deliberately excluded — allocators write those). The two best-five lists
+        # (`high score table` / `high score names`) are the exception: as of CAB-04 (slice 19) the STAGE mutates
+        # them at runtime via `rank in`, so they are not immutable reference data — but no SPRITE may write them,
+        # which is exactly what this guard enforces (it scans non-Stage targets), so they belong here.
         reference_list_ids = {
             director.VALUE_TABLE_ID,
             director.STARTING_LIVES_ID,
@@ -1738,6 +1807,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.REPEAT_BONUS_123_ID,
             director.REPEAT_BONUS_5_ID,
             director.HIGH_SCORE_TABLE_ID,
+            director.HIGH_SCORE_NAMES_ID,
             director.AREA_MAP_COLUMN_ID,
             director.SCHEDULE_HANDLER_ID,
             director.SCHEDULE_TRIGGER_ROW_ID,
@@ -16478,9 +16548,13 @@ class ScratchProjectTests(unittest.TestCase):
         if not role_dispatch:
             failures.add("hud-game-over-role-dispatch")
 
-        # Best-five check: `score > high score table item 5`, and the set-`qualified` that
-        # follows it reaches the transition-procedure call in the `game over complete` receiver
-        # (computed before the transition resets `reset scope` and, via cold-start, the score).
+        # Best-five check: `score >= high score table item 5`, and the set-`qualified` that
+        # follows it reaches the transition-procedure call in the `death complete` receiver — as of
+        # ECO-04 (slice 19) the best-five check and routing run at the DEATH decision, BEFORE the
+        # GAME OVER hold (faithful arcade order: check_for_high_score the instant the game ends, name
+        # entry, THEN the game_over hold — xevious_main.68k:546, :1757-1769), so the verdict is
+        # computed while `score` is still the final (cold-start, which resets it, is reached only via
+        # the terminal GAME OVER hold afterwards).
         def reachable(start) -> set:
             seen, stack = set(), [start] if start else []
             while stack:
@@ -16502,7 +16576,7 @@ class ScratchProjectTests(unittest.TestCase):
                 bid
                 for bid, b in stage_blocks.items()
                 if b["opcode"] == "event_whenbroadcastreceived"
-                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "game over complete"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death complete"
             ),
             None,
         )
@@ -16521,16 +16595,30 @@ class ScratchProjectTests(unittest.TestCase):
 
         # The comparison reporter is nested inside the set-`qualified` VALUE input (not on
         # the command next-chain `body` walks), so it is found by shape, like ECO-01's
-        # score-add-award/cap/high-score-track checks scan `blocks.values()` directly.
-        compares_fifth = any(
-            b["opcode"] == "operator_gt"
-            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
-            and is_fifth_place_item(b["inputs"].get("OPERAND2"))
-            for b in stage_blocks.values()
-        )
+        # score-add-award/cap/high-score-track checks scan `blocks.values()` directly. CAB-04
+        # (slice 19) corrected the compare to `>=` fifth place (a tie places, the arcade
+        # move_high_score_entry_down fall-through) — so the shape is now `not(score < item5)`.
+        def is_ge_fifth(block) -> bool:
+            if block["opcode"] != "operator_not":
+                return False
+            inner = block["inputs"].get("OPERAND")
+            inner_id = inner[1] if isinstance(inner, list) and len(inner) > 1 else None
+            lt = stage_blocks.get(inner_id) if isinstance(inner_id, str) else None
+            return (
+                lt is not None
+                and lt["opcode"] == "operator_lt"
+                and refs(lt["inputs"].get("OPERAND1"), director.SCORE_ID)
+                and is_fifth_place_item(lt["inputs"].get("OPERAND2"))
+            )
+
+        compares_fifth = any(is_ge_fifth(b) for b in stage_blocks.values())
         if not compares_fifth:
             failures.add("qualified-compares-fifth-place")
 
+        # The set-`qualified` must still reach the transition procedure call — the routing that
+        # follows it is an if_else (qualify -> entry / else -> game-over hold), so the transition
+        # calls are nested in substacks, not on a linear next-chain. Walk the full reachable graph
+        # from the qualify block (next + substacks), as the `body` walk above does.
         qualify_block = next(
             (
                 bid
@@ -16543,16 +16631,14 @@ class ScratchProjectTests(unittest.TestCase):
         )
         reaches_transition = False
         if qualify_block is not None:
-            cursor, steps = stage_blocks[qualify_block]["next"], 0
-            while cursor and steps < 10:
-                b = stage_blocks[cursor]
+            for bid in reachable(qualify_block):
+                b = stage_blocks[bid]
                 if (
                     b["opcode"] == "procedures_call"
                     and b.get("mutation", {}).get("proccode") == director.PROCCODE
                 ):
                     reaches_transition = True
                     break
-                cursor, steps = b["next"], steps + 1
         if qualify_block is None or not reaches_transition:
             failures.add("qualified-is-set")
 
@@ -16569,6 +16655,10 @@ class ScratchProjectTests(unittest.TestCase):
         data = json.loads((ROOT / "docs" / "spec" / "data" / "scores.json").read_text())
         expected = data["tables"]["high_score_defaults"]["scores"]
         self.assertEqual(expected, by_name["high score table"])
+        # CAB-04 (slice 19): the parallel LIVE names list is generated from the project-original defaults,
+        # one name per score, so the best-five table has a complete (score, name) row set at power-on.
+        self.assertEqual(director.HIGH_SCORE_NAME_DEFAULTS, by_name["high score names"])
+        self.assertEqual(len(by_name["high score table"]), len(by_name["high score names"]))
 
     def test_attract_default_initials_are_project_original_and_font_covered(self) -> None:
         # CAB-01 (slice 17): the attract best-five initials are project-original placeholders that
@@ -16594,6 +16684,14 @@ class ScratchProjectTests(unittest.TestCase):
             "each default best-five score must have exactly one initials entry",
         )
         self.assertEqual(len(initials), len(director.HIGH_SCORE_DEFAULTS))
+        # CAB-04 (slice 19): the LIVE names list defaults (game_director.HIGH_SCORE_NAME_DEFAULTS) must equal
+        # the attract initials one-for-one. game_director does not import hud_glyphs (blocks/costume split), so
+        # it declares the defaults locally; this cross-module equality is what keeps the two from drifting.
+        self.assertEqual(
+            list(initials),
+            director.HIGH_SCORE_NAME_DEFAULTS,
+            "the live names-list defaults must match hud_glyphs.ATTRACT_DEFAULT_INITIALS exactly",
+        )
         for entry in initials:
             self.assertEqual(len(entry), 3, f"best-five initials {entry!r} must be three glyphs")
             for glyph in entry:
@@ -16605,18 +16703,24 @@ class ScratchProjectTests(unittest.TestCase):
 
     @staticmethod
     def _attract_display_failures(project: dict) -> set:
-        """CAB-01/CAB-02 attract displays on start_screen — the port-font costumes, the
-        clone spawn/dispatch, the four role branches (CREDIT label, credit digit, prompt,
-        best-five), the credit-digit costume EXPRESSION, and the static label costume
-        switches (structure only; the pixels and on-screen layout are the operator's
-        playtest). Mirrors the HUD render guard for the attract-display clone family."""
+        """CAB-01/CAB-02/CAB-04 attract displays on start_screen — the port-font costumes,
+        the clone spawn/dispatch, the role branches (CREDIT label, credit digit, prompt, and
+        the three LIVE best-five cell roles: rank digit, name letter, score digit), the
+        credit-digit/score costume EXPRESSION, the name-letter glyph EXPRESSION, and the
+        static label costume switches (structure only; the pixels and on-screen layout are
+        the operator's playtest). Mirrors the HUD render guard for the attract-display clone
+        family. CAB-04: the slice-17 single baked "best-five" table costume is retired; the
+        table is now rendered live from the `high score table`/`high score names` Stage lists
+        via per-glyph clones, so the name column needs one costume per letter (glyph/A..Z and
+        glyph/.)."""
         failures = set()
         ss = next(t for t in project["targets"] if t.get("name") == "start_screen")
         blocks = ss["blocks"]
         costumes = {c["name"] for c in ss["costumes"]}
 
-        required = {"credit-label", "push-start", "insert-coin", "best-five"}
+        required = {"credit-label", "push-start", "insert-coin"}
         required |= {f"digit/{d}" for d in range(10)}
+        required |= {f"glyph/{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ."}
         for name in sorted(required):
             if name not in costumes:
                 failures.add(f"costume-missing:{name}")
@@ -16653,36 +16757,51 @@ class ScratchProjectTests(unittest.TestCase):
             ("credit-label-role-dispatch", director.ATTRACT_ROLE_CREDIT_LABEL),
             ("credit-digit-role-dispatch", director.ATTRACT_ROLE_CREDIT_DIGIT),
             ("prompt-role-dispatch", director.ATTRACT_ROLE_PROMPT),
-            ("best-five-role-dispatch", director.ATTRACT_ROLE_BEST_FIVE),
+            ("table-rank-role-dispatch", director.ATTRACT_ROLE_TABLE_RANK),
+            ("table-name-role-dispatch", director.ATTRACT_ROLE_TABLE_NAME),
+            ("table-score-role-dispatch", director.ATTRACT_ROLE_TABLE_SCORE),
         ):
             if not role_dispatch(value):
                 failures.add(label)
 
-        # The credit digit renders through a costume EXPRESSION: a switch-costume block fed
-        # by join("digit/", <digit>) — not a static costume name (that is how a per-place
-        # digit tracks the live credit count).
-        def digit_expr_switch() -> bool:
+        # A live cell renders through a costume EXPRESSION: a switch-costume block fed by
+        # join(<prefix>, <reporter>) — not a static costume name. The credit/rank/score digits
+        # join the "digit/" prefix (tracking a live count / table value); the name letters join
+        # the "glyph/" prefix (tracking a live names-list letter). `prefix` selects which.
+        def expr_switch(prefix: str) -> bool:
             for b in blocks.values():
                 if b["opcode"] != "looks_switchcostumeto":
                     continue
                 ci = b["inputs"].get("COSTUME")
-                if isinstance(ci, list) and isinstance(ci[1], str):
-                    fed = blocks.get(ci[1])
-                    if fed is not None and fed["opcode"] == "operator_join":
-                        return True
+                if not (isinstance(ci, list) and isinstance(ci[1], str)):
+                    continue
+                fed = blocks.get(ci[1])
+                if fed is None or fed["opcode"] != "operator_join":
+                    continue
+                first = fed["inputs"].get("STRING1")
+                # join's first operand is the literal prefix (a text shadow [1, [10, "<prefix>"]]).
+                if (
+                    isinstance(first, list)
+                    and isinstance(first[1], list)
+                    and first[1][1] == prefix
+                ):
+                    return True
             return False
 
-        if not digit_expr_switch():
+        if not expr_switch(director.ATTRACT_DIGIT_PREFIX):
             failures.add("credit-digit-costume-expr")
+        if not expr_switch(director.ATTRACT_GLYPH_PREFIX):
+            failures.add("table-name-glyph-expr")
 
-        # The static labels (CREDIT line, the two prompts, the table) switch to a named
-        # port-font costume via a costume-menu shadow.
+        # The static labels (CREDIT line, the two prompts) switch to a named port-font costume
+        # via a costume-menu shadow. (The live table cells use costume EXPRESSIONS above, not a
+        # static switch — the slice-17 baked "best-five" costume is retired.)
         label_switch_names = {
             b["fields"]["COSTUME"][0]
             for b in blocks.values()
             if b["opcode"] == "looks_costume" and b.get("fields", {}).get("COSTUME")
         }
-        for name in ("credit-label", "push-start", "insert-coin", "best-five"):
+        for name in ("credit-label", "push-start", "insert-coin"):
             if name not in label_switch_names:
                 failures.add(f"label-switch-missing:{name}")
 
@@ -16716,7 +16835,7 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "control_start_as_clone":
                     b["opcode"] = "control_start_as_clone_disabled"
 
-        def break_best_five_dispatch(p: dict) -> None:
+        def break_table_name_dispatch(p: dict) -> None:
             for b in ss_blocks(p).values():
                 if b["opcode"] != "operator_equals":
                     continue
@@ -16730,29 +16849,357 @@ class ScratchProjectTests(unittest.TestCase):
                     and lhs_spec[2] == director.ATTRACT_DISPLAY_ROLE_ID
                     and isinstance(rhs, list)
                     and isinstance(rhs[1], list)
-                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_BEST_FIVE)
+                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_TABLE_NAME)
                 ):
                     b["inputs"]["OPERAND2"] = [1, [10, "999"]]
 
         def break_digit_expr(p: dict) -> None:
+            # Rewrite the digit prefix so no join feeds "digit/" any more (the glyph prefix is
+            # untouched, so only the digit-expr guard should bite).
             for b in ss_blocks(p).values():
-                if b["opcode"] == "operator_join":
-                    b["opcode"] = "operator_join_disabled"
+                if b["opcode"] != "operator_join":
+                    continue
+                first = b["inputs"].get("STRING1")
+                if (
+                    isinstance(first, list)
+                    and isinstance(first[1], list)
+                    and first[1][1] == director.ATTRACT_DIGIT_PREFIX
+                ):
+                    first[1][1] = "nope/"
 
-        def drop_best_five_costume(p: dict) -> None:
+        def break_glyph_expr(p: dict) -> None:
+            # Rewrite the name-cell glyph prefix so no join feeds the "glyph/" prefix any more
+            # (the digit prefix is untouched, so only the glyph-expr guard should bite).
+            for b in ss_blocks(p).values():
+                if b["opcode"] != "operator_join":
+                    continue
+                first = b["inputs"].get("STRING1")
+                if (
+                    isinstance(first, list)
+                    and isinstance(first[1], list)
+                    and first[1][1] == director.ATTRACT_GLYPH_PREFIX
+                ):
+                    first[1][1] = "nope/"
+
+        def drop_glyph_costume(p: dict) -> None:
             ss = next(t for t in p["targets"] if t.get("name") == "start_screen")
-            ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "best-five"]
+            ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "glyph/A"]
 
         for label, mutate_fn in (
             ("attract-spawns-clones", break_spawn),
             ("attract-clone-handler", break_handler),
-            ("best-five-role-dispatch", break_best_five_dispatch),
+            ("table-name-role-dispatch", break_table_name_dispatch),
             ("credit-digit-costume-expr", break_digit_expr),
-            ("costume-missing:best-five", drop_best_five_costume),
+            ("table-name-glyph-expr", break_glyph_expr),
+            ("costume-missing:glyph/A", drop_glyph_costume),
         ):
             project = load_source(scratch.SOURCE_DIR)
             mutate_fn(project)
             self.assertIn(label, self._attract_display_failures(project), label)
+
+    @staticmethod
+    def _high_score_entry_failures(project: dict) -> set:
+        """CAB-04 (slice 19) initials-entry screen + input — structure only (the glyphs,
+        pixels and on-screen layout are the operator's playtest). The four static entry
+        costumes and their role branches live on start_screen (the attract-display clone
+        family); the Up/Down letter cycle, the Space commit, the finish-write into
+        `high score names` and the fixed total-countdown live on the Stage. The harness
+        high-score-entry-letters / high-score-entry-timeout scenarios drive the behaviour
+        live; this guard pins that the wiring is present (and its negatives below prove it
+        binds). The live name cells reuse the glyph/<letter> costume EXPRESSION proven by
+        `_attract_display_failures` (table-name-glyph-expr), so it is not re-pinned here."""
+        failures = set()
+        ss = next(t for t in project["targets"] if t.get("name") == "start_screen")
+        ss_blocks = ss["blocks"]
+        ss_costumes = {c["name"] for c in ss["costumes"]}
+        stage = next(t for t in project["targets"] if t["isStage"])
+        sb = stage["blocks"]
+
+        # The four static entry-screen costumes (the operator confirms the project-original
+        # wording — CONGRATULATIONS / ENTER YOUR INITIALS / PLAYER 1 / PLAYER 2 — at playtest).
+        for name in (
+            director.ATTRACT_COSTUME_ENTRY_HEADER,
+            director.ATTRACT_COSTUME_ENTRY_SUBHEADER,
+            director.ATTRACT_COSTUME_ENTRY_PLAYER_1,
+            director.ATTRACT_COSTUME_ENTRY_PLAYER_2,
+        ):
+            if name not in ss_costumes:
+                failures.add(f"costume-missing:{name}")
+
+        role_id = director.ATTRACT_DISPLAY_ROLE_ID
+
+        def role_dispatch(role_value: int) -> bool:
+            for b in ss_blocks.values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                rhs_spec = rhs[1] if isinstance(rhs, list) else None
+                is_role = (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == role_id
+                )
+                is_val = isinstance(rhs_spec, list) and str(rhs_spec[1]) == str(role_value)
+                if is_role and is_val:
+                    return True
+            return False
+
+        for label, value in (
+            ("entry-name-role-dispatch", director.ATTRACT_ROLE_ENTRY_NAME),
+            ("entry-header-role-dispatch", director.ATTRACT_ROLE_ENTRY_HEADER),
+            ("entry-subheader-role-dispatch", director.ATTRACT_ROLE_ENTRY_SUBHEADER),
+            ("entry-player-role-dispatch", director.ATTRACT_ROLE_ENTRY_PLAYER),
+        ):
+            if not role_dispatch(value):
+                failures.add(label)
+
+        def set_var_to(var_id: str) -> list:
+            return [
+                b
+                for b in sb.values()
+                if b["opcode"] == "data_setvariableto"
+                and b.get("fields", {}).get("VARIABLE", [None, None])[1] == var_id
+            ]
+
+        # Up/Down cycle: a `set entry char = (entry char +/- 1) mod 27` — the set is fed by an
+        # operator_mod whose divisor is the 27-symbol ring size (the floored-mod both-way wrap).
+        def entry_char_cycle() -> bool:
+            for b in set_var_to(director.ENTRY_CHAR_ID):
+                val = b["inputs"].get("VALUE")
+                if not (isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str)):
+                    continue
+                fed = sb.get(val[1])
+                if fed is None or fed["opcode"] != "operator_mod":
+                    continue
+                rhs = fed["inputs"].get("NUM2")
+                if (
+                    isinstance(rhs, list)
+                    and isinstance(rhs[1], list)
+                    and str(rhs[1][1]) == str(director.ENTRY_RING_SIZE)
+                ):
+                    return True
+            return False
+
+        if not entry_char_cycle():
+            failures.add("entry-char-cycle")
+
+        # Space commit: `set name buffer = join(name buffer, letter (entry char + 1) of RING)`
+        # — a name-buffer set fed by a join whose second operand is a letter-of over the ring text.
+        def commit_ring() -> bool:
+            for b in set_var_to(director.ENTRY_NAME_BUFFER_ID):
+                val = b["inputs"].get("VALUE")
+                if not (isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str)):
+                    continue
+                join = sb.get(val[1])
+                if join is None or join["opcode"] != "operator_join":
+                    continue
+                s2 = join["inputs"].get("STRING2")
+                if not (isinstance(s2, list) and isinstance(s2[1], str)):
+                    continue
+                lo = sb.get(s2[1])
+                if lo is None or lo["opcode"] != "operator_letter_of":
+                    continue
+                st = lo["inputs"].get("STRING")
+                if (
+                    isinstance(st, list)
+                    and isinstance(st[1], list)
+                    and st[1][1] == director.ENTRY_RING
+                ):
+                    return True
+            return False
+
+        if not commit_ring():
+            failures.add("entry-commit-ring")
+
+        # Finish: the typed `name buffer` is written in place into `high score names` (distinct
+        # from `rank in`'s lockstep shifts, whose items are list reads, not the name-buffer var).
+        def finish_write() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "data_replaceitemoflist":
+                    continue
+                if b.get("fields", {}).get("LIST", [None, None])[1] != director.HIGH_SCORE_NAMES_ID:
+                    continue
+                item = b["inputs"].get("ITEM")
+                spec = item[1] if isinstance(item, list) else None
+                if (
+                    isinstance(spec, list)
+                    and len(spec) >= 3
+                    and spec[0] == 12
+                    and spec[2] == director.ENTRY_NAME_BUFFER_ID
+                ):
+                    return True
+            return False
+
+        if not finish_write():
+            failures.add("entry-finish-names-write")
+
+        # Total countdown: `change entry timer by <negative>` — the fixed per-frame decrement that
+        # expires the entry (NOT reset on input; a fixed total, faithful to countdown_timer_1).
+        def timer_countdown() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "data_changevariableby":
+                    continue
+                if b.get("fields", {}).get("VARIABLE", [None, None])[1] != director.ENTRY_TIMER_ID:
+                    continue
+                val = b["inputs"].get("VALUE")
+                if isinstance(val, list) and isinstance(val[1], list):
+                    try:
+                        if float(val[1][1]) < 0:
+                            return True
+                    except (TypeError, ValueError):
+                        pass
+            return False
+
+        if not timer_countdown():
+            failures.add("entry-timer-countdown")
+
+        # The input/finish machinery is state-gated to high-score-entry (the isolation that keeps
+        # the Up/Down/Space hats off the title selector and the craft) — at least one such gate.
+        def state_gate() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                rhs_spec = rhs[1] if isinstance(rhs, list) else None
+                is_state = (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == director.STATE_ID
+                )
+                is_val = (
+                    isinstance(rhs_spec, list)
+                    and str(rhs_spec[1]) == director.HIGH_SCORE_ENTRY_STATE
+                )
+                if is_state and is_val:
+                    return True
+            return False
+
+        if not state_gate():
+            failures.add("entry-state-gate")
+
+        return failures
+
+    def test_high_score_entry_present(self) -> None:
+        # CAB-04 (slice 19): the initials-entry screen + input is wired — the four static entry
+        # costumes and their role branches on start_screen, the Up/Down letter cycle over the
+        # 27-symbol ring, the Space commit appending the ring letter to `name buffer`, the
+        # in-place finish-write into `high score names`, the fixed total countdown, all state-gated.
+        # roadmap-evidence: CAB-04 success  (this structural guard pins the entry screen + input +
+        #   finish wiring present; the harness high-score-entry-letters drives the Up/Down ring
+        #   cycle incl. both-way wrap, the Space commit + cursor advance, and the tenth-char finish
+        #   that lands the typed name in high score names[entry row]; high-score-entry-timeout runs
+        #   the fixed total countdown to zero, commits the in-flight letter, and routes through the
+        #   GAME OVER hold back to the title)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._high_score_entry_failures(project))
+
+    def test_high_score_entry_negative_fixtures(self) -> None:
+        # roadmap-evidence: CAB-04 failure  (each severing fixture makes the matching entry-screen
+        #   structural guard report its failure, and each harness entry scenario's negative — the
+        #   name-buffer pin and the entry-timer freeze — stalls the behaviour it proves)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._high_score_entry_failures(base))
+
+        def ss_of(p: dict) -> dict:
+            return next(t for t in p["targets"] if t.get("name") == "start_screen")
+
+        def stage_of(p: dict) -> dict:
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def drop_header_costume(p: dict) -> None:
+            ss = ss_of(p)
+            ss["costumes"] = [
+                c for c in ss["costumes"] if c["name"] != director.ATTRACT_COSTUME_ENTRY_HEADER
+            ]
+
+        def break_name_role_dispatch(p: dict) -> None:
+            for b in ss_of(p)["blocks"].values():
+                if b["opcode"] != "operator_equals":
+                    continue
+                lhs = b["inputs"].get("OPERAND1")
+                rhs = b["inputs"].get("OPERAND2")
+                lhs_spec = lhs[1] if isinstance(lhs, list) else None
+                if (
+                    isinstance(lhs_spec, list)
+                    and len(lhs_spec) >= 3
+                    and lhs_spec[0] == 12
+                    and lhs_spec[2] == director.ATTRACT_DISPLAY_ROLE_ID
+                    and isinstance(rhs, list)
+                    and isinstance(rhs[1], list)
+                    and str(rhs[1][1]) == str(director.ATTRACT_ROLE_ENTRY_NAME)
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "999"]]
+
+        def break_char_cycle(p: dict) -> None:
+            # Disable every operator_mod feeding an `entry char` set (both the +1 and -1 hats), so
+            # the cycle wiring is no longer recognisable — only this key should bite.
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "data_setvariableto":
+                    continue
+                if b.get("fields", {}).get("VARIABLE", [None, None])[1] != director.ENTRY_CHAR_ID:
+                    continue
+                val = b["inputs"].get("VALUE")
+                if isinstance(val, list) and len(val) >= 2 and isinstance(val[1], str):
+                    fed = sb.get(val[1])
+                    if fed is not None and fed["opcode"] == "operator_mod":
+                        fed["opcode"] = "operator_mod_disabled"
+
+        def break_commit_ring(p: dict) -> None:
+            # Rewrite the ring text the commit's letter-of indexes, so the join no longer appends
+            # a ring letter (the active-cell render's letter-of is on start_screen, untouched).
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "operator_letter_of":
+                    continue
+                st = b["inputs"].get("STRING")
+                if isinstance(st, list) and isinstance(st[1], list) and st[1][1] == director.ENTRY_RING:
+                    st[1][1] = "nope"
+
+        def break_finish_write(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if b["opcode"] != "data_replaceitemoflist":
+                    continue
+                item = b["inputs"].get("ITEM")
+                spec = item[1] if isinstance(item, list) else None
+                if (
+                    isinstance(spec, list)
+                    and len(spec) >= 3
+                    and spec[0] == 12
+                    and spec[2] == director.ENTRY_NAME_BUFFER_ID
+                ):
+                    b["fields"]["LIST"] = ["high score table", director.HIGH_SCORE_TABLE_ID]
+
+        def break_timer_countdown(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if b["opcode"] != "data_changevariableby":
+                    continue
+                if b.get("fields", {}).get("VARIABLE", [None, None])[1] == director.ENTRY_TIMER_ID:
+                    val = b["inputs"].get("VALUE")
+                    if isinstance(val, list) and isinstance(val[1], list):
+                        try:
+                            if float(val[1][1]) < 0:
+                                b["fields"]["VARIABLE"] = ["entry row", director.ENTRY_ROW_ID]
+                        except (TypeError, ValueError):
+                            pass
+
+        for label, mutate_fn in (
+            (f"costume-missing:{director.ATTRACT_COSTUME_ENTRY_HEADER}", drop_header_costume),
+            ("entry-name-role-dispatch", break_name_role_dispatch),
+            ("entry-char-cycle", break_char_cycle),
+            ("entry-commit-ring", break_commit_ring),
+            ("entry-finish-names-write", break_finish_write),
+            ("entry-timer-countdown", break_timer_countdown),
+        ):
+            project = load_source(scratch.SOURCE_DIR)
+            mutate_fn(project)
+            self.assertIn(label, self._high_score_entry_failures(project), label)
 
     def test_game_over_negative_fixtures(self) -> None:
         base = load_source(scratch.SOURCE_DIR)
@@ -16876,6 +17323,229 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._eco04_failures(project), label)
+
+    @staticmethod
+    def _eco04_routing_failures(project: dict) -> set:
+        """ECO-04 (slice 19) game-over ROUTING + two-player sequential entry — structure only
+        (the live behaviour is the harness high-score-qualify-enters / high-score-two-player-both /
+        high-score-non-qualify-skips scenarios). A qualifying end-of-game score no longer returns
+        straight to the title: at the DEATH decision (the `death complete` receiver, BEFORE the GAME
+        OVER hold — faithful arcade order, xevious_main.68k:546, :1757-1769) the routing ranks the
+        qualifying score into the live table and transitions to the initials-entry screen, arming
+        `entry recheck` so a second qualifying player (a two-player both-out) is re-checked and
+        re-entered on finish via a `high-score-entry -> high-score-entry` self-transition. This guard
+        pins that wiring is present; its negatives below prove each strand binds."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        sb = stage["blocks"]
+
+        def reachable(start) -> set:
+            seen, stack = set(), [start] if start else []
+            while stack:
+                bid = stack.pop()
+                if bid is None or bid in seen or bid not in sb:
+                    continue
+                seen.add(bid)
+                b = sb[bid]
+                if b.get("next"):
+                    stack.append(b["next"])
+                for slot in ("SUBSTACK", "SUBSTACK2"):
+                    val = b["inputs"].get(slot)
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            return seen
+
+        receiver = next(
+            (
+                bid
+                for bid, b in sb.items()
+                if b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death complete"
+            ),
+            None,
+        )
+        body = reachable(receiver)
+
+        def is_rank_in_call(b) -> bool:
+            return (
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.RANK_IN_PROCCODE
+            )
+
+        def is_entry_transition(b) -> bool:
+            return (
+                b["opcode"] == "procedures_call"
+                and b.get("mutation", {}).get("proccode") == director.PROCCODE
+                and b["inputs"].get(director.ARG_IDS[0])
+                == [1, [10, director.HIGH_SCORE_ENTRY_STATE]]
+            )
+
+        # The routing ranks the qualifying score in and transitions to the entry screen (both
+        # reachable from the receiver — not merely present somewhere on the Stage).
+        if not any(is_rank_in_call(sb[bid]) for bid in body):
+            failures.add("routing-ranks-in")
+        if not any(is_entry_transition(sb[bid]) for bid in body):
+            failures.add("routing-enters-entry")
+
+        # The two-player arm: `entry recheck = two player` (a set on ENTRY_RECHECK_ID fed by the
+        # `two player` variable) — distinct from the finish's consume-to-0.
+        def refs_two_player(spec) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == director.TWO_PLAYER_ID
+            )
+
+        arms_recheck = any(
+            b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.ENTRY_RECHECK_ID
+            and refs_two_player(b["inputs"].get("VALUE"))
+            for b in sb.values()
+        )
+        if not arms_recheck:
+            failures.add("routing-arms-recheck")
+
+        # The finish re-check gate: an if_else on `entry recheck == 1` whose THEN consumes the flag
+        # (sets ENTRY_RECHECK_ID to 0) and reaches a high-score-entry self-transition (the re-arm).
+        def gate_ok() -> bool:
+            for b in sb.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cond_id = cond[1] if isinstance(cond, list) and len(cond) > 1 else None
+                eq = sb.get(cond_id) if isinstance(cond_id, str) else None
+                if eq is None or eq["opcode"] != "operator_equals":
+                    continue
+                op1 = eq["inputs"].get("OPERAND1")
+                is_recheck = (
+                    isinstance(op1, list)
+                    and isinstance(op1[1], list)
+                    and len(op1[1]) >= 3
+                    and op1[1][0] == 12
+                    and op1[1][2] == director.ENTRY_RECHECK_ID
+                )
+                is_one = str(eq["inputs"].get("OPERAND2", [None, [None, None]])[1][1]) == "1"
+                if not (is_recheck and is_one):
+                    continue
+                then = b["inputs"].get("SUBSTACK")
+                then_reach = reachable(then[1]) if isinstance(then, list) and len(then) > 1 else set()
+                consumes = any(
+                    sb[bid]["opcode"] == "data_setvariableto"
+                    and sb[bid]["fields"].get("VARIABLE", [None, None])[1]
+                    == director.ENTRY_RECHECK_ID
+                    and sb[bid]["inputs"].get("VALUE", [None, [None, None]])[1][1] in (0, "0")
+                    for bid in then_reach
+                )
+                re_arms = any(is_entry_transition(sb[bid]) for bid in then_reach)
+                if consumes and re_arms:
+                    return True
+            return False
+
+        if not gate_ok():
+            failures.add("finish-recheck-gate")
+
+        # The self-edge that lets the finish re-arm the entry screen for the second player.
+        allowed = stage["lists"][director.ALLOWED_ID][1]
+        if "high-score-entry -> high-score-entry" not in allowed:
+            failures.add("self-edge-present")
+
+        return failures
+
+    def test_high_score_routing_present(self) -> None:
+        # ECO-04 (slice 19): the game-over routing acts on the qualification verdict — a qualifying
+        # score ranks in and enters the initials screen, and a second qualifying player (two-player
+        # both-out) is re-checked and re-entered on finish via the high-score-entry self-transition.
+        # roadmap-evidence: ECO-04 success  (this structural guard pins the routing + 2P sequential
+        #   re-arm wiring present; the harness high-score-qualify-enters drives a qualifying score
+        #   from game-over into high-score-entry and a sub-fifth score straight to the title, and
+        #   high-score-two-player-both drives both players through two sequential entries that land
+        #   each name in its correct rank)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco04_routing_failures(project))
+
+    def test_high_score_routing_negative_fixtures(self) -> None:
+        # roadmap-evidence: ECO-04 failure  (each severing fixture makes the matching routing guard
+        #   report its failure, and each harness routing scenario's negative — removing the
+        #   player-dead -> high-score-entry edge, and the self-edge — stalls the behaviour it proves)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._eco04_routing_failures(base))
+
+        def stage_of(p: dict) -> dict:
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def break_rank_in(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.RANK_IN_PROCCODE
+                ):
+                    b["mutation"]["proccode"] = "rank in disabled"
+
+        def break_enter_dest(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if (
+                    b["opcode"] == "procedures_call"
+                    and b.get("mutation", {}).get("proccode") == director.PROCCODE
+                    and b["inputs"].get(director.ARG_IDS[0])
+                    == [1, [10, director.HIGH_SCORE_ENTRY_STATE]]
+                ):
+                    b["inputs"][director.ARG_IDS[0]] = [1, [10, "title"]]
+
+        def break_recheck_arm(p: dict) -> None:
+            for b in stage_of(p)["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.ENTRY_RECHECK_ID
+                ):
+                    val = b["inputs"].get("VALUE")
+                    if (
+                        isinstance(val, list)
+                        and isinstance(val[1], list)
+                        and len(val[1]) >= 3
+                        and val[1][0] == 12
+                        and val[1][2] == director.TWO_PLAYER_ID
+                    ):
+                        b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def break_recheck_gate(p: dict) -> None:
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                cond_id = cond[1] if isinstance(cond, list) and len(cond) > 1 else None
+                eq = sb.get(cond_id) if isinstance(cond_id, str) else None
+                if eq is None or eq["opcode"] != "operator_equals":
+                    continue
+                op1 = eq["inputs"].get("OPERAND1")
+                if (
+                    isinstance(op1, list)
+                    and isinstance(op1[1], list)
+                    and len(op1[1]) >= 3
+                    and op1[1][0] == 12
+                    and op1[1][2] == director.ENTRY_RECHECK_ID
+                ):
+                    eq["inputs"]["OPERAND2"] = [1, [10, "999"]]
+
+        def break_self_edge(p: dict) -> None:
+            lst = stage_of(p)["lists"][director.ALLOWED_ID][1]
+            stage_of(p)["lists"][director.ALLOWED_ID][1] = [
+                e for e in lst if e != "high-score-entry -> high-score-entry"
+            ]
+
+        for label, corrupt in (
+            ("routing-ranks-in", break_rank_in),
+            ("routing-enters-entry", break_enter_dest),
+            ("routing-arms-recheck", break_recheck_arm),
+            ("finish-recheck-gate", break_recheck_gate),
+            ("self-edge-present", break_self_edge),
+        ):
+            project = load_source(scratch.SOURCE_DIR)
+            corrupt(project)
+            self.assertIn(label, self._eco04_routing_failures(project), label)
 
     @staticmethod
     def _rng_reseed_guard_scopes(project: dict) -> set:
@@ -18046,7 +18716,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3875bad63dc0efce66c96cd8e1052bdbcd749e20eae5ae051a8878ff36fad46e",
+            "9955936414915a8d19e065c612fe0c6e0941b8b9aa440c91984ab8a646f40335",
             build_hash,
         )
 

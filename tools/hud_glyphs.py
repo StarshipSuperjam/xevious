@@ -142,7 +142,14 @@ CREDIT_TRANSPARENT = (0, 0, 0, 0)
 # default best-five table are the port's own strings, NOT the ROM's default name strings; only the
 # letterforms are the credited CC-BY font. See docs/mechanics 037 (CAB-01).
 ATTRACT_TARGET = "start_screen"
-ATTRACT_BEST_FIVE_NAME = "best-five"
+# CAB-04 (slice 19): the LIVE best-five table. It is no longer one pre-baked costume — an arbitrary live
+# table and typed names cannot be pre-rendered, so game_director draws it with per-cell clones that switch
+# to glyph/<c> (names) or digit/<d> (rank/score) at runtime. So the sheet font emits one costume per name
+# character: A-Z and "." (the default initials carry periods; the entry charset is A-Z + space, and a space
+# renders as a blank/hidden cell). Rendered at the same SMALL_TEXT_GEOM cell as the credit digits so the
+# columns align; the rank/score columns reuse the existing digit/<0-9> costumes (no duplicate digit
+# costumes — the uniqueItems loader trap). The "glyph/" prefix matches game_director.ATTRACT_GLYPH_PREFIX.
+ATTRACT_NAME_GLYPHS = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ.")
 ATTRACT_LABELS = (
     ("credit-label", "CREDIT"),
     ("push-start", "PUSH START"),
@@ -173,15 +180,29 @@ BANNER_LABELS = (
     ("game-over-player-2", "GAME OVER PLAYER 2"),
 )
 BANNER_COSTUME_NAMES = frozenset(name for name, _text in BANNER_LABELS)
+# CAB-04 (cabinet.high-scores, slice 19): the initials-entry screen headers + PLAYER-n tags, rendered from
+# the SAME credited Xevious HUD font as the attract prompts above — four whole-string costumes on the
+# start_screen target. game_director's title_blocks spawns one clone per costume on entering high-score-entry
+# (the headers static, the PLAYER-n tag picked from `entry player`, two-player only). PROJECT-ORIGINAL English
+# UI text: the arcade's own entry-screen wording is in-game text docs/REFERENCE_POLICY.md forbids transcribing,
+# so this is the port's own wording in the credited font, exactly like the CREDIT / PUSH START / 1P-2P
+# selector strings (the operator confirms the wording at playtest). All glyphs used (C O N G R A T U L I S E Y P,
+# space, and 1/2) are already in SHEET_TEXT_RECTS; the longest line (ENTER YOUR INITIALS, 19 chars) is
+# 19 * 17 = 323 px < 480, so it fits the stage at the SMALL_TEXT_GEOM advance.
+ATTRACT_ENTRY_LABELS = (
+    ("entry-congrats", "CONGRATULATIONS"),
+    ("entry-initials", "ENTER YOUR INITIALS"),
+    ("entry-player-1", "PLAYER 1"),
+    ("entry-player-2", "PLAYER 2"),
+)
 # The default best-five INITIALS are this project's own placeholder content (the operator's choice),
-# NOT the arcade ROM's default name strings (docs/REFERENCE_POLICY.md forbids transcribing in-game
-# text). They live here as a source constant — the same home and stance as CREDIT_TEXT_LINES above —
-# rather than in the reference-extracted docs/spec/data/scores.json (that file is decode-only, guarded
-# by a digest manifest). Only the SCORES they pair with are the reference-derived arcade defaults, and
-# those are read from scores.json. Every glyph used here must have a SHEET_TEXT_RECTS entry (a test pins
-# it); high-score-entry that would let a player set these stays slice 19 (CAB-04).
+# NOT the arcade ROM's default name strings (docs/REFERENCE_POLICY.md forbids transcribing in-game text).
+# They live here as a source constant — the same home and stance as CREDIT_TEXT_LINES above. CAB-04
+# (slice 19) made the table LIVE: these seed game_director's `high score names` Stage list (a cross-module
+# test pins game_director.HIGH_SCORE_NAME_DEFAULTS == this), and the reference-derived default SCORES they
+# pair with seed the parallel `high score table` list; the table's content now lives in those Stage lists,
+# not in any costume. Every glyph these names use must have a SHEET_TEXT_RECTS entry (a test pins it).
 ATTRACT_DEFAULT_INITIALS = ("STK", "M.N", "EVE", "S.O", "S.K")
-SCORES_DATA_PATH = ROOT / "docs" / "spec" / "data" / "scores.json"
 
 # CAB-01 attract text renders from the SAME high-res Xevious HUD font sheet the HUD score/label
 # readouts use (assets/hud-font/xevious_hud_font.png, "Xevious HUD font recreation" by Patrick H.
@@ -548,33 +569,6 @@ def render_credit(sheet: se.Image, threshold: int) -> CreditOutput:
     )
 
 
-def _load_best_five() -> tuple[list[str], list[int]]:
-    """The project's default best-five rows: project-original initials paired with the
-    reference-derived arcade default scores.
-
-    The initials are the port's own placeholder content (ATTRACT_DEFAULT_INITIALS, a source
-    constant — scores.json is reference-decode-only and cannot carry project-original data).
-    The scores are the arcade defaults read from docs/spec/data/scores.json, so the rendered
-    table can never drift from the reference data a test pins. The two must be paired
-    one-for-one; a mismatch is a wiring error, not a soft fallback."""
-    data = json.loads(SCORES_DATA_PATH.read_text())
-    scores = data["tables"]["high_score_defaults"].get("scores")
-    initials = list(ATTRACT_DEFAULT_INITIALS)
-    if not isinstance(scores, list) or not scores:
-        raise HudGlyphsError("scores.json high_score_defaults.scores is missing")
-    if len(initials) != len(scores):
-        raise HudGlyphsError(
-            "ATTRACT_DEFAULT_INITIALS and scores.json best-five scores must be the same length"
-        )
-    return [str(entry) for entry in initials], [int(entry) for entry in scores]
-
-
-def _best_five_row(rank: int, initials: str, score: int) -> str:
-    # One fixed-width best-five row: rank(1) + gap(2) + initials(3) + gap(2) + score. With the
-    # default data every row is 13 monospace cells, so the five centered lines column-align.
-    return f"{rank}  {initials}  {score}"
-
-
 def render_sheet_text_costume(
     sheet: se.Image,
     threshold: int,
@@ -635,17 +629,15 @@ def render_sheet_text_costume(
 
 
 def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutput]:
-    """The CAB-01 attract-screen overlays on the start_screen target, in the Xevious HUD font.
+    """The CAB-01/CAB-04 attract-screen overlays on the start_screen target, in the Xevious HUD font.
 
-    Digit costumes drive the live credit counter (title_blocks switches a digit clone to
-    `digit/<n>` each tick); the CREDIT / PUSH START / INSERT COIN labels and the default
-    best-five table are static. Rendered from the same credited HUD font sheet the score/label
-    readouts use (render_sheet_text_costume); the best-five initials are the operator's
-    placeholders (ATTRACT_DEFAULT_INITIALS), not the ROM's default name strings."""
-    # Playtest correction (slice 18): the title-screen text — the credit-counter digits, the
-    # CREDIT / PUSH START / INSERT COIN prompts, and the 1P/2P selector labels — renders at the
-    # smaller SMALL_TEXT_GEOM cell (~16 px) so the stacked title lines no longer overlap. The
-    # best-five table keeps the default cell (its own attract sub-screen).
+    Digit costumes drive the live credit counter AND the live best-five rank/score columns (a cell
+    clone switches to `digit/<n>` each tick); the per-letter `glyph/<c>` costumes drive the live
+    best-five NAME columns (CAB-04); the CREDIT / PUSH START / INSERT COIN labels are static. Rendered
+    from the same credited HUD font sheet the score/label readouts use (render_sheet_text_costume)."""
+    # The title-screen text renders at the smaller SMALL_TEXT_GEOM cell (~16 px, slice-18 playtest scale
+    # correction) so the stacked title lines do not overlap; the live best-five cells use the same cell so
+    # the table columns align with the credit digits.
     outputs = [
         render_sheet_text_costume(sheet, threshold, f"digit/{d}", (str(d),), **SMALL_TEXT_GEOM)
         for d in range(10)
@@ -655,12 +647,15 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
     # CAB-02 (slice 18): the two title 1P/2P selector labels, same sheet and compositor.
     for name, text in ATTRACT_SELECTOR_LABELS:
         outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
-    initials, scores = _load_best_five()
-    rows = tuple(
-        _best_five_row(rank, ini, score)
-        for rank, (ini, score) in enumerate(zip(initials, scores), start=1)
-    )
-    outputs.append(render_sheet_text_costume(sheet, threshold, ATTRACT_BEST_FIVE_NAME, rows))
+    # CAB-04 (slice 19): the initials-entry headers + PLAYER-n tags, same sheet and compositor.
+    for name, text in ATTRACT_ENTRY_LABELS:
+        outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
+    # CAB-04 (slice 19): per-letter name-cell costumes for the LIVE best-five table (replaces the single
+    # pre-baked table costume). A-Z and "." — one glyph/<c> costume each, at the same cell as the digits.
+    for ch in ATTRACT_NAME_GLYPHS:
+        outputs.append(
+            render_sheet_text_costume(sheet, threshold, f"glyph/{ch}", (ch,), **SMALL_TEXT_GEOM)
+        )
     return outputs
 
 
@@ -724,15 +719,16 @@ def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
             f"Credit: {sheet['credit']}. The repository operator did not create the font. "
             f"Source {sheet['asset']} at SHA-256 {sheet['sha256']}; glyphs cropped by "
             f"SHEET_TEXT_RECTS and nearest-neighbor decimated, white ink on transparent, "
-            "bitmapResolution 1. Costumes on the start_screen target: the title-screen text — the "
+            f"bitmapResolution 1. Costumes on the start_screen target, all on the smaller "
+            f"{SHEET_SMALL_CELL}px monospace cell at {SHEET_SMALL_DOWNSCALE}x (slice-18 playtest scale "
+            f"correction, ~16px to match the HUD GAME OVER glyphs): the title-screen text — the "
             f"credit-counter digits, the CREDIT / PUSH START / INSERT COIN prompts, and the CAB-02 "
             f"1P/2P start-selector labels (port-original control text — the arcade had no on-screen "
-            f"selector) — laid out on the smaller {SHEET_SMALL_CELL}px monospace cell at "
-            f"{SHEET_SMALL_DOWNSCALE}x (slice-18 playtest scale correction, ~16px to match the HUD "
-            f"GAME OVER glyphs); and the default best-five table on the {SHEET_TEXT_CELL_W}px cell at "
-            f"{SHEET_TEXT_DOWNSCALE}x (initials from the ATTRACT_DEFAULT_INITIALS source constant, the "
-            "operator's placeholders, NOT the ROM default name strings; paired with the arcade default "
-            "scores from docs/spec/data/scores.json)."
+            f"selector); and the CAB-04 per-letter name-cell glyphs (A-Z and \".\") for the LIVE "
+            f"best-five table (the digits double as its rank/score columns). Only the letterforms are "
+            f"the credited font; the table's CONTENT — the port-original initials (NOT the ROM default "
+            f"name strings) and the arcade default scores — lives in the Stage lists game_director owns, "
+            f"not in any costume."
         ),
     }
 
@@ -970,12 +966,15 @@ def expected_project(
             f"Scratch project has no {CREDIT_TARGET} target; run tools/game_director.py generate first"
         )
     egg["costumes"] = [_credit_costume(credit_output)]
-    # CAB-01: attach the attract-screen overlays (credit digits/labels, best-five table) to
-    # game_director's start_screen target, whose clone roles switch among them during title and
-    # attract-scores. game_director owns the target and its base logo costume (kept as costume 0,
-    # the default); this module appends the generated overlays. Filtering by the attract names
-    # first keeps this idempotent — a re-run drops the prior overlays before re-appending, so the
-    # logo stays index 0 and the order never drifts.
+    # CAB-01/CAB-04: attach the attract-screen overlays (credit digits/labels, live best-five
+    # name/rank/score glyphs) to game_director's start_screen target, whose clone roles switch
+    # among them during title and attract-scores. game_director owns the target and its single base
+    # logo costume (named like the target, kept as costume 0 — the default); this module owns EVERY
+    # other start_screen costume. We drop all non-logo costumes before re-appending the generated
+    # overlays, so the logo stays index 0, the order never drifts, AND a RETIRED overlay (e.g. the
+    # slice-17 baked "best-five" costume, replaced by live per-glyph cells in CAB-04) is pruned
+    # rather than lingering with a now-deleted asset — an idempotent filter keyed only on the NEW
+    # output names would leave retired names behind.
     # start_screen gets every overlay EXCEPT the CAB-03 banners routed to the HUD above.
     start_screen_outputs = [
         o for o in (attract_outputs or []) if o.name not in BANNER_COSTUME_NAMES
@@ -988,11 +987,10 @@ def expected_project(
             raise HudGlyphsError(
                 f"Scratch project has no {ATTRACT_TARGET} target; run tools/game_director.py generate first"
             )
-        attract_names = {output.name for output in start_screen_outputs}
         start_screen["costumes"] = [
             costume
             for costume in start_screen["costumes"]
-            if costume.get("name") not in attract_names
+            if costume.get("name") == ATTRACT_TARGET
         ] + [_credit_costume(output) for output in start_screen_outputs]
     stage = next(target for target in result["targets"] if target.get("isStage"))
     # Rebuild the Stage's added sounds deterministically: keep the base music/start sounds, then

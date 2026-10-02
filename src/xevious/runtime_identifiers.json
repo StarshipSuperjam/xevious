@@ -214,6 +214,11 @@
       "name": "terrain column",
       "scope": "Stage"
     },
+    "attract-display-char": {
+      "kind": "variable",
+      "name": "attract char",
+      "scope": "start_screen"
+    },
     "attract-display-divisor": {
       "kind": "variable",
       "name": "attract divisor",
@@ -227,6 +232,11 @@
     "attract-display-role": {
       "kind": "variable",
       "name": "attract role",
+      "scope": "start_screen"
+    },
+    "attract-display-row": {
+      "kind": "variable",
+      "name": "attract row",
       "scope": "start_screen"
     },
     "bacura-clone-slot": {
@@ -314,6 +324,46 @@
       "name": "curr player",
       "scope": "Stage"
     },
+    "cabinet-entry-cell": {
+      "kind": "variable",
+      "name": "entry cell",
+      "scope": "Stage"
+    },
+    "cabinet-entry-char": {
+      "kind": "variable",
+      "name": "entry char",
+      "scope": "Stage"
+    },
+    "cabinet-entry-name-buffer": {
+      "kind": "variable",
+      "name": "name buffer",
+      "scope": "Stage"
+    },
+    "cabinet-entry-player": {
+      "kind": "variable",
+      "name": "entry player",
+      "scope": "Stage"
+    },
+    "cabinet-entry-recheck": {
+      "kind": "variable",
+      "name": "entry recheck",
+      "scope": "Stage"
+    },
+    "cabinet-entry-row": {
+      "kind": "variable",
+      "name": "entry row",
+      "scope": "Stage"
+    },
+    "cabinet-entry-score": {
+      "kind": "variable",
+      "name": "entry score",
+      "scope": "Stage"
+    },
+    "cabinet-entry-timer": {
+      "kind": "variable",
+      "name": "entry timer",
+      "scope": "Stage"
+    },
     "cabinet-input-down": {
       "kind": "variable",
       "name": "input down",
@@ -342,6 +392,11 @@
     "cabinet-pilot-dir": {
       "kind": "variable",
       "name": "pilot dir",
+      "scope": "Stage"
+    },
+    "cabinet-rank-cursor": {
+      "kind": "variable",
+      "name": "rank cursor",
       "scope": "Stage"
     },
     "cabinet-start-selection": {
@@ -452,6 +507,11 @@
     "eco-high-score": {
       "kind": "variable",
       "name": "high score",
+      "scope": "Stage"
+    },
+    "eco-high-score-names": {
+      "kind": "list",
+      "name": "high score names",
       "scope": "Stage"
     },
     "eco-high-score-table": {
