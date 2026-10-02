@@ -10340,7 +10340,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # a blank advance, which the name cells render as nothing (the sheet font has no space glyph) — faithful to
     # the forward-only cursor that can advance past a space. Advance the cursor, reset the active letter to SPACE
     # (ring index 26) for the next cell — the arcade blanks each name cell to 0x24 before the joystick scrolls it
-    # (buffer pre-blanked at :1624-1628; inc from space wraps to 'A' at :1272-1290) — and finish on the tenth
+    # (buffer pre-blanked at :1624-1628; inc from space wraps to 'A' at :1777-1779) — and finish on the tenth
     # committed character (append_char advances the pointer and ends at the tenth, :1745-1769). `name buffer` is
     # a plain string, so the append is a join and the compositor reads it a letter at a time. `change entry cell
     # by 1` is used (NOT `set entry cell = add(...)`): a `set var = operator(...)` value-input is left unread by
@@ -11022,7 +11022,7 @@ def _high_score_finish(blocks: Blocks) -> list[str]:
     # CAB-04 (slice 19): commit the entered initials and leave the entry screen. First commit the IN-FLIGHT
     # letter (the one the cursor is parked on but not yet Space-committed) when a cell is still active
     # (`entry cell` < ENTRY_NAME_LEN): the arcade writes the current letter into the name buffer live as the
-    # joystick scrolls it (name_entry_inc_char/dec_char `move.b d0,(a0)`, xevious_main.68k:1272-1290,1239-1248),
+    # joystick scrolls it (name_entry_inc_char/dec_char `move.b d0,(a0)`, xevious_main.68k:1773-1781,1736-1744),
     # so a timeout keeps whatever letter was showing (name_entry_finished :1757-1769 just stops). The port's
     # `name buffer` only grows on a Space commit, so without this append a timeout would drop the parked letter;
     # the gate makes the timeout faithful. On the tenth-character Space finish `entry cell` has already reached
