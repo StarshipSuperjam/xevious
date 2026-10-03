@@ -157,11 +157,11 @@ arcade's portrait playfield does not map onto the 480×360 landscape stage at an
 factor without either shrinking the play area or pushing the crosshair off screen, so the port tunes its
 spatial quantities **independently**: the craft's per-axis movement speed, the blaster's shot speed, and
 the crosshair's forward lead are each a **port-tuned constant** (recorded with its arcade original in the
-build's movement mechanics record and its generator), not derived from one common factor. The crosshair's
-on-screen bound is a **craft↔crosshair coupling**, not a scale chosen to keep a rigid lead on screen: the
-reticle reads the same movement input as the craft, and when it reaches the top play-border it clamps there
-and backs the craft down with it — so the reticle can never leave the top of the screen and the craft stops
-with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
+build's movement mechanics record and its generator), not derived from one common factor. The crosshair is
+**never clamped and never bounds the craft**: it rides at its fixed forward lead from the craft every frame
+(`src/xevious_main.68k` `update_crosshair` 2262–2271), while the craft clamps its own position on both axes
+(`src/xevious_main.68k` `update_solvalou_sprite_XY` 2113–2137) — in the port, against the four play-borders.
+The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
 port's own: arrow keys move during play; at the title screen the **up/down arrows choose between a
 one-player (up) and a two-player (down) game** (a port necessity — the arcade used two dedicated start buttons
