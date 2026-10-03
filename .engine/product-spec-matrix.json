@@ -177,6 +177,54 @@
       "who": "operator"
     },
     {
+      "criterion": "Every committed cue and costume traces to the credited sheets, the preserved baseline, or a recorded provenance entry",
+      "digest": "sha256:da0fdcf196cb4aa2cd9a4cd0c74d343e858eb54f4f6d18c37e65a45a97e0f853",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Asset-provenance validation over the built project",
+      "position": 0,
+      "who": "engine"
+    },
+    {
+      "criterion": "Recorded animation frame counts appear in the build's data, matching this spec's owning documents",
+      "digest": "sha256:73e526354189fc35035b38c695b5df05042e01092f243268414c81ec04b5a32c",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Data/structural fixture over generated animation constants",
+      "position": 1,
+      "who": "engine"
+    },
+    {
+      "criterion": "Cues play at their owning events and complete within their state windows — no cutoffs",
+      "digest": "sha256:1bc0078c65ec6521dcdafc130f4a010548cf93488b725c439ba3a213a9564d67",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Play the built `.sb3` through fire, hit, death, award, and transition moments",
+      "position": 2,
+      "who": "operator"
+    },
+    {
+      "criterion": "The game sounds and looks like Xevious to its owner — music, key effects, and title presentation are present and right",
+      "digest": "sha256:7e8b229b1250d03ca70a40d080596e21dfb8b37823ed12f01a3f875546e7dafa",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Playtest judgment across a full session",
+      "position": 3,
+      "who": "operator"
+    },
+    {
+      "criterion": "The playfield framing reads as intentional, and the borders never hide the craft at any reachable position, with the locked movement, shot, and crosshair constants unchanged",
+      "digest": "sha256:3363f03d10743eb92cce60310c41df4d9950e30c9d9b071137a7c1e3300b44dd",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Play the built `.sb3`, driving the craft into every edge and corner",
+      "position": 4,
+      "who": "operator"
+    },
+    {
+      "criterion": "No presentation element carries invented gameplay meaning without a recorded marker",
+      "digest": "sha256:07d4e9b7b1bc9e997d09ba35d49cd96c197a770824295b2f4831a28685d3aa79",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Fidelity-audit review of presentation elements against this spec",
+      "position": 5,
+      "who": "engine"
+    },
+    {
       "criterion": "An idle cabinet cycles title → demo → best five → demo → title without scoring or losing lives",
       "digest": "sha256:543320920eecb8a4d057b34fef8485f3691bc7f35bf3459f3964c8c88cc375c3",
       "doc": "docs/spec/cabinet-flow.md",
