@@ -39,10 +39,10 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("assigned to both" in item for item in roadmap.validate_manifest(changed)))
 
     def test_unsettled_spec_cannot_gain_executable_leaf(self) -> None:
-        # `cabinet` is locked as of slice 17; `presentation` is still a draft spec, so a leaf under it
-        # must stay provisional until its own slice settles the description.
+        # `presentation` is locked as of slice 20; `release` is still provisional (no spec yet), so a
+        # leaf under it must stay provisional until its own slice settles the description.
         changed = copy.deepcopy(self.manifest)
-        leaf = next(item for item in changed["leaves"] if item["key"] == "presentation.framing")
+        leaf = next(item for item in changed["leaves"] if item["key"] == "release.full-soak")
         leaf["status"] = "planned"
         self.assertTrue(any("must be provisional" in item for item in roadmap.validate_manifest(changed)))
 
@@ -55,12 +55,12 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("blocker cycle" in item for item in roadmap.validate_manifest(changed)))
 
     def test_issue_body_carries_stable_identity_and_closure_contract(self) -> None:
-        # `presentation` is still a draft spec, so its leaves render "Executable now: no" —
-        # `cabinet.attract-credits` became executable when slice 17 locked the cabinet description.
-        parent = next(item for item in self.manifest["parents"] if item["key"] == "presentation")
-        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "presentation.framing")
+        # `release` is still provisional, so its leaves render "Executable now: no" —
+        # `presentation.framing` became executable when slice 20 locked the presentation description.
+        parent = next(item for item in self.manifest["parents"] if item["key"] == "release")
+        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "release.full-soak")
         body = roadmap.leaf_body(leaf, parent)
-        self.assertIn("<!-- roadmap-key: presentation.framing -->", body)
+        self.assertIn("<!-- roadmap-key: release.full-soak -->", body)
         self.assertIn("Executable now: **no**", body)
         self.assertIn("## Closure rule", body)
 
