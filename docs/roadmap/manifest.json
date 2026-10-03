@@ -41,7 +41,7 @@
     {"key": "secrets", "title": "Capability: secrets", "spec": "docs/spec/secrets.md", "spec_status": "locked"},
     {"key": "andor", "title": "Capability: Andor Genesis", "spec": "docs/spec/andor-genesis.md", "spec_status": "locked"},
     {"key": "cabinet", "title": "Capability: cabinet flow", "spec": "docs/spec/cabinet-flow.md", "spec_status": "locked"},
-    {"key": "presentation", "title": "Capability: audio and presentation", "spec": "docs/spec/audio-and-presentation.md", "spec_status": "draft"},
+    {"key": "presentation", "title": "Capability: audio and presentation", "spec": "docs/spec/audio-and-presentation.md", "spec_status": "locked"},
     {"key": "release", "title": "Capability: full-game release validation", "spec": null, "spec_status": "provisional"}
   ],
   "leaves": [
@@ -115,10 +115,10 @@
     {"key":"economy.game-over-routing","parent":"economy","title":"Complete game-over routing through high-score entry","slice":"19","milestone":"Cabinet","status":"history","delivered_by":154,"blocked_by":["cabinet.high-scores"],"criteria":["ECO-04.high-score-route"],"proof":"playable","records":["ECO-04"]},
 
     {"key":"area.visual-terrain","parent":"area","title":"Couple visual terrain and framing to the area clock","slice":"20","milestone":"Polish","status":"planned","blocked_by":["presentation.framing"],"criteria":["AREA-01.visual-terrain"],"proof":"playable","records":["AREA-01"]},
-    {"key":"presentation.framing","parent":"presentation","issue":30,"title":"Choose and implement the playfield framing","slice":"20","milestone":"Polish","status":"provisional","criteria":["PRES-01.framing"],"proof":"playable"},
+    {"key":"presentation.framing","parent":"presentation","issue":30,"title":"Choose and implement the playfield framing","slice":"20","milestone":"Polish","status":"planned","criteria":["PRES-01.framing"],"proof":"playable"},
     {"key":"presentation.hud-yellow","parent":"economy","issue":31,"title":"Render the high-score value in yellow","slice":"20","milestone":"Polish","status":"planned","criteria":["PRES-02.hud-yellow"],"proof":"playable","records":["ECO-02"]},
     {"key":"economy.stop-after-two","parent":"economy","title":"Resolve and implement the stop-after-two bonus-life setting","slice":"20","milestone":"Polish","status":"planned","criteria":["ECO-03.stop-after-two"],"proof":"playable","records":["ECO-03"]},
-    {"key":"presentation.audio-animation","parent":"presentation","title":"Audio cues, animation timing, and presentation fidelity","slice":"20","milestone":"Polish","status":"provisional","criteria":["CAB-05.presentation"],"proof":"playable","records":["CAB-05"]},
+    {"key":"presentation.audio-animation","parent":"presentation","title":"Audio cues, animation timing, and presentation fidelity","slice":"20","milestone":"Polish","status":"planned","criteria":["CAB-05.presentation"],"proof":"playable","records":["CAB-05"]},
 
     {"key":"release.full-soak","parent":"release","title":"Full-game area, clone, performance, and cabinet soak","slice":"21","milestone":"Polish","status":"provisional","blocked_by":["andor.core-destruction","cabinet.high-scores","presentation.audio-animation"],"criteria":["RELEASE-01.full-soak"],"proof":"playable"},
     {"key":"release.audit","parent":"release","title":"Release provenance, license, catalog, and documentation audit","slice":"21","milestone":"Polish","status":"provisional","blocked_by":["release.full-soak"],"criteria":["RELEASE-02.audit"],"proof":"operator"}
