@@ -58,7 +58,8 @@ class HandoverGate(unittest.TestCase):
                  mock.patch.object(pp.citations, "check", return_value=_cit(True)):
                 path, digest, _ = pp.package(Path(t), out)
                 labels = [c.args[0] for c in run.call_args_list]
-                self.assertEqual(labels, ["reference_extract --verify", "scratch_project build"])
+                self.assertEqual(labels, ["reference_extract --verify", "terrain_render verify",
+                                          "scratch_project build"])
                 self.assertEqual(path, out)
                 self.assertEqual(len(digest), 64)
 

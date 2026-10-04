@@ -12,6 +12,7 @@ It runs, in order and stopping at the first failure:
 
     1. reference_checkout ensure  — a verified clone at the pin
     2. reference_extract --verify — the generated data still re-derives
+       terrain_render verify      — the terrain renders still re-derive
     3. reference_citations        — every citation still resolves
     4. scratch_project build      — only now is the .sb3 built
 
@@ -70,6 +71,10 @@ def package(checkout_dir: Path | None, output: Path) -> tuple[Path, str, int]:
     # 2. The generated data still re-derives from the pin.
     _run("reference_extract --verify",
          ["tools/reference_extract.py", "--verify", "--checkout", str(ref)])
+    # The terrain renders still re-derive from the map ROM and tiles at the pin, and the
+    # decode still reproduces the reference's own background snapshot.
+    _run("terrain_render verify",
+         ["tools/terrain_render.py", "verify", "--checkout", str(ref)])
 
     # 3. Every citation still resolves.
     _, unresolved = citations.check(ref, [ROOT / "docs" / "spec", ROOT / "docs" / "mechanics"])
