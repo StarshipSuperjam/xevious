@@ -1,9 +1,12 @@
 {
   "constants": {
-    "craft_x_limit": 217,
-    "craft_y_bottom": -141,
-    "craft_y_top": 139,
-    "render_row_top": 155,
+    "craft_x_limit": 130,
+    "craft_y_bottom": -170,
+    "craft_y_top": 30,
+    "render_row_stage": 10,
+    "render_row_top": 210,
+    "render_stage_top": 180,
+    "render_view_first_row": 4,
     "render_view_rows": 40,
     "shot_slot_count": 3,
     "slot_units_per_cell": 256
@@ -268,6 +271,11 @@
     "blaster-clone-slot": {
       "kind": "variable",
       "name": "clone slot",
+      "scope": "blaster"
+    },
+    "blaster-shot-depth": {
+      "kind": "variable",
+      "name": "shot depth",
       "scope": "blaster"
     },
     "bonus-flag-clone-slot": {

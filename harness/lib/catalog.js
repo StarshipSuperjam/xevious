@@ -303,21 +303,22 @@ export const SCENARIOS = [
   {
     key: 'pres01-craft-stops-at-stop-lines',
     // roadmap-evidence: PRES-01 success  (the craft held into each edge settles exactly on its stop line and
-    //   never passes it — the positional limits that replaced the retired frame-border touch walls)
+    //   never passes it — the arcade clamp through the render map, with right still moving +x)
     behavior:
-      'PRES-01: with the frame borders removed, the craft held into each edge stops exactly at its fixed stop line (top 139, bottom -141, sides ±217) and never passes it',
+      'PRES-01: the craft held into each edge stops exactly at its arcade stop line (top 30, bottom -170, sides ±130) and never passes it; right arrow still moves the craft right',
     playtestStep: 1,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       const craft = vm.runtime.getSpriteTargetByName('solvalou');
       const out = {};
-      // Each push is longer than the farthest stop line is from anywhere on the field (280 units at 7 per
-      // tick = 40 ticks), and the extreme is tracked on EVERY tick, so an overshoot that is later corrected
-      // would still show.
+      // Each push is longer than the farthest stop line is from anywhere on the field (200 units at 2.5 per
+      // tick = 80 ticks; 260 at 3.75 = 70), and the extreme is tracked on EVERY pump, so an overshoot that is
+      // later corrected would still show. (A pump runs several ticks headless, so the per-tick speeds are
+      // pinned structurally in tests/test_scratch_project.py, PRES01-craft-speed.)
       const push = (key, axis, pick) => {
         keyDown(vm, key);
         let extreme = craft[axis];
-        for (let i = 0; i < 60; i += 1) {
+        for (let i = 0; i < 100; i += 1) {
           step(vm, 1);
           extreme = pick(extreme, craft[axis]);
         }
@@ -347,10 +348,11 @@ export const SCENARIOS = [
   },
   {
     key: 'pres01-shot-expires-past-row-0',
-    // roadmap-evidence: PRES-01 success  (a held-fire shot is retired as it reaches arcade row 0 — never
-    //   drawn past it — and its slot frees for the next shot, so held fire keeps replenishing)
+    // roadmap-evidence: PRES-01 success  (a held-fire shot travels on past the top of the window and is retired
+    //   as it reaches arcade row 0 — drawn only inside the window, hit-tested up to row 0 — and its slot frees
+    //   for the next shot, so held fire keeps replenishing)
     behavior:
-      'PRES-01: a player shot is retired as it reaches arcade row 0 (stage y 155) instead of on touching a top frame — it is never drawn past that line, and its freed slot lets held fire keep firing beyond the 3-shot ceiling',
+      'PRES-01: a player shot is drawn only inside the window (up to stage y 180), keeps travelling and is hit-tested through the hidden rows above it, and is retired as it reaches arcade row 0 — its freed slot lets held fire keep firing beyond the 3-shot ceiling',
     playtestStep: 2,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -359,7 +361,7 @@ export const SCENARIOS = [
       const shotSlots = [36, 37, 38];
       let reach = Infinity;
       keyDown(vm, ' ');
-      for (let i = 0; i < 45; i += 1) {
+      for (let i = 0; i < 60; i += 1) {
         step(vm, 1);
         for (const t of vm.runtime.targets) {
           if (t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') continue;
@@ -372,18 +374,17 @@ export const SCENARIOS = [
       }
       keyUp(vm, ' ');
       const tops = [...shots.values()];
-      // Phase 2: from the craft's top stop (y 139, row 2) the shot's first move already passes row 0. It must
-      // still be hit-tested once at its spawn row rather than retired untested: sentinel the shot slots' x,
-      // fire, and look for the row-2 mirror.
+      // Phase 2: shots fired from the craft's top stop (y 30, the shortest run to row 0) are still never drawn
+      // above the window. (That each shot is hit-tested at its spawn row — mirror before move — is pinned
+      // structurally as PRES01-shot-hit-reach: a pump runs several ticks headless, so the first mirror is
+      // overwritten before it can be sampled.)
       keyDown(vm, 'ArrowUp');
-      for (let i = 0; i < 60; i += 1) step(vm, 1);
+      for (let i = 0; i < 100; i += 1) step(vm, 1);
       const craft = vm.runtime.getSpriteTargetByName('solvalou');
       const craftY = craft.y;
-      const xs = readVar(vm, 'slot-x');
-      for (const s of shotSlots) xs[s] = -1;
       let drawnFromTop = -Infinity;
       keyDown(vm, ' ');
-      for (let i = 0; i < 10; i += 1) {
+      for (let i = 0; i < 30; i += 1) {
         step(vm, 1);
         for (const t of vm.runtime.targets) {
           if (t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster' || !t.visible) continue;
@@ -392,45 +393,40 @@ export const SCENARIOS = [
       }
       keyUp(vm, ' ');
       keyUp(vm, 'ArrowUp');
-      const topMirrors = shotSlots.map((s) => Number(readVar(vm, 'slot-x')[s]));
-      return { fired: shots.size, highest: Math.max(...tops), reach, craftY, topMirrors, drawnFromTop };
+      return { fired: shots.size, highest: Math.max(...tops), reach, craftY, drawnFromTop };
     },
     assert(obs) {
       assert.ok(
         obs.fired > constants.shot_slot_count,
         `held fire replenishes past the 3-shot ceiling as shots expire (fired ${obs.fired})`,
       );
-      assert.ok(obs.highest <= constants.render_row_top, `no shot is drawn past row 0 (highest y ${obs.highest})`);
+      // One shot step in slot units (SHOT_STEP 15 stage units = 1.5 rows).
+      const stepUnits = (15 * constants.slot_units_per_cell) / constants.render_row_stage;
+      assert.ok(obs.highest <= constants.render_stage_top, `no shot is drawn above the window (highest y ${obs.highest})`);
       assert.ok(
-        obs.highest > constants.render_row_top - 20,
-        `a shot actually reached the row-0 line before retiring (highest y ${obs.highest})`,
+        obs.highest > constants.render_stage_top - 15,
+        `a shot was drawn up to the top of the window (highest y ${obs.highest})`,
       );
-      // The topmost drawn position is hit-tested too: the slot x the walk reads reaches row 0 (below one row,
-      // 256 units), not just the position one step short of it.
+      // Hidden past the window, the shot still travels and is hit-tested up to row 0: the slot x the walk reads
+      // gets within one shot step of row 0, and never past it.
       assert.ok(
-        obs.reach < constants.slot_units_per_cell,
-        `the shot's hit position reaches row 0 before it retires (closest slot x ${obs.reach})`,
+        obs.reach >= 0 && obs.reach < stepUnits,
+        `the shot's hit position reaches row 0 before it retires, never past it (closest slot x ${obs.reach})`,
       );
       assert.equal(obs.craftY, constants.craft_y_top, 'precondition: the craft sits at its top stop');
-      const spawnRow = Math.floor(
-        ((constants.render_row_top - constants.craft_y_top) * constants.slot_units_per_cell) / 8,
-      );
-      assert.ok(
-        obs.topMirrors.includes(spawnRow),
-        `a shot fired from the top stop is hit-tested at its spawn row (slot x ${obs.topMirrors}, want ${spawnRow})`,
-      );
-      assert.ok(obs.drawnFromTop <= constants.render_row_top, `no shot from the top stop is drawn past row 0`);
+      assert.ok(obs.drawnFromTop > constants.craft_y_top, 'precondition: shots fired from the top stop were drawn');
+      assert.ok(obs.drawnFromTop <= constants.render_stage_top, `no shot from the top stop is drawn above the window`);
     },
-    // roadmap-evidence: PRES-01 failure  (with the row-0 expiry disarmed the first three shots fly on to the
-    //   stage fence and never free their slots, so held fire stalls at three and a shot is drawn past row 0)
+    // roadmap-evidence: PRES-01 failure  (with the row-0 expiry disarmed the first three shots fly on past row 0
+    //   and never free their slots, so held fire stalls at three)
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'blaster', constants.render_row_top, 99999),
   },
   {
     key: 'pres01-world-hidden-off-field',
-    // roadmap-evidence: PRES-01 success  (a live world object is shown only while its row is on the field,
-    //   rows 0-39, and hidden above row 0 where nothing now masks it)
+    // roadmap-evidence: PRES-01 success  (a live world object is shown only while its row is inside the window,
+    //   rows 4-39, and hidden in rows 0-3 above the stage top where Scratch would fence it onto the edge)
     behavior:
-      'PRES-01: a live world object is drawn only while its row is on the field (rows 0-39) — a Bacura held at row -1 (alive, above the cut line) is hidden, and the same slab at rows 5 and 39 is shown',
+      'PRES-01: a live world object is drawn only while its row is inside the window (rows 4-39) — a Bacura held at row 3 (alive, above the window) is hidden, and the same slab at rows 4 and 39 is shown',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -454,26 +450,30 @@ export const SCENARIOS = [
       put('slot-dy', 0);
       writeVar(vm, 'slot-index', slot + 1);
       const U = constants.slot_units_per_cell;
-      const at = (row) => {
-        put('slot-x', row * U + 32);
+      const at = (row, offset) => {
+        put('slot-x', row * U + offset);
         step(vm, 1);
         const rep = cloneReports(vm, 'bacura', [slotName]).find((r) => Number(r.vars[slotName]) === slot + 1);
         return {
           visible: rep ? rep.visible : null,
           alive: readVar(vm, 'slot-type')[slot] === 1,
+          x: Number(readVar(vm, 'slot-x')[slot]),
         };
       };
-      // Row -1 is still a live object (the walk culls only at row <= -2), so hiding it is the gate's work.
-      return { row5: at(5), rowMinus1: at(-1), row39: at(constants.render_view_rows - 1) };
+      // Row 3 is a live object (the walk culls only at row <= -2), so hiding it is the gate's work. It is
+      // seeded at the row's start so any scroll during the step keeps it inside row 3 (checked by the assert).
+      return { row4: at(4, 32), row3: at(3, 0), row39: at(constants.render_view_rows - 1, 32) };
     },
     assert(obs) {
-      assert.equal(obs.row5.visible, true, 'a slab at row 5 is shown');
-      assert.equal(obs.rowMinus1.alive, true, 'precondition: the slab at row -1 is still a live object');
-      assert.equal(obs.rowMinus1.visible, false, 'a live slab at row -1, above the cut line, is hidden');
+      const first = constants.render_view_first_row * constants.slot_units_per_cell;
+      assert.equal(obs.row4.visible, true, 'a slab at row 4, the first row inside the window, is shown');
+      assert.equal(obs.row3.alive, true, 'precondition: the slab at row 3 is still a live object');
+      assert.ok(obs.row3.x < first, `precondition: the slab is still in row 3 when sampled (slot x ${obs.row3.x})`);
+      assert.equal(obs.row3.visible, false, 'a live slab at row 3, above the window, is hidden');
       assert.equal(obs.row39.visible, true, 'a slab at row 39, the last on-field row, is shown');
     },
-    // roadmap-evidence: PRES-01 failure  (with the gate's lower bound widened, the live slab at row -1 is
-    //   drawn above the cut line and the hidden assertion goes red)
+    // roadmap-evidence: PRES-01 failure  (with the gate's lower bound widened, the live slab at row 3 is
+    //   drawn fenced onto the stage top and the hidden assertion goes red)
     negativeMutation: (p) => {
       const t = p.targets.find((x) => x.name === 'bacura');
       let patched = 0;
@@ -484,12 +484,13 @@ export const SCENARIOS = [
         const lhs = t.blocks[lt.inputs.OPERAND1[1]];
         const rhs = lt.inputs.OPERAND2[1];
         const isSlotX = lhs && lhs.opcode === 'data_itemoflist' && lhs.fields.LIST[0] === 'slot x';
-        if (isSlotX && Array.isArray(rhs) && String(rhs[1]) === '0') {
+        const first = constants.render_view_first_row * constants.slot_units_per_cell;
+        if (isSlotX && Array.isArray(rhs) && Number(rhs[1]) === first) {
           lt.inputs.OPERAND2 = [1, [4, '-99999']];
           patched += 1;
         }
       }
-      if (!patched) throw new Error("mutate: no in-view gate 'not (slot x < 0)' on bacura");
+      if (!patched) throw new Error("mutate: no in-view gate 'not (slot x < first row)' on bacura");
     },
   },
   {
@@ -3526,11 +3527,14 @@ export const SCENARIOS = [
       put('slot-dy', 0);
       writeVar(vm, 'slot-index', slot + 1);
       // The render clone reads slot x each frame and switches costume; walk the slab across the 8 buckets.
+      // PRES-01: sampled from row 4, the first row inside the window (rows 0-3 are hidden); 4 rows = 1024
+      // units = 8 whole buckets, so bucket k still draws frame k.
       const UNITS = 128;
       const FRAMES = 8;
+      const BASE = constants.render_view_first_row * constants.slot_units_per_cell;
       const samples = [];
       for (let k = 0; k < FRAMES; k += 1) {
-        put('slot-x', UNITS * k + 32); // mid-bucket, clear of the 128-unit boundary
+        put('slot-x', BASE + UNITS * k + 32); // mid-bucket, clear of the 128-unit boundary
         step(vm, 1);
         const rep = cloneReports(vm, 'bacura', [slotName]).find(
           (r) => Number(r.vars[slotName]) === slot + 1,

@@ -177,6 +177,10 @@ SLOT_ACTIVE = 1
 SHOT_TYPE = 1
 ALLOC_RESULT_ID = "blaster-alloc-result"
 CLONE_SLOT_ID = "blaster-clone-slot"
+# PRES-01 (docs/mechanics/054): each shot clone's own depth as an unfenced stage y. Rows 0-3 lie above the stage
+# top, where Scratch's fence would hold the sprite back on stage, so the shot's travel, slot mirror, expiry and
+# hide all read this variable rather than the sprite's y position.
+SHOT_DEPTH_ID = "blaster-shot-depth"
 ALLOC_SHOT_PROCCODE = "alloc shot slot"
 
 # SYS-03 collision groups and single-hit resolution. Exactly five groups (below), no
@@ -254,18 +258,21 @@ HIT_WINDOW_BACURA = (28, 40, 8, 16)
 # uses `sub #16; add #32` (Y) and `sub #8; add #16` (X) → shotY-enemyY in [-16,15], enemyX-shotX in
 # [-8,7] half-pixel shadow units. This port DOUBLES that to (32,64,16,32) — a deliberate, recorded
 # deviation (playtest-driven) for two reasons the reference didn't face:
-#   1. TUNNELING. The blaster shot travels `changeyby 20` = 20 stage-px/frame ÷ RENDER_ROW_STAGE(8) =
-#      2.5 cells/frame, while the reference window is only 2 cells tall — so the per-frame step
+#   1. TUNNELING. The blaster shot travelled `changeyby 20` = 20 stage-px/frame ÷ RENDER_ROW_STAGE(8) =
+#      2.5 cells/frame (since PRES-01's arcade proportions, SHOT_STEP 15 ÷ 10 = 1.5 cells/tick — the arcade's
+#      12 px per two-frame tick), while the reference window is only 2 cells tall — so the per-frame step
 #      overshoots the window and shots skip clean over a Toroid (every shot in a held stream shares
 #      the craft-row sampling phase, so a Toroid in a gap is immune to the whole stream: the operator
 #      saw "multiple rounds into a group and nothing happens"). The reference never tunnels because
 #      its shot speed and window are balanced at the arcade's finer step; our DY was a preserved-
 #      baseline the movement slice never reconciled. A 4-cell-tall window (64 shadow) exceeds the
 #      2.5-cell step (with margin for the enemy's own closing motion), so every crossing is sampled.
-#   2. SPRITE MATCH. The Toroid renders as a 36-px sprite (16-px costume at size 225); the reference
+#   2. SPRITE MATCH. The Toroid rendered as a 36-px sprite (16-px costume at size 225); the reference
 #      window covered ~the central 40% of that, so bullets visibly overlapping the sprite missed.
-#      The doubled window (±2 cells Y ≈ 32 px, ±1 cell X ≈ 30 px) matches the rendered body, so a
-#      shot touching the Toroid kills it — the arcade "mow-down" feel. The tight craft HURTBOX
+#      The doubled window (±2 cells Y ≈ 32 px, ±1 cell X ≈ 30 px) matched the rendered body, so a
+#      shot touching the Toroid kills it — the arcade "mow-down" feel. (Since PRES-01 the sprite draws
+#      at its arcade size, 20 stage units, so this window is now more forgiving than the drawn body;
+#      kept unchanged pending the operator's playtest call, docs/mechanics/054.) The tight craft HURTBOX
 #      (HIT_WINDOW_BULLET_FLYING, single cell) is intentionally NOT widened: forgiving offence,
 #      precise defence.
 HIT_WINDOW_SHOT_FLYING = (32, 64, 16, 32)
@@ -273,7 +280,7 @@ HIT_WINDOW_SHOT_FLYING = (32, 64, 16, 32)
 # `sub #24; add #32` (Y) and `sub #8; add #16` (X) → shotY-bacuraY in [-24,7], bacuraX-shotX in [-8,7]
 # half-pixel shadow units — a taller low bias than the flying box (the slab sits lower). This port DOUBLES
 # it to (48,64,16,32) for the SAME recorded reasons as HIT_WINDOW_SHOT_FLYING above: the shot is the same
-# fast mover (changeyby 20 = 2.5 cells/frame), so the 2-cell arcade Y window tunnels — a shot would skip
+# fast mover (1.5 cells/tick since PRES-01; 2.5 before), so the 2-cell arcade Y window tunnels — a shot would skip
 # clean over the thin (one-row-tall) slab instead of bouncing; and the doubled box matches the rendered
 # 24x16 slab body. Same fast-shot detector class, same ratified deviation — not a new one.
 HIT_WINDOW_SHOT_BACURA = (48, 64, 16, 32)
@@ -337,33 +344,53 @@ HUD_ROLE_BANNER = 7  # CAB-03: the "GAME OVER PLAYER n" two-player elimination b
 HUD_ROLE_OTHER_SCORE_DIGIT = 8  # ECO-02: a secondary score-row digit reading `other score` (two-player only)
 HUD_ROLE_LABEL_2UP = 9  # ECO-02: the secondary (other-player) steady nUP label (two-player only)
 HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
-HUD_DIGIT_SPACING = 14
-# Project-defined top-band layout (stage -240..240 x, -180..180 y, +y up); the operator
-# fine-tunes exact placement at playtest (no reference basis this commit — see ECO-02 record).
-HUD_SCORE_LEFT_X = -220  # place 6 (leftmost, most significant digit)
-HUD_SCORE_Y = 155
-HUD_HIGH_SCORE_LEFT_X = -20
-HUD_HIGH_SCORE_Y = 155
-HUD_LABEL_Y = 172
-HUD_1UP_LEFT_X = -192
-# ECO-02: the two-player secondary group sits on the RIGHT of the top band, mirroring the primary group's
-# label-over-score offset (label 28px right of the score's leftmost place, as 1UP=-192 is 28px right of
-# score=-220). The rightmost secondary digit ends at 96 + 6*14 = 180, clear of the 240 stage edge, and the
-# whole group sits right of the centred HIGH SCORE group (which ends near x=64). Operator fine-tunes exact
-# placement at playtest, as with the primary group (no reference basis — the port layout is project-defined).
-HUD_OTHER_SCORE_LEFT_X = 96  # place 6 (leftmost, most significant digit) of the secondary score row
-HUD_2UP_LEFT_X = 124  # leading glyph of the secondary nUP label (HUD_OTHER_SCORE_LEFT_X + 28, as 1UP is off score)
-HUD_HIGH_SCORE_LABEL_LEFT_X = -40
-HUD_LIFE_LEFT_X = -220
-HUD_LIFE_Y = 128
-HUD_LIFE_SPACING = 18
-# Rendered life-icon cap (usability fix): uncapped, the row is one clone per `craft`, and at
-# ~169 craft (reachable by repeated bonus-life awards toward the score cap) the icons run off the
-# right edge of the 480-wide stage. Capping the RENDERED row at 9 ends it at x = HUD_LIFE_LEFT_X
-# + (HUD_LIFE_MAX - 1) * HUD_LIFE_SPACING = -220 + 8*18 = -76, clear of the high-score group at
-# x=-20. The true `craft` count (and the score digits the cap-test actually exercises) is
-# unaffected — only the icon DISPLAY is bounded.
-HUD_LIFE_MAX = 9
+# PRES-01 (docs/mechanics/054): the HUD sits on the arcade's text layer, exactly where the arcade writes it.
+# A text offset is MSB = 31 - col, LSB = row (display_char, xevious_main.68k 1912-1923); each 8-px cell is
+# HUD_TEXT_PITCH stage units at the 1.25 units/px screen scale, the visible columns 4..31 spanning the 280-unit
+# play window (x -140..140) and rows 0..35 its full height. Characters advance one column to the right.
+HUD_TEXT_PITCH = 10
+
+
+def text_cell_x(col: float) -> float:
+    return HUD_TEXT_PITCH * col - 175
+
+
+def text_cell_y(row: int) -> int:
+    return 175 - HUD_TEXT_PITCH * row
+
+
+HUD_DIGIT_SPACING = HUD_TEXT_PITCH
+# Scores on row 1, 7 cells each (display_player_scores / display_high_score, xevious_main.68k 1888-1903,
+# 1944-1948): player 1 from offset 0x1B01 (col 4), the high score from 0x1101 (col 14), player 2 from 0x0801
+# (col 23). The labels on row 0: "1UP" at 0x1800 (col 7) and "2UP" at 0x0500 (col 26) (sub_fn_6__display_1UP_2UP,
+# xevious_sub.68k 737-782 — its "col=24"/"col=5" comments are the raw MSB), "HIGH SCORE" at 0x1200 (col 13)
+# (display_high_score_text, xevious_main.68k 1821-1831).
+HUD_SCORE_LEFT_X = text_cell_x(4)  # place 6 (leftmost, most significant digit)
+HUD_SCORE_Y = text_cell_y(1)
+HUD_HIGH_SCORE_LEFT_X = text_cell_x(14)
+HUD_HIGH_SCORE_Y = text_cell_y(1)
+HUD_LABEL_Y = text_cell_y(0)
+HUD_1UP_LEFT_X = text_cell_x(7)
+# ECO-02: the two-player secondary group (the OTHER player) sits in the arcade's player-2 columns. The port keeps
+# its "active player on the left" simplification (recorded in the ECO-02 record); only the columns are arcade.
+HUD_OTHER_SCORE_LEFT_X = text_cell_x(23)  # place 6 (leftmost, most significant digit) of the secondary score row
+HUD_2UP_LEFT_X = text_cell_x(26)  # leading glyph of the secondary nUP label
+HUD_HIGH_SCORE_LABEL_LEFT_X = text_cell_x(13)
+# Reserve-craft icons from offset 0x1B23 (col 4, row 35), one cell each (display_solvalou_left 1447-1460).
+HUD_LIFE_LEFT_X = text_cell_x(4)
+HUD_LIFE_Y = text_cell_y(35)
+HUD_LIFE_SPACING = HUD_TEXT_PITCH
+# Rendered life-icon cap. The arcade draws one icon per reserve craft with no cap, but only columns 4..31 are on
+# screen, so at most 28 can ever be seen; the port renders those 28 (an icon past column 31 would sit under the
+# right bezel panel and cost a clone for nothing). The true `craft` count is unaffected — only the icon DISPLAY is
+# bounded.
+HUD_LIFE_MAX = 28
+# Glyph sizes for the 10-unit pitch: the 25-px bitmap-resolution-2 HUD glyphs (12.5 units at 100%), the 16-px
+# resolution-1 life icon, and the two-player banner set in the 17-px-advance small text cell (tools/hud_glyphs.py
+# SMALL_TEXT_GEOM).
+HUD_GLYPH_SIZE = 80
+HUD_LIFE_SIZE = 62.5
+HUD_BANNER_SIZE = round(100 * HUD_TEXT_PITCH / 17, 2)
 HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
 # (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
 HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
@@ -373,12 +400,12 @@ HUD_HIGH_SCORE_LABEL = (
     ("hs/H", 0), ("hs/I", 1), ("hs/G", 2), ("hs/H", 3),
     ("hs/S", 5), ("hs/C", 6), ("hs/O", 7), ("hs/R", 8), ("hs/E", 9),
 )
-# ECO-04: "GAME OVER", centered on the stage (slot 4 — the untyped space between the two
-# words — sits at x=0). Fully unrolled like the two label rows above, so no runtime index
-# var is needed; the HUD_ROLE_GAME_OVER_GLYPH clones are static once spawned.
-HUD_GAME_OVER_LEFT_X = -64
-HUD_GAME_OVER_Y = 8
-HUD_GAME_OVER_SPACING = 16
+# ECO-04: "GAME OVER" from offset 0x1118 (col 14, row 24; display_game_over xevious_main.68k 838-843). Fully
+# unrolled like the two label rows above, so no runtime index var is needed; the HUD_ROLE_GAME_OVER_GLYPH clones
+# are static once spawned.
+HUD_GAME_OVER_LEFT_X = text_cell_x(14)
+HUD_GAME_OVER_Y = text_cell_y(24)
+HUD_GAME_OVER_SPACING = HUD_TEXT_PITCH
 HUD_GAME_OVER_LABEL = (
     ("glyph/G", 0), ("glyph/A", 1), ("glyph/M", 2), ("glyph/E", 3),
     ("glyph/O", 5), ("glyph/V", 6), ("glyph/E", 7), ("glyph/R", 8),
@@ -390,7 +417,11 @@ HUD_GAME_OVER_LABEL = (
 # centered on the field, while `banner player` is set; unlike the per-glyph GAME OVER row above it needs no
 # slot table. Costume names by player index: 0 -> "game-over-player-1", 1 -> "game-over-player-2".
 HUD_BANNER_COSTUME_PREFIX = "game-over-player-"
-HUD_BANNER_Y = 8  # centered on the play field, at the GAME OVER row height
+# The 18-character banner starts on the GAME OVER cell (col 14, row 24) and so ends on col 31, the last visible
+# column; the clone sits at the line's centre (col 22.5). The arcade writes "PLAYER ONE/TWO" on its own row 26
+# (display_game_over_player_1_2 845-855); the port's one-line banner is its slice-18 simplification.
+HUD_BANNER_X = text_cell_x(22.5)
+HUD_BANNER_Y = text_cell_y(24)
 HUD_SPAWN_CRAFT_PROCCODE = "hud spawn craft"
 
 # ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
@@ -1088,38 +1119,46 @@ ATTRACT_ROLE_TABLE_RANK = 7  # one best-five rank digit (costume digit/<row>)
 ATTRACT_ROLE_TABLE_NAME = 8  # one best-five name letter (letter `place` of names[row])
 ATTRACT_ROLE_TABLE_SCORE = 9  # one best-five score digit (digit `place` of table[row])
 ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
-# Project-defined placement (stage -240..240 x, -180..180 y, +y up); the operator fine-tunes exact
-# placement at playtest, exactly as the ECO-02 HUD layout notes (no reference basis for the port's own
-# credit-line/best-five geometry — the arcade layout does not carry over to the port's text rendering).
-# The credit line reads "CREDIT NN" as one centred monospace group: the static "CREDIT" label spans
-# cells 0-5, cell 6 is the space, and the two live digit clones sit at cells 7-8. Slice-18 playtest scale
-# correction: the title text now renders at the smaller hud_glyphs SMALL_TEXT_GEOM cell (16px glyph, 17px
-# advance), so this group is re-tightened — centred on x=0 with the label at -26 (its 101px costume's centre
-# over cells 0-5) and the units/tens digits at +68 / +51, and the whole title stack given a ~22px line pitch
-# so the lines no longer overlap.
-ATTRACT_CREDIT_LABEL_X = -26
-ATTRACT_CREDIT_LINE_Y = -142
-ATTRACT_CREDIT_DIGIT_UNITS_X = 68  # place 0 (units); each higher place sits one pitch to its left
-ATTRACT_CREDIT_DIGIT_SPACING = 17  # one monospace pitch (SMALL_TEXT_GEOM advance 119 / downscale 7)
-ATTRACT_PROMPT_X = 0
-ATTRACT_PROMPT_Y = -118
+# PRES-01 (docs/mechanics/054): the attract text sits on the arcade text layer like the HUD (text_cell_x/y), drawn
+# at the 10-unit pitch — every start_screen text costume is the hud_glyphs SMALL_TEXT_GEOM cell (17-px advance,
+# bitmap resolution 1), so its clones draw at ATTRACT_TEXT_SIZE. A whole-string costume is placed by its centre:
+# text_run_x(first column, character count).
+ATTRACT_TEXT_SIZE = round(100 * HUD_TEXT_PITCH / 17, 2)
+
+
+def text_run_x(first_col: int, chars: int) -> float:
+    return text_cell_x(first_col + (chars - 1) / 2)
+
+
+# The title logo (the original start_screen costume, 304 x 103 units at 100% centred 51.5 units above its rotation
+# point) drawn at the arcade logo's width: cols 8..27 x rows 9..16 (display_xevious_logo_flashing xevious_main.68k
+# 891-1019) = 200 units, centred on (0, 50). It glides in from ATTRACT_LOGO_START_Y as before.
+ATTRACT_LOGO_SIZE = round(100 * 200 / 304, 2)
+ATTRACT_LOGO_Y = round(50 - 51.5 * ATTRACT_LOGO_SIZE / 100)
+ATTRACT_LOGO_START_Y = 250
+# "CREDIT" at (22,35) with its two digits at (29,35)/(30,35) (display_credits xevious_main.68k 774-787).
+ATTRACT_CREDIT_LABEL_X = text_run_x(22, 6)
+ATTRACT_CREDIT_LINE_Y = text_cell_y(35)
+ATTRACT_CREDIT_DIGIT_UNITS_X = text_cell_x(30)  # place 0 (units); each higher place sits one pitch to its left
+ATTRACT_CREDIT_DIGIT_SPACING = HUD_TEXT_PITCH
+# The prompt clone moves with its costume: the port's "PUSH START" from the arcade's PUSH START BUTTON cell (10,23)
+# (display_push_start_button 815-826) and "INSERT COIN" at (13,28) (display_insert_coin_flashing 857-889).
+ATTRACT_PUSH_START_X = text_run_x(10, 10)
+ATTRACT_PUSH_START_Y = text_cell_y(23)
+ATTRACT_INSERT_COIN_X = text_run_x(13, 11)
+ATTRACT_INSERT_COIN_Y = text_cell_y(28)
 ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
-# CAB-04 (slice 19): the live best-five grid. Five rows, each laid out as a monospace cell line at the
-# SMALL_TEXT_GEOM pitch (17px advance, matching the credit digits): a rank digit, a two-cell gap, up to
-# ten name letters, a one-cell gap, then the seven leading-zero score digits (HUD_DIGIT_PLACES). The
-# whole 20-cell line is centred on x=0 (cell 9.5) and the five rows are centred on y=0. Project-defined
-# placement, operator-tunable at playtest exactly like the credit line (no reference basis for the port's
-# own text geometry); the resolver pins only the structure, never the pixels/layout.
+# CAB-04 (slice 19): the live best-five grid, on the arcade's own cells (display_high_score_table 1475-1541): the
+# five rows on text rows 24, 26, .., 32; the rank at col 6 (the port shows the rank digit where the arcade writes
+# "1ST".."5TH"), the seven score digits from col 11 and the ten name letters from col 20.
 ATTRACT_TABLE_ROWS = 5
 ATTRACT_TABLE_NAME_CELLS = 10  # ten-character names (xevious_ram.68k name field is ds.b 10)
 ATTRACT_TABLE_SCORE_CELLS = HUD_DIGIT_PLACES  # seven leading-zero digits, matching the HUD score row
-ATTRACT_TABLE_CELL_PITCH_X = 17  # SMALL_TEXT_GEOM advance (119 native / downscale 7)
-ATTRACT_TABLE_ROW_PITCH_Y = 20  # 16px glyph + 4px gap between rows
-ATTRACT_TABLE_RANK_COL = 0  # the rank digit sits at the leftmost cell
-ATTRACT_TABLE_NAME_COL0 = 2  # name letter 0 starts after a two-cell gap
-ATTRACT_TABLE_SCORE_COL0 = 13  # the most-significant score digit, after a one-cell gap past the names
-ATTRACT_TABLE_CENTER_COL = 9.5  # the 20-cell line (cols 0..19) is centred on x=0
-ATTRACT_TABLE_CENTER_Y = 0  # the five rows are centred vertically on y=0
+ATTRACT_TABLE_FIRST_ROW = 24
+ATTRACT_TABLE_ROW_STEP = 2
+ATTRACT_TABLE_RANK_COL = 6
+ATTRACT_TABLE_SCORE_COL0 = 11  # the most-significant score digit
+ATTRACT_TABLE_NAME_COL0 = 20
 ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
 ATTRACT_COSTUME_PUSH_START = "push-start"
 ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
@@ -1133,14 +1172,16 @@ ATTRACT_DIGIT_PREFIX = "digit/"  # per-digit rank/score-cell costumes digit/<0-9
 # the port's own (no reference basis for this port-original control), operator-tunable at playtest exactly
 # like the CAB-01 credit-line/best-five geometry. The options are stacked vertically (1P over 2P), so the
 # selector input is the UP/DOWN arrows (slice-18 playtest correction — was left/right, which read wrong
-# against a vertical list).
+# against a vertical list). PRES-01: the labels start on col 10 of rows 25/26, where the arcade writes its
+# ONE PLAYER ONLY / ONE OR TWO PLAYERS line (display_1_only_or_1_2_players 789-813), under PUSH START.
 ATTRACT_ROLE_SELECTOR_1P = 5  # the "1 PLAYER" option label (bright when start selection == 1)
 ATTRACT_ROLE_SELECTOR_2P = 6  # the "2 PLAYERS" option label (bright when start selection == 2)
 ATTRACT_COSTUME_SELECTOR_1P = "select-1p"
 ATTRACT_COSTUME_SELECTOR_2P = "select-2p"
-ATTRACT_SELECTOR_X = 0
-ATTRACT_SELECTOR_1P_Y = -72  # stacked above the PUSH START prompt (-118), below the centred logo
-ATTRACT_SELECTOR_2P_Y = -94  # one ~22px line-pitch below the 1P label (16px glyph + gap)
+ATTRACT_SELECTOR_1P_X = text_run_x(10, 8)  # "1 PLAYER"
+ATTRACT_SELECTOR_2P_X = text_run_x(10, 9)  # "2 PLAYERS"
+ATTRACT_SELECTOR_1P_Y = text_cell_y(25)
+ATTRACT_SELECTOR_2P_Y = text_cell_y(26)
 ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed (selected) option
 # CAB-04 (cabinet.high-scores, slice 19): the initials-entry screen. A NEW `game state` the game-over
 # routing enters when a score ranks in. The player cycles the active letter with Up/Down over a 27-symbol
@@ -1171,15 +1212,18 @@ ATTRACT_COSTUME_ENTRY_HEADER = "entry-congrats"
 ATTRACT_COSTUME_ENTRY_SUBHEADER = "entry-initials"
 ATTRACT_COSTUME_ENTRY_PLAYER_1 = "entry-player-1"
 ATTRACT_COSTUME_ENTRY_PLAYER_2 = "entry-player-2"
-# Entry-screen placement (project-defined, operator-tunable at playtest exactly like the rest of the attract
-# geometry — the resolver pins only the structure, never the pixels). The ten name cells sit on one centred
-# monospace line at the SMALL_TEXT_GEOM pitch, with the two headers and the PLAYER-n tag stacked above.
-ATTRACT_ENTRY_HEADER_Y = 110
-ATTRACT_ENTRY_SUBHEADER_Y = 78
-ATTRACT_ENTRY_PLAYER_Y = 40
-ATTRACT_ENTRY_CELLS_Y = -20
-ATTRACT_ENTRY_CELL_PITCH_X = 17  # SMALL_TEXT_GEOM advance (119 native / downscale 7), matching the table
-ATTRACT_ENTRY_CENTER_CELL = 4.5  # the ten cells (0..9) are centred on x=0
+# Entry-screen placement on the text grid. The headers start where the arcade's entry screen writes its two
+# header lines (display_high_score_entry_screen 1795-1812: (10,9) and (9,12)). The arcade types the initials into
+# the best-five table at (20, 24 + 2*rank); the port's entry screen shows no table, so its ten cells sit centred
+# on row 24 (cols 13..22) and the two-player PLAYER-n tag on row 18 — port layout on the arcade grid.
+ATTRACT_ENTRY_HEADER_X = text_run_x(10, 15)  # "CONGRATULATIONS"
+ATTRACT_ENTRY_HEADER_Y = text_cell_y(9)
+ATTRACT_ENTRY_SUBHEADER_X = text_run_x(9, 19)  # "ENTER YOUR INITIALS"
+ATTRACT_ENTRY_SUBHEADER_Y = text_cell_y(12)
+ATTRACT_ENTRY_PLAYER_X = text_run_x(14, 8)  # "PLAYER 1"
+ATTRACT_ENTRY_PLAYER_Y = text_cell_y(18)
+ATTRACT_ENTRY_CELLS_Y = text_cell_y(24)
+ATTRACT_ENTRY_CELL0_COL = 13
 # CAB-03 (cabinet.two-player, slice 18): two-player alternation state. `curr player` (0/1) is the active
 # player index; `two player` (0/1) marks a two-player game. Both are director-control state the HUD READS
 # (the 1UP/2UP label + column, the 2UP-row gating) but NO sprite writes — write-forbidden below, exactly
@@ -1544,7 +1588,7 @@ BACURA_DRIFT_DX = 16  # raw scroll-axis velocity (arcade _dX=16 => 4*16 units/ti
 # the normal 6 px/frame, reversed — so from the port's forward `changeyby 20` the reversed step is
 # 20 * (1/4) reversed = -5 stage-px/frame (NOT a naive halve, NOT a literal 1.5). The animation runs the
 # reference's 8 frames (_TIMER 0..7, deleted at 8; sprite code 0x18+((TIMER>>1)&3), four costume codes).
-BACURA_BOUNCE_DY = -5  # reversed shot step during the bounce (arcade reflected _dX=+24 = 1/4, reversed)
+BACURA_BOUNCE_DY = -3.75  # reversed shot step: SHOT_STEP (15) * 1/4, reversed (arcade reflected _dX=+24)
 BACURA_BOUNCE_FRAMES = 8  # bounce animation length (arcade shot_destroyed deletes at _TIMER==8)
 # AIR-11 live spawn pipeline (main_fn_3__init_bacura 5188-5199, main_fn_5__inc_num_bacura 5201-5217).
 # The schedule sets `bacura inc cnt` (a per-window quota); the pump admits one slab per arcade second
@@ -1591,7 +1635,7 @@ SHEONITE_COMBINE_ANIM_FRAMES = 3  # combine costume count per side (right 5..7, 
 SHEONITE_SPIN_BASE_ORDINAL = 1  # spin costumes start at ordinal 1
 SHEONITE_RIGHT_COMBINE_BASE_ORDINAL = SHEONITE_SPIN_FRAMES + 1  # 5
 SHEONITE_LEFT_COMBINE_BASE_ORDINAL = SHEONITE_SPIN_FRAMES + SHEONITE_COMBINE_ANIM_FRAMES + 1  # 8
-SHEONITE_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+SHEONITE_RENDER_SIZE = 125  # the shared on-screen scale; == SPRITE_RENDER_SIZE (asserted with the render map)
 # Stage-written escort state. `sheonite end flag` is the schedule on/off flag (sheonite_start clears it,
 # sheonite_end raises it); the pair only leaves LOCK once it is set. The two temps are per-tick machinery:
 # a phase snapshot (so a mid-tick transition does not cascade into a later branch this tick) and the
@@ -1931,14 +1975,11 @@ BOZA_CENTRE_DOWNGRADED_PTS = 13  # 1-based value-table position of 600 points (c
 # 0x180}; `slot y` (lateral axis) offsets copy the _Y adjust {+0, +0x180, -0x180, +0, +0}. 0x180 = 384 units =
 # 12 px and 0x300 = 768 units = 24 px at SLOT_UNITS_PER_PIXEL (arcade and port share the 32-units/px scale, as
 # the Garu's 0x100 = 8-px cell offset already established). Expressed in px here, scaled at spawn.
-# PORT NECESSITY (composite render fidelity, docs/mechanics/042): the ground cell->stage map is ANAMORPHIC
-# (RENDER_COL_STAGE 15 px/cell laterally vs RENDER_ROW_STAGE 8 px/cell in depth), but a dome sprite is
-# isotropic. Feeding the raw depth offsets through the depth scale renders the five equal-size domes ~1.9x
-# closer vertically than laterally, collapsing top/middle/bottom into one blob. So the DEPTH offsets are
-# scaled by RENDER_COL_STAGE/RENDER_ROW_STAGE at spawn (see _ground_seed_boza) — vertical dome spacing then
-# renders at the same px/arcade-px as lateral, so the composite reads as the arcade's isotropic diamond.
-# `slot x` == the rendered position == the bomb-hit position, so aim and the index-addressed cascade are
-# unchanged; only the composite's internal depth spacing widens (a first-ever multi-slot-composite concern).
+# Composite render fidelity (docs/mechanics/042, 054): the DEPTH offsets are scaled at spawn by the render map's
+# isotropy factor |RENDER_COL_STAGE| / RENDER_ROW_STAGE (see _ground_seed_boza), so the five equal-size domes
+# always read as the arcade's square diamond. Under the old anamorphic map (15 vs 8 stage units per cell) that
+# factor widened the depth spacing 15/8; since PRES-01's isotropic map it is 1 and the offsets are the raw arcade
+# values. `slot x` == the rendered position == the bomb-hit position, so aim and the cascade follow it.
 BOZA_SLOT_COUNT = 5
 BOZA_CENTRE_OFFSET = 4  # the centre is the 5th slot (base + 4); outers are base + 0..3
 BOZA_DEPTH_OFFSETS_PX = (0, 12, 12, 24, 12)  # slot x offsets (boza_logram_spriteX_tbl / SLOT_UNITS_PER_PIXEL)
@@ -2053,6 +2094,7 @@ EASTER_EGG_TARGET = "easter-egg"
 EASTER_EGG_CREDIT_COSTUME = "credit"
 EASTER_EGG_CREDIT_X = 0  # centred horizontally
 EASTER_EGG_CREDIT_Y = -48  # low in the play field, clear of the HUD and the craft's usual band
+EASTER_EGG_CREDIT_SIZE = round(100 * 10 / 22, 2)  # 22-px glyph advance drawn on the 10-unit arcade text pitch
 
 # GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
 # SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
@@ -2314,30 +2356,62 @@ TOROID_TARGET = "toroid"
 # as a deviation in docs/mechanics/024.
 TOROID_PROOF_TARGET = "toroid_sprite_proof"
 TOROID_CLONE_SLOT_ID = "toroid-clone-slot"  # sprite-local: which flying slot this clone renders
-# Port render map (arcade cell -> stage px), applied ONLY here and in the one player read. Independent
-# per-axis (core-game-systems "not one ratified factor"): lateral column c -> x = c*15 - 240 (the
-# 256-col space across the play width); scroll row r -> y = 155 - r*8 (rows down the play height).
-# The craft's port spawn (0, -85) fixes the anchors: col 16 -> x 0, row 30 -> y -85. Operator-tuned,
-# confirmed by eye at playtest; render-only, so it never touches a slot list or the build hash.
-RENDER_COL_STAGE = 15
-RENDER_COL_OFFSET = 240
-RENDER_ROW_TOP = 155
-RENDER_ROW_STAGE = 8
-# PRES-01 playfield framing (docs/mechanics/053). The play area is the whole stage: there are no border
-# sprites. World objects (every slot-driven flying/bullet/ground renderer) are shown only while their slot's
-# scroll row is inside [0, RENDER_VIEW_ROWS) — row 0 maps to y = RENDER_ROW_TOP (the HUD score row) and row 40
-# is where check_scroll_offscreen culls (xevious_main.68k 4827-4839). Scratch cannot clip a sprite at a screen
-# edge, so the cut hides the whole sprite (a port necessity); the arcade's visible window starts at row 4, the
-# port draws from row 0 because its craft range and HUD strip already use rows 0-3 (a recorded deviation).
-# Render-only: the gate never writes a slot list, so game logic and hit resolution are unchanged.
+# PRES-01 arcade screen proportions (docs/mechanics/054). The whole 224x288 arcade screen is drawn at ONE
+# isotropic scale, ARCADE_STAGE_PER_PX = 1.25 stage units per arcade pixel, in a 280x360 window centred on the
+# 480x360 stage; the bezel panels fill the 100 units either side. An object's position is the top-left of its
+# 16-px sprite, so its centre is (X+8, Y+8) (the craft clamp below spans the sprite exactly flush to the screen
+# edges). Depth X increases DOWN the screen, the visible rows starting at X = 32 (row 4); lateral Y increases to
+# the LEFT (dir_delta_tbl xevious_main.68k 2171-2180: right is dY = -24; the display mirrors Y, amiga.68k
+# 1696-1699), the visible columns spanning Y 16..240 around the centre 128. So:
+#   stage x = (128 - (Y + 8)) * 1.25 = 150 - 10 * (slot y / 256)
+#   stage y = 180 - (X + 8 - 32) * 1.25 = 210 - 10 * (slot x / 256)
+# Every render site computes x = col * RENDER_COL_STAGE - RENDER_COL_OFFSET and y = RENDER_ROW_TOP -
+# row * RENDER_ROW_STAGE (col/row = slot units / 256), and the one player read inverts it — the negative lateral
+# factor is the mirror. Render-only: it never touches a slot list.
+ARCADE_STAGE_PER_PX = 1.25
+RENDER_COL_STAGE = -10
+RENDER_COL_OFFSET = -150
+RENDER_ROW_TOP = 210
+RENDER_ROW_STAGE = 10
+# The stage's top edge (y 180) is the screen top: rows 0-3 lie above it, outside the arcade's visible window.
+RENDER_STAGE_TOP = 180
+# PRES-01 visibility gate (docs/mechanics/053, 054). World objects (every slot-driven flying/bullet/ground
+# renderer) are shown only while their slot's scroll row is inside [RENDER_VIEW_FIRST_ROW, RENDER_VIEW_ROWS) —
+# the arcade's visible rows 4..39; row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839).
+# Scratch cannot clip a sprite at a screen edge, so the cut hides the whole sprite (a port necessity). Lateral
+# overhang needs no gate: the opaque bezel panels draw in front of the world band at |x| > 140. Render-only.
+RENDER_VIEW_FIRST_ROW = 4
 RENDER_VIEW_ROWS = 40
-# The craft's positional limits, in stage units. They are the exact stop lines the retired frame sprites
-# produced (the craft costume against the frame pixels, on the craft's ±7 movement lattice from its (0, -85)
-# spawn), so the reachable area is unchanged — a retained port deviation from the arcade's own clamp
-# (update_solvalou_sprite_XY xevious_main.68k 2113-2137 bounds the craft to rows 18-38), not derived from it.
-CRAFT_X_LIMIT = 217
-CRAFT_Y_TOP = 139
-CRAFT_Y_BOTTOM = -141
+# The craft's positional limits, derived from the arcade clamp (update_solvalou_sprite_XY xevious_main.68k
+# 2119-2135: X 144..304, Y 16..224) through the render map, and its spawn (main_fn_1__handle_solvalou
+# 1999-2003: X 296, Y 120). Y 16..224 puts the sprite flush against both side edges; X 304 puts its bottom edge
+# on the screen bottom.
+CRAFT_X_LIMIT = 130    # Y 16 -> x 130 (left stop), Y 224 -> x -130 (right stop)
+CRAFT_Y_TOP = 30       # X 144 -> y 30
+CRAFT_Y_BOTTOM = -170  # X 304 -> y -170
+CRAFT_SPAWN_X = 0      # Y 120
+CRAFT_SPAWN_Y = -160   # X 296
+# Craft speed (dir_delta_tbl xevious_main.68k 2171-2180, doubled when applied 2117/2128, over FRAMES_PER_TICK
+# frames): depth 1 px/frame; lateral 1.5 px/frame when moving purely sideways and 1 px/frame on a diagonal.
+CRAFT_DEPTH_STEP = 2.5             # 2 px/tick * 1.25
+CRAFT_LATERAL_STEP = 3.75          # 3 px/tick * 1.25
+CRAFT_DIAGONAL_LATERAL_STEP = 2.5  # 2 px/tick * 1.25
+# The player shot moves 6 px/frame up (move_shot 2419-2424) = 12 px/tick = 15 stage units/tick.
+SHOT_STEP = 15
+# Sprite sizes. A 16-px (bitmap resolution 1) costume at ARCADE_STAGE_PER_PX is drawn at 125%. The baseline
+# sprites (craft, shot, crosshair, bomb target, bomb, craft explosion — bitmap resolution 2 art) were sized for
+# the old 2.25 stage-units-per-pixel look; each keeps its proportions and is rescaled by 1.25 / 2.25.
+SPRITE_RENDER_SIZE = 100 * ARCADE_STAGE_PER_PX
+assert SHEONITE_RENDER_SIZE == SPRITE_RENDER_SIZE, "Sheonite (defined earlier) must use the shared sprite scale"
+BASELINE_RESCALE = ARCADE_STAGE_PER_PX / 2.25
+BASELINE_SPRITE_SIZES = {
+    "solvalou": round(150 * BASELINE_RESCALE, 2),
+    "blaster": round(200 * BASELINE_RESCALE, 2),
+    "target_a": round(150 * BASELINE_RESCALE, 2),
+    "target_b": round(150 * BASELINE_RESCALE, 2),
+    "bomb": round(150 * BASELINE_RESCALE, 2),
+    "solv_death": round(100 * BASELINE_RESCALE, 2),
+}
 # --- BOSS-01 C3 geometry: the Andor Genesis lifecycle positions + composite offsets (all source-verified at the
 # pin). Placed here so the slot-unit / frame / render-stage primitives above are already defined; the matching ID
 # strings live up by the other Andor constants. ------------------------------------------------------------------
@@ -2394,27 +2468,29 @@ ANDOR_COLOUR_EFFECT_SCALE = 20
 # positions from the dump removes that anchor mismatch AND fixes the arcade left/right of the asymmetric corner
 # plates by construction — each part's art (rendered from the same reference at its own sprite code) sits exactly
 # where the dump puts it. The grid is row-major over types 0x41..0x49 (TL,TM,TR,ML,C,MR,BL,BM,BR). Depth (< 0 =
-# up) and lateral both apply to slot x/y with the dump's sign (+lateral = +slot y = right; +depth = +slot x =
-# down, matching the scroll axis). Stored as (depth_px, lateral_px) * SLOT_UNITS_PER_PIXEL so the whole-pixel
-# assertion below still holds.
+# up) and lateral apply to slot x/y in the arcade's own sense: +depth = +slot x = down, matching the scroll axis,
+# and +lateral = +slot y = LEFT (the top-left plate 0x41 adds _Y +0x0500 and the top-right 0x43 adds _Y 0xfd00,
+# xevious_main.68k 5776-5777 / 5824-5825 — the left side has the larger _Y). The dump's centre-relative layout is
+# in screen orientation, so its screen-right offsets are stored here as -slot y. Stored as (depth_px, lateral_px)
+# * SLOT_UNITS_PER_PIXEL so the whole-pixel assertion below still holds.
 _P = SLOT_UNITS_PER_PIXEL  # 32 units per arcade pixel
 _ANDOR_ARC_OFFSETS = {
-    0x41: (-32 * _P, -32 * _P), 0x42: (-32 * _P, 0), 0x43: (-32 * _P, +32 * _P),  # armor top row
-    0x44: (0, -32 * _P), 0x45: (0, 0), 0x46: (0, +32 * _P),                       # armor middle row
-    0x47: (+32 * _P, -32 * _P), 0x48: (+32 * _P, 0), 0x49: (+32 * _P, +32 * _P),  # armor bottom row
+    0x41: (-32 * _P, +32 * _P), 0x42: (-32 * _P, 0), 0x43: (-32 * _P, -32 * _P),  # armor top row (L, M, R)
+    0x44: (0, +32 * _P), 0x45: (0, 0), 0x46: (0, -32 * _P),                       # armor middle row
+    0x47: (+32 * _P, +32 * _P), 0x48: (+32 * _P, 0), 0x49: (+32 * _P, -32 * _P),  # armor bottom row
     0x4A: (0, 0),  # core: sits on the master
-    0x4F: (-16 * _P, -16 * _P), 0x50: (-16 * _P, +16 * _P),  # gun ports top-left / top-right
-    0x51: (+16 * _P, -16 * _P), 0x52: (+16 * _P, +16 * _P),  # gun ports bottom-left / bottom-right
+    0x4F: (-16 * _P, +16 * _P), 0x50: (-16 * _P, -16 * _P),  # gun ports top-left / top-right
+    0x51: (+16 * _P, +16 * _P), 0x52: (+16 * _P, -16 * _P),  # gun ports bottom-left / bottom-right
 }
 # The 14 part types the alignment proc positions each frame (all but the invisible master 0x4B).
 ANDOR_ALIGNED_PART_TYPES = (*ANDOR_ARMOR_TYPES, ANDOR_CORE_TYPE, *ANDOR_PORT_TYPES)
-# Depth offsets carry the same anamorphic isotropy factor as the Boza domes (memory `anamorphic-composite-offset
-# -bug`; docs/mechanics/042): the cell->stage map spaces lateral at RENDER_COL_STAGE px/cell but depth at only
-# RENDER_ROW_STAGE, so a raw depth offset would render RENDER_COL_STAGE/RENDER_ROW_STAGE too tight and collapse
-# the octagon vertically. Lateral is already at the sprite scale (arcade `_Y` units == port slot-y units, both
-# px*32), so it keeps the plain per-unit value. Two constant lists indexed by (slot type - 0x40) -> 1..18 (the
-# master + unused 0x4B..0x4E rows are 0 and never dispatched here) let the ONE part updater do an O(1) lookup.
-_ANDOR_DEPTH_UNITS_PER_PX = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE // RENDER_ROW_STAGE  # 32 * 15 // 8 = 60
+# Depth offsets carry the lateral/depth isotropy factor of the render map (docs/mechanics/042): a depth offset is
+# scaled by |RENDER_COL_STAGE| / RENDER_ROW_STAGE so the octagon keeps the sprites' aspect. Since PRES-01's
+# isotropic map (docs/mechanics/054) the factor is 1, so the offsets are the raw arcade values (32 units/px); the
+# derivation is kept so the composite stays square if the map ever changes. Lateral is already at the sprite scale
+# (arcade `_Y` units == port slot-y units, both px*32). Two constant lists indexed by (slot type - 0x40) -> 1..18
+# (the master + unused 0x4B..0x4E rows are 0 and never dispatched here) let the ONE part updater do an O(1) lookup.
+_ANDOR_DEPTH_UNITS_PER_PX = SLOT_UNITS_PER_PIXEL * abs(RENDER_COL_STAGE) // RENDER_ROW_STAGE  # 32 * 10 // 10 = 32
 
 
 def _andor_part_offset_tables() -> tuple[list[int], list[int]]:
@@ -2429,7 +2505,7 @@ def _andor_part_offset_tables() -> tuple[list[int], list[int]]:
 
 
 ANDOR_PART_DEPTH_OFFSETS, ANDOR_PART_LATERAL_OFFSETS = _andor_part_offset_tables()
-TOROID_RENDER_SIZE = 225  # 16-px sprite at ~2.25 stage px/px, matching solvalou's on-screen scale
+TOROID_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 # WPN-02 hit/explosion state (`flying_enemy_hit` 4865–4902): a struck flying enemy explodes over 20
 # arcade frames = 10 ticks, five 4-frame phases, still drifting on its velocity; at arcade frame 8 the
 # sprite doubles (2x) with a one-cell recentre; then the slot is freed. While exploding it neither hits
@@ -2440,12 +2516,12 @@ TOROID_EXPLOSION_PHASE_FRAMES = 4  # 20 / 4 = five phases
 TOROID_EXPLOSION_PHASES = 5
 TOROID_TURN_FRAME_COUNT = 7  # turn costumes precede the referenced explosion costumes on the target
 TOROID_BIG_PHASE = 2  # the 2x phase (arcade frame 8): size doubles, sprite recentres one cell
-TOROID_EXPLODE_SIZE = 450  # 2x TOROID_RENDER_SIZE for the big phase
+TOROID_EXPLODE_SIZE = 2 * TOROID_RENDER_SIZE  # the big phase doubles the sprite
 # AIR-12 enemy-bullet renderer: one persistent clone per bullet slot (40-58), a small stand-in sprite
 # (dedicated bullet crops + the reference's 4-colour pulse deferred with the other art, record 026).
 ENEMY_BULLET_TARGET = "enemy_bullet"
 ENEMY_BULLET_CLONE_SLOT_ID = "enemy-bullet-clone-slot"
-ENEMY_BULLET_RENDER_SIZE = 90  # a small dot relative to the 225 enemy scale
+ENEMY_BULLET_RENDER_SIZE = 90 * BASELINE_RESCALE  # 50: the stand-in dot, kept at its old proportion to enemies
 
 # AIR-06 Terrazi renderer: one persistent clone per flying slot (59-64), gated on the Terrazi type,
 # costumed by the 7-frame roll cycle extracted onto the shared sprite-extraction proof (record 002's
@@ -2455,7 +2531,7 @@ ENEMY_BULLET_RENDER_SIZE = 90  # a small dot relative to the 225 enemy scale
 # reproduced on the render side (every ~8 arcade frames through the 7 frames).
 TERRAZI_TARGET = "terrazi"
 TERRAZI_CLONE_SLOT_ID = "terrazi-clone-slot"  # sprite-local: which flying slot this clone renders
-TERRAZI_RENDER_SIZE = 225  # match the Toroid's on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+TERRAZI_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 TERRAZI_ROLL_FRAMES = 7  # terrazi/roll/01..07
 TERRAZI_ROLL_PERIOD = 8  # advance the roll every ~8 arcade frames (`_ddX >> 3`); slot timer ~= frames
 
@@ -2465,7 +2541,7 @@ TERRAZI_ROLL_PERIOD = 8  # advance the roll every ~8 arcade frames (`_ddX >> 3`)
 # (the reference's `d0 = (TIMER1>>3) & 7`, hold at d0 == 7 -> loc_2455 3654), then loops.
 KAPI_TARGET = "kapi"
 KAPI_CLONE_SLOT_ID = "kapi-clone-slot"  # sprite-local: which flying slot this clone renders
-KAPI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+KAPI_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 KAPI_DIVE_FRAMES = 7  # kapi/dive/01..07 (sprite codes 0x20..0x26)
 KAPI_DIVE_PERIOD = 8  # advance the dive frame every ~8 arcade frames (`TIMER1>>3`); slot timer ~= frames
 KAPI_DIVE_PHASES = 8  # the animation clock cycles 0..7; phase 7 holds the last frame (loc_2455)
@@ -2476,7 +2552,7 @@ KAPI_DIVE_PHASES = 8  # the animation clock cycles 0..7; phase 7 holds the last 
 # 7, so no wrap); while fleeing it holds the last frame (0x16).
 TORKAN_TARGET = "torkan"
 TORKAN_CLONE_SLOT_ID = "torkan-clone-slot"  # sprite-local: which flying slot this clone renders
-TORKAN_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+TORKAN_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 TORKAN_ANIM_FRAMES = 6  # torkan/roll/01..06 — see below. The arcade cycles SEVEN sprite codes
 # (0x10..0x16) during the hover (torkan_shoot 3383-3390: `d0 = (TIMER>>2)&0xf`, running 0..6 before it
 # exits at 7, so codes 0x10+0..0x10+6). CrazyCarl's aerial-enemies rip provides only SIX distinct Torkan
@@ -2491,7 +2567,7 @@ TORKAN_ANIM_PERIOD = 4  # advance the hover frame every 4 arcade frames (`timer>
 # pattern as the Kapi/Torkan. The shared explosion frames follow the four spin frames (ordinals 5..).
 ZOSHI_TARGET = "zoshi"
 ZOSHI_CLONE_SLOT_ID = "zoshi-clone-slot"  # sprite-local: which flying slot this clone renders
-ZOSHI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+ZOSHI_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 
 # AIR-04 Jara renderer constants. One persistent clone per flying slot draws the spinner; unlike the
 # Zoshi (which writes `slot code` each tick), the spin frame is derived render-only from the slot's
@@ -2501,7 +2577,7 @@ ZOSHI_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~
 # (3571-3575). The shared explosion frames follow the six spin frames (ordinals 7..).
 JARA_TARGET = "jara"
 JARA_CLONE_SLOT_ID = "jara-clone-slot"  # sprite-local: which flying slot this clone renders
-JARA_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
+JARA_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 
 # AIR-07 Zakato renderer constants. One persistent clone per flying slot, keyed on the slot's phase in
 # `slot state`, which the update machine sequences (SLOT_TELEPORT -> SLOT_ACTIVE -> SLOT_SELF_EXPLODE, or
@@ -2515,7 +2591,7 @@ JARA_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2
 # the big phase like every other flying kill, keeping the two visually distinct.
 ZAKATO_TARGET = "zakato"
 ZAKATO_CLONE_SLOT_ID = "zakato-clone-slot"  # sprite-local: which flying slot this clone renders
-ZAKATO_RENDER_SIZE = 225  # 1x1 (16-px) sprite (_ATTR #0x80), the shared flying scale
+ZAKATO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 ZAKATO_BODY_ORDINAL = 1  # costume 1: the active body (arcade code 0x11)
 ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first shared solv_death burst frame
 
@@ -2532,7 +2608,7 @@ ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first shared solv_deat
 # Costume layout on each target: ordinal 1 = the Zakato body stand-in, ordinals 2.. = the shared burst.
 SPARIO_BODY_ORDINAL = 1  # costume 1: the Zakato body stand-in
 SPARIO_BURST_ORDINAL_BASE = SPARIO_BODY_ORDINAL + 1  # 2: first shared solv_death burst frame
-SPARIO_RENDER_SIZE = 225  # 1x1 (16-px) sprite, the shared flying scale
+SPARIO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 
 GIDDO_SPARIO_TARGET = "giddo-spario"
 GIDDO_SPARIO_CLONE_SLOT_ID = "giddo-spario-clone-slot"  # sprite-local: which flying slot this clone renders
@@ -2565,7 +2641,7 @@ GARU_DET_SLOT_ID = "garu-det-slot"  # the detonating Garu's own flying slot (to 
 # append, like the enemy_bullet). The clone writes no state.
 BACURA_TARGET = "bacura"
 BACURA_CLONE_SLOT_ID = "bacura-clone-slot"  # sprite-local: which Bacura-band slot this clone renders
-BACURA_RENDER_SIZE = 225  # the shared on-screen scale (~2.25 stage px per native px)
+BACURA_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 BACURA_TUMBLE_FRAMES = 8  # bacura/slab/01..08 — the tumble cycle (bacura_sprite_tbl has 8 entries)
 BACURA_TUMBLE_UNITS_PER_FRAME = 128  # slot-x units per frame flip: (_X>>7) => /128 (arcade lsr#6 + and#0x0e)
 
@@ -2577,16 +2653,15 @@ BACURA_TUMBLE_UNITS_PER_FRAME = 128  # slot-x units per frame flip: (_X>>7) => /
 # then the two crater frames appended last (see expected_project's mirror). The clone writes no state.
 BARRA_TARGET = "barra"
 BARRA_CLONE_SLOT_ID = "barra-clone-slot"  # sprite-local: which ground slot this clone renders
-GROUND_RENDER_SIZE = 225  # match the shared on-screen scale (a 16-px sprite at ~2.25 stage px/px)
-# BOSS-01: the Andor Genesis composite renders at the EXACT terrain scale instead of the ground pop (225%), so its
-# 15 parts tile seamlessly into one octagon. The cell->stage map fixes lateral at RENDER_COL_STAGE px per
-# SLOT_UNITS_PER_CELL units = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE / SLOT_UNITS_PER_CELL = 1.875 stage px per
-# arcade px; a part must render at that same scale for its size to match its offset spacing (a 32-px armor plate at
-# ±32-px pitch, a 16-px port at ±16). So size% = 100 * that ratio = 187.5. (The armor costume is a 32-px canvas and
-# the ports/core are 16-px, so the ONE size% yields the arcade 2:1 plate/port ratio for free.) 225% was the "big
-# mess" overlap: the parts drew ~20% larger than their spacing. Depth offsets already carry the anamorphic factor
-# (_ANDOR_DEPTH_UNITS_PER_PX = 60) so both axes land at 1.875 — confirming 187.5 was the intended scale all along.
-ANDOR_RENDER_SIZE = 100 * SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE / SLOT_UNITS_PER_CELL  # = 187.5
+GROUND_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
+# BOSS-01: the Andor Genesis composite renders at the EXACT terrain scale, so its 15 parts tile seamlessly into one
+# octagon. The cell->stage map fixes lateral at |RENDER_COL_STAGE| stage units per SLOT_UNITS_PER_CELL units =
+# SLOT_UNITS_PER_PIXEL * |RENDER_COL_STAGE| / SLOT_UNITS_PER_CELL stage units per arcade px; a part must render at
+# that same scale for its size to match its offset spacing (a 32-px armor plate at ±32-px pitch, a 16-px port at
+# ±16). So size% = 100 * that ratio. (The armor costume is a 32-px canvas and the ports/core are 16-px, so the ONE
+# size% yields the arcade 2:1 plate/port ratio for free.) A larger size was the "big mess" overlap: the parts drew
+# larger than their spacing. Under PRES-01's isotropic map this is exactly SPRITE_RENDER_SIZE (125).
+ANDOR_RENDER_SIZE = 100 * SLOT_UNITS_PER_PIXEL * abs(RENDER_COL_STAGE) / SLOT_UNITS_PER_CELL  # = 125.0
 EXPLODE_COSTUME_COUNT = 8  # the shared solv_death burst is 8 costumes (explode_01..08)
 BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
 BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
@@ -4203,7 +4278,7 @@ def install_compute_aim_index(blocks: Blocks) -> None:
 def install_read_player_cell(blocks: Blocks) -> None:
     # Read the craft's live stage position once per walk and map it back to arcade 8-px cells, so
     # every slot's aim and collision test uses one cached (player row, player col). Inverse of the
-    # render map: col = round((x + 240)/15); row = round((155 - y)/8).
+    # render map: col = round((x + RENDER_COL_OFFSET)/RENDER_COL_STAGE); row = round((RENDER_ROW_TOP - y)/RENDER_ROW_STAGE).
     definition = _install_warp_proc(blocks, READ_PLAYER_PROCCODE)
     craft_x = blocks.sensing_of("x position", "solvalou")
     craft_y = blocks.sensing_of("y position", "solvalou")
@@ -8005,7 +8080,7 @@ def install_update_andor_part(blocks: Blocks) -> None:
     # BOSS-01 (andor.lifecycle #94): one tick of alignment for a single visible Andor part (armor / core / port)
     # at `slot index`. Each frame it pins this slot to the master's shared anchor plus the part's per-type
     # composite offset — set slot x = andor master x + depth[type-0x40], slot y = andor master y + lateral
-    # [type-0x40] — reading the two constant offset lists (source-verified, anamorphic depth). No independent
+    # [type-0x40] — reading the two constant offset lists (source-verified, isotropy-scaled depth). No independent
     # motion and no cull: the master's teardown frees the part slots. The master (Scratch slot 16) updates the
     # shared anchor AFTER the parts (ascending walk), so during motion the parts render one tick behind the
     # anchor — a uniform lag across all parts, so the composite stays rigid, and it is zero while holding.
@@ -9153,12 +9228,11 @@ def _ground_seed_boza(blocks: Blocks, *, slot_at, type_val, sprite_y) -> list[st
     # CENTRE (2,000 pts) never fires and stores `slot link` 0, which marks it as the centre for the walk's
     # branch and holds its full value until an outer hit downgrades it. `slot_at(i)` returns a FRESH reporter.
     seed: list[str] = []
-    # Depth offsets carry an extra isotropic factor so the composite renders as the arcade's square diamond
-    # rather than a vertically-collapsed blob: the anamorphic cell->stage map spaces lateral at RENDER_COL_STAGE
-    # px/cell but depth at only RENDER_ROW_STAGE px/cell, so a raw depth offset renders RENDER_COL_STAGE/
-    # RENDER_ROW_STAGE too tight for the isotropic dome sprites. Lateral is already at the sprite scale, so it
-    # keeps the plain per-pixel scale. (See the BOZA_DEPTH_OFFSETS_PX note; port necessity in docs/mechanics/042.)
-    depth_units_per_px = SLOT_UNITS_PER_PIXEL * RENDER_COL_STAGE // RENDER_ROW_STAGE  # 32 * 15 // 8 = 60
+    # Depth offsets carry the render map's lateral/depth isotropy factor (|RENDER_COL_STAGE| / RENDER_ROW_STAGE)
+    # so the composite renders as the arcade's square diamond. Since PRES-01's isotropic map (docs/mechanics/054)
+    # the factor is 1 and the offsets are the raw arcade values; lateral is already at the sprite scale. (See the
+    # BOZA_DEPTH_OFFSETS_PX note; docs/mechanics/042.)
+    depth_units_per_px = SLOT_UNITS_PER_PIXEL * abs(RENDER_COL_STAGE) // RENDER_ROW_STAGE  # 32 * 10 // 10 = 32
     for i in range(BOZA_SLOT_COUNT):
         depth_units = BOZA_DEPTH_OFFSETS_PX[i] * depth_units_per_px
         lateral_units = BOZA_LATERAL_OFFSETS_PX[i] * SLOT_UNITS_PER_PIXEL
@@ -11143,11 +11217,21 @@ def _high_score_finish(blocks: Blocks) -> list[str]:
     ]
 
 
+def install_baseline_size(blocks: Blocks, target: str) -> None:
+    # PRES-01 (docs/mechanics/054): a baseline sprite's committed target size is preserved history, so its
+    # arcade-proportion size is applied at run time — set once on the green flag (clones inherit it).
+    blocks.chain(
+        blocks.flag(),
+        [blocks.add("looks_setsizeto", inputs={"SIZE": number(BASELINE_SPRITE_SIZES[target])})],
+    )
+
+
 def solvalou_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("solvalou")
     common_stop(blocks, hide=True)
     reset = blocks.receive("director reset")
-    blocks.chain(reset, [reset_if(blocks, ("cold-start", "new-game"), [blocks.go(0, -85), blocks.hide()]), reset_if(blocks, ("new-life", "game-over"), [blocks.go(0, -85), blocks.hide()])])
+    blocks.chain(reset, [reset_if(blocks, ("cold-start", "new-game"), [blocks.go(CRAFT_SPAWN_X, CRAFT_SPAWN_Y), blocks.hide()]), reset_if(blocks, ("new-life", "game-over"), [blocks.go(CRAFT_SPAWN_X, CRAFT_SPAWN_Y), blocks.hide()])])
+    install_baseline_size(blocks, "solvalou")
 
     enter = blocks.receive("director enter")
     snapshot = blocks.set_var(
@@ -11162,7 +11246,7 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
     # recorded READY hold to zero.
     ready_hold = blocks.hold_ticks(READY_HOLD_TICKS)
     ready_body = [
-        blocks.go(0, -85),
+        blocks.go(CRAFT_SPAWN_X, CRAFT_SPAWN_Y),
         blocks.show(),
         ready_hold,
         blocks.if_epoch_either_state(
@@ -11182,11 +11266,43 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
     # CAB-01: each direction is read through `input_active`, so the auto-pilot's virtual inputs drive the
     # craft while the cabinet demos (attract==1) and the arrow keys drive it in a real game (attract==0). The
     # virtual flag paired with each arrow matches the auto-pilot's direction decomposition.
-    for key, (opcode, input_name, amount, virtual_id, virtual_name) in {
-        "left arrow": ("motion_changexby", "DX", -7, INPUT_LEFT_ID, "input left"),
-        "right arrow": ("motion_changexby", "DX", 7, INPUT_RIGHT_ID, "input right"),
-        "up arrow": ("motion_changeyby", "DY", 7, INPUT_UP_ID, "input up"),
-        "down arrow": ("motion_changeyby", "DY", -7, INPUT_DOWN_ID, "input down"),
+    # PRES-01 (docs/mechanics/054): the arcade speeds (dir_delta_tbl xevious_main.68k 2171-2180). Depth moves
+    # CRAFT_DEPTH_STEP; lateral moves CRAFT_LATERAL_STEP when no vertical direction is held and the slower
+    # CRAFT_DIAGONAL_LATERAL_STEP on a diagonal. Each read builds fresh `input_active` reporters (a reporter
+    # binds to one parent).
+    def vertical_active(parent: str) -> str:
+        return blocks.op_or(
+            blocks.input_active(parent, "up arrow", INPUT_UP_ID, "input up"),
+            blocks.input_active(parent, "down arrow", INPUT_DOWN_ID, "input down"),
+        )
+
+    for key, (direction, virtual_id, virtual_name) in {
+        "left arrow": (-1, INPUT_LEFT_ID, "input left"),
+        "right arrow": (1, INPUT_RIGHT_ID, "input right"),
+    }.items():
+        pressed = blocks.add("control_if")
+        blocks.blocks[pressed]["inputs"]["CONDITION"] = [
+            2,
+            blocks.input_active(pressed, key, virtual_id, virtual_name),
+        ]
+        speed = blocks.add("control_if_else")
+        diagonal = vertical_active(speed)
+        blocks.blocks[speed]["inputs"]["CONDITION"] = [2, diagonal]
+        blocks.blocks[diagonal]["parent"] = speed
+        blocks.substack(
+            speed,
+            [blocks.add("motion_changexby", inputs={"DX": number(direction * CRAFT_DIAGONAL_LATERAL_STEP)})],
+        )
+        blocks.substack(
+            speed,
+            [blocks.add("motion_changexby", inputs={"DX": number(direction * CRAFT_LATERAL_STEP)})],
+            name="SUBSTACK2",
+        )
+        blocks.substack(pressed, [speed])
+        movement_body.append(pressed)
+    for key, (direction, virtual_id, virtual_name) in {
+        "up arrow": (1, INPUT_UP_ID, "input up"),
+        "down arrow": (-1, INPUT_DOWN_ID, "input down"),
     }.items():
         pressed = blocks.add("control_if")
         blocks.blocks[pressed]["inputs"]["CONDITION"] = [
@@ -11195,14 +11311,13 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
         ]
         blocks.substack(
             pressed,
-            [blocks.add(opcode, inputs={input_name: number(amount)})],
+            [blocks.add("motion_changeyby", inputs={"DY": number(direction * CRAFT_DEPTH_STEP)})],
         )
         movement_body.append(pressed)
     # PRES-01: the craft clamps its own position on both axes (as update_solvalou_sprite_XY
-    # xevious_main.68k 2113-2137 does; the crosshair is a pure lead and never gates movement). There are
-    # no border sprites to touch, so each side is a positional limit at the stop line the retired frames
-    # produced (CRAFT_X_LIMIT / CRAFT_Y_TOP / CRAFT_Y_BOTTOM — on the ±7 lattice these are the identical
-    # positions the old touch-and-undo landed on, so the reachable area is unchanged).
+    # xevious_main.68k 2119-2135 does; the crosshair is a pure lead and never gates movement). Each side is a
+    # positional limit at the arcade clamp mapped through the render map (CRAFT_X_LIMIT / CRAFT_Y_TOP /
+    # CRAFT_Y_BOTTOM).
     for compare, position, limit, opcode, input_name in (
         (blocks.op_gt, blocks.yposition, CRAFT_Y_TOP, "motion_sety", "Y"),
         (blocks.op_lt, blocks.yposition, CRAFT_Y_BOTTOM, "motion_sety", "Y"),
@@ -11231,6 +11346,12 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     common_stop(blocks, hide=True, clones=True)
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.hide()])
+    # PRES-01 (docs/mechanics/054): the logo at the arcade logo's width. The committed target size is preserved, so
+    # it is set on the green flag; every text clone sets ATTRACT_TEXT_SIZE as it starts.
+    blocks.chain(
+        blocks.flag(),
+        [blocks.add("looks_setsizeto", inputs={"SIZE": number(ATTRACT_LOGO_SIZE)})],
+    )
     enter = blocks.receive("director enter")
     # B4: the logo enters at the top and glides to center (baseline: 1 s from y=250). Preserved-baseline
     # presentation; the glide is a WALL-CLOCK block (a presentation beat, not gameplay timing) — it does not
@@ -11241,7 +11362,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     # coords, the HUD spawn idiom) and dresses itself in its start-as-clone body; the original NEVER switches
     # its own costume, so the visible logo is never disturbed. The stamps run in one frame (no blocking block
     # between the go/create_clone pairs), then the original returns to the glide start and glides in.
-    title_body: list[str] = [blocks.go(0, 250), blocks.show()]
+    title_body: list[str] = [blocks.go(0, ATTRACT_LOGO_START_Y), blocks.show()]
     title_body += [
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_CREDIT_LABEL)),
         blocks.go(ATTRACT_CREDIT_LABEL_X, ATTRACT_CREDIT_LINE_Y),
@@ -11255,34 +11376,33 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             blocks.go(digit_x, ATTRACT_CREDIT_LINE_Y),
             blocks.create_clone(),
         ]
+    # The prompt clone places itself as it picks its costume (PUSH START and INSERT COIN sit on different cells).
     title_body += [
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_PROMPT)),
-        blocks.go(ATTRACT_PROMPT_X, ATTRACT_PROMPT_Y),
         blocks.create_clone(),
     ]
     # CAB-02: stamp the two 1P/2P selector labels, one clone each, in the same one-frame batch.
     title_body += [
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SELECTOR_1P)),
-        blocks.go(ATTRACT_SELECTOR_X, ATTRACT_SELECTOR_1P_Y),
+        blocks.go(ATTRACT_SELECTOR_1P_X, ATTRACT_SELECTOR_1P_Y),
         blocks.create_clone(),
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SELECTOR_2P)),
-        blocks.go(ATTRACT_SELECTOR_X, ATTRACT_SELECTOR_2P_Y),
+        blocks.go(ATTRACT_SELECTOR_2P_X, ATTRACT_SELECTOR_2P_Y),
         blocks.create_clone(),
     ]
     title_body += [
-        blocks.go(0, 250),  # back to the glide start; the logo glides in with the clones already stamped
-        blocks.glide(1, 0, 0),
+        # back to the glide start; the logo glides in with the clones already stamped
+        blocks.go(0, ATTRACT_LOGO_START_Y),
+        blocks.glide(1, 0, ATTRACT_LOGO_Y),
     ]
     title = blocks.if_state("title", title_body)
     # CAB-04: the LIVE best-five table. Each cell is its own clone (the credit-digit idiom) — a rank digit,
     # up to ten name letters, and seven score digits per row — stamped in one frame, each snapshotting its
     # row (and, for letter/score cells, its place) before create_clone, then reading the Stage lists live.
-    def cell_x(col: float) -> int:
-        return int(round((col - ATTRACT_TABLE_CENTER_COL) * ATTRACT_TABLE_CELL_PITCH_X))
-
+    cell_x = text_cell_x
     scores_body: list[str] = []
     for table_row in range(1, ATTRACT_TABLE_ROWS + 1):
-        row_y = ATTRACT_TABLE_CENTER_Y + (2 - (table_row - 1)) * ATTRACT_TABLE_ROW_PITCH_Y
+        row_y = text_cell_y(ATTRACT_TABLE_FIRST_ROW + ATTRACT_TABLE_ROW_STEP * (table_row - 1))
         # rank digit (costume digit/<row>)
         scores_body += [
             blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_RANK)),
@@ -11316,14 +11436,14 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     # place before create_clone, then reading `name buffer` / `entry char` live (the live-table idiom). The
     # cells sit on one centred monospace line; the headers stack above.
     def entry_cell_x(cell: int) -> int:
-        return int(round((cell - ATTRACT_ENTRY_CENTER_CELL) * ATTRACT_ENTRY_CELL_PITCH_X))
+        return text_cell_x(ATTRACT_ENTRY_CELL0_COL + cell)
 
     entry_body: list[str] = [
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_HEADER)),
-        blocks.go(0, ATTRACT_ENTRY_HEADER_Y),
+        blocks.go(ATTRACT_ENTRY_HEADER_X, ATTRACT_ENTRY_HEADER_Y),
         blocks.create_clone(),
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_SUBHEADER)),
-        blocks.go(0, ATTRACT_ENTRY_SUBHEADER_Y),
+        blocks.go(ATTRACT_ENTRY_SUBHEADER_X, ATTRACT_ENTRY_SUBHEADER_Y),
         blocks.create_clone(),
     ]
     # The PLAYER-n tag disambiguates whose initials are being entered; a one-player game needs no tag, so it is
@@ -11335,7 +11455,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
                 blocks.set_var(
                     "attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_ENTRY_PLAYER)
                 ),
-                blocks.go(0, ATTRACT_ENTRY_PLAYER_Y),
+                blocks.go(ATTRACT_ENTRY_PLAYER_X, ATTRACT_ENTRY_PLAYER_Y),
                 blocks.create_clone(),
             ],
         )
@@ -11354,6 +11474,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     # first and each role shows itself only once it has switched to its own costume (no logo flash).
     clone = blocks.add("control_start_as_clone", top_level=True)
     hide_first = blocks.hide()
+    text_size = blocks.add("looks_setsizeto", inputs={"SIZE": number(ATTRACT_TEXT_SIZE)})
 
     # CREDIT label (static): switches to the "CREDIT" word and shows; common_stop retires it on the next
     # transition, exactly like the HUD's static HIGH SCORE label.
@@ -11414,11 +11535,17 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[prompt_tick]["inputs"]["CONDITION"] = [2, blocks.not_state(prompt_tick, "title")]
     has_credit = blocks.if_reporter(
         blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
-        [blocks.switch_costume(ATTRACT_COSTUME_PUSH_START)],
+        [
+            blocks.switch_costume(ATTRACT_COSTUME_PUSH_START),
+            blocks.go(ATTRACT_PUSH_START_X, ATTRACT_PUSH_START_Y),
+        ],
     )
     no_credit = blocks.if_reporter(
         blocks.op_eq(variable("credits", CREDITS_ID), number(0)),
-        [blocks.switch_costume(ATTRACT_COSTUME_INSERT_COIN)],
+        [
+            blocks.switch_costume(ATTRACT_COSTUME_INSERT_COIN),
+            blocks.go(ATTRACT_INSERT_COIN_X, ATTRACT_INSERT_COIN_Y),
+        ],
     )
     blocks.substack(
         prompt_tick,
@@ -11743,6 +11870,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         clone,
         [
             hide_first,
+            text_size,
             credit_label_role,
             credit_digit_role,
             prompt_role,
@@ -11763,6 +11891,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
 def death_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("solv-death")
     common_stop(blocks, hide=True)
+    install_baseline_size(blocks, "solv_death")
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.hide()])
     enter = blocks.receive("director enter")
@@ -11814,8 +11943,24 @@ def death_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+# PRES-01 (docs/mechanics/054): the terrain strips scroll one arcade pixel a tick at the render scale —
+# the same 1.25 stage units the ground objects move (32 slot units = 1/8 row of RENDER_ROW_STAGE) — from
+# y TERRAIN_STRIP_TOP to the fence at -TERRAIN_STRIP_TOP, so a strip's y is always
+# TERRAIN_STRIP_TOP - TERRAIN_SCROLL_STEP * step, and it wraps after TERRAIN_CYCLE_STEPS (690 / 1.25).
+TERRAIN_SCROLL_STEP = ARCADE_STAGE_PER_PX
+TERRAIN_STRIP_TOP = 345
+TERRAIN_CYCLE_STEPS = 552
+assert TERRAIN_CYCLE_STEPS * TERRAIN_SCROLL_STEP == 2 * TERRAIN_STRIP_TOP
+
+
+def terrain_seed_y(step: int) -> float:
+    # The steady wrap law: where a strip seeded at `step` stands.
+    y = TERRAIN_STRIP_TOP - TERRAIN_SCROLL_STEP * step
+    return int(y) if y == int(y) else y
+
+
 def terrain_blocks(
-    name: str, costume: str, start_y: int, step_id: str, initial_step: int
+    name: str, costume: str, start_y: float, step_id: str, initial_step: int
 ) -> dict[str, dict[str, Any]]:
     blocks = Blocks(name)
     common_stop(blocks, hide=False)
@@ -11853,19 +11998,19 @@ def terrain_blocks(
     loop = blocks.add("control_repeat_until")
     condition = blocks.not_state(loop, "playing")
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, condition]
-    move = blocks.add("motion_changeyby", inputs={"DY": number(-1)})
+    move = blocks.add("motion_changeyby", inputs={"DY": number(-TERRAIN_SCROLL_STEP)})
     advance = blocks.change_var("scroll step", step_id, 1)
-    # B3: counted-cycle wrap (baseline: 690 steps per strip). The former position test
+    # B3: counted-cycle wrap (TERRAIN_CYCLE_STEPS per strip). The former position test
     # (y < -345) was unreachable — Scratch fencing pins a full-height strip at -345, so
     # both strips parked and the screen went black. Counting the steps always fires.
     wrap_if = blocks.add("control_if")
-    reached = blocks.greater(wrap_if, "scroll step", step_id, 689)
+    reached = blocks.greater(wrap_if, "scroll step", step_id, TERRAIN_CYCLE_STEPS - 1)
     blocks.blocks[wrap_if]["inputs"]["CONDITION"] = [2, reached]
     blocks.substack(
         wrap_if,
         [
             blocks.set_var("scroll step", step_id, number(0)),
-            blocks.go(0, 345),
+            blocks.go(0, TERRAIN_STRIP_TOP),
             blocks.add("looks_nextcostume"),
         ],
     )
@@ -11967,6 +12112,7 @@ def install_alloc_bullet_slot(blocks: Blocks) -> None:
 def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("blaster")
     common_stop(blocks, hide=True, clones=True)
+    install_baseline_size(blocks, "blaster")
     install_alloc_shot_slot(blocks)
     # Reset clears the reload counter (WPN-01: a fresh press fires at once) so holding
     # fire through death never delays the first post-respawn shot.
@@ -12045,10 +12191,12 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
-    # B8: the shot flies forward at the baseline speed and expires as it passes arcade row 0 — no
-    # edge-parking, no fixed step count. Direction and top-expiry cite WPN-01; the DY magnitude is
-    # preserved-baseline (spatial factor unratified until the movement slice).
-    shot_dy = 20
+    # B8: the shot flies forward at the arcade speed (SHOT_STEP, move_shot 2419-2424) and expires as it
+    # passes arcade row 0 — no edge-parking, no fixed step count. Direction and top-expiry cite WPN-01.
+    # PRES-01 (docs/mechanics/054): the shot's depth lives in the clone's own `shot depth` (an unfenced stage y)
+    # — rows 0-3 are above the stage top, where the sprite's own y would be fenced short of row 0 and the shot
+    # would never expire. Every travel/mirror/expiry/hide read uses the variable; the sprite only follows it.
+    shot_depth = lambda: variable("shot depth", SHOT_DEPTH_ID)
     clone = blocks.add("control_start_as_clone", top_level=True)
     travel = blocks.add("control_repeat_until")
     # B8 top-expiry OR the walk marking this shot spent (WPN-02: on a resolved air hit the detector
@@ -12056,15 +12204,15 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     # deletes — so the slot is freed by the clone, never reallocated under a still-live clone).
     # PRES-01 top-expiry is positional (there is no top border to touch): the arcade deletes an upward
     # shot the frame its move carries `_X` below row 0, BEFORE it is drawn (xevious_main.68k 2391-2393,
-    # delete_shot 2394-2396, after move_shot 2419-2424). Each iteration mirrors the position the shot was
-    # drawn at, then moves; a move that carries it past row 0 hides it before the iteration's yield, so it
-    # is never drawn there, and the loop exits after that yield. The hidden final tick still carries the
-    # last drawn position in the slot, so every drawn position — the topmost included — is hit-tested
-    # (with the one-tick lag below), and a shot fired from the craft's top stop is hit-tested once at its
-    # spawn row rather than retired untested.
-    at_top = blocks.op_gt(blocks.yposition(), number(RENDER_ROW_TOP))
+    # delete_shot 2394-2396, after move_shot 2419-2424). Each iteration mirrors the position the shot
+    # occupied, then moves; the loop exits after the yield of the move that carries it past row 0. The final
+    # tick still carries the last position in the slot, so every position — the topmost included — is
+    # hit-tested (with the one-tick lag below), and a shot fired from the craft's top stop is hit-tested at
+    # its spawn row rather than retired untested. The sprite hides once its depth passes the stage top: rows
+    # 0-3 are outside the arcade's visible window, but the shot still travels and hits there, as in the arcade.
+    at_top = blocks.op_gt(shot_depth(), number(RENDER_ROW_TOP))
     past_top_hide = blocks.if_reporter(
-        blocks.op_gt(blocks.yposition(), number(RENDER_ROW_TOP)), [blocks.add("looks_hide")]
+        blocks.op_gt(shot_depth(), number(RENDER_STAGE_TOP)), [blocks.add("looks_hide")]
     )
     spent = blocks.op_not(
         blocks.op_eq(
@@ -12073,10 +12221,11 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         )
     )
     blocks.blocks[travel]["inputs"]["CONDITION"] = [2, blocks.op_or(at_top, spent)]
-    # WPN-02 position mirror: each iteration write the shot's live cell (stage px -> slot units, the
+    # WPN-02 position mirror: each iteration write the shot's live cell (stage units -> slot units, the
     # render map inverted and floored) into its slot x/y, so the walk's shot-vs-air detector reads the
-    # shot from the slot lists like any entity. One-tick lag vs the clone's pixel position (<=10 arcade
-    # px at 6 px/frame), recorded in docs/mechanics/025.
+    # shot from the slot lists like any entity. One-tick lag vs the shot's position (12 arcade px at
+    # 6 px/frame), recorded in docs/mechanics/025. Depth comes from `shot depth`; the lateral x is never
+    # fenced (the craft stops at |x| <= CRAFT_X_LIMIT) and never changes in flight.
     mirror_x = blocks.list_replace(
         "slot x",
         SLOT_X_ID,
@@ -12084,7 +12233,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         blocks.op_floor(
             blocks.op_div(
                 blocks.op_mul(
-                    blocks.op_sub(number(RENDER_ROW_TOP), blocks.yposition()),
+                    blocks.op_sub(number(RENDER_ROW_TOP), shot_depth()),
                     number(SLOT_UNITS_PER_CELL),
                 ),
                 number(RENDER_ROW_STAGE),
@@ -12110,26 +12259,35 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         [
             mirror_x,
             mirror_y,
-            blocks.add("motion_changeyby", inputs={"DY": number(shot_dy)}),
+            blocks.change_var("shot depth", SHOT_DEPTH_ID, SHOT_STEP),
+            blocks.add("motion_sety", inputs={"Y": shot_depth()}),
             blocks.add("looks_nextcostume"),
             past_top_hide,
         ],
     )
     # WPN-01 shot bounce: the travel loop above exits the instant the walk marks this shot non-ACTIVE.
     # When that mark is SHOT_BOUNCE (a `check shot bacura` overlap), the shot does not simply vanish — it
-    # rebounds. Reverse it (BACURA_BOUNCE_DY = -5 stage-px/frame, the arcade's reflected 1/4-speed) and run
-    # the reference's BACURA_BOUNCE_FRAMES (8) costume frames in place, then fall through to the shared
-    # free+delete below. The Bacura is untouched; only the shot animates away. Ordinary air-kill spends
-    # (SHOT_SPENT) and top-expiry (still ACTIVE) skip this branch and delete at once as before. The
-    # real BACURA_HIT_SND now plays (src deactivate_shot xevious_main.68k:2559): this branch runs on a
-    # blaster clone, which cannot play the Stage-owned `bacura` sound directly, so it broadcasts
-    # `sfx bacura` and the Stage's receiver plays it.
+    # rebounds. Reverse it (BACURA_BOUNCE_DY, the arcade's reflected 1/4-speed) and run the reference's
+    # BACURA_BOUNCE_FRAMES (8) costume frames in place, then fall through to the shared free+delete below.
+    # The Bacura is untouched; only the shot animates away. Ordinary air-kill spends (SHOT_SPENT) and
+    # top-expiry (still ACTIVE) skip this branch and delete at once as before. The real BACURA_HIT_SND now
+    # plays (src deactivate_shot xevious_main.68k:2559): this branch runs on a blaster clone, which cannot
+    # play the Stage-owned `bacura` sound directly, so it broadcasts `sfx bacura` and the Stage's receiver
+    # plays it. The rebound also moves `shot depth`, showing the shot only while it is below the stage top.
+    bounce_visible = blocks.add("control_if_else")
+    above_top = blocks.op_gt(shot_depth(), number(RENDER_STAGE_TOP))
+    blocks.blocks[bounce_visible]["inputs"]["CONDITION"] = [2, above_top]
+    blocks.blocks[above_top]["parent"] = bounce_visible
+    blocks.substack(bounce_visible, [blocks.add("looks_hide")])
+    blocks.substack(bounce_visible, [blocks.show()], name="SUBSTACK2")
     bounce_anim = blocks.add("control_repeat", inputs={"TIMES": number(BACURA_BOUNCE_FRAMES)})
     blocks.substack(
         bounce_anim,
         [
-            blocks.add("motion_changeyby", inputs={"DY": number(BACURA_BOUNCE_DY)}),
+            blocks.change_var("shot depth", SHOT_DEPTH_ID, BACURA_BOUNCE_DY),
+            blocks.add("motion_sety", inputs={"Y": shot_depth()}),
             blocks.add("looks_nextcostume"),
+            bounce_visible,
         ],
     )
     bounce = blocks.if_reporter(
@@ -12149,6 +12307,8 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var(
                 "clone slot", CLONE_SLOT_ID, variable("alloc result", ALLOC_RESULT_ID)
             ),
+            # Born at the craft (go_to_sprite before create_clone), which is always on stage.
+            blocks.set_var_expr("shot depth", SHOT_DEPTH_ID, blocks.yposition()),
             blocks.to_front(),  # B9: shots render above the terrain
             blocks.show(),
             blocks.play_sound("blaster"),
@@ -12199,6 +12359,7 @@ def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str
     # no state; the walk-thread procs own the slot's position and active flag.
     blocks = Blocks(name)
     common_stop(blocks, hide=True)
+    install_baseline_size(blocks, name)
     blocks.chain(blocks.receive("director reset"), [blocks.hide()])
 
     enter = blocks.receive("director enter")
@@ -12233,6 +12394,7 @@ def bomb_blocks() -> dict[str, dict[str, Any]]:
     # walk thread broadcasts on arm/finish (the sounds live on this sprite). It writes no game state.
     blocks = Blocks("bomb")
     common_stop(blocks, hide=True)
+    install_baseline_size(blocks, "bomb")
     blocks.chain(blocks.receive("director reset"), [blocks.hide()])
     # Sound-only receivers: the walk thread owns the bomb logic and fires these on arm / landing.
     blocks.chain(blocks.receive("bomb"), [blocks.play_sound("bomb_drop")])
@@ -12323,6 +12485,12 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("hud")
     common_stop(blocks, hide=True, clones=True)
     install_hud_spawn_craft(blocks)
+    # PRES-01 (docs/mechanics/054): glyphs drawn at the arcade's 10-unit text pitch. The committed target size is
+    # preserved, so the size is set on the green flag (clones inherit it; life and banner clones set their own).
+    blocks.chain(
+        blocks.flag(),
+        [blocks.add("looks_setsizeto", inputs={"SIZE": number(HUD_GLYPH_SIZE)})],
+    )
 
     enter = blocks.receive("director enter")
     spawn_body: list[str] = []
@@ -12404,7 +12572,7 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             1,
             [
                 blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_BANNER)),
-                blocks.go(0, HUD_BANNER_Y),
+                blocks.go(HUD_BANNER_X, HUD_BANNER_Y),
                 blocks.create_clone(),
             ],
         )
@@ -12527,7 +12695,12 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         "hud role",
         HUD_ROLE_ID,
         HUD_ROLE_LIFE,
-        [blocks.switch_costume("life/ship"), blocks.to_front(), blocks.show()],
+        [
+            blocks.switch_costume("life/ship"),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(HUD_LIFE_SIZE)}),
+            blocks.to_front(),
+            blocks.show(),
+        ],
     )
     # 1UP: flashes (show/hide, held HUD_1UP_FLASH_HOLD_TICKS each way) for as long as the
     # HUD is visible, epoch/state-safe via the same title/boot guard as the digit loops.
@@ -12619,7 +12792,12 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         "hud role",
         HUD_ROLE_ID,
         HUD_ROLE_BANNER,
-        [banner_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+        [
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(HUD_BANNER_SIZE)}),
+            banner_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
     )
     blocks.chain(
         clone,
@@ -12712,13 +12890,17 @@ def _ensure_hud_target(project: dict[str, Any]) -> None:
 
 def _gate_in_view(blocks: Blocks, slotvar, body: list[str]) -> str:
     # PRES-01 edge-hide: wrap a world renderer's per-tick body so its clone draws only while the slot's
-    # scroll row is on the field — 0 <= slot x < RENDER_VIEW_ROWS cells — and hides otherwise. Scratch
-    # cannot clip a sprite at a screen edge, so an object off the field is hidden whole rather than drawn
-    # fenced at the stage edge. `slotvar` is the renderer's fresh-per-call slot reporter factory (a
-    # reporter binds to one parent, so each read builds its own). Render-only: writes no slot state.
+    # scroll row is on the field — RENDER_VIEW_FIRST_ROW <= slot x < RENDER_VIEW_ROWS cells, the arcade's
+    # visible rows 4..39 — and hides otherwise. Scratch cannot clip a sprite at a screen edge, so an object
+    # off the field is hidden whole rather than drawn fenced at the stage edge. `slotvar` is the renderer's
+    # fresh-per-call slot reporter factory (a reporter binds to one parent, so each read builds its own).
+    # Render-only: writes no slot state.
     in_view = blocks.op_and(
         blocks.op_not(
-            blocks.op_lt(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(0))
+            blocks.op_lt(
+                blocks.list_item("slot x", SLOT_X_ID, slotvar()),
+                number(RENDER_VIEW_FIRST_ROW * SLOT_UNITS_PER_CELL),
+            )
         ),
         blocks.op_lt(
             blocks.list_item("slot x", SLOT_X_ID, slotvar()),
@@ -13827,6 +14009,7 @@ def easter_egg_blocks() -> dict[str, dict[str, Any]]:
         show_if,
         [
             blocks.switch_costume(EASTER_EGG_CREDIT_COSTUME),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(EASTER_EGG_CREDIT_SIZE)}),
             blocks.go(EASTER_EGG_CREDIT_X, EASTER_EGG_CREDIT_Y),
             # The credit is an on-top FG overlay (the arcade draws it in the foreground char layer), so front it.
             blocks.to_front(),
@@ -15642,8 +15825,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_COUNT_TABLE_ID: ["formation count table", list(FORMATION_COUNTS)],
         FORMATION_TYPE_OFFSET_TABLE_ID: ["formation type offset table", list(FORMATION_TYPE_OFFSETS)],
         # BOSS-01: per-part composite offsets (index = slot type - 0x40), added to the master anchor each
-        # tick by `update andor part`. Depth (toward the craft) is scaled 15/8 to the render's anamorphic
-        # column/row ratio so the composite stays square; lateral is 1:1 in slot units (see
+        # tick by `update andor part`. Depth is scaled by the render map's column/row ratio (1 since PRES-01's
+        # isotropic map) so the composite stays square; lateral is 1:1 in slot units, +slot y = left (see
         # _andor_part_offset_tables). Read-only.
         ANDOR_PART_DEPTH_ID: ["andor part depth", list(ANDOR_PART_DEPTH_OFFSETS)],
         ANDOR_PART_LATERAL_ID: ["andor part lateral", list(ANDOR_PART_LATERAL_OFFSETS)],
@@ -15654,15 +15837,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "Stage": stage_blocks(),
         "solvalou": solvalou_blocks(),
         "blaster": blaster_blocks(),
-        # The two strips leapfrog: each moves down 1 a tick from y 345 to the fence at
-        # y -345 and wraps after 690 steps, so a strip's y is always 345 - step. Seeded
-        # half a cycle apart (y 345 apart; the 360-tall strips overlap by 15), the pair
-        # covers the stage on every tick. The baseline seeds (y -15 / step 355, y 344 /
-        # step 0) broke y = 345 - step, so the spacing alternated 336 / 355 and a gap of
-        # up to 10 opened at the top or bottom edge every half cycle, hidden by the
-        # retired frame bands until PRES-01 removed them.
-        "area_01a": terrain_blocks("area_01a", "area01_12-0", -15, TERRAIN_STEP_A_ID, 360),
-        "area_01b": terrain_blocks("area_01b", "area01_11-0", 330, TERRAIN_STEP_B_ID, 15),
+        # The two strips leapfrog: each moves down TERRAIN_SCROLL_STEP a tick from y 345 to
+        # the fence at y -345 and wraps after TERRAIN_CYCLE_STEPS, so a strip's y is always
+        # terrain_seed_y(step). Seeded half a cycle apart (y 345 apart; the 360-tall strips
+        # overlap by 15), the pair covers the stage on every tick. The baseline seeds (y -15 /
+        # step 355, y 344 / step 0) broke the wrap law, so the spacing alternated 336 / 355 and
+        # a gap of up to 10 opened at the top or bottom edge every half cycle, hidden by the
+        # retired frame bands until PRES-01 removed them. Same positions as before (y -15 and
+        # 330); only the step counts follow the 1.25 scroll.
+        "area_01a": terrain_blocks("area_01a", "area01_12-0", terrain_seed_y(288), TERRAIN_STEP_A_ID, 288),
+        "area_01b": terrain_blocks("area_01b", "area01_11-0", terrain_seed_y(12), TERRAIN_STEP_B_ID, 12),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
         "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, "target_01"),
@@ -15704,14 +15888,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 # Player-shot allocation result (cap gate) and each clone's own slot index.
                 ALLOC_RESULT_ID: ["alloc result", 0],
                 CLONE_SLOT_ID: ["clone slot", 0],
+                SHOT_DEPTH_ID: ["shot depth", 0],
             }
         elif target["name"] == "area_01a":
             target["variables"] = target["variables"] | {
-                TERRAIN_STEP_A_ID: ["scroll step", 355]
+                TERRAIN_STEP_A_ID: ["scroll step", 288]
             }
         elif target["name"] == "area_01b":
             target["variables"] = target["variables"] | {
-                TERRAIN_STEP_B_ID: ["scroll step", 0]
+                TERRAIN_STEP_B_ID: ["scroll step", 12]
             }
         elif target["name"] == "start_screen":
             # CAB-01: all attract-display state is sprite-local to start_screen (never a Stage
@@ -15852,12 +16037,16 @@ def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
         # replenish is headless-observable too). Only constants the harness actually consumes
         # are emitted; a future scenario adds its own here rather than carrying dead keys.
         "shot_slot_count": SHOT_SLOTS[1] - SHOT_SLOTS[0] + 1,
-        # PRES-01 playfield framing: the craft stop lines, the row-0 shot expiry line, and the
-        # in-view row window the world renderers gate on (slot x is 256 units per row).
+        # PRES-01 playfield framing: the craft stop lines, the render map's depth axis (the row-0 shot
+        # expiry line, the stage-top hide line, stage units per row), and the in-view row window the
+        # world renderers gate on (slot x is 256 units per row).
         "craft_x_limit": CRAFT_X_LIMIT,
         "craft_y_top": CRAFT_Y_TOP,
         "craft_y_bottom": CRAFT_Y_BOTTOM,
         "render_row_top": RENDER_ROW_TOP,
+        "render_row_stage": RENDER_ROW_STAGE,
+        "render_stage_top": RENDER_STAGE_TOP,
+        "render_view_first_row": RENDER_VIEW_FIRST_ROW,
         "render_view_rows": RENDER_VIEW_ROWS,
         "slot_units_per_cell": SLOT_UNITS_PER_CELL,
     }
