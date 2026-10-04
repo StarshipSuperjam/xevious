@@ -853,6 +853,16 @@
       "name": "player row",
       "scope": "Stage"
     },
+    "player-slot-x": {
+      "kind": "variable",
+      "name": "player slot x",
+      "scope": "Stage"
+    },
+    "player-slot-y": {
+      "kind": "variable",
+      "name": "player slot y",
+      "scope": "Stage"
+    },
     "radiating-angle": {
       "kind": "variable",
       "name": "radiating angle",

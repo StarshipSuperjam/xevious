@@ -247,62 +247,40 @@ BULLET_ALLOC_RESULT_ID = "bullet-alloc-result"
 BULLET_CURSOR_ID = "bullet-cursor"
 ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 
-# PLY-02 collision hit windows, in the reference's half-pixel "shadow" units as
-# (y_bias, y_width, x_bias, x_width) — recorded now as DORMANT data (no detector this
-# slice). The collision slice converts shadow->pixel and applies the port scale; the
-# unit label lives here and in docs/mechanics/008 so that conversion is not lost. Two
-# windows: the shared enemy-bullet/flying-enemy window, and the distinct, larger Bacura one.
+# Collision hit windows, as the reference's (y_bias, y_width, x_bias, x_width) carry-idiom compares on its
+# `sprite_shadow_msb` bytes. PRES-01 (docs/mechanics/054) corrected the units and axes: `osd_update_sprite_shadow`
+# (src/amiga/amiga.68k 1651-1700) stores byte 0 ("spriteY") as `0xef - (_Y >> 5)` — the LATERAL axis in whole
+# pixels, inverted — and byte 1 ("spriteX") as `((_X >> 5) + 8) >> 1` — the DEPTH axis in 2-px units, offset 8 px.
+# So every Y window below is a lateral pixel window and every X window a depth window in 2-px steps. The
+# idiom `sub.b #bias; add.b #width` carries (= hit) for a delta in [bias - width, bias - 1] (`_hit_range`). (The port
+# had read both bytes as half-pixels with Y on the scroll axis, which made every box 2-4x too small and the
+# wrong shape — a bomb between two paired ground objects missed both.) Each detector differences the shadows
+# exactly (no mod-256 wrap), so it never produces the reference's rare wrap-around phantom hit between objects
+# ~128 units apart (recorded deviation).
+# PLY-02: the shared enemy-bullet/flying-enemy vs craft box (`check_bullet_or_flying_hit_solvalou`, 2207-2219):
+# 16 px lateral x 16 px deep — the 16-px sprite.
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
+# AIR-11: the larger Bacura vs craft box (`check_bacura_hit_solvalou`, 2225-2237): objY-craftY in [-12,27] px,
+# objX-craftX in [-8,7] 2-px units — 40 px lateral (lopsided toward +Y, the craft's left) x 32 px deep. Before
+# PRES-01 the port read the asymmetric bound mirrored ([-28,11]).
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
-# WPN-02 player-shot vs flying-enemy window. The reference's `check_shot_hit_flying_enemy` ($19A6)
-# uses `sub #16; add #32` (Y) and `sub #8; add #16` (X) → shotY-enemyY in [-16,15], enemyX-shotX in
-# [-8,7] half-pixel shadow units. This port DOUBLES that to (32,64,16,32) — a deliberate, recorded
-# deviation (playtest-driven) for two reasons the reference didn't face:
-#   1. TUNNELING. The blaster shot travelled `changeyby 20` = 20 stage-px/frame ÷ RENDER_ROW_STAGE(8) =
-#      2.5 cells/frame (since PRES-01's arcade proportions, SHOT_STEP 15 ÷ 10 = 1.5 cells/tick — the arcade's
-#      12 px per two-frame tick), while the reference window is only 2 cells tall — so the per-frame step
-#      overshoots the window and shots skip clean over a Toroid (every shot in a held stream shares
-#      the craft-row sampling phase, so a Toroid in a gap is immune to the whole stream: the operator
-#      saw "multiple rounds into a group and nothing happens"). The reference never tunnels because
-#      its shot speed and window are balanced at the arcade's finer step; our DY was a preserved-
-#      baseline the movement slice never reconciled. A 4-cell-tall window (64 shadow) exceeds the
-#      2.5-cell step (with margin for the enemy's own closing motion), so every crossing is sampled.
-#   2. SPRITE MATCH. The Toroid rendered as a 36-px sprite (16-px costume at size 225); the reference
-#      window covered ~the central 40% of that, so bullets visibly overlapping the sprite missed.
-#      The doubled window (±2 cells Y ≈ 32 px, ±1 cell X ≈ 30 px) matched the rendered body, so a
-#      shot touching the Toroid kills it — the arcade "mow-down" feel. The tight craft HURTBOX
-#      (HIT_WINDOW_BULLET_FLYING, single cell) is intentionally NOT widened: forgiving offence,
-#      precise defence.
-# ENGINE-TODO: since PRES-01 the Toroid draws at its arcade size (20 stage units), so this doubled window is now
-# more forgiving than the drawn body; it stays doubled until the operator rules on it at the slice-20 playtest
-# (docs/mechanics/054, known deviation 1).
-HIT_WINDOW_SHOT_FLYING = (32, 64, 16, 32)
-# WPN-01 player-shot vs Bacura window. The reference's `check_shot_hit_bacura` ($19CB, 2583-2595) uses
-# `sub #24; add #32` (Y) and `sub #8; add #16` (X) → shotY-bacuraY in [-24,7], bacuraX-shotX in [-8,7]
-# half-pixel shadow units — a taller low bias than the flying box (the slab sits lower). This port DOUBLES
-# it to (48,64,16,32) for the SAME recorded reasons as HIT_WINDOW_SHOT_FLYING above: the shot is the same
-# fast mover (1.5 cells/tick since PRES-01; 2.5 before), so the 2-cell arcade Y window tunnels — a shot would skip
-# clean over the thin (one-row-tall) slab instead of bouncing; and the doubled box matches the rendered
-# 24x16 slab body. Same fast-shot detector class, same ratified deviation — not a new one.
-HIT_WINDOW_SHOT_BACURA = (48, 64, 16, 32)
-# Shadow (half-pixel) unit expressed in the slot lists' 1/32-px units: 1 half-px = 16 units. The
-# detector floors each slot position to its shadow MSB before differencing, matching the reference's
-# byte compare — but on the EXACT half-px delta (no mod-256 wrap), so it never produces the
-# reference's rare wrap-around phantom hit between objects ~128 half-px apart (recorded deviation).
-SLOT_UNITS_PER_SHADOW = 16
-# One 8-px cell in shadow half-pixels (256 slot units / 16 = 16). The craft's live position is read at
-# cell resolution (`read player cell`, for the aim), so its collision box is placed at player_row/col *
-# this — a cell-quantized craft hit box (recorded deviation): the reference tracks the craft's sub-cell
-# shadow, this port rounds it to its cell, the same rounding the aim already uses.
-SHADOW_PER_CELL = 16
-# GND-05 bomb-vs-ground window (docs/spec/ground-objects.md), in the same half-pixel shadow units,
-# as (y_bias, y_width, x_bias, x_width). The reference's `check_object_on_target` ($1A3D) reads both
-# the bomb target (slot 0x20) and each object from `sprite_shadow_msb` and range-checks the delta on
-# each axis via the carry idiom: scroll axis (spriteY) `sub #10; add #20` -> target-obj in [-10, 9];
-# lateral axis (spriteX) `subq #5; add #10` -> obj-target in [-5, 4]. Kept at the reference size (NOT
-# widened like the shot window): a bomb is a placed strike, not a fast-stepping projectile, so it
-# never tunnels, and the arcade footprint is the faithful feel.
+# WPN-02 player shot vs flying enemy (`check_shot_hit_flying_enemy`, 2565-2577): enemyY-shotY in [-16,15] px,
+# enemyX-shotX in [-8,7] 2-px units — a 32x32 px box (shot sprite + enemy sprite). The shot moves 12 px a tick
+# (6 depth units) against a 16-unit-deep window, so it is sampled on every crossing and never tunnels: the
+# reference window is used as is. (Before PRES-01 the port doubled it, a recorded deviation that compensated
+# for the misread units; it is retired.)
+HIT_WINDOW_SHOT_FLYING = (16, 32, 8, 16)
+# WPN-01 player shot vs Bacura (`check_shot_hit_bacura`, 2583-2595): bacuraY-shotY in [-8,23] px, bacuraX-shotX
+# in [-8,7] 2-px units — the reference box, no longer doubled (nor mirrored).
+HIT_WINDOW_SHOT_BACURA = (24, 32, 8, 16)
+# GND-05 bomb vs ground object (`check_object_on_target`, 2629-2641), and SEC-02 the Bonus Flag pick-up
+# (`check_flag_collected`, 3178-3188): objY-targetY in [-10,9] px, a 2-px depth delta in [-5,4] — 20x20 px.
 HIT_WINDOW_BOMB_GROUND = (10, 20, 5, 10)
+# The shadow units in the slot lists' 1/32-px units: a lateral pixel is 32 units; a depth shadow step is 2 px
+# (64 units) after the reference's +8 px offset (256 units).
+SLOT_UNITS_PER_LATERAL_SHADOW = 32
+SLOT_UNITS_PER_DEPTH_SHADOW = 64
+DEPTH_SHADOW_OFFSET = 256
 
 # ECO-02 HUD target (docs/mechanics/010, docs/mechanics/012). game_director owns this target's
 # EXISTENCE and BLOCKS — the HUD render itself (hud_blocks(), installed below); its costumes
@@ -849,6 +827,11 @@ CHECK_SHOT_BACURA_PROCCODE = "check shot bacura"
 # back to arcade 8-px row/column, so every slot's aim/collision test uses one cached pair.
 PLAYER_ROW_ID = "player-row"  # scroll axis
 PLAYER_COL_ID = "player-col"  # lateral axis
+# PRES-01: the craft's EXACT position in slot units (no cell rounding), for the collision boxes, the
+# crosshair, and the bomb drop — the arcade reads the craft's _X/_Y word directly (update_crosshair 2262-2271,
+# init_bombing). Aim and spawn draws keep the rounded cell above.
+PLAYER_SLOT_X_ID = "player-slot-x"  # depth axis
+PLAYER_SLOT_Y_ID = "player-slot-y"  # lateral axis
 READ_PLAYER_PROCCODE = "read player cell"
 # WPN-02: the shot-vs-air overlap detector (walk-driven, per active flying slot) and the per-tick
 # explosion advance for a struck Toroid.
@@ -1116,7 +1099,7 @@ ATTRACT_ROLE_PROMPT = 3  # flashing PUSH START (credits>=1) / INSERT COIN (credi
 # `high score names`), and the seven score digits (digit-of-number over `high score table`). Each cell
 # snapshots its row (1..5) and place at creation and re-reads its list every tick while in
 # attract-scores, so the display tracks a score that ranks in mid-session.
-ATTRACT_ROLE_TABLE_RANK = 7  # one best-five rank digit (costume digit/<row>)
+ATTRACT_ROLE_TABLE_RANK = 7  # one best-five ordinal rank (costume rank/<row>: 1ST..5TH)
 ATTRACT_ROLE_TABLE_NAME = 8  # one best-five name letter (letter `place` of names[row])
 ATTRACT_ROLE_TABLE_SCORE = 9  # one best-five score digit (digit `place` of table[row])
 ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
@@ -1142,24 +1125,38 @@ ATTRACT_CREDIT_LABEL_X = text_run_x(22, 6)
 ATTRACT_CREDIT_LINE_Y = text_cell_y(35)
 ATTRACT_CREDIT_DIGIT_UNITS_X = text_cell_x(30)  # place 0 (units); each higher place sits one pitch to its left
 ATTRACT_CREDIT_DIGIT_SPACING = HUD_TEXT_PITCH
-# The prompt clone moves with its costume: the port's "PUSH START" from the arcade's PUSH START BUTTON cell (10,23)
-# (display_push_start_button 815-826) and "INSERT COIN" at (13,28) (display_insert_coin_flashing 857-889).
-ATTRACT_PUSH_START_X = text_run_x(10, 10)
+# The prompt clone moves with its costume: "PUSH START BUTTON" on the arcade's own cell (10,23), all 17 columns
+# (display_push_start_button 815-826), and "INSERT COIN" at (13,28) (display_insert_coin_flashing 857-889). Both
+# runs centre on column 18, half a letter right of the screen centre (17.5), exactly as the arcade draws them.
+# (PRES-01 playtest: the shorter "PUSH START" drawn from column 10 leaned left of centre.)
+ATTRACT_PUSH_START_X = text_run_x(10, 17)
 ATTRACT_PUSH_START_Y = text_cell_y(23)
 ATTRACT_INSERT_COIN_X = text_run_x(13, 11)
 ATTRACT_INSERT_COIN_Y = text_cell_y(28)
 ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
-# CAB-04 (slice 19): the live best-five grid, on the arcade's own cells (display_high_score_table 1475-1541): the
-# five rows on text rows 24, 26, .., 32; the rank at col 6 (the port shows the rank digit where the arcade writes
-# "1ST".."5TH"), the seven score digits from col 11 and the ten name letters from col 20.
+# CAB-04 (slice 19): the live best-five grid, in the arcade's layout (display_high_score_table 1475-1541): the five
+# rows on text rows 24, 26, .., 32 under a header on row 21, with the title logo above (flash_logo_and_high_score_
+# table 1464-1469). The arcade writes the 3-letter ordinal at col 6, the seven score digits from col 11, and the
+# ten-letter name from col 20 (cols 6..29, centred). PRES-01 playtest: with the port's short default initials that
+# block read left of centre, so the rank/score/name columns shift ATTRACT_TABLE_COL_SHIFT columns right — as far as
+# a full ten-letter name still fits the last visible column (31). The header stays on its arcade cell, already
+# centred (cols 10..25 for the port's 16-letter wording, the arcade's 18 letters spanning 9..26).
+ATTRACT_TABLE_COL_SHIFT = 2
 ATTRACT_TABLE_ROWS = 5
 ATTRACT_TABLE_NAME_CELLS = 10  # ten-character names (xevious_ram.68k name field is ds.b 10)
 ATTRACT_TABLE_SCORE_CELLS = HUD_DIGIT_PLACES  # seven leading-zero digits, matching the HUD score row
 ATTRACT_TABLE_FIRST_ROW = 24
 ATTRACT_TABLE_ROW_STEP = 2
-ATTRACT_TABLE_RANK_COL = 6
-ATTRACT_TABLE_SCORE_COL0 = 11  # the most-significant score digit
-ATTRACT_TABLE_NAME_COL0 = 20
+ATTRACT_TABLE_RANK_COL = 6 + ATTRACT_TABLE_COL_SHIFT  # first letter of the 3-letter ordinal
+ATTRACT_TABLE_RANK_CHARS = 3
+ATTRACT_TABLE_SCORE_COL0 = 11 + ATTRACT_TABLE_COL_SHIFT  # the most-significant score digit
+ATTRACT_TABLE_NAME_COL0 = 20 + ATTRACT_TABLE_COL_SHIFT
+ATTRACT_RANK_PREFIX = "rank/"  # ordinal rank costumes rank/1..rank/5 (tools/hud_glyphs.py ATTRACT_TABLE_LABELS)
+ATTRACT_ROLE_TABLE_HEADER = 14  # the best-five header (static)
+ATTRACT_COSTUME_TABLE_HEADER = "best-five-header"
+ATTRACT_TABLE_HEADER_CHARS = 16  # the port's "BEST FIVE PILOTS"
+ATTRACT_TABLE_HEADER_X = text_cell_x(17.5)  # centred on the screen like the arcade's (9,21) run
+ATTRACT_TABLE_HEADER_Y = text_cell_y(21)
 ATTRACT_COSTUME_CREDIT_LABEL = "credit-label"
 ATTRACT_COSTUME_PUSH_START = "push-start"
 ATTRACT_COSTUME_INSERT_COIN = "insert-coin"
@@ -1172,15 +1169,17 @@ ATTRACT_DIGIT_PREFIX = "digit/"  # per-digit rank/score-cell costumes digit/<0-9
 # ghost effect, re-evaluated every tick so an up/down arrow press updates the display live. The options are
 # stacked vertically (1P over 2P), so the selector input is the UP/DOWN arrows (slice-18 playtest correction —
 # was left/right, which read wrong against a vertical list). PRES-01: "1 PLAYER" sits on the arcade's own cell
-# (10,25), where it writes ONE PLAYER ONLY / ONE OR TWO PLAYERS (display_1_only_or_1_2_players 789-813, offset
-# 0x1519), under PUSH START; "2 PLAYERS" on the row below (10,26) is the port's own, since the arcade shows one
-# line and takes the choice from which start button is pressed.
+# row 25, where it writes ONE PLAYER ONLY / ONE OR TWO PLAYERS (display_1_only_or_1_2_players 789-813, offset
+# 0x1519), under PUSH START BUTTON; "2 PLAYERS" on the row below (26) is the port's own, since the arcade shows one
+# line and takes the choice from which start button is pressed. PRES-01 playtest: both labels start on column 14,
+# left-aligned with each other, so the pair (cols 14..22) centres under the prompt (cols 10..26) on column 18.
 ATTRACT_ROLE_SELECTOR_1P = 5  # the "1 PLAYER" option label (bright when start selection == 1)
 ATTRACT_ROLE_SELECTOR_2P = 6  # the "2 PLAYERS" option label (bright when start selection == 2)
 ATTRACT_COSTUME_SELECTOR_1P = "select-1p"
 ATTRACT_COSTUME_SELECTOR_2P = "select-2p"
-ATTRACT_SELECTOR_1P_X = text_run_x(10, 8)  # "1 PLAYER"
-ATTRACT_SELECTOR_2P_X = text_run_x(10, 9)  # "2 PLAYERS"
+ATTRACT_SELECTOR_COL0 = 14
+ATTRACT_SELECTOR_1P_X = text_run_x(ATTRACT_SELECTOR_COL0, 8)  # "1 PLAYER"
+ATTRACT_SELECTOR_2P_X = text_run_x(ATTRACT_SELECTOR_COL0, 9)  # "2 PLAYERS"
 ATTRACT_SELECTOR_1P_Y = text_cell_y(25)
 ATTRACT_SELECTOR_2P_Y = text_cell_y(26)
 ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed (selected) option
@@ -4169,50 +4168,73 @@ def _cur_col(blocks: Blocks) -> str:
     return blocks.op_floor(blocks.op_div(_cur_item(blocks, "slot y", SLOT_Y_ID), number(SLOT_UNITS_PER_CELL)))
 
 
-def _craft_overlap_reporter(
-    blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FLYING, lateral_craft_minus_obj: bool = False
-) -> str:
-    """PLY-02: boolean — does the current slot (`slot index`) overlap the craft's cell within `window`
-    (default HIT_WINDOW_BULLET_FLYING, the shared flying/bullet box)? The craft is placed at player
-    row/col scaled to shadow half-px (cell-quantized); the object is floored to its shadow MSB. Y is
-    the scroll axis, X the lateral, matching the reference's byte compare. AIR-11 (air.bacura) passes
-    the wider HIT_WINDOW_BACURA — the reference's `check_bacura_hit_solvalou` (2225-2237) uses the same
-    compare against a larger box than the flying/bullet check.
+def _hit_range(bias: int, width: int) -> tuple[int, int]:
+    """The reference's carry-idiom compare — `sub.b #bias,d0; add.b #width,d0`, hit when carry is SET —
+    accepts a byte delta d exactly when `bias - width <= d <= bias - 1` (the add carries only when d - bias
+    is negative and no more than `width` below zero). For the symmetric boxes (width = 2*bias) that is
+    [-bias, bias-1]; for the two asymmetric Bacura boxes it is NOT [-bias, width-bias-1] — that mirrored
+    form, used before PRES-01, put the Bacura's tall side on the wrong edge (docs/mechanics/054)."""
+    return bias - width, bias - 1
 
-    The scroll-axis delta is always craft - obj. The lateral delta is obj - craft by DEFAULT, which is
-    what `check_bacura_hit_solvalou` (2233-2234, `objectX - solvalouX`) and the flying/bullet check use.
-    SEC-02 `check_flag_collected` (3184-3187) instead computes the lateral as `solvalouX - flagX` — craft
-    - obj — so the Bonus Flag passes `lateral_craft_minus_obj=True`. The window's asymmetric lateral bound
-    ([-x_bias, x_width-x_bias-1]) makes this sign matter, so the flag reproduces the reference exactly
-    rather than inheriting the Bacura sign (verified against the pinned source: the two routines genuinely
-    differ on the lateral direction)."""
+
+def _lateral_shadow(blocks: Blocks, expr: Any) -> str:
+    # Byte 0 of `osd_update_sprite_shadow` (src/amiga/amiga.68k 1651-1700) is `0xef - (_Y >> 5)`: the lateral
+    # axis in whole arcade pixels, inverted. Every compare subtracts two of them, so the 0xef cancels and the
+    # inversion flips the delta: `ref_b0 - obj_b0 = obj_lateral_px - ref_lateral_px`.
+    return blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_LATERAL_SHADOW)))
+
+
+def _depth_shadow(blocks: Blocks, expr: Any) -> str:
+    # Byte 1 is `((_X >> 5) + 8) >> 1` = floor((slot x + 256) / 64): the depth axis in 2-px units.
+    return blocks.op_floor(
+        blocks.op_div(blocks.op_add(expr, number(DEPTH_SHADOW_OFFSET)), number(SLOT_UNITS_PER_DEPTH_SHADOW))
+    )
+
+
+def _shadow_hit(blocks: Blocks, d_lat: Any, d_dep: Any, window: tuple) -> str:
+    """Boolean: both shadow deltas fall inside `window` = (y_bias, y_width, x_bias, x_width). The Y pair
+    tests the LATERAL delta (byte 0, whole px), the X pair the DEPTH delta (byte 1, 2-px units). `d_lat`
+    and `d_dep` are zero-argument builders called once per bound: a reporter attaches to only one parent,
+    so one shared delta block across the `<` and `>` compares would be stolen by the second, leaving the
+    first with an empty operand (a dead bound — memory: dsl-reporter-single-parent-steal)."""
     y_bias, y_width, x_bias, x_width = window
-    dy_low, dy_high = -y_bias, y_width - y_bias - 1
-    dx_low, dx_high = -x_bias, x_width - x_bias - 1
-    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
-    # Each delta is rebuilt FRESH for every comparison: a reporter block can attach to only one
-    # parent, so reusing one `d_y`/`d_x` block across the `<` and `>` checks would let the second
-    # steal it from the first, leaving the lower-bound compare with an empty operand (a dead bound
-    # that widened the hit box to a quadrant). Lambdas keep every operand its own subtree.
-    d_y = lambda: blocks.op_sub(
-        blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SHADOW_PER_CELL)),
-        sh(_cur_item(blocks, "slot x", SLOT_X_ID)),
+    lat_low, lat_high = _hit_range(y_bias, y_width)
+    dep_low, dep_high = _hit_range(x_bias, x_width)
+    hit_lat = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_lat(), number(lat_low))),
+        blocks.op_not(blocks.op_gt(d_lat(), number(lat_high))),
     )
-    craft_col = lambda: blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SHADOW_PER_CELL))
-    obj_col = lambda: sh(_cur_item(blocks, "slot y", SLOT_Y_ID))
-    if lateral_craft_minus_obj:
-        d_x = lambda: blocks.op_sub(craft_col(), obj_col())
+    hit_dep = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_dep(), number(dep_low))),
+        blocks.op_not(blocks.op_gt(d_dep(), number(dep_high))),
+    )
+    return blocks.op_and(hit_lat, hit_dep)
+
+
+def _craft_overlap_reporter(
+    blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FLYING, depth_craft_minus_obj: bool = False
+) -> str:
+    """PLY-02: boolean — does the current slot (`slot index`) overlap the craft within `window` (default
+    HIT_WINDOW_BULLET_FLYING, the shared flying/bullet box, `check_bullet_or_flying_hit_solvalou` 2207-2219)?
+    The craft is its EXACT slot position (`player slot x/y`, read once per walk — not the rounded cell), and
+    both sides are reduced to the reference's shadow bytes. AIR-11 (air.bacura) passes the taller
+    HIT_WINDOW_BACURA (`check_bacura_hit_solvalou` 2225-2237).
+
+    Both routines compute byte 0 as `craft - obj` (so the lateral delta is obj - craft in px) and byte 1 as
+    `obj - craft`. SEC-02 `check_flag_collected` (3178-3188) computes byte 1 the other way round,
+    `solvalou spriteX - flag spriteX`, so the Bonus Flag passes `depth_craft_minus_obj=True`. Its box is
+    symmetric-but-one ([-5, 4]), so the sign decides which edge carries the extra unit."""
+    d_lat = lambda: blocks.op_sub(
+        _lateral_shadow(blocks, _cur_item(blocks, "slot y", SLOT_Y_ID)),
+        _lateral_shadow(blocks, variable("player slot y", PLAYER_SLOT_Y_ID)),
+    )
+    obj_dep = lambda: _depth_shadow(blocks, _cur_item(blocks, "slot x", SLOT_X_ID))
+    craft_dep = lambda: _depth_shadow(blocks, variable("player slot x", PLAYER_SLOT_X_ID))
+    if depth_craft_minus_obj:
+        d_dep = lambda: blocks.op_sub(craft_dep(), obj_dep())
     else:
-        d_x = lambda: blocks.op_sub(obj_col(), craft_col())
-    hit_y = blocks.op_and(
-        blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
-        blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
-    )
-    hit_x = blocks.op_and(
-        blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
-        blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
-    )
-    return blocks.op_and(hit_y, hit_x)
+        d_dep = lambda: blocks.op_sub(obj_dep(), craft_dep())
+    return _shadow_hit(blocks, d_lat, d_dep, window)
 
 
 def install_compute_aim_index(blocks: Blocks) -> None:
@@ -4281,7 +4303,8 @@ def install_compute_aim_index(blocks: Blocks) -> None:
 
 def install_read_player_cell(blocks: Blocks) -> None:
     # Read the craft's live stage position once per walk and map it back to arcade 8-px cells, so
-    # every slot's aim and collision test uses one cached (player row, player col). Inverse of the
+    # every slot's aim and spawn draw uses one cached (player row, player col), and to exact slot units
+    # (player slot x/y) for the collision boxes, crosshair, and bomb drop. Inverse of the
     # render map: col = round((x + RENDER_COL_OFFSET)/RENDER_COL_STAGE); row = round((RENDER_ROW_TOP - y)/RENDER_ROW_STAGE).
     definition = _install_warp_proc(blocks, READ_PLAYER_PROCCODE)
     craft_x = blocks.sensing_of("x position", "solvalou")
@@ -4296,7 +4319,33 @@ def install_read_player_cell(blocks: Blocks) -> None:
         PLAYER_ROW_ID,
         blocks.op_round(blocks.op_div(blocks.op_sub(number(RENDER_ROW_TOP), craft_y), number(RENDER_ROW_STAGE))),
     )
-    blocks.chain(definition, [set_col, set_row])
+    # PRES-01: the same inverse WITHOUT rounding, scaled to slot units — the craft's exact arcade _X/_Y.
+    # The craft moves in whole arcade px (3.75 stage = 3 px = 96 slot units a tick), so this is exact. The
+    # collision boxes, the crosshair, and the bomb drop read it; rounding to the 8-px cell made the
+    # crosshair jump a cell at a time and shrank every box to the cell grid (docs/mechanics/054).
+    set_slot_x = blocks.set_var_expr(
+        "player slot x",
+        PLAYER_SLOT_X_ID,
+        blocks.op_mul(
+            blocks.op_div(
+                blocks.op_sub(number(RENDER_ROW_TOP), blocks.sensing_of("y position", "solvalou")),
+                number(RENDER_ROW_STAGE),
+            ),
+            number(SLOT_UNITS_PER_CELL),
+        ),
+    )
+    set_slot_y = blocks.set_var_expr(
+        "player slot y",
+        PLAYER_SLOT_Y_ID,
+        blocks.op_mul(
+            blocks.op_div(
+                blocks.op_add(blocks.sensing_of("x position", "solvalou"), number(RENDER_COL_OFFSET)),
+                number(RENDER_COL_STAGE),
+            ),
+            number(SLOT_UNITS_PER_CELL),
+        ),
+    )
+    blocks.chain(definition, [set_col, set_row, set_slot_x, set_slot_y])
 
 
 def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True, col_offset: int = 0) -> tuple[list, str]:
@@ -4402,14 +4451,11 @@ def install_check_air_hit(blocks: Blocks) -> None:
     # shot, resolve the hit: mark the enemy struck and score its value type-agnostically (`resolve hit`
     # reads `slot pts` into the value table), start its explosion clock, and mark the shot spent so its
     # clone self-destroys and frees its slot. Each later shot check is gated on the enemy still being
-    # ACTIVE, so one enemy resolves at most one hit per tick. The window is the reference's shadow-MSB
-    # compare (`check_shot_hit_flying_enemy`): each position floored to its half-px shadow MSB, then the
-    # (bias,width) window HIT_WINDOW_SHOT_FLYING — on the exact half-px delta (no mod-256 wrap).
+    # ACTIVE, so one enemy resolves at most one hit per tick. The window is the reference's shadow-byte
+    # compare (`check_shot_hit_flying_enemy` 2565-2577): byte 0 `shot - enemy` (so the lateral delta is
+    # enemy - shot in px), byte 1 `enemy - shot` (depth, 2-px units), against HIT_WINDOW_SHOT_FLYING — on the
+    # exact deltas (no mod-256 wrap).
     definition = _install_warp_proc(blocks, CHECK_AIR_HIT_PROCCODE)
-    y_bias, y_width, x_bias, x_width = HIT_WINDOW_SHOT_FLYING
-    dy_low, dy_high = -y_bias, y_width - y_bias - 1
-    dx_low, dx_high = -x_bias, x_width - x_bias - 1
-    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
     shot_x = lambda s: blocks.list_item("slot x", SLOT_X_ID, number(s))
     shot_y = lambda s: blocks.list_item("slot y", SLOT_Y_ID, number(s))
 
@@ -4420,22 +4466,17 @@ def install_check_air_hit(blocks: Blocks) -> None:
             blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE)),
         )
         enemy_live = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE))
-        # Rebuild each delta FRESH per comparison — a reporter block attaches to only one parent, so
-        # sharing one `d_y`/`d_x` block across `<` and `>` lets the second steal it from the first,
-        # leaving the lower bound with an empty operand (a dead bound that made a shot hit any enemy
-        # in its row/column regardless of the other axis). Lambdas give every compare its own subtree.
-        d_y = lambda: blocks.op_sub(sh(shot_x(s)), sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
-        d_x = lambda: blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), sh(shot_y(s)))
-        hit_y = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
-            blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
+        # Each delta is a fresh-per-call builder (`_shadow_hit` calls it once per bound) — a shared
+        # reporter would be stolen by its second compare, leaving a dead bound that made a shot hit any
+        # enemy in its row/column regardless of the other axis.
+        d_lat = lambda s=s: blocks.op_sub(
+            _lateral_shadow(blocks, _cur_item(blocks, "slot y", SLOT_Y_ID)), _lateral_shadow(blocks, shot_y(s))
         )
-        hit_x = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
-            blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
+        d_dep = lambda s=s: blocks.op_sub(
+            _depth_shadow(blocks, _cur_item(blocks, "slot x", SLOT_X_ID)), _depth_shadow(blocks, shot_x(s))
         )
         overlap = blocks.op_and(
-            blocks.op_and(shot_live, enemy_live), blocks.op_and(hit_y, hit_x)
+            blocks.op_and(shot_live, enemy_live), _shadow_hit(blocks, d_lat, d_dep, HIT_WINDOW_SHOT_FLYING)
         )
         body.append(
             blocks.if_reporter(
@@ -4469,17 +4510,13 @@ def install_check_ground_hit(blocks: Blocks) -> None:
     # INTERNALLY (unrolled, one gate per slot) against the fixed bomb-target slot, rather than being
     # called once per slot like the air detector. Each on-target ACTIVE slot resolves independently:
     # `resolve hit` marks it HIT (so it can't re-score) and routes to the single `score` path, exactly
-    # as the arcade awards per on-target object. The window is the reference's shadow-MSB compare
-    # (`check_object_on_target` $1A3D): each position floored to its half-px shadow MSB, then the
-    # (bias,width) window HIT_WINDOW_BOMB_GROUND on the exact half-px delta (no mod-256 wrap). The
-    # blaster deliberately cannot reach ground objects, so install_check_air_hit is left untouched.
-    # No caller yet: Commit 4's bomb-finish (`check_bomb_finished` $190B) will invoke it; the harness
-    # proves it directly this commit.
+    # as the arcade awards per on-target object. The window is the reference's shadow-byte compare
+    # (`check_object_on_target` 2629-2641): byte 0 `target - obj` (so the lateral delta is obj - target in
+    # px), byte 1 `obj - target` (depth, 2-px units), against HIT_WINDOW_BOMB_GROUND — a 20 x 20 px box —
+    # on the exact deltas (no mod-256 wrap). A bomb dropped midway between two ground objects 16 px apart
+    # sideways lands 8 px from each, inside the [-10, 9] lateral band, so it destroys both, as the arcade
+    # does. The blaster deliberately cannot reach ground objects. `check_bomb_finished` calls this.
     definition = _install_warp_proc(blocks, CHECK_GROUND_HIT_PROCCODE)
-    y_bias, y_width, x_bias, x_width = HIT_WINDOW_BOMB_GROUND
-    dy_low, dy_high = -y_bias, y_width - y_bias - 1
-    dx_low, dx_high = -x_bias, x_width - x_bias - 1
-    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
     # Every position reporter is a FRESH-per-call lambda (the bomb target too): a reporter attaches to
     # only one parent, so a single shared `target x`/`target y` block would be stolen by its second use
     # across the 16 slots and the two axis compares, leaving dead operands (memory: reporter-steal).
@@ -4496,22 +4533,12 @@ def install_check_ground_hit(blocks: Blocks) -> None:
         obj_live = blocks.op_eq(
             blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE)
         )
-        # Rebuild each delta FRESH per comparison — a reporter attaches to only one parent, so sharing
-        # one d_y/d_x across `<` and `>` lets the second steal it from the first, leaving a dead bound
-        # (memory: dsl-reporter-single-parent-steal). Lambdas give every compare its own subtree. The
-        # bomb target is the reference; the swept object is slot s, matching the reference's delta
-        # directions (scroll axis target-obj; lateral axis obj-target).
-        d_y = lambda: blocks.op_sub(sh(target_x()), sh(obj_x(s)))
-        d_x = lambda: blocks.op_sub(sh(obj_y(s)), sh(target_y()))
-        hit_y = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
-            blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
-        )
-        hit_x = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
-            blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
-        )
-        overlap = blocks.op_and(obj_live, blocks.op_and(hit_y, hit_x))
+        # Fresh-per-call delta builders (`_shadow_hit` calls each once per bound; memory:
+        # dsl-reporter-single-parent-steal). The bomb target is the reference; the swept object is slot s,
+        # both deltas obj - target as the reference computes them.
+        d_lat = lambda s=s: blocks.op_sub(_lateral_shadow(blocks, obj_y(s)), _lateral_shadow(blocks, target_y()))
+        d_dep = lambda s=s: blocks.op_sub(_depth_shadow(blocks, obj_x(s)), _depth_shadow(blocks, target_x()))
+        overlap = blocks.op_and(obj_live, _shadow_hit(blocks, d_lat, d_dep, HIT_WINDOW_BOMB_GROUND))
         body.append(
             blocks.if_reporter(
                 overlap,
@@ -4544,10 +4571,10 @@ def install_check_ground_hit(blocks: Blocks) -> None:
 
 def install_track_crosshair(blocks: Blocks) -> None:
     # WPN-04 bomb sight (update_crosshair $16E8): every tick the crosshair leads the craft by a fixed
-    # depth offset — arcade `crosshair _X = solvalou_X + 0xF400`, `_Y = solvalou_Y`. `read player cell`
-    # has already cached the craft's (row, col) in cells, so the crosshair slot is (row*256 + LEAD, col*256)
-    # in slot units; the renderer maps that to 120 stage units (96 arcade px) ahead of the ship on the same
-    # lateral column.
+    # depth offset — arcade `crosshair _X = solvalou_X + 0xF400`, `_Y = solvalou_Y` (2262-2271). `read player
+    # cell` has already cached the craft's EXACT slot position, so the crosshair slot is (player slot x +
+    # LEAD, player slot y); the renderer maps that to 120 stage units (96 arcade px) ahead of the ship, moving
+    # with it pixel for pixel. PRES-01: it used to read the rounded cell, so it jumped 8 px at a time.
     # The crosshair carries no gameplay state — it is only marked ACTIVE so its renderer shows it while
     # playing. The reference's on-target colour flash (check_targeted_ground_object) is a deferred cosmetic.
     definition = _install_warp_proc(blocks, TRACK_CROSSHAIR_PROCCODE)
@@ -4555,16 +4582,10 @@ def install_track_crosshair(blocks: Blocks) -> None:
         "slot x",
         SLOT_X_ID,
         number(CROSSHAIR_SLOT),
-        blocks.op_add(
-            blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SLOT_UNITS_PER_CELL)),
-            number(BOMB_TARGET_LEAD),
-        ),
+        blocks.op_add(variable("player slot x", PLAYER_SLOT_X_ID), number(BOMB_TARGET_LEAD)),
     )
     set_y = blocks.list_replace(
-        "slot y",
-        SLOT_Y_ID,
-        number(CROSSHAIR_SLOT),
-        blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SLOT_UNITS_PER_CELL)),
+        "slot y", SLOT_Y_ID, number(CROSSHAIR_SLOT), variable("player slot y", PLAYER_SLOT_Y_ID)
     )
     set_state = blocks.list_replace(
         "slot state", SLOT_STATE_ID, number(CROSSHAIR_SLOT), number(SLOT_ACTIVE)
@@ -4604,19 +4625,9 @@ def install_advance_bomb(blocks: Blocks) -> None:
     }
     blocks.blocks[arm_gate]["inputs"]["CONDITION"] = [2, pressed_and_idle]
     arm_body = [
-        # bomb drops from the craft (solvalou depth/lateral), zero velocity.
-        blocks.list_replace(
-            "slot x",
-            SLOT_X_ID,
-            number(BOMB_SLOT),
-            blocks.op_mul(variable("player row", PLAYER_ROW_ID), number(SLOT_UNITS_PER_CELL)),
-        ),
-        blocks.list_replace(
-            "slot y",
-            SLOT_Y_ID,
-            number(BOMB_SLOT),
-            blocks.op_mul(variable("player col", PLAYER_COL_ID), number(SLOT_UNITS_PER_CELL)),
-        ),
+        # bomb drops from the craft's exact depth/lateral (init_bombing copies solvalou _X/_Y), zero velocity.
+        blocks.list_replace("slot x", SLOT_X_ID, number(BOMB_SLOT), variable("player slot x", PLAYER_SLOT_X_ID)),
+        blocks.list_replace("slot y", SLOT_Y_ID, number(BOMB_SLOT), variable("player slot y", PLAYER_SLOT_Y_ID)),
         # bomb target locks at the crosshair's current lead position.
         blocks.list_replace("slot x", SLOT_X_ID, number(BOMB_TARGET_SLOT), crosshair_x()),
         blocks.list_replace("slot y", SLOT_Y_ID, number(BOMB_TARGET_SLOT), crosshair_y()),
@@ -4903,7 +4914,7 @@ def install_update_bonus_flag(blocks: Blocks) -> None:
     # `_craft_overlap_reporter`), against HIT_WINDOW_BOMB_GROUND (10,20,5,10) — the flag's own proximity box.
     collected_if = blocks.add("control_if_else")
     overlap = _craft_overlap_reporter(
-        blocks, HIT_WINDOW_BOMB_GROUND, lateral_craft_minus_obj=True
+        blocks, HIT_WINDOW_BOMB_GROUND, depth_craft_minus_obj=True
     )
     blocks.blocks[collected_if]["inputs"]["CONDITION"] = [2, overlap]
     blocks.blocks[overlap]["parent"] = collected_if
@@ -6116,13 +6127,9 @@ def install_check_shot_bacura(blocks: Blocks) -> None:
     # blaster clone reads next iteration to reverse+animate itself before deleting (arcade check_shot_hit_
     # bacura 2583-2595 -> deactivate_shot 2557-2561: STATE=3 + BACURA_HIT_SND, Bacura untouched). Called
     # per live slab from `update bacura`; the Bacura band is otherwise absent from every hit/score sweep.
-    # Window is the shadow-MSB compare with HIT_WINDOW_SHOT_BACURA (the arcade box doubled for the same
-    # anti-tunneling + sprite-match reasons ratified for HIT_WINDOW_SHOT_FLYING).
+    # Window is the reference's shadow-byte compare with HIT_WINDOW_SHOT_BACURA: byte 0 `shot - bacura` (so
+    # the lateral delta is bacura - shot in px, accepted in [-8, 23]), byte 1 `bacura - shot` (depth, 2-px).
     definition = _install_warp_proc(blocks, CHECK_SHOT_BACURA_PROCCODE)
-    y_bias, y_width, x_bias, x_width = HIT_WINDOW_SHOT_BACURA
-    dy_low, dy_high = -y_bias, y_width - y_bias - 1
-    dx_low, dx_high = -x_bias, x_width - x_bias - 1
-    sh = lambda expr: blocks.op_floor(blocks.op_div(expr, number(SLOT_UNITS_PER_SHADOW)))
     shot_x = lambda s: blocks.list_item("slot x", SLOT_X_ID, number(s))
     shot_y = lambda s: blocks.list_item("slot y", SLOT_Y_ID, number(s))
 
@@ -6133,20 +6140,16 @@ def install_check_shot_bacura(blocks: Blocks) -> None:
             blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE)),
         )
         bacura_live = blocks.op_eq(_cur_item(blocks, "slot state", SLOT_STATE_ID), number(SLOT_ACTIVE))
-        # Fresh delta subtree per compare (a reporter attaches to a single parent); same orientation as
-        # install_check_air_hit — slot x is the scroll axis (governed by the taller y window), slot y lateral.
-        d_y = lambda: blocks.op_sub(sh(shot_x(s)), sh(_cur_item(blocks, "slot x", SLOT_X_ID)))
-        d_x = lambda: blocks.op_sub(sh(_cur_item(blocks, "slot y", SLOT_Y_ID)), sh(shot_y(s)))
-        hit_y = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_y(), number(dy_low))),
-            blocks.op_not(blocks.op_gt(d_y(), number(dy_high))),
+        # Fresh-per-call delta builders (a reporter attaches to a single parent); same orientation as
+        # install_check_air_hit — both deltas bacura - shot.
+        d_lat = lambda s=s: blocks.op_sub(
+            _lateral_shadow(blocks, _cur_item(blocks, "slot y", SLOT_Y_ID)), _lateral_shadow(blocks, shot_y(s))
         )
-        hit_x = blocks.op_and(
-            blocks.op_not(blocks.op_lt(d_x(), number(dx_low))),
-            blocks.op_not(blocks.op_gt(d_x(), number(dx_high))),
+        d_dep = lambda s=s: blocks.op_sub(
+            _depth_shadow(blocks, _cur_item(blocks, "slot x", SLOT_X_ID)), _depth_shadow(blocks, shot_x(s))
         )
         overlap = blocks.op_and(
-            blocks.op_and(shot_live, bacura_live), blocks.op_and(hit_y, hit_x)
+            blocks.op_and(shot_live, bacura_live), _shadow_hit(blocks, d_lat, d_dep, HIT_WINDOW_SHOT_BACURA)
         )
         # Bounce, don't kill: mark ONLY the shot slot. No hit slot, no award, no `resolve hit`, no timer,
         # and the Bacura's own slot is left exactly as it was — it keeps drifting, indestructible.
@@ -6165,8 +6168,8 @@ def install_update_bacura(blocks: Blocks) -> None:
     # no player shot ever HIT-tests it (there is no HIT state, no explosion, no score) — that omission IS
     # the shot-invulnerability. It DOES run the WPN-01 shot-bounce detector (`check shot bacura`), which
     # only marks an overlapping shot for its rebound and never touches the slab. Per tick it (1) kills the
-    # craft on contact using the WIDER HIT_WINDOW_BACURA (check_bacura_hit_solvalou 2225-2237, the same
-    # overlap compare as the flying check but a larger box), checked at the tick-start position; (2) marks
+    # craft on contact using the TALLER HIT_WINDOW_BACURA (check_bacura_hit_solvalou 2225-2237, the same
+    # overlap compare as the flying check but a 40 x 32 px box reaching 27 px to one side, 12 to the other), checked at the tick-start position; (2) marks
     # any overlapping player shot for the bounce; (3) drifts DOWN the scroll axis at BACURA_DRIFT_DX
     # (1 px/frame, dy=0); and (4) culls once it scrolls off the bottom. It enters at the top and only moves
     # down, so the bottom edge is its only exit (unlike the maneuvering flying families, no four-edge cull).
@@ -11412,14 +11415,19 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     # up to ten name letters, and seven score digits per row — stamped in one frame, each snapshotting its
     # row (and, for letter/score cells, its place) before create_clone, then reading the Stage lists live.
     cell_x = text_cell_x
-    scores_body: list[str] = []
+    # PRES-01: the header above the table (one static clone, retired by common_stop like the CREDIT label).
+    scores_body: list[str] = [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_HEADER)),
+        blocks.go(ATTRACT_TABLE_HEADER_X, ATTRACT_TABLE_HEADER_Y),
+        blocks.create_clone(),
+    ]
     for table_row in range(1, ATTRACT_TABLE_ROWS + 1):
         row_y = text_cell_y(ATTRACT_TABLE_FIRST_ROW + ATTRACT_TABLE_ROW_STEP * (table_row - 1))
-        # rank digit (costume digit/<row>)
+        # ordinal rank (costume rank/<row>), a 3-letter run placed by its centre
         scores_body += [
             blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_TABLE_RANK)),
             blocks.set_var("attract row", ATTRACT_DISPLAY_ROW_ID, number(table_row)),
-            blocks.go(cell_x(ATTRACT_TABLE_RANK_COL), row_y),
+            blocks.go(text_run_x(ATTRACT_TABLE_RANK_COL, ATTRACT_TABLE_RANK_CHARS), row_y),
             blocks.create_clone(),
         ]
         # name letters: place = 1-based letter index 1..10, laid out left-to-right from NAME_COL0
@@ -11441,6 +11449,9 @@ def title_blocks() -> dict[str, dict[str, Any]]:
                 blocks.go(cell_x(col), row_y),
                 blocks.create_clone(),
             ]
+    # PRES-01: the logo rests above the table, as the arcade draws it with the best five (flash_logo_and_high_
+    # score_table). Shown after the stamps, so the clones (which hide first) never flash the logo costume.
+    scores_body += [blocks.go(0, ATTRACT_LOGO_Y), blocks.show()]
     scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
 
     # CAB-04 (slice 19): the initials-entry screen. On entering high-score-entry, stamp the two headers, the
@@ -11541,6 +11552,13 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
+    # PRES-01: the best-five header (static) — shows on entering attract-scores; common_stop retires it on the next
+    # transition, like the CREDIT label.
+    table_header_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_HEADER,
+        [blocks.switch_costume(ATTRACT_COSTUME_TABLE_HEADER), blocks.to_front(), blocks.show()],
+    )
+
     # Prompt: PUSH START when there is a credit to spend, INSERT COIN otherwise, flashing while in title.
     # The costume is re-picked each cycle so it flips live the tick a coin banks the first credit.
     prompt_tick = blocks.add("control_repeat_until")
@@ -11586,13 +11604,13 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.substack(loop, body)
         return loop
 
-    # Rank digit: costume digit/<row>. The row is fixed per clone, but it is re-switched each tick so the
-    # three cell roles share one self-retiring loop shape.
+    # Ordinal rank: costume rank/<row> (1ST..5TH). The row is fixed per clone, but it is re-switched each tick
+    # so the three cell roles share one self-retiring loop shape.
     rank_tick = table_tick(
         [
             blocks.switch_costume_expr(
                 blocks.op_join(
-                    text(ATTRACT_DIGIT_PREFIX), variable("attract row", ATTRACT_DISPLAY_ROW_ID)
+                    text(ATTRACT_RANK_PREFIX), variable("attract row", ATTRACT_DISPLAY_ROW_ID)
                 )
             )
         ]
@@ -11886,6 +11904,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             credit_label_role,
             credit_digit_role,
             prompt_role,
+            table_header_role,
             table_rank_role,
             table_name_role,
             table_score_role,
@@ -15406,6 +15425,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         GARU_DET_SLOT_ID,
         PLAYER_ROW_ID,
         PLAYER_COL_ID,
+        PLAYER_SLOT_X_ID,
+        PLAYER_SLOT_Y_ID,
         SPAWN_CURSOR_ID,
         SPAWN_ATTEMPTS_ID,
         SPAWN_FOUND_ID,
@@ -15594,6 +15615,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         GARU_DET_SLOT_ID: ["garu det slot", 0],
         PLAYER_ROW_ID: ["player row", 0],
         PLAYER_COL_ID: ["player col", 0],
+        PLAYER_SLOT_X_ID: ["player slot x", 0],
+        PLAYER_SLOT_Y_ID: ["player slot y", 0],
         SPAWN_CURSOR_ID: ["spawn cursor", 0],
         SPAWN_ATTEMPTS_ID: ["spawn attempts", 0],
         SPAWN_FOUND_ID: ["spawn found", 0],

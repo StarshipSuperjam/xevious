@@ -152,8 +152,22 @@ ATTRACT_TARGET = "start_screen"
 ATTRACT_NAME_GLYPHS = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ.")
 ATTRACT_LABELS = (
     ("credit-label", "CREDIT"),
-    ("push-start", "PUSH START"),
+    # PRES-01 (slice 20 playtest): the full cabinet phrase, so it fills the arcade prompt cell (10,23) the way
+    # the arcade's does — generic cabinet control wording, the same class as INSERT COIN / CREDIT.
+    ("push-start", "PUSH START BUTTON"),
     ("insert-coin", "INSERT COIN"),
+)
+# PRES-01 (slice 20 playtest): the best-five screen in the arcade's layout — a header above the table and
+# ordinal ranks. The ranks are plain English ordinals. The header is the PORT'S OWN wording: the arcade's
+# header is in-game text docs/REFERENCE_POLICY.md keeps out of the project (the operator confirms the wording
+# at playtest). game_director's best-five rank cell switches to rank/<row>; one static clone shows the header.
+ATTRACT_TABLE_LABELS = (
+    ("best-five-header", "BEST FIVE PILOTS"),
+    ("rank/1", "1ST"),
+    ("rank/2", "2ND"),
+    ("rank/3", "3RD"),
+    ("rank/4", "4TH"),
+    ("rank/5", "5TH"),
 )
 # CAB-02 (cabinet.two-player, slice 18): the title-screen 1P/2P selector labels, rendered from the SAME
 # credited Xevious HUD font as the CAB-01 attract prompts above — two whole-string costumes on the
@@ -647,6 +661,9 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
     # CAB-02 (slice 18): the two title 1P/2P selector labels, same sheet and compositor.
     for name, text in ATTRACT_SELECTOR_LABELS:
         outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
+    # PRES-01 (slice 20): the best-five header and ordinal rank costumes, same sheet and compositor.
+    for name, text in ATTRACT_TABLE_LABELS:
+        outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
     # CAB-04 (slice 19): the initials-entry headers + PLAYER-n tags, same sheet and compositor.
     for name, text in ATTRACT_ENTRY_LABELS:
         outputs.append(render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM))
@@ -724,8 +741,9 @@ def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
             f"correction, ~16px to match the HUD GAME OVER glyphs): the title-screen text — the "
             f"credit-counter digits, the CREDIT / PUSH START / INSERT COIN prompts, and the CAB-02 "
             f"1P/2P start-selector labels (port-original control text — the arcade had no on-screen "
-            f"selector); and the CAB-04 per-letter name-cell glyphs (A-Z and \".\") for the LIVE "
-            f"best-five table (the digits double as its rank/score columns). Only the letterforms are "
+            f"selector); the PRES-01 best-five header (port-original wording) and ordinal rank labels "
+            f"1ST-5TH; and the CAB-04 per-letter name-cell glyphs (A-Z and \".\") for the LIVE "
+            f"best-five table (the digits double as its score column). Only the letterforms are "
             f"the credited font; the table's CONTENT — the port-original initials (NOT the ROM default "
             f"name strings) and the arcade default scores — lives in the Stage lists game_director owns, "
             f"not in any costume."

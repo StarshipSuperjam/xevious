@@ -339,7 +339,9 @@ class ScratchProjectTests(unittest.TestCase):
         # - the slice-20 PRES-01 retirement of the four border sprites drops their historical costumes: frame_t
         # and frame_b are distinct PNGs, frame_l and frame_r share one (the same 1-unit strip), so 254 - 3 = 251.
         # + the slice-20 PRES-01 cabinet bezel frame PNG (tools/bezel_panels.py), so 251 + 1 = 252.
-        self.assertEqual(252, len(assets))
+        # + the slice-20 PRES-01 best-five header and the five ordinal ranks 1ST..5TH (all distinct whole-string
+        # PNGs); PUSH START became PUSH START BUTTON in place (one PNG swapped for another). 252 + 6 = 258.
+        self.assertEqual(258, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -1183,6 +1185,8 @@ class ScratchProjectTests(unittest.TestCase):
             "garu det slot",
             "player row",
             "player col",
+            "player slot x",
+            "player slot y",
             "walk type",
             "spawn cursor",
             "spawn attempts",
@@ -6229,10 +6233,11 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("bacura-never-scored")
 
         # (9) CRAFT-DEATH ON TOUCH through the WIDER window. The `player hit` write is gated by an overlap
-        # reporter carrying HIT_WINDOW_BACURA's distinctive dy-high bound (40-28-1 = 11), unique to the Bacura
-        # box among the hit windows — so the death is routed through the wider slab collision, not the flyer box.
+        # reporter carrying HIT_WINDOW_BACURA's distinctive lateral high bound (the carry idiom's bias-1 = 27),
+        # unique to the Bacura box among the hit windows — so the death is routed through the wider slab
+        # collision, not the flyer box. (PRES-01: was the mirrored 40-28-1 = 11 before the range was corrected.)
         y_bias, y_width, _x_bias, _x_width = director.HIT_WINDOW_BACURA
-        bacura_dy_high = y_width - y_bias - 1  # 11
+        bacura_dy_high = director._hit_range(y_bias, y_width)[1]  # 27
         hit_writes = [
             id_of[id(b)]
             for b in bacura_update
@@ -6485,12 +6490,12 @@ class ScratchProjectTests(unittest.TestCase):
                     return
 
         def break_window(p: dict) -> None:
-            # Zero the distinctive dy-high bound (11) wherever it appears in the update → the craft-death gate
-            # no longer carries the Bacura window.
+            # Zero the distinctive lateral high bound (27) wherever it appears in the update → the craft-death
+            # gate no longer carries the Bacura window.
             stage, body = _body(p, director.UPDATE_BACURA_PROCCODE)
             for b in body:
                 for key, v in list(b.get("inputs", {}).items()):
-                    if _num_operand(v) == 11:
+                    if _num_operand(v) == 27:
                         b["inputs"][key] = [1, [4, "0"]]
 
         def strip_tumble_frames(p: dict) -> None:
@@ -7239,7 +7244,7 @@ class ScratchProjectTests(unittest.TestCase):
 
         DETECTOR. `check shot bacura` is a warp proc, called per live slab from `update bacura` (a sibling of
         `check air shot hit`, never a reuse). On an overlapping ACTIVE shot it stamps ONLY that shot slot's
-        state to SHOT_BOUNCE, through the doubled HIT_WINDOW_SHOT_BACURA overlap (recognised by its
+        state to SHOT_BOUNCE, through the HIT_WINDOW_SHOT_BACURA overlap (recognised by its
         distinctive low bound -y_bias). It NEVER resolves a hit: no `resolve hit` call, no `hit slot` /
         `award value` write, and it never writes a Bacura field — the slab drifts on untouched.
 
@@ -7326,11 +7331,11 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("bounce-marks-shot")
 
         # (4) THROUGH THE OVERLAP WINDOW. Each SHOT_BOUNCE write is gated by an overlap `if` carrying
-        # HIT_WINDOW_SHOT_BACURA's distinctive low bound (-y_bias) — so the mark is a real overlap test with
-        # the doubled slab window, not an unconditional stamp.
-        y_bias = director.HIT_WINDOW_SHOT_BACURA[0]
+        # HIT_WINDOW_SHOT_BACURA's distinctive lateral high bound (bias-1 = 23) — so the mark is a real overlap
+        # test with the slab window, not an unconditional stamp.
+        lat_high = director._hit_range(*director.HIT_WINDOW_SHOT_BACURA[:2])[1]
         if not bounce_writes or not any(
-            ancestor_if(w, lambda c: cond_has_num(c, -y_bias)) for w in bounce_writes
+            ancestor_if(w, lambda c: cond_has_num(c, lat_high)) for w in bounce_writes
         ):
             failures.add("bounce-window")
 
@@ -7406,7 +7411,7 @@ class ScratchProjectTests(unittest.TestCase):
 
     # Roadmap closure evidence for leaf `player.bacura-bounce` (WPN-01): a player shot that overlaps a Bacura
     # is reflected, never consumed. The dedicated `check shot bacura` detector (a sibling of the air detector,
-    # never a reuse) marks the overlapping shot SHOT_BOUNCE through the doubled HIT_WINDOW_SHOT_BACURA and
+    # never a reuse) marks the overlapping shot SHOT_BOUNCE through the HIT_WINDOW_SHOT_BACURA and
     # touches neither score nor slab; the blaster clone reads that mark and reverses (BACURA_BOUNCE_DY) for
     # BACURA_BOUNCE_FRAMES before deleting. The live proof is the harness shot-bounce scenarios (slab lives,
     # shot reverses).
@@ -7455,9 +7460,9 @@ class ScratchProjectTests(unittest.TestCase):
                     b["fields"]["LIST"] = ["slot timer", director.SLOT_TIMER_ID]
 
         def break_window(p: dict) -> None:
-            # Zero the detector's distinctive low bound (-y_bias) → the mark is no longer an overlap test.
+            # Zero the detector's distinctive lateral high bound (23) → the mark is no longer an overlap test.
             stage = _stage(p)
-            low = -director.HIT_WINDOW_SHOT_BACURA[0]
+            low = director._hit_range(*director.HIT_WINDOW_SHOT_BACURA[:2])[1]
             for b in _proc_body_blocks(stage, director.CHECK_SHOT_BACURA_PROCCODE):
                 for key, v in list(b.get("inputs", {}).items()):
                     if _num_operand(v) == low:
@@ -10113,7 +10118,7 @@ class ScratchProjectTests(unittest.TestCase):
         if h["has_list_write"](reveal_ids, director.SLOT_STATE_ID):
             failures.add("bonus-flag-reveal-keeps-hit")
 
-        # (6) FLY-OVER: collection gated on the craft overlap reporter (reads the craft cell — proximity,
+        # (6) FLY-OVER: collection gated on the craft overlap reporter (reads the exact craft slot — proximity,
         # not a weapon). Find the collected if/else within the REVEALED branch and take its collect arm.
         collect_ids = set()
         for x in revealed_ids:
@@ -10123,7 +10128,7 @@ class ScratchProjectTests(unittest.TestCase):
             cond = b["inputs"].get("CONDITION")
             cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
             if cid and h["subtree_reads_var"](
-                cid, {director.PLAYER_ROW_ID, director.PLAYER_COL_ID}
+                cid, {director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID}
             ):
                 collect_ids = h["branch_ids"](b, "SUBSTACK")
                 break
@@ -13517,7 +13522,7 @@ class ScratchProjectTests(unittest.TestCase):
                         and isinstance(v[1], list)
                         and len(v[1]) >= 3
                         and v[1][0] == 12
-                        and v[1][2] in (director.PLAYER_ROW_ID, director.PLAYER_COL_ID)
+                        and v[1][2] in (director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID)
                     ):
                         v[1][1], v[1][2] = "neg-dummy", "neg-dummy-id"
 
@@ -17667,17 +17672,31 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(director.FLYING_SLOTS[1], 0x3F + 1)
 
     def test_hit_windows_match_spec(self) -> None:
-        # PLY-02 collision hit windows (player-craft-and-weapons.md), in the reference's
-        # half-pixel "shadow" units as (y_bias, y_width, x_bias, x_width). The bullet/flying
-        # window is live this slice (craft-overlap check); Bacura stays dormant until slice 11.
-        # Pinned to independent literals so a wrong window reddens here.
+        # PLY-02 collision hit windows (player-craft-and-weapons.md), as the reference's
+        # (y_bias, y_width, x_bias, x_width) on its shadow bytes: Y on the LATERAL axis in whole px, X on the
+        # DEPTH axis in 2-px units (PRES-01, docs/mechanics/054). Pinned to independent literals so a wrong
+        # window reddens here.
         self.assertEqual(director.HIT_WINDOW_BULLET_FLYING, (8, 16, 4, 8))
         self.assertEqual(director.HIT_WINDOW_BACURA, (28, 40, 8, 16))
-        # WPN-02 shot-vs-flying window: DOUBLED from the reference (16,32,8,16) as a recorded,
-        # playtest-driven deviation — the reference height (2 cells) is under the shot's 2.5-cell/frame
-        # step (tunneling) and covers only ~40% of our 36-px rendered Toroid. See B8-no-tunnel and the
-        # HIT_WINDOW_SHOT_FLYING comment in game_director.py.
-        self.assertEqual(director.HIT_WINDOW_SHOT_FLYING, (32, 64, 16, 32))
+        # WPN-02 shot-vs-flying: the reference window as is (PRES-01 retired the old doubling, which only
+        # compensated for the misread units). See B8-no-tunnel.
+        self.assertEqual(director.HIT_WINDOW_SHOT_FLYING, (16, 32, 8, 16))
+        self.assertEqual(director.HIT_WINDOW_SHOT_BACURA, (24, 32, 8, 16))
+        self.assertEqual(director.HIT_WINDOW_BOMB_GROUND, (10, 20, 5, 10))
+        # The shadow units (osd_update_sprite_shadow): 32 slot units per lateral px; depth (x + 256) / 64.
+        self.assertEqual(
+            (director.SLOT_UNITS_PER_LATERAL_SHADOW, director.SLOT_UNITS_PER_DEPTH_SHADOW, director.DEPTH_SHADOW_OFFSET),
+            (32, 64, 256),
+        )
+        # The carry idiom `sub.b #bias; add.b #width` hits for d in [bias - width, bias - 1] — checked against a
+        # brute-force 8-bit model of the two instructions, so a mirrored range (the pre-PRES-01 Bacura bug)
+        # reddens here.
+        def carry_hits(bias: int, width: int) -> list[int]:
+            return [d for d in range(-100, 101) if ((d - bias) & 0xFF) + width > 0xFF]
+        for bias, width in [(8, 16), (4, 8), (28, 40), (16, 32), (24, 32), (10, 20), (5, 10)]:
+            low, high = director._hit_range(bias, width)
+            self.assertEqual(carry_hits(bias, width), list(range(low, high + 1)), (bias, width))
+        self.assertEqual(director._hit_range(28, 40), (-12, 27))
         # The bullet allocator's result var is its own, never the blaster's (no coupling).
         self.assertNotEqual(director.BULLET_ALLOC_RESULT_ID, director.ALLOC_RESULT_ID)
         self.assertEqual(director.BULLET_TYPE, 2)
@@ -18124,8 +18143,9 @@ class ScratchProjectTests(unittest.TestCase):
         # (every shot in a held stream shares the craft-row phase, so a Toroid in a gap is immune to
         # the whole stream — the operator saw "multiple rounds and nothing happens"). The headless
         # harness cannot reproduce per-frame timing (it runs threads to settling), so this numeric
-        # invariant is the guard. shot step = DY / RENDER_ROW_STAGE cells; window height = y_width /
-        # SHADOW_PER_CELL cells. Require ~1 cell of margin for the enemy's own closing motion.
+        # invariant is the guard. shot step = DY / RENDER_ROW_STAGE cells; the window's DEPTH extent is its
+        # x_width in 2-px shadow units (PRES-01: byte 1 is the depth axis) = x_width * 64 / 256 cells. Require
+        # ~1 cell of margin for the enemy's own closing motion.
         dy_blocks = [
             num(b["inputs"].get("VALUE"))
             for b in blocks["blaster"].values()
@@ -18133,7 +18153,9 @@ class ScratchProjectTests(unittest.TestCase):
         ]
         shot_dy = max(dy_blocks) if dy_blocks else 0
         shot_step_cells = shot_dy / director.RENDER_ROW_STAGE
-        window_height_cells = director.HIT_WINDOW_SHOT_FLYING[1] / director.SHADOW_PER_CELL
+        window_height_cells = (
+            director.HIT_WINDOW_SHOT_FLYING[3] * director.SLOT_UNITS_PER_DEPTH_SHADOW / director.SLOT_UNITS_PER_CELL
+        )
         if window_height_cells < shot_step_cells + 1.0:
             fails.add("B8-no-tunnel")
 
@@ -18849,7 +18871,11 @@ class ScratchProjectTests(unittest.TestCase):
         # (display_1_only_or_1_2_players 789-813), the best-five rank/score/name columns 0x19xx/0x14xx/0x0Bxx on
         # rows 24..32 (display_high_score_table 1475-1541) and the entry headers 0x1509 / 0x160C
         # (display_high_score_entry_screen 1795-1812). The 2P option row 26, the entry PLAYER-n tag (14,18) and the
-        # entry's ten cells on row 24 from col 13 are port layout on the same grid.
+        # entry's ten cells on row 24 from col 13 are port layout on the same grid. PRES-01 playtest layout: the
+        # full 17-letter PUSH START BUTTON run; the 1P/2P labels left-aligned on col 14 (two columns right of the
+        # arcade's 1P line, so the pair centres under the prompt); the best-five header centred where the arcade's
+        # 18-letter run 0x1615 centres; the table's rank/score/name columns two columns right of the arcade's (the
+        # 3-letter ordinal at 0x17xx, the score from 0x12xx, the name from 0x09xx); the logo resting above it.
         def run_centre(offset, chars):
             col, row = 31 - (offset >> 8), offset & 0xFF
             return (10 * (col + (chars - 1) / 2) - 175, 175 - 10 * row)
@@ -18858,14 +18884,16 @@ class ScratchProjectTests(unittest.TestCase):
             return {run_centre(offset - 0x100 * k, 1) for k in range(n)}
 
         logo_size = round(100 * 200 / 304, 2)  # the logo body (304 units at 100%) on its 20 arcade columns
+        logo_rest = (0, round(50 - 51.5 * logo_size / 100))
         expected_attract = (
-            {(0, 250), run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
-            | {run_centre(0x1517, 10), run_centre(0x121C, 11), run_centre(0x1519, 8), run_centre(0x151A, 9)}
+            {(0, 250), logo_rest, run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
+            | {run_centre(0x1517, 17), run_centre(0x121C, 11), run_centre(0x1119, 8), run_centre(0x111A, 9)}
             | {run_centre(0x1509, 15), run_centre(0x160C, 19), run_centre(0x1112, 8)}
+            | {run_centre(0x1615, 18)}
             | cells(0x1218, 10)
         )
         for row in range(0x18, 0x22, 2):
-            expected_attract |= {run_centre(0x1900 | row, 1)} | cells(0x1400 | row, 7) | cells(0x0B00 | row, 10)
+            expected_attract |= {run_centre(0x1700 | row, 3)} | cells(0x1200 | row, 7) | cells(0x0900 | row, 10)
         start = targets["start_screen"]["blocks"]
         attract_gotos, glides = set(), set()
         for b in start.values():
@@ -18915,6 +18943,138 @@ class ScratchProjectTests(unittest.TestCase):
         if director.SPRITE_RENDER_SIZE != 100 * scale:
             fails.add("PRES01-sprite-size")
         return fails
+
+    @staticmethod
+    def _pres01_collision_failures(project: dict) -> set:
+        """PRES-01 playtest fixes (docs/mechanics/054): the craft's exact slot position is read once per walk
+        (no cell rounding) and drives the crosshair and the bomb drop; every collision detector reduces
+        positions to the reference's shadow bytes — lateral px (slot / 32), depth 2-px units ((slot + 256) / 64)
+        — and tests the carry idiom's [bias - width, bias - 1] range."""
+        fails: set = set()
+        stage = next(t for t in project["targets"] if t.get("isStage"))
+        blocks = stage["blocks"]
+
+        def reads(body, var_id):
+            return any(
+                isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list) and len(v[1]) >= 3
+                and v[1][0] == 12 and v[1][2] == var_id
+                for b in body for v in b.get("inputs", {}).values()
+            )
+
+        def subtree(bid):
+            seen, frontier = set(), [bid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                for v in blocks[x].get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return [blocks[x] for x in seen]
+
+        # The exact read: `player slot x/y` set from the craft position with no rounding anywhere in the value.
+        read_body = _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE)
+        for var_id in (director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID):
+            sets = [
+                b for b in read_body
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var_id
+            ]
+            value = sets[0]["inputs"].get("VALUE") if len(sets) == 1 else None
+            value_id = value[1] if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str) else None
+            tree = subtree(value_id) if value_id else []
+            if (
+                not tree
+                or any(b["opcode"] == "operator_round" for b in tree)
+                or not any(b["opcode"] == "sensing_of" for b in tree)
+            ):
+                fails.add("PRES01-exact-craft-read")
+
+        # The crosshair and the bomb drop read the exact slot, never the rounded cell.
+        for proccode, label in (
+            (director.TRACK_CROSSHAIR_PROCCODE, "PRES01-crosshair-exact"),
+            (director.ADVANCE_BOMB_PROCCODE, "PRES01-bomb-drop-exact"),
+        ):
+            body = _proc_body_blocks(stage, proccode)
+            if (
+                not reads(body, director.PLAYER_SLOT_X_ID)
+                or not reads(body, director.PLAYER_SLOT_Y_ID)
+                or reads(body, director.PLAYER_ROW_ID)
+                or reads(body, director.PLAYER_COL_ID)
+            ):
+                fails.add(label)
+
+        # Every detector on the shadow bytes, with its window's carry-idiom bounds.
+        def literals(body, opcode, key):
+            return {_num_operand(b["inputs"].get(key)) for b in body if b["opcode"] == opcode}
+
+        def all_literals(body):
+            return {_num_operand(v) for b in body for v in b.get("inputs", {}).values()} - {None}
+
+        for proccode, window in (
+            (director.CHECK_AIR_HIT_PROCCODE, director.HIT_WINDOW_SHOT_FLYING),
+            (director.CHECK_GROUND_HIT_PROCCODE, director.HIT_WINDOW_BOMB_GROUND),
+            (director.CHECK_SHOT_BACURA_PROCCODE, director.HIT_WINDOW_SHOT_BACURA),
+        ):
+            body = _proc_body_blocks(stage, proccode)
+            divisors = literals(body, "operator_divide", "NUM2")
+            bounds = {*director._hit_range(*window[:2]), *director._hit_range(*window[2:])}
+            if (
+                divisors != {32, 64}
+                or 256 not in literals(body, "operator_add", "NUM2")
+                or not bounds <= all_literals(body)
+            ):
+                fails.add("PRES01-shadow-units")
+        return fails
+
+    # roadmap-evidence: PRES-01 success  (test_pres01_collision_and_crosshair_contract — the craft's exact slot position, read once per walk with no cell rounding, drives the crosshair and the bomb drop, so the sight moves with the ship pixel for pixel; the air, ground and Bacura-bounce detectors reduce positions to the reference shadow bytes — lateral px, depth 2-px units — and test the carry idiom's range, so the bomb box is the arcade's 20 x 20 px; harness pres01-bomb-between-pair-hits-both / pres01-crosshair-follows-exact-craft run it live)
+    # roadmap-evidence: PRES-01 failure  (test_pres01_collision_and_crosshair_contract negatives: a rounded craft read, a crosshair or bomb drop back on the rounded cell, a detector on the old half-px divisor, and a ground window bound off the carry range each go red; harness negative pres01-bomb-off-pair-misses keeps a bomb 11 px beside an object a miss)
+    def test_pres01_collision_and_crosshair_contract(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._pres01_collision_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t.get("isStage"))
+
+        def round_slot_read(p):  # the exact read regresses to the rounded cell
+            stage = stage_of(p)
+            for b in _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE):
+                if b["opcode"] == "operator_multiply" and _num_operand(b["inputs"].get("NUM2")) == director.SLOT_UNITS_PER_CELL:
+                    b["opcode"] = "operator_round"
+
+        def retarget(proccode):
+            def _mut(p):  # the proc reads the rounded cell instead of the exact slot
+                for b in _proc_body_blocks(stage_of(p), proccode):
+                    for v in b.get("inputs", {}).values():
+                        if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list) and len(v[1]) >= 3 and v[1][0] == 12:
+                            if v[1][2] == director.PLAYER_SLOT_X_ID:
+                                v[1][1], v[1][2] = "player row", director.PLAYER_ROW_ID
+                            elif v[1][2] == director.PLAYER_SLOT_Y_ID:
+                                v[1][1], v[1][2] = "player col", director.PLAYER_COL_ID
+            return _mut
+
+        def half_px_divisor(p):  # the ground detector back on the old 16-unit half-px shadow
+            for b in _proc_body_blocks(stage_of(p), director.CHECK_GROUND_HIT_PROCCODE):
+                if b["opcode"] == "operator_divide" and _num_operand(b["inputs"].get("NUM2")) == 64:
+                    b["inputs"]["NUM2"] = [4, [4, "16"]]
+
+        def ground_bound_off(p):  # the ground lateral high bound off the carry range (9 -> 4)
+            for b in _proc_body_blocks(stage_of(p), director.CHECK_GROUND_HIT_PROCCODE):
+                for key, v in list(b.get("inputs", {}).items()):
+                    if _num_operand(v) == 9:
+                        b["inputs"][key] = [4, [4, "4"]]
+
+        cases = [
+            ("PRES01-exact-craft-read", round_slot_read),
+            ("PRES01-crosshair-exact", retarget(director.TRACK_CROSSHAIR_PROCCODE)),
+            ("PRES01-bomb-drop-exact", retarget(director.ADVANCE_BOMB_PROCCODE)),
+            ("PRES01-shadow-units", half_px_divisor),
+            ("PRES01-shadow-units", ground_bound_off),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._pres01_collision_failures(project), label)
 
     # Roadmap closure evidence for leaf `presentation.framing` (PRES-01).
     # roadmap-evidence: PRES-01 success  (test_pres01_playfield_framing_contract — no border sprites; the cabinet bezel frames the arcade-proportioned window; every world renderer shows only inside the visible rows 4-39 and never fronts itself, so craft > HUD > world; the HUD, attract, best-five, entry and hidden-credit text sit on the arcade text cells; every renderer applies the mirrored lateral factor and the player read inverts it; harness pres01-craft-stops-at-stop-lines / pres01-shot-expires-past-row-0 / pres01-world-hidden-off-field run it live)
@@ -19026,6 +19186,20 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (58.82, "58.82"):
                     b["inputs"]["SIZE"] = [4, [4, 100]]
 
+        def unshift_table(p):  # the best-five ranks back on the arcade's own column 6 (the left-leaning layout)
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["X"]) in (-85, "-85"):
+                    b["inputs"]["X"] = [4, [4, -105]]
+
+        def selector_from_col_10(p):  # "1 PLAYER" back on the arcade 1P line's first column (leans left)
+            for b in target(p, "start_screen")["blocks"].values():
+                if (
+                    b["opcode"] == "motion_gotoxy"
+                    and self._numeric(b["inputs"]["Y"]) in (-75, "-75")
+                    and self._numeric(b["inputs"]["X"]) in (0, "0")
+                ):
+                    b["inputs"]["X"] = [4, [4, -40]]
+
         def credit_off_grid(p):  # the hidden credit back between rows, over the craft's flight band
             for b in target(p, director.EASTER_EGG_TARGET)["blocks"].values():
                 if b["opcode"] == "motion_gotoxy":
@@ -19042,6 +19216,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
             ("PRES01-attract-grid", credit_off_grid),
+            ("PRES01-attract-grid", unshift_table),
+            ("PRES01-attract-grid", selector_from_col_10),
             ("PRES01-sprite-size", unscale_craft),
             ("hud-grid", drift_high_score_label),
             ("hud-life-row", spread_life_row),
@@ -19449,7 +19625,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "5da21b6e8d3fa0a849e042f36eb7a2721fa086862016f1d98b8e7c9e447ce758",
+            "15b91bca9c0f05cb3505dfe11520f17158179ca437411779f540e684bb0d075b",
             build_hash,
         )
 
