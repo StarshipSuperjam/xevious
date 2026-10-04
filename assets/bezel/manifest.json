@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "kind": "bezel-source",
+  "note": "Operator-approved third-party cabinet bezel art (slice 20, PRES-01). tools/bezel_panels.py reads this source and emits the single full-stage bezel costume (the two side panels around the 280x360 arcade-screen window); its generated outputs are recorded in assets/bezel/provenance.json.",
+  "source": {
+    "file": "xevious_bezel.png",
+    "sha256": "dca729dee359ea454b03b064d5202b3203559d6403e132921adf292a1c2142d6",
+    "dimensions": [3991, 4000],
+    "url": "https://raw.githubusercontent.com/estefan3112/MAME-Realistic-Bezel-Artwork/master/mame/xevious/xevious_bezel.png",
+    "project": "estefan3112/MAME-Realistic-Bezel-Artwork (GitHub), mame/xevious/xevious_bezel.png",
+    "credit": "estefan3112 (MAME Realistic Bezel Artwork), adapting cabinet bezel artwork by John Merrit and Orionsangel, derived from Namco's Xevious cabinet art",
+    "license": "No reusable license for the artwork: the hosting repository carries a GPL-3.0 label, but the image adapts third-party fan artwork of Namco's copyrighted Xevious cabinet art, which that label cannot license. Third-party copyrighted material; operator rights review before broader distribution."
+  },
+  "panels": {
+    "note": "Each side column is box-averaged 5 source px across by 4 down (a deliberate 0.8 horizontal squeeze, so the full column art — the hangar ships at the outer edge included — fits the 100-unit panel), composited over opaque black so the panels fully mask the playfield, and placed either side of the transparent 280x360 window. Source rows are centred on the bezel's screen opening (rows 660-3516).",
+    "rows": [648, 2880],
+    "left_columns": [0, 1000],
+    "right_columns": [2991, 1000],
+    "box": [5, 4]
+  },
+  "costume": {
+    "name": "bezel/frame",
+    "width": 960,
+    "height": 720,
+    "bitmap_resolution": 2,
+    "window_width": 560
+  }
+}

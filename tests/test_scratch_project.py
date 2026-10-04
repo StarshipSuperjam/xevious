@@ -271,8 +271,9 @@ class ScratchProjectTests(unittest.TestCase):
         # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
         # renderer clone band since the egg draws no field sprite, holding a single generated credit costume).
         # Slice-20 PRES-01 retires the four baseline border sprites (frame_t/frame_b/frame_l/frame_r; the play
-        # area is the whole stage, docs/mechanics/053), so 33 -> 29.
-        self.assertEqual(29, len(project["targets"]))
+        # area is the whole stage, docs/mechanics/053), so 33 -> 29. The slice-20 cabinet bezel (PRES-01,
+        # docs/mechanics/054; one full-stage costume on its own original, no clones) adds one: 29 -> 30.
+        self.assertEqual(30, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -329,7 +330,8 @@ class ScratchProjectTests(unittest.TestCase):
         # credited font at the SMALL_TEXT_GEOM cell. 250 + 4 = 254.
         # - the slice-20 PRES-01 retirement of the four border sprites drops their historical costumes: frame_t
         # and frame_b are distinct PNGs, frame_l and frame_r share one (the same 1-unit strip), so 254 - 3 = 251.
-        self.assertEqual(251, len(assets))
+        # + the slice-20 PRES-01 cabinet bezel frame PNG (tools/bezel_panels.py), so 251 + 1 = 252.
+        self.assertEqual(252, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -18588,6 +18590,28 @@ class ScratchProjectTests(unittest.TestCase):
             fails.add("hud-front")
         if not any(b["opcode"] == "looks_gotofrontback" for b in targets["solvalou"]["blocks"].values()):
             fails.add("craft-front")
+        # The cabinet bezel (docs/mechanics/054): one full-stage costume on its original, pinned just above
+        # the whole world band (so its opaque panels mask world sprites past the window edge) and below the
+        # SEC-03 overlay; it never moves layers itself and never clones (the clone budget is shared).
+        bezel = targets.get(director.BEZEL_TARGET)
+        if bezel is None:
+            fails.add("bezel-missing")
+        else:
+            bezel_blocks = bezel["blocks"].values()
+            world_top = max((v for v in order.values() if isinstance(v, int)), default=None)
+            overlay = targets.get(director.EASTER_EGG_TARGET, {}).get("layerOrder")
+            if world_top is None or overlay is None or not (world_top < bezel.get("layerOrder", -1) < overlay):
+                fails.add("bezel-layer")
+            if any(b["opcode"] in ("looks_gotofrontback", "looks_goforwardbackwardlayers") for b in bezel_blocks):
+                fails.add("bezel-moves-layer")
+            if any(b["opcode"] == "control_create_clone_of" for b in bezel_blocks):
+                fails.add("bezel-clones")
+            if [c.get("name") for c in bezel["costumes"]] != [director.BEZEL_COSTUME] or not bezel.get("visible"):
+                fails.add("bezel-costume")
+            if not any(b["opcode"] == "looks_show" for b in bezel_blocks) or any(
+                b["opcode"] == "looks_hide" for b in bezel_blocks
+            ):
+                fails.add("bezel-hidden")
         return fails
 
     # Roadmap closure evidence for leaf `presentation.framing` (PRES-01).
@@ -18641,7 +18665,21 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "looks_gotofrontback":
                     b["opcode"] = "looks_cleargraphiceffects"
 
+        def sink_bezel(p):  # the bezel back under the flyers: an enemy past the window edge draws over the panel
+            target(p, director.BEZEL_TARGET)["layerOrder"] = 25
+
+        def front_bezel(p):  # the bezel fronting itself would cover the craft, HUD and attract text
+            blocks = target(p, director.BEZEL_TARGET)["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_show")["opcode"] = "looks_gotofrontback"
+
+        def hide_bezel(p):  # a hide path on the static cabinet art
+            blocks = target(p, director.BEZEL_TARGET)["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_show")["opcode"] = "looks_hide"
+
         cases = [
+            ("bezel-layer", sink_bezel),
+            ("bezel-moves-layer", front_bezel),
+            ("bezel-hidden", hide_bezel),
             ("hud-front", unfront_hud_role),
             ("craft-front", unfront_craft),
             (f"no-gate-{director.TOROID_TARGET}", widen_gate),
@@ -19041,7 +19079,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "4ee463c933578ffea693991106bc8ad30d761ac1990b47b814515da9039ed610",
+            "0ae289b63504b446426066422102c2959cb94a2096985aaee16cd16eff1962be",
             build_hash,
         )
 

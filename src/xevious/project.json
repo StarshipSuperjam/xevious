@@ -294308,6 +294308,110 @@
     },
     {
       "isStage": false,
+      "name": "bezel",
+      "variables": {},
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {
+        "gd-bezel-001": {
+          "opcode": "event_whenflagclicked",
+          "next": "gd-bezel-003",
+          "parent": null,
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": true,
+          "x": 20,
+          "y": 20
+        },
+        "gd-bezel-002": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-bezel-003",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "bezel/frame",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-bezel-003": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-bezel-004",
+          "parent": "gd-bezel-001",
+          "inputs": {
+            "COSTUME": [
+              1,
+              "gd-bezel-002"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bezel-004": {
+          "opcode": "motion_gotoxy",
+          "next": "gd-bezel-005",
+          "parent": "gd-bezel-003",
+          "inputs": {
+            "X": [
+              1,
+              [
+                4,
+                0
+              ]
+            ],
+            "Y": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bezel-005": {
+          "opcode": "looks_show",
+          "next": null,
+          "parent": "gd-bezel-004",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        }
+      },
+      "comments": {},
+      "currentCostume": 0,
+      "costumes": [
+        {
+          "name": "bezel/frame",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "1c87afc69253b2d282e11413f59cce2a",
+          "md5ext": "1c87afc69253b2d282e11413f59cce2a.png",
+          "rotationCenterX": 480,
+          "rotationCenterY": 360
+        }
+      ],
+      "sounds": [],
+      "volume": 100,
+      "layerOrder": 41,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "size": 100,
+      "direction": 90,
+      "draggable": false,
+      "rotationStyle": "don't rotate"
+    },
+    {
+      "isStage": false,
       "name": "toroid_sprite_proof",
       "variables": {},
       "lists": {},

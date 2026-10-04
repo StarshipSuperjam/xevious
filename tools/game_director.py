@@ -12966,6 +12966,17 @@ WORLD_RENDER_LAYER_ORDERS = {
 # covered the HUD; nothing reads them any more (the craft clamps positionally, the shot expires by row).
 FRAME_TARGETS = ("frame_t", "frame_b", "frame_l", "frame_r")
 
+# PRES-01 (record 054): the cabinet bezel. The arcade screen fills a 280x360 window centred on the stage and
+# the two 100-unit side areas hold bezel art, as the game sat behind its bezel in the cabinet. ONE full-stage
+# costume (left panel, transparent window, right panel) on the target's original — zero clones, the ground
+# bands already sit at the 300-clone ceiling. The costume is owned by tools/bezel_panels.py (this module owns
+# the target's EXISTENCE + BLOCKS + layer). Pinned just above the world band so the opaque panels mask any
+# enemy or ground object drawn past the window edge (the arcade's lateral clip); the craft group, HUD and
+# attract text front themselves above it, and none of them reaches past the window.
+BEZEL_TARGET = "bezel"
+BEZEL_COSTUME = "bezel/frame"
+BEZEL_LAYER_ORDER = 41
+
 # The render arms dispatch on `slot type`; overlapping type sets across families
 # would make the dispatch ambiguous. Fail loud at import if they ever overlap.
 _GROUND_ALL_TYPES = [
@@ -13774,6 +13785,14 @@ def bonus_flag_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
     blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
+    return blocks.blocks
+
+
+def bezel_blocks() -> dict[str, dict[str, Any]]:
+    # PRES-01: the bezel is static cabinet art — shown from the green flag through every state.
+    blocks = Blocks(BEZEL_TARGET)
+    flag = blocks.flag()
+    blocks.chain(flag, [blocks.switch_costume(BEZEL_COSTUME), blocks.go(0, 0), blocks.show()])
     return blocks.blocks
 
 
@@ -14908,10 +14927,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     _ensure_gameplay_target(result, BONUS_FLAG_TARGET)
     _ensure_gameplay_target(result, EASTER_EGG_TARGET)
     _ensure_gameplay_target(result, GROUND_RENDER_TARGET)
+    _ensure_gameplay_target(result, BEZEL_TARGET)
     # PRES-01 draw order: pin the whole world band (ground pool included) so it holds without per-tick fronting.
     for _world_target in result["targets"]:
         if _world_target.get("name") in WORLD_RENDER_LAYER_ORDERS:
             _world_target["layerOrder"] = WORLD_RENDER_LAYER_ORDERS[_world_target["name"]]
+        elif _world_target.get("name") == BEZEL_TARGET:
+            # Static and framing the stage even in the editor, before the green flag.
+            _world_target.update(
+                {"layerOrder": BEZEL_LAYER_ORDER, "visible": True, "x": 0, "y": 0, "size": 100}
+            )
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -15660,6 +15685,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "bonus-flag": bonus_flag_blocks(),
         "easter-egg": easter_egg_blocks(),
         "enemy_bullet": enemy_bullet_blocks(),
+        BEZEL_TARGET: bezel_blocks(),
     }
     for target in result["targets"]:
         if target["name"] in replacements:

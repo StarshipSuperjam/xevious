@@ -96,6 +96,11 @@
       "license": "No reusable license specified by source; third-party copyrighted material",
       "notes": "Sheet credit: CrazyCarl. The repository operator did not create this asset. Source b44c4854722d2ffbb70cebc545ee7bd0.png at SHA-256 0cd8361108354d74c2ea9bfa9e22836acc66158c963eafdc5a02c9021f5b9da8; crop [153, 209, 11, 16], canvas [16, 16], anchor [8, 8]."
     },
+    "1c87afc69253b2d282e11413f59cce2a.png": {
+      "origin": "Cabinet bezel frame 'bezel/frame' (PRES-01) composited by tools/bezel_panels.py from https://raw.githubusercontent.com/estefan3112/MAME-Realistic-Bezel-Artwork/master/mame/xevious/xevious_bezel.png",
+      "license": "No reusable license for the artwork: the hosting repository carries a GPL-3.0 label, but the image adapts third-party fan artwork of Namco's copyrighted Xevious cabinet art, which that label cannot license. Third-party copyrighted material; operator rights review before broader distribution.",
+      "notes": "Credit: estefan3112 (MAME Realistic Bezel Artwork), adapting cabinet bezel artwork by John Merrit and Orionsangel, derived from Namco's Xevious cabinet art. The repository operator did not create the artwork. Source assets/bezel/xevious_bezel.png at SHA-256 dca729dee359ea454b03b064d5202b3203559d6403e132921adf292a1c2142d6; the side columns x 0..999 and x 2991..3990, rows 648..3527, box-averaged 5x4 and composited over opaque black, either side of a transparent 560-px window; 960x720, bitmapResolution 2."
+    },
     "1ed843590f3781e5880a636b7cfc13e0.png": {
       "origin": "Attract-screen text overlay 'glyph/T' composited by tools/hud_glyphs.py (render_attract_costumes) from FontStruct: \"Xevious HUD font recreation\" by Patrick H. Lauke, reshared by AnthonyCassimiro on DeviantArt — https://www.deviantart.com/anthonycassimiro/art/Xevious-HUD-font-recreation-1345048685",
       "license": "Creative Commons Attribution 3.0 (CC BY 3.0)",
