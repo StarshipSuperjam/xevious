@@ -12069,8 +12069,8 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     # sets the shot slot's state off ACTIVE; the clone sees it next iteration, frees its slot, and
     # deletes — so the slot is freed by the clone, never reallocated under a still-live clone).
     # PRES-01 top-expiry is positional (there is no top border to touch): the arcade deletes an upward
-    # shot the frame its move carries `_X` below row 0, BEFORE it is drawn (xevious_main.68k 2391-2395
-    # after move_shot 2419-2424). The loop test runs before the move, so it exits when the NEXT move would
+    # shot the frame its move carries `_X` below row 0, BEFORE it is drawn (xevious_main.68k 2391-2393,
+    # delete_shot 2394-2396, after move_shot 2419-2424). The loop test runs before the move, so it exits when the NEXT move would
     # carry the shot past row 0 (y > RENDER_ROW_TOP) — the last drawn position is always on-field.
     at_top = blocks.op_gt(
         blocks.op_add(blocks.yposition(), number(shot_dy)), number(RENDER_ROW_TOP)
@@ -12941,9 +12941,10 @@ GROUND_LAYER_ORDER = 27
 # themselves every tick (that put them over the HUD once the border bands were gone); they keep the
 # fixed layer of their target, and the HUD clones front once at creation, so the HUD draws over every
 # world object while the player group (craft, shots, crosshair, bomb, explosion) still fronts each tick
-# and draws over the HUD. This mirrors the reference's priorities (src/amiga/amiga.68k 984-986: the
-# foreground tiles-and-sprites playfield has priority, the craft sprites over the BOBs; 2107-2109 redraws
-# the foreground tiles over the BOBs). Without per-tick fronting the static order must itself keep ground
+# and draws over the HUD. Craft > HUD > world mirrors the reference's priorities (src/amiga/amiga.68k
+# 985-987: only the craft body's hardware sprites have priority over the BOBs; 2107-2109 redraws the
+# foreground text tiles over the BOBs). The craft's weapons fronting over the HUD and enemy bullets is an
+# operator choice, not the reference: there they are BOBs drawn under the text (record 053). Without per-tick fronting the static order must itself keep ground
 # installations below every flyer (arcade first pass, see above), so the flyers that sat at layers 18-24
 # — below the ground band, hidden only by their old per-tick front — are pinned above it. The Bonus Flag
 # (arcade obj slot 0x00, drawn first) sits just under the ground pool; enemy bullets stay on top of the

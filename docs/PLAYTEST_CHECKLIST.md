@@ -209,7 +209,10 @@ so area position is read from the `area progress`/`area number` variable watcher
    render above the terrain; the craft and its shots draw over every enemy, bullet, and ground object, and
    the HUD draws over the enemies too (an enemy passing under the score lines goes behind them). There is no
    border: nothing covers the craft or the HUD, enemies vanish as they cross the top row (stage y about 155)
-   rather than sliding up over the HUD, and a shot disappears at that same line.
+   rather than sliding up over the HUD, and a shot disappears at that same line. One known difference from
+   the arcade, by your choice: the shots, crosshair, and bomb draw over the HUD (in the arcade only the ship
+   body does), so with the ship at its top stop the crosshair covers the score text — judge whether that reads
+   well.
 8. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,
    and crosshair behavior of the recovery build (#13/#14) you approved — a single spatial factor was tried
    and rejected, and this build tunes those quantities as port constants instead. Confirm the feel is back

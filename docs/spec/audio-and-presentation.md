@@ -42,14 +42,17 @@ craft (`src/xevious_main.68k` `update_crosshair` 2262–2271). A player shot is 
 row 0, as the arcade deletes it once its position wraps past the top (`src/xevious_main.68k`
 `main_fn_30_shot_fn` 2391–2393, `delete_shot` 2394–2396). World objects — enemies, enemy bullets, ground objects, and the Bonus
 Flag — are drawn only while their row is on the field, rows 0–39; the arcade culls an object at row 40
-(`src/xevious_main.68k` `check_scroll_offscreen` 4827–4839) and shows rows 4–39 of the objects it keeps.
+(`src/xevious_main.68k` `check_scroll_offscreen` 4827–4839, which also culls an object past the side
+edge) and shows rows 4–39 of the objects it keeps.
 Hiding a whole sprite at the row-0 cut line is a port necessity: Scratch cannot clip a sprite at a screen
 edge, and with no border nothing else masks an object above the field. Drawn layers run, front to back:
-the craft and its weapons, the HUD, then the world objects — the reference draws the craft's hardware
-sprites and its foreground text layer over the enemy objects (its Amiga display setup,
-`src/amiga/amiga.68k` lines 984–986 in platform_init and 2107–2109 in redraw_fg_tiles). The
-stop-line values, the row-0 cut, and the layer order are recorded with their reasons in the build's
-framing mechanics record.
+the craft and its weapons, the HUD, then the world objects. The craft body over the HUD over the world
+objects follows the reference, which gives only the craft body's hardware sprites priority over the
+objects and redraws its foreground text layer over them (its Amiga display setup, `src/amiga/amiga.68k`
+lines 985–987 in platform_init and 2107–2109 in redraw_fg_tiles). Drawing the craft's weapons — shots,
+crosshair, bomb, and explosion — over the HUD and the enemy bullets is the owner's choice: in the
+reference they are objects drawn under the text. The stop-line values, the row-0 cut, and the layer
+order are recorded with their reasons in the build's framing mechanics record.
 
 **Animation timing.** Where this spec records frame counts — the ~56-frame player explosion, the bomb's
 two-stage flight animation and four-color cycle, the Sol Tower's seven-step rise, bullet color pulsing
