@@ -50,6 +50,32 @@ export function freezeVariableChange(project, spriteName, varName) {
 }
 
 /**
+ * Rewrite only the `change <var> by <fromValue>` blocks on a sprite (leaving the variable's other
+ * changes alone). Used to undo the area clock's carry (`change area progress by -65536` → by 0)
+ * without freezing the clock's own +32 step.
+ */
+export function changeVariableChangeBy(project, spriteName, varName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  const vid = variableId(t, varName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (
+      b.opcode === 'data_changevariableby' &&
+      b.fields.VARIABLE &&
+      b.fields.VARIABLE[1] === vid &&
+      Array.isArray(b.inputs.VALUE) &&
+      Array.isArray(b.inputs.VALUE[1]) &&
+      String(b.inputs.VALUE[1][1]) === String(fromValue)
+    ) {
+      b.inputs.VALUE = [1, [4, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'change ${varName} by ${fromValue}' on ${spriteName}`);
+}
+
+/**
  * Pin every `set <var> to ...` on a sprite to a constant, severing whatever expression fed the
  * set. Mirrors freezeVariableChange but for `data_setvariableto`: replaces inputs.VALUE with a
  * literal shadow so the variable can no longer track its source. Used to break the density chain

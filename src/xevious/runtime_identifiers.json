@@ -133,6 +133,11 @@
       "name": "andor part lateral",
       "scope": "Stage"
     },
+    "area-checkpoint-progress": {
+      "kind": "variable",
+      "name": "checkpoint progress",
+      "scope": "Stage"
+    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",

@@ -1756,44 +1756,135 @@ export const SCENARIOS = [
   {
     key: 'near-end-checkpoint',
     behavior:
-      'A new-life death advances the area when the frozen scroll row is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
+      'A new-life death advances the area when the row the arcade reads after its 44 ticks of post-death scrolling is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
     playtestStep: 5,
     async drive(vm) {
       // The live death->respawn sequence completes within a single headless pump, so it cannot be
-      // paused to inject a frozen row. Instead drive `area_reset` in isolation: green-flag to a
-      // settled state, inject the new-life scope + a chosen area number + a chosen frozen scroll
-      // row, fire `director reset`, and read the resulting area number — exactly the death-tick
-      // checkpoint decision, at every boundary.
-      const trial = (row, area) => {
+      // paused to inject a death position. Instead drive `area_reset` in isolation: green-flag to a
+      // settled state, inject the new-life scope + a chosen area number + a chosen frozen death-tick
+      // `area progress`, fire `director reset`, and read the resulting area number — exactly the
+      // checkpoint decision. The checkpoint projects 44 ticks (1408 progress) ahead, so the window's
+      // edges in death-tick progress are: projected row 67 first at 50080, row 15 at 63616.
+      const trial = (progress, area) => {
         vm.greenFlag();
         step(vm, 2);
         writeVar(vm, 'game-director-reset-scope', 'new-life');
         writeVar(vm, 'area-number', area);
-        writeVar(vm, 'area-scroll-row', row);
+        writeVar(vm, 'area-progress', progress);
         fireBroadcast(vm, 'director reset');
         step(vm, 1);
         return readVar(vm, 'area-number');
       };
       return {
-        low: trial(14, 5), // 0x0E — window low edge
-        mid: trial(40, 5),
-        high: trial(67, 5), // 0x43 — window high edge
-        belowTop: trial(13, 5), // area-top row, below the window
-        aboveWindow: trial(68, 5), // just above 0x43
-        wrap16: trial(40, 16), // in-window death in area 16
+        high: trial(50080, 5), // projected row 67 (0x43) — window high edge
+        mid: trial(57984, 5), // projected row 41
+        low: trial(63616, 5), // projected row 15 — the last tick before the projection completes the area
+        aboveWindow: trial(50048, 5), // projected row 68, just above 0x43
+        top: trial(0, 5), // projected row 7, below the window
+        wrap16: trial(57984, 16), // in-window death in area 16
       };
     },
     assert(obs) {
-      assert.equal(obs.low, 6, 'a death at row 14 (window low edge) advances the area');
-      assert.equal(obs.mid, 6, 'a death at row 40 advances the area');
-      assert.equal(obs.high, 6, 'a death at row 67 (window high edge) advances the area');
-      assert.equal(obs.belowTop, 5, 'a death at row 13 restarts (holds the area)');
-      assert.equal(obs.aboveWindow, 5, 'a death at row 68 restarts (holds the area)');
+      assert.equal(obs.high, 6, 'a death projecting to row 67 (window high edge) advances the area');
+      assert.equal(obs.mid, 6, 'a death projecting to row 41 advances the area');
+      assert.equal(obs.low, 6, 'a death projecting to row 15 advances the area');
+      assert.equal(obs.aboveWindow, 5, 'a death projecting to row 68 restarts (holds the area)');
+      assert.equal(obs.top, 5, 'a death at the area top restarts (holds the area)');
       assert.equal(obs.wrap16, 7, 'an in-window death in area 16 wraps to area 7');
     },
     // Raise the window's lower bound (row > 13) out of reach, so no death is ever near-end and the
     // in-window advances never happen → the advance assertions fail.
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 13, 999),
+  },
+  {
+    // AREA-01 (slice 20): the projection's area-change edge. The arcade keeps scrolling for 88 frames
+    // after a death with the area completion live (xevious_main.68k 507-521; xevious_sub.68k 696-730), so a
+    // death in the last 37-44 ticks of an area completes it during the explosion and THEN reads row 0x0E —
+    // skipping the next area too; a death in the 8-tick carry window at the start of an area (row 0x0E,
+    // progress -480..-256) reads row 9 after the scroll and restarts.
+    // roadmap-evidence: AREA-01 success  (a death 37-44 ticks before the end of an area skips the next area,
+    //   one 36 ticks before advances once, and a carry-window death restarts — live, through area_reset)
+    key: 'checkpoint-projected-area-change',
+    behavior:
+      'A death in the last 37-44 ticks of an area completes it during the explosion and skips the next area too, while a death in the carry window at the start of an area restarts it',
+    playtestStep: 5,
+    async drive(vm) {
+      const trial = (progress, area) => {
+        vm.greenFlag();
+        step(vm, 2);
+        writeVar(vm, 'game-director-reset-scope', 'new-life');
+        writeVar(vm, 'area-number', area);
+        writeVar(vm, 'area-progress', progress);
+        fireBroadcast(vm, 'director reset');
+        step(vm, 1);
+        return readVar(vm, 'area-number');
+      };
+      return {
+        skipFirst: trial(63648, 5), // projects to 65056: completes, carries to -480 (row 0x0E) -> advances again
+        skipLast: trial(63872, 5), // projects to 65280 -> -256, still row 0x0E
+        afterSkip: trial(63904, 5), // projects to 65312 -> -224, row 0x0D: completion only
+        skip16: trial(63648, 16), // completes 16 -> 7, then the band advances 7 -> 8
+        carryStart: trial(-480, 5), // carry window: projects to 928, row 9
+        carryEnd: trial(-256, 5),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.skipFirst, 7, 'a death 44 ticks before the end skips the next area');
+      assert.equal(obs.skipLast, 7, 'a death 37 ticks before the end skips the next area');
+      assert.equal(obs.afterSkip, 6, 'a death 36 ticks before the end advances one area');
+      assert.equal(obs.skip16, 8, 'the skip wraps 16 -> 7 and then advances to 8');
+      assert.equal(obs.carryStart, 5, 'a death at the start of the carry window restarts the area');
+      assert.equal(obs.carryEnd, 5, 'a death at the end of the carry window restarts the area');
+    },
+    // roadmap-evidence: AREA-01 failure  (a checkpoint that reads the frozen death-tick position — no
+    //   projection — misses the skip and advances on a carry-window death)
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', 1408, 0),
+  },
+  {
+    // AREA-01 (slice 20): completing an area carries the scroll clock, as the arcade does (its
+    // `sub_fn_3__handle_next_area`, xevious_sub.68k 696-730, never resets the counter): `area progress`
+    // drops by 65536 to the same counter value and keeps counting, rather than re-topping to 0. Live:
+    // seed area progress two ticks short of completion during play and let the walk run. The walk's
+    // `tick` advances once per walk tick, right after `advance area`, so `area progress` must equal
+    // seed + 32*ticks - 65536 exactly (one carry; a re-top would leave 32*(ticks after completion)).
+    // roadmap-evidence: AREA-01 success  (the clock carries across a live area completion and the 8 carry
+    //   ticks at row 0x0E never complete the area a second time)
+    key: 'area-clock-carry',
+    behavior:
+      'Completing an area carries the scroll clock (progress drops by 65536 and keeps counting) instead of re-topping it, and the carry window at row 0x0E never completes the area twice',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const seed = 64992; // two ticks short of 65056, area 1's completion
+      writeVar(vm, 'area-number', 3);
+      writeVar(vm, 'area-progress', seed);
+      const tick0 = readVar(vm, 'tick');
+      let ticks = 0;
+      for (let i = 0; i < 40 && ticks < 12; i += 1) {
+        step(vm, 1);
+        ticks = readVar(vm, 'tick') - tick0;
+      }
+      return {
+        ticks,
+        progress: readVar(vm, 'area-progress'),
+        area: readVar(vm, 'area-number'),
+        state: readVar(vm, 'game-director-state'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.state, 'playing', 'precondition: still playing (no death reset the clock)');
+      assert.ok(obs.ticks >= 12, `the walk ran past the 8-tick carry window (ran ${obs.ticks})`);
+      assert.ok(obs.ticks < 2000, 'the walk stopped before the next area could complete');
+      assert.equal(obs.area, 4, 'the area completed exactly once');
+      assert.equal(
+        obs.progress,
+        64992 + 32 * obs.ticks - 65536,
+        'area progress carried by 65536 across the completion and kept counting',
+      );
+    },
+    // Undo the carry (change by -65536 -> by 0): progress keeps climbing past completion, still at row
+    // 0x0E for 7 more ticks with progress > 0, so the area completes again on each of them.
+    negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'Stage', 'area progress', -65536, 0),
   },
   {
     key: 'difficulty-and-formations',
@@ -8535,13 +8626,14 @@ export const SCENARIOS = [
       vm.greenFlag();
       step(vm, 2);
       // Two-player game, player 1 active, both players holding craft; distinct P1 (live) and P2 (other/shadow)
-      // score + area so the swap is observable per field. `scroll row` sits BELOW the near-end window so the
-      // outgoing player's checkpoint does not advance their area (which would confound the saved-area read).
+      // score + area so the swap is observable per field. `area progress` sits at the area top, BELOW the
+      // near-end window, so the outgoing player's checkpoint does not advance their area (which would confound
+      // the saved-area read).
       const setupDead = (currPlayer) => {
         writeVar(vm, 'game-director-state', 'player-dead');
         writeVar(vm, 'cabinet-two-player', 1);
         writeVar(vm, 'cabinet-curr-player', currPlayer);
-        writeVar(vm, 'area-scroll-row', 0);
+        writeVar(vm, 'area-progress', 0);
         // A real game, not an attract demo: green flag leaves the cabinet in attract, and since PRES-01's
         // arcade-size craft box a demo craft can die inside the settle steps, ending the demo and resetting
         // the scores before the second swap is read.
@@ -8594,6 +8686,47 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'swap players'),
   },
   {
+    // AREA-01 (slice 20) / ARCH-5: the two-player handoff applies the projected near-end checkpoint to the
+    // OUTGOING player's area before the swap, then puts the clock at the area top so the INCOMING player's
+    // new-life re-top (which runs the same checkpoint first) leaves their area alone. Same director-receiver
+    // isolation as two-player-alternation.
+    // roadmap-evidence: AREA-01 success  (a two-player death 44 ticks before the end skips the outgoing
+    //   player's next area, and the incoming player resumes their own area unadvanced)
+    key: 'two-player-checkpoint-outgoing-only',
+    behavior:
+      "On a two-player handoff the projected near-end checkpoint advances only the outgoing player's area; the incoming player resumes their own area",
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'player-dead');
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'cabinet-attract', 0);
+      writeVar(vm, 'eco-craft', 2);
+      writeVar(vm, 'other-craft', 3);
+      writeVar(vm, 'area-number', 5);
+      writeVar(vm, 'other-area-number', 9);
+      writeVar(vm, 'area-progress', 63648); // projects to completion + row 0x0E: skip 5 -> 7
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3);
+      return {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveArea: readVar(vm, 'area-number'),
+        savedArea: readVar(vm, 'other-area-number'),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.currPlayer), 1, 'precondition: the handoff passed control to player 2');
+      assert.equal(Number(obs.savedArea), 7, "the outgoing player's near-end death skipped their next area");
+      assert.equal(Number(obs.liveArea), 9, "the incoming player resumes their own area, unadvanced");
+    },
+    // Pin every `set area progress` to the death position: the handoff no longer puts the clock at the
+    // area top, so the incoming player's re-top re-runs the checkpoint on the outgoing player's position
+    // and advances THEIR area (9 -> 11).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'area progress', 63648),
+  },
+  {
     // CAB-03 (slice 18): solo continuation — when the OTHER player is already out, a craft death does NOT
     // alternate; the current player simply respawns and plays on (the swap is gated on the other player still
     // holding craft, xevious_main 682). Same director-receiver isolation as two-player-alternation.
@@ -8609,7 +8742,7 @@ export const SCENARIOS = [
       writeVar(vm, 'game-director-state', 'player-dead');
       writeVar(vm, 'cabinet-two-player', 1);
       writeVar(vm, 'cabinet-curr-player', 0);
-      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'area-progress', 0);
       writeVar(vm, 'eco-craft', 2); // the current player still has craft -> respawn
       writeVar(vm, 'other-craft', 0); // the other player is OUT -> no alternation
       writeVar(vm, 'eco-score', 1111);
@@ -8700,7 +8833,7 @@ export const SCENARIOS = [
       writeVar(vm, 'game-director-state', 'player-dead');
       writeVar(vm, 'cabinet-two-player', 1);
       writeVar(vm, 'cabinet-curr-player', 0);
-      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'area-progress', 0);
       writeVar(vm, 'eco-craft', 0); // the current player (player 1) is ELIMINATED
       writeVar(vm, 'other-craft', 3); // the other player (player 2) is still in -> banner + handoff
       fireBroadcast(vm, 'death complete');

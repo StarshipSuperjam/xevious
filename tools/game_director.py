@@ -491,18 +491,24 @@ RANK_IN_PROCCODE = "rank in"
 # The reference runs a 16-bit scroll counter initialized to 0x0D00 and decreased by 16 per
 # arcade frame; its high byte is the descending "scroll row" (0x0D..0x00, wrapping to 0xFF
 # and continuing down), and the area completes when that row reaches 0x0E. We store the
-# monotonic INCREASING `area progress` (0 up to ~0xFF00; completion actually fires at 65056,
-# see AREA_COMPLETE_ROW) as the SOLE position authority — so within an area the position never
-# rewinds, resetting to 0 only when the area completes and the area number advances — and DERIVE
-# the arcade scroll row once per tick: row = floor(((0x0D00 - area progress) mod 0x10000) / 256).
+# monotonic INCREASING `area progress` as the SOLE position authority and DERIVE the arcade
+# scroll row once per tick: row = floor(((0x0D00 - area progress) mod 0x10000) / 256).
 # Cadence: 1 build tick = 2 arcade frames, so `area progress` advances 32 units per tick;
 # 256 is divisible by 32, so every row is visited (no schedule trigger is skipped).
+# The counter is NEVER reset at area completion (`sub_fn_3__handle_next_area`, xevious_sub.68k
+# 696-730, only swaps the map offset and schedule pointer); it is set to 0x0D00 only at game start
+# and each new life (`main_gameplay_loop`, xevious_main.68k 471). So completion, first reached at
+# AREA_COMPLETE_PROGRESS (65056), CARRIES the clock: `area progress` drops by AREA_COUNTER_WRAP to
+# -480 (the same counter value, row 0x0E) and keeps counting, and every area after the first lasts
+# the full 0x10000 counter span (2048 ticks). A re-top (game start, new life) sets it to 0.
+# The completion test is `row == 14 AND area progress > 0`: the arcade's two-phase wait (MSB must
+# leave 0x0E, then reach it) — after a carry the row is still 0x0E for 8 ticks (progress -480..-256),
+# and the `> 0` guard is what stops completion firing again in that window.
 AREA_PROGRESS_ID = "area-progress"
 AREA_NUMBER_ID = "area-number"
 SCROLL_ROW_ID = "area-scroll-row"
-# Dormant seam: the per-area terrain start column, set on area entry from the ingested
-# offset table. No consumer this slice (the visual terrain stays decoupled); the
-# presentation slice (20) couples the visual scroll to the clock and reads this.
+# The per-area terrain start column, set on area entry from the ingested offset table
+# (`area_offset_in_map`); the terrain renderer reads it.
 TERRAIN_COLUMN_ID = "area-terrain-column"
 AREA_MAP_COLUMN_ID = "area-map-column"
 ADVANCE_AREA_PROCCODE = "advance area"
@@ -515,13 +521,38 @@ AREA_TOP_ROW = 0x0D  # 13; the row at area top (progress 0), also each table's e
 AREA_FIRST = 1
 AREA_MAX = 16
 AREA_LOOP_BACK = 7  # completing area 16 continues at area 7, not area 1 and not a win screen
-# The near-end checkpoint (docs/mechanics/003, 013): a death with the frozen scroll row in
-# [0x0E, 0x43] advances to the next area instead of restarting the current one. Checked as
-# `row > 13 AND row < 68` (Scratch has no <=). The row-14 edge is a vacuous runtime state
-# (completion resets the area before a death can be observed at row 14), but the boundary
-# logic must still handle it; the reachable checkpoint floor at death is row 15.
-AREA_CHECKPOINT_LOW_EXCL = 0x0D  # 13; the frozen row must be strictly greater (>= 0x0E)
-AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the frozen row must be strictly less (<= 0x43)
+
+
+def _area_row(progress: int) -> int:
+    """The derived scroll row for a progress value — the generator's model of `_row_of`."""
+    return ((AREA_COUNTER_INIT - progress) % AREA_COUNTER_WRAP) // AREA_ROW_DIVISOR
+
+
+def _first_completion_progress() -> int:
+    progress = AREA_PROGRESS_STEP
+    while _area_row(progress) != AREA_COMPLETE_ROW:
+        progress += AREA_PROGRESS_STEP
+    return progress
+
+
+# The first positive progress whose row is 0x0E: where area 1 completes, and where every carried area
+# completes once its progress climbs back past 0.
+AREA_COMPLETE_PROGRESS = _first_completion_progress()
+assert AREA_COMPLETE_PROGRESS == 65056, AREA_COMPLETE_PROGRESS
+# The near-end checkpoint (docs/mechanics/003, 013). The arcade keeps scrolling through the craft's
+# explosion and the pause after it, then reads the row (`main_gameplay_loop` xevious_main.68k 507-521:
+# MSB - 14 < 54, i.e. row in [0x0E, 0x43], advances the area). The port freezes the screen at the death
+# tick instead, so the checkpoint PROJECTS: it adds the 88 frames (44 ticks) the arcade would have
+# scrolled, completes the area first if that projection passes AREA_COMPLETE_PROGRESS (carrying, exactly
+# as the walk does), and then applies the row band to the projected row. Every death therefore has the
+# arcade's area outcome; only the frozen picture during the explosion differs (recorded divergence).
+# Checked as `row > 13 AND row < 68` (Scratch has no <=).
+AREA_DEATH_SCROLL_TICKS = 44  # 88 arcade frames of scrolling between the death and the checkpoint read
+AREA_CHECKPOINT_PROJECTION = AREA_DEATH_SCROLL_TICKS * AREA_PROGRESS_STEP  # 1408
+AREA_CHECKPOINT_LOW_EXCL = 0x0D  # 13; the projected row must be strictly greater (>= 0x0E)
+AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the projected row must be strictly less (<= 0x43)
+# Stage-internal working register for the projection (custom blocks have no locals).
+CHECKPOINT_PROGRESS_ID = "area-checkpoint-progress"
 
 SPEC_DATA_DIR = ROOT / "docs" / "spec" / "data"
 
@@ -8815,40 +8846,64 @@ def _advance_area_number(blocks: Blocks) -> str:
     return branch
 
 
-def _at_area_checkpoint(blocks: Blocks) -> str:
-    # ARCH-5 (slice 18): the near-end "advance area" band test — the frozen death-tick `scroll row` lies in
-    # [0x0E, 0x43] (strictly greater than AREA_CHECKPOINT_LOW_EXCL and strictly less than
-    # AREA_CHECKPOINT_HIGH_EXCL), so a death near the end of an area advances to the next area on the new life
-    # instead of restarting the current one (docs/mechanics 003, 013). One source, called from the new-life
-    # area re-top (`area_reset`) AND the two-player alternation handoff (`death complete`), so the two sites
-    # can never drift on the band constants. Returns the operator_and reporter id.
-    near_end = blocks.add("operator_and")
-    low = blocks.greater(near_end, "scroll row", SCROLL_ROW_ID, AREA_CHECKPOINT_LOW_EXCL)
-    high = blocks.op_gt(number(AREA_CHECKPOINT_HIGH_EXCL), variable("scroll row", SCROLL_ROW_ID))
-    blocks.blocks[high]["parent"] = near_end
-    blocks.blocks[near_end]["inputs"] = {"OPERAND1": [2, low], "OPERAND2": [2, high]}
-    return near_end
+def _row_of(blocks: Blocks, name: str, var_id: str) -> str:
+    # floor(((AREA_COUNTER_INIT - <progress var>) mod AREA_COUNTER_WRAP) / 256) — the one row derivation,
+    # shared by the walk's `scroll row` and the checkpoint's projected row. A FRESH reporter per call (a
+    # reporter reused across two inputs is stolen by the second). Built through the centralized operator
+    # helpers (never inline operator blocks — wrong slot keys there are invisible to structural tests and
+    # silently evaluate to NaN).
+    delta = blocks.op_sub(number(AREA_COUNTER_INIT), variable(name, var_id))
+    wrapped = blocks.op_mod(delta, number(AREA_COUNTER_WRAP))
+    divided = blocks.op_div(wrapped, number(AREA_ROW_DIVISOR))
+    return blocks.op_floor(divided)
+
+
+def _area_checkpoint(blocks: Blocks) -> list[str]:
+    # ARCH-5 (slice 18) / AREA-01 (slice 20): the near-end checkpoint, projected (see
+    # AREA_CHECKPOINT_PROJECTION). `checkpoint progress` = the frozen death-tick progress + the 44 ticks the
+    # arcade keeps scrolling; if that passes completion, the area advances and the projection carries
+    # (-AREA_COUNTER_WRAP), exactly as the walk's completion does; then a projected row in [0x0E, 0x43]
+    # advances the area (again). One source, used by the new-life area re-top (`area_reset`) AND the
+    # two-player alternation handoff (`death complete`), so the two sites can never drift. Returns statements.
+    project = blocks.set_var_expr(
+        "checkpoint progress",
+        CHECKPOINT_PROGRESS_ID,
+        blocks.op_add(variable("area progress", AREA_PROGRESS_ID), number(AREA_CHECKPOINT_PROJECTION)),
+    )
+    completes = blocks.if_reporter(
+        blocks.greater(
+            None, "checkpoint progress", CHECKPOINT_PROGRESS_ID, AREA_COMPLETE_PROGRESS - 1
+        ),
+        [
+            _advance_area_number(blocks),
+            blocks.change_var("checkpoint progress", CHECKPOINT_PROGRESS_ID, -AREA_COUNTER_WRAP),
+        ],
+    )
+    near_end = blocks.op_and(
+        blocks.op_gt(
+            _row_of(blocks, "checkpoint progress", CHECKPOINT_PROGRESS_ID),
+            number(AREA_CHECKPOINT_LOW_EXCL),
+        ),
+        blocks.op_gt(
+            number(AREA_CHECKPOINT_HIGH_EXCL),
+            _row_of(blocks, "checkpoint progress", CHECKPOINT_PROGRESS_ID),
+        ),
+    )
+    band = blocks.if_reporter(near_end, [_advance_area_number(blocks)])
+    return [project, completes, band]
 
 
 def _set_scroll_row(blocks: Blocks) -> str:
-    # scroll row = floor(((AREA_COUNTER_INIT - area progress) mod AREA_COUNTER_WRAP) / 256),
-    # built through the centralized operator helpers (never inline operator blocks — wrong
-    # slot keys there are invisible to structural tests and silently evaluate to NaN).
-    delta = blocks.op_sub(number(AREA_COUNTER_INIT), variable("area progress", AREA_PROGRESS_ID))
-    wrapped = blocks.op_mod(delta, number(AREA_COUNTER_WRAP))
-    divided = blocks.op_div(wrapped, number(AREA_ROW_DIVISOR))
-    floored = blocks.op_floor(divided)
-    return blocks.set_var_expr("scroll row", SCROLL_ROW_ID, floored)
+    return blocks.set_var_expr(
+        "scroll row", SCROLL_ROW_ID, _row_of(blocks, "area progress", AREA_PROGRESS_ID)
+    )
 
 
-def _enter_area_top(blocks: Blocks) -> list[str]:
-    # The state every area entry establishes (fresh game, new life, area completion): progress at
-    # the top, the derived row snapped to the area-top row, the per-area terrain start column, and
-    # (AREA-02) the schedule cursor pointed at the area's first record with the per-area fired
-    # counter zeroed — so every entry point re-tops the schedule consistently.
+def _enter_next_area(blocks: Blocks) -> list[str]:
+    # What an area change sets up (`sub_fn_3__handle_next_area` xevious_sub.68k 711-722, and the same
+    # writes in the re-top, xevious_main.68k 470-483): the per-area terrain start column and (AREA-02) the
+    # schedule cursor pointed at the area's first record, with the per-area fired counter zeroed.
     return [
-        blocks.set_var("area progress", AREA_PROGRESS_ID, number(0)),
-        blocks.set_var("scroll row", SCROLL_ROW_ID, number(AREA_TOP_ROW)),
         blocks.set_var_expr(
             "terrain column",
             TERRAIN_COLUMN_ID,
@@ -8864,6 +8919,18 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
             ),
         ),
         blocks.set_var("schedule fired", SCHEDULE_FIRED_ID, number(0)),
+    ]
+
+
+def _enter_area_top(blocks: Blocks) -> list[str]:
+    # The re-top (fresh game, new life — `main_gameplay_loop` xevious_main.68k 466-490): the clock back to
+    # the area top (progress 0, the derived row snapped to the area-top row), the next-area state above, and
+    # the wave-register clears. An area COMPLETION does none of the clock or clear writes — it only runs
+    # `_enter_next_area` and carries the clock (see `install_advance_area`).
+    return [
+        blocks.set_var("area progress", AREA_PROGRESS_ID, number(0)),
+        blocks.set_var("scroll row", SCROLL_ROW_ID, number(AREA_TOP_ROW)),
+        *_enter_next_area(blocks),
         # CAB-03 (cabinet.two-player, slice 18): clear the incoming wave registers on every area-top entry,
         # exactly as the arcade's enter-area-top routine clears num_flying_enemies + flying_enemy_type_tbl_offset
         # (xevious_main 484-485) in the SAME block that clears num_bacura (486-487, mirrored just below). The
@@ -9918,14 +9985,29 @@ def install_advance_area(blocks: Blocks) -> None:
     # masked-random initial fire delay, mirroring handle_logram_init — the arcade draws at init too; it
     # runs before the walk phase's own draws, so a Logram-spawn tick shifts that tick's stream by one.)
     # Advances the monotonic position and derives the row once; then a single `if/else` either completes
-    # the area (advance 16 -> 7 and re-top) OR consumes the schedule for this row — never both on one tick.
+    # the area OR consumes the schedule for this row — never both on one tick. Completion (row 0x0E with
+    # progress > 0, the arcade's two-phase wait) advances 16 -> 7, CARRIES the clock (progress drops by the
+    # counter wrap, so the row stays 0x0E and the scroll continues), and points the terrain column and the
+    # schedule at the new area. It does not re-top the clock or clear the wave registers: the arcade's
+    # `sub_fn_3__handle_next_area` (xevious_sub.68k 696-730) does neither.
     definition = _install_warp_proc(blocks, ADVANCE_AREA_PROCCODE)
     step = blocks.change_var("area progress", AREA_PROGRESS_ID, AREA_PROGRESS_STEP)
     set_row = _set_scroll_row(blocks)
     completion = blocks.add("control_if_else")
-    complete = blocks.var_equals(completion, "scroll row", SCROLL_ROW_ID, AREA_COMPLETE_ROW)
+    complete = blocks.op_and(
+        blocks.var_equals(None, "scroll row", SCROLL_ROW_ID, AREA_COMPLETE_ROW),
+        blocks.greater(None, "area progress", AREA_PROGRESS_ID, 0),
+    )
+    blocks.blocks[complete]["parent"] = completion
     blocks.blocks[completion]["inputs"]["CONDITION"] = [2, complete]
-    blocks.substack(completion, [_advance_area_number(blocks), *_enter_area_top(blocks)])
+    blocks.substack(
+        completion,
+        [
+            _advance_area_number(blocks),
+            blocks.change_var("area progress", AREA_PROGRESS_ID, -AREA_COUNTER_WRAP),
+            *_enter_next_area(blocks),
+        ],
+    )
     blocks.substack(completion, _consume_schedule(blocks), name="SUBSTACK2")
     blocks.chain(definition, [step, set_row, completion])
 
@@ -10490,9 +10572,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # existing one-player decision.
     #
     # ALTERNATE path — two-player game AND the other player still has craft to take over:
-    #   * The outgoing player's own near-end checkpoint is applied to THEIR area number FIRST, while `scroll
-    #     row` still holds their frozen death-tick row and `area number` is still theirs — the same
-    #     `_at_area_checkpoint` band the one-player new-life re-top uses (ARCH-5). It must run before the swap:
+    #   * The outgoing player's own near-end checkpoint is applied to THEIR area number FIRST, while `area
+    #     progress` still holds their frozen death-tick position and `area number` is still theirs — the same
+    #     `_area_checkpoint` the one-player new-life re-top uses (ARCH-5). It must run before the swap:
     #     `area_reset` re-tops the INCOMING player after the transition and would otherwise advance the wrong
     #     player's area.
     #   * If the outgoing player is ELIMINATED (craft == 0), raise the "GAME OVER PLAYER n" banner for the
@@ -10501,10 +10583,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     #     nothing to throttle (unlike an in-play hold) — a collapsing hold_ticks would flash the banner by in a
     #     single step. On a non-elimination alternation (the outgoing player still has craft) there is no banner.
     #   * Swap the two players' saved state (`swap players`) and toggle `curr player` (1 - curr player), so the
-    #     incoming player's context is now live. Reset `scroll row` to AREA_TOP_ROW so the incoming player's
-    #     new-life re-top runs `_enter_area_top` (re-tops their area) rather than re-running the checkpoint
-    #     (0x0D is not > 0x0D, so `_at_area_checkpoint` is false for them). Then respawn into their new life.
-    checkpoint = blocks.if_reporter(_at_area_checkpoint(blocks), [_advance_area_number(blocks)])
+    #     incoming player's context is now live. Put the clock at the area top (progress 0, row 0x0D) so the
+    #     incoming player's new-life re-top only re-tops their area: the checkpoint it runs first projects
+    #     from progress 0 (row 7 — neither completion nor the band), so it leaves their area number alone.
+    #     Then respawn into their new life.
+    checkpoint = _area_checkpoint(blocks)
     banner = blocks.add("control_if")
     eliminated = blocks.op_eq(variable("craft", LIVES_ID), number(0))
     blocks.blocks[eliminated]["parent"] = banner
@@ -10529,7 +10612,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(
         alt,
         [
-            checkpoint,
+            *checkpoint,
             banner,
             blocks.call_proc(SWAP_PLAYERS_PROCCODE, warp=True),
             blocks.set_var_expr(
@@ -10537,6 +10620,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                 CURR_PLAYER_ID,
                 blocks.op_sub(number(1), variable("curr player", CURR_PLAYER_ID)),
             ),
+            blocks.set_var("area progress", AREA_PROGRESS_ID, number(0)),
             blocks.set_var("scroll row", SCROLL_ROW_ID, number(AREA_TOP_ROW)),
             blocks.set_var("death outcome", OUTCOME_ID, text("respawn")),
             blocks.call_transition("respawning", "new-life"),
@@ -10914,11 +10998,12 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # pinned opcode chain (like the eight existing reset receivers, each branching on its own
     # scope for its own concern). It touches only the area vars, so the unordered same-target
     # hat execution is safe. A world reset (cold-start / new-game) returns to area 1 and re-tops;
-    # a new life runs the NEAR-END CHECKPOINT: a death with the frozen scroll row in [0x0E, 0x43]
-    # advances to the next area instead of restarting (discharging docs/mechanics/003, 013),
-    # then re-tops. On a scope-`none` transition (e.g. the death itself) and on game-over this
+    # a new life runs the NEAR-END CHECKPOINT (projected from the death-tick progress, see
+    # AREA_CHECKPOINT_PROJECTION): a death that the arcade would read in rows [0x0E, 0x43] after
+    # its explosion advances to the next area instead of restarting (discharging docs/mechanics/003,
+    # 013), then re-tops. On a scope-`none` transition (e.g. the death itself) and on game-over this
     # receiver does nothing, so `area progress`/`scroll row` stay frozen through the death
-    # sequence and the checkpoint reads the real death-tick row.
+    # sequence and the checkpoint projects from the real death-tick progress.
     area_reset = blocks.receive("director reset")
     world_area = reset_if(
         blocks,
@@ -10928,9 +11013,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     new_life = blocks.add("control_if")
     new_life_scope = blocks.scope_is(new_life, "new-life")
     blocks.blocks[new_life]["inputs"]["CONDITION"] = [2, new_life_scope]
-    # ARCH-5: the near-end checkpoint band test is shared with the two-player alternation handoff.
-    checkpoint = blocks.if_reporter(_at_area_checkpoint(blocks), [_advance_area_number(blocks)])
-    blocks.substack(new_life, [checkpoint, *_enter_area_top(blocks)])
+    # ARCH-5: the near-end checkpoint is shared with the two-player alternation handoff.
+    blocks.substack(new_life, [*_area_checkpoint(blocks), *_enter_area_top(blocks)])
     blocks.chain(area_reset, [world_area, new_life])
 
     # DIF-01 / FORM-01 difficulty-director reset — its OWN `director reset` receiver (like the eight
@@ -15386,6 +15470,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AREA_NUMBER_ID,
         SCROLL_ROW_ID,
         TERRAIN_COLUMN_ID,
+        CHECKPOINT_PROGRESS_ID,
         SCHEDULE_CURSOR_ID,
         SCHEDULE_FIRED_ID,
         AI_LEVEL_ID,
@@ -15551,12 +15636,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         QUALIFIED_ID: ["qualified", 0],
         # AREA-01 area state (Stage-written, sprite-read, write-forbidden — NOT machinery).
         # `area progress` is the monotonic position authority; `scroll row` is its once-per-tick
-        # derivation; `area number` tracks 1..16 (16 -> 7 loop); `terrain column` is the dormant
-        # per-area start-column seam. Defaults are the area-1 top, re-established on cold-start.
+        # derivation; `area number` tracks 1..16 (16 -> 7 loop); `terrain column` is the per-area
+        # map start column. Defaults are the area-1 top, re-established on cold-start.
         AREA_PROGRESS_ID: ["area progress", 0],
         AREA_NUMBER_ID: ["area number", AREA_FIRST],
         SCROLL_ROW_ID: ["scroll row", AREA_TOP_ROW],
         TERRAIN_COLUMN_ID: ["terrain column", AREA_MAP_COLUMNS[0]],
+        # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register (machinery,
+        # like `swap tmp`): written and read only inside `_area_checkpoint`.
+        CHECKPOINT_PROGRESS_ID: ["checkpoint progress", 0],
         # AREA-02 scheduler state (Stage-written, write-forbidden): the 1-based cursor into the
         # flattened schedule lists and the per-area count of records fired (the observable).
         SCHEDULE_CURSOR_ID: ["schedule cursor", 1],

@@ -1303,6 +1303,9 @@ class ScratchProjectTests(unittest.TestCase):
             # `swap tmp`. A pure Stage-internal working register — NOT part of the entry category below (those
             # are sprite-READ and write-forbidden); nothing outside `rank in` touches it.
             "rank cursor",
+            # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register, like
+            # `swap tmp` — written and read only inside the shared checkpoint statements, never durable.
+            "checkpoint progress",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -15759,29 +15762,85 @@ class ScratchProjectTests(unittest.TestCase):
         if not derived_ok:
             failures.add("scroll-row-derived")
 
-        # 5. completion at row == 14 advances the area (a wrap in its THEN body). The block is a
-        # plain `if` when AREA-02's consume is absent and an `if/else` once it is present.
+        # 5. completion: an `if/else` on AND(scroll row == 14, area progress > 0) whose THEN body
+        # advances the area (a wrap), CARRIES the clock (changes area progress by -65536, never sets
+        # it or the row), points the schedule at the new area, and clears no wave register — the
+        # arcade's sub_fn_3__handle_next_area does only the offset/pointer swap.
+        def and_parts(cond_spec):
+            if not (isinstance(cond_spec, list) and len(cond_spec) > 1):
+                return []
+            b = blocks.get(cond_spec[1])
+            if b is None or b["opcode"] != "operator_and":
+                return []
+            return [b["inputs"].get(s) for s in ("OPERAND1", "OPERAND2")]
+
+        def gt_var_num(spec, var_id, num):
+            b = blocks.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+            return (
+                b is not None
+                and b["opcode"] == "operator_gt"
+                and refs_var(b["inputs"].get("OPERAND1"), var_id)
+                and literal(b["inputs"].get("OPERAND2")) == num
+            )
+
         completion = next(
             (
                 bid
                 for bid in body
-                if blocks[bid]["opcode"] in ("control_if", "control_if_else")
-                and eq_var_num(
-                    blocks[bid]["inputs"].get("CONDITION"),
-                    director.SCROLL_ROW_ID,
-                    director.AREA_COMPLETE_ROW,
+                if blocks[bid]["opcode"] == "control_if_else"
+                and any(
+                    eq_var_num(p, director.SCROLL_ROW_ID, director.AREA_COMPLETE_ROW)
+                    for p in and_parts(blocks[bid]["inputs"].get("CONDITION"))
                 )
             ),
             None,
         )
         then_spec = blocks[completion]["inputs"].get("SUBSTACK") if completion else None
+        then_body = (
+            reachable(then_spec[1])
+            if isinstance(then_spec, list) and len(then_spec) > 1 and isinstance(then_spec[1], str)
+            else set()
+        )
+        if not (completion and any(is_area_wrap(x) for x in then_body)):
+            failures.add("completion-at-14")
         if not (
             completion
-            and isinstance(then_spec, list)
-            and len(then_spec) > 1
-            and any(is_area_wrap(x) for x in reachable(then_spec[1]))
+            and any(
+                gt_var_num(p, director.AREA_PROGRESS_ID, 0)
+                for p in and_parts(blocks[completion]["inputs"].get("CONDITION"))
+            )
         ):
-            failures.add("completion-at-14")
+            failures.add("completion-guard")
+
+        def writes(ids, opcode, var_id):
+            return [
+                x for x in ids
+                if blocks[x]["opcode"] == opcode
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == var_id
+            ]
+
+        carries = writes(then_body, "data_changevariableby", director.AREA_PROGRESS_ID)
+        if not (
+            len(carries) == 1
+            and blocks[carries[0]]["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]
+            and not writes(then_body, "data_setvariableto", director.AREA_PROGRESS_ID)
+            and not writes(then_body, "data_setvariableto", director.SCROLL_ROW_ID)
+        ):
+            failures.add("completion-carries")
+        if not writes(then_body, "data_setvariableto", director.SCHEDULE_CURSOR_ID) or not writes(
+            then_body, "data_setvariableto", director.TERRAIN_COLUMN_ID
+        ):
+            failures.add("completion-enters-next-area")
+        if any(
+            writes(then_body, "data_setvariableto", var_id)
+            for var_id in (
+                director.FORMATION_COUNT_ID,
+                director.FORMATION_TYPE_OFFSET_ID,
+                director.NUM_BACURA_ID,
+                director.BACURA_INC_CNT_ID,
+            )
+        ):
+            failures.add("completion-keeps-registers")
 
         # 6. every 16 -> 7 wrap is well-formed, and at least one exists.
         wrap_conditions = [
@@ -15793,45 +15852,102 @@ class ScratchProjectTests(unittest.TestCase):
         if not wrap_conditions or not all(is_area_wrap(bid) for bid in wrap_conditions):
             failures.add("area-wrap-16-7")
 
-        # 7. near-end checkpoint: a control_if on AND(scroll row > 13, 68 > scroll row) whose
-        # body advances the area — the window [14, 67] (13 and 68 exclusive).
-        checkpoint_ok = False
-        for bid, b in blocks.items():
-            if b["opcode"] != "control_if":
-                continue
-            cond = b["inputs"].get("CONDITION")
-            if not (isinstance(cond, list) and len(cond) > 1):
-                continue
-            and_b = blocks.get(cond[1])
-            if not and_b or and_b["opcode"] != "operator_and":
-                continue
-            gts = [
-                blocks.get(and_b["inputs"].get(slot, [None, None])[1])
-                for slot in ("OPERAND1", "OPERAND2")
-            ]
-            if any(g is None or g["opcode"] != "operator_gt" for g in gts):
-                continue
+        # 7. near-end checkpoint, projected, at BOTH sites (new-life re-top and the 2P handoff): the
+        # three statements `set checkpoint progress to (area progress + 1408)`; `if checkpoint
+        # progress > 65055 { wrap; change checkpoint progress by -65536 }`; `if AND(row(checkpoint
+        # progress) > 13, 68 > row(checkpoint progress)) { wrap }` — the window [14, 67] on the row
+        # the arcade reads after its 44 ticks of post-death scrolling. The row VALUES are checked by
+        # interpretation in test_spec_docs.
+        def is_row_of_checkpoint(spec):
+            # floor(((3328 - checkpoint progress) mod 65536) / 256)
+            fb = blocks.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+            if not fb or fb["opcode"] != "operator_mathop" or fb["fields"].get("OPERATOR", [None])[0] != "floor":
+                return False
+            div = blocks.get(fb["inputs"].get("NUM", [None, None])[1])
+            if not div or div["opcode"] != "operator_divide" or literal(div["inputs"].get("NUM2")) != director.AREA_ROW_DIVISOR:
+                return False
+            mod = blocks.get(div["inputs"].get("NUM1", [None, None])[1])
+            if not mod or mod["opcode"] != "operator_mod" or literal(mod["inputs"].get("NUM2")) != director.AREA_COUNTER_WRAP:
+                return False
+            sub = blocks.get(mod["inputs"].get("NUM1", [None, None])[1])
+            return (
+                sub is not None
+                and sub["opcode"] == "operator_subtract"
+                and literal(sub["inputs"].get("NUM1")) == director.AREA_COUNTER_INIT
+                and refs_var(sub["inputs"].get("NUM2"), director.CHECKPOINT_PROGRESS_ID)
+            )
+
+        def then_advances(b):
+            spec = b["inputs"].get("SUBSTACK")
+            return (
+                isinstance(spec, list)
+                and len(spec) > 1
+                and any(is_area_wrap(x) for x in reachable(spec[1]))
+            )
+
+        def checkpoint_at(start):
+            b = blocks[start]
+            val = b["inputs"].get("VALUE")
+            add = blocks.get(val[1]) if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str) else None
+            if not (
+                add
+                and add["opcode"] == "operator_add"
+                and refs_var(add["inputs"].get("NUM1"), director.AREA_PROGRESS_ID)
+                and literal(add["inputs"].get("NUM2")) == director.AREA_CHECKPOINT_PROJECTION
+            ):
+                return False
+            comp = blocks.get(b.get("next"))
+            if not (
+                comp
+                and comp["opcode"] == "control_if"
+                and gt_var_num(
+                    comp["inputs"].get("CONDITION"),
+                    director.CHECKPOINT_PROGRESS_ID,
+                    director.AREA_COMPLETE_PROGRESS - 1,
+                )
+                and then_advances(comp)
+                and any(
+                    blocks[x]["opcode"] == "data_changevariableby"
+                    and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
+                    and blocks[x]["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]
+                    for x in reachable(comp["inputs"]["SUBSTACK"][1])
+                )
+            ):
+                return False
+            band = blocks.get(comp.get("next"))
+            if not band or band["opcode"] != "control_if" or not then_advances(band):
+                return False
+            gts = [blocks.get(p[1]) if isinstance(p, list) and len(p) > 1 and isinstance(p[1], str) else None
+                   for p in and_parts(band["inputs"].get("CONDITION"))]
+            if len(gts) != 2 or any(g is None or g["opcode"] != "operator_gt" for g in gts):
+                return False
             low_ok = any(
-                refs_var(g["inputs"].get("OPERAND1"), director.SCROLL_ROW_ID)
+                is_row_of_checkpoint(g["inputs"].get("OPERAND1"))
                 and literal(g["inputs"].get("OPERAND2")) == director.AREA_CHECKPOINT_LOW_EXCL
                 for g in gts
             )
             high_ok = any(
                 literal(g["inputs"].get("OPERAND1")) == director.AREA_CHECKPOINT_HIGH_EXCL
-                and refs_var(g["inputs"].get("OPERAND2"), director.SCROLL_ROW_ID)
+                and is_row_of_checkpoint(g["inputs"].get("OPERAND2"))
                 for g in gts
             )
-            then_spec = b["inputs"].get("SUBSTACK")
-            advances = (
-                isinstance(then_spec, list)
-                and len(then_spec) > 1
-                and any(is_area_wrap(x) for x in reachable(then_spec[1]))
-            )
-            if low_ok and high_ok and advances:
-                checkpoint_ok = True
-                break
-        if not checkpoint_ok:
+            return low_ok and high_ok
+
+        starts = [
+            bid for bid, b in blocks.items()
+            if b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
+        ]
+        if len(starts) != 2 or not all(checkpoint_at(s) for s in starts):
             failures.add("checkpoint-window")
+        # No checkpoint may still read the frozen `scroll row` (the pre-slice-20 shape).
+        if any(
+            b["opcode"] == "operator_gt"
+            and literal(b["inputs"].get("OPERAND1")) == director.AREA_CHECKPOINT_HIGH_EXCL
+            and refs_var(b["inputs"].get("OPERAND2"), director.SCROLL_ROW_ID)
+            for b in blocks.values()
+        ):
+            failures.add("checkpoint-reads-frozen-row")
 
         return failures
 
@@ -15902,48 +16018,104 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["VALUE"] = [1, [4, 1]]
 
+        def gt_with(s, first, second):
+            # operator_gt blocks whose OPERAND1/OPERAND2 literal matches (None = any).
+            return [
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_gt"
+                and (first is None or (b["inputs"].get("OPERAND1") or [None, [None, None]])[1][1:2] == [first])
+                and (second is None or (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1:2] == [second])
+            ]
+
         def break_checkpoint_low(p):
-            # CAB-03 (slice 18): the near-end checkpoint window now appears at TWO sites — area_reset's
-            # new-life branch AND the two-player death-complete alternation path — both emitted from the
-            # one shared `_at_area_checkpoint` helper, so they are always byte-identical and cannot drift.
-            # The validator passes if ANY valid window exists, so the fixture must corrupt EVERY window to
-            # prove a malformed low bound is caught.
+            # The near-end checkpoint appears at TWO sites — area_reset's new-life branch AND the
+            # two-player death-complete alternation path — both emitted from the one shared
+            # `_area_checkpoint` helper. Corrupting ONE site must already fail (both are required).
             s = stage_of(p)
-            matches = [
+            matches = gt_with(s, None, director.AREA_CHECKPOINT_LOW_EXCL)
+            assert len(matches) == 2, "expected one checkpoint low bound per site"
+            matches[0]["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
+
+        def break_checkpoint_high(p):
+            s = stage_of(p)
+            matches = gt_with(s, director.AREA_CHECKPOINT_HIGH_EXCL, None)
+            assert len(matches) == 2, "expected one checkpoint high bound per site"
+            matches[1]["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
+
+        def break_checkpoint_projection(p):
+            s = stage_of(p)
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_add"
+                and (b["inputs"].get("NUM2") or [None, [None, None]])[1][1:2] == [director.AREA_CHECKPOINT_PROJECTION]
+            )
+            b["inputs"]["NUM2"] = [1, [4, 0]]
+
+        def break_checkpoint_completion(p):
+            s = stage_of(p)
+            matches = gt_with(s, None, director.AREA_COMPLETE_PROGRESS - 1)
+            assert len(matches) == 2, "expected one projected-completion test per site"
+            matches[0]["inputs"]["OPERAND2"] = [1, [4, director.AREA_COMPLETE_PROGRESS + 255]]
+
+        def break_checkpoint_frozen_row(p):
+            # Restore the pre-slice-20 shape at one site: a band bound reading the frozen `scroll row`.
+            s = stage_of(p)
+            b = gt_with(s, director.AREA_CHECKPOINT_HIGH_EXCL, None)[0]
+            b["inputs"]["OPERAND2"] = [3, [12, "scroll row", director.SCROLL_ROW_ID], [10, ""]]
+
+        def break_completion_guard(p):
+            s = stage_of(p)
+            b = next(
                 b
                 for b in s["blocks"].values()
                 if b["opcode"] == "operator_gt"
                 and isinstance(b["inputs"].get("OPERAND1"), list)
-                and b["inputs"]["OPERAND1"][1][2:3] == [director.SCROLL_ROW_ID]
-                and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_LOW_EXCL
-            ]
-            assert matches, "no checkpoint low-bound block found to corrupt"
-            for b in matches:
-                b["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
+                and b["inputs"]["OPERAND1"][1][2:3] == [director.AREA_PROGRESS_ID]
+                and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1:2] == [0]
+            )
+            b["inputs"]["OPERAND2"] = [1, [4, -1000]]
 
-        def break_checkpoint_high(p):
-            # See break_checkpoint_low: corrupt every shared-helper checkpoint window (two sites).
+        def completion_then(s):
+            for b in s["blocks"].values():
+                if b["opcode"] == "data_changevariableby" and b["fields"].get("VARIABLE", [None, None])[1] == director.AREA_PROGRESS_ID and b["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]:
+                    return b
+            raise AssertionError("no carry block")
+
+        def break_completion_carry(p):
+            # Turn the carry back into the old re-top: `set area progress to 0`.
+            b = completion_then(stage_of(p))
+            b["opcode"] = "data_setvariableto"
+            b["inputs"]["VALUE"] = [1, [10, "0"]]
+
+        def break_completion_clears(p):
+            # Make the completion clear a wave register again (retarget its `schedule fired` write).
             s = stage_of(p)
-            matches = [
-                b
-                for b in s["blocks"].values()
-                if b["opcode"] == "operator_gt"
-                and (b["inputs"].get("OPERAND1") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_HIGH_EXCL
-                and isinstance(b["inputs"].get("OPERAND2"), list)
-                and b["inputs"]["OPERAND2"][1][2:3] == [director.SCROLL_ROW_ID]
-            ]
-            assert matches, "no checkpoint high-bound block found to corrupt"
-            for b in matches:
-                b["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
+            carry = completion_then(s)
+            bid = carry["next"]
+            while bid:
+                b = s["blocks"][bid]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.SCHEDULE_FIRED_ID:
+                    b["fields"]["VARIABLE"] = ["num bacura", director.NUM_BACURA_ID]
+                    return
+                bid = b["next"]
+            raise AssertionError("no schedule fired write after the carry")
 
         cases = [
             ("advance-area-before-slots", break_phase_order),
             ("progress-steps-32", break_progress_step),
             ("scroll-row-derived", break_row_wrap_constant),
             ("completion-at-14", break_completion_row),
+            ("completion-guard", break_completion_guard),
+            ("completion-carries", break_completion_carry),
+            ("completion-keeps-registers", break_completion_clears),
             ("area-wrap-16-7", break_wrap_target),
             ("checkpoint-window", break_checkpoint_low),
             ("checkpoint-window", break_checkpoint_high),
+            ("checkpoint-window", break_checkpoint_projection),
+            ("checkpoint-window", break_checkpoint_completion),
+            ("checkpoint-reads-frozen-row", break_checkpoint_frozen_row),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -19722,7 +19894,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "74684a18b001f2afea8a47e1e6363c02adb7a11d6191ce72f4896a97a8e565e3",
+            "b762311ccde93f370227b50d8cba51eee4d14538831ee30a9196277f833a3e5f",
             build_hash,
         )
 
