@@ -1,6 +1,12 @@
 {
   "constants": {
-    "shot_slot_count": 3
+    "craft_x_limit": 217,
+    "craft_y_bottom": -141,
+    "craft_y_top": 139,
+    "render_row_top": 155,
+    "render_view_rows": 40,
+    "shot_slot_count": 3,
+    "slot_units_per_cell": 256
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {

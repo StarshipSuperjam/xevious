@@ -24,11 +24,12 @@ advances a pull request out of draft and never lets a playtest step be skipped.
 **Cannot (stays the playtest's job):**
 
 - Rendered pixel/sprite collision. The VM runs without `scratch-render`, so
-  `touching` reporters read false. Notably, a player shot's lifecycle *ends* on
-  `touching frame_t`; headless, that never fires, so shot clones never expire and slots
-  never replenish. The harness therefore asserts only the shot-cap **ceiling** (≤ 3
-  live shots), never the replenish.
-- Sprite visibility, layering, costume/skin state, audio, and overall feel.
+  `touching` reporters read false. (A player shot used to end on `touching frame_t`,
+  which never fired headless; since the frame borders were removed (PRES-01) it expires
+  by position at arcade row 0, so the shot ceiling *and* the replenish are both asserted.)
+- How sprites are layered and drawn (rendered pixels, z-order on screen), audio, and
+  overall feel. The VM does track a clone's `visible` flag and current costume, and
+  scenarios read those as state.
 
 ## Division of labor with the Python suite
 

@@ -2323,6 +2323,21 @@ RENDER_COL_STAGE = 15
 RENDER_COL_OFFSET = 240
 RENDER_ROW_TOP = 155
 RENDER_ROW_STAGE = 8
+# PRES-01 playfield framing (docs/mechanics/053). The play area is the whole stage: there are no border
+# sprites. World objects (every slot-driven flying/bullet/ground renderer) are shown only while their slot's
+# scroll row is inside [0, RENDER_VIEW_ROWS) — row 0 maps to y = RENDER_ROW_TOP (the HUD score row) and row 40
+# is where check_scroll_offscreen culls (xevious_main.68k 4827-4839). Scratch cannot clip a sprite at a screen
+# edge, so the cut hides the whole sprite (a port necessity); the arcade's visible window starts at row 4, the
+# port draws from row 0 because its craft range and HUD strip already use rows 0-3 (a recorded deviation).
+# Render-only: the gate never writes a slot list, so game logic and hit resolution are unchanged.
+RENDER_VIEW_ROWS = 40
+# The craft's positional limits, in stage units. They are the exact stop lines the retired frame sprites
+# produced (the craft costume against the frame pixels, on the craft's ±7 movement lattice from its (0, -85)
+# spawn), so the reachable area is unchanged — a retained port deviation from the arcade's own clamp
+# (update_solvalou_sprite_XY xevious_main.68k 2113-2137 bounds the craft to rows 18-38), not derived from it.
+CRAFT_X_LIMIT = 217
+CRAFT_Y_TOP = 139
+CRAFT_Y_BOTTOM = -141
 # --- BOSS-01 C3 geometry: the Andor Genesis lifecycle positions + composite offsets (all source-verified at the
 # pin). Placed here so the slot-unit / frame / render-stage primitives above are already defined; the matching ID
 # strings live up by the other Andor constants. ------------------------------------------------------------------
@@ -11176,7 +11191,7 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
     movement_condition = blocks.not_state(movement, "playing")
     blocks.blocks[movement]["inputs"]["CONDITION"] = [2, movement_condition]
     # B9: the craft fronts itself every tick, so it renders above the terrain, the
-    # shots, and the frame borders (which the audit found were covering the ship).
+    # shots, every world object, and the HUD (PRES-01 draw order: craft > HUD > world).
     movement_body = [blocks.to_front()]
     # CAB-01: each direction is read through `input_active`, so the auto-pilot's virtual inputs drive the
     # craft while the cabinet demos (attract==1) and the arrow keys drive it in a real game (attract==0). The
@@ -11197,27 +11212,23 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
             [blocks.add(opcode, inputs={input_name: number(amount)})],
         )
         movement_body.append(pressed)
-    # The craft is self-bounded on all four sides against the frame borders (update_solvalou_sprite_XY
-    # $15C1 clamps the craft's own position on both axes; the sight/crosshair is a pure +offset lead and
-    # never gates craft movement). The top bound used to be indirect — via the crosshair sprite touching
-    # frame_t — which is retired now the crosshair is a pure renderer, so the craft takes its own top
-    # bound here alongside the other three.
-    for frame, opcode, input_name, amount in (
-        ("frame_t", "motion_changeyby", "DY", -7),
-        ("frame_b", "motion_changeyby", "DY", 7),
-        ("frame_l", "motion_changexby", "DX", 7),
-        ("frame_r", "motion_changexby", "DX", -7),
+    # PRES-01: the craft clamps its own position on both axes (as update_solvalou_sprite_XY
+    # xevious_main.68k 2113-2137 does; the crosshair is a pure lead and never gates movement). There are
+    # no border sprites to touch, so each side is a positional limit at the stop line the retired frames
+    # produced (CRAFT_X_LIMIT / CRAFT_Y_TOP / CRAFT_Y_BOTTOM — on the ±7 lattice these are the identical
+    # positions the old touch-and-undo landed on, so the reachable area is unchanged).
+    for compare, position, limit, opcode, input_name in (
+        (blocks.op_gt, blocks.yposition, CRAFT_Y_TOP, "motion_sety", "Y"),
+        (blocks.op_lt, blocks.yposition, CRAFT_Y_BOTTOM, "motion_sety", "Y"),
+        (blocks.op_lt, blocks.xposition, -CRAFT_X_LIMIT, "motion_setx", "X"),
+        (blocks.op_gt, blocks.xposition, CRAFT_X_LIMIT, "motion_setx", "X"),
     ):
-        correction = blocks.add("control_if")
-        blocks.blocks[correction]["inputs"]["CONDITION"] = [
-            2,
-            blocks.touching(correction, frame),
-        ]
-        blocks.substack(
-            correction,
-            [blocks.add(opcode, inputs={input_name: number(amount)})],
+        movement_body.append(
+            blocks.if_reporter(
+                compare(position(), number(limit)),
+                [blocks.add(opcode, inputs={input_name: number(limit)})],
+            )
         )
-        movement_body.append(correction)
     blocks.substack(movement, movement_body)
     playing = blocks.if_state("playing", [blocks.show(), movement])
     dead = blocks.if_either_state("player-dead", "game-over", [blocks.hide()])
@@ -12048,16 +12059,22 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
-    # B8: the shot flies forward at the baseline speed and expires the instant it
-    # reaches the top border — no edge-parking, no fixed step count. Direction and
-    # top-expiry cite WPN-01; the DY magnitude is preserved-baseline (spatial factor
-    # unratified until the movement slice).
+    # B8: the shot flies forward at the baseline speed and expires as it passes arcade row 0 — no
+    # edge-parking, no fixed step count. Direction and top-expiry cite WPN-01; the DY magnitude is
+    # preserved-baseline (spatial factor unratified until the movement slice).
+    shot_dy = 20
     clone = blocks.add("control_start_as_clone", top_level=True)
     travel = blocks.add("control_repeat_until")
     # B8 top-expiry OR the walk marking this shot spent (WPN-02: on a resolved air hit the detector
     # sets the shot slot's state off ACTIVE; the clone sees it next iteration, frees its slot, and
     # deletes — so the slot is freed by the clone, never reallocated under a still-live clone).
-    at_top = blocks.touching(travel, "frame_t")
+    # PRES-01 top-expiry is positional (there is no top border to touch): the arcade deletes an upward
+    # shot the frame its move carries `_X` below row 0, BEFORE it is drawn (xevious_main.68k 2391-2395
+    # after move_shot 2419-2424). The loop test runs before the move, so it exits when the NEXT move would
+    # carry the shot past row 0 (y > RENDER_ROW_TOP) — the last drawn position is always on-field.
+    at_top = blocks.op_gt(
+        blocks.op_add(blocks.yposition(), number(shot_dy)), number(RENDER_ROW_TOP)
+    )
     spent = blocks.op_not(
         blocks.op_eq(
             blocks.list_item("slot state", SLOT_STATE_ID, variable("clone slot", CLONE_SLOT_ID)),
@@ -12102,7 +12119,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         [
             mirror_x,
             mirror_y,
-            blocks.add("motion_changeyby", inputs={"DY": number(20)}),
+            blocks.add("motion_changeyby", inputs={"DY": number(shot_dy)}),
             blocks.add("looks_nextcostume"),
         ],
     )
@@ -12701,6 +12718,29 @@ def _ensure_hud_target(project: dict[str, Any]) -> None:
     project["targets"].insert(insertion, hud_target)
 
 
+def _gate_in_view(blocks: Blocks, slotvar, body: list[str]) -> str:
+    # PRES-01 edge-hide: wrap a world renderer's per-tick body so its clone draws only while the slot's
+    # scroll row is on the field — 0 <= slot x < RENDER_VIEW_ROWS cells — and hides otherwise. Scratch
+    # cannot clip a sprite at a screen edge, so an object off the field is hidden whole rather than drawn
+    # fenced at the stage edge. `slotvar` is the renderer's fresh-per-call slot reporter factory (a
+    # reporter binds to one parent, so each read builds its own). Render-only: writes no slot state.
+    in_view = blocks.op_and(
+        blocks.op_not(
+            blocks.op_lt(blocks.list_item("slot x", SLOT_X_ID, slotvar()), number(0))
+        ),
+        blocks.op_lt(
+            blocks.list_item("slot x", SLOT_X_ID, slotvar()),
+            number(RENDER_VIEW_ROWS * SLOT_UNITS_PER_CELL),
+        ),
+    )
+    gate = blocks.add("control_if_else")
+    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, in_view]
+    blocks.blocks[in_view]["parent"] = gate
+    blocks.substack(gate, body)
+    blocks.substack(gate, [blocks.hide()], name="SUBSTACK2")
+    return gate
+
+
 def toroid_blocks() -> dict[str, dict[str, Any]]:
     # AIR-01 Toroid renderer (game_director owns these blocks; sprite_extractor owns the costumes).
     # One persistent clone per flying slot (59..64), spawned on director enter while playing and
@@ -12786,12 +12826,11 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -12897,6 +12936,41 @@ GROUND_FAMILY_OFFSETS, GROUND_COSTUME_TOTAL = _ground_family_offsets()
 # where they overlap flyers — a small observable z-order change, not a pure
 # render-preserving move. This constant encodes that correction.
 GROUND_LAYER_ORDER = 27
+
+# PRES-01 draw order (docs/mechanics/053): craft > HUD > world objects. World renderers no longer front
+# themselves every tick (that put them over the HUD once the border bands were gone); they keep the
+# fixed layer of their target, and the HUD clones front once at creation, so the HUD draws over every
+# world object while the player group (craft, shots, crosshair, bomb, explosion) still fronts each tick
+# and draws over the HUD. This mirrors the reference's priorities (src/amiga/amiga.68k 984-986: the
+# foreground tiles-and-sprites playfield has priority, the craft sprites over the BOBs; 2107-2109 redraws
+# the foreground tiles over the BOBs). Without per-tick fronting the static order must itself keep ground
+# installations below every flyer (arcade first pass, see above), so the flyers that sat at layers 18-24
+# — below the ground band, hidden only by their old per-tick front — are pinned above it. The Bonus Flag
+# (arcade obj slot 0x00, drawn first) sits just under the ground pool; enemy bullets stay on top of the
+# world band, where their per-tick front used to put them. Pinned explicitly so the order is
+# deterministic; values unused by any other target.
+WORLD_RENDER_LAYER_ORDERS = {
+    BONUS_FLAG_TARGET: 26,
+    GROUND_RENDER_TARGET: GROUND_LAYER_ORDER,
+    ZAKATO_TARGET: 28,
+    GIDDO_SPARIO_TARGET: 29,
+    BRAG_SPARIO_TARGET: 30,
+    GARU_ZAKATO_TARGET: 31,
+    BACURA_TARGET: 32,
+    SHEONITE_TARGET: 33,
+    TOROID_TARGET: 34,
+    TERRAZI_TARGET: 35,
+    KAPI_TARGET: 36,
+    TORKAN_TARGET: 37,
+    ZOSHI_TARGET: 38,
+    JARA_TARGET: 39,
+    ENEMY_BULLET_TARGET: 40,
+}
+
+# PRES-01: the four baseline border sprites are retired — the play area is the whole stage. They were
+# 15-unit opaque bands (top/bottom) and 1-unit strips (sides) that fronted themselves every frame, so they
+# covered the HUD; nothing reads them any more (the craft clamps positionally, the shot expires by row).
+FRAME_TARGETS = ("frame_t", "frame_b", "frame_l", "frame_r")
 
 # The render arms dispatch on `slot type`; overlapping type sets across families
 # would make the dispatch ambiguous. Fail loud at import if they ever overlap.
@@ -13622,7 +13696,7 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
     # the only ground arms that set the `color` effect, so clear it for every clone at the top of the dispatch
     # each tick; a clone that drew a boss part last frame then draws a normal ground object with no residual
     # tint. (No pre-slice-15 family used effects, so this clear is a no-op for them.)
-    blocks.substack(loop, [blocks.clear_graphic_effects(), *branch])
+    blocks.substack(loop, [blocks.clear_graphic_effects(), _gate_in_view(blocks, slotvar, branch)])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -13704,7 +13778,7 @@ def bonus_flag_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -13838,12 +13912,11 @@ def terrazi_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -13947,12 +14020,11 @@ def kapi_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14065,12 +14137,11 @@ def torkan_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14170,12 +14241,11 @@ def zoshi_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14284,12 +14354,11 @@ def jara_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14419,12 +14488,11 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14514,12 +14582,11 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
         [
             blocks.go_expr(stage_x, stage_y),
             state_render,
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14616,12 +14683,11 @@ def bacura_blocks() -> dict[str, dict[str, Any]]:
             blocks.go_expr(stage_x, stage_y),
             blocks.switch_costume_expr(costume_name),
             blocks.add("looks_setsizeto", inputs={"SIZE": number(BACURA_RENDER_SIZE)}),
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14704,12 +14770,11 @@ def sheonite_blocks() -> dict[str, dict[str, Any]]:
             blocks.go_expr(stage_x, stage_y),
             costume_sel,
             blocks.add("looks_setsizeto", inputs={"SIZE": number(SHEONITE_RENDER_SIZE)}),
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14760,12 +14825,11 @@ def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
             blocks.go_expr(stage_x, stage_y),
             blocks.switch_costume("toroid/turn/01"),  # stand-in: the first mirrored frame, drawn small
             blocks.add("looks_setsizeto", inputs={"SIZE": number(ENEMY_BULLET_RENDER_SIZE)}),
-            blocks.to_front(),
             blocks.show(),
         ],
     )
     blocks.substack(render, [blocks.hide()], name="SUBSTACK2")
-    blocks.substack(loop, [render])
+    blocks.substack(loop, [_gate_in_view(blocks, slotvar, [render])])
     blocks.chain(clone, [blocks.hide(), loop])
     return blocks.blocks
 
@@ -14841,14 +14905,19 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     # and pin its layerOrder deterministically. Per the arcade z-order (verified at the pinned source: ground
     # installations draw in the first pass, BEHIND aerial enemies), GROUND_LAYER_ORDER places the pool just
     # below the flying band. Bonus Flag and Easter Egg sit off the full band and stay their own targets.
+    # PRES-01: the four border sprites are pruned the same way (idempotent).
     result["targets"] = [
-        t for t in result["targets"] if t.get("name") not in GROUND_RENDER_LEGACY_TARGETS
+        t
+        for t in result["targets"]
+        if t.get("name") not in GROUND_RENDER_LEGACY_TARGETS and t.get("name") not in FRAME_TARGETS
     ]
     _ensure_gameplay_target(result, BONUS_FLAG_TARGET)
     _ensure_gameplay_target(result, EASTER_EGG_TARGET)
     _ensure_gameplay_target(result, GROUND_RENDER_TARGET)
-    _ground_target = next(t for t in result["targets"] if t.get("name") == GROUND_RENDER_TARGET)
-    _ground_target["layerOrder"] = GROUND_LAYER_ORDER
+    # PRES-01 draw order: pin the whole world band (ground pool included) so it holds without per-tick fronting.
+    for _world_target in result["targets"]:
+        if _world_target.get("name") in WORLD_RENDER_LAYER_ORDERS:
+            _world_target["layerOrder"] = WORLD_RENDER_LAYER_ORDERS[_world_target["name"]]
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
@@ -15757,10 +15826,18 @@ def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
             variables[list_id] = {"name": entry[0], "scope": scope, "kind": "list"}
     constants = {
         # Player-shot cap: SHOT_SLOTS is an inclusive index range, so its width is the
-        # ceiling the headless harness can observe (the touching-frame replenish it
-        # cannot — that stays the playtest's). Only constants the harness actually consumes
+        # live-shot ceiling the harness asserts (PRES-01: the shot now expires by row, so the
+        # replenish is headless-observable too). Only constants the harness actually consumes
         # are emitted; a future scenario adds its own here rather than carrying dead keys.
         "shot_slot_count": SHOT_SLOTS[1] - SHOT_SLOTS[0] + 1,
+        # PRES-01 playfield framing: the craft stop lines, the row-0 shot expiry line, and the
+        # in-view row window the world renderers gate on (slot x is 256 units per row).
+        "craft_x_limit": CRAFT_X_LIMIT,
+        "craft_y_top": CRAFT_Y_TOP,
+        "craft_y_bottom": CRAFT_Y_BOTTOM,
+        "render_row_top": RENDER_ROW_TOP,
+        "render_view_rows": RENDER_VIEW_ROWS,
+        "slot_units_per_cell": SLOT_UNITS_PER_CELL,
     }
     return {
         "schema": MANIFEST_SCHEMA,

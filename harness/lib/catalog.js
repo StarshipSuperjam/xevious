@@ -4,8 +4,8 @@
 // and negative (mutated build) cases; the runner asserts the positive passes and the
 // negative fails, so an assertion that does not actually bite is caught.
 //
-// Behaviors that are NOT VM-observable (rendered collision, the shot's touching-frame
-// replenish, the bomb's flight duration, visuals/audio/feel) are deliberately excluded
+// Behaviors that are NOT VM-observable (rendered collision, the bomb's flight duration,
+// visuals/audio/feel) are deliberately excluded
 // and listed in EXCLUSIONS — they remain the operator playtest's job.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -149,7 +149,6 @@ const epoch = (vm) => readVar(vm, 'game-director-epoch');
 const outcome = (vm) => readVar(vm, 'game-director-death-outcome');
 const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
 const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
-const shotSlotTypes = (vm) => readVar(vm, 'slot-type').slice(36, 39);
 // Step until `pred(vm)` holds or the budget runs out; returns whether it held. Used where a finish now
 // routes through the terminal GAME OVER hold (high-score-entry -> game-over -> title) rather than straight
 // to the title, so reaching the title takes more than a couple of pumps.
@@ -248,25 +247,207 @@ function groundCloneEffect(vm, scratchSlot, effect = 'color') {
 export const SCENARIOS = [
   {
     key: 'shot-cap-ceiling',
-    behavior: 'Held fire never puts more than the 3-shot ceiling on the field',
+    behavior:
+      'Held fire never puts a shot on the field while all 3 shot slots are live, and fires again as soon as one frees',
     playtestStep: 2,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // PRES-01: a shot now expires at arcade row 0 (about 12 ticks of flight), sooner than two 10-tick
+      // reloads, so live held fire tops out at two shots and the third slot is never needed. One headless pump
+      // is also many ticks (wall-clock paced), so a shot can be born and retired between two samples. The
+      // ceiling is therefore exercised at the allocator, pacing-invariantly: hold the three shot slots live
+      // with placeholder occupants (no clone owns them, so nothing frees them) and hold fire.
+      const types = () => readVar(vm, 'slot-type');
+      const states = () => readVar(vm, 'slot-state');
+      const occupy = (indices) => {
+        for (const i of indices) {
+          types()[i] = 1;
+          states()[i] = 1;
+        }
+      };
       keyDown(vm, ' ');
-      let maxClones = 0;
-      for (let i = 0; i < 15; i += 1) {
+      // Phase 1: all three slots live. No shot may spawn, and the reload is never consumed (an allocation
+      // failure leaves it primed), so the counter keeps climbing — at least one tick per pump.
+      let fullClones = 0;
+      for (let i = 0; i < 60; i += 1) {
+        occupy([36, 37, 38]);
         step(vm, 1);
-        maxClones = Math.max(maxClones, cloneCount(vm, 'blaster'));
+        fullClones = Math.max(fullClones, cloneCount(vm, 'blaster'));
       }
+      const fullReload = readVar(vm, 'weapon-blaster-reload');
+      // Phase 2: free one slot (keep the other two occupied). Held fire now cycles real shots through that one
+      // slot: every spawn resets the reload, so it stays bounded by one shot's flight time however many pumps
+      // pass, and no more than one shot clone is ever on the field.
+      types()[38] = 0;
+      states()[38] = 0;
+      let freedClones = 0;
+      for (let i = 0; i < 60; i += 1) {
+        occupy([36, 37]);
+        step(vm, 1);
+        freedClones = Math.max(freedClones, cloneCount(vm, 'blaster'));
+      }
+      const freedReload = readVar(vm, 'weapon-blaster-reload');
       keyUp(vm, ' ');
-      return { maxClones, shotSlots: shotSlotTypes(vm) };
+      return { fullClones, fullReload, freedClones, freedReload };
     },
     assert(obs) {
-      assert.equal(obs.maxClones, constants.shot_slot_count, 'shots on field hit the ceiling');
-      assert.deepEqual(obs.shotSlots, [1, 1, 1], 'all three shot slots become active');
+      assert.equal(obs.fullClones, 0, 'with all three shot slots live, held fire puts no shot on the field');
+      assert.ok(obs.fullReload > 60, `a refused fire leaves the reload primed (reload ${obs.fullReload})`);
+      assert.ok(obs.freedClones <= 1, `with one slot free, at most one shot is ever on the field (${obs.freedClones})`);
+      assert.ok(obs.freedReload < 40, `held fire keeps spawning through the freed slot (reload ${obs.freedReload})`);
     },
-    // Break the alloc gate (alloc result > 0) so no shot ever spawns → ceiling assertion fails.
-    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'blaster', 0, 99999),
+    // Make the allocator treat a LIVE slot (type 1) as free, so it claims an occupied slot past the ceiling →
+    // a shot spawns while all three are live and the reload is consumed → the phase-1 assertions go red.
+    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'blaster', 'slot type', 0, 1),
+  },
+  {
+    key: 'pres01-craft-stops-at-stop-lines',
+    // roadmap-evidence: PRES-01 success  (the craft held into each edge settles exactly on its stop line and
+    //   never passes it — the positional limits that replaced the retired frame-border touch walls)
+    behavior:
+      'PRES-01: with the frame borders removed, the craft held into each edge stops exactly at its fixed stop line (top 139, bottom -141, sides ±217) and never passes it',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const craft = vm.runtime.getSpriteTargetByName('solvalou');
+      const out = {};
+      // Each push is longer than the farthest stop line is from anywhere on the field (280 units at 7 per
+      // tick = 40 ticks), and the extreme is tracked on EVERY tick, so an overshoot that is later corrected
+      // would still show.
+      const push = (key, axis, pick) => {
+        keyDown(vm, key);
+        let extreme = craft[axis];
+        for (let i = 0; i < 60; i += 1) {
+          step(vm, 1);
+          extreme = pick(extreme, craft[axis]);
+        }
+        keyUp(vm, key);
+        step(vm, 1);
+        return { final: craft[axis], extreme };
+      };
+      out.up = push('ArrowUp', 'y', Math.max);
+      out.down = push('ArrowDown', 'y', Math.min);
+      out.right = push('ArrowRight', 'x', Math.max);
+      out.left = push('ArrowLeft', 'x', Math.min);
+      return out;
+    },
+    assert(obs) {
+      assert.equal(obs.up.final, constants.craft_y_top, 'held up, the craft settles on the top stop line');
+      assert.equal(obs.up.extreme, constants.craft_y_top, 'the craft never passes the top stop line');
+      assert.equal(obs.down.final, constants.craft_y_bottom, 'held down, the craft settles on the bottom stop line');
+      assert.equal(obs.down.extreme, constants.craft_y_bottom, 'the craft never passes the bottom stop line');
+      assert.equal(obs.right.final, constants.craft_x_limit, 'held right, the craft settles on the right stop line');
+      assert.equal(obs.right.extreme, constants.craft_x_limit, 'the craft never passes the right stop line');
+      assert.equal(obs.left.final, -constants.craft_x_limit, 'held left, the craft settles on the left stop line');
+      assert.equal(obs.left.extreme, -constants.craft_x_limit, 'the craft never passes the left stop line');
+    },
+    // roadmap-evidence: PRES-01 failure  (with the top limit disarmed the craft runs on to the Scratch stage
+    //   fence above the stop line, so the top-stop assertions go red)
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'solvalou', constants.craft_y_top, 99999),
+  },
+  {
+    key: 'pres01-shot-expires-past-row-0',
+    // roadmap-evidence: PRES-01 success  (a held-fire shot is retired as it reaches arcade row 0 — never
+    //   drawn past it — and its slot frees for the next shot, so held fire keeps replenishing)
+    behavior:
+      'PRES-01: a player shot is retired as it reaches arcade row 0 (stage y 155) instead of on touching a top frame — it is never drawn past that line, and its freed slot lets held fire keep firing beyond the 3-shot ceiling',
+    playtestStep: 2,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const shots = new Map(); // clone id -> highest y the shot was seen at
+      keyDown(vm, ' ');
+      for (let i = 0; i < 45; i += 1) {
+        step(vm, 1);
+        for (const t of vm.runtime.targets) {
+          if (t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') continue;
+          shots.set(t.id, Math.max(shots.has(t.id) ? shots.get(t.id) : -Infinity, t.y));
+        }
+      }
+      keyUp(vm, ' ');
+      const tops = [...shots.values()];
+      return { fired: shots.size, highest: Math.max(...tops) };
+    },
+    assert(obs) {
+      assert.ok(
+        obs.fired > constants.shot_slot_count,
+        `held fire replenishes past the 3-shot ceiling as shots expire (fired ${obs.fired})`,
+      );
+      assert.ok(obs.highest <= constants.render_row_top, `no shot is drawn past row 0 (highest y ${obs.highest})`);
+      assert.ok(
+        obs.highest > constants.render_row_top - 20,
+        `a shot actually reached the row-0 line before retiring (highest y ${obs.highest})`,
+      );
+    },
+    // roadmap-evidence: PRES-01 failure  (with the row-0 expiry disarmed the first three shots fly on to the
+    //   stage fence and never free their slots, so held fire stalls at three and a shot is drawn past row 0)
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'blaster', constants.render_row_top, 99999),
+  },
+  {
+    key: 'pres01-world-hidden-off-field',
+    // roadmap-evidence: PRES-01 success  (a live world object is shown only while its row is on the field,
+    //   rows 0-39, and hidden above row 0 where nothing now masks it)
+    behavior:
+      'PRES-01: a live world object is drawn only while its row is on the field (rows 0-39) — a Bacura held at row -1 (alive, above the cut line) is hidden, and the same slab at rows 5 and 39 is shown',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // director enter creates one render clone per Bacura band slot
+      const slotName = variable('bacura-clone-slot').name;
+      const slot = 16; // JS index; Scratch 1-based slot 17 (first Bacura band slot)
+      // Isolate (as bacura-tumbles-by-position): clear the band and stop the pump, then seed one held slab.
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      writeVar(vm, 'num-bacura', 0);
+      writeVar(vm, 'bacura-inc-cnt', 0);
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 1); // BACURA_TYPE
+      put('slot-state', 1); // SLOT_ACTIVE
+      put('slot-y', 20 * 256);
+      put('slot-dx', 0);
+      put('slot-dy', 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const U = constants.slot_units_per_cell;
+      const at = (row) => {
+        put('slot-x', row * U + 32);
+        step(vm, 1);
+        const rep = cloneReports(vm, 'bacura', [slotName]).find((r) => Number(r.vars[slotName]) === slot + 1);
+        return {
+          visible: rep ? rep.visible : null,
+          alive: readVar(vm, 'slot-type')[slot] === 1,
+        };
+      };
+      // Row -1 is still a live object (the walk culls only at row <= -2), so hiding it is the gate's work.
+      return { row5: at(5), rowMinus1: at(-1), row39: at(constants.render_view_rows - 1) };
+    },
+    assert(obs) {
+      assert.equal(obs.row5.visible, true, 'a slab at row 5 is shown');
+      assert.equal(obs.rowMinus1.alive, true, 'precondition: the slab at row -1 is still a live object');
+      assert.equal(obs.rowMinus1.visible, false, 'a live slab at row -1, above the cut line, is hidden');
+      assert.equal(obs.row39.visible, true, 'a slab at row 39, the last on-field row, is shown');
+    },
+    // roadmap-evidence: PRES-01 failure  (with the gate's lower bound widened, the live slab at row -1 is
+    //   drawn above the cut line and the hidden assertion goes red)
+    negativeMutation: (p) => {
+      const t = p.targets.find((x) => x.name === 'bacura');
+      let patched = 0;
+      for (const b of Object.values(t.blocks)) {
+        if (b.opcode !== 'operator_not' || !b.inputs.OPERAND) continue;
+        const lt = t.blocks[b.inputs.OPERAND[1]];
+        if (!lt || lt.opcode !== 'operator_lt') continue;
+        const lhs = t.blocks[lt.inputs.OPERAND1[1]];
+        const rhs = lt.inputs.OPERAND2[1];
+        const isSlotX = lhs && lhs.opcode === 'data_itemoflist' && lhs.fields.LIST[0] === 'slot x';
+        if (isSlotX && Array.isArray(rhs) && String(rhs[1]) === '0') {
+          lt.inputs.OPERAND2 = [1, [4, '-99999']];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error("mutate: no in-view gate 'not (slot x < 0)' on bacura");
+    },
   },
   {
     key: 'bomb-arm-gated',
@@ -8359,7 +8540,6 @@ export const SCENARIOS = [
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"
 // is honest: the net covers the logic layer of these areas, never the on-screen result.
 export const EXCLUSIONS = [
-  "A shot freeing its slot on reaching the top frame (touching-frame collision — headless can't see it)",
   'The bomb flight/explosion duration and true concurrent lockout (timing collapses headless)',
   'Collision-driven death from an enemy or bullet (rendered collision)',
   "Sprite visibility, layering, a costume's rendered pixels, audio, and overall feel (the digit " +

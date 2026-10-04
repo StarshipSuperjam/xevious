@@ -270,7 +270,9 @@ class ScratchProjectTests(unittest.TestCase):
         # with no burst or crater — like the Bacura it is never destroyed on screen), and the slice-14 easter-egg
         # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
         # renderer clone band since the egg draws no field sprite, holding a single generated credit costume).
-        self.assertEqual(33, len(project["targets"]))
+        # Slice-20 PRES-01 retires the four baseline border sprites (frame_t/frame_b/frame_l/frame_r; the play
+        # area is the whole stage, docs/mechanics/053), so 33 -> 29.
+        self.assertEqual(29, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -325,7 +327,9 @@ class ScratchProjectTests(unittest.TestCase):
         # + the 4 slice-19 CAB-04 initials-entry screen costumes on start_screen (CONGRATULATIONS /
         # ENTER YOUR INITIALS headers, PLAYER 1 / PLAYER 2 tags), all distinct whole-string PNGs in the
         # credited font at the SMALL_TEXT_GEOM cell. 250 + 4 = 254.
-        self.assertEqual(254, len(assets))
+        # - the slice-20 PRES-01 retirement of the four border sprites drops their historical costumes: frame_t
+        # and frame_b are distinct PNGs, frame_l and frame_r share one (the same 1-unit strip), so 254 - 3 = 251.
+        self.assertEqual(251, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -386,7 +390,14 @@ class ScratchProjectTests(unittest.TestCase):
         )
         source = load_source(scratch.SOURCE_DIR)
         self.assertEqual(list(original), list(source))
-        historical_targets = copy.deepcopy(source["targets"][:len(original["targets"])])
+        # PRES-01 retired the four baseline border sprites (docs/mechanics/053): they must be gone from the
+        # source, and every OTHER historical target must survive, in its original order, ahead of the added ones.
+        retired = set(director.FRAME_TARGETS)
+        self.assertEqual({"frame_t", "frame_b", "frame_l", "frame_r"}, retired)
+        self.assertFalse(retired & {target["name"] for target in source["targets"]})
+        original_names = [t["name"] for t in original["targets"] if t["name"] not in retired]
+        historical_targets = copy.deepcopy(source["targets"][:len(original_names)])
+        self.assertEqual(original_names, [target["name"] for target in historical_targets])
         original_solvalou = next(
             target
             for target in original["targets"]
@@ -18019,15 +18030,30 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             fails.add("B1-reload-gate")
 
-        # B8 — one shot clone; expires at the top border at baseline speed; no waits.
+        # B8 — one shot clone; expires as it passes arcade row 0 at baseline speed; no waits.
         if count("blaster", "control_start_as_clone") != 1:
             fails.add("B8-clone")
-        if not has(
-            "blaster",
-            lambda b: b["opcode"] == "sensing_touchingobjectmenu"
-            and b["fields"].get("TOUCHINGOBJECTMENU", [None])[0] == "frame_t",
-        ):
+
+        def ref(name, block, slot):
+            # The block wired into `slot` of `block` (a nested reporter), or None.
+            spec = block["inputs"].get(slot)
+            return blocks[name].get(spec[1]) if isinstance(spec, list) and isinstance(spec[1], str) else None
+
+        def shot_row_expiry(b):
+            # PRES-01: `(y position + 20) > RENDER_ROW_TOP` — the next move would carry the shot past row 0.
+            if b["opcode"] != "operator_gt" or num(b["inputs"].get("OPERAND2")) != director.RENDER_ROW_TOP:
+                return False
+            lhs = ref("blaster", b, "OPERAND1")
+            if not lhs or lhs["opcode"] != "operator_add" or num(lhs["inputs"].get("NUM2")) != 20:
+                return False
+            position = ref("blaster", lhs, "NUM1")
+            return bool(position) and position["opcode"] == "motion_yposition"
+
+        if not has("blaster", shot_row_expiry):
             fails.add("B8-top-expiry")
+        # PRES-01: no border sprites remain to touch, so the blaster tests no sprite contact at all.
+        if has("blaster", lambda b: b["opcode"] == "sensing_touchingobject"):
+            fails.add("B8-touch-expiry")
         if not has(
             "blaster",
             lambda b: b["opcode"] == "motion_changeyby" and num(b["inputs"].get("DY")) == 20,
@@ -18118,6 +18144,35 @@ class ScratchProjectTests(unittest.TestCase):
         if count("solv_death", "control_wait") != 0:
             fails.add("B5B10-wall-clock")
 
+        # PRES-01 — the craft clamps its own position at the four stop lines (no border sprites to touch):
+        # `if <pos> <cmp> <limit> then set <axis> to <limit>`, one per side, at the retired frames' stop lines.
+        clamps = set()
+        for b in blocks["solvalou"].values():
+            if b["opcode"] != "control_if":
+                continue
+            cond = ref("solvalou", b, "CONDITION")
+            body = ref("solvalou", b, "SUBSTACK")
+            if not cond or not body or cond["opcode"] not in ("operator_gt", "operator_lt"):
+                continue
+            position = ref("solvalou", cond, "OPERAND1")
+            if not position or position["opcode"] not in ("motion_xposition", "motion_yposition"):
+                continue
+            set_to = num(body["inputs"].get("X") or body["inputs"].get("Y"))
+            clamps.add((cond["opcode"], position["opcode"], num(cond["inputs"].get("OPERAND2")), body["opcode"], set_to))
+        expected_clamps = {
+            ("operator_gt", "motion_yposition", director.CRAFT_Y_TOP, "motion_sety", director.CRAFT_Y_TOP),
+            ("operator_lt", "motion_yposition", director.CRAFT_Y_BOTTOM, "motion_sety", director.CRAFT_Y_BOTTOM),
+            ("operator_lt", "motion_xposition", -director.CRAFT_X_LIMIT, "motion_setx", -director.CRAFT_X_LIMIT),
+            ("operator_gt", "motion_xposition", director.CRAFT_X_LIMIT, "motion_setx", director.CRAFT_X_LIMIT),
+        }
+        if clamps != expected_clamps:
+            fails.add("PRES01-craft-clamp")
+        # The stop lines are the retired frames' (craft costume vs frame pixels on the ±7 lattice from y=-85).
+        if (director.CRAFT_X_LIMIT, director.CRAFT_Y_TOP, director.CRAFT_Y_BOTTOM) != (217, 139, -141):
+            fails.add("PRES01-stop-lines")
+        if has("solvalou", lambda b: b["opcode"] == "sensing_touchingobject"):
+            fails.add("PRES01-craft-touch")
+
         # B9 — the craft fronts itself; terrain is sent back.
         if not has("solvalou", lambda b: b["opcode"] == "looks_gotofrontback"):
             fails.add("B9-craft-front")
@@ -18144,16 +18199,9 @@ class ScratchProjectTests(unittest.TestCase):
             4,
             sum(block["opcode"] == "sensing_keypressed" for block in solvalou.values()),
         )
-        touched_frames = {
-            block["fields"]["TOUCHINGOBJECTMENU"][0]
-            for block in solvalou.values()
-            if block["opcode"] == "sensing_touchingobjectmenu"
-        }
-        # WPN-04 (slice 9): the craft now clamps its OWN top bound (frame_t), mirroring
-        # update_solvalou_sprite_XY's hard clamp on both axes. The interim crosshair-driven
-        # `target_t` broadcast that used to stand in for the top bound is retired, so the craft
-        # touches all four frame edges directly.
-        self.assertEqual({"frame_b", "frame_t", "frame_l", "frame_r"}, touched_frames)
+        # PRES-01 (slice 20): the border sprites are retired, so the craft touches nothing — it clamps its
+        # own position at the four stop lines (pinned in the regression contract below as PRES01-craft-clamp).
+        self.assertNotIn("sensing_touchingobject", {b["opcode"] for b in solvalou.values()})
         death = targets["solv_death"]["blocks"]
         self.assertIn("sound_play", {block["opcode"] for block in death.values()})
         self.assertNotIn(
@@ -18205,14 +18253,35 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["OPERAND2"] = [1, [4, 3]]
 
-        def break_shot_expiry(p):  # B8: park the shot at the wrong edge
+        def break_shot_expiry(p):  # B8/PRES-01: move the shot's expiry line off row 0 (one frame late)
             b = first(
                 p,
                 "blaster",
-                lambda b: b["opcode"] == "sensing_touchingobjectmenu"
-                and b["fields"]["TOUCHINGOBJECTMENU"][0] == "frame_t",
+                lambda b: b["opcode"] == "operator_gt"
+                and num(b["inputs"].get("OPERAND2")) == director.RENDER_ROW_TOP,
             )
-            b["fields"]["TOUCHINGOBJECTMENU"][0] = "frame_b"
+            b["inputs"]["OPERAND2"] = [1, [4, director.RENDER_ROW_TOP + 20]]
+
+        def touch_shot_expiry(p):  # PRES-01: regress the expiry back to a sprite-contact test
+            b = first(p, "blaster", lambda b: b["opcode"] == "operator_gt"
+                      and num(b["inputs"].get("OPERAND2")) == director.RENDER_ROW_TOP)
+            b["opcode"] = "sensing_touchingobject"
+
+        def break_craft_top_clamp(p):  # PRES-01: let the craft climb one lattice step past the top stop
+            b = first(p, "solvalou", lambda b: b["opcode"] == "motion_sety"
+                      and num(b["inputs"].get("Y")) == director.CRAFT_Y_TOP)
+            b["inputs"]["Y"] = [1, [4, director.CRAFT_Y_TOP + 7]]
+
+        def drop_craft_side_clamp(p):  # PRES-01: remove the right-side limit (the craft drifts off-stage)
+            b = first(p, "solvalou", lambda b: b["opcode"] == "motion_setx"
+                      and num(b["inputs"].get("X")) == director.CRAFT_X_LIMIT)
+            b["opcode"] = "looks_show"
+            b["inputs"] = {}
+
+        def touch_craft_bound(p):  # PRES-01: regress a clamp back to a sprite-contact test
+            b = first(p, "solvalou", lambda b: b["opcode"] == "operator_lt"
+                      and num(b["inputs"].get("OPERAND2")) == director.CRAFT_Y_BOTTOM)
+            b["opcode"] = "sensing_touchingobject"
 
         def break_bomb_broadcast(p):  # B2: drop the Stage walk's bomb-drop broadcast
             b = first(
@@ -18321,6 +18390,10 @@ class ScratchProjectTests(unittest.TestCase):
             ("B7-marker-show", break_marker),
             ("B7-marker-not-receiver", couple_marker_to_bomb),
             ("B8-top-expiry", break_shot_expiry),
+            ("B8-touch-expiry", touch_shot_expiry),
+            ("PRES01-craft-clamp", break_craft_top_clamp),
+            ("PRES01-craft-clamp", drop_craft_side_clamp),
+            ("PRES01-craft-touch", touch_craft_bound),
             ("B9-craft-front", break_craft_layer),
             ("B9-terrain-back-area_01a", break_terrain_layer),
         ]
@@ -18329,6 +18402,148 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
+
+    def _pres01_framing_failures(self, project: dict) -> set[str]:
+        """PRES-01 playfield framing as a static contract (docs/mechanics/053): no border sprites; every
+        slot-driven world renderer draws only inside the on-field rows [0, 40) and hides whole otherwise;
+        world renderers never front themselves (so the HUD, fronted once at creation, draws over them while
+        the craft still fronts every tick); and the static world band keeps ground under every flyer."""
+        targets = {t["name"]: t for t in project["targets"]}
+        num = self._numeric
+        fails: set[str] = set()
+        if set(director.FRAME_TARGETS) & set(targets):
+            fails.add("frames-present")
+        view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
+        if view_units != 40 * 256:  # row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839)
+            fails.add("view-rows")
+
+        for name in director.WORLD_RENDER_LAYER_ORDERS:
+            target = targets.get(name)
+            if target is None:
+                fails.add(f"missing-{name}")
+                continue
+            blocks = target["blocks"]
+
+            def ref(block, slot):
+                spec = block["inputs"].get(slot)
+                return blocks.get(spec[1]) if isinstance(spec, list) and isinstance(spec[1], str) else None
+
+            def is_slot_x(block):
+                return bool(block) and block["opcode"] == "data_itemoflist" and block["fields"]["LIST"][0] == "slot x"
+
+            def is_in_view(cond):
+                if not cond or cond["opcode"] != "operator_and":
+                    return False
+                low, high = ref(cond, "OPERAND1"), ref(cond, "OPERAND2")
+                below = ref(low, "OPERAND") if low and low["opcode"] == "operator_not" else None
+                return (
+                    bool(below) and below["opcode"] == "operator_lt" and is_slot_x(ref(below, "OPERAND1"))
+                    and num(below["inputs"].get("OPERAND2")) == 0
+                    and bool(high) and high["opcode"] == "operator_lt" and is_slot_x(ref(high, "OPERAND1"))
+                    and num(high["inputs"].get("OPERAND2")) == view_units
+                )
+
+            def reach(start_id):
+                # Every block reachable DOWNWARD from start_id (next chains + nested substacks/inputs).
+                seen, stack = set(), [start_id]
+                while stack:
+                    bid = stack.pop()
+                    if not isinstance(bid, str) or bid in seen or bid not in blocks:
+                        continue
+                    seen.add(bid)
+                    block = blocks[bid]
+                    stack.append(block.get("next"))
+                    for spec in block.get("inputs", {}).values():
+                        if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str):
+                            stack.append(spec[1])
+                return seen
+
+            gates = [
+                bid for bid, b in blocks.items()
+                if b["opcode"] == "control_if_else" and is_in_view(ref(b, "CONDITION"))
+                and (ref(b, "SUBSTACK2") or {}).get("opcode") == "looks_hide"
+            ]
+            if not gates:
+                fails.add(f"no-gate-{name}")
+            covered = set()
+            for gate in gates:
+                covered |= reach(blocks[gate]["inputs"]["SUBSTACK"][1])
+            shows = {bid for bid, b in blocks.items() if b["opcode"] == "looks_show"}
+            if not shows or shows - covered:
+                fails.add(f"ungated-show-{name}")
+            if any(b["opcode"] == "looks_gotofrontback" for b in blocks.values()):
+                fails.add(f"world-fronts-{name}")
+
+        # Static world band: the Bonus Flag under the ground pool, the ground pool under every flyer + bullet.
+        order = {name: targets[name].get("layerOrder") for name in director.WORLD_RENDER_LAYER_ORDERS if name in targets}
+        ground = order.get(director.GROUND_RENDER_TARGET)
+        flag = order.get(director.BONUS_FLAG_TARGET)
+        flyers = [v for k, v in order.items() if k not in (director.GROUND_RENDER_TARGET, director.BONUS_FLAG_TARGET)]
+        if ground is None or flag is None or not flyers or not (flag < ground < min(flyers)):
+            fails.add("world-band")
+        all_orders = [t.get("layerOrder") for t in project["targets"]]
+        if len(all_orders) != len(set(all_orders)):
+            fails.add("layer-collision")
+        # The HUD fronts its clones (at creation) and the craft fronts itself every tick: craft > HUD > world.
+        if not any(b["opcode"] == "looks_gotofrontback" for b in targets["hud"]["blocks"].values()):
+            fails.add("hud-front")
+        if not any(b["opcode"] == "looks_gotofrontback" for b in targets["solvalou"]["blocks"].values()):
+            fails.add("craft-front")
+        return fails
+
+    # Roadmap closure evidence for leaf `presentation.framing` (PRES-01).
+    # roadmap-evidence: PRES-01 success  (test_pres01_playfield_framing_contract — no border sprites; the craft clamps at the retired frames' stop lines; the shot expires as it passes row 0; every world renderer shows only inside rows 0-39 and never fronts itself, so craft > HUD > world; harness pres01-craft-stops-at-stop-lines / pres01-shot-expires-past-row-0 / pres01-world-hidden-off-field run it live)
+    # roadmap-evidence: PRES-01 failure  (test_pres01_playfield_framing_contract negatives: a missing gate bound, an ungated show, a re-added per-tick front, a flyer below the ground band, and a restored border sprite each go red; harness negatives drop the craft clamp, the row-0 expiry, and the view gate)
+    def test_pres01_playfield_framing_contract(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._pres01_framing_failures(base))
+
+        def target(p, name):
+            return next(t for t in p["targets"] if t["name"] == name)
+
+        def gate_high_bound(p, name):
+            view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
+            return next(
+                b for b in target(p, name)["blocks"].values()
+                if b["opcode"] == "operator_lt" and self._numeric(b["inputs"].get("OPERAND2")) == view_units
+            )
+
+        def widen_gate(p):  # the toroid's bottom cut moved past row 40 -> no longer the on-field gate
+            gate_high_bound(p, director.TOROID_TARGET)["inputs"]["OPERAND2"] = [1, [4, 99999]]
+
+        def ungate_ground(p):  # the ground pool's gate dropped: its else-arm shows instead of hiding
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            gate = next(
+                b for b in blocks.values()
+                if b["opcode"] == "control_if_else" and blocks.get((b["inputs"].get("SUBSTACK2") or [0, None])[1], {}).get("opcode") == "looks_hide"
+                and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_and"
+            )
+            blocks[gate["inputs"]["SUBSTACK2"][1]]["opcode"] = "looks_show"
+
+        def refront_bullet(p):  # an enemy bullet fronting itself every tick again (would cover the HUD)
+            blocks = target(p, director.ENEMY_BULLET_TARGET)["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_setsizeto")["opcode"] = "looks_gotofrontback"
+
+        def sink_toroid(p):  # a flyer back at its old layer, below the ground band
+            target(p, director.TOROID_TARGET)["layerOrder"] = 18
+
+        def restore_frame(p):  # a border sprite back in the project
+            frame = copy.deepcopy(target(p, "solvalou"))
+            frame["name"] = "frame_t"
+            frame["layerOrder"] = 9
+            p["targets"].append(frame)
+
+        cases = [
+            (f"no-gate-{director.TOROID_TARGET}", widen_gate),
+            (f"ungated-show-{director.GROUND_RENDER_TARGET}", ungate_ground),
+            (f"world-fronts-{director.ENEMY_BULLET_TARGET}", refront_bullet),
+            ("world-band", sink_toroid),
+            ("frames-present", restore_frame),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._pres01_framing_failures(project), f"corruption '{label}' was not caught")
 
     # Roadmap closure evidence for leaf `player.ground-targeting` (WPN-03 target-lock, WPN-04 bomb-flight).
     # The crosshair (slot 35) leads the craft by the fixed 96-px forward lead and locks the bomb target
@@ -18716,7 +18931,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "9955936414915a8d19e065c612fe0c6e0941b8b9aa440c91984ab8a646f40335",
+            "a5055ac755a319275bbcc034b40d2e78b25406fb9fd23740f44428578c060210",
             build_hash,
         )
 
