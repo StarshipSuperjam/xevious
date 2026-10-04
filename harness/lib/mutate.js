@@ -202,6 +202,50 @@ export function changeListItemEqualsOperand(project, spriteName, listName, fromV
  * lateral shadow back on half-pixel units (`slot y / 32` → `/ 16`, the pre-PRES-01 misread that halved
  * the bomb box) — the severing negative for the bomb-between-a-pair scenario.
  */
+/**
+ * Insert `broadcast <message>` immediately before every `transition to <destination>` call on `spriteName`
+ * — restores a broadcast-then-transition ordering a fix removed (e.g. the pre-fix death path's
+ * `craft changed` ahead of `transition to player-dead`).
+ */
+export function insertBroadcastBeforeTransition(project, spriteName, destination, message) {
+  const t = target(project, spriteName);
+  const stage = project.targets.find((x) => x.isStage);
+  const broadcastId = Object.keys(stage.broadcasts || {}).find((id) => stage.broadcasts[id] === message);
+  if (!broadcastId) throw new Error(`mutate: no broadcast '${message}'`);
+  const calls = Object.keys(t.blocks).filter((id) => {
+    const b = t.blocks[id];
+    if (!b || b.opcode !== 'procedures_call') return false;
+    if (!String(b.mutation?.proccode || '').startsWith('transition to')) return false;
+    return Object.values(b.inputs || {}).some(
+      (v) => Array.isArray(v) && Array.isArray(v[1]) && String(v[1][1]) === destination,
+    );
+  });
+  if (!calls.length) throw new Error(`mutate: no 'transition to ${destination}' on ${spriteName}`);
+  calls.forEach((callId, n) => {
+    const call = t.blocks[callId];
+    const newId = `mut-bcast-${n}`;
+    const parentId = call.parent;
+    t.blocks[newId] = {
+      opcode: 'event_broadcast',
+      next: callId,
+      parent: parentId,
+      inputs: { BROADCAST_INPUT: [1, [11, message, broadcastId]] },
+      fields: {},
+      shadow: false,
+      topLevel: false,
+    };
+    const par = t.blocks[parentId];
+    if (par.next === callId) {
+      par.next = newId;
+    } else {
+      for (const [k, v] of Object.entries(par.inputs || {})) {
+        if (Array.isArray(v) && v[1] === callId) par.inputs[k] = [v[0], newId];
+      }
+    }
+    call.parent = newId;
+  });
+}
+
 export function changeDivideLiteral(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);
   let patched = 0;

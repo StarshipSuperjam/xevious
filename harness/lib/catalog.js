@@ -387,17 +387,29 @@ export const SCENARIOS = [
       // The hit position the walk tests: the slot x the shot mirrors (JS indices of the three shot slots).
       const shotSlots = [36, 37, 38];
       let reach = Infinity;
-      keyDown(vm, ' ');
-      for (let i = 0; i < 60; i += 1) {
-        step(vm, 1);
-        for (const t of vm.runtime.targets) {
-          if (t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') continue;
-          if (!shots.has(t.id)) shots.set(t.id, -Infinity);
-          if (t.visible) shots.set(t.id, Math.max(shots.get(t.id), t.y));
-        }
+      // One harness step runs several ticks and a shot covers its last step-unit before row 0 in ONE tick, so
+      // sampling only at step boundaries caught it there by luck (an intermittent red). Sample the shot slots
+      // after every thread step the sequencer runs instead.
+      const seq = vm.runtime.sequencer;
+      const original = seq.stepThread;
+      seq.stepThread = function hooked(thread) {
+        original.call(this, thread);
         const types = readVar(vm, 'slot-type');
         const xs = readVar(vm, 'slot-x');
         for (const s of shotSlots) if (Number(types[s]) !== 0) reach = Math.min(reach, Number(xs[s]));
+      };
+      keyDown(vm, ' ');
+      try {
+        for (let i = 0; i < 60; i += 1) {
+          step(vm, 1);
+          for (const t of vm.runtime.targets) {
+            if (t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') continue;
+            if (!shots.has(t.id)) shots.set(t.id, -Infinity);
+            if (t.visible) shots.set(t.id, Math.max(shots.get(t.id), t.y));
+          }
+        }
+      } finally {
+        seq.stepThread = original;
       }
       keyUp(vm, ' ');
       const tops = [...shots.values()];
@@ -4406,6 +4418,93 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'player slot x', 6144),
   },
   {
+    key: 'hud-glyphs-never-stack-through-a-death',
+    // ECO-02 / PLY-02 (slice 20 playtest: "The HUD font goes bold when I die"): a real craft death must rebuild
+    // the HUD exactly once. The death path used to broadcast `craft changed` just before `transition to
+    // player-dead`; the life clones that spawned were created after `director stop` went out, survived it, and
+    // then ran the HUD's own director-enter spawn, stacking 2-3 copies of every glyph.
+    behavior:
+      'Through a real craft death the HUD is rebuilt exactly once: at player-dead and after the respawn, no two visible HUD glyph clones share a position (stacked duplicates made the HUD text look bold)',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'invuln', 0); // a real, killable craft
+      const craft0 = readVar(vm, 'eco-craft');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const stacked = () => {
+        const seen = new Map();
+        for (const t of vm.runtime.targets) {
+          if (t.isOriginal || t.sprite.name !== 'hud' || !t.visible) continue;
+          const k = `${Math.round(t.x * 10)},${Math.round(t.y * 10)}`;
+          seen.set(k, (seen.get(k) || 0) + 1);
+        }
+        return { visible: [...seen.values()].reduce((a, n) => a + n, 0), stacked: [...seen.values()].filter((n) => n > 1).length };
+      };
+      // A whole death (explosion -> player-dead -> respawn) can run inside ONE harness step, so player-dead is
+      // not reliably visible at a step boundary. Sample instead after every thread step the sequencer runs
+      // while the state is player-dead (the HUD's director-enter spawn is one of those threads), keeping the
+      // worst stacking seen. On the first player-dead sample, clear the attacker and restore invulnerability
+      // so the respawned craft is not killed again inside the same step.
+      const seq = vm.runtime.sequencer;
+      const original = seq.stepThread;
+      let atDead = null;
+      seq.stepThread = function hooked(thread) {
+        original.call(this, thread);
+        if (readVar(vm, 'game-director-state') !== 'player-dead') return;
+        if (atDead === null) {
+          atDead = { visible: 0, stacked: 0 };
+          put('slot-type', 63, 0);
+          put('slot-state', 63, 0);
+          writeVar(vm, 'invuln', 1);
+        }
+        const now = stacked();
+        atDead.visible = Math.max(atDead.visible, now.visible);
+        atDead.stacked = Math.max(atDead.stacked, now.stacked);
+      };
+      try {
+        // Park a Toroid on the craft's exact position each frame until the death lands.
+        for (let i = 0; i < 60 && atDead === null; i += 1) {
+          put('slot-type', 63, 10);
+          put('slot-state', 63, 1);
+          put('slot-x', 63, readVar(vm, 'player-slot-x'));
+          put('slot-y', 63, readVar(vm, 'player-slot-y'));
+          put('slot-dx', 63, 0);
+          put('slot-dy', 63, 0);
+          put('slot-flag', 63, 0);
+          step(vm, 1);
+        }
+        let t = 0;
+        while (readVar(vm, 'game-director-state') !== 'playing' && t < 200) {
+          step(vm, 1);
+          t += 1;
+        }
+      } finally {
+        seq.stepThread = original;
+      }
+      step(vm, 2);
+      return {
+        atDead,
+        craftLost: craft0 - readVar(vm, 'eco-craft'),
+        afterRespawn: stacked(),
+        respawned: readVar(vm, 'game-director-state'),
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.atDead, 'precondition: the craft died and player-dead was observed');
+      assert.equal(obs.craftLost, 1, 'precondition: exactly one craft was lost');
+      assert.equal(obs.respawned, 'playing', 'precondition: the next craft respawned');
+      assert.ok(obs.atDead.visible > 0, 'the HUD is on screen at player-dead');
+      assert.equal(obs.atDead.stacked, 0, 'no HUD glyph is stacked on another at player-dead (no bold text)');
+      assert.equal(obs.afterRespawn.stacked, 0, 'no HUD glyph is stacked on another after the respawn');
+    },
+    // Restore the pre-fix ordering — `craft changed` broadcast just before `transition to player-dead` — so the
+    // racing life clones survive the stop and re-run the HUD spawn -> the no-stack assertion fails.
+    negativeMutation: (p) => mutate.insertBroadcastBeforeTransition(p, 'Stage', 'player-dead', 'craft changed'),
+  },
+  {
     key: 'bomb-crosshair-leads-craft',
     behavior:
       'The bomb crosshair (slot 35) leads the craft by a fixed 96-px (-3072 unit) forward depth offset each tick while sharing the craft column — the reticle sits ahead of the craft (init_bombing solvalou_X + 0xF400), not on it',
@@ -7056,11 +7155,14 @@ export const SCENARIOS = [
       step(vm, 2);
       const boss = groundCloneEffect(vm, slot);
       // Now flip the same slot to a NORMAL ground object (Barra); the top-of-loop clear must zero the effect.
+      // A live step runs the walk to settling (~200+ ticks at +32 scroll each), so seed the Barra near the top of
+      // the visible rows (row 8) and give it ONE step: from slot x 3000 two steps scrolled it to ~8.8k, and a
+      // slow run carried it past row 40 (10240), where the in-view gate hides it and the check went vacuous.
       put('slot-type', i, 30); // BARRA_TYPE
       put('slot-state', i, 1);
-      put('slot-x', i, 3000);
+      put('slot-x', i, 2048);
       put('slot-y', i, 3000);
-      step(vm, 2);
+      step(vm, 1);
       const normal = groundCloneEffect(vm, slot);
       return { boss, normal };
     },
