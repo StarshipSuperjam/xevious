@@ -15629,13 +15629,15 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "Stage": stage_blocks(),
         "solvalou": solvalou_blocks(),
         "blaster": blaster_blocks(),
-        # The two strips leapfrog: the scroll counter wraps at 690 steps, and each
-        # strip's seed sets its phase so they tile seamlessly (baseline geometry).
-        # area_01a starts 335 steps into the cycle (baseline pre-roll), so it wraps
-        # first after 335 steps: seed 690 - 335 = 355. area_01b runs a full cycle from
-        # its start: seed 0.
-        "area_01a": terrain_blocks("area_01a", "area01_12-0", -15, TERRAIN_STEP_A_ID, 355),
-        "area_01b": terrain_blocks("area_01b", "area01_11-0", 344, TERRAIN_STEP_B_ID, 0),
+        # The two strips leapfrog: each moves down 1 a tick from y 345 to the fence at
+        # y -345 and wraps after 690 steps, so a strip's y is always 345 - step. Seeded
+        # half a cycle apart (y 345 apart; the 360-tall strips overlap by 15), the pair
+        # covers the stage on every tick. The baseline seeds (y -15 / step 355, y 344 /
+        # step 0) broke y = 345 - step, so the spacing alternated 336 / 355 and a gap of
+        # up to 10 opened at the top or bottom edge every half cycle, hidden by the
+        # retired frame bands until PRES-01 removed them.
+        "area_01a": terrain_blocks("area_01a", "area01_12-0", -15, TERRAIN_STEP_A_ID, 360),
+        "area_01b": terrain_blocks("area_01b", "area01_11-0", 330, TERRAIN_STEP_B_ID, 15),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
         "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, "target_01"),

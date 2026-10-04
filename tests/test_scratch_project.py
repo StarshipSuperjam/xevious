@@ -18160,6 +18160,25 @@ class ScratchProjectTests(unittest.TestCase):
             if count(strip, "control_wait") != 0:
                 fails.add(f"B3-wall-clock-{strip}")
 
+        # PRES01-terrain-phase — with no frame bands to hide an edge gap, the strips must stay exactly
+        # half a cycle apart: each strip's rewind seed satisfies y = 345 - step (the steady wrap law), and
+        # the two seeds differ by 345 steps, so the 360-tall pair covers the stage on every tick.
+        # The rewind is `go to (0, seed y)` then `set scroll step to seed`; the wrap is the reverse order.
+        seeds = {}
+        for strip in ("area_01a", "area_01b"):
+            found = []
+            for b in blocks[strip].values():
+                after = blocks[strip].get(b.get("next") or "")
+                if b["opcode"] == "motion_gotoxy" and after and after["opcode"] == "data_setvariableto":
+                    found.append(tuple(
+                        float(v) if v is not None else None
+                        for v in (num(b["inputs"].get("Y")), num(after["inputs"].get("VALUE")))
+                    ))
+            seeds[strip] = found[0] if len(found) == 1 else (None, None)
+        (ya, sa), (yb, sb) = seeds["area_01a"], seeds["area_01b"]
+        if None in (ya, sa, yb, sb) or ya + sa != 345 or yb + sb != 345 or (sa - sb) % 690 != 345:
+            fails.add("PRES01-terrain-phase")
+
         # B4 — the title glides in.
         if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
             fails.add("B4-glide")
@@ -18422,6 +18441,11 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["VALUE"] = [1, [4, 2]]
 
+        def restore_baseline_terrain_seed(p):  # PRES-01: the old 355-step seed → edge gaps every half cycle
+            for b in blocks_of(p, "area_01a").values():
+                if b["opcode"] == "data_setvariableto" and str(num(b["inputs"].get("VALUE"))) == "360":
+                    b["inputs"]["VALUE"] = [1, [10, "355"]]
+
         def break_terrain_layer(p):  # B9: stop sending terrain to the back
             for b in blocks_of(p, "area_01a").values():
                 if b["opcode"] == "looks_goforwardbackwardlayers":
@@ -18451,6 +18475,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-craft-touch", touch_craft_bound),
             ("B9-craft-front", break_craft_layer),
             ("B9-terrain-back-area_01a", break_terrain_layer),
+            ("PRES01-terrain-phase", restore_baseline_terrain_seed),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -19016,7 +19041,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "b1fcd6af3659e62bf95cf1a05738b5fc1c40588ea7c5f2d5234a35c574a8143b",
+            "4ee463c933578ffea693991106bc8ad30d761ac1990b47b814515da9039ed610",
             build_hash,
         )
 
