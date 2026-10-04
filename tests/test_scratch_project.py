@@ -18039,18 +18039,49 @@ class ScratchProjectTests(unittest.TestCase):
             spec = block["inputs"].get(slot)
             return blocks[name].get(spec[1]) if isinstance(spec, list) and isinstance(spec[1], str) else None
 
-        def shot_row_expiry(b):
-            # PRES-01: `(y position + 20) > RENDER_ROW_TOP` — the next move would carry the shot past row 0.
-            if b["opcode"] != "operator_gt" or num(b["inputs"].get("OPERAND2")) != director.RENDER_ROW_TOP:
+        def past_row_0(b):
+            # PRES-01: `y position > RENDER_ROW_TOP` — the shot stands past arcade row 0.
+            if not b or b["opcode"] != "operator_gt" or num(b["inputs"].get("OPERAND2")) != director.RENDER_ROW_TOP:
                 return False
-            lhs = ref("blaster", b, "OPERAND1")
-            if not lhs or lhs["opcode"] != "operator_add" or num(lhs["inputs"].get("NUM2")) != 20:
-                return False
-            position = ref("blaster", lhs, "NUM1")
+            position = ref("blaster", b, "OPERAND1")
             return bool(position) and position["opcode"] == "motion_yposition"
 
-        if not has("blaster", shot_row_expiry):
+        def chain(first_id):
+            out, cur = [], first_id
+            while cur:
+                out.append(blocks["blaster"][cur])
+                cur = blocks["blaster"][cur].get("next")
+            return out
+
+        # The travel loop: the repeat-until whose body moves the shot by its 20-unit step.
+        travel_body = []
+        for b in blocks["blaster"].values():
+            if not isinstance(b, dict) or b.get("opcode") != "control_repeat_until":
+                continue
+            sub = b["inputs"].get("SUBSTACK")
+            body = chain(sub[1]) if isinstance(sub, list) and isinstance(sub[1], str) else []
+            if any(s["opcode"] == "motion_changeyby" and num(s["inputs"].get("DY")) == 20 for s in body):
+                travel, travel_body = b, body
+        # B8-top-expiry: the loop ends once the shot stands past row 0 (its exit condition holds the test).
+        exit_cond = ref("blaster", travel, "CONDITION") if travel_body else None
+        exit_terms = [ref("blaster", exit_cond, k) for k in ("OPERAND1", "OPERAND2")] if exit_cond else []
+        if not any(past_row_0(t) for t in exit_terms):
             fails.add("B8-top-expiry")
+        # PRES01-shot-hit-reach: the body mirrors the drawn position into slot x BEFORE the move, and a move
+        # that carries the shot past row 0 hides it before the yield — so it is never drawn there, yet the
+        # topmost drawn position is still hit-tested (and a shot fired at the top stop is tested once).
+        ops = [s["opcode"] for s in travel_body]
+        mirror_at = next((i for i, s in enumerate(travel_body) if s["opcode"] == "data_replaceitemoflist"
+                          and s["fields"]["LIST"][0] == "slot x"), None)
+        move_at = next((i for i, s in enumerate(travel_body) if s["opcode"] == "motion_changeyby"), None)
+        hide_at = None
+        for i, s in enumerate(travel_body):
+            sub = s["inputs"].get("SUBSTACK") if s["opcode"] == "control_if" else None
+            if (sub and isinstance(sub[1], str) and past_row_0(ref("blaster", s, "CONDITION"))
+                    and blocks["blaster"][sub[1]]["opcode"] == "looks_hide"):
+                hide_at = i
+        if None in (mirror_at, move_at, hide_at) or not mirror_at < move_at < hide_at or "control_wait" in ops:
+            fails.add("PRES01-shot-hit-reach")
         # PRES-01: no border sprites remain to touch, so the blaster tests no sprite contact at all.
         if has("blaster", lambda b: b["opcode"] == "sensing_touchingobject"):
             fails.add("B8-touch-expiry")
@@ -18262,6 +18293,28 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["OPERAND2"] = [1, [4, director.RENDER_ROW_TOP + 20]]
 
+        def shot_travel_ids(p):  # the blaster travel loop and its body's block ids, in order
+            bl = blocks_of(p, "blaster")
+            for lid, b in bl.items():
+                if isinstance(b, dict) and b.get("opcode") == "control_repeat_until":
+                    ids, cur = [], b["inputs"]["SUBSTACK"][1]
+                    while cur:
+                        ids.append(cur)
+                        cur = bl[cur].get("next")
+                    if any(bl[i]["opcode"] == "motion_changeyby" for i in ids):
+                        return bl, lid, ids
+            raise AssertionError("no blaster travel loop")
+
+        def drop_shot_hide(p):  # PRES-01: drop the past-row-0 hide (a shot would be drawn above row 0)
+            bl, _, ids = shot_travel_ids(p)
+            bl[ids[-2]]["next"] = None
+
+        def mirror_after_move(p):  # PRES-01: mirror after the move — the topmost drawn row is never hit-tested
+            bl, lid, ids = shot_travel_ids(p)
+            mx, my, move, rest = ids[0], ids[1], ids[2], ids[3]
+            bl[lid]["inputs"]["SUBSTACK"][1] = move
+            bl[move]["next"], bl[my]["next"] = mx, rest
+
         def touch_shot_expiry(p):  # PRES-01: regress the expiry back to a sprite-contact test
             b = first(p, "blaster", lambda b: b["opcode"] == "operator_gt"
                       and num(b["inputs"].get("OPERAND2")) == director.RENDER_ROW_TOP)
@@ -18391,6 +18444,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("B7-marker-not-receiver", couple_marker_to_bomb),
             ("B8-top-expiry", break_shot_expiry),
             ("B8-touch-expiry", touch_shot_expiry),
+            ("PRES01-shot-hit-reach", drop_shot_hide),
+            ("PRES01-shot-hit-reach", mirror_after_move),
             ("PRES01-craft-clamp", break_craft_top_clamp),
             ("PRES01-craft-clamp", drop_craft_side_clamp),
             ("PRES01-craft-touch", touch_craft_bound),
@@ -18471,7 +18526,7 @@ class ScratchProjectTests(unittest.TestCase):
             shows = {bid for bid, b in blocks.items() if b["opcode"] == "looks_show"}
             if not shows or shows - covered:
                 fails.add(f"ungated-show-{name}")
-            if any(b["opcode"] == "looks_gotofrontback" for b in blocks.values()):
+            if any(b["opcode"] in ("looks_gotofrontback", "looks_goforwardbackwardlayers") for b in blocks.values()):
                 fails.add(f"world-fronts-{name}")
 
         # Static world band: the Bonus Flag under the ground pool, the ground pool under every flyer + bullet.
@@ -18485,7 +18540,26 @@ class ScratchProjectTests(unittest.TestCase):
         if len(all_orders) != len(set(all_orders)):
             fails.add("layer-collision")
         # The HUD fronts its clones (at creation) and the craft fronts itself every tick: craft > HUD > world.
-        if not any(b["opcode"] == "looks_gotofrontback" for b in targets["hud"]["blocks"].values()):
+        # Every HUD show is preceded, earlier in its own script, by a go-to-front — so each HUD role fronts
+        # before it first draws, not just one of them.
+        hud = targets["hud"]["blocks"]
+        prev = {b["next"]: bid for bid, b in hud.items() if isinstance(b, dict) and b.get("next")}
+        parent = {bid: b.get("parent") for bid, b in hud.items() if isinstance(b, dict)}
+
+        def fronted_before(bid):
+            cur = bid
+            while cur:
+                while cur in prev:
+                    cur = prev[cur]
+                    if hud[cur]["opcode"] == "looks_gotofrontback":
+                        return True
+                cur = parent.get(cur)  # step out of a substack and keep walking back
+                if cur and hud[cur]["opcode"] == "looks_gotofrontback":
+                    return True
+            return False
+
+        hud_shows = [bid for bid, b in hud.items() if isinstance(b, dict) and b["opcode"] == "looks_show"]
+        if not hud_shows or not all(fronted_before(bid) for bid in hud_shows):
             fails.add("hud-front")
         if not any(b["opcode"] == "looks_gotofrontback" for b in targets["solvalou"]["blocks"].values()):
             fails.add("craft-front")
@@ -18533,7 +18607,18 @@ class ScratchProjectTests(unittest.TestCase):
             frame["layerOrder"] = 9
             p["targets"].append(frame)
 
+        def unfront_hud_role(p):  # one HUD role draws without fronting first (an enemy could cover it)
+            blocks = target(p, "hud")["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_gotofrontback")["opcode"] = "looks_cleargraphiceffects"
+
+        def unfront_craft(p):  # the craft no longer fronts itself
+            for b in target(p, "solvalou")["blocks"].values():
+                if b["opcode"] == "looks_gotofrontback":
+                    b["opcode"] = "looks_cleargraphiceffects"
+
         cases = [
+            ("hud-front", unfront_hud_role),
+            ("craft-front", unfront_craft),
             (f"no-gate-{director.TOROID_TARGET}", widen_gate),
             (f"ungated-show-{director.GROUND_RENDER_TARGET}", ungate_ground),
             (f"world-fronts-{director.ENEMY_BULLET_TARGET}", refront_bullet),
@@ -18931,7 +19016,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "a5055ac755a319275bbcc034b40d2e78b25406fb9fd23740f44428578c060210",
+            "b1fcd6af3659e62bf95cf1a05738b5fc1c40588ea7c5f2d5234a35c574a8143b",
             build_hash,
         )
 

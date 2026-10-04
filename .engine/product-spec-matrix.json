@@ -217,8 +217,8 @@
       "who": "engine"
     },
     {
-      "criterion": "The borderless playfield reads well: the craft and HUD are never covered, and objects enter and leave the field cleanly",
-      "digest": "sha256:604ba632c0a62ed14efda0b6ee342f0a59aad0ba9c10a3c2b4350d813928af70",
+      "criterion": "The borderless playfield reads well: no border or enemy covers the craft or the HUD, and objects enter and leave the field cleanly",
+      "digest": "sha256:b134e47399602d26f33653c4ee00a4cd0cbb6706bedba6bf89a984da51e39f04",
       "doc": "docs/spec/audio-and-presentation.md",
       "how_verified": "Play the built `.sb3`, driving the craft into every edge and corner during busy play",
       "position": 5,

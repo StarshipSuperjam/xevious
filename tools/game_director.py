@@ -3302,20 +3302,6 @@ class Blocks:
         self.blocks[result]["parent"] = parent
         return result
 
-    def touching(self, parent: str, sprite: str) -> str:
-        menu = self.add(
-            "sensing_touchingobjectmenu",
-            fields={"TOUCHINGOBJECTMENU": [sprite, None]},
-            shadow=True,
-        )
-        block_id = self.add(
-            "sensing_touchingobject",
-            inputs={"TOUCHINGOBJECTMENU": [1, menu]},
-        )
-        self.blocks[block_id]["parent"] = parent
-        self.blocks[menu]["parent"] = block_id
-        return block_id
-
     def hold_ticks(self, ticks: int) -> str:
         # An empty `repeat` does NOT pace one iteration per frame: with no block in
         # its body nothing requests a screen refresh, so the sequencer runs every
@@ -12070,10 +12056,15 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     # deletes — so the slot is freed by the clone, never reallocated under a still-live clone).
     # PRES-01 top-expiry is positional (there is no top border to touch): the arcade deletes an upward
     # shot the frame its move carries `_X` below row 0, BEFORE it is drawn (xevious_main.68k 2391-2393,
-    # delete_shot 2394-2396, after move_shot 2419-2424). The loop test runs before the move, so it exits when the NEXT move would
-    # carry the shot past row 0 (y > RENDER_ROW_TOP) — the last drawn position is always on-field.
-    at_top = blocks.op_gt(
-        blocks.op_add(blocks.yposition(), number(shot_dy)), number(RENDER_ROW_TOP)
+    # delete_shot 2394-2396, after move_shot 2419-2424). Each iteration mirrors the position the shot was
+    # drawn at, then moves; a move that carries it past row 0 hides it before the iteration's yield, so it
+    # is never drawn there, and the loop exits after that yield. The hidden final tick still carries the
+    # last drawn position in the slot, so every drawn position — the topmost included — is hit-tested
+    # (with the one-tick lag below), and a shot fired from the craft's top stop is hit-tested once at its
+    # spawn row rather than retired untested.
+    at_top = blocks.op_gt(blocks.yposition(), number(RENDER_ROW_TOP))
+    past_top_hide = blocks.if_reporter(
+        blocks.op_gt(blocks.yposition(), number(RENDER_ROW_TOP)), [blocks.add("looks_hide")]
     )
     spent = blocks.op_not(
         blocks.op_eq(
@@ -12121,6 +12112,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             mirror_y,
             blocks.add("motion_changeyby", inputs={"DY": number(shot_dy)}),
             blocks.add("looks_nextcostume"),
+            past_top_hide,
         ],
     )
     # WPN-01 shot bounce: the travel loop above exits the instant the walk marks this shot non-ACTIVE.
@@ -12940,8 +12932,9 @@ GROUND_LAYER_ORDER = 27
 # PRES-01 draw order (docs/mechanics/053): craft > HUD > world objects. World renderers no longer front
 # themselves every tick (that put them over the HUD once the border bands were gone); they keep the
 # fixed layer of their target, and the HUD clones front once at creation, so the HUD draws over every
-# world object while the player group (craft, shots, crosshair, bomb, explosion) still fronts each tick
-# and draws over the HUD. Craft > HUD > world mirrors the reference's priorities (src/amiga/amiga.68k
+# world object while the player group draws over the HUD: the craft, crosshair, and bomb front each
+# tick; a shot fronts at its creation and the explosion when it starts, both after the HUD exists (a HUD
+# piece re-created mid-flight, such as a life icon, can land over an in-flight shot). Craft > HUD > world mirrors the reference's priorities (src/amiga/amiga.68k
 # 985-987: only the craft body's hardware sprites have priority over the BOBs; 2107-2109 redraws the
 # foreground text tiles over the BOBs). The craft's weapons fronting over the HUD and enemy bullets is an
 # operator choice, not the reference: there they are BOBs drawn under the text (record 053). Without per-tick fronting the static order must itself keep ground

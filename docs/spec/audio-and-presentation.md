@@ -37,7 +37,8 @@ arcade's portrait screen ([Core game systems](core-game-systems.md), units and t
 never re-tunes the movement, shot, or crosshair constants recorded there. The stage carries **no border**:
 nothing is drawn over the playfield edges, so no frame can cover the craft or the HUD. The craft clamps its
 own position (`src/xevious_main.68k` `update_solvalou_sprite_XY` 2113–2137) — in the port, at fixed
-positional stop lines on each axis — and the crosshair is never clamped, riding at its fixed lead from the
+positional stop lines on each axis, set where the retired border used to stop it so the reachable area
+is unchanged — and the crosshair is never clamped, riding at its fixed lead from the
 craft (`src/xevious_main.68k` `update_crosshair` 2262–2271). A player shot is retired as it passes arcade
 row 0, as the arcade deletes it once its position wraps past the top (`src/xevious_main.68k`
 `main_fn_30_shot_fn` 2391–2393, `delete_shot` 2394–2396). World objects — enemies, enemy bullets, ground objects, and the Bonus
@@ -88,5 +89,5 @@ and the principles' three-marker rule applies to presentation exactly as to mech
 | Cues play at their owning events and complete within their state windows — no cutoffs | Play the built `.sb3` through fire, hit, death, award, and transition moments | operator |
 | The game sounds and looks like Xevious to its owner — music, key effects, and title presentation are present and right | Playtest judgment across a full session | operator |
 | No border covers the craft or the HUD; the craft stops at its fixed stop lines, shots retire at row 0, and world objects show only on rows 0–39 — with the locked movement, shot, and crosshair constants unchanged | Headless scenarios drive the craft into each stop line, a shot past row 0, and an object across the cut line; structural fixtures pin the frame removal, the in-view gate, and the layer order | engine |
-| The borderless playfield reads well: the craft and HUD are never covered, and objects enter and leave the field cleanly | Play the built `.sb3`, driving the craft into every edge and corner during busy play | operator |
+| The borderless playfield reads well: no border or enemy covers the craft or the HUD, and objects enter and leave the field cleanly | Play the built `.sb3`, driving the craft into every edge and corner during busy play | operator |
 | No presentation element carries invented gameplay meaning without a recorded marker | Fidelity-audit review of presentation elements against this spec | engine |

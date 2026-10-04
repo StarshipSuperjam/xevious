@@ -354,18 +354,46 @@ export const SCENARIOS = [
     playtestStep: 2,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      const shots = new Map(); // clone id -> highest y the shot was seen at
+      const shots = new Map(); // clone id -> highest y the shot was seen DRAWN at
+      // The hit position the walk tests: the slot x the shot mirrors (JS indices of the three shot slots).
+      const shotSlots = [36, 37, 38];
+      let reach = Infinity;
       keyDown(vm, ' ');
       for (let i = 0; i < 45; i += 1) {
         step(vm, 1);
         for (const t of vm.runtime.targets) {
           if (t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') continue;
-          shots.set(t.id, Math.max(shots.has(t.id) ? shots.get(t.id) : -Infinity, t.y));
+          if (!shots.has(t.id)) shots.set(t.id, -Infinity);
+          if (t.visible) shots.set(t.id, Math.max(shots.get(t.id), t.y));
         }
+        const types = readVar(vm, 'slot-type');
+        const xs = readVar(vm, 'slot-x');
+        for (const s of shotSlots) if (Number(types[s]) !== 0) reach = Math.min(reach, Number(xs[s]));
       }
       keyUp(vm, ' ');
       const tops = [...shots.values()];
-      return { fired: shots.size, highest: Math.max(...tops) };
+      // Phase 2: from the craft's top stop (y 139, row 2) the shot's first move already passes row 0. It must
+      // still be hit-tested once at its spawn row rather than retired untested: sentinel the shot slots' x,
+      // fire, and look for the row-2 mirror.
+      keyDown(vm, 'ArrowUp');
+      for (let i = 0; i < 60; i += 1) step(vm, 1);
+      const craft = vm.runtime.getSpriteTargetByName('solvalou');
+      const craftY = craft.y;
+      const xs = readVar(vm, 'slot-x');
+      for (const s of shotSlots) xs[s] = -1;
+      let drawnFromTop = -Infinity;
+      keyDown(vm, ' ');
+      for (let i = 0; i < 10; i += 1) {
+        step(vm, 1);
+        for (const t of vm.runtime.targets) {
+          if (t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster' || !t.visible) continue;
+          drawnFromTop = Math.max(drawnFromTop, t.y);
+        }
+      }
+      keyUp(vm, ' ');
+      keyUp(vm, 'ArrowUp');
+      const topMirrors = shotSlots.map((s) => Number(readVar(vm, 'slot-x')[s]));
+      return { fired: shots.size, highest: Math.max(...tops), reach, craftY, topMirrors, drawnFromTop };
     },
     assert(obs) {
       assert.ok(
@@ -377,6 +405,21 @@ export const SCENARIOS = [
         obs.highest > constants.render_row_top - 20,
         `a shot actually reached the row-0 line before retiring (highest y ${obs.highest})`,
       );
+      // The topmost drawn position is hit-tested too: the slot x the walk reads reaches row 0 (below one row,
+      // 256 units), not just the position one step short of it.
+      assert.ok(
+        obs.reach < constants.slot_units_per_cell,
+        `the shot's hit position reaches row 0 before it retires (closest slot x ${obs.reach})`,
+      );
+      assert.equal(obs.craftY, constants.craft_y_top, 'precondition: the craft sits at its top stop');
+      const spawnRow = Math.floor(
+        ((constants.render_row_top - constants.craft_y_top) * constants.slot_units_per_cell) / 8,
+      );
+      assert.ok(
+        obs.topMirrors.includes(spawnRow),
+        `a shot fired from the top stop is hit-tested at its spawn row (slot x ${obs.topMirrors}, want ${spawnRow})`,
+      );
+      assert.ok(obs.drawnFromTop <= constants.render_row_top, `no shot from the top stop is drawn past row 0`);
     },
     // roadmap-evidence: PRES-01 failure  (with the row-0 expiry disarmed the first three shots fly on to the
     //   stage fence and never free their slots, so held fire stalls at three and a shot is drawn past row 0)

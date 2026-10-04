@@ -208,7 +208,7 @@ so area position is read from the `area progress`/`area number` variable watcher
 7. **Layering and the playfield edges.** During busy play: shots, the craft, Toroids, and enemy bullets all
    render above the terrain; the craft and its shots draw over every enemy, bullet, and ground object, and
    the HUD draws over the enemies too (an enemy passing under the score lines goes behind them). There is no
-   border: nothing covers the craft or the HUD, enemies vanish as they cross the top row (stage y about 155)
+   border: no border or enemy covers the craft or the HUD, enemies vanish as they cross the top row (stage y about 155)
    rather than sliding up over the HUD, and a shot disappears at that same line. One known difference from
    the arcade, by your choice: the shots, crosshair, and bomb draw over the HUD (in the arcade only the ship
    body does), so with the ship at its top stop the crosshair covers the score text — judge whether that reads
