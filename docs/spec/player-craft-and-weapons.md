@@ -46,15 +46,16 @@ with the idiom `sub.b #bias; add.b #width`, which hits (sets carry) exactly when
 the shot laterally and [−8, 7] 2-pixel units in depth: a 32 × 32-pixel box. The port uses that window as is.
 (Before the screen-proportions change the port read the shadow bytes as half pixels on both axes and doubled
 this window to compensate; with the shadow units read correctly and the shot moving the arcade's 1.5 cells
-per tick, the reference box is 4 cells tall in depth and samples every crossing.) The tighter craft *hurtbox* (the
-death window below) is intentionally left at reference size: forgiving offence, precise defence. Special
+per tick, the reference box is 4 cells tall in depth and samples every crossing.) The craft's own death window
+(below) is smaller than this shot window — that asymmetry is the arcade's, not a port choice. Special
 case: a shot that hits a Bacura is not destroyed with its target — it bounces,
 reversing at 1.5 pixels per frame through an 8-frame bounce animation before disappearing
 (`shot_destroyed` 2400–2418).
 
 **Crosshair (WPN-03).** The crosshair sits rigidly 96 pixels ahead of the craft at the craft's own lateral
 position, recomputed every frame from the craft's exact position (`update_crosshair` 2262–2271), so it moves
-as smoothly as the craft. Once every 8 frames it tests the 14
+as smoothly as the craft. On four frames of every eight (whenever bit 2 of the frame counter is set,
+`and.b #4` in `handle_crosshairs`) it tests the 14
 targetable ground slots and switches to its lock color when one sits under it; the bomb-in-flight state
 drives its base color independently (`handle_crosshairs` 2239–2295).
 
@@ -65,7 +66,8 @@ than flying at constant speed), stepping through a two-stage sprite animation wi
 (2452–2496), and detonates when it reaches the scrolled target (`check_bomb_finished` 2502–2514). The
 blast tests all 16 ground slots with the recorded hit window — bias 10 width 20 on byte 0 and bias 5 width
 10 on byte 1 (shadow units above): each object within [−10, 9] pixels of the target laterally and [−5, 4]
-2-pixel units in depth, a 20 × 20-pixel box, every object inside it struck (`check_object_on_target`
+2-pixel units in depth, a 20 × 20-pixel box, every object inside it struck — the blast loops all 16 slots
+without stopping at the first hit (`handle_bombed_obj_and_award_points` 2597–2627, `check_object_on_target`
 2629–2641). So a bomb dropped midway between two ground objects 16 pixels apart sideways, 8 pixels from
 each, destroys both. Bomb impact resolution and scoring are specified in
 [Scoring, lives, and game over](scoring-lives-and-game-over.md) and per ground family in

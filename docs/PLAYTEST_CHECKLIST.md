@@ -198,7 +198,8 @@ so area position is read from the `area progress`/`area number` variable watcher
    change — the coarse sanity signal of step 4); the full
    **1–16→7 loop** and the 16→7 return with **no win screen** are proven by the engine's accelerated
    trace, not by playing to the end. Losing your last craft to enemy contact reaches GAME OVER, holds, and
-   returns to the title; life icons in the HUD track the count.
+   returns to the title; life icons in the HUD track the count. Through each death the HUD text keeps its
+   normal weight — it must never thicken or look bold (that was stacked duplicate glyphs, fixed in slice 20).
 6. **Life economy — score, cap, bonus, HUD.** Destroy Toroids while playing: the score climbs by 30 a
    kill, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it whenever the
    score passes it. Each digit shows leading zeros, arcade-style. Reaching 20,000 grants an extra craft
@@ -234,7 +235,9 @@ so area position is read from the `area progress`/`area number` variable watcher
    confirm they match what you remember. **Hit boxes** are now the arcade's own: shots hit a flying enemy
    anywhere on its drawn body (no longer a doubled window), and a bomb dropped directly between two ground
    objects that sit side by side — a paired Barra, say — destroys both, while one aimed well wide of a pair
-   misses them. Touching a Bacura kills you across its full width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
+   misses them. A Bacura is now drawn where the arcade draws it — a little to the right of where the last
+   build put it — so touching it anywhere along its drawn width kills you (the arcade allows a few pixels of
+   overlap at each end), and shots bounce off it across that same width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
    the alternative is a recorded port speed-up, and that is your call.
    **Title and best-five layout:** on the title, PUSH START BUTTON and INSERT COIN read centred in the
    window, and the 1 PLAYER / 2 PLAYERS choices are left-aligned with each other as a pair centred under

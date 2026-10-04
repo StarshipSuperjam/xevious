@@ -90,7 +90,9 @@
   tumble as a **position-driven costume select**: each render frame it computes `(floor(slot x / 128)) mod 8`
   — the port image of the arcade's `(_X >> 7) & 7`, since `slot x` carries the same 32-units-per-pixel scale
   as `_X` — and switches to `bacura/slab/0{index + 1}` (the eight tumble frames `01`…`08`), so the drawn slab
-  cycles through edge-on and broadside exactly as its position advances.
+  cycles through edge-on and broadside exactly as its position advances. (Slice 20: the 1x2 slab is drawn
+  8 arcade px toward screen-right of a 16-px sprite's centre, where the arcade's second tile lands and both
+  Bacura hit windows lean — `BACURA_SLAB_X_OFFSET`; see [054](054-arcade-screen-proportions.md) deviation 20.)
 - Scratch evidence: `install_init_bacura`, `install_update_bacura` and `install_pump_bacura` (the lifecycle +
   live pump), the **band-membership** Bacura branch in `install_advance_slots` (a slot-range test, not a type
   equality), the `set_bacura_count` / `reset_bacura_count` schedule branches in `_consume_schedule` with the

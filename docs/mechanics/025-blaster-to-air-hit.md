@@ -57,11 +57,14 @@
   copied — the windows and control flow are an instruction-derived port. The explosion reuses the verified
   `solv_death` frames (credited to https://www.spriters-resource.com/arcade/xevious/ in
   `src/xevious/assets/provenance.json`) as a stand-in; no new crops were added.
-- Known deviations or uncertainty: (1) **No shadow-byte wrap.** The reference compares 8-bit shadow MSBs,
-  so two objects ~128 half-px apart can wrap into a phantom hit; this port compares the exact half-px delta
-  and never does, trading that rare arcade quirk for no long-range phantom hits. (2) **One-tick shot lag.**
-  The shot's position is mirrored by its clone and read by the walk on the following tick, so the detector
-  sees the shot up to one tick (≤10 arcade px at 6 px/frame) behind its drawn position. (3) **Explosion
+- Known deviations or uncertainty: (1) **No shadow-byte wrap.** The reference compares 8-bit shadow bytes
+  modulo 256, so two objects about 240 px or more apart laterally (wider than the 224-px visible width, so
+  only with one of them off screen) can wrap into a phantom hit; depth, in 2-pixel units across the 288-px
+  screen (at most 144 units), never wraps. This port compares the exact delta and never wraps, trading that
+  rare arcade quirk for no long-range phantom hits (units per [054](054-arcade-screen-proportions.md)).
+  (2) **One-tick shot lag.** The shot's position is mirrored by its clone and read by the walk on the
+  following tick, so the detector sees the shot up to one tick (12 arcade px: two frames at 6 px/frame)
+  behind its drawn position. (3) **Explosion
   stand-in.** The burst reuses the `solv_death` frames by reference; the mechanic (explode → score → gone,
   20 frames, size-doubling phase) is exact, but the frame-8 one-cell recentre and dedicated Toroid-burst
   crops are deferred to a later art pass (operator pixel-verifies any new crop rects). (4) **Award is
