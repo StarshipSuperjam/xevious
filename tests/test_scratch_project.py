@@ -15535,6 +15535,83 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._ply02_failures(project), label)
 
     @staticmethod
+    def _death_hud_signal_failures(project: dict) -> set:
+        """The death body (`change craft by -1` -> `transition to player-dead`) must NOT broadcast
+        `craft changed`: the transition's director stop/enter rebuilds the HUD, and a broadcast ahead of it
+        raced the stop and stacked duplicate HUD glyphs (the bold-HUD-on-death bug, slice 20)."""
+        failures: set = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def literal(spec):
+            if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list) and len(spec[1]) > 1:
+                return spec[1][1]
+            return None
+
+        deaths = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode", "").startswith("transition to")
+            and "player-dead" in [literal(v) for v in b["inputs"].values()]
+        ]
+        if not deaths:
+            return {"death-body-found"}
+        for bid in deaths:
+            head = bid
+            while True:
+                parent = blocks[head].get("parent")
+                if not parent or blocks[parent].get("next") != head:
+                    break
+                head = parent
+            cursor = head
+            while cursor:
+                node = blocks[cursor]
+                if node["opcode"] == "event_broadcast" and literal(
+                    node["inputs"].get("BROADCAST_INPUT")
+                ) == "craft changed":
+                    failures.add("death-sends-no-craft-changed")
+                cursor = node.get("next")
+        return failures
+
+    def test_death_does_not_signal_craft_changed(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._death_hud_signal_failures(project))
+
+    def test_death_does_not_signal_craft_changed_negative_fixture(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._death_hud_signal_failures(project))
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        call_id = next(
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode", "").startswith("transition to")
+            and any(
+                isinstance(v, list) and len(v) > 1 and isinstance(v[1], list) and v[1][1:2] == ["player-dead"]
+                for v in b["inputs"].values()
+            )
+        )
+        parent_id = blocks[call_id]["parent"]
+        self.assertEqual(call_id, blocks[parent_id]["next"])
+        # Reinstate the retired broadcast between `change craft by -1` and the transition.
+        blocks["neg-craft-changed"] = {
+            "opcode": "event_broadcast",
+            "next": call_id,
+            "parent": parent_id,
+            "inputs": {
+                "BROADCAST_INPUT": [1, [11, "craft changed", director.MESSAGES["craft changed"]]]
+            },
+            "fields": {},
+            "shadow": False,
+            "topLevel": False,
+        }
+        blocks[parent_id]["next"] = "neg-craft-changed"
+        blocks[call_id]["parent"] = "neg-craft-changed"
+        self.assertIn("death-sends-no-craft-changed", self._death_hud_signal_failures(project))
+
+    @staticmethod
     def _area01_failures(project: dict) -> set:
         """AREA-01 area clock: `advance area` runs before the slot walk, steps the monotonic
         `area progress` by 32, derives the scroll row once, completes an area at row 14 with the
@@ -18864,6 +18941,20 @@ class ScratchProjectTests(unittest.TestCase):
                 )
         if not read_ok:
             fails.add("PRES01-render-map")
+        # PRES01-bacura-slab — the 1x2 Bacura slab draws its second tile 16 px toward screen-right of its position
+        # (sprite_draw_double_height amiga.68k 2534-2540), so its 32-px middle sits 8 px (10 units) right of a
+        # 16-px sprite's centre: the renderer's lateral offset is RENDER_COL_OFFSET - 10, not the shared -150.
+        bacura = next(t for t in project["targets"] if t["name"] == director.BACURA_TARGET)
+        offsets = [
+            as_num(num(b["inputs"].get("NUM2")))
+            for b in bacura["blocks"].values()
+            if isinstance(b, dict)
+            and b["opcode"] == "operator_subtract"
+            and (ref_in(bacura["blocks"], b, "NUM1") or {}).get("opcode") == "operator_multiply"
+            and as_num(num(ref_in(bacura["blocks"], b, "NUM1")["inputs"].get("NUM2"))) == -8 * scale
+        ]
+        if director.BACURA_SLAB_X_OFFSET != 8 * scale or offsets != [-(120 * scale) - 8 * scale]:
+            fails.add("PRES01-bacura-slab")
 
         # PRES01-attract-grid — the attract, title, best-five and entry text on the arcade text cells, from the
         # source's own screen offsets: CREDIT 0x0923 with its digits two cells past the label (display_credits
@@ -19176,6 +19267,11 @@ class ScratchProjectTests(unittest.TestCase):
                     ):
                         b["inputs"]["NUM2"] = [4, [4, 10]]
 
+        def centre_bacura_slab(p):  # the slab drawn centred on its position (8 px left of the arcade's)
+            for b in target(p, director.BACURA_TARGET)["blocks"].values():
+                if b["opcode"] == "operator_subtract" and self._numeric(b["inputs"].get("NUM2")) in (-160, "-160"):
+                    b["inputs"]["NUM2"] = [4, [4, -150]]
+
         def drift_push_start(p):  # PUSH START back at its old project-defined spot
             for b in target(p, "start_screen")["blocks"].values():
                 if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-55, "-55"):
@@ -19213,6 +19309,7 @@ class ScratchProjectTests(unittest.TestCase):
         cases = [
             ("PRES01-render-map", flip_one_renderer),
             ("PRES01-render-map", flip_player_read),
+            ("PRES01-bacura-slab", centre_bacura_slab),
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
             ("PRES01-attract-grid", credit_off_grid),
@@ -19625,7 +19722,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "15b91bca9c0f05cb3505dfe11520f17158179ca437411779f540e684bb0d075b",
+            "74684a18b001f2afea8a47e1e6363c02adb7a11d6191ce72f4896a97a8e565e3",
             build_hash,
         )
 

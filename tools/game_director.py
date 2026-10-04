@@ -256,7 +256,7 @@ ALLOC_BULLET_PROCCODE = "alloc bullet slot"
 # had read both bytes as half-pixels with Y on the scroll axis, which made every box 2-4x too small and the
 # wrong shape — a bomb between two paired ground objects missed both.) Each detector differences the shadows
 # exactly (no mod-256 wrap), so it never produces the reference's rare wrap-around phantom hit between objects
-# ~128 units apart (recorded deviation).
+# about 240 px or more apart laterally (one of them off screen); depth never wraps (recorded deviation, 025).
 # PLY-02: the shared enemy-bullet/flying-enemy vs craft box (`check_bullet_or_flying_hit_solvalou`, 2207-2219):
 # 16 px lateral x 16 px deep — the 16-px sprite.
 HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
@@ -2647,6 +2647,12 @@ BACURA_CLONE_SLOT_ID = "bacura-clone-slot"  # sprite-local: which Bacura-band sl
 BACURA_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 BACURA_TUMBLE_FRAMES = 8  # bacura/slab/01..08 — the tumble cycle (bacura_sprite_tbl has 8 entries)
 BACURA_TUMBLE_UNITS_PER_FRAME = 128  # slot-x units per frame flip: (_X>>7) => /128 (arcade lsr#6 + and#0x0e)
+# The slab is a 1x2 sprite (bacura_sprite_tbl "sprite size is 1x2"): sprite_draw_double_height (amiga.68k
+# 2534-2540) draws one 16-px tile at the object's own position and the second 16 px further toward screen-right,
+# so the 32-px slab's centre sits 8 arcade px right of a 16-px sprite's centre at the same position. Both Bacura
+# hit windows are lopsided the same way (craft [-12, 27], shot [-8, 23] px, centred ~+8). The costume's rotation
+# centre is the slab's middle, so the renderer shifts it 8 px * 1.25 = 10 stage units right (screen-right is -Y).
+BACURA_SLAB_X_OFFSET = round(8 * ARCADE_STAGE_PER_PX)  # 10
 
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
@@ -10724,11 +10730,14 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[real_or_demo]["inputs"]["CONDITION"] = [2, in_attract]
     blocks.blocks[in_attract]["parent"] = real_or_demo
     blocks.substack(real_or_demo, [demo_death])
+    # No `craft changed` here: the transition's director stop/enter rebuilds the whole HUD, life row included,
+    # from the decremented `craft`. Broadcasting it first raced the stop — the life clones it spawned were
+    # created after `director stop` went out, survived it, and then ran the HUD's own director-enter spawn
+    # too, stacking two or three copies of every HUD glyph (the HUD looked bold through player-dead).
     blocks.substack(
         real_or_demo,
         [
             blocks.change_var("craft", LIVES_ID, -1),
-            blocks.send("craft changed"),
             blocks.call_transition("player-dead", "none"),
         ],
         name="SUBSTACK2",
@@ -12474,7 +12483,7 @@ def install_hud_spawn_craft(blocks: Blocks) -> None:
     # true `craft` count is UNAFFECTED — only the icon DISPLAY is bounded, via a hud-local
     # counter capped before the spawn loop reads it). A warp (atomic) block so the whole
     # row appears in a single frame; called both by the initial director-enter spawn and
-    # again whenever `craft changed` fires (a bonus grant now, a death later), so the row
+    # again whenever `craft changed` fires (a bonus grant; a death rebuilds via its transition), so the row
     # always reflects the live `craft` count (up to the cap).
     definition = _install_warp_proc(blocks, HUD_SPAWN_CRAFT_PROCCODE)
     set_role = blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_LIFE))
@@ -14877,7 +14886,7 @@ def bacura_blocks() -> dict[str, dict[str, Any]]:
             blocks.op_div(blocks.list_item("slot y", SLOT_Y_ID, slotvar()), number(SLOT_UNITS_PER_CELL)),
             number(RENDER_COL_STAGE),
         ),
-        number(RENDER_COL_OFFSET),
+        number(RENDER_COL_OFFSET - BACURA_SLAB_X_OFFSET),  # the 1x2 slab extends toward screen-right
     )
     stage_y = blocks.op_sub(
         number(RENDER_ROW_TOP),
