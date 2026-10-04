@@ -34,12 +34,22 @@ the area clock, are owned by [Area progression and terrain](area-progression-and
 
 **Playfield framing.** The playfield is the 480×360 landscape stage — the port's recorded answer to the
 arcade's portrait screen ([Core game systems](core-game-systems.md), units and the clock) — so framing
-never re-tunes the movement, shot, or crosshair constants recorded there. The top and bottom play-borders
-that bound the craft are presentation as well as bounds (the crosshair is never clamped — it rides at its
-fixed lead from the craft, `src/xevious_main.68k` `update_crosshair` 2262–2271): they read as deliberate
-framing — minimal, consistent, and visibly intentional rather than an accidental letterbox — and never
-occlude the craft at any position it can reach. The border itself is a port necessity (the arcade's
-portrait screen has no landscape border), recorded with its reason in the build's framing mechanics record.
+never re-tunes the movement, shot, or crosshair constants recorded there. The stage carries **no border**:
+nothing is drawn over the playfield edges, so no frame can cover the craft or the HUD. The craft clamps its
+own position (`src/xevious_main.68k` `update_solvalou_sprite_XY` 2113–2137) — in the port, at fixed
+positional stop lines on each axis — and the crosshair is never clamped, riding at its fixed lead from the
+craft (`src/xevious_main.68k` `update_crosshair` 2262–2271). A player shot is retired as it passes arcade
+row 0, as the arcade deletes it once its position wraps past the top (`src/xevious_main.68k`
+`main_fn_30_shot_fn` 2391–2393, `delete_shot` 2394–2396). World objects — enemies, enemy bullets, ground objects, and the Bonus
+Flag — are drawn only while their row is on the field, rows 0–39; the arcade culls an object at row 40
+(`src/xevious_main.68k` `check_scroll_offscreen` 4827–4839) and shows rows 4–39 of the objects it keeps.
+Hiding a whole sprite at the row-0 cut line is a port necessity: Scratch cannot clip a sprite at a screen
+edge, and with no border nothing else masks an object above the field. Drawn layers run, front to back:
+the craft and its weapons, the HUD, then the world objects — the reference draws the craft's hardware
+sprites and its foreground text layer over the enemy objects (its Amiga display setup,
+`src/amiga/amiga.68k` lines 984–986 in platform_init and 2107–2109 in redraw_fg_tiles). The
+stop-line values, the row-0 cut, and the layer order are recorded with their reasons in the build's
+framing mechanics record.
 
 **Animation timing.** Where this spec records frame counts — the ~56-frame player explosion, the bomb's
 two-stage flight animation and four-color cycle, the Sol Tower's seven-step rise, bullet color pulsing
@@ -74,5 +84,6 @@ and the principles' three-marker rule applies to presentation exactly as to mech
 | Recorded animation frame counts appear in the build's data, matching this spec's owning documents | Data/structural fixture over generated animation constants | engine |
 | Cues play at their owning events and complete within their state windows — no cutoffs | Play the built `.sb3` through fire, hit, death, award, and transition moments | operator |
 | The game sounds and looks like Xevious to its owner — music, key effects, and title presentation are present and right | Playtest judgment across a full session | operator |
-| The playfield framing reads as intentional, and the borders never hide the craft at any reachable position, with the locked movement, shot, and crosshair constants unchanged | Play the built `.sb3`, driving the craft into every edge and corner | operator |
+| No border covers the craft or the HUD; the craft stops at its fixed stop lines, shots retire at row 0, and world objects show only on rows 0–39 — with the locked movement, shot, and crosshair constants unchanged | Headless scenarios drive the craft into each stop line, a shot past row 0, and an object across the cut line; structural fixtures pin the frame removal, the in-view gate, and the layer order | engine |
+| The borderless playfield reads well: the craft and HUD are never covered, and objects enter and leave the field cleanly | Play the built `.sb3`, driving the craft into every edge and corner during busy play | operator |
 | No presentation element carries invented gameplay meaning without a recorded marker | Fidelity-audit review of presentation elements against this spec | engine |

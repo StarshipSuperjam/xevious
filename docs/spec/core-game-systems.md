@@ -160,7 +160,8 @@ the crosshair's forward lead are each a **port-tuned constant** (recorded with i
 build's movement mechanics record and its generator), not derived from one common factor. The crosshair is
 **never clamped and never bounds the craft**: it rides at its fixed forward lead from the craft every frame
 (`src/xevious_main.68k` `update_crosshair` 2262–2271), while the craft clamps its own position on both axes
-(`src/xevious_main.68k` `update_solvalou_sprite_XY` 2113–2137) — in the port, against the four play-borders.
+(`src/xevious_main.68k` `update_solvalou_sprite_XY` 2113–2137) — in the port, at fixed positional stop
+lines on each axis (the stage has no border; [Audio and presentation](audio-and-presentation.md)).
 The arcade-to-screen axis orientation remains the strong
 inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
 port's own: arrow keys move during play; at the title screen the **up/down arrows choose between a

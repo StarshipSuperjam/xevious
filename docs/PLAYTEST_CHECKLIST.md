@@ -205,16 +205,20 @@ so area position is read from the `area progress`/`area number` variable watcher
    cap, and the at-cap extra-craft quirk are better confirmed by the build's fixtures and the earlier
    life-economy playtest than by grinding here** — spot-check that the score and high-score track a few
    kills correctly, and report any misbehavior in the digits or tracking.
-7. **Layering.** During busy play: shots, the craft, Toroids, and enemy bullets all render above the
-   terrain, and the craft and shots read clearly against the Toroids; the frame borders never hide the ship.
+7. **Layering and the playfield edges.** During busy play: shots, the craft, Toroids, and enemy bullets all
+   render above the terrain; the craft and its shots draw over every enemy, bullet, and ground object, and
+   the HUD draws over the enemies too (an enemy passing under the score lines goes behind them). There is no
+   border: nothing covers the craft or the HUD, enemies vanish as they cross the top row (stage y about 155)
+   rather than sliding up over the HUD, and a shot disappears at that same line.
 8. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,
    and crosshair behavior of the recovery build (#13/#14) you approved — a single spatial factor was tried
    and rejected, and this build tunes those quantities as port constants instead. Confirm the feel is back
    to what you validated: the craft moves at its familiar speed and reaches every edge; the shot speed
-   reads well; and the crosshair **leads the ship, tracks it, and — this is the key fix — cannot leave the
-   top of the screen**: when it reaches the top border it stops there and the ship stops with it (the
-   crosshair also marks the bomb-drop point). If any of movement, bounds, shot, or the crosshair top-stop
-   feels wrong, that is a bug to report, not a decision to revisit.
+   reads well; and the crosshair **leads the ship and tracks it** at a fixed distance ahead (it marks the
+   bomb-drop point). The crosshair is never clamped — the ship stops at its own stop lines (top, bottom, and
+   both sides), and with the ship at its top stop the crosshair sits pressed against the top edge of the
+   stage, since its lead points past it. If any of movement, bounds, shot, or the crosshair feels wrong,
+   that is a bug to report, not a decision to revisit.
 9. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
 10. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
     at a time, against the spec sections it cites.

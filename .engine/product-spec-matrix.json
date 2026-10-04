@@ -209,11 +209,19 @@
       "who": "operator"
     },
     {
-      "criterion": "The playfield framing reads as intentional, and the borders never hide the craft at any reachable position, with the locked movement, shot, and crosshair constants unchanged",
-      "digest": "sha256:3363f03d10743eb92cce60310c41df4d9950e30c9d9b071137a7c1e3300b44dd",
+      "criterion": "No border covers the craft or the HUD; the craft stops at its fixed stop lines, shots retire at row 0, and world objects show only on rows 0–39 — with the locked movement, shot, and crosshair constants unchanged",
+      "digest": "sha256:f61de22deec821f64bb509ec560630eae213b99b3a035adbe72a7adf7f90eab3",
       "doc": "docs/spec/audio-and-presentation.md",
-      "how_verified": "Play the built `.sb3`, driving the craft into every edge and corner",
+      "how_verified": "Headless scenarios drive the craft into each stop line, a shot past row 0, and an object across the cut line; structural fixtures pin the frame removal, the in-view gate, and the layer order",
       "position": 4,
+      "who": "engine"
+    },
+    {
+      "criterion": "The borderless playfield reads well: the craft and HUD are never covered, and objects enter and leave the field cleanly",
+      "digest": "sha256:604ba632c0a62ed14efda0b6ee342f0a59aad0ba9c10a3c2b4350d813928af70",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Play the built `.sb3`, driving the craft into every edge and corner during busy play",
+      "position": 5,
       "who": "operator"
     },
     {
@@ -221,7 +229,7 @@
       "digest": "sha256:07d4e9b7b1bc9e997d09ba35d49cd96c197a770824295b2f4831a28685d3aa79",
       "doc": "docs/spec/audio-and-presentation.md",
       "how_verified": "Fidelity-audit review of presentation elements against this spec",
-      "position": 5,
+      "position": 6,
       "who": "engine"
     },
     {
