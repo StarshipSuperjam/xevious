@@ -76,7 +76,11 @@
     keeps its own crater clock — no timer touch), so it runs every centre-hit tick with no guard, matching the
     arcade. The walk sweeps ascending slot index, so the outers update before the centre: a centre-first
     cascade marks the outers this same tick and their crater clocks begin cleanly next tick.
-  - **Port necessity — the composite's depth offsets are scaled to the port's isotropic sprite scale.** The
+  - **Port necessity — the composite's depth offsets are scaled to the port's isotropic sprite scale.**
+    *(Retired by slice 20, [record 054](054-arcade-screen-proportions.md): the render map is now isotropic —
+    10 stage units per cell on both axes — so the factor below is 1 and the offsets are the raw arcade values,
+    32 units/px; the derivation is kept so the composite stays square if the map ever changes. The text below
+    describes the slice-12 anamorphic map.)* The
     Boza is the port's first multi-slot *composite*, so it is the first structure whose parts sit at
     sub-sprite offsets from one another — which exposes a standing mismatch the single-slot families never
     could. The shared ground cell→stage map is **anamorphic** (`RENDER_COL_STAGE` 15 px/cell laterally vs

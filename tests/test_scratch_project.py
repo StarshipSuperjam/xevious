@@ -62,6 +62,14 @@ def _proc_body_blocks(stage: dict, proccode: str) -> list:
     return [blocks[bid] for bid in seen]
 
 
+def _float_operand(inp):
+    """The float value of a numeric-literal block input, else None (for fractional stage steps)."""
+    try:
+        return float(inp[1][1]) if isinstance(inp, list) and len(inp) >= 2 and isinstance(inp[1], list) else None
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
 def _num_operand(inp):
     """The integer value of a numeric-literal block input (`[shadow, [type, "value"]]`), else None."""
     if (
@@ -270,7 +278,10 @@ class ScratchProjectTests(unittest.TestCase):
         # with no burst or crater — like the Bacura it is never destroyed on screen), and the slice-14 easter-egg
         # overlay target (SEC-03; the hidden credit — a screen-space overlay on its own original, no per-slot
         # renderer clone band since the egg draws no field sprite, holding a single generated credit costume).
-        self.assertEqual(33, len(project["targets"]))
+        # Slice-20 PRES-01 retires the four baseline border sprites (frame_t/frame_b/frame_l/frame_r; the play
+        # area is the whole stage, docs/mechanics/053), so 33 -> 29. The slice-20 cabinet bezel (PRES-01,
+        # docs/mechanics/054; one full-stage costume on its own original, no clones) adds one: 29 -> 30.
+        self.assertEqual(30, len(project["targets"]))
         # 162: the historical 98 + the 7 Terrazi roll-frame PNGs (AIR-06) + the 7 Kapi dive-frame PNGs
         # (AIR-05) + the 6 Torkan roll-frame PNGs (AIR-02; the arcade's 7 sprite codes 0x10..0x16 have
         # only 6 distinct ripped frames, so the 7th code-step holds the last frame — see game_director) +
@@ -325,7 +336,12 @@ class ScratchProjectTests(unittest.TestCase):
         # + the 4 slice-19 CAB-04 initials-entry screen costumes on start_screen (CONGRATULATIONS /
         # ENTER YOUR INITIALS headers, PLAYER 1 / PLAYER 2 tags), all distinct whole-string PNGs in the
         # credited font at the SMALL_TEXT_GEOM cell. 250 + 4 = 254.
-        self.assertEqual(254, len(assets))
+        # - the slice-20 PRES-01 retirement of the four border sprites drops their historical costumes: frame_t
+        # and frame_b are distinct PNGs, frame_l and frame_r share one (the same 1-unit strip), so 254 - 3 = 251.
+        # + the slice-20 PRES-01 cabinet bezel frame PNG (tools/bezel_panels.py), so 251 + 1 = 252.
+        # + the slice-20 PRES-01 best-five header and the five ordinal ranks 1ST..5TH (all distinct whole-string
+        # PNGs); PUSH START became PUSH START BUTTON in place (one PNG swapped for another). 252 + 6 = 258.
+        self.assertEqual(258, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -386,7 +402,14 @@ class ScratchProjectTests(unittest.TestCase):
         )
         source = load_source(scratch.SOURCE_DIR)
         self.assertEqual(list(original), list(source))
-        historical_targets = copy.deepcopy(source["targets"][:len(original["targets"])])
+        # PRES-01 retired the four baseline border sprites (docs/mechanics/053): they must be gone from the
+        # source, and every OTHER historical target must survive, in its original order, ahead of the added ones.
+        retired = set(director.FRAME_TARGETS)
+        self.assertEqual({"frame_t", "frame_b", "frame_l", "frame_r"}, retired)
+        self.assertFalse(retired & {target["name"] for target in source["targets"]})
+        original_names = [t["name"] for t in original["targets"] if t["name"] not in retired]
+        historical_targets = copy.deepcopy(source["targets"][:len(original_names)])
+        self.assertEqual(original_names, [target["name"] for target in historical_targets])
         original_solvalou = next(
             target
             for target in original["targets"]
@@ -1162,6 +1185,8 @@ class ScratchProjectTests(unittest.TestCase):
             "garu det slot",
             "player row",
             "player col",
+            "player slot x",
+            "player slot y",
             "walk type",
             "spawn cursor",
             "spawn attempts",
@@ -6208,10 +6233,11 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("bacura-never-scored")
 
         # (9) CRAFT-DEATH ON TOUCH through the WIDER window. The `player hit` write is gated by an overlap
-        # reporter carrying HIT_WINDOW_BACURA's distinctive dy-high bound (40-28-1 = 11), unique to the Bacura
-        # box among the hit windows — so the death is routed through the wider slab collision, not the flyer box.
+        # reporter carrying HIT_WINDOW_BACURA's distinctive lateral high bound (the carry idiom's bias-1 = 27),
+        # unique to the Bacura box among the hit windows — so the death is routed through the wider slab
+        # collision, not the flyer box. (PRES-01: was the mirrored 40-28-1 = 11 before the range was corrected.)
         y_bias, y_width, _x_bias, _x_width = director.HIT_WINDOW_BACURA
-        bacura_dy_high = y_width - y_bias - 1  # 11
+        bacura_dy_high = director._hit_range(y_bias, y_width)[1]  # 27
         hit_writes = [
             id_of[id(b)]
             for b in bacura_update
@@ -6464,12 +6490,12 @@ class ScratchProjectTests(unittest.TestCase):
                     return
 
         def break_window(p: dict) -> None:
-            # Zero the distinctive dy-high bound (11) wherever it appears in the update → the craft-death gate
-            # no longer carries the Bacura window.
+            # Zero the distinctive lateral high bound (27) wherever it appears in the update → the craft-death
+            # gate no longer carries the Bacura window.
             stage, body = _body(p, director.UPDATE_BACURA_PROCCODE)
             for b in body:
                 for key, v in list(b.get("inputs", {}).items()):
-                    if _num_operand(v) == 11:
+                    if _num_operand(v) == 27:
                         b["inputs"][key] = [1, [4, "0"]]
 
         def strip_tumble_frames(p: dict) -> None:
@@ -7218,7 +7244,7 @@ class ScratchProjectTests(unittest.TestCase):
 
         DETECTOR. `check shot bacura` is a warp proc, called per live slab from `update bacura` (a sibling of
         `check air shot hit`, never a reuse). On an overlapping ACTIVE shot it stamps ONLY that shot slot's
-        state to SHOT_BOUNCE, through the doubled HIT_WINDOW_SHOT_BACURA overlap (recognised by its
+        state to SHOT_BOUNCE, through the HIT_WINDOW_SHOT_BACURA overlap (recognised by its
         distinctive low bound -y_bias). It NEVER resolves a hit: no `resolve hit` call, no `hit slot` /
         `award value` write, and it never writes a Bacura field — the slab drifts on untouched.
 
@@ -7305,11 +7331,11 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("bounce-marks-shot")
 
         # (4) THROUGH THE OVERLAP WINDOW. Each SHOT_BOUNCE write is gated by an overlap `if` carrying
-        # HIT_WINDOW_SHOT_BACURA's distinctive low bound (-y_bias) — so the mark is a real overlap test with
-        # the doubled slab window, not an unconditional stamp.
-        y_bias = director.HIT_WINDOW_SHOT_BACURA[0]
+        # HIT_WINDOW_SHOT_BACURA's distinctive lateral high bound (bias-1 = 23) — so the mark is a real overlap
+        # test with the slab window, not an unconditional stamp.
+        lat_high = director._hit_range(*director.HIT_WINDOW_SHOT_BACURA[:2])[1]
         if not bounce_writes or not any(
-            ancestor_if(w, lambda c: cond_has_num(c, -y_bias)) for w in bounce_writes
+            ancestor_if(w, lambda c: cond_has_num(c, lat_high)) for w in bounce_writes
         ):
             failures.add("bounce-window")
 
@@ -7325,8 +7351,9 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("bounce-not-scored")
 
         # (6) THE SHOT REBOUNDS. In the blaster sprite a control_if gated on SHOT_BOUNCE runs the reversal: a
-        # control_repeat of BACURA_BOUNCE_FRAMES whose body has a motion_changeyby of BACURA_BOUNCE_DY (the
-        # negative, reversed step). A forward step or a missing branch is not a bounce.
+        # control_repeat of BACURA_BOUNCE_FRAMES whose body changes the clone's `shot depth` by BACURA_BOUNCE_DY
+        # (the negative, reversed step) and sets the sprite's y from it (PRES-01, docs/mechanics/054: the
+        # shot's depth lives in that variable). A forward step or a missing branch is not a bounce.
         blaster = next((t for t in project["targets"] if t.get("name") == "blaster"), None)
         bb = blaster["blocks"] if blaster else {}
 
@@ -7362,11 +7389,13 @@ class ScratchProjectTests(unittest.TestCase):
                     continue
                 if _num_operand(b["inputs"].get("TIMES")) != director.BACURA_BOUNCE_FRAMES:
                     continue
+                body = [bb[i] for i in stack_of(bref(b["inputs"].get("SUBSTACK")))]
                 if any(
-                    bb[i]["opcode"] == "motion_changeyby"
-                    and _num_operand(bb[i]["inputs"].get("DY")) == director.BACURA_BOUNCE_DY
-                    for i in stack_of(bref(b["inputs"].get("SUBSTACK")))
-                ):
+                    s["opcode"] == "data_changevariableby"
+                    and s["fields"]["VARIABLE"][1] == director.SHOT_DEPTH_ID
+                    and _float_operand(s["inputs"].get("VALUE")) == director.BACURA_BOUNCE_DY
+                    for s in body
+                ) and any(s["opcode"] == "motion_sety" for s in body):
                     return True
             return False
 
@@ -7382,7 +7411,7 @@ class ScratchProjectTests(unittest.TestCase):
 
     # Roadmap closure evidence for leaf `player.bacura-bounce` (WPN-01): a player shot that overlaps a Bacura
     # is reflected, never consumed. The dedicated `check shot bacura` detector (a sibling of the air detector,
-    # never a reuse) marks the overlapping shot SHOT_BOUNCE through the doubled HIT_WINDOW_SHOT_BACURA and
+    # never a reuse) marks the overlapping shot SHOT_BOUNCE through the HIT_WINDOW_SHOT_BACURA and
     # touches neither score nor slab; the blaster clone reads that mark and reverses (BACURA_BOUNCE_DY) for
     # BACURA_BOUNCE_FRAMES before deleting. The live proof is the harness shot-bounce scenarios (slab lives,
     # shot reverses).
@@ -7431,9 +7460,9 @@ class ScratchProjectTests(unittest.TestCase):
                     b["fields"]["LIST"] = ["slot timer", director.SLOT_TIMER_ID]
 
         def break_window(p: dict) -> None:
-            # Zero the detector's distinctive low bound (-y_bias) → the mark is no longer an overlap test.
+            # Zero the detector's distinctive lateral high bound (23) → the mark is no longer an overlap test.
             stage = _stage(p)
-            low = -director.HIT_WINDOW_SHOT_BACURA[0]
+            low = director._hit_range(*director.HIT_WINDOW_SHOT_BACURA[:2])[1]
             for b in _proc_body_blocks(stage, director.CHECK_SHOT_BACURA_PROCCODE):
                 for key, v in list(b.get("inputs", {}).items()):
                     if _num_operand(v) == low:
@@ -7470,10 +7499,10 @@ class ScratchProjectTests(unittest.TestCase):
             blaster = next(t for t in p["targets"] if t.get("name") == "blaster")
             for b in blaster["blocks"].values():
                 if (
-                    b["opcode"] == "motion_changeyby"
-                    and _num_operand(b["inputs"].get("DY")) == director.BACURA_BOUNCE_DY
+                    b["opcode"] == "data_changevariableby"
+                    and _float_operand(b["inputs"].get("VALUE")) == director.BACURA_BOUNCE_DY
                 ):
-                    b["inputs"]["DY"] = [1, [4, str(-director.BACURA_BOUNCE_DY)]]
+                    b["inputs"]["VALUE"] = [1, [4, str(-director.BACURA_BOUNCE_DY)]]
 
         cases = [
             ("bounce-detector-warp", unwarp_detector),
@@ -10089,7 +10118,7 @@ class ScratchProjectTests(unittest.TestCase):
         if h["has_list_write"](reveal_ids, director.SLOT_STATE_ID):
             failures.add("bonus-flag-reveal-keeps-hit")
 
-        # (6) FLY-OVER: collection gated on the craft overlap reporter (reads the craft cell — proximity,
+        # (6) FLY-OVER: collection gated on the craft overlap reporter (reads the exact craft slot — proximity,
         # not a weapon). Find the collected if/else within the REVEALED branch and take its collect arm.
         collect_ids = set()
         for x in revealed_ids:
@@ -10099,7 +10128,7 @@ class ScratchProjectTests(unittest.TestCase):
             cond = b["inputs"].get("CONDITION")
             cid = cond[1] if isinstance(cond, list) and len(cond) >= 2 and isinstance(cond[1], str) else None
             if cid and h["subtree_reads_var"](
-                cid, {director.PLAYER_ROW_ID, director.PLAYER_COL_ID}
+                cid, {director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID}
             ):
                 collect_ids = h["branch_ids"](b, "SUBSTACK")
                 break
@@ -13493,7 +13522,7 @@ class ScratchProjectTests(unittest.TestCase):
                         and isinstance(v[1], list)
                         and len(v[1]) >= 3
                         and v[1][0] == 12
-                        and v[1][2] in (director.PLAYER_ROW_ID, director.PLAYER_COL_ID)
+                        and v[1][2] in (director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID)
                     ):
                         v[1][1], v[1][2] = "neg-dummy", "neg-dummy-id"
 
@@ -15504,6 +15533,83 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._ply02_failures(project), label)
+
+    @staticmethod
+    def _death_hud_signal_failures(project: dict) -> set:
+        """The death body (`change craft by -1` -> `transition to player-dead`) must NOT broadcast
+        `craft changed`: the transition's director stop/enter rebuilds the HUD, and a broadcast ahead of it
+        raced the stop and stacked duplicate HUD glyphs (the bold-HUD-on-death bug, slice 20)."""
+        failures: set = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def literal(spec):
+            if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list) and len(spec[1]) > 1:
+                return spec[1][1]
+            return None
+
+        deaths = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode", "").startswith("transition to")
+            and "player-dead" in [literal(v) for v in b["inputs"].values()]
+        ]
+        if not deaths:
+            return {"death-body-found"}
+        for bid in deaths:
+            head = bid
+            while True:
+                parent = blocks[head].get("parent")
+                if not parent or blocks[parent].get("next") != head:
+                    break
+                head = parent
+            cursor = head
+            while cursor:
+                node = blocks[cursor]
+                if node["opcode"] == "event_broadcast" and literal(
+                    node["inputs"].get("BROADCAST_INPUT")
+                ) == "craft changed":
+                    failures.add("death-sends-no-craft-changed")
+                cursor = node.get("next")
+        return failures
+
+    def test_death_does_not_signal_craft_changed(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._death_hud_signal_failures(project))
+
+    def test_death_does_not_signal_craft_changed_negative_fixture(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._death_hud_signal_failures(project))
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+        call_id = next(
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode", "").startswith("transition to")
+            and any(
+                isinstance(v, list) and len(v) > 1 and isinstance(v[1], list) and v[1][1:2] == ["player-dead"]
+                for v in b["inputs"].values()
+            )
+        )
+        parent_id = blocks[call_id]["parent"]
+        self.assertEqual(call_id, blocks[parent_id]["next"])
+        # Reinstate the retired broadcast between `change craft by -1` and the transition.
+        blocks["neg-craft-changed"] = {
+            "opcode": "event_broadcast",
+            "next": call_id,
+            "parent": parent_id,
+            "inputs": {
+                "BROADCAST_INPUT": [1, [11, "craft changed", director.MESSAGES["craft changed"]]]
+            },
+            "fields": {},
+            "shadow": False,
+            "topLevel": False,
+        }
+        blocks[parent_id]["next"] = "neg-craft-changed"
+        blocks[call_id]["parent"] = "neg-craft-changed"
+        self.assertIn("death-sends-no-craft-changed", self._death_hud_signal_failures(project))
 
     @staticmethod
     def _area01_failures(project: dict) -> set:
@@ -17643,17 +17749,31 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(director.FLYING_SLOTS[1], 0x3F + 1)
 
     def test_hit_windows_match_spec(self) -> None:
-        # PLY-02 collision hit windows (player-craft-and-weapons.md), in the reference's
-        # half-pixel "shadow" units as (y_bias, y_width, x_bias, x_width). The bullet/flying
-        # window is live this slice (craft-overlap check); Bacura stays dormant until slice 11.
-        # Pinned to independent literals so a wrong window reddens here.
+        # PLY-02 collision hit windows (player-craft-and-weapons.md), as the reference's
+        # (y_bias, y_width, x_bias, x_width) on its shadow bytes: Y on the LATERAL axis in whole px, X on the
+        # DEPTH axis in 2-px units (PRES-01, docs/mechanics/054). Pinned to independent literals so a wrong
+        # window reddens here.
         self.assertEqual(director.HIT_WINDOW_BULLET_FLYING, (8, 16, 4, 8))
         self.assertEqual(director.HIT_WINDOW_BACURA, (28, 40, 8, 16))
-        # WPN-02 shot-vs-flying window: DOUBLED from the reference (16,32,8,16) as a recorded,
-        # playtest-driven deviation — the reference height (2 cells) is under the shot's 2.5-cell/frame
-        # step (tunneling) and covers only ~40% of our 36-px rendered Toroid. See B8-no-tunnel and the
-        # HIT_WINDOW_SHOT_FLYING comment in game_director.py.
-        self.assertEqual(director.HIT_WINDOW_SHOT_FLYING, (32, 64, 16, 32))
+        # WPN-02 shot-vs-flying: the reference window as is (PRES-01 retired the old doubling, which only
+        # compensated for the misread units). See B8-no-tunnel.
+        self.assertEqual(director.HIT_WINDOW_SHOT_FLYING, (16, 32, 8, 16))
+        self.assertEqual(director.HIT_WINDOW_SHOT_BACURA, (24, 32, 8, 16))
+        self.assertEqual(director.HIT_WINDOW_BOMB_GROUND, (10, 20, 5, 10))
+        # The shadow units (osd_update_sprite_shadow): 32 slot units per lateral px; depth (x + 256) / 64.
+        self.assertEqual(
+            (director.SLOT_UNITS_PER_LATERAL_SHADOW, director.SLOT_UNITS_PER_DEPTH_SHADOW, director.DEPTH_SHADOW_OFFSET),
+            (32, 64, 256),
+        )
+        # The carry idiom `sub.b #bias; add.b #width` hits for d in [bias - width, bias - 1] — checked against a
+        # brute-force 8-bit model of the two instructions, so a mirrored range (the pre-PRES-01 Bacura bug)
+        # reddens here.
+        def carry_hits(bias: int, width: int) -> list[int]:
+            return [d for d in range(-100, 101) if ((d - bias) & 0xFF) + width > 0xFF]
+        for bias, width in [(8, 16), (4, 8), (28, 40), (16, 32), (24, 32), (10, 20), (5, 10)]:
+            low, high = director._hit_range(bias, width)
+            self.assertEqual(carry_hits(bias, width), list(range(low, high + 1)), (bias, width))
+        self.assertEqual(director._hit_range(28, 40), (-12, 27))
         # The bullet allocator's result var is its own, never the blaster's (no coupling).
         self.assertNotEqual(director.BULLET_ALLOC_RESULT_ID, director.ALLOC_RESULT_ID)
         self.assertEqual(director.BULLET_TYPE, 2)
@@ -18019,19 +18139,79 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             fails.add("B1-reload-gate")
 
-        # B8 — one shot clone; expires at the top border at baseline speed; no waits.
+        # B8 — one shot clone; expires as it passes arcade row 0 at baseline speed; no waits.
         if count("blaster", "control_start_as_clone") != 1:
             fails.add("B8-clone")
-        if not has(
-            "blaster",
-            lambda b: b["opcode"] == "sensing_touchingobjectmenu"
-            and b["fields"].get("TOUCHINGOBJECTMENU", [None])[0] == "frame_t",
-        ):
+
+        def ref(name, block, slot):
+            # The block wired into `slot` of `block` (a nested reporter), or None.
+            spec = block["inputs"].get(slot)
+            return blocks[name].get(spec[1]) if isinstance(spec, list) and isinstance(spec[1], str) else None
+
+        def is_shot_depth(spec):
+            # The clone's own `shot depth` variable, read as a compact variable primitive.
+            return (isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list)
+                    and spec[1][:1] == [12] and spec[1][2:3] == [director.SHOT_DEPTH_ID])
+
+        def past_line(b, line):
+            # PRES-01 (docs/mechanics/054): `shot depth > line` — the shot's unfenced depth stands past `line`.
+            return (bool(b) and b["opcode"] == "operator_gt" and num(b["inputs"].get("OPERAND2")) == line
+                    and is_shot_depth(b["inputs"].get("OPERAND1")))
+
+        def past_row_0(b):
+            return past_line(b, director.RENDER_ROW_TOP)
+
+        def depth_step(s, value):
+            # `change shot depth by value` — the shot's depth moves (the sprite only follows it).
+            return (s["opcode"] == "data_changevariableby" and s["fields"]["VARIABLE"][1] == director.SHOT_DEPTH_ID
+                    and num(s["inputs"].get("VALUE")) == value)
+
+        def chain(first_id):
+            out, cur = [], first_id
+            while cur:
+                out.append(blocks["blaster"][cur])
+                cur = blocks["blaster"][cur].get("next")
+            return out
+
+        # The travel loop: the repeat-until whose body moves the shot's depth by its SHOT_STEP.
+        travel_body = []
+        for b in blocks["blaster"].values():
+            if not isinstance(b, dict) or b.get("opcode") != "control_repeat_until":
+                continue
+            sub = b["inputs"].get("SUBSTACK")
+            body = chain(sub[1]) if isinstance(sub, list) and isinstance(sub[1], str) else []
+            if any(depth_step(s, director.SHOT_STEP) for s in body):
+                travel, travel_body = b, body
+        # B8-top-expiry: the loop ends once the shot stands past row 0 (its exit condition holds the test).
+        exit_cond = ref("blaster", travel, "CONDITION") if travel_body else None
+        exit_terms = [ref("blaster", exit_cond, k) for k in ("OPERAND1", "OPERAND2")] if exit_cond else []
+        if not any(past_row_0(t) for t in exit_terms):
             fails.add("B8-top-expiry")
-        if not has(
-            "blaster",
-            lambda b: b["opcode"] == "motion_changeyby" and num(b["inputs"].get("DY")) == 20,
-        ):
+        # PRES01-shot-hit-reach: the body mirrors the shot's position into slot x BEFORE the move, the sprite
+        # follows the moved depth, and a move that carries the shot past the stage top hides it before the
+        # yield — so it is never drawn above the window, yet every position up to row 0 is still hit-tested
+        # (rows 0-3 sit above the arcade's visible window; the arcade shot still travels and hits there).
+        ops = [s["opcode"] for s in travel_body]
+        mirror_at = next((i for i, s in enumerate(travel_body) if s["opcode"] == "data_replaceitemoflist"
+                          and s["fields"]["LIST"][0] == "slot x"), None)
+        move_at = next((i for i, s in enumerate(travel_body) if depth_step(s, director.SHOT_STEP)), None)
+        follow_at = next((i for i, s in enumerate(travel_body) if s["opcode"] == "motion_sety"
+                          and is_shot_depth(s["inputs"].get("Y"))), None)
+        hide_at = None
+        for i, s in enumerate(travel_body):
+            sub = s["inputs"].get("SUBSTACK") if s["opcode"] == "control_if" else None
+            if (sub and isinstance(sub[1], str) and past_line(ref("blaster", s, "CONDITION"), director.RENDER_STAGE_TOP)
+                    and blocks["blaster"][sub[1]]["opcode"] == "looks_hide"):
+                hide_at = i
+        if (None in (mirror_at, move_at, follow_at, hide_at) or not mirror_at < move_at < follow_at < hide_at
+                or "control_wait" in ops):
+            fails.add("PRES01-shot-hit-reach")
+        # PRES-01: no border sprites remain to touch, so the blaster tests no sprite contact at all.
+        if has("blaster", lambda b: b["opcode"] == "sensing_touchingobject"):
+            fails.add("B8-touch-expiry")
+        # The arcade shot speed: move_shot's 6 px/frame (xevious_main.68k 2419-2424) at 12 px per two-frame
+        # tick, through the 1.25 stage-units-per-px render scale.
+        if director.SHOT_STEP != 15 or not has("blaster", lambda b: depth_step(b, director.SHOT_STEP)):
             fails.add("B8-speed")
         if count("blaster", "control_wait") != 0:
             fails.add("B8-wall-clock")
@@ -18040,16 +18220,19 @@ class ScratchProjectTests(unittest.TestCase):
         # (every shot in a held stream shares the craft-row phase, so a Toroid in a gap is immune to
         # the whole stream — the operator saw "multiple rounds and nothing happens"). The headless
         # harness cannot reproduce per-frame timing (it runs threads to settling), so this numeric
-        # invariant is the guard. shot step = DY / RENDER_ROW_STAGE cells; window height = y_width /
-        # SHADOW_PER_CELL cells. Require ~1 cell of margin for the enemy's own closing motion.
+        # invariant is the guard. shot step = DY / RENDER_ROW_STAGE cells; the window's DEPTH extent is its
+        # x_width in 2-px shadow units (PRES-01: byte 1 is the depth axis) = x_width * 64 / 256 cells. Require
+        # ~1 cell of margin for the enemy's own closing motion.
         dy_blocks = [
-            num(b["inputs"].get("DY"))
+            num(b["inputs"].get("VALUE"))
             for b in blocks["blaster"].values()
-            if b["opcode"] == "motion_changeyby"
+            if b["opcode"] == "data_changevariableby" and b["fields"]["VARIABLE"][1] == director.SHOT_DEPTH_ID
         ]
         shot_dy = max(dy_blocks) if dy_blocks else 0
         shot_step_cells = shot_dy / director.RENDER_ROW_STAGE
-        window_height_cells = director.HIT_WINDOW_SHOT_FLYING[1] / director.SHADOW_PER_CELL
+        window_height_cells = (
+            director.HIT_WINDOW_SHOT_FLYING[3] * director.SLOT_UNITS_PER_DEPTH_SHADOW / director.SLOT_UNITS_PER_CELL
+        )
         if window_height_cells < shot_step_cells + 1.0:
             fails.add("B8-no-tunnel")
 
@@ -18095,13 +18278,42 @@ class ScratchProjectTests(unittest.TestCase):
             if not has(
                 strip,
                 lambda b: b["opcode"] == "operator_gt"
-                and num(b["inputs"].get("OPERAND2")) == 689,
+                and num(b["inputs"].get("OPERAND2")) == director.TERRAIN_CYCLE_STEPS - 1,
             ):
                 fails.add(f"B3-count-{strip}")
             if has(strip, lambda b: b["opcode"] == "operator_lt"):
                 fails.add(f"B3-position-test-{strip}")
             if count(strip, "control_wait") != 0:
                 fails.add(f"B3-wall-clock-{strip}")
+
+        # PRES01-terrain-phase — with no frame bands to hide an edge gap, the strips must stay exactly
+        # half a cycle apart: each strip's rewind seed satisfies y = 345 - 1.25 * step (the steady wrap law,
+        # one arcade px a tick at the render scale — the ground objects' scroll), and the two seeds differ by
+        # half the 552-step cycle (345 units), so the 360-tall pair covers the stage on every tick.
+        # The rewind is `go to (0, seed y)` then `set scroll step to seed`; the wrap is the reverse order.
+        seeds = {}
+        for strip in ("area_01a", "area_01b"):
+            found = []
+            for b in blocks[strip].values():
+                after = blocks[strip].get(b.get("next") or "")
+                if b["opcode"] == "motion_gotoxy" and after and after["opcode"] == "data_setvariableto":
+                    found.append(tuple(
+                        float(v) if v is not None else None
+                        for v in (num(b["inputs"].get("Y")), num(after["inputs"].get("VALUE")))
+                    ))
+            seeds[strip] = found[0] if len(found) == 1 else (None, None)
+        (ya, sa), (yb, sb) = seeds["area_01a"], seeds["area_01b"]
+        rate, cycle = 1.25, 552
+        if (
+            None in (ya, sa, yb, sb) or ya + rate * sa != 345 or yb + rate * sb != 345
+            or (sa - sb) % cycle != cycle // 2
+            or (director.TERRAIN_SCROLL_STEP, director.TERRAIN_CYCLE_STEPS) != (rate, cycle)
+            or not all(
+                has(strip, lambda b: b["opcode"] == "motion_changeyby" and float(num(b["inputs"].get("DY"))) == -rate)
+                for strip in ("area_01a", "area_01b")
+            )
+        ):
+            fails.add("PRES01-terrain-phase")
 
         # B4 — the title glides in.
         if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
@@ -18117,6 +18329,68 @@ class ScratchProjectTests(unittest.TestCase):
             fails.add("B5B10-pause")
         if count("solv_death", "control_wait") != 0:
             fails.add("B5B10-wall-clock")
+
+        # PRES-01 — the craft clamps its own position at the four stop lines (no border sprites to touch):
+        # `if <pos> <cmp> <limit> then set <axis> to <limit>`, one per side, at the retired frames' stop lines.
+        clamps = set()
+        for b in blocks["solvalou"].values():
+            if b["opcode"] != "control_if":
+                continue
+            cond = ref("solvalou", b, "CONDITION")
+            body = ref("solvalou", b, "SUBSTACK")
+            if not cond or not body or cond["opcode"] not in ("operator_gt", "operator_lt"):
+                continue
+            position = ref("solvalou", cond, "OPERAND1")
+            if not position or position["opcode"] not in ("motion_xposition", "motion_yposition"):
+                continue
+            set_to = num(body["inputs"].get("X") or body["inputs"].get("Y"))
+            clamps.add((cond["opcode"], position["opcode"], num(cond["inputs"].get("OPERAND2")), body["opcode"], set_to))
+        expected_clamps = {
+            ("operator_gt", "motion_yposition", director.CRAFT_Y_TOP, "motion_sety", director.CRAFT_Y_TOP),
+            ("operator_lt", "motion_yposition", director.CRAFT_Y_BOTTOM, "motion_sety", director.CRAFT_Y_BOTTOM),
+            ("operator_lt", "motion_xposition", -director.CRAFT_X_LIMIT, "motion_setx", -director.CRAFT_X_LIMIT),
+            ("operator_gt", "motion_xposition", director.CRAFT_X_LIMIT, "motion_setx", director.CRAFT_X_LIMIT),
+        }
+        if clamps != expected_clamps:
+            fails.add("PRES01-craft-clamp")
+        # The stop lines are the arcade clamp (update_solvalou_sprite_XY xevious_main.68k 2119-2135: Y 16..224,
+        # X 144..304) through the render map (docs/mechanics/054).
+        if (director.CRAFT_X_LIMIT, director.CRAFT_Y_TOP, director.CRAFT_Y_BOTTOM) != (130, 30, -170):
+            fails.add("PRES01-stop-lines")
+        # PRES01-craft-speed — the arcade speeds (dir_delta_tbl xevious_main.68k 2171-2180) at 1.25 stage units
+        # per px: up/down 2 px a tick; left/right 3 px, or 2 px on a diagonal. Each lateral branch is an if-else
+        # on "exactly one of up/down held" — (up and not down) or (down and not up), since up and down together
+        # cancel to a pure sideways move: the diagonal step in SUBSTACK, the full step in SUBSTACK2 (a headless
+        # pump runs several ticks, so the per-tick speed is pinned here rather than measured live).
+        def fnum(spec):
+            try:
+                return float(num(spec))
+            except (TypeError, ValueError):
+                return None
+
+        def exactly_one_vertical(cond):
+            if not cond or cond["opcode"] != "operator_or":
+                return False
+            arms = [ref("solvalou", cond, k) for k in ("OPERAND1", "OPERAND2")]
+            return all(
+                arm and arm["opcode"] == "operator_and"
+                and (ref("solvalou", arm, "OPERAND2") or {}).get("opcode") == "operator_not"
+                for arm in arms
+            )
+
+        lateral, depth = set(), set()
+        for b in blocks["solvalou"].values():
+            if b["opcode"] == "control_if_else" and exactly_one_vertical(ref("solvalou", b, "CONDITION")):
+                diag, full = ref("solvalou", b, "SUBSTACK"), ref("solvalou", b, "SUBSTACK2")
+                if diag and full and diag["opcode"] == full["opcode"] == "motion_changexby":
+                    lateral.add((fnum(diag["inputs"].get("DX")), fnum(full["inputs"].get("DX"))))
+            if b["opcode"] == "motion_changeyby":
+                depth.add(fnum(b["inputs"].get("DY")))
+        steps = (director.CRAFT_DEPTH_STEP, director.CRAFT_LATERAL_STEP, director.CRAFT_DIAGONAL_LATERAL_STEP)
+        if (steps != (2.5, 3.75, 2.5) or lateral != {(-2.5, -3.75), (2.5, 3.75)} or depth != {2.5, -2.5}):
+            fails.add("PRES01-craft-speed")
+        if has("solvalou", lambda b: b["opcode"] == "sensing_touchingobject"):
+            fails.add("PRES01-craft-touch")
 
         # B9 — the craft fronts itself; terrain is sent back.
         if not has("solvalou", lambda b: b["opcode"] == "looks_gotofrontback"):
@@ -18140,20 +18414,15 @@ class ScratchProjectTests(unittest.TestCase):
         # Retained structural guards.
         solvalou = targets["solvalou"]["blocks"]
         self.assertNotIn("motion_ifonedgebounce", {b["opcode"] for b in solvalou.values()})
+        # Four direction polls, plus each lateral branch's "exactly one of up/down" test that picks the slower
+        # diagonal step (PRES-01 arcade speeds, dir_delta_tbl xevious_main.68k 2171-2180): 4 + 2 x 4.
         self.assertEqual(
-            4,
+            12,
             sum(block["opcode"] == "sensing_keypressed" for block in solvalou.values()),
         )
-        touched_frames = {
-            block["fields"]["TOUCHINGOBJECTMENU"][0]
-            for block in solvalou.values()
-            if block["opcode"] == "sensing_touchingobjectmenu"
-        }
-        # WPN-04 (slice 9): the craft now clamps its OWN top bound (frame_t), mirroring
-        # update_solvalou_sprite_XY's hard clamp on both axes. The interim crosshair-driven
-        # `target_t` broadcast that used to stand in for the top bound is retired, so the craft
-        # touches all four frame edges directly.
-        self.assertEqual({"frame_b", "frame_t", "frame_l", "frame_r"}, touched_frames)
+        # PRES-01 (slice 20): the border sprites are retired, so the craft touches nothing — it clamps its
+        # own position at the four stop lines (pinned in the regression contract below as PRES01-craft-clamp).
+        self.assertNotIn("sensing_touchingobject", {b["opcode"] for b in solvalou.values()})
         death = targets["solv_death"]["blocks"]
         self.assertIn("sound_play", {block["opcode"] for block in death.values()})
         self.assertNotIn(
@@ -18205,14 +18474,76 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["OPERAND2"] = [1, [4, 3]]
 
-        def break_shot_expiry(p):  # B8: park the shot at the wrong edge
+        def break_shot_expiry(p):  # B8/PRES-01: move the shot's expiry line off row 0 (one frame late)
             b = first(
                 p,
                 "blaster",
-                lambda b: b["opcode"] == "sensing_touchingobjectmenu"
-                and b["fields"]["TOUCHINGOBJECTMENU"][0] == "frame_t",
+                lambda b: b["opcode"] == "operator_gt"
+                and num(b["inputs"].get("OPERAND2")) == director.RENDER_ROW_TOP,
             )
-            b["fields"]["TOUCHINGOBJECTMENU"][0] = "frame_b"
+            b["inputs"]["OPERAND2"] = [1, [4, director.RENDER_ROW_TOP + director.SHOT_STEP]]
+
+        def shot_travel_ids(p):  # the blaster travel loop and its body's block ids, in order
+            bl = blocks_of(p, "blaster")
+            for lid, b in bl.items():
+                if isinstance(b, dict) and b.get("opcode") == "control_repeat_until":
+                    ids, cur = [], b["inputs"]["SUBSTACK"][1]
+                    while cur:
+                        ids.append(cur)
+                        cur = bl[cur].get("next")
+                    if any(bl[i]["opcode"] == "motion_sety" for i in ids):
+                        return bl, lid, ids
+            raise AssertionError("no blaster travel loop")
+
+        def drop_shot_hide(p):  # PRES-01: drop the past-stage-top hide (a shot would be drawn above the window)
+            bl, _, ids = shot_travel_ids(p)
+            bl[ids[-2]]["next"] = None
+
+        def mirror_after_move(p):  # PRES-01: mirror after the move — the shot's first position is never hit-tested
+            bl, lid, ids = shot_travel_ids(p)
+            mx, my, move, rest = ids[0], ids[1], ids[2], ids[3]
+            bl[lid]["inputs"]["SUBSTACK"][1] = move
+            bl[move]["next"], bl[my]["next"] = mx, rest
+
+        def touch_shot_expiry(p):  # PRES-01: regress the expiry back to a sprite-contact test
+            b = first(p, "blaster", lambda b: b["opcode"] == "operator_gt"
+                      and num(b["inputs"].get("OPERAND2")) == director.RENDER_ROW_TOP)
+            b["opcode"] = "sensing_touchingobject"
+
+        def break_craft_top_clamp(p):  # PRES-01: let the craft climb one depth step past the top stop
+            b = first(p, "solvalou", lambda b: b["opcode"] == "motion_sety"
+                      and num(b["inputs"].get("Y")) == director.CRAFT_Y_TOP)
+            b["inputs"]["Y"] = [1, [4, director.CRAFT_Y_TOP + director.CRAFT_DEPTH_STEP]]
+
+        def drop_craft_side_clamp(p):  # PRES-01: remove the right-side limit (the craft drifts off-stage)
+            b = first(p, "solvalou", lambda b: b["opcode"] == "motion_setx"
+                      and num(b["inputs"].get("X")) == director.CRAFT_X_LIMIT)
+            b["opcode"] = "looks_show"
+            b["inputs"] = {}
+
+        def full_speed_diagonal(p):  # PRES-01: the diagonal keeps the full side step (too fast sideways)
+            for b in blocks_of(p, "solvalou").values():
+                if b["opcode"] == "motion_changexby" and float(num(b["inputs"].get("DX"))) == director.CRAFT_DIAGONAL_LATERAL_STEP:
+                    b["inputs"]["DX"] = [1, [4, director.CRAFT_LATERAL_STEP]]
+
+        def either_vertical_diagonal(p):  # PRES-01: up+down held would slow the sideways step as a diagonal
+            bl = blocks_of(p, "solvalou")
+            for b in bl.values():
+                if b["opcode"] == "control_if_else" and bl.get(b["inputs"].get("CONDITION", [None, None])[1] or "", {}).get("opcode") == "operator_or":
+                    cond = bl[b["inputs"]["CONDITION"][1]]
+                    for key in ("OPERAND1", "OPERAND2"):
+                        arm = bl[cond["inputs"][key][1]]
+                        arm["inputs"]["OPERAND2"] = arm["inputs"]["OPERAND1"]  # (up and up) or (down and down)
+
+        def old_depth_speed(p):  # PRES-01: back to the pre-proportions 7-unit depth step
+            for b in blocks_of(p, "solvalou").values():
+                if b["opcode"] == "motion_changeyby" and float(num(b["inputs"].get("DY"))) == director.CRAFT_DEPTH_STEP:
+                    b["inputs"]["DY"] = [1, [4, 7]]
+
+        def touch_craft_bound(p):  # PRES-01: regress a clamp back to a sprite-contact test
+            b = first(p, "solvalou", lambda b: b["opcode"] == "operator_lt"
+                      and num(b["inputs"].get("OPERAND2")) == director.CRAFT_Y_BOTTOM)
+            b["opcode"] = "sensing_touchingobject"
 
         def break_bomb_broadcast(p):  # B2: drop the Stage walk's bomb-drop broadcast
             b = first(
@@ -18229,7 +18560,7 @@ class ScratchProjectTests(unittest.TestCase):
                 p,
                 "area_01a",
                 lambda b: b["opcode"] == "operator_gt"
-                and num(b["inputs"].get("OPERAND2")) == 689,
+                and num(b["inputs"].get("OPERAND2")) == director.TERRAIN_CYCLE_STEPS - 1,
             )
             b["opcode"] = "operator_lt"
 
@@ -18300,6 +18631,17 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["VALUE"] = [1, [4, 2]]
 
+        def restore_baseline_terrain_seed(p):  # PRES-01: a seed off the wrap law → edge gaps every half cycle
+            for b in blocks_of(p, "area_01a").values():
+                if b["opcode"] == "data_setvariableto" and str(num(b["inputs"].get("VALUE"))) == "288":
+                    b["inputs"]["VALUE"] = [1, [10, "284"]]
+
+        def unlock_terrain_scroll(p):  # PRES-01: terrain back at 1 unit a tick, drifting off the ground objects
+            for strip in ("area_01a", "area_01b"):
+                for b in blocks_of(p, strip).values():
+                    if b["opcode"] == "motion_changeyby":
+                        b["inputs"]["DY"] = [1, [4, -1]]
+
         def break_terrain_layer(p):  # B9: stop sending terrain to the back
             for b in blocks_of(p, "area_01a").values():
                 if b["opcode"] == "looks_goforwardbackwardlayers":
@@ -18321,14 +18663,678 @@ class ScratchProjectTests(unittest.TestCase):
             ("B7-marker-show", break_marker),
             ("B7-marker-not-receiver", couple_marker_to_bomb),
             ("B8-top-expiry", break_shot_expiry),
+            ("B8-touch-expiry", touch_shot_expiry),
+            ("PRES01-shot-hit-reach", drop_shot_hide),
+            ("PRES01-shot-hit-reach", mirror_after_move),
+            ("PRES01-craft-clamp", break_craft_top_clamp),
+            ("PRES01-craft-clamp", drop_craft_side_clamp),
+            ("PRES01-craft-touch", touch_craft_bound),
+            ("PRES01-craft-speed", full_speed_diagonal),
+            ("PRES01-craft-speed", old_depth_speed),
+            ("PRES01-craft-speed", either_vertical_diagonal),
             ("B9-craft-front", break_craft_layer),
             ("B9-terrain-back-area_01a", break_terrain_layer),
+            ("PRES01-terrain-phase", restore_baseline_terrain_seed),
+            ("PRES01-terrain-phase", unlock_terrain_scroll),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
             corrupt(project)
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
+
+    def _pres01_framing_failures(self, project: dict) -> set[str]:
+        """PRES-01 playfield framing as a static contract (docs/mechanics/053): no border sprites; every
+        slot-driven world renderer draws only inside the visible rows [4, 40) and hides whole otherwise;
+        world renderers never front themselves (so the HUD, fronted once at creation, draws over them while
+        the craft still fronts every tick); and the static world band keeps ground under every flyer."""
+        targets = {t["name"]: t for t in project["targets"]}
+        num = self._numeric
+        fails: set[str] = set()
+        if set(director.FRAME_TARGETS) & set(targets):
+            fails.add("frames-present")
+        view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
+        first_units = director.RENDER_VIEW_FIRST_ROW * director.SLOT_UNITS_PER_CELL
+        if view_units != 40 * 256:  # row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839)
+            fails.add("view-rows")
+        # Rows 0-3 sit above the stage top under the 1.25 render scale (docs/mechanics/054): row 4 is the
+        # first row whose draw position is inside the window.
+        if first_units != 4 * 256 or director.RENDER_ROW_TOP - 4 * director.RENDER_ROW_STAGE >= 180:
+            fails.add("view-rows")
+
+        for name in director.WORLD_RENDER_LAYER_ORDERS:
+            target = targets.get(name)
+            if target is None:
+                fails.add(f"missing-{name}")
+                continue
+            blocks = target["blocks"]
+
+            def ref(block, slot):
+                spec = block["inputs"].get(slot)
+                return blocks.get(spec[1]) if isinstance(spec, list) and isinstance(spec[1], str) else None
+
+            def is_slot_x(block):
+                return bool(block) and block["opcode"] == "data_itemoflist" and block["fields"]["LIST"][0] == "slot x"
+
+            def is_in_view(cond):
+                if not cond or cond["opcode"] != "operator_and":
+                    return False
+                low, high = ref(cond, "OPERAND1"), ref(cond, "OPERAND2")
+                below = ref(low, "OPERAND") if low and low["opcode"] == "operator_not" else None
+                return (
+                    bool(below) and below["opcode"] == "operator_lt" and is_slot_x(ref(below, "OPERAND1"))
+                    and num(below["inputs"].get("OPERAND2")) == first_units
+                    and bool(high) and high["opcode"] == "operator_lt" and is_slot_x(ref(high, "OPERAND1"))
+                    and num(high["inputs"].get("OPERAND2")) == view_units
+                )
+
+            def reach(start_id):
+                # Every block reachable DOWNWARD from start_id (next chains + nested substacks/inputs).
+                seen, stack = set(), [start_id]
+                while stack:
+                    bid = stack.pop()
+                    if not isinstance(bid, str) or bid in seen or bid not in blocks:
+                        continue
+                    seen.add(bid)
+                    block = blocks[bid]
+                    stack.append(block.get("next"))
+                    for spec in block.get("inputs", {}).values():
+                        if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str):
+                            stack.append(spec[1])
+                return seen
+
+            gates = [
+                bid for bid, b in blocks.items()
+                if b["opcode"] == "control_if_else" and is_in_view(ref(b, "CONDITION"))
+                and (ref(b, "SUBSTACK2") or {}).get("opcode") == "looks_hide"
+            ]
+            if not gates:
+                fails.add(f"no-gate-{name}")
+            covered = set()
+            for gate in gates:
+                covered |= reach(blocks[gate]["inputs"]["SUBSTACK"][1])
+            shows = {bid for bid, b in blocks.items() if b["opcode"] == "looks_show"}
+            if not shows or shows - covered:
+                fails.add(f"ungated-show-{name}")
+            if any(b["opcode"] in ("looks_gotofrontback", "looks_goforwardbackwardlayers") for b in blocks.values()):
+                fails.add(f"world-fronts-{name}")
+
+        # Static world band: the Bonus Flag under the ground pool, the ground pool under every flyer + bullet.
+        order = {name: targets[name].get("layerOrder") for name in director.WORLD_RENDER_LAYER_ORDERS if name in targets}
+        ground = order.get(director.GROUND_RENDER_TARGET)
+        flag = order.get(director.BONUS_FLAG_TARGET)
+        flyers = [v for k, v in order.items() if k not in (director.GROUND_RENDER_TARGET, director.BONUS_FLAG_TARGET)]
+        if ground is None or flag is None or not flyers or not (flag < ground < min(flyers)):
+            fails.add("world-band")
+        all_orders = [t.get("layerOrder") for t in project["targets"]]
+        if len(all_orders) != len(set(all_orders)):
+            fails.add("layer-collision")
+        # The HUD fronts its clones (at creation) and the craft fronts itself every tick: craft > HUD > world.
+        # Every HUD show is preceded, earlier in its own script, by a go-to-front — so each HUD role fronts
+        # before it first draws, not just one of them.
+        hud = targets["hud"]["blocks"]
+        prev = {b["next"]: bid for bid, b in hud.items() if isinstance(b, dict) and b.get("next")}
+        parent = {bid: b.get("parent") for bid, b in hud.items() if isinstance(b, dict)}
+
+        def fronted_before(bid):
+            cur = bid
+            while cur:
+                while cur in prev:
+                    cur = prev[cur]
+                    if hud[cur]["opcode"] == "looks_gotofrontback":
+                        return True
+                cur = parent.get(cur)  # step out of a substack and keep walking back
+                if cur and hud[cur]["opcode"] == "looks_gotofrontback":
+                    return True
+            return False
+
+        hud_shows = [bid for bid, b in hud.items() if isinstance(b, dict) and b["opcode"] == "looks_show"]
+        if not hud_shows or not all(fronted_before(bid) for bid in hud_shows):
+            fails.add("hud-front")
+        if not any(b["opcode"] == "looks_gotofrontback" for b in targets["solvalou"]["blocks"].values()):
+            fails.add("craft-front")
+        # The cabinet bezel (docs/mechanics/054): one full-stage costume on its original, pinned just above
+        # the whole world band (so its opaque panels mask world sprites past the window edge) and below the
+        # SEC-03 overlay; it never moves layers itself and never clones (the clone budget is shared).
+        bezel = targets.get(director.BEZEL_TARGET)
+        if bezel is None:
+            fails.add("bezel-missing")
+        else:
+            bezel_blocks = bezel["blocks"].values()
+            world_top = max((v for v in order.values() if isinstance(v, int)), default=None)
+            overlay = targets.get(director.EASTER_EGG_TARGET, {}).get("layerOrder")
+            if world_top is None or overlay is None or not (world_top < bezel.get("layerOrder", -1) < overlay):
+                fails.add("bezel-layer")
+            if any(b["opcode"] in ("looks_gotofrontback", "looks_goforwardbackwardlayers") for b in bezel_blocks):
+                fails.add("bezel-moves-layer")
+            if any(b["opcode"] == "control_create_clone_of" for b in bezel_blocks):
+                fails.add("bezel-clones")
+            if [c.get("name") for c in bezel["costumes"]] != [director.BEZEL_COSTUME] or not bezel.get("visible"):
+                fails.add("bezel-costume")
+            if not any(b["opcode"] == "looks_show" for b in bezel_blocks) or any(
+                b["opcode"] == "looks_hide" for b in bezel_blocks
+            ):
+                fails.add("bezel-hidden")
+
+        # The HUD on the arcade text layer (docs/mechanics/054): each glyph at the cell the arcade writes it, from
+        # the source's own screen offsets (MSB = 31 - col, LSB = row; display_char xevious_main.68k 1912-1923),
+        # one 8-px cell = 10 stage units with column 4 at the window's left edge (x -140).
+        def cell(offset, col_shift=0):
+            col, row = 31 - (offset >> 8) + col_shift, offset & 0xFF
+            return (10 * col - 175, 175 - 10 * row)
+
+        def run(offset, cols):
+            return {cell(offset, k) for k in cols}
+
+        expected = (
+            run(0x1B01, range(7))  # P1 score (display_player_scores 1888-1903)
+            | run(0x1101, range(7))  # high score (display_high_score 1944-1948)
+            | run(0x0801, range(7))  # P2 score
+            | run(0x1800, range(3))  # 1UP (sub_fn_6__display_1UP_2UP, xevious_sub.68k 737-782)
+            | run(0x0500, range(3))  # 2UP
+            | run(0x1200, [0, 1, 2, 3, 5, 6, 7, 8, 9])  # HIGH SCORE (display_high_score_text 1821-1831)
+            | run(0x1118, [0, 1, 2, 3, 5, 6, 7, 8])  # GAME OVER (display_game_over 838-843)
+            | {(cell(0x1118)[0] + 85, cell(0x1118)[1])}  # the 18-char banner's centre, starting on the GAME OVER cell
+        )
+
+        def as_num(value):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        literal_gotos, life_gotos = set(), []
+        for b in hud.values():
+            if not isinstance(b, dict) or b["opcode"] != "motion_gotoxy":
+                continue
+            x, y = as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y")))
+            if x is None:
+                life_gotos.append((hud.get(b["inputs"]["X"][1]), y))
+            else:
+                literal_gotos.add((x, y))
+        if literal_gotos != {(float(x), float(y)) for x, y in expected}:
+            fails.add("hud-grid")
+        # Reserve-craft icons from 0x1B23 (display_solvalou_left 1447-1460), one cell apart, every rendered icon on
+        # a visible column.
+        life_x, life_y = cell(0x1B23)
+        life_ok = False
+        for add, y in life_gotos:
+            if add and add["opcode"] == "operator_add" and y == life_y:
+                step = hud.get(add["inputs"]["NUM2"][1]) or {}
+                life_ok = (
+                    as_num(num(add["inputs"].get("NUM1"))) == life_x
+                    and step.get("opcode") == "operator_multiply"
+                    and as_num(num(step["inputs"].get("NUM2"))) == 10
+                )
+        if not life_ok or life_x + 10 * (director.HUD_LIFE_MAX - 1) > 135:
+            fails.add("hud-life-row")
+        # Glyph sizes for the 10-unit pitch: 25-px resolution-2 glyphs at 80%, the 16-px life icon at 62.5%, and
+        # the 17-px-advance banner at 100 * 10 / 17.
+        sizes = {as_num(num(b["inputs"].get("SIZE"))) for b in hud.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"}
+        if sizes != {80.0, 62.5, round(1000 / 17, 2)}:
+            fails.add("hud-size")
+
+        def ref_in(bl, block, slot):
+            spec = (block or {}).get("inputs", {}).get(slot)
+            return bl.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+
+        def top_of(bl, bid):
+            # The hat a block hangs from: walk parents (next-chain predecessors and enclosing blocks) to the top.
+            while bl[bid].get("parent"):
+                bid = bl[bid]["parent"]
+            return bl[bid]["opcode"]
+
+        # PRES01-render-map (docs/mechanics/054) — one isotropic 1.25 scale with the lateral axis mirrored: arcade
+        # lateral Y increases to the LEFT (dir_delta_tbl xevious_main.68k 2171-2180: right is dY -24; the display
+        # mirrors Y, amiga.68k 1696-1699). From the window geometry (centre Y 128, first visible row X 32, 8-px cells,
+        # sprite centre = corner + 8): x = (128 - (8 col + 8)) * 1.25, y = 180 - (8 row + 8 - 32) * 1.25.
+        scale = 1.25
+        derived = (-8 * scale, -(120 * scale), 180 + 24 * scale, 8 * scale)
+        actual = (director.RENDER_COL_STAGE, director.RENDER_COL_OFFSET, director.RENDER_ROW_TOP, director.RENDER_ROW_STAGE)
+        if director.ARCADE_STAGE_PER_PX != scale or actual != derived:
+            fails.add("PRES01-render-map")
+        # Every renderer applies the NEGATIVE lateral factor to slot y and the positive depth factor to slot x; a
+        # single site with its sign flipped would draw that family mirrored against the rest of the world.
+        lateral_sites = 0
+        for t in project["targets"]:
+            bl = t["blocks"]
+            for b in bl.values():
+                if not isinstance(b, dict) or b["opcode"] != "operator_multiply":
+                    continue
+                quotient = ref_in(bl, b, "NUM1")
+                item = ref_in(bl, quotient, "NUM1") if quotient and quotient["opcode"] == "operator_divide" else None
+                if not item or item["opcode"] != "data_itemoflist":
+                    continue
+                axis = item["fields"]["LIST"][0]
+                if axis not in ("slot x", "slot y") or as_num(num(quotient["inputs"].get("NUM2"))) != 256:
+                    continue
+                factor = as_num(num(b["inputs"].get("NUM2")))
+                if axis == "slot y":
+                    lateral_sites += 1
+                    if factor != -8 * scale:
+                        fails.add("PRES01-render-map")
+                elif factor != 8 * scale:
+                    fails.add("PRES01-render-map")
+        if lateral_sites < 18:  # every slot-driven renderer (17 targets + the ground pool's per-part maps)
+            fails.add("PRES01-render-map")
+        # The one player read is the exact inverse: col = round((x + offset) / factor), so the craft at the right
+        # stop (x 130) reads arcade column 2 (Y 16) and the left stop (x -130) column 28 (Y 224).
+        read_ok = False
+        for t in project["targets"]:
+            bl = t["blocks"]
+            for b in bl.values():
+                if not isinstance(b, dict) or b["opcode"] != "data_setvariableto" or b["fields"]["VARIABLE"][0] != "player col":
+                    continue
+                rounded = ref_in(bl, b, "VALUE")
+                quotient = ref_in(bl, rounded, "NUM") if rounded and rounded["opcode"] == "operator_round" else None
+                total = ref_in(bl, quotient, "NUM1") if quotient and quotient["opcode"] == "operator_divide" else None
+                if not total or total["opcode"] != "operator_add":
+                    continue
+                offset = as_num(num(total["inputs"].get("NUM2")))
+                factor = as_num(num(quotient["inputs"].get("NUM2")))
+                read_ok = (
+                    (ref_in(bl, total, "NUM1") or {}).get("opcode") == "sensing_of"
+                    and (offset, factor) == (-120 * scale, -8 * scale)
+                    and all(round((col * factor - offset + offset) / factor) == col for col in range(32))
+                    and round((director.CRAFT_X_LIMIT + offset) / factor) == 2
+                    and round((-director.CRAFT_X_LIMIT + offset) / factor) == 28
+                )
+        if not read_ok:
+            fails.add("PRES01-render-map")
+        # PRES01-bacura-slab — the 1x2 Bacura slab draws its second tile 16 px toward screen-right of its position
+        # (sprite_draw_double_height amiga.68k 2534-2540), so its 32-px middle sits 8 px (10 units) right of a
+        # 16-px sprite's centre: the renderer's lateral offset is RENDER_COL_OFFSET - 10, not the shared -150.
+        bacura = next(t for t in project["targets"] if t["name"] == director.BACURA_TARGET)
+        offsets = [
+            as_num(num(b["inputs"].get("NUM2")))
+            for b in bacura["blocks"].values()
+            if isinstance(b, dict)
+            and b["opcode"] == "operator_subtract"
+            and (ref_in(bacura["blocks"], b, "NUM1") or {}).get("opcode") == "operator_multiply"
+            and as_num(num(ref_in(bacura["blocks"], b, "NUM1")["inputs"].get("NUM2"))) == -8 * scale
+        ]
+        if director.BACURA_SLAB_X_OFFSET != 8 * scale or offsets != [-(120 * scale) - 8 * scale]:
+            fails.add("PRES01-bacura-slab")
+
+        # PRES01-attract-grid — the attract, title, best-five and entry text on the arcade text cells, from the
+        # source's own screen offsets: CREDIT 0x0923 with its digits two cells past the label (display_credits
+        # 774-787), PUSH START BUTTON 0x1517 (815-826), INSERT COIN 0x121C (857-889), the 1P line 0x1519
+        # (display_1_only_or_1_2_players 789-813), the best-five rank/score/name columns 0x19xx/0x14xx/0x0Bxx on
+        # rows 24..32 (display_high_score_table 1475-1541) and the entry headers 0x1509 / 0x160C
+        # (display_high_score_entry_screen 1795-1812). The 2P option row 26, the entry PLAYER-n tag (14,18) and the
+        # entry's ten cells on row 24 from col 13 are port layout on the same grid. PRES-01 playtest layout: the
+        # full 17-letter PUSH START BUTTON run; the 1P/2P labels left-aligned on col 14 (two columns right of the
+        # arcade's 1P line, so the pair centres under the prompt); the best-five header centred where the arcade's
+        # 18-letter run 0x1615 centres; the table's rank/score/name columns two columns right of the arcade's (the
+        # 3-letter ordinal at 0x17xx, the score from 0x12xx, the name from 0x09xx); the logo resting above it.
+        def run_centre(offset, chars):
+            col, row = 31 - (offset >> 8), offset & 0xFF
+            return (10 * (col + (chars - 1) / 2) - 175, 175 - 10 * row)
+
+        def cells(offset, n):
+            return {run_centre(offset - 0x100 * k, 1) for k in range(n)}
+
+        logo_size = round(100 * 200 / 304, 2)  # the logo body (304 units at 100%) on its 20 arcade columns
+        logo_rest = (0, round(50 - 51.5 * logo_size / 100))
+        expected_attract = (
+            {(0, 250), logo_rest, run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
+            | {run_centre(0x1517, 17), run_centre(0x121C, 11), run_centre(0x1119, 8), run_centre(0x111A, 9)}
+            | {run_centre(0x1509, 15), run_centre(0x160C, 19), run_centre(0x1112, 8)}
+            | {run_centre(0x1615, 18)}
+            | cells(0x1218, 10)
+        )
+        for row in range(0x18, 0x22, 2):
+            expected_attract |= {run_centre(0x1700 | row, 3)} | cells(0x1200 | row, 7) | cells(0x0900 | row, 10)
+        start = targets["start_screen"]["blocks"]
+        attract_gotos, glides = set(), set()
+        for b in start.values():
+            if isinstance(b, dict) and b["opcode"] in ("motion_gotoxy", "motion_glidesecstoxy"):
+                spot = (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
+                (glides if b["opcode"] == "motion_glidesecstoxy" else attract_gotos).add(spot)
+        # The logo body (bitmap rows 154-359, centred 51.5 units above the costume centre at 100%) glides to the
+        # centre of its arcade rows 9..16 (display_xevious_logo_flashing 891-1019): y 50.
+        if attract_gotos != {(float(x), float(y)) for x, y in expected_attract} or glides != {
+            (0.0, float(round(50 - 51.5 * logo_size / 100)))
+        }:
+            fails.add("PRES01-attract-grid")
+        # The text costumes draw at the 10-unit pitch (17-px advance) and the logo at its arcade width; the text
+        # size is set on the clone's own script, so every text clone draws on the grid.
+        text_size = round(100 * 10 / 17, 2)
+        start_sizes = {
+            as_num(num(b["inputs"].get("SIZE"))): top_of(start, bid)
+            for bid, b in start.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+        }
+        if start_sizes != {logo_size: "event_whenflagclicked", text_size: "control_start_as_clone"}:
+            fails.add("PRES01-attract-grid")
+        # The hidden credit on the arcade's credit rows 33-34 (display_easter_egg 6018-6048: 0x1921 / 0x1722), its
+        # 20-character line centred on columns 8..27, the 22-px glyph advance on the 10-unit pitch.
+        egg = targets[director.EASTER_EGG_TARGET]["blocks"]
+        egg_gotos = {
+            (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
+            for b in egg.values() if isinstance(b, dict) and b["opcode"] == "motion_gotoxy"
+        }
+        egg_sizes = {
+            as_num(num(b["inputs"].get("SIZE")))
+            for b in egg.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+        }
+        credit_y = (run_centre(0x1921, 1)[1] + run_centre(0x1722, 1)[1]) / 2
+        if egg_gotos != {(0.0, credit_y)} or egg_sizes != {round(100 * 10 / 22, 2)}:
+            fails.add("PRES01-attract-grid")
+
+        # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
+        # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25.
+        for name in ("solvalou", "blaster", "target_a", "target_b", "bomb", "solv_death"):
+            bl = targets[name]["blocks"]
+            found = [
+                (as_num(num(b["inputs"].get("SIZE"))), top_of(bl, bid))
+                for bid, b in bl.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+            ]
+            if found != [(round(targets[name]["size"] * scale / 2.25, 2), "event_whenflagclicked")]:
+                fails.add("PRES01-sprite-size")
+        if director.SPRITE_RENDER_SIZE != 100 * scale:
+            fails.add("PRES01-sprite-size")
+        return fails
+
+    @staticmethod
+    def _pres01_collision_failures(project: dict) -> set:
+        """PRES-01 playtest fixes (docs/mechanics/054): the craft's exact slot position is read once per walk
+        (no cell rounding) and drives the crosshair and the bomb drop; every collision detector reduces
+        positions to the reference's shadow bytes — lateral px (slot / 32), depth 2-px units ((slot + 256) / 64)
+        — and tests the carry idiom's [bias - width, bias - 1] range."""
+        fails: set = set()
+        stage = next(t for t in project["targets"] if t.get("isStage"))
+        blocks = stage["blocks"]
+
+        def reads(body, var_id):
+            return any(
+                isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list) and len(v[1]) >= 3
+                and v[1][0] == 12 and v[1][2] == var_id
+                for b in body for v in b.get("inputs", {}).values()
+            )
+
+        def subtree(bid):
+            seen, frontier = set(), [bid]
+            while frontier:
+                x = frontier.pop()
+                if not x or x in seen or x not in blocks:
+                    continue
+                seen.add(x)
+                for v in blocks[x].get("inputs", {}).values():
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return [blocks[x] for x in seen]
+
+        # The exact read: `player slot x/y` set from the craft position with no rounding anywhere in the value.
+        read_body = _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE)
+        for var_id in (director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID):
+            sets = [
+                b for b in read_body
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var_id
+            ]
+            value = sets[0]["inputs"].get("VALUE") if len(sets) == 1 else None
+            value_id = value[1] if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str) else None
+            tree = subtree(value_id) if value_id else []
+            if (
+                not tree
+                or any(b["opcode"] == "operator_round" for b in tree)
+                or not any(b["opcode"] == "sensing_of" for b in tree)
+            ):
+                fails.add("PRES01-exact-craft-read")
+
+        # The crosshair and the bomb drop read the exact slot, never the rounded cell.
+        for proccode, label in (
+            (director.TRACK_CROSSHAIR_PROCCODE, "PRES01-crosshair-exact"),
+            (director.ADVANCE_BOMB_PROCCODE, "PRES01-bomb-drop-exact"),
+        ):
+            body = _proc_body_blocks(stage, proccode)
+            if (
+                not reads(body, director.PLAYER_SLOT_X_ID)
+                or not reads(body, director.PLAYER_SLOT_Y_ID)
+                or reads(body, director.PLAYER_ROW_ID)
+                or reads(body, director.PLAYER_COL_ID)
+            ):
+                fails.add(label)
+
+        # Every detector on the shadow bytes, with its window's carry-idiom bounds.
+        def literals(body, opcode, key):
+            return {_num_operand(b["inputs"].get(key)) for b in body if b["opcode"] == opcode}
+
+        def all_literals(body):
+            return {_num_operand(v) for b in body for v in b.get("inputs", {}).values()} - {None}
+
+        for proccode, window in (
+            (director.CHECK_AIR_HIT_PROCCODE, director.HIT_WINDOW_SHOT_FLYING),
+            (director.CHECK_GROUND_HIT_PROCCODE, director.HIT_WINDOW_BOMB_GROUND),
+            (director.CHECK_SHOT_BACURA_PROCCODE, director.HIT_WINDOW_SHOT_BACURA),
+        ):
+            body = _proc_body_blocks(stage, proccode)
+            divisors = literals(body, "operator_divide", "NUM2")
+            bounds = {*director._hit_range(*window[:2]), *director._hit_range(*window[2:])}
+            if (
+                divisors != {32, 64}
+                or 256 not in literals(body, "operator_add", "NUM2")
+                or not bounds <= all_literals(body)
+            ):
+                fails.add("PRES01-shadow-units")
+        return fails
+
+    # roadmap-evidence: PRES-01 success  (test_pres01_collision_and_crosshair_contract — the craft's exact slot position, read once per walk with no cell rounding, drives the crosshair and the bomb drop, so the sight moves with the ship pixel for pixel; the air, ground and Bacura-bounce detectors reduce positions to the reference shadow bytes — lateral px, depth 2-px units — and test the carry idiom's range, so the bomb box is the arcade's 20 x 20 px; harness pres01-bomb-between-pair-hits-both / pres01-crosshair-follows-exact-craft run it live)
+    # roadmap-evidence: PRES-01 failure  (test_pres01_collision_and_crosshair_contract negatives: a rounded craft read, a crosshair or bomb drop back on the rounded cell, a detector on the old half-px divisor, and a ground window bound off the carry range each go red; harness negative pres01-bomb-off-pair-misses keeps a bomb 11 px beside an object a miss)
+    def test_pres01_collision_and_crosshair_contract(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._pres01_collision_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t.get("isStage"))
+
+        def round_slot_read(p):  # the exact read regresses to the rounded cell
+            stage = stage_of(p)
+            for b in _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE):
+                if b["opcode"] == "operator_multiply" and _num_operand(b["inputs"].get("NUM2")) == director.SLOT_UNITS_PER_CELL:
+                    b["opcode"] = "operator_round"
+
+        def retarget(proccode):
+            def _mut(p):  # the proc reads the rounded cell instead of the exact slot
+                for b in _proc_body_blocks(stage_of(p), proccode):
+                    for v in b.get("inputs", {}).values():
+                        if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list) and len(v[1]) >= 3 and v[1][0] == 12:
+                            if v[1][2] == director.PLAYER_SLOT_X_ID:
+                                v[1][1], v[1][2] = "player row", director.PLAYER_ROW_ID
+                            elif v[1][2] == director.PLAYER_SLOT_Y_ID:
+                                v[1][1], v[1][2] = "player col", director.PLAYER_COL_ID
+            return _mut
+
+        def half_px_divisor(p):  # the ground detector back on the old 16-unit half-px shadow
+            for b in _proc_body_blocks(stage_of(p), director.CHECK_GROUND_HIT_PROCCODE):
+                if b["opcode"] == "operator_divide" and _num_operand(b["inputs"].get("NUM2")) == 64:
+                    b["inputs"]["NUM2"] = [4, [4, "16"]]
+
+        def ground_bound_off(p):  # the ground lateral high bound off the carry range (9 -> 4)
+            for b in _proc_body_blocks(stage_of(p), director.CHECK_GROUND_HIT_PROCCODE):
+                for key, v in list(b.get("inputs", {}).items()):
+                    if _num_operand(v) == 9:
+                        b["inputs"][key] = [4, [4, "4"]]
+
+        cases = [
+            ("PRES01-exact-craft-read", round_slot_read),
+            ("PRES01-crosshair-exact", retarget(director.TRACK_CROSSHAIR_PROCCODE)),
+            ("PRES01-bomb-drop-exact", retarget(director.ADVANCE_BOMB_PROCCODE)),
+            ("PRES01-shadow-units", half_px_divisor),
+            ("PRES01-shadow-units", ground_bound_off),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._pres01_collision_failures(project), label)
+
+    # Roadmap closure evidence for leaf `presentation.framing` (PRES-01).
+    # roadmap-evidence: PRES-01 success  (test_pres01_playfield_framing_contract — no border sprites; the cabinet bezel frames the arcade-proportioned window; every world renderer shows only inside the visible rows 4-39 and never fronts itself, so craft > HUD > world; the HUD, attract, best-five, entry and hidden-credit text sit on the arcade text cells; every renderer applies the mirrored lateral factor and the player read inverts it; harness pres01-craft-stops-at-stop-lines / pres01-shot-expires-past-row-0 / pres01-world-hidden-off-field run it live)
+    # roadmap-evidence: PRES-01 failure  (test_pres01_playfield_framing_contract negatives: a missing gate bound, an ungated show, a re-added per-tick front, a flyer below the ground band, a restored border sprite, a sunk/fronted/hidden bezel, a HUD or attract glyph off its text cell, a renderer or the player read with the lateral sign flipped, and an unscaled craft each go red; harness negatives drop the craft clamp, the row-0 expiry, and the view gate)
+    def test_pres01_playfield_framing_contract(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._pres01_framing_failures(base))
+
+        def target(p, name):
+            return next(t for t in p["targets"] if t["name"] == name)
+
+        def gate_high_bound(p, name):
+            view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
+            return next(
+                b for b in target(p, name)["blocks"].values()
+                if b["opcode"] == "operator_lt" and self._numeric(b["inputs"].get("OPERAND2")) == view_units
+            )
+
+        def widen_gate(p):  # the toroid's bottom cut moved past row 40 -> no longer the on-field gate
+            gate_high_bound(p, director.TOROID_TARGET)["inputs"]["OPERAND2"] = [1, [4, 99999]]
+
+        def lower_gate_to_row_0(p):  # the kapi's top cut back at row 0 -> drawn fenced at the stage top in rows 0-3
+            first_units = director.RENDER_VIEW_FIRST_ROW * director.SLOT_UNITS_PER_CELL
+            for b in target(p, director.KAPI_TARGET)["blocks"].values():
+                if b["opcode"] == "operator_lt" and self._numeric(b["inputs"].get("OPERAND2")) == first_units:
+                    b["inputs"]["OPERAND2"] = [1, [4, 0]]
+
+        def ungate_ground(p):  # the ground pool's gate dropped: its else-arm shows instead of hiding
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            gate = next(
+                b for b in blocks.values()
+                if b["opcode"] == "control_if_else" and blocks.get((b["inputs"].get("SUBSTACK2") or [0, None])[1], {}).get("opcode") == "looks_hide"
+                and blocks.get(b["inputs"]["CONDITION"][1], {}).get("opcode") == "operator_and"
+            )
+            blocks[gate["inputs"]["SUBSTACK2"][1]]["opcode"] = "looks_show"
+
+        def refront_bullet(p):  # an enemy bullet fronting itself every tick again (would cover the HUD)
+            blocks = target(p, director.ENEMY_BULLET_TARGET)["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_setsizeto")["opcode"] = "looks_gotofrontback"
+
+        def sink_toroid(p):  # a flyer back at its old layer, below the ground band
+            target(p, director.TOROID_TARGET)["layerOrder"] = 18
+
+        def restore_frame(p):  # a border sprite back in the project
+            frame = copy.deepcopy(target(p, "solvalou"))
+            frame["name"] = "frame_t"
+            frame["layerOrder"] = 9
+            p["targets"].append(frame)
+
+        def unfront_hud_role(p):  # one HUD role draws without fronting first (an enemy could cover it)
+            blocks = target(p, "hud")["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_gotofrontback")["opcode"] = "looks_cleargraphiceffects"
+
+        def unfront_craft(p):  # the craft no longer fronts itself
+            for b in target(p, "solvalou")["blocks"].values():
+                if b["opcode"] == "looks_gotofrontback":
+                    b["opcode"] = "looks_cleargraphiceffects"
+
+        def sink_bezel(p):  # the bezel back under the flyers: an enemy past the window edge draws over the panel
+            target(p, director.BEZEL_TARGET)["layerOrder"] = 25
+
+        def front_bezel(p):  # the bezel fronting itself would cover the craft, HUD and attract text
+            blocks = target(p, director.BEZEL_TARGET)["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_show")["opcode"] = "looks_gotofrontback"
+
+        def hide_bezel(p):  # a hide path on the static cabinet art
+            blocks = target(p, director.BEZEL_TARGET)["blocks"]
+            next(b for b in blocks.values() if b["opcode"] == "looks_show")["opcode"] = "looks_hide"
+
+        def hud_gotos(p):
+            return [b for b in target(p, "hud")["blocks"].values() if b["opcode"] == "motion_gotoxy"]
+
+        def drift_high_score_label(p):  # HIGH SCORE back at its old project-defined spot
+            for b in hud_gotos(p):
+                if self._numeric(b["inputs"]["X"]) in (-45, "-45") and self._numeric(b["inputs"]["Y"]) in (175, "175"):
+                    b["inputs"]["X"] = [4, [4, -40]]
+
+        def spread_life_row(p):  # the old 18-unit icon spacing
+            for b in target(p, "hud")["blocks"].values():
+                if b["opcode"] == "operator_multiply" and self._numeric(b["inputs"].get("NUM2")) in (10, "10"):
+                    b["inputs"]["NUM2"] = [4, [4, 18]]
+
+        def unscale_hud(p):  # glyphs back at their full 12.5-unit size
+            for b in target(p, "hud")["blocks"].values():
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (80, "80"):
+                    b["inputs"]["SIZE"] = [4, [4, 100]]
+
+        def flip_one_renderer(p):  # one family drawn with the old un-mirrored lateral factor
+            for b in target(p, director.TOROID_TARGET)["blocks"].values():
+                if b["opcode"] == "operator_multiply" and self._numeric(b["inputs"].get("NUM2")) in (-10, "-10"):
+                    b["inputs"]["NUM2"] = [4, [4, 10]]
+
+        def flip_player_read(p):  # the player read no longer inverts the mirror: aim and hits read the wrong column
+            for t in p["targets"]:
+                for b in t["blocks"].values():
+                    if (
+                        isinstance(b, dict) and b["opcode"] == "operator_divide"
+                        and self._numeric(b["inputs"].get("NUM2")) in (-10, "-10")
+                    ):
+                        b["inputs"]["NUM2"] = [4, [4, 10]]
+
+        def centre_bacura_slab(p):  # the slab drawn centred on its position (8 px left of the arcade's)
+            for b in target(p, director.BACURA_TARGET)["blocks"].values():
+                if b["opcode"] == "operator_subtract" and self._numeric(b["inputs"].get("NUM2")) in (-160, "-160"):
+                    b["inputs"]["NUM2"] = [4, [4, -150]]
+
+        def drift_push_start(p):  # PUSH START back at its old project-defined spot
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-55, "-55"):
+                    b["inputs"]["Y"] = [4, [4, -60]]
+
+        def unscale_attract_text(p):  # attract text back at its costume's own 17-px advance
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (58.82, "58.82"):
+                    b["inputs"]["SIZE"] = [4, [4, 100]]
+
+        def unshift_table(p):  # the best-five ranks back on the arcade's own column 6 (the left-leaning layout)
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["X"]) in (-85, "-85"):
+                    b["inputs"]["X"] = [4, [4, -105]]
+
+        def selector_from_col_10(p):  # "1 PLAYER" back on the arcade 1P line's first column (leans left)
+            for b in target(p, "start_screen")["blocks"].values():
+                if (
+                    b["opcode"] == "motion_gotoxy"
+                    and self._numeric(b["inputs"]["Y"]) in (-75, "-75")
+                    and self._numeric(b["inputs"]["X"]) in (0, "0")
+                ):
+                    b["inputs"]["X"] = [4, [4, -40]]
+
+        def credit_off_grid(p):  # the hidden credit back between rows, over the craft's flight band
+            for b in target(p, director.EASTER_EGG_TARGET)["blocks"].values():
+                if b["opcode"] == "motion_gotoxy":
+                    b["inputs"]["Y"] = [4, [4, -48]]
+
+        def unscale_craft(p):  # the craft back at its old 2.25-units-per-px size
+            for b in target(p, "solvalou")["blocks"].values():
+                if b["opcode"] == "looks_setsizeto":
+                    b["inputs"]["SIZE"] = [4, [4, 150]]
+
+        cases = [
+            ("PRES01-render-map", flip_one_renderer),
+            ("PRES01-render-map", flip_player_read),
+            ("PRES01-bacura-slab", centre_bacura_slab),
+            ("PRES01-attract-grid", drift_push_start),
+            ("PRES01-attract-grid", unscale_attract_text),
+            ("PRES01-attract-grid", credit_off_grid),
+            ("PRES01-attract-grid", unshift_table),
+            ("PRES01-attract-grid", selector_from_col_10),
+            ("PRES01-sprite-size", unscale_craft),
+            ("hud-grid", drift_high_score_label),
+            ("hud-life-row", spread_life_row),
+            ("hud-size", unscale_hud),
+            ("bezel-layer", sink_bezel),
+            ("bezel-moves-layer", front_bezel),
+            ("bezel-hidden", hide_bezel),
+            ("hud-front", unfront_hud_role),
+            ("craft-front", unfront_craft),
+            (f"no-gate-{director.TOROID_TARGET}", widen_gate),
+            (f"no-gate-{director.KAPI_TARGET}", lower_gate_to_row_0),
+            (f"ungated-show-{director.GROUND_RENDER_TARGET}", ungate_ground),
+            (f"world-fronts-{director.ENEMY_BULLET_TARGET}", refront_bullet),
+            ("world-band", sink_toroid),
+            ("frames-present", restore_frame),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._pres01_framing_failures(project), f"corruption '{label}' was not caught")
 
     # Roadmap closure evidence for leaf `player.ground-targeting` (WPN-03 target-lock, WPN-04 bomb-flight).
     # The crosshair (slot 35) leads the craft by the fixed 96-px forward lead and locks the bomb target
@@ -18716,7 +19722,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "9955936414915a8d19e065c612fe0c6e0941b8b9aa440c91984ab8a646f40335",
+            "74684a18b001f2afea8a47e1e6363c02adb7a11d6191ce72f4896a97a8e565e3",
             build_hash,
         )
 

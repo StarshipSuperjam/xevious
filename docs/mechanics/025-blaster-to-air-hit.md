@@ -50,18 +50,21 @@
   the explosion frees the slot, and the shot mirrors both position axes (`_wpn02_failures`, each clause
   corrupted bites); the S key hat is gone; two clean builds stay byte-identical and survive the
   build→import round-trip. The explosion's on-screen look and the exact hit feel stay the operator playtest.
-- Fidelity status: **Live and playable — the first working combat.** Shooting a Toroid destroys it, scores
+- Fidelity status: **Window units and doubling superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** The shadow bytes are whole pixels laterally and 2-pixel units in depth, not half pixels; read that way the reference window (16,32,8,16) is a 32 × 32-pixel box that samples every crossing of the arcade-speed shot, so the doubling below is retired. **Live and playable — the first working combat.** Shooting a Toroid destroys it, scores
   30, and plays the explosion; the S fixture is retired. The enemy's own shot (type 0x0B) and player death
   from a flying enemy or a bullet land in the next commit of this slice.
 - License status: The pinned reference states no reusable license; no reference source text or media was
   copied — the windows and control flow are an instruction-derived port. The explosion reuses the verified
   `solv_death` frames (credited to https://www.spriters-resource.com/arcade/xevious/ in
   `src/xevious/assets/provenance.json`) as a stand-in; no new crops were added.
-- Known deviations or uncertainty: (1) **No shadow-byte wrap.** The reference compares 8-bit shadow MSBs,
-  so two objects ~128 half-px apart can wrap into a phantom hit; this port compares the exact half-px delta
-  and never does, trading that rare arcade quirk for no long-range phantom hits. (2) **One-tick shot lag.**
-  The shot's position is mirrored by its clone and read by the walk on the following tick, so the detector
-  sees the shot up to one tick (≤10 arcade px at 6 px/frame) behind its drawn position. (3) **Explosion
+- Known deviations or uncertainty: (1) **No shadow-byte wrap.** The reference compares 8-bit shadow bytes
+  modulo 256, so two objects about 240 px or more apart laterally (wider than the 224-px visible width, so
+  only with one of them off screen) can wrap into a phantom hit; depth, in 2-pixel units across the 288-px
+  screen (at most 144 units), never wraps. This port compares the exact delta and never wraps, trading that
+  rare arcade quirk for no long-range phantom hits (units per [054](054-arcade-screen-proportions.md)).
+  (2) **One-tick shot lag.** The shot's position is mirrored by its clone and read by the walk on the
+  following tick, so the detector sees the shot up to one tick (12 arcade px: two frames at 6 px/frame)
+  behind its drawn position. (3) **Explosion
   stand-in.** The burst reuses the `solv_death` frames by reference; the mechanic (explode → score → gone,
   20 frames, size-doubling phase) is exact, but the frame-8 one-cell recentre and dedicated Toroid-burst
   crops are deferred to a later art pass (operator pixel-verifies any new crop rects). (4) **Award is

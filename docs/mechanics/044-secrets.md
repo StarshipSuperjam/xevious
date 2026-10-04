@@ -103,7 +103,9 @@
     single `score` proc.
   - **Port necessity — the credit is a single generated bitmap.** No ground object before this drew text. The
     credit is a dedicated `easter-egg` render target whose ORIGINAL (zero clones) shows one pre-composed
-    two-line costume at a fixed screen position while the `easter egg showing` signal is 1 — keeping the port at
+    two-line costume at a fixed screen position (since slice 20, centred between the arcade's own credit rows
+    33 and 34 — `display_easter_egg` offsets 0x1921/0x1722 — on the text grid,
+    [record 054](054-arcade-screen-proportions.md)) while the `easter egg showing` signal is 1 — keeping the port at
     its existing 300-clone ceiling untouched. The wording is this project's own placeholder ("XEVIOUS PORT / BY
     STARSHIP SUPERJAM"), but the letterforms are rendered from the SAME high-res Xevious HUD font sheet the HUD
     readouts and the CAB-01 attract text use (`tools/hud_glyphs.py` `render_credit`; "Xevious HUD font
@@ -170,7 +172,7 @@
   Bonus Flag reveals on a bomb and is collected by flying over it for the cabinet-selected award; the
   hidden-credit spot reveals the ~2-second original-text credit and then clears.
 
-- Fidelity status: SEC-01 (Sol Tower), SEC-02 (Bonus Flag), ECO-03 (bonus-flag award), and SEC-03
+- Fidelity status: **Flag window units superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** The proximity window is read in the arcade's units (whole pixels laterally, 2-pixel units in depth) against the craft's exact position. SEC-01 (Sol Tower), SEC-02 (Bonus Flag), ECO-03 (bonus-flag award), and SEC-03
   (Hidden Credit) are **built** — live and proven in the harness and the structural guards, with the on-screen
   feel to be confirmed by the operator playtest. With these leaves the slice-14 secrets are complete; the
   Andor Genesis boss (`andor.lifecycle`, slice 15) stays out of scope here.

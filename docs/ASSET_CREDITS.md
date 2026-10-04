@@ -138,3 +138,23 @@ breakdown and some hidden-target locations,
 [arcadeblogger.com Xevious journey map](https://i0.wp.com/arcadeblogger.com/wp-content/uploads/2022/12/xevious-journey-map.jpeg))
 is *reference*, not a build input, so it is cited here and deliberately kept
 local (git-ignored) rather than committed.
+
+## Cabinet bezel artwork (MAME Realistic Bezel Artwork)
+
+Operator-approved cabinet bezel art for the arcade-screen framing (slice 20,
+PRES-01, `docs/mechanics/054-arcade-screen-proportions.md`). The source image is
+committed byte-for-byte at `assets/bezel/xevious_bezel.png`, with its source
+record in `assets/bezel/manifest.json`. `tools/bezel_panels.py` box-averages
+its two side columns into opaque panels and writes one full-stage costume (a
+panel either side of the transparent arcade-screen window) under its
+content-hash filename in `src/xevious/assets/`. Its generated outputs are
+recorded in `assets/bezel/provenance.json`.
+
+| Supplied file | Description | Credit | Source | License | SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `xevious_bezel.png` | Xevious cabinet bezel (side panels used) | estefan3112, adapting bezel artwork by John Merrit and Orionsangel, derived from Namco's Xevious cabinet art | [estefan3112/MAME-Realistic-Bezel-Artwork](https://github.com/estefan3112/MAME-Realistic-Bezel-Artwork) (`mame/xevious/xevious_bezel.png`) | No reusable license for the artwork (the repository's GPL-3.0 label cannot license third-party fan art of Namco's copyrighted cabinet art); third-party copyrighted material | `dca729dee359ea454b03b064d5202b3203559d6403e132921adf292a1c2142d6` |
+
+This carries the same rights-status caveat as the material above. Recording the
+attribution is not a claim that credit grants permission. This is fan artwork
+derived from Namco's copyrighted cabinet art, and it needs a rights review
+before broader distribution (`docs/REFERENCE_POLICY.md`).

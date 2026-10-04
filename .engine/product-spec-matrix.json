@@ -209,11 +209,19 @@
       "who": "operator"
     },
     {
-      "criterion": "The playfield framing reads as intentional, and the borders never hide the craft at any reachable position, with the locked movement, shot, and crosshair constants unchanged",
-      "digest": "sha256:3363f03d10743eb92cce60310c41df4d9950e30c9d9b071137a7c1e3300b44dd",
+      "criterion": "The arcade screen draws at one 1.25 scale in a centred 280×360 window between the bezel panels; the craft stops at the arcade clamp, shots retire at row 0, world objects show only on rows 4–39, and the HUD sits on the arcade text cells inside the window",
+      "digest": "sha256:0cdbc573540154c323b6feced6c5d1aadf4e0b6fba0d9b3aa0203f15d9faca9b",
       "doc": "docs/spec/audio-and-presentation.md",
-      "how_verified": "Play the built `.sb3`, driving the craft into every edge and corner",
+      "how_verified": "Headless scenarios drive the craft into each clamp, a shot past row 0, and an object across the cut line; structural fixtures pin the render map, the bezel target and its layer, the in-view gate, the HUD text grid, and the layer order",
       "position": 4,
+      "who": "engine"
+    },
+    {
+      "criterion": "The framed playfield reads like the cabinet: nothing covers the craft or the HUD, the bezel frames the window cleanly, and objects enter and leave the screen cleanly",
+      "digest": "sha256:6ad1f60e1d3345a3dc081632d5587b50c07d79ff664a378d79f032da36caafd1",
+      "doc": "docs/spec/audio-and-presentation.md",
+      "how_verified": "Play the built `.sb3`, driving the craft into every edge and corner during busy play",
+      "position": 5,
       "who": "operator"
     },
     {
@@ -221,7 +229,7 @@
       "digest": "sha256:07d4e9b7b1bc9e997d09ba35d49cd96c197a770824295b2f4831a28685d3aa79",
       "doc": "docs/spec/audio-and-presentation.md",
       "how_verified": "Fidelity-audit review of presentation elements against this spec",
-      "position": 5,
+      "position": 6,
       "who": "engine"
     },
     {
@@ -489,8 +497,8 @@
       "who": "operator"
     },
     {
-      "criterion": "Craft moves in 8 directions at equal per-axis speed with the recorded bounds, no diagonal normalization",
-      "digest": "sha256:fc1ab53a3b2024b996068790366d3ebe906d5d4c5e29a97c7d5d7df168bb23c2",
+      "criterion": "Craft moves in 8 directions at the recorded per-direction speeds (faster purely sideways) with the recorded bounds, no diagonal normalization",
+      "digest": "sha256:1c89bfebb01a69149c4f3ed84e7f013f7b60ade7257ff9eb3ae2fa73c26730b3",
       "doc": "docs/spec/player-craft-and-weapons.md",
       "how_verified": "Play the built `.sb3`: move along edges and diagonals; the craft pins at the same margins everywhere",
       "position": 0,

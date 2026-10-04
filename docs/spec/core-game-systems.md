@@ -152,17 +152,24 @@ tick represents **two arcade frames** (the arcade runs 60 per second). Frame cou
 accordingly, rounding to the nearest tick with ties rounding up, and every rounded value is recorded in
 the build's data next to its arcade original. Gameplay never uses wall-clock waits, the timer, or
 Scratch's own random blocks — all gameplay timing counts ticks and all randomness draws from the shared
-stream, or seeded runs cannot repeat. The port's spatial scale is **not a single ratified factor.** The
-arcade's portrait playfield does not map onto the 480×360 landscape stage at any one stage-units-per-pixel
-factor without either shrinking the play area or pushing the crosshair off screen, so the port tunes its
-spatial quantities **independently**: the craft's per-axis movement speed, the blaster's shot speed, and
-the crosshair's forward lead are each a **port-tuned constant** (recorded with its arcade original in the
-build's movement mechanics record and its generator), not derived from one common factor. The crosshair's
-on-screen bound is a **craft↔crosshair coupling**, not a scale chosen to keep a rigid lead on screen: the
-reticle reads the same movement input as the craft, and when it reaches the top play-border it clamps there
-and backs the craft down with it — so the reticle can never leave the top of the screen and the craft stops
-with it (the validated recovery-build behavior). The arcade-to-screen axis orientation remains the strong
-inference recorded in player-craft-and-weapons, not a labeled fact. Current control mapping, recorded as the
+stream, or seeded runs cannot repeat. The port's spatial scale is **one ratified factor: 1.25 stage units
+per arcade pixel, on both axes.** The arcade's whole 224×288 portrait screen is drawn at that scale as a
+280×360 play window centred on the 480×360 stage, with cabinet bezel art filling the 100 units either side
+([Audio and presentation](audio-and-presentation.md)). Every spatial quantity is the arcade value times
+that factor, so nothing is tuned independently (the hit windows are the reference's own, in its shadow
+units, [Player craft and weapons](player-craft-and-weapons.md) WPN-01): the craft moves 1 arcade pixel per frame in depth (2.5
+units per tick), 1.5 pixels per frame when moving purely sideways and 1 on a diagonal (3.75 and 2.5 units
+per tick; `src/xevious_main.68k` `dir_delta_tbl` 2171–2180); the blaster shot moves 6 pixels per frame
+(15 units per tick; `src/xevious_main.68k` `move_shot` 2419–2424); and the crosshair leads by 96 pixels (120 units). The values
+are recorded with their arcade originals in the build's movement and screen-proportions mechanics records
+and its generator. The crosshair is
+**never clamped and never bounds the craft**: it rides at its fixed forward lead from the craft every frame
+(`src/xevious_main.68k` `update_crosshair` 2262–2271), while the craft clamps its own position on both axes
+(`src/xevious_main.68k` `update_solvalou_sprite_XY` 2113–2137) — in the port, at the arcade clamp carried
+through the scale, which holds the craft's sprite flush against the play window's side and bottom edges.
+On screen, depth increases downward and the lateral axis increases to the **left** — the right-hand
+direction entry subtracts from it (`src/xevious_main.68k` `dir_delta_tbl` 2174) and the display mirrors it
+(`src/amiga/amiga.68k` lines 1696–1699). Current control mapping, recorded as the
 port's own: arrow keys move during play; at the title screen the **up/down arrows choose between a
 one-player (up) and a two-player (down) game** (a port necessity — the arcade used two dedicated start buttons
 and let credit count pick the "1 PLAYER ONLY / 1 OR 2 PLAYERS" prompt; this port has no cabinet buttons, so the

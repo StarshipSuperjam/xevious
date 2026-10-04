@@ -161,7 +161,8 @@
     (the operator: "you removed the destroyable parts"). The base↔node linkage is by slot **index** (N+1),
     not coordinate, so centring the node does not affect it. (The abandoned attempt to instead scale the depth
     offset by the anamorphic ratio, `GARU_NODE_DEPTH_UNITS`, only slid the sprite and was reverted.) The Boza
-    composite keeps its own anamorphic spacing — see [042](042-boza-logram.md).
+    composite keeps its own anamorphic spacing — see [042](042-boza-logram.md). *(Since slice 20 the render
+    map is isotropic, so that spacing factor is 1 — [record 054](054-arcade-screen-proportions.md).)*
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

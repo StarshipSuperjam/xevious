@@ -138,7 +138,8 @@
     under the visible top, and the base↔node linkage is by slot **index** (N+1), not coordinate. (An earlier
     attempt to scale the depth offset by the anamorphic ratio, `GARU_NODE_DEPTH_UNITS = 480`, only slid the
     sprite and was reverted.) The Boza composite keeps its own anamorphic spacing — see
-    [042](042-boza-logram.md).
+    [042](042-boza-logram.md). *(Since slice 20 the render map is isotropic, so that spacing factor is 1 —
+    [record 054](054-arcade-screen-proportions.md).)*
   - **Logram cadence is scaled from arcade frames to ticks.** The arcade animates on every 8th arcade
     frame; the once-per-tick walk is two arcade frames, so a stage advances every 4th tick, landing the
     single full-open shot at tick 12 of the 28-tick cycle. The mechanism (one aimed shot at full open, one

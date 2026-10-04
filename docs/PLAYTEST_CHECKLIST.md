@@ -52,7 +52,9 @@ instead of restarting. The visual terrain stays decoupled from the area clock at
 so area position is read from the `area progress`/`area number` variable watchers, not the screen.)
 
 1. **Cold start.** Green flag: one title presentation (the logo entering as the spec's presentation
-   document records), music once, no stray sprites. Press Space: one READY presentation, then play.
+   document records), music once, no stray sprites. The small "START SPACE KEY" hint baked into the logo
+   art is now too small to read; say whether to redraw it as a readable text line under the logo (that
+   would be new project text). Press Space: one READY presentation, then play.
 2. **Held fire while moving.** Hold Space for five seconds while flying circles: the cadence stays
    steady the whole time — no stutter, no silencing when an arrow key joins, and never more than 3
    shots on screen. Shots vanish at the top edge, never parking there.
@@ -196,25 +198,51 @@ so area position is read from the `area progress`/`area number` variable watcher
    change — the coarse sanity signal of step 4); the full
    **1–16→7 loop** and the 16→7 return with **no win screen** are proven by the engine's accelerated
    trace, not by playing to the end. Losing your last craft to enemy contact reaches GAME OVER, holds, and
-   returns to the title; life icons in the HUD track the count.
+   returns to the title; life icons in the HUD track the count. Through each death the HUD text keeps its
+   normal weight — it must never thicken or look bold (that was stacked duplicate glyphs, fixed in slice 20).
 6. **Life economy — score, cap, bonus, HUD.** Destroy Toroids while playing: the score climbs by 30 a
    kill, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it whenever the
    score passes it. Each digit shows leading zeros, arcade-style. Reaching 20,000 grants an extra craft
-   with its **extend** sound and a life icon (the icon row is capped at 9 on screen — the true count keeps
-   rising); reaching that at 30 points a kill is a long grind, so the **bonus-life award, the 9,999,990
+   with its **extend** sound and a life icon on the bottom text row (the icon row shows at most 28, the
+   width of the screen — the true count keeps rising); reaching that at 30 points a kill is a long grind, so the **bonus-life award, the 9,999,990
    cap, and the at-cap extra-craft quirk are better confirmed by the build's fixtures and the earlier
    life-economy playtest than by grinding here** — spot-check that the score and high-score track a few
    kills correctly, and report any misbehavior in the digits or tracking.
-7. **Layering.** During busy play: shots, the craft, Toroids, and enemy bullets all render above the
-   terrain, and the craft and shots read clearly against the Toroids; the frame borders never hide the ship.
-8. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,
-   and crosshair behavior of the recovery build (#13/#14) you approved — a single spatial factor was tried
-   and rejected, and this build tunes those quantities as port constants instead. Confirm the feel is back
-   to what you validated: the craft moves at its familiar speed and reaches every edge; the shot speed
-   reads well; and the crosshair **leads the ship, tracks it, and — this is the key fix — cannot leave the
-   top of the screen**: when it reaches the top border it stops there and the ship stops with it (the
-   crosshair also marks the bomb-drop point). If any of movement, bounds, shot, or the crosshair top-stop
-   feels wrong, that is a bug to report, not a decision to revisit.
+7. **Layering and the playfield edges.** During busy play: shots, the craft, Toroids, and enemy bullets all
+   render above the terrain; the craft and its shots draw over every enemy, bullet, and ground object, and
+   the HUD draws over the enemies too (an enemy passing under the score lines goes behind them). The game
+   sits in a portrait window in the middle of the stage, framed by the cabinet bezel panels left and right:
+   no enemy and no part of the bezel covers the craft or the HUD (the craft can overlap the life icons at
+   its bottom stop, as in the arcade); an enemy drifting past a side edge slides under the bezel; enemies
+   appear and vanish at the top edge of the window, and a shot is clipped by that edge and then disappears.
+   The score labels and scores sit on the top two text rows and the life icons on the bottom row, all inside
+   the window. Let the terrain scroll for at least 30 seconds: no black bar or gap ever flashes at the top or
+   bottom edge. View the game both at normal size and full screen: all text (HUD, title, high-score table,
+   initials entry) should be readable — report any that looks too soft or small. One known difference from
+   the arcade, by your choice: the shots, crosshair, and bomb draw over the HUD (in the arcade only the ship
+   body does).
+8. **Movement and weapon feel — arcade proportions.** Everything is now drawn at one arcade scale, so the
+   craft, the shot, and the crosshair move at the arcade's own speeds. That is noticeably **slower** than
+   the earlier builds: crossing the window bottom to top takes about 2.7 seconds and side to side about 2.3
+   seconds, and a shot reaches the top in about 0.75 seconds (the old craft was about 3.5× faster forward
+   and back). The craft moves a little faster purely sideways than on a diagonal; holding up and down
+   together counts as neither. The craft stops flush against the window's side and bottom edges and a
+   little over halfway up; the crosshair **leads the ship and tracks it** a fixed distance ahead (it marks
+   the bomb-drop point), is never clamped, and moves as smoothly as the ship — it should never jump in
+   steps while the ship glides. **The whole world is now flipped left-for-right compared with
+   earlier builds** — this is the arcade's own orientation. The keys still feel the same (right moves right),
+   but enemy formations, homing turns, and the Andor Genesis now appear the way round they do in the arcade:
+   confirm they match what you remember. **Hit boxes** are now the arcade's own: shots hit a flying enemy
+   anywhere on its drawn body (no longer a doubled window), and a bomb dropped directly between two ground
+   objects that sit side by side — a paired Barra, say — destroys both, while one aimed well wide of a pair
+   misses them. A Bacura is now drawn where the arcade draws it — a little to the right of where the last
+   build put it — so touching it anywhere along its drawn width kills you (the arcade allows a few pixels of
+   overlap at each end), and shots bounce off it across that same width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
+   the alternative is a recorded port speed-up, and that is your call.
+   **Title and best-five layout:** on the title, PUSH START BUTTON and INSERT COIN read centred in the
+   window, and the 1 PLAYER / 2 PLAYERS choices are left-aligned with each other as a pair centred under
+   them; the best-five screen shows the logo above a centred header and the five ranked rows (1ST–5TH) in
+   the middle of the window.
 9. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
 10. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
     at a time, against the spec sections it cites.

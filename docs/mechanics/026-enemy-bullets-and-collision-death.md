@@ -84,7 +84,7 @@
   structurally the emitter is warp, allocates, uses the 48 tier with a caller angle and no craft-aim, copies
   the firing cell, and gates every write on a successful alloc (`_air12_radiating_failures`, each clause
   corrupted bites). The observable ring/fan in play arrives with the Garu/Brag emitters (air.special-pairs).
-- Fidelity status: **Live and playable — the enemy can now shoot back and the player can die in combat.**
+- Fidelity status: **Window units superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** The shadow bytes are whole pixels laterally and 2-pixel units in depth, not half pixels, and the craft side is its exact position, not its rounded cell: the craft box is 16 × 16 pixels. **Live and playable — the enemy can now shoot back and the player can die in combat.**
   A shooting Toroid fires one aimed bullet; touching a Toroid or a bullet kills the craft, spends a life,
   and respawns or ends the game. The debug D/G fixtures are retired.
 - License status: The pinned reference states no reusable license; no reference source text or media was

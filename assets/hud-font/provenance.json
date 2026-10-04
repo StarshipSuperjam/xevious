@@ -478,7 +478,7 @@
       "name": "credit-label",
       "generator_version": 1
     },
-    "ae3f6961154f22ad742263d3b0810276.png": {
+    "d9fbeddb3754db8d539b315cdadcb8b6.png": {
       "kind": "attract",
       "name": "push-start",
       "generator_version": 1
@@ -496,6 +496,36 @@
     "a2c8ddcbb2bbafe9e6290eff65f4f80c.png": {
       "kind": "attract",
       "name": "select-2p",
+      "generator_version": 1
+    },
+    "db2312eee2ef40e3112f55e00ebd1299.png": {
+      "kind": "attract",
+      "name": "best-five-header",
+      "generator_version": 1
+    },
+    "e813cf336c00cf9852b4d6766b0fc4e0.png": {
+      "kind": "attract",
+      "name": "rank/1",
+      "generator_version": 1
+    },
+    "cc3e9aa0e0b17470b2cff6e5cc1ff63e.png": {
+      "kind": "attract",
+      "name": "rank/2",
+      "generator_version": 1
+    },
+    "f742026b7d6a32eee601770a90963d9f.png": {
+      "kind": "attract",
+      "name": "rank/3",
+      "generator_version": 1
+    },
+    "3d4b1c74032d709b48da8aab3bbce4ac.png": {
+      "kind": "attract",
+      "name": "rank/4",
+      "generator_version": 1
+    },
+    "3ab78661b7e70921ff24c82c203749bf.png": {
+      "kind": "attract",
+      "name": "rank/5",
       "generator_version": 1
     },
     "375a326f1f448dc1b780c78fa1ac116d.png": {

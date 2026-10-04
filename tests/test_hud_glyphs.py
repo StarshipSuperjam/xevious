@@ -30,7 +30,9 @@ class HudGlyphsTests(unittest.TestCase):
         # + the 4 slice-19 CAB-04 initials-entry screen costumes on start_screen (CONGRATULATIONS /
         # ENTER YOUR INITIALS headers and the PLAYER 1 / PLAYER 2 tags), port-original UI text in the
         # credited font at the SMALL_TEXT_GEOM cell (glyphs already in SHEET_TEXT_RECTS). 77 + 4 = 81.
-        self.assertEqual(81, count)
+        # + the 6 slice-20 PRES-01 best-five costumes on start_screen (the header and the ordinal ranks
+        # 1ST..5TH, ATTRACT_TABLE_LABELS); PUSH START became PUSH START BUTTON in place. 81 + 6 = 87.
+        self.assertEqual(87, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
