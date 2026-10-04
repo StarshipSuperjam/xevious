@@ -8,8 +8,8 @@ cabinet bezel art, the way the game sat behind its bezel in the cabinet. This ge
 the operator-approved bezel source committed under assets/bezel/ (pinned by SHA-256 in
 assets/bezel/manifest.json), box-averages its two side columns into opaque panels and emits
 ONE full-stage costume: left panel, transparent window, right panel. One costume on the
-target's original keeps the bezel at zero clones (the ground clone bands already sit at
-scratch-vm's 300-clone ceiling).
+target's original keeps the bezel at zero clones, leaving scratch-vm's shared 300-clone budget
+untouched.
 
 Ownership (the same split as the easter-egg overlay): tools/game_director.py owns the `bezel`
 target's EXISTENCE, BLOCKS and draw layer; this module owns its single COSTUME, the overlay

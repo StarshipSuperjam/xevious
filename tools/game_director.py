@@ -270,11 +270,12 @@ HIT_WINDOW_BACURA = (28, 40, 8, 16)
 #   2. SPRITE MATCH. The Toroid rendered as a 36-px sprite (16-px costume at size 225); the reference
 #      window covered ~the central 40% of that, so bullets visibly overlapping the sprite missed.
 #      The doubled window (±2 cells Y ≈ 32 px, ±1 cell X ≈ 30 px) matched the rendered body, so a
-#      shot touching the Toroid kills it — the arcade "mow-down" feel. (Since PRES-01 the sprite draws
-#      at its arcade size, 20 stage units, so this window is now more forgiving than the drawn body;
-#      kept unchanged pending the operator's playtest call, docs/mechanics/054.) The tight craft HURTBOX
+#      shot touching the Toroid kills it — the arcade "mow-down" feel. The tight craft HURTBOX
 #      (HIT_WINDOW_BULLET_FLYING, single cell) is intentionally NOT widened: forgiving offence,
 #      precise defence.
+# ENGINE-TODO: since PRES-01 the Toroid draws at its arcade size (20 stage units), so this doubled window is now
+# more forgiving than the drawn body; it stays doubled until the operator rules on it at the slice-20 playtest
+# (docs/mechanics/054, known deviation 1).
 HIT_WINDOW_SHOT_FLYING = (32, 64, 16, 32)
 # WPN-01 player-shot vs Bacura window. The reference's `check_shot_hit_bacura` ($19CB, 2583-2595) uses
 # `sub #24; add #32` (Y) and `sub #8; add #16` (X) → shotY-bacuraY in [-24,7], bacuraX-shotX in [-8,7]
@@ -1168,12 +1169,12 @@ ATTRACT_DIGIT_PREFIX = "digit/"  # per-digit rank/score-cell costumes digit/<0-9
 # roles — one per option label (tools/hud_glyphs.py ATTRACT_SELECTOR_LABELS) — spawned at the title beside
 # the CREDIT line and PUSH START prompt. Both labels always show so the choice is discoverable; the clone
 # whose option matches the live `start selection` renders at full opacity and the other is dimmed by the
-# ghost effect, re-evaluated every tick so an up/down arrow press updates the display live. Placement is
-# the port's own (no reference basis for this port-original control), operator-tunable at playtest exactly
-# like the CAB-01 credit-line/best-five geometry. The options are stacked vertically (1P over 2P), so the
-# selector input is the UP/DOWN arrows (slice-18 playtest correction — was left/right, which read wrong
-# against a vertical list). PRES-01: the labels start on col 10 of rows 25/26, where the arcade writes its
-# ONE PLAYER ONLY / ONE OR TWO PLAYERS line (display_1_only_or_1_2_players 789-813), under PUSH START.
+# ghost effect, re-evaluated every tick so an up/down arrow press updates the display live. The options are
+# stacked vertically (1P over 2P), so the selector input is the UP/DOWN arrows (slice-18 playtest correction —
+# was left/right, which read wrong against a vertical list). PRES-01: "1 PLAYER" sits on the arcade's own cell
+# (10,25), where it writes ONE PLAYER ONLY / ONE OR TWO PLAYERS (display_1_only_or_1_2_players 789-813, offset
+# 0x1519), under PUSH START; "2 PLAYERS" on the row below (10,26) is the port's own, since the arcade shows one
+# line and takes the choice from which start button is pressed.
 ATTRACT_ROLE_SELECTOR_1P = 5  # the "1 PLAYER" option label (bright when start selection == 1)
 ATTRACT_ROLE_SELECTOR_2P = 6  # the "2 PLAYERS" option label (bright when start selection == 2)
 ATTRACT_COSTUME_SELECTOR_1P = "select-1p"
@@ -2085,16 +2086,18 @@ EASTER_EGG_DISPLAY_FRAMES = 128
 # draws (it is invisible), so the credit is a separate fixed-position FG overlay driven purely by this flag.
 EASTER_EGG_SHOWING_ID = "sec-easter-egg-showing"
 # SEC-03 credit overlay target + costume. The overlay draws ONE pre-composed two-line credit costume on the
-# target's ORIGINAL (zero clones — the ground clone bands already sit at scratch-vm's 300-clone ceiling; see the
-# GROUND renderer note), centred low in the play field like the arcade's FG credit lines. The costume is owned
-# by tools/hud_glyphs.py (this module owns the target's EXISTENCE + BLOCKS, that module owns its COSTUME), and
+# target's ORIGINAL (zero clones, leaving scratch-vm's shared 300-clone budget untouched), on the arcade's own FG
+# credit rows. The costume is owned by tools/hud_glyphs.py (this module owns the target's EXISTENCE + BLOCKS, that module owns its COSTUME), and
 # is rendered in a PORT-GENERATED pixel font — NOT the arcade HUD font, whose crop set lacks several letters the
 # original wording needs and whose crops are operator-verified. Recorded as a port necessity in docs/mechanics/044.
 EASTER_EGG_TARGET = "easter-egg"
 EASTER_EGG_CREDIT_COSTUME = "credit"
-EASTER_EGG_CREDIT_X = 0  # centred horizontally
-EASTER_EGG_CREDIT_Y = -48  # low in the play field, clear of the HUD and the craft's usual band
-EASTER_EGG_CREDIT_SIZE = round(100 * 10 / 22, 2)  # 22-px glyph advance drawn on the 10-unit arcade text pitch
+# PRES-01 (docs/mechanics/054): the arcade writes its two credit lines on text rows 33 and 34 (display_easter_egg
+# xevious_main.68k 6018-6048: offsets 0x1921 and 0x1722), so the two-line costume is centred between them. Its
+# longest line is 20 characters on the 10-unit pitch, so centring it at x 0 puts every glyph on a column (8..27).
+EASTER_EGG_CREDIT_X = 0
+EASTER_EGG_CREDIT_Y = text_cell_y(33.5)
+EASTER_EGG_CREDIT_SIZE = round(100 * HUD_TEXT_PITCH / 22, 2)  # the costume's 22-px glyph advance on the text pitch
 
 # GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
 # SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
@@ -2144,7 +2147,8 @@ TOROID_SPAWN_ROW = 0  # new/refilled flying enemies enter from the top row (see 
 
 # WPN-04 bombing geometry (init_bombing $188C / update_crosshair $16E8), all on the scroll/depth axis
 # (slot x). The crosshair and the locked bomb target sit a fixed distance AHEAD of the craft:
-# arcade `solvalou_X + 0xF400` = -3072 units = -12 cells = -96 stage-px (lower slot x is up-screen).
+# arcade `solvalou_X + 0xF400` = -3072 units = -12 cells = 96 arcade px = 120 stage units ahead (lower slot x is
+# up-screen).
 BOMB_TARGET_LEAD = -12 * SLOT_UNITS_PER_CELL  # 0xF400 at the pin
 FRAMES_PER_TICK = 2  # 1 port tick = 2 arcade frames (the established scroll cadence)
 BOMB_ACCEL_PER_FRAME = 2  # the bomb's `_dX` gains -2 per arcade frame, then `_X += _dX*2`
@@ -2386,7 +2390,7 @@ RENDER_VIEW_ROWS = 40
 # 2119-2135: X 144..304, Y 16..224) through the render map, and its spawn (main_fn_1__handle_solvalou
 # 1999-2003: X 296, Y 120). Y 16..224 puts the sprite flush against both side edges; X 304 puts its bottom edge
 # on the screen bottom.
-CRAFT_X_LIMIT = 130    # Y 16 -> x 130 (left stop), Y 224 -> x -130 (right stop)
+CRAFT_X_LIMIT = 130    # Y 16 -> x 130 (right stop), Y 224 -> x -130 (left stop)
 CRAFT_Y_TOP = 30       # X 144 -> y 30
 CRAFT_Y_BOTTOM = -170  # X 304 -> y -170
 CRAFT_SPAWN_X = 0      # Y 120
@@ -4542,7 +4546,8 @@ def install_track_crosshair(blocks: Blocks) -> None:
     # WPN-04 bomb sight (update_crosshair $16E8): every tick the crosshair leads the craft by a fixed
     # depth offset — arcade `crosshair _X = solvalou_X + 0xF400`, `_Y = solvalou_Y`. `read player cell`
     # has already cached the craft's (row, col) in cells, so the crosshair slot is (row*256 + LEAD, col*256)
-    # in slot units; the renderer maps that to 96 stage-px ahead of the ship on the same lateral column.
+    # in slot units; the renderer maps that to 120 stage units (96 arcade px) ahead of the ship on the same
+    # lateral column.
     # The crosshair carries no gameplay state — it is only marked ACTIVE so its renderer shows it while
     # playing. The reference's on-target colour flash (check_targeted_ground_object) is a deferred cosmetic.
     definition = _install_warp_proc(blocks, TRACK_CROSSHAIR_PROCCODE)
@@ -11267,13 +11272,20 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
     # craft while the cabinet demos (attract==1) and the arrow keys drive it in a real game (attract==0). The
     # virtual flag paired with each arrow matches the auto-pilot's direction decomposition.
     # PRES-01 (docs/mechanics/054): the arcade speeds (dir_delta_tbl xevious_main.68k 2171-2180). Depth moves
-    # CRAFT_DEPTH_STEP; lateral moves CRAFT_LATERAL_STEP when no vertical direction is held and the slower
-    # CRAFT_DIAGONAL_LATERAL_STEP on a diagonal. Each read builds fresh `input_active` reporters (a reporter
-    # binds to one parent).
+    # CRAFT_DEPTH_STEP; lateral moves the slower CRAFT_DIAGONAL_LATERAL_STEP on a diagonal — exactly one of up/down
+    # held — and CRAFT_LATERAL_STEP otherwise. Up and down together cancel to a pure sideways move (the arcade's
+    # stick cannot report both), so they take the full lateral step. Each read builds fresh `input_active`
+    # reporters (a reporter binds to one parent).
     def vertical_active(parent: str) -> str:
+        def only(key: str, vid: str, vname: str, other: str, oid: str, oname: str) -> str:
+            return blocks.op_and(
+                blocks.input_active(parent, key, vid, vname),
+                blocks.op_not(blocks.input_active(parent, other, oid, oname)),
+            )
+
         return blocks.op_or(
-            blocks.input_active(parent, "up arrow", INPUT_UP_ID, "input up"),
-            blocks.input_active(parent, "down arrow", INPUT_DOWN_ID, "input down"),
+            only("up arrow", INPUT_UP_ID, "input up", "down arrow", INPUT_DOWN_ID, "input down"),
+            only("down arrow", INPUT_DOWN_ID, "input down", "up arrow", INPUT_UP_ID, "input up"),
         )
 
     for key, (direction, virtual_id, virtual_name) in {
@@ -11567,7 +11579,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     # CAB-04: the three LIVE best-five cell roles. Each cell re-reads the Stage lists every tick while in
     # attract-scores (the credit-digit idiom), so a score that ranks in mid-session shows live; when the
     # state leaves attract-scores the loop exits and the cell hides + deletes itself (common_stop is the
-    # backstop). Placement/pixels are the operator's playtest; the structure here is what the tests pin.
+    # backstop). Placement is the arcade's own text grid (ATTRACT_TABLE_*).
     def table_tick(body: list[str]) -> str:
         loop = blocks.add("control_repeat_until")
         blocks.blocks[loop]["inputs"]["CONDITION"] = [2, blocks.not_state(loop, ATTRACT_SCORES_STATE)]
@@ -13150,8 +13162,8 @@ FRAME_TARGETS = ("frame_t", "frame_b", "frame_l", "frame_r")
 
 # PRES-01 (record 054): the cabinet bezel. The arcade screen fills a 280x360 window centred on the stage and
 # the two 100-unit side areas hold bezel art, as the game sat behind its bezel in the cabinet. ONE full-stage
-# costume (left panel, transparent window, right panel) on the target's original — zero clones, the ground
-# bands already sit at the 300-clone ceiling. The costume is owned by tools/bezel_panels.py (this module owns
+# costume (left panel, transparent window, right panel) on the target's original — zero clones, leaving
+# scratch-vm's shared 300-clone budget untouched. The costume is owned by tools/bezel_panels.py (this module owns
 # the target's EXISTENCE + BLOCKS + layer). Pinned just above the world band so the opaque panels mask any
 # enemy or ground object drawn past the window edge (the arcade's lateral clip); the craft group, HUD and
 # attract text front themselves above it, and none of them reaches past the window.
@@ -13983,9 +13995,8 @@ def easter_egg_blocks() -> dict[str, dict[str, Any]]:
     # egg object itself is ALWAYS invisible (arcade _CODE=0) and drives no renderer — this target is the separate
     # fixed-position FG credit overlay the arcade draws with display_easter_egg (xevious_main.68k 6018-6048).
     #
-    # It runs entirely on the sprite's ORIGINAL — it creates NO clones. That is deliberate: the port's ground
-    # families already sit at scratch-vm's hard 300-clone ceiling (see the GROUND renderer notes / the Bonus Flag
-    # header), so a per-character glyph-clone credit would breach it. Instead the credit is ONE pre-composed
+    # It runs entirely on the sprite's ORIGINAL — it creates NO clones, leaving scratch-vm's shared 300-clone
+    # budget untouched (a per-character glyph-clone credit would spend ~30 of it). Instead the credit is ONE pre-composed
     # two-line costume the original shows at a fixed screen position while the Stage `easter egg showing` signal
     # is raised (set by `update easter egg` on the reveal tick, lowered when the ~2 s display window expires or on
     # any director reset), and hides otherwise. The credit is rendered in a PORT-GENERATED pixel font (not the

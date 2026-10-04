@@ -52,7 +52,9 @@ instead of restarting. The visual terrain stays decoupled from the area clock at
 so area position is read from the `area progress`/`area number` variable watchers, not the screen.)
 
 1. **Cold start.** Green flag: one title presentation (the logo entering as the spec's presentation
-   document records), music once, no stray sprites. Press Space: one READY presentation, then play.
+   document records), music once, no stray sprites. The small "START SPACE KEY" hint baked into the logo
+   art is now too small to read; say whether to redraw it as a readable text line under the logo (that
+   would be new project text). Press Space: one READY presentation, then play.
 2. **Held fire while moving.** Hold Space for five seconds while flying circles: the cadence stays
    steady the whole time — no stutter, no silencing when an arrow key joins, and never more than 3
    shots on screen. Shots vanish at the top edge, never parking there.
@@ -209,19 +211,29 @@ so area position is read from the `area progress`/`area number` variable watcher
    render above the terrain; the craft and its shots draw over every enemy, bullet, and ground object, and
    the HUD draws over the enemies too (an enemy passing under the score lines goes behind them). The game
    sits in a portrait window in the middle of the stage, framed by the cabinet bezel panels left and right:
-   nothing covers the craft or the HUD, an enemy drifting past a side edge slides under the bezel, enemies
-   appear and vanish at the top edge of the window, and a shot disappears there too. The score labels and
-   scores sit on the top two text rows and the life icons on the bottom row, all inside the window. Let the
-   terrain scroll for at least 30 seconds: no black bar or gap ever flashes at the top or bottom edge. One
-   known difference from the arcade, by your choice: the shots, crosshair, and bomb draw over the HUD (in
-   the arcade only the ship body does).
+   no enemy and no part of the bezel covers the craft or the HUD (the craft can overlap the life icons at
+   its bottom stop, as in the arcade); an enemy drifting past a side edge slides under the bezel; enemies
+   appear and vanish at the top edge of the window, and a shot is clipped by that edge and then disappears.
+   The score labels and scores sit on the top two text rows and the life icons on the bottom row, all inside
+   the window. Let the terrain scroll for at least 30 seconds: no black bar or gap ever flashes at the top or
+   bottom edge. View the game both at normal size and full screen: all text (HUD, title, high-score table,
+   initials entry) should be readable — report any that looks too soft or small. One known difference from
+   the arcade, by your choice: the shots, crosshair, and bomb draw over the HUD (in the arcade only the ship
+   body does).
 8. **Movement and weapon feel — arcade proportions.** Everything is now drawn at one arcade scale, so the
    craft, the shot, and the crosshair move at the arcade's own speeds. That is noticeably **slower** than
-   the earlier builds: the craft moves 1 arcade pixel per frame forward and back, a little faster purely
-   sideways (1.5) than on a diagonal (1), and left and right now match the keys you press. The craft stops
-   flush against the window's side and bottom edges and a little over halfway up; the crosshair **leads
-   the ship and tracks it** a fixed distance ahead (it marks the bomb-drop point) and is never clamped.
-   Judge the feel: if the arcade speeds feel wrong for this screen, say so — that is your call.
+   the earlier builds: crossing the window bottom to top takes about 2.7 seconds and side to side about 2.3
+   seconds, and a shot reaches the top in about 0.75 seconds (the old craft was about 3.5× faster forward
+   and back). The craft moves a little faster purely sideways than on a diagonal; holding up and down
+   together counts as neither. The craft stops flush against the window's side and bottom edges and a
+   little over halfway up; the crosshair **leads the ship and tracks it** a fixed distance ahead (it marks
+   the bomb-drop point) and is never clamped. **The whole world is now flipped left-for-right compared with
+   earlier builds** — this is the arcade's own orientation. The keys still feel the same (right moves right),
+   but enemy formations, homing turns, and the Andor Genesis now appear the way round they do in the arcade:
+   confirm they match what you remember. **Hit window:** shots still hit flying enemies within a window
+   twice the arcade's, which now feels more forgiving than the smaller drawn enemies — say whether to keep it
+   or return to the arcade window. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
+   the alternative is a recorded port speed-up, and that is your call.
 9. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
 10. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
     at a time, against the spec sections it cites.

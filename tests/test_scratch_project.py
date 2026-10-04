@@ -18260,17 +18260,28 @@ class ScratchProjectTests(unittest.TestCase):
             fails.add("PRES01-stop-lines")
         # PRES01-craft-speed — the arcade speeds (dir_delta_tbl xevious_main.68k 2171-2180) at 1.25 stage units
         # per px: up/down 2 px a tick; left/right 3 px, or 2 px on a diagonal. Each lateral branch is an if-else
-        # on "up or down held": the diagonal step in SUBSTACK, the full step in SUBSTACK2 (a headless pump runs
-        # several ticks, so the per-tick speed is pinned here rather than measured live).
+        # on "exactly one of up/down held" — (up and not down) or (down and not up), since up and down together
+        # cancel to a pure sideways move: the diagonal step in SUBSTACK, the full step in SUBSTACK2 (a headless
+        # pump runs several ticks, so the per-tick speed is pinned here rather than measured live).
         def fnum(spec):
             try:
                 return float(num(spec))
             except (TypeError, ValueError):
                 return None
 
+        def exactly_one_vertical(cond):
+            if not cond or cond["opcode"] != "operator_or":
+                return False
+            arms = [ref("solvalou", cond, k) for k in ("OPERAND1", "OPERAND2")]
+            return all(
+                arm and arm["opcode"] == "operator_and"
+                and (ref("solvalou", arm, "OPERAND2") or {}).get("opcode") == "operator_not"
+                for arm in arms
+            )
+
         lateral, depth = set(), set()
         for b in blocks["solvalou"].values():
-            if b["opcode"] == "control_if_else" and (ref("solvalou", b, "CONDITION") or {}).get("opcode") == "operator_or":
+            if b["opcode"] == "control_if_else" and exactly_one_vertical(ref("solvalou", b, "CONDITION")):
                 diag, full = ref("solvalou", b, "SUBSTACK"), ref("solvalou", b, "SUBSTACK2")
                 if diag and full and diag["opcode"] == full["opcode"] == "motion_changexby":
                     lateral.add((fnum(diag["inputs"].get("DX")), fnum(full["inputs"].get("DX"))))
@@ -18304,10 +18315,10 @@ class ScratchProjectTests(unittest.TestCase):
         # Retained structural guards.
         solvalou = targets["solvalou"]["blocks"]
         self.assertNotIn("motion_ifonedgebounce", {b["opcode"] for b in solvalou.values()})
-        # Four direction polls, plus each lateral branch's up/down poll that picks the slower diagonal step
-        # (PRES-01 arcade speeds, dir_delta_tbl xevious_main.68k 2171-2180): 4 + 2 x 2.
+        # Four direction polls, plus each lateral branch's "exactly one of up/down" test that picks the slower
+        # diagonal step (PRES-01 arcade speeds, dir_delta_tbl xevious_main.68k 2171-2180): 4 + 2 x 4.
         self.assertEqual(
-            8,
+            12,
             sum(block["opcode"] == "sensing_keypressed" for block in solvalou.values()),
         )
         # PRES-01 (slice 20): the border sprites are retired, so the craft touches nothing — it clamps its
@@ -18415,6 +18426,15 @@ class ScratchProjectTests(unittest.TestCase):
             for b in blocks_of(p, "solvalou").values():
                 if b["opcode"] == "motion_changexby" and float(num(b["inputs"].get("DX"))) == director.CRAFT_DIAGONAL_LATERAL_STEP:
                     b["inputs"]["DX"] = [1, [4, director.CRAFT_LATERAL_STEP]]
+
+        def either_vertical_diagonal(p):  # PRES-01: up+down held would slow the sideways step as a diagonal
+            bl = blocks_of(p, "solvalou")
+            for b in bl.values():
+                if b["opcode"] == "control_if_else" and bl.get(b["inputs"].get("CONDITION", [None, None])[1] or "", {}).get("opcode") == "operator_or":
+                    cond = bl[b["inputs"]["CONDITION"][1]]
+                    for key in ("OPERAND1", "OPERAND2"):
+                        arm = bl[cond["inputs"][key][1]]
+                        arm["inputs"]["OPERAND2"] = arm["inputs"]["OPERAND1"]  # (up and up) or (down and down)
 
         def old_depth_speed(p):  # PRES-01: back to the pre-proportions 7-unit depth step
             for b in blocks_of(p, "solvalou").values():
@@ -18552,6 +18572,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-craft-touch", touch_craft_bound),
             ("PRES01-craft-speed", full_speed_diagonal),
             ("PRES01-craft-speed", old_depth_speed),
+            ("PRES01-craft-speed", either_vertical_diagonal),
             ("B9-craft-front", break_craft_layer),
             ("B9-terrain-back-area_01a", break_terrain_layer),
             ("PRES01-terrain-phase", restore_baseline_terrain_seed),
@@ -18753,11 +18774,151 @@ class ScratchProjectTests(unittest.TestCase):
         sizes = {as_num(num(b["inputs"].get("SIZE"))) for b in hud.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"}
         if sizes != {80.0, 62.5, round(1000 / 17, 2)}:
             fails.add("hud-size")
+
+        def ref_in(bl, block, slot):
+            spec = (block or {}).get("inputs", {}).get(slot)
+            return bl.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+
+        def top_of(bl, bid):
+            # The hat a block hangs from: walk parents (next-chain predecessors and enclosing blocks) to the top.
+            while bl[bid].get("parent"):
+                bid = bl[bid]["parent"]
+            return bl[bid]["opcode"]
+
+        # PRES01-render-map (docs/mechanics/054) — one isotropic 1.25 scale with the lateral axis mirrored: arcade
+        # lateral Y increases to the LEFT (dir_delta_tbl xevious_main.68k 2171-2180: right is dY -24; the display
+        # mirrors Y, amiga.68k 1696-1699). From the window geometry (centre Y 128, first visible row X 32, 8-px cells,
+        # sprite centre = corner + 8): x = (128 - (8 col + 8)) * 1.25, y = 180 - (8 row + 8 - 32) * 1.25.
+        scale = 1.25
+        derived = (-8 * scale, -(120 * scale), 180 + 24 * scale, 8 * scale)
+        actual = (director.RENDER_COL_STAGE, director.RENDER_COL_OFFSET, director.RENDER_ROW_TOP, director.RENDER_ROW_STAGE)
+        if director.ARCADE_STAGE_PER_PX != scale or actual != derived:
+            fails.add("PRES01-render-map")
+        # Every renderer applies the NEGATIVE lateral factor to slot y and the positive depth factor to slot x; a
+        # single site with its sign flipped would draw that family mirrored against the rest of the world.
+        lateral_sites = 0
+        for t in project["targets"]:
+            bl = t["blocks"]
+            for b in bl.values():
+                if not isinstance(b, dict) or b["opcode"] != "operator_multiply":
+                    continue
+                quotient = ref_in(bl, b, "NUM1")
+                item = ref_in(bl, quotient, "NUM1") if quotient and quotient["opcode"] == "operator_divide" else None
+                if not item or item["opcode"] != "data_itemoflist":
+                    continue
+                axis = item["fields"]["LIST"][0]
+                if axis not in ("slot x", "slot y") or as_num(num(quotient["inputs"].get("NUM2"))) != 256:
+                    continue
+                factor = as_num(num(b["inputs"].get("NUM2")))
+                if axis == "slot y":
+                    lateral_sites += 1
+                    if factor != -8 * scale:
+                        fails.add("PRES01-render-map")
+                elif factor != 8 * scale:
+                    fails.add("PRES01-render-map")
+        if lateral_sites < 18:  # every slot-driven renderer (17 targets + the ground pool's per-part maps)
+            fails.add("PRES01-render-map")
+        # The one player read is the exact inverse: col = round((x + offset) / factor), so the craft at the right
+        # stop (x 130) reads arcade column 2 (Y 16) and the left stop (x -130) column 28 (Y 224).
+        read_ok = False
+        for t in project["targets"]:
+            bl = t["blocks"]
+            for b in bl.values():
+                if not isinstance(b, dict) or b["opcode"] != "data_setvariableto" or b["fields"]["VARIABLE"][0] != "player col":
+                    continue
+                rounded = ref_in(bl, b, "VALUE")
+                quotient = ref_in(bl, rounded, "NUM") if rounded and rounded["opcode"] == "operator_round" else None
+                total = ref_in(bl, quotient, "NUM1") if quotient and quotient["opcode"] == "operator_divide" else None
+                if not total or total["opcode"] != "operator_add":
+                    continue
+                offset = as_num(num(total["inputs"].get("NUM2")))
+                factor = as_num(num(quotient["inputs"].get("NUM2")))
+                read_ok = (
+                    (ref_in(bl, total, "NUM1") or {}).get("opcode") == "sensing_of"
+                    and (offset, factor) == (-120 * scale, -8 * scale)
+                    and all(round((col * factor - offset + offset) / factor) == col for col in range(32))
+                    and round((director.CRAFT_X_LIMIT + offset) / factor) == 2
+                    and round((-director.CRAFT_X_LIMIT + offset) / factor) == 28
+                )
+        if not read_ok:
+            fails.add("PRES01-render-map")
+
+        # PRES01-attract-grid — the attract, title, best-five and entry text on the arcade text cells, from the
+        # source's own screen offsets: CREDIT 0x0923 with its digits two cells past the label (display_credits
+        # 774-787), PUSH START BUTTON 0x1517 (815-826), INSERT COIN 0x121C (857-889), the 1P line 0x1519
+        # (display_1_only_or_1_2_players 789-813), the best-five rank/score/name columns 0x19xx/0x14xx/0x0Bxx on
+        # rows 24..32 (display_high_score_table 1475-1541) and the entry headers 0x1509 / 0x160C
+        # (display_high_score_entry_screen 1795-1812). The 2P option row 26, the entry PLAYER-n tag (14,18) and the
+        # entry's ten cells on row 24 from col 13 are port layout on the same grid.
+        def run_centre(offset, chars):
+            col, row = 31 - (offset >> 8), offset & 0xFF
+            return (10 * (col + (chars - 1) / 2) - 175, 175 - 10 * row)
+
+        def cells(offset, n):
+            return {run_centre(offset - 0x100 * k, 1) for k in range(n)}
+
+        logo_size = round(100 * 200 / 304, 2)  # the logo body (304 units at 100%) on its 20 arcade columns
+        expected_attract = (
+            {(0, 250), run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
+            | {run_centre(0x1517, 10), run_centre(0x121C, 11), run_centre(0x1519, 8), run_centre(0x151A, 9)}
+            | {run_centre(0x1509, 15), run_centre(0x160C, 19), run_centre(0x1112, 8)}
+            | cells(0x1218, 10)
+        )
+        for row in range(0x18, 0x22, 2):
+            expected_attract |= {run_centre(0x1900 | row, 1)} | cells(0x1400 | row, 7) | cells(0x0B00 | row, 10)
+        start = targets["start_screen"]["blocks"]
+        attract_gotos, glides = set(), set()
+        for b in start.values():
+            if isinstance(b, dict) and b["opcode"] in ("motion_gotoxy", "motion_glidesecstoxy"):
+                spot = (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
+                (glides if b["opcode"] == "motion_glidesecstoxy" else attract_gotos).add(spot)
+        # The logo body (bitmap rows 154-359, centred 51.5 units above the costume centre at 100%) glides to the
+        # centre of its arcade rows 9..16 (display_xevious_logo_flashing 891-1019): y 50.
+        if attract_gotos != {(float(x), float(y)) for x, y in expected_attract} or glides != {
+            (0.0, float(round(50 - 51.5 * logo_size / 100)))
+        }:
+            fails.add("PRES01-attract-grid")
+        # The text costumes draw at the 10-unit pitch (17-px advance) and the logo at its arcade width; the text
+        # size is set on the clone's own script, so every text clone draws on the grid.
+        text_size = round(100 * 10 / 17, 2)
+        start_sizes = {
+            as_num(num(b["inputs"].get("SIZE"))): top_of(start, bid)
+            for bid, b in start.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+        }
+        if start_sizes != {logo_size: "event_whenflagclicked", text_size: "control_start_as_clone"}:
+            fails.add("PRES01-attract-grid")
+        # The hidden credit on the arcade's credit rows 33-34 (display_easter_egg 6018-6048: 0x1921 / 0x1722), its
+        # 20-character line centred on columns 8..27, the 22-px glyph advance on the 10-unit pitch.
+        egg = targets[director.EASTER_EGG_TARGET]["blocks"]
+        egg_gotos = {
+            (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
+            for b in egg.values() if isinstance(b, dict) and b["opcode"] == "motion_gotoxy"
+        }
+        egg_sizes = {
+            as_num(num(b["inputs"].get("SIZE")))
+            for b in egg.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+        }
+        credit_y = (run_centre(0x1921, 1)[1] + run_centre(0x1722, 1)[1]) / 2
+        if egg_gotos != {(0.0, credit_y)} or egg_sizes != {round(100 * 10 / 22, 2)}:
+            fails.add("PRES01-attract-grid")
+
+        # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
+        # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25.
+        for name in ("solvalou", "blaster", "target_a", "target_b", "bomb", "solv_death"):
+            bl = targets[name]["blocks"]
+            found = [
+                (as_num(num(b["inputs"].get("SIZE"))), top_of(bl, bid))
+                for bid, b in bl.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+            ]
+            if found != [(round(targets[name]["size"] * scale / 2.25, 2), "event_whenflagclicked")]:
+                fails.add("PRES01-sprite-size")
+        if director.SPRITE_RENDER_SIZE != 100 * scale:
+            fails.add("PRES01-sprite-size")
         return fails
 
     # Roadmap closure evidence for leaf `presentation.framing` (PRES-01).
-    # roadmap-evidence: PRES-01 success  (test_pres01_playfield_framing_contract — no border sprites; the cabinet bezel frames the arcade-proportioned window; every world renderer shows only inside the visible rows 4-39 and never fronts itself, so craft > HUD > world; the HUD sits on the arcade text cells; harness pres01-craft-stops-at-stop-lines / pres01-shot-expires-past-row-0 / pres01-world-hidden-off-field run it live)
-    # roadmap-evidence: PRES-01 failure  (test_pres01_playfield_framing_contract negatives: a missing gate bound, an ungated show, a re-added per-tick front, a flyer below the ground band, a restored border sprite, a sunk/fronted/hidden bezel, and a HUD glyph off its text cell each go red; harness negatives drop the craft clamp, the row-0 expiry, and the view gate)
+    # roadmap-evidence: PRES-01 success  (test_pres01_playfield_framing_contract — no border sprites; the cabinet bezel frames the arcade-proportioned window; every world renderer shows only inside the visible rows 4-39 and never fronts itself, so craft > HUD > world; the HUD, attract, best-five, entry and hidden-credit text sit on the arcade text cells; every renderer applies the mirrored lateral factor and the player read inverts it; harness pres01-craft-stops-at-stop-lines / pres01-shot-expires-past-row-0 / pres01-world-hidden-off-field run it live)
+    # roadmap-evidence: PRES-01 failure  (test_pres01_playfield_framing_contract negatives: a missing gate bound, an ungated show, a re-added per-tick front, a flyer below the ground band, a restored border sprite, a sunk/fronted/hidden bezel, a HUD or attract glyph off its text cell, a renderer or the player read with the lateral sign flipped, and an unscaled craft each go red; harness negatives drop the craft clamp, the row-0 expiry, and the view gate)
     def test_pres01_playfield_framing_contract(self) -> None:
         base = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._pres01_framing_failures(base))
@@ -18841,7 +19002,47 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (80, "80"):
                     b["inputs"]["SIZE"] = [4, [4, 100]]
 
+        def flip_one_renderer(p):  # one family drawn with the old un-mirrored lateral factor
+            for b in target(p, director.TOROID_TARGET)["blocks"].values():
+                if b["opcode"] == "operator_multiply" and self._numeric(b["inputs"].get("NUM2")) in (-10, "-10"):
+                    b["inputs"]["NUM2"] = [4, [4, 10]]
+
+        def flip_player_read(p):  # the player read no longer inverts the mirror: aim and hits read the wrong column
+            for t in p["targets"]:
+                for b in t["blocks"].values():
+                    if (
+                        isinstance(b, dict) and b["opcode"] == "operator_divide"
+                        and self._numeric(b["inputs"].get("NUM2")) in (-10, "-10")
+                    ):
+                        b["inputs"]["NUM2"] = [4, [4, 10]]
+
+        def drift_push_start(p):  # PUSH START back at its old project-defined spot
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-55, "-55"):
+                    b["inputs"]["Y"] = [4, [4, -60]]
+
+        def unscale_attract_text(p):  # attract text back at its costume's own 17-px advance
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (58.82, "58.82"):
+                    b["inputs"]["SIZE"] = [4, [4, 100]]
+
+        def credit_off_grid(p):  # the hidden credit back between rows, over the craft's flight band
+            for b in target(p, director.EASTER_EGG_TARGET)["blocks"].values():
+                if b["opcode"] == "motion_gotoxy":
+                    b["inputs"]["Y"] = [4, [4, -48]]
+
+        def unscale_craft(p):  # the craft back at its old 2.25-units-per-px size
+            for b in target(p, "solvalou")["blocks"].values():
+                if b["opcode"] == "looks_setsizeto":
+                    b["inputs"]["SIZE"] = [4, [4, 150]]
+
         cases = [
+            ("PRES01-render-map", flip_one_renderer),
+            ("PRES01-render-map", flip_player_read),
+            ("PRES01-attract-grid", drift_push_start),
+            ("PRES01-attract-grid", unscale_attract_text),
+            ("PRES01-attract-grid", credit_off_grid),
+            ("PRES01-sprite-size", unscale_craft),
             ("hud-grid", drift_high_score_label),
             ("hud-life-row", spread_life_row),
             ("hud-size", unscale_hud),
@@ -19248,7 +19449,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f7c0e40183c6cf0b78d350fbd4e74ac96be68801f59512aee715ded10db62578",
+            "5da21b6e8d3fa0a849e042f36eb7a2721fa086862016f1d98b8e7c9e447ce758",
             build_hash,
         )
 

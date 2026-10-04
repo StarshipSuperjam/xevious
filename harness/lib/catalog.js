@@ -347,6 +347,33 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'solvalou', constants.craft_y_top, 99999),
   },
   {
+    key: 'pres01-right-arrow-lowers-player-col',
+    // roadmap-evidence: PRES-01 success  (the mirror: the craft held right reads a LOWER arcade lateral column
+    //   than held left — the arcade's lateral Y increases to the left — and each stop reads its arcade column)
+    behavior:
+      'PRES-01: the left-right mirror — holding right moves the craft to arcade lateral column 2 (Y 16, the right stop) and holding left to column 28 (Y 224), because the arcade\'s lateral axis increases to the LEFT; every aim and hit test reads this column',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const hold = (key) => {
+        keyDown(vm, key);
+        for (let i = 0; i < 100; i += 1) step(vm, 1);
+        keyUp(vm, key);
+        step(vm, 1);
+        return readVar(vm, 'player-col');
+      };
+      return { right: hold('ArrowRight'), left: hold('ArrowLeft') };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.right), 2, 'held right, the craft reads arcade column 2 (Y 16, the right stop)');
+      assert.equal(Number(obs.left), 28, 'held left, the craft reads arcade column 28 (Y 224, the left stop)');
+      assert.ok(Number(obs.right) < Number(obs.left), 'right is the LOWER lateral column (lateral Y increases left)');
+    },
+    // roadmap-evidence: PRES-01 failure  (with the player read's offset sign flipped the craft reads a column
+    //   off the arcade grid, so both stop-column assertions go red)
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', -150, 150),
+  },
+  {
     key: 'pres01-shot-expires-past-row-0',
     // roadmap-evidence: PRES-01 success  (a held-fire shot travels on past the top of the window and is retired
     //   as it reaches arcade row 0 — drawn only inside the window, hit-tested up to row 0 — and its slot frees
