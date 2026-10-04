@@ -200,29 +200,28 @@ so area position is read from the `area progress`/`area number` variable watcher
 6. **Life economy — score, cap, bonus, HUD.** Destroy Toroids while playing: the score climbs by 30 a
    kill, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it whenever the
    score passes it. Each digit shows leading zeros, arcade-style. Reaching 20,000 grants an extra craft
-   with its **extend** sound and a life icon (the icon row is capped at 9 on screen — the true count keeps
-   rising); reaching that at 30 points a kill is a long grind, so the **bonus-life award, the 9,999,990
+   with its **extend** sound and a life icon on the bottom text row (the icon row shows at most 28, the
+   width of the screen — the true count keeps rising); reaching that at 30 points a kill is a long grind, so the **bonus-life award, the 9,999,990
    cap, and the at-cap extra-craft quirk are better confirmed by the build's fixtures and the earlier
    life-economy playtest than by grinding here** — spot-check that the score and high-score track a few
    kills correctly, and report any misbehavior in the digits or tracking.
 7. **Layering and the playfield edges.** During busy play: shots, the craft, Toroids, and enemy bullets all
    render above the terrain; the craft and its shots draw over every enemy, bullet, and ground object, and
-   the HUD draws over the enemies too (an enemy passing under the score lines goes behind them). There is no
-   border: no border or enemy covers the craft or the HUD, enemies vanish as they cross the top row (stage y about 155)
-   rather than sliding up over the HUD, and a shot disappears at that same line. Let the terrain scroll for at
-   least 30 seconds: no black bar ever flashes at the top or bottom edge. One known difference from
-   the arcade, by your choice: the shots, crosshair, and bomb draw over the HUD (in the arcade only the ship
-   body does), so with the ship at its top stop the crosshair covers the score text — judge whether that reads
-   well.
-8. **Movement and weapon feel — the restored prototype.** This build restores the movement, shot speed,
-   and crosshair behavior of the recovery build (#13/#14) you approved — a single spatial factor was tried
-   and rejected, and this build tunes those quantities as port constants instead. Confirm the feel is back
-   to what you validated: the craft moves at its familiar speed and reaches every edge; the shot speed
-   reads well; and the crosshair **leads the ship and tracks it** at a fixed distance ahead (it marks the
-   bomb-drop point). The crosshair is never clamped — the ship stops at its own stop lines (top, bottom, and
-   both sides), and with the ship at its top stop the crosshair sits pressed against the top edge of the
-   stage, since its lead points past it. If any of movement, bounds, shot, or the crosshair feels wrong,
-   that is a bug to report, not a decision to revisit.
+   the HUD draws over the enemies too (an enemy passing under the score lines goes behind them). The game
+   sits in a portrait window in the middle of the stage, framed by the cabinet bezel panels left and right:
+   nothing covers the craft or the HUD, an enemy drifting past a side edge slides under the bezel, enemies
+   appear and vanish at the top edge of the window, and a shot disappears there too. The score labels and
+   scores sit on the top two text rows and the life icons on the bottom row, all inside the window. Let the
+   terrain scroll for at least 30 seconds: no black bar or gap ever flashes at the top or bottom edge. One
+   known difference from the arcade, by your choice: the shots, crosshair, and bomb draw over the HUD (in
+   the arcade only the ship body does).
+8. **Movement and weapon feel — arcade proportions.** Everything is now drawn at one arcade scale, so the
+   craft, the shot, and the crosshair move at the arcade's own speeds. That is noticeably **slower** than
+   the earlier builds: the craft moves 1 arcade pixel per frame forward and back, a little faster purely
+   sideways (1.5) than on a diagonal (1), and left and right now match the keys you press. The craft stops
+   flush against the window's side and bottom edges and a little over halfway up; the crosshair **leads
+   the ship and tracks it** a fixed distance ahead (it marks the bomb-drop point) and is never clamped.
+   Judge the feel: if the arcade speeds feel wrong for this screen, say so — that is your call.
 9. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
 10. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
     at a time, against the spec sections it cites.

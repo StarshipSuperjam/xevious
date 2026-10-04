@@ -207,7 +207,10 @@
   sprite drawn at ~2.25 stage-px/px) — the shared ground-sprite scale outruns the small anamorphic hit/exit
   geometry across every ground family, an unresolved canvas-proportion issue the operator has chosen to hold
   rather than fit the geometry to an unfinished scale; the cull column is kept source-faithful and is not
-  changed to compensate. The exact
+  changed to compensate. *(Resolved by slice 20, [record 054](054-arcade-screen-proportions.md): the whole
+  screen now draws at one 1.25 scale — ground sprites at 125%, matching their hit cells — and the lateral map
+  is `x = 150 − 10·col`; an object past the window's side edge slides under the opaque bezel panel, as the
+  arcade monitor's edge covered it, until the same source cull removes it.)* The exact
   on-screen rhythm of each Grobda variant's reaction
   and the Domogram's patrol-and-fire cadence remain for the operator playtest to confirm, along with the
   operator's pixel-verification of the shared tank tread and Domogram idle crops.

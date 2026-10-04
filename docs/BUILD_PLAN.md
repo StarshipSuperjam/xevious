@@ -62,7 +62,11 @@ and the crosshair lead as **independent port-tuned constants**, with the crossha
 craft↔crosshair coupling — the validated recovery-build (#13/#14) behavior, which this slice keeps
 unchanged. Its net new build content is a **dormant enemy-bullet allocator** and the collision
 hit-window data. Issue #15 stays **open**; its enemy/ground/life-gated criteria are delivered by
-the slices below.
+the slices below. **Superseded in slice 20 (PRES-01, #30):** the owner chose to frame the game as
+the cabinet did — the whole arcade screen at **one** scale of 1.25 stage units per arcade pixel in a
+centred 280×360 window between bezel side panels — which removes the fit problem above, so movement,
+shot speed, and the crosshair lead are again derived from that single factor at their arcade values
+(a further guardrail-ack correction of the Units section; [record 054](mechanics/054-arcade-screen-proportions.md)).
 
 ## Architecture seams
 

@@ -23,10 +23,11 @@ takes the area per the recorded restart rule in
 
 ## Behavior
 
-**Movement (PLY-01).** Input maps to a nine-entry direction table (eight directions plus neutral); each
-active axis moves 1 pixel per frame, diagonals move 1 pixel on *both* axes — the arcade does not normalize
-diagonal speed (`xevious_main.68k` `dir_delta_tbl` 2171–2180, applied in `update_solvalou_sprite_XY`
-2113–2137). Movement clamps to X 144–304 and Y 16–224 in screen pixels (same routine). The craft spawns —
+**Movement (PLY-01).** Input maps to a nine-entry direction table (eight directions plus neutral). The
+depth axis moves 1 pixel per frame; the lateral axis moves 1.5 pixels per frame when the craft moves purely
+sideways and 1 pixel per frame on a diagonal, so a diagonal moves 1 pixel on *both* axes — the arcade does
+not normalize diagonal speed (`xevious_main.68k` `dir_delta_tbl` 2171–2180: depth entries ±16, pure
+lateral ±24, diagonal lateral ±16, applied in `update_solvalou_sprite_XY` 2113–2137). Movement clamps to X 144–304 and Y 16–224 in screen pixels (same routine). The craft spawns —
 first spawn and every respawn — at the fixed point (296, 120) (`main_fn_1__handle_solvalou` 1999–2003).
 
 **Blaster (WPN-01, WPN-02 interface).** At most 3 player shots exist, in three dedicated slots
@@ -40,13 +41,16 @@ enemy's shadow MSBs. The reference window (`check_shot_hit_flying_enemy` 2565–
 width 32 and horizontal bias 8 width 16 — shot Y − enemy Y in [−16, 15], enemy X − shot X in [−8, 7], in
 half-pixel "shadow" units. **This port doubles that to vertical bias 32 width 64, horizontal bias 16 width
 32** (shot Y − enemy Y in [−32, 31], enemy X − shot X in [−16, 15]) — a deliberate, recorded deviation the
-operator playtest drove, for two reasons the reference did not face: (1) the self-propelled port's blaster
-shot advances 2.5 cells per frame (20 stage-px ÷ an 8-px scroll cell) while the reference window is only 2
-cells tall, so the shot stepped clean over a Toroid between collision samples (a whole held-fire stream,
-sharing the craft-row phase, could miss a Toroid entirely — "many rounds and nothing happens"); the doubled,
-4-cell-tall window exceeds the per-frame step so every crossing is sampled; (2) the Toroid renders as a
-36-px sprite, of which the reference window covered only ~40%, so bullets visibly on the enemy missed — the
-doubled window matches the rendered body (the arcade "mow-down" feel). The tighter craft *hurtbox* (the
+operator playtest drove, for two reasons the reference did not face: (1) the port samples collisions once
+per tick (two arcade frames), and the blaster shot then advanced 2.5 cells per tick while the reference
+window is only 2 cells tall, so the shot stepped clean over a Toroid between collision samples (a whole
+held-fire stream, sharing the craft-row phase, could miss a Toroid entirely — "many rounds and nothing
+happens"); the doubled, 4-cell-tall window exceeds the per-tick step so every crossing is sampled; (2) the
+Toroid then rendered as a 36-px sprite, of which the reference window covered only ~40%, so bullets
+visibly on the enemy missed — the doubled window matched the rendered body (the arcade "mow-down" feel).
+Since the screen-proportions change the shot moves the arcade's 1.5 cells per tick and sprites draw at
+their arcade size, so the doubled window is now more forgiving than the drawn body; it is kept unchanged
+pending the owner's playtest call, recorded in the build's screen-proportions mechanics record. The tighter craft *hurtbox* (the
 death window below) is intentionally left at reference size: forgiving offence, precise defence. Special
 case: a shot that hits a Bacura is not destroyed with its target — it bounces,
 reversing at 1.5 pixels per frame through an 8-frame bounce animation before disappearing
@@ -102,14 +106,16 @@ collision and init sites cited above). The schedule data's `slot` parameters are
 indices (the source bytes are RAM offsets, twice the slot): placements target the ground range, and a
 few scheduled air spawns target flying slots. The
 Scratch build may represent these differently, but the *capacities* — 3 shots, 19 bullets, 6 flying
-enemies, 16 ground, 16 Bacura, 1 bomb — are gameplay-visible limits and bind. Axis-to-screen orientation
-is recorded as a strong inference (from the 224-pixel clamp literal), not a labeled fact.
+enemies, 16 ground, 16 Bacura, 1 bomb — are gameplay-visible limits and bind. Axis-to-screen orientation:
+X is depth, increasing down the screen; Y is lateral, increasing to the **left** — the right-hand direction
+entry subtracts from Y (`dir_delta_tbl` 2174) and the display mirrors Y before drawing
+(`src/amiga/amiga.68k` lines 1696–1699).
 
 ## Acceptance criteria
 
 | Criterion | How verified | Who checks it |
 | --- | --- | --- |
-| Craft moves in 8 directions at equal per-axis speed with the recorded bounds, no diagonal normalization | Play the built `.sb3`: move along edges and diagonals; the craft pins at the same margins everywhere | operator |
+| Craft moves in 8 directions at the recorded per-direction speeds (faster purely sideways) with the recorded bounds, no diagonal normalization | Play the built `.sb3`: move along edges and diagonals; the craft pins at the same margins everywhere | operator |
 | Holding fire produces a shot immediately, then a steady repeat while held, and moving while holding never interrupts it | Play: hold fire 5+ seconds while moving in circles; cadence stays steady | operator |
 | At most 3 player shots are on screen; each flies straight and disappears at the top | Play: rapid fire at the screen edge and count | operator |
 | A shot hitting Bacura visibly bounces back instead of vanishing | Play area 3 (the earliest scheduled Bacura quota) and watch the deflection | operator |
