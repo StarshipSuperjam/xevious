@@ -50,7 +50,7 @@
   the explosion frees the slot, and the shot mirrors both position axes (`_wpn02_failures`, each clause
   corrupted bites); the S key hat is gone; two clean builds stay byte-identical and survive the
   build→import round-trip. The explosion's on-screen look and the exact hit feel stay the operator playtest.
-- Fidelity status: **Live and playable — the first working combat.** Shooting a Toroid destroys it, scores
+- Fidelity status: **Window units and doubling superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** The shadow bytes are whole pixels laterally and 2-pixel units in depth, not half pixels; read that way the reference window (16,32,8,16) is a 32 × 32-pixel box that samples every crossing of the arcade-speed shot, so the doubling below is retired. **Live and playable — the first working combat.** Shooting a Toroid destroys it, scores
   30, and plays the explosion; the S fixture is retired. The enemy's own shot (type 0x0B) and player death
   from a flying enemy or a bullet land in the next commit of this slice.
 - License status: The pinned reference states no reusable license; no reference source text or media was

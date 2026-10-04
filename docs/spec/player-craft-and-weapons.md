@@ -37,27 +37,24 @@ reloads every 20 frames while held; releasing resets the reload so a fresh press
 the fire flag is consumed by the first idle slot (`main_fn_30_shot_fn` 2356–2370). Shots fly straight
 forward at 6 pixels per frame with no lateral drift (`move_shot` 2419–2424) and expire off the top of the
 screen (2392–2396). A shot destroys a flying enemy it overlaps: the hit test compares the shot's and the
-enemy's shadow MSBs. The reference window (`check_shot_hit_flying_enemy` 2565–2577) is a vertical bias 16
-width 32 and horizontal bias 8 width 16 — shot Y − enemy Y in [−16, 15], enemy X − shot X in [−8, 7], in
-half-pixel "shadow" units. **This port doubles that to vertical bias 32 width 64, horizontal bias 16 width
-32** (shot Y − enemy Y in [−32, 31], enemy X − shot X in [−16, 15]) — a deliberate, recorded deviation the
-operator playtest drove, for two reasons the reference did not face: (1) the port samples collisions once
-per tick (two arcade frames), and the blaster shot then advanced 2.5 cells per tick while the reference
-window is only 2 cells tall, so the shot stepped clean over a Toroid between collision samples (a whole
-held-fire stream, sharing the craft-row phase, could miss a Toroid entirely — "many rounds and nothing
-happens"); the doubled, 4-cell-tall window exceeds the per-tick step so every crossing is sampled; (2) the
-Toroid then rendered as a 36-px sprite, of which the reference window covered only ~40%, so bullets
-visibly on the enemy missed — the doubled window matched the rendered body (the arcade "mow-down" feel).
-Since the screen-proportions change the shot moves the arcade's 1.5 cells per tick and sprites draw at
-their arcade size, so the doubled window is now more forgiving than the drawn body; it is kept unchanged
-pending the owner's playtest call, recorded in the build's screen-proportions mechanics record. The tighter craft *hurtbox* (the
+enemy's sprite "shadow" bytes. **Shadow units** (the routine `osd_update_sprite_shadow`,
+`src/amiga/amiga.68k` lines 1651–1700): byte 0 is `0xef − (Y >> 5)`, the lateral position in whole pixels, inverted; byte 1 is
+`((X >> 5) + 8) >> 1`, the depth position in 2-pixel units. Every window below is a byte difference tested
+with the idiom `sub.b #bias; add.b #width`, which hits (sets carry) exactly when the difference lies in
+[bias − width, bias − 1]. Back in `src/xevious_main.68k`, the reference window (`check_shot_hit_flying_enemy`
+2565–2577) is bias 16 width 32 on byte 0 and bias 8 width 16 on byte 1 — the enemy within [−16, 15] pixels of
+the shot laterally and [−8, 7] 2-pixel units in depth: a 32 × 32-pixel box. The port uses that window as is.
+(Before the screen-proportions change the port read the shadow bytes as half pixels on both axes and doubled
+this window to compensate; with the shadow units read correctly and the shot moving the arcade's 1.5 cells
+per tick, the reference box is 4 cells tall in depth and samples every crossing.) The tighter craft *hurtbox* (the
 death window below) is intentionally left at reference size: forgiving offence, precise defence. Special
 case: a shot that hits a Bacura is not destroyed with its target — it bounces,
 reversing at 1.5 pixels per frame through an 8-frame bounce animation before disappearing
 (`shot_destroyed` 2400–2418).
 
 **Crosshair (WPN-03).** The crosshair sits rigidly 96 pixels ahead of the craft at the craft's own lateral
-position, recomputed every frame (`update_crosshair` 2262–2271). Once every 8 frames it tests the 14
+position, recomputed every frame from the craft's exact position (`update_crosshair` 2262–2271), so it moves
+as smoothly as the craft. Once every 8 frames it tests the 14
 targetable ground slots and switches to its lock color when one sits under it; the bomb-in-flight state
 drives its base color independently (`handle_crosshairs` 2239–2295).
 
@@ -66,17 +63,22 @@ drives its base color independently (`handle_crosshairs` 2239–2295).
 then scrolls with the world; the bomb accelerates toward it (velocity grows 2 raw units per frame rather
 than flying at constant speed), stepping through a two-stage sprite animation with a four-color cycle
 (2452–2496), and detonates when it reaches the scrolled target (`check_bomb_finished` 2502–2514). The
-blast tests all 16 ground slots with the recorded hit window — vertical bias 10 width 20, horizontal
-bias 5 width 10, in the reference's half-pixel "shadow" units, the same window the crosshair lock uses
-(`check_object_on_target` 2629–2641; exact pixel conversion recorded as approximate). Bomb impact resolution and scoring are specified in
+blast tests all 16 ground slots with the recorded hit window — bias 10 width 20 on byte 0 and bias 5 width
+10 on byte 1 (shadow units above): each object within [−10, 9] pixels of the target laterally and [−5, 4]
+2-pixel units in depth, a 20 × 20-pixel box, every object inside it struck (`check_object_on_target`
+2629–2641). So a bomb dropped midway between two ground objects 16 pixels apart sideways, 8 pixels from
+each, destroys both. Bomb impact resolution and scoring are specified in
 [Scoring, lives, and game over](scoring-lives-and-game-over.md) and per ground family in
 [Ground objects](ground-objects.md). *Uncertain:* the code site that re-arms the bomb slot after
 detonation was not located; the one-bomb lockout itself is confirmed, the re-arm path is not yet pinned.
 
 **Player death and respawn (PLY-02).** Each frame the craft is tested against 19 enemy bullets and 6
-flying enemies with one hit window (Y bias 8 width 16, X bias 4 width 8, shadow units), and against 16
-Bacura slots with a distinctly larger window (Y bias 28 width 40, X bias 8 width 16) matching Bacura's
-size (`check_solvalou_hit` 2182–2237). Any hit kills: the explosion animates 7 cycles of 8 frames
+flying enemies with one hit window (byte 0 bias 8 width 16, byte 1 bias 4 width 8 — the object within
+[−8, 7] pixels of the craft laterally and [−4, 3] 2-pixel units in depth, a 16 × 16-pixel box), and against
+16 Bacura slots with a distinctly larger window (byte 0 bias 28 width 40, byte 1 bias 8 width 16 — the
+Bacura within [−12, 27] pixels laterally and [−8, 7] in depth) matching Bacura's size
+(`check_solvalou_hit` 2182–2237). Both compare the craft's position read every frame, not a rounded
+cell. Any hit kills: the explosion animates 7 cycles of 8 frames
 (~56 frames), then a 32-frame pause, then the next craft (if any remain — the life economy is owned by
 [Scoring, lives, and game over](scoring-lives-and-game-over.md)) spawns at the fixed spawn point
 (`explode_solvalou` through `finish_solvalou_exploding` 2034–2090). What happens to area position on

@@ -227,13 +227,19 @@ so area position is read from the `area progress`/`area number` variable watcher
    and back). The craft moves a little faster purely sideways than on a diagonal; holding up and down
    together counts as neither. The craft stops flush against the window's side and bottom edges and a
    little over halfway up; the crosshair **leads the ship and tracks it** a fixed distance ahead (it marks
-   the bomb-drop point) and is never clamped. **The whole world is now flipped left-for-right compared with
+   the bomb-drop point), is never clamped, and moves as smoothly as the ship — it should never jump in
+   steps while the ship glides. **The whole world is now flipped left-for-right compared with
    earlier builds** — this is the arcade's own orientation. The keys still feel the same (right moves right),
    but enemy formations, homing turns, and the Andor Genesis now appear the way round they do in the arcade:
-   confirm they match what you remember. **Hit window:** shots still hit flying enemies within a window
-   twice the arcade's, which now feels more forgiving than the smaller drawn enemies — say whether to keep it
-   or return to the arcade window. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
+   confirm they match what you remember. **Hit boxes** are now the arcade's own: shots hit a flying enemy
+   anywhere on its drawn body (no longer a doubled window), and a bomb dropped directly between two ground
+   objects that sit side by side — a paired Barra, say — destroys both, while one aimed well wide of a pair
+   misses them. Touching a Bacura kills you across its full width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
    the alternative is a recorded port speed-up, and that is your call.
+   **Title and best-five layout:** on the title, PUSH START BUTTON and INSERT COIN read centred in the
+   window, and the 1 PLAYER / 2 PLAYERS choices are left-aligned with each other as a pair centred under
+   them; the best-five screen shows the logo above a centred header and the five ranked rows (1ST–5TH) in
+   the middle of the window.
 9. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
 10. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
     at a time, against the spec sections it cites.

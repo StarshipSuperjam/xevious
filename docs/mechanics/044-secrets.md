@@ -172,7 +172,7 @@
   Bonus Flag reveals on a bomb and is collected by flying over it for the cabinet-selected award; the
   hidden-credit spot reveals the ~2-second original-text credit and then clears.
 
-- Fidelity status: SEC-01 (Sol Tower), SEC-02 (Bonus Flag), ECO-03 (bonus-flag award), and SEC-03
+- Fidelity status: **Flag window units superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** The proximity window is read in the arcade's units (whole pixels laterally, 2-pixel units in depth) against the craft's exact position. SEC-01 (Sol Tower), SEC-02 (Bonus Flag), ECO-03 (bonus-flag award), and SEC-03
   (Hidden Credit) are **built** — live and proven in the harness and the structural guards, with the on-screen
   feel to be confirmed by the operator playtest. With these leaves the slice-14 secrets are complete; the
   Andor Genesis boss (`andor.lifecycle`, slice 15) stays out of scope here.

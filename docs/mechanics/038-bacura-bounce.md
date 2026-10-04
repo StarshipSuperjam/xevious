@@ -65,7 +65,7 @@
   does not pass through to hit anything behind the slab. Confirmed by the harness shot-bounce scenario (a shot
   overlapping a Bacura marks the shot for the bounce while the Bacura slot is untouched) and the operator
   playtest (shots visibly rebounding off the bars).
-- Fidelity status: Verified line-by-line against the pinned reference this slice (`check_shot_hit_bacura`, the
+- Fidelity status: **Window units, doubling, and orientation superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** Read in the arcade's units the reference box (24,32,8,16) is used as is — lateral −8..+23, not the mirrored −24..+7 below — and the doubling is retired. Verified line-by-line against the pinned reference this slice (`check_shot_hit_bacura`, the
   Bacura sweep at 2547–2555, `deactivate_shot`, and `shot_destroyed` / `move_shot` were read at the pin). The
   behavior matches the reference within the recorded deviations below.
 - License status: The reference states no reusable license; only instruction-derived behavior and numeric

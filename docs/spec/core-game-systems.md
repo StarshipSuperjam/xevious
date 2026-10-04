@@ -156,8 +156,8 @@ stream, or seeded runs cannot repeat. The port's spatial scale is **one ratified
 per arcade pixel, on both axes.** The arcade's whole 224×288 portrait screen is drawn at that scale as a
 280×360 play window centred on the 480×360 stage, with cabinet bezel art filling the 100 units either side
 ([Audio and presentation](audio-and-presentation.md)). Every spatial quantity is the arcade value times
-that factor, so nothing is tuned independently (the one recorded exception is the doubled shot hit window,
-[Player craft and weapons](player-craft-and-weapons.md) WPN-01): the craft moves 1 arcade pixel per frame in depth (2.5
+that factor, so nothing is tuned independently (the hit windows are the reference's own, in its shadow
+units, [Player craft and weapons](player-craft-and-weapons.md) WPN-01): the craft moves 1 arcade pixel per frame in depth (2.5
 units per tick), 1.5 pixels per frame when moving purely sideways and 1 on a diagonal (3.75 and 2.5 units
 per tick; `src/xevious_main.68k` `dir_delta_tbl` 2171–2180); the blaster shot moves 6 pixels per frame
 (15 units per tick; `src/xevious_main.68k` `move_shot` 2419–2424); and the crosshair leads by 96 pixels (120 units). The values

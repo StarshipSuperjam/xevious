@@ -112,7 +112,7 @@
   a bomb cannot reach one; no Bacura ever scores; and touching a Bacura kills the craft through the wider
   contact box. The operator playtest confirms the felt behavior — indestructible bars sliding down the field
   that you must dodge or shoot *around*, not through.
-- Fidelity status: Verified line-by-line against the pinned reference this slice (`handle_01_Bacura` including
+- Fidelity status: **Window units and orientation superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** The shadow bytes are whole pixels laterally and 2-pixel units in depth, and the carry idiom accepts [bias − width, bias − 1], so the Bacura-vs-craft box is lateral −12..+27, not the mirrored −28..+11 below. Verified line-by-line against the pinned reference this slice (`handle_01_Bacura` including
   its per-frame `bacura_sprite_tbl` tumble tail and `save_PC_to_fn_tbl_and_ret`, `check_bacura_hit_solvalou`,
   `main_fn_3__init_bacura`, `main_fn_5__inc_num_bacura`, the `set_bacura_inc_cnt` / `reset_num_bacura` schedule
   handlers, and the area-3 schedule counts were read at the pin). The behavior matches the reference within the
