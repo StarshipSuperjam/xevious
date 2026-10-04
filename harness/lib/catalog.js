@@ -967,7 +967,7 @@ export const SCENARIOS = [
     // CAB-04 (cabinet.high-scores, slice 19): the LIVE best-five table renders during the attract-scores
     // sub-state, and the live gameplay HUD is held OFF while it shows. Slice 17's single baked `best-five`
     // costume is retired: the table is now drawn cell-by-cell with the start_screen clone-role idiom — a rank
-    // digit clone (attract role == 7, costume digit/<row>) per row, plus name-letter (role 8) and score-digit
+    // clone (attract role == 7, costume rank/<row>, the 1ST..5TH ordinal since PRES-01) per row, plus name-letter (role 8) and score-digit
     // (role 9) cells — each reading the `high score table`/`high score names` Stage lists live. This scenario
     // pins the CAB-01 compositional invariant that survives: the five rank digits show (so the table is on
     // screen) and the HUD spawn is excluded during attract-scores (its gate carries
@@ -984,7 +984,7 @@ export const SCENARIOS = [
       const roleName = variable('attract-display-role').name; // "attract role"
       const rowName = variable('attract-display-row').name; // "attract row"
       const rankCells = cloneReports(vm, 'start_screen', [roleName, rowName]).filter(
-        (r) => r.vars[roleName] === 7 && r.visible && /^digit\/[1-5]$/.test(r.costume || ''),
+        (r) => r.vars[roleName] === 7 && r.visible && /^rank\/[1-5]$/.test(r.costume || ''),
       );
       const rankCostumes = rankCells.map((r) => r.costume).sort();
       const hudDigits = cloneReports(vm, 'hud').filter((r) => /^digit\/[0-9]$/.test(r.costume || ''));
@@ -994,13 +994,13 @@ export const SCENARIOS = [
       assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
       assert.deepEqual(
         obs.rankCostumes,
-        ['digit/1', 'digit/2', 'digit/3', 'digit/4', 'digit/5'],
-        'all five rank-digit cells show (the live table is on screen, one rank per row)',
+        ['rank/1', 'rank/2', 'rank/3', 'rank/4', 'rank/5'],
+        'all five rank cells show (the live table is on screen, one ordinal per row)',
       );
       assert.equal(obs.hudDigits, 0, 'the live HUD score digits are held off while the table shows');
     },
     // Break the rank-cell dispatch (`attract role == 7`): the rank clones never match their role branch, so
-    // none switches to its digit/<row> costume nor shows → the five-rank-digits assertion fails.
+    // none switches to its rank/<row> costume nor shows → the five-rank-cells assertion fails.
     // roadmap-evidence: CAB-04 failure  (a broken rank-role dispatch leaves the live table's ranks unrendered)
     negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'start_screen', 'attract role', 7, 999),
   },
@@ -1029,15 +1029,25 @@ export const SCENARIOS = [
         }
         return pred();
       };
+      // Advance to `dest`, killing any demo on the way. A demo can start and die inside a single pump (the
+      // arcade-size craft hit box, PRES-01, ends a demo fast — and under the leak negative the saturated clone
+      // pool ends it at once), so the lap is driven by its destination states, not by catching the demo live.
+      const reach = (dest, budget) => {
+        let t = 0;
+        while (state(vm) !== dest && t < budget) {
+          if (atDemo()) seedCraftHit(vm);
+          step(vm, 1);
+          t += 1;
+        }
+        return state(vm) === dest;
+      };
       const samples = [];
       for (let cycle = 0; cycle < 3; cycle += 1) {
         assert.ok(stepUntil(() => state(vm) === 'title', 600), `cycle ${cycle}: the cabinet rests at title`);
         step(vm, 3); // let the title spawn its CREDIT/digit/prompt clones before sampling
         samples.push(cloneCount(vm, 'start_screen'));
-        assert.ok(stepUntil(atDemo, 600), `cycle ${cycle}: the title hold launches demo 1`);
-        assert.ok(killDemoToState(vm, 'attract-scores'), `cycle ${cycle}: demo 1 death routes to best-five`);
-        assert.ok(stepUntil(atDemo, 400), `cycle ${cycle}: the best-five hold launches demo 2`);
-        assert.ok(killDemoToState(vm, 'title'), `cycle ${cycle}: demo 2 death returns to title`);
+        assert.ok(reach('attract-scores', 700), `cycle ${cycle}: title -> demo 1 -> best-five`);
+        assert.ok(reach('title', 500), `cycle ${cycle}: best-five -> demo 2 -> title`);
       }
       return { samples };
     },
@@ -1161,7 +1171,7 @@ export const SCENARIOS = [
     // table tracks a mid-session rank-in with no re-entry. A name cell shows glyph/<letter> for the live
     // letter and HIDES past the name's end (letter_of → "") or on a space (the sheet font has no space glyph);
     // a score cell shows digit/<d> for the live place digit (leading-zero-preserving, matching the HUD row);
-    // a rank cell shows digit/<row>. This scenario pins the exact costume mapping for a default row AND proves
+    // a rank cell shows rank/<row> (the 1ST..5TH ordinal, PRES-01). This scenario pins the exact costume mapping for a default row AND proves
     // liveness: mutating the lists in place (not replacing the references) and stepping twice re-dresses the
     // cells. Default row 1 is "STK" / 40000 (HIGH_SCORE_NAME_DEFAULTS[0] / HIGH_SCORE_DEFAULTS[0]).
     // roadmap-evidence: CAB-04 success  (the live cells map list values to glyph/digit costumes and track edits)
@@ -1212,7 +1222,7 @@ export const SCENARIOS = [
     assert(obs) {
       assert.equal(obs.st, 'attract-scores', 'the observation is taken on the best-five screen');
       // Default row 1 render.
-      assert.deepEqual(obs.def.rank1, { costume: 'digit/1', visible: true }, 'rank cell shows digit/<row>');
+      assert.deepEqual(obs.def.rank1, { costume: 'rank/1', visible: true }, 'rank cell shows rank/<row> (1ST)');
       assert.deepEqual(obs.def.n1, { costume: 'glyph/S', visible: true }, 'name letter 1 of "STK" is S');
       assert.deepEqual(obs.def.n2, { costume: 'glyph/T', visible: true }, 'name letter 2 of "STK" is T');
       assert.deepEqual(obs.def.n3, { costume: 'glyph/K', visible: true }, 'name letter 3 of "STK" is K');
@@ -1232,7 +1242,8 @@ export const SCENARIOS = [
   },
   {
     // CAB-04 (cabinet.high-scores, slice 19): the LIVE table cells do not leak. Entering attract-scores stamps
-    // exactly 90 cell clones (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9); they must ALL retire on
+    // exactly 91 clones — 90 cells (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9) plus the PRES-01
+    // header (role 14); they must ALL retire on
     // the transition out — each cell self-deletes when its loop exits (`repeat until not attract-scores` → hide
     // → delete this clone) AND common_stop(clones=True) is the backstop. Without retirement every best-five
     // visit would stack a fresh 90-cell table on the previous one, climbing toward the scratch-vm 300-clone
@@ -1250,7 +1261,7 @@ export const SCENARIOS = [
       // Count the WHOLE start_screen clone pool, not role-filtered: a leak build blows past the 300-clone
       // ceiling and overwrites the leaked clones' `attract role` var, so a role filter reads 0 and misses
       // them. The total census is immune to both — the field is torn down in attract-scores, so the only
-      // start_screen clones alive are this screen's 90 table cells.
+      // start_screen clones alive are this screen's 90 table cells and its header.
       const present = cloneCount(vm, 'start_screen');
       // The best-five hold auto-advances to demo 2 (~256 ticks); step until the screen leaves attract-scores.
       let t = 0;
@@ -1263,7 +1274,7 @@ export const SCENARIOS = [
       return { present, stateAfter: state(vm), afterExit: cloneCount(vm, 'start_screen') };
     },
     assert(obs) {
-      assert.equal(obs.present, 90, 'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7))');
+      assert.equal(obs.present, 91, 'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7)) and the header');
       // Demo 2 keeps only the handful of ordinary attract clones (≈6); the table cells are all gone. A
       // leak build carries all 90 cells (capped at the 300 ceiling) past the transition → far above this.
       assert.ok(obs.afterExit < 30, `the table cells are retired on leaving attract-scores (saw ${obs.afterExit})`);
@@ -4073,7 +4084,7 @@ export const SCENARIOS = [
   {
     key: 'air-shot-hit-column-bounded',
     behavior:
-      'The shot-vs-air hit box spans the rendered Toroid width (±1 column) but no further: a controlled shot on-column or one column off scores, two columns off does not',
+      'The shot-vs-air hit box is the reference 32-px lateral band (enemy minus shot in [-16, 15] px): a controlled shot on the Toroid column, one column either side, or two columns on the low-delta side scores; two columns on the other side, or three off, does not',
     playtestStep: 6,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -4083,11 +4094,17 @@ export const SCENARIOS = [
       // Park the Toroid 8 columns from the craft so the real tapped shot (craft column) can never reach
       // it — only the CONTROLLED shot we seed into a real detector slot (37) can score it. `eResult`
       // maps offset -> score delta; the enemy is re-parked before each probe (a scoring hit frees it).
-      const eResult = (dCol) => {
+      // One column is 256 slot units = 8 px, so a shot dCol columns over sits at lateral delta
+      // enemy - shot = -8*dCol px: +2 columns is -16 (the band's low edge, a hit), -2 is +16 (past 15).
+      // The Toroid steers sideways toward the craft while a step runs several ticks, and a shot that misses
+      // on the first tick stays in depth range for a tick or two — so a MISS probe must put the Toroid on the
+      // side where that drift carries it AWAY from the shot. `side` -1 parks it below the craft column
+      // (drift raises enemy - shot), +1 above (drift lowers it); hits land on the first tick either way.
+      const eResult = (dCol, side = -1) => {
         const pr = readVar(vm, 'player-row'),
           pc = readVar(vm, 'player-col');
         const eRow = pr - 6,
-          eCol = pc - 8;
+          eCol = pc + 8 * side;
         put('slot-type', 63, 10);
         put('slot-state', 63, 1);
         put('slot-pts', 63, 3);
@@ -4106,12 +4123,23 @@ export const SCENARIOS = [
         step(vm, 1);
         return readVar(vm, 'eco-score') - score0;
       };
-      return { onCol: eResult(0), oneOff: eResult(1), twoOff: eResult(2), award: readVar(vm, 'eco-value-table')[2] };
+      return {
+        onCol: eResult(0),
+        onePlus: eResult(1),
+        oneMinus: eResult(-1),
+        twoPlus: eResult(2),
+        twoMinus: eResult(-2),
+        threePlus: eResult(3, 1), // delta -24: parked above the craft so the drift deepens the miss
+        award: readVar(vm, 'eco-value-table')[2],
+      };
     },
     assert(obs) {
       assert.equal(obs.onCol, obs.award, 'a shot on the Toroid column scores');
-      assert.equal(obs.oneOff, obs.award, 'a shot one column off still scores (within the rendered sprite)');
-      assert.equal(obs.twoOff, 0, 'a shot two columns off does NOT score (past the sprite width)');
+      assert.equal(obs.onePlus, obs.award, 'a shot one column over (delta -8 px) scores');
+      assert.equal(obs.oneMinus, obs.award, 'a shot one column the other way (delta +8 px) scores');
+      assert.equal(obs.twoPlus, obs.award, 'a shot at delta -16 px (the low edge) scores');
+      assert.equal(obs.twoMinus, 0, 'a shot at delta +16 px (one past the high edge 15) does NOT score');
+      assert.equal(obs.threePlus, 0, 'a shot at delta -24 px does NOT score');
     },
     // Empty the shot-vs-air detector so no controlled shot ever resolves → the on-column assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
@@ -4168,11 +4196,12 @@ export const SCENARIOS = [
   {
     key: 'bomb-ground-window-bounded',
     behavior:
-      'The bomb-vs-ground hit box is the reference shadow window (scroll axis ±10, lateral ±5): an object under the target scores, one at the window edge scores, one past it on EITHER axis does not',
+      'The bomb-vs-ground hit box is the reference shadow window (lateral [-10, 9] px, depth [-5, 4] two-px units — a 20 x 20 px box): an object under the target scores, one at the window edge scores, one past it on EITHER axis does not',
     playtestStep: 7,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      const SH = 16; // SLOT_UNITS_PER_SHADOW: one shadow half-pixel is 16 slot units
+      const LAT = 32; // SLOT_UNITS_PER_LATERAL_SHADOW: one lateral shadow unit is one arcade px (32 slot units)
+      const DEP = 64; // SLOT_UNITS_PER_DEPTH_SHADOW: one depth shadow unit is two arcade px (64 slot units)
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
@@ -4184,18 +4213,19 @@ export const SCENARIOS = [
         put('slot-type', s, 0);
         put('slot-state', s, 0);
       }
-      // Target on shadow-aligned cells so each probe's shadow delta is exact. The detector floors each
-      // position to its shadow MSB, then tests scroll-axis delta = sh(target_x)-sh(obj_x) in [-10, 9]
-      // and lateral delta = sh(obj_y)-sh(target_y) in [-5, 4]. Each scoring probe frees nothing (it
-      // marks the object HIT), so every probe re-seeds the object ACTIVE first.
+      // Target on shadow-aligned positions so each probe's shadow delta is exact: slot y on a whole px
+      // (4096 / 32) and slot x on a whole depth unit ((5120 + 256) / 64 = 84). The detector floors each
+      // position to its shadow byte, then tests lateral delta = lat(obj_y)-lat(target_y) in [-10, 9] and
+      // depth delta = dep(obj_x)-dep(target_x) in [-5, 4]. Each scoring probe marks the object HIT, so
+      // every probe re-seeds the object ACTIVE first.
       const tX = 5120,
         tY = 4096;
-      const probe = (dy, dx) => {
+      const probe = (dLat, dDep) => {
         put('slot-type', 15, 30);
         put('slot-state', 15, 1);
         put('slot-pts', 15, 6);
-        put('slot-x', 15, tX - dy * SH);
-        put('slot-y', 15, tY + dx * SH);
+        put('slot-x', 15, tX + dDep * DEP);
+        put('slot-y', 15, tY + dLat * LAT);
         put('slot-x', 32, tX);
         put('slot-y', 32, tY);
         const s0 = readVar(vm, 'eco-score');
@@ -4206,36 +4236,174 @@ export const SCENARIOS = [
       return {
         award: readVar(vm, 'eco-value-table')[5],
         center: probe(0, 0),
-        yHi: probe(9, 0),
-        yHiOut: probe(10, 0),
-        yLo: probe(-10, 0),
-        yLoOut: probe(-11, 0),
-        xHi: probe(0, 4),
-        xHiOut: probe(0, 5),
-        xLo: probe(0, -5),
-        xLoOut: probe(0, -6),
+        latHi: probe(9, 0),
+        latHiOut: probe(10, 0),
+        latLo: probe(-10, 0),
+        latLoOut: probe(-11, 0),
+        depHi: probe(0, 4),
+        depHiOut: probe(0, 5),
+        depLo: probe(0, -5),
+        depLoOut: probe(0, -6),
         // Far off on one axis while dead-on the other: a dropped bound (the reporter-steal bug)
         // would make one axis always-hit, so these MUST miss.
-        farY: probe(-40, 0),
-        farX: probe(0, -40),
+        farLat: probe(-40, 0),
+        farDep: probe(0, -40),
       };
     },
     assert(obs) {
       assert.equal(obs.center, obs.award, 'dead-on the target scores');
-      assert.equal(obs.yHi, obs.award, 'the scroll-axis high edge (+9) scores');
-      assert.equal(obs.yLo, obs.award, 'the scroll-axis low edge (-10) scores');
-      assert.equal(obs.xHi, obs.award, 'the lateral high edge (+4) scores');
-      assert.equal(obs.xLo, obs.award, 'the lateral low edge (-5) scores');
-      assert.equal(obs.yHiOut, 0, 'one past the scroll-axis high edge (+10) does NOT score');
-      assert.equal(obs.yLoOut, 0, 'one past the scroll-axis low edge (-11) does NOT score');
-      assert.equal(obs.xHiOut, 0, 'one past the lateral high edge (+5) does NOT score');
-      assert.equal(obs.xLoOut, 0, 'one past the lateral low edge (-6) does NOT score');
-      assert.equal(obs.farY, 0, 'far off the scroll axis does NOT score (both axes bind)');
-      assert.equal(obs.farX, 0, 'far off the lateral axis does NOT score (both axes bind)');
+      assert.equal(obs.latHi, obs.award, 'the lateral high edge (+9 px) scores');
+      assert.equal(obs.latLo, obs.award, 'the lateral low edge (-10 px) scores');
+      assert.equal(obs.depHi, obs.award, 'the depth high edge (+4) scores');
+      assert.equal(obs.depLo, obs.award, 'the depth low edge (-5) scores');
+      assert.equal(obs.latHiOut, 0, 'one past the lateral high edge (+10 px) does NOT score');
+      assert.equal(obs.latLoOut, 0, 'one past the lateral low edge (-11 px) does NOT score');
+      assert.equal(obs.depHiOut, 0, 'one past the depth high edge (+5) does NOT score');
+      assert.equal(obs.depLoOut, 0, 'one past the depth low edge (-6) does NOT score');
+      assert.equal(obs.farLat, 0, 'far off laterally does NOT score (both axes bind)');
+      assert.equal(obs.farDep, 0, 'far off in depth does NOT score (both axes bind)');
     },
-    // Widen the scroll-axis high bound (`> 9`, unique to the ground detector's 16 unrolled slots) so a
-    // probe one past the edge now scores → the yHiOut miss assertion fails, proving the bound binds.
+    // Widen the lateral high bound (`> 9`, shared only by the ground detector and the flag's box) so a
+    // probe one past the edge now scores → the latHiOut miss assertion fails, proving the bound binds.
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', '9', '40'),
+  },
+  {
+    key: 'pres01-bomb-between-pair-hits-both',
+    // roadmap-evidence: PRES-01 success  (a bomb dropped midway between two ground objects 16 px apart
+    //   sideways destroys both — the 20-px reference box on whole-pixel lateral shadow units)
+    behavior:
+      'PRES-01: a bomb that lands midway between two ground objects 16 px apart sideways destroys BOTH and scores both values, as in the arcade (each is 8 px off the target, inside the [-10, 9] px lateral band)',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const tX = 5120,
+        tY = 4096;
+      // Two Barras at the target depth, 8 px (256 slot units) either side of the target laterally.
+      for (const [slot, dy] of [
+        [14, -256],
+        [15, 256],
+      ]) {
+        put('slot-type', slot, 30);
+        put('slot-state', slot, 1);
+        put('slot-pts', slot, 6);
+        put('slot-x', slot, tX);
+        put('slot-y', slot, tY + dy);
+      }
+      put('slot-x', 32, tX);
+      put('slot-y', 32, tY);
+      const award = readVar(vm, 'eco-value-table')[5];
+      const s0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      return {
+        award,
+        delta: readVar(vm, 'eco-score') - s0,
+        leftState: readVar(vm, 'slot-state')[14],
+        rightState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.delta, 2 * obs.award, 'both objects of the pair score');
+      assert.equal(obs.leftState, 2, 'the left object of the pair is struck');
+      assert.equal(obs.rightState, 2, 'the right object of the pair is struck');
+    },
+    // Put the lateral shadow back on half-pixel units (`/ 32` → `/ 16`, the pre-PRES-01 misread): each
+    // object is then 16 shadow units off, past the band, and the bomb misses both → the pair assertions fail.
+    negativeMutation: (p) => mutate.changeDivideLiteral(p, 'Stage', 32, 16),
+  },
+  {
+    key: 'pres01-bomb-off-pair-misses',
+    // roadmap-evidence: PRES-01 failure  (a bomb midway between two ground objects 22 px apart is 11 px from
+    //   each — past both lateral edges — and destroys neither: the box does not over-reach)
+    behavior:
+      'PRES-01: a bomb that lands midway between two ground objects 22 px apart sideways destroys NEITHER (each is 11 px off the target, past the [-10, 9] px lateral band) — the wider box does not over-reach',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      const tX = 5120,
+        tY = 4096;
+      for (const [slot, dy] of [
+        [14, -352],
+        [15, 352],
+      ]) {
+        put('slot-type', slot, 30);
+        put('slot-state', slot, 1);
+        put('slot-pts', slot, 6);
+        put('slot-x', slot, tX);
+        put('slot-y', slot, tY + dy);
+      }
+      put('slot-x', 32, tX);
+      put('slot-y', 32, tY);
+      const s0 = readVar(vm, 'eco-score');
+      callProc(vm, 'Stage', 'check ground hit');
+      step(vm, 1);
+      return {
+        delta: readVar(vm, 'eco-score') - s0,
+        leftState: readVar(vm, 'slot-state')[14],
+        rightState: readVar(vm, 'slot-state')[15],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.delta, 0, 'neither object of the wide pair scores');
+      assert.equal(obs.leftState, 1, 'the left object stays active');
+      assert.equal(obs.rightState, 1, 'the right object stays active');
+    },
+    // Widen the lateral high bound (`> 9` → `> 40`): the +11 px object now scores → the miss assertions fail.
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', '9', '40'),
+  },
+  {
+    key: 'pres01-crosshair-follows-exact-craft',
+    // roadmap-evidence: PRES-01 success  (the crosshair follows the craft's exact position, not its rounded
+    //   8-px cell, so it moves smoothly with the ship instead of jumping cell to cell)
+    behavior:
+      "PRES-01: the bomb crosshair follows the craft's EXACT position — a craft placed between cells puts the sight 96 px ahead of that exact spot, not of the rounded 8-px cell — so the sight glides with the ship instead of jumping",
+    playtestStep: 3,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      const craft = vm.runtime.getSpriteTargetByName('solvalou');
+      // A position deliberately between cells on both axes (render map x = 150 - 10*col, y = 210 - 10*row):
+      // col = (150 - 13.75) / 10 = 13.625, row = (210 + 41.25) / 10 = 25.125.
+      craft.setXY(13.75, -41.25);
+      step(vm, 2);
+      return {
+        craftX: craft.x,
+        craftY: craft.y,
+        slotX: readVar(vm, 'player-slot-x'),
+        slotY: readVar(vm, 'player-slot-y'),
+        row: readVar(vm, 'player-row'),
+        crosshairX: readVar(vm, 'slot-x')[34], // Scratch slot 35 -> JS index 34
+        crosshairY: readVar(vm, 'slot-y')[34],
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.craftX, 13.75, 'precondition: the craft held its between-cell x');
+      assert.equal(obs.craftY, -41.25, 'precondition: the craft held its between-cell y');
+      assert.equal(obs.slotX, 25.125 * 256, 'the craft depth is read exactly (row 25.125), not rounded');
+      assert.equal(obs.slotY, 13.625 * 256, 'the craft lateral is read exactly (col 13.625), not rounded');
+      assert.notEqual(obs.slotX, obs.row * 256, 'the exact read differs from the rounded cell here');
+      assert.equal(obs.crosshairX, obs.slotX - 3072, 'the sight leads the EXACT craft depth by 96 px');
+      assert.equal(obs.crosshairY, obs.slotY, 'the sight shares the EXACT craft lateral position');
+    },
+    // Sever the exact read (pin `player slot x` to a whole-cell constant): the sight no longer follows the
+    // craft's true depth → the exact-read and lead assertions fail.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'player slot x', 6144),
   },
   {
     key: 'bomb-crosshair-leads-craft',
@@ -4244,15 +4412,15 @@ export const SCENARIOS = [
     playtestStep: 3,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      step(vm, 2); // let the walk cache the craft cell and track the crosshair
-      const row = readVar(vm, 'player-row');
-      const col = readVar(vm, 'player-col');
+      step(vm, 2); // let the walk read the craft position and track the crosshair
+      const craftX = readVar(vm, 'player-slot-x'); // exact craft depth (PRES-01), not the rounded cell
+      const craftY = readVar(vm, 'player-slot-y');
       return {
         crosshairX: readVar(vm, 'slot-x')[34], // Scratch slot 35 -> JS index 34
         crosshairY: readVar(vm, 'slot-y')[34],
         crosshairState: readVar(vm, 'slot-state')[34],
-        leadExpect: row * 256 - 3072, // craft depth + BOMB_TARGET_LEAD (-12 cells * 256)
-        lateralExpect: col * 256,
+        leadExpect: craftX - 3072, // craft depth + BOMB_TARGET_LEAD (-12 cells * 256)
+        lateralExpect: craftY,
       };
     },
     assert(obs) {
@@ -4268,7 +4436,7 @@ export const SCENARIOS = [
       );
       assert.equal(obs.crosshairState, 1, 'the crosshair slot is active (drawn)');
     },
-    // Zero the forward lead so the crosshair sits on the craft (row*256) → the lead assertion fails.
+    // Zero the forward lead so the crosshair sits on the craft depth → the lead assertion fails.
     negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', -3072, 0),
   },
   {
@@ -4279,8 +4447,8 @@ export const SCENARIOS = [
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       step(vm, 2);
-      const row = readVar(vm, 'player-row');
-      const col = readVar(vm, 'player-col');
+      const craftX = readVar(vm, 'player-slot-x'); // exact craft depth (PRES-01)
+      const craftY = readVar(vm, 'player-slot-y');
       // Freeze the walk so ONE advance-bomb call is exactly one tick: a settling pump otherwise runs
       // the walk ~220 iterations and flies the bomb to completion (see the harness pacing note).
       writeVar(vm, 'game-director-state', 'frozen');
@@ -4293,9 +4461,9 @@ export const SCENARIOS = [
         targetY: readVar(vm, 'slot-y')[32],
         bombX: readVar(vm, 'slot-x')[33], // Scratch slot 34 -> JS index 33
         inFlight: readVar(vm, 'weapon-bomb-in-flight'),
-        leadExpect: row * 256 - 3072,
-        lateralExpect: col * 256,
-        craftDepth: row * 256,
+        leadExpect: craftX - 3072,
+        lateralExpect: craftY,
+        craftDepth: craftX,
       };
     },
     assert(obs) {
@@ -7736,6 +7904,9 @@ export const SCENARIOS = [
       put('slot-y', 15, 0); // column 0
       writeVar(vm, 'player-row', 2);
       writeVar(vm, 'player-col', 20); // craft 20 columns away laterally
+      // PRES-01: the collection box compares the craft's EXACT slot position, not its cell.
+      writeVar(vm, 'player-slot-x', 2 * 256);
+      writeVar(vm, 'player-slot-y', 20 * 256);
       const s2 = readVar(vm, 'eco-score');
       callProc(vm, 'Stage', 'update bonus flag');
       step(vm, 1);
@@ -7750,6 +7921,8 @@ export const SCENARIOS = [
       put('slot-y', 15, 3 * 256); // column 3
       writeVar(vm, 'player-row', 2);
       writeVar(vm, 'player-col', 3); // dead-on overlap
+      writeVar(vm, 'player-slot-x', 2 * 256); // PRES-01: the box reads the exact slot position
+      writeVar(vm, 'player-slot-y', 3 * 256);
       const s3 = readVar(vm, 'eco-score');
       callProc(vm, 'Stage', 'update bonus flag');
       step(vm, 1);
@@ -7823,6 +7996,8 @@ export const SCENARIOS = [
         put('slot-timer', 15, 0);
         writeVar(vm, 'player-row', 2);
         writeVar(vm, 'player-col', 3); // dead-on overlap
+        writeVar(vm, 'player-slot-x', 2 * 256); // PRES-01: the box reads the exact slot position
+        writeVar(vm, 'player-slot-y', 3 * 256);
       };
       // CRAFT arm: flag awards craft -> +1 life, no score.
       writeVar(vm, 'eco-flag-awards-craft', 1);
@@ -8265,6 +8440,10 @@ export const SCENARIOS = [
         writeVar(vm, 'cabinet-two-player', 1);
         writeVar(vm, 'cabinet-curr-player', currPlayer);
         writeVar(vm, 'area-scroll-row', 0);
+        // A real game, not an attract demo: green flag leaves the cabinet in attract, and since PRES-01's
+        // arcade-size craft box a demo craft can die inside the settle steps, ending the demo and resetting
+        // the scores before the second swap is read.
+        writeVar(vm, 'cabinet-attract', 0);
       };
       writeVar(vm, 'eco-craft', 2); // P1 (live) still has craft: a non-terminal death, so no banner
       writeVar(vm, 'other-craft', 3); // P2 (other) has craft: the other can take over -> alternate

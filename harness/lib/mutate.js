@@ -197,6 +197,26 @@ export function changeListItemEqualsOperand(project, spriteName, listName, fromV
   }
 }
 
+/**
+ * Change the literal divisor (NUM2) of every `operator_divide` on a sprite. Used to put the hit boxes'
+ * lateral shadow back on half-pixel units (`slot y / 32` → `/ 16`, the pre-PRES-01 misread that halved
+ * the bomb box) — the severing negative for the bomb-between-a-pair scenario.
+ */
+export function changeDivideLiteral(project, spriteName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_divide') continue;
+    const input = b.inputs.NUM2;
+    if (Array.isArray(input) && Array.isArray(input[1]) && String(input[1][1]) === String(fromValue)) {
+      b.inputs.NUM2 = [1, [4, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'operator_divide / ${fromValue}' on ${spriteName}`);
+}
+
 /** Raise an `operator_gt` literal right-hand threshold on a sprite (breaks a > gate). */
 export function raiseGreaterThreshold(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);
