@@ -50,6 +50,32 @@ export function freezeVariableChange(project, spriteName, varName) {
 }
 
 /**
+ * Rewrite only the `change <var> by <fromValue>` blocks on a sprite (leaving the variable's other
+ * changes alone). Used to undo the area clock's carry (`change area progress by -65536` → by 0)
+ * without freezing the clock's own +32 step.
+ */
+export function changeVariableChangeBy(project, spriteName, varName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  const vid = variableId(t, varName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (
+      b.opcode === 'data_changevariableby' &&
+      b.fields.VARIABLE &&
+      b.fields.VARIABLE[1] === vid &&
+      Array.isArray(b.inputs.VALUE) &&
+      Array.isArray(b.inputs.VALUE[1]) &&
+      String(b.inputs.VALUE[1][1]) === String(fromValue)
+    ) {
+      b.inputs.VALUE = [1, [4, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'change ${varName} by ${fromValue}' on ${spriteName}`);
+}
+
+/**
  * Pin every `set <var> to ...` on a sprite to a constant, severing whatever expression fed the
  * set. Mirrors freezeVariableChange but for `data_setvariableto`: replaces inputs.VALUE with a
  * literal shadow so the variable can no longer track its source. Used to break the density chain
@@ -67,6 +93,40 @@ export function pinVariableSet(project, spriteName, varName, constValue) {
     }
   }
   if (!patched) throw new Error(`mutate: no 'set ${varName}' block on ${spriteName}`);
+}
+
+/**
+ * Rewrite the literal ITEM of every `replace item (...) of <list> with <fromValue>` on a sprite. Used to
+ * start the ground seeders' `slot x` one tick down the field (0 → 32) — a one-line shift of where every
+ * spawned ground object rides against the map, the severing negative for the terrain-phase scenario.
+ * `withinProc` (optional) limits the rewrite to blocks inside that procedure's definition, so the culls
+ * and clears elsewhere that also write the literal are left alone.
+ */
+export function changeListReplaceLiteral(project, spriteName, listName, fromValue, toValue, withinProc = null) {
+  const t = target(project, spriteName);
+  const procOf = (id) => {
+    let top = id;
+    while (t.blocks[top].parent) top = t.blocks[top].parent;
+    const def = t.blocks[top];
+    if (def.opcode !== 'procedures_definition') return null;
+    const proto = t.blocks[def.inputs.custom_block[1]];
+    return proto && proto.mutation ? proto.mutation.proccode : null;
+  };
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'data_replaceitemoflist' || !b.fields.LIST || b.fields.LIST[0] !== listName) continue;
+    if (withinProc !== null && procOf(id) !== withinProc) continue;
+    const item = b.inputs.ITEM;
+    if (Array.isArray(item) && Array.isArray(item[1]) && String(item[1][1]) === String(fromValue)) {
+      b.inputs.ITEM = [1, [10, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) {
+    const scope = withinProc === null ? spriteName : `'${withinProc}' on ${spriteName}`;
+    throw new Error(`mutate: no 'replace item of ${listName} with ${fromValue}' in ${scope}`);
+  }
 }
 
 /** Change an `operator_equals` literal right-hand value on a sprite (breaks an == guard). */

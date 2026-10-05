@@ -1,15 +1,904 @@
 {
   "constants": {
+    "area_counter_init": 3328,
+    "counter_units_per_line": 32,
     "craft_x_limit": 130,
     "craft_y_bottom": -170,
     "craft_y_top": 30,
+    "ground_centre_line_bias": -24,
+    "ground_object_row_offset": -2,
     "render_row_stage": 10,
     "render_row_top": 210,
     "render_stage_top": 180,
     "render_view_first_row": 4,
     "render_view_rows": 40,
     "shot_slot_count": 3,
-    "slot_units_per_cell": 256
+    "slot_units_per_cell": 256,
+    "terrain_row_phase_lines": 0,
+    "terrain_state_samples": [
+      {
+        "column": 14,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": 340,
+          "y": 328.75
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": -360,
+          "y": -311.25
+        },
+        "previous": 84,
+        "progress": -480
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain filler",
+          "shown": 1,
+          "x": 0,
+          "y": 181.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": -458.75
+        },
+        "previous": -1,
+        "progress": 3296
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain filler",
+          "shown": 1,
+          "x": 0,
+          "y": 180.0
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "previous": -1,
+        "progress": 3328
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain filler",
+          "shown": 1,
+          "x": 0,
+          "y": 163.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "previous": -1,
+        "progress": 3744
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain filler",
+          "shown": 1,
+          "x": 0,
+          "y": 162.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "previous": -1,
+        "progress": 3776
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain filler",
+          "shown": 1,
+          "x": 0,
+          "y": -192.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": 447.5
+        },
+        "previous": -1,
+        "progress": 12864
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain filler",
+          "shown": 0,
+          "x": 0,
+          "y": -193.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": 446.25
+        },
+        "previous": -1,
+        "progress": 12896
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain filler",
+          "shown": 0,
+          "x": 0,
+          "y": -458.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": 181.25
+        },
+        "previous": -1,
+        "progress": 19680
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": 180.0
+        },
+        "previous": -1,
+        "progress": 19712
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": 163.75
+        },
+        "previous": -1,
+        "progress": 20128
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": 162.5
+        },
+        "previous": -1,
+        "progress": 20160
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 457.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 1,
+          "x": 340,
+          "y": -182.5
+        },
+        "previous": -1,
+        "progress": 28992
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 456.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 0,
+          "x": 340,
+          "y": -183.75
+        },
+        "previous": -1,
+        "progress": 29024
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 181.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3 restart",
+          "shown": 0,
+          "x": 340,
+          "y": -458.75
+        },
+        "previous": -1,
+        "progress": 36064
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 180.0
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "previous": -1,
+        "progress": 36096
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 163.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "previous": -1,
+        "progress": 36512
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 162.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "previous": -1,
+        "progress": 36544
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": -182.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 457.5
+        },
+        "previous": -1,
+        "progress": 45376
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": -183.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 456.25
+        },
+        "previous": -1,
+        "progress": 45408
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": -458.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 181.25
+        },
+        "previous": -1,
+        "progress": 52448
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 180.0
+        },
+        "previous": -1,
+        "progress": 52480
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 163.75
+        },
+        "previous": -1,
+        "progress": 52896
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 162.5
+        },
+        "previous": -1,
+        "progress": 52928
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": 340,
+          "y": 457.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": -182.5
+        },
+        "previous": -1,
+        "progress": 61760
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": 340,
+          "y": 456.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": -183.75
+        },
+        "previous": -1,
+        "progress": 61792
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": -500,
+          "y": 181.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": -458.75
+        },
+        "previous": 0,
+        "progress": 3296
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": -500,
+          "y": 180.0
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "previous": 0,
+        "progress": 3328
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": -500,
+          "y": 163.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "previous": 0,
+        "progress": 3744
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": -500,
+          "y": 162.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "previous": 0,
+        "progress": 3776
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": -500,
+          "y": -182.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": 457.5
+        },
+        "previous": 0,
+        "progress": 12608
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 0,
+          "x": -500,
+          "y": -183.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": 456.25
+        },
+        "previous": 0,
+        "progress": 12640
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 0,
+          "x": -500,
+          "y": -458.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": 181.25
+        },
+        "previous": 0,
+        "progress": 19680
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": 180.0
+        },
+        "previous": 0,
+        "progress": 19712
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": 163.75
+        },
+        "previous": 0,
+        "progress": 20128
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": 162.5
+        },
+        "previous": 0,
+        "progress": 20160
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 457.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 1,
+          "x": 340,
+          "y": -182.5
+        },
+        "previous": 0,
+        "progress": 28992
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 456.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 0,
+          "x": 340,
+          "y": -183.75
+        },
+        "previous": 0,
+        "progress": 29024
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 181.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 3",
+          "shown": 0,
+          "x": 340,
+          "y": -458.75
+        },
+        "previous": 0,
+        "progress": 36064
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 180.0
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "previous": 0,
+        "progress": 36096
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 163.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "previous": 0,
+        "progress": 36512
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": 162.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "previous": 0,
+        "progress": 36544
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 1,
+          "x": 340,
+          "y": -182.5
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 457.5
+        },
+        "previous": 0,
+        "progress": 45376
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": -183.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 456.25
+        },
+        "previous": 0,
+        "progress": 45408
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 2",
+          "shown": 0,
+          "x": 340,
+          "y": -458.75
+        },
+        "even_behind": 1,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 181.25
+        },
+        "previous": 0,
+        "progress": 52448
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 0,
+          "x": 340,
+          "y": 820.0
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 180.0
+        },
+        "previous": 0,
+        "progress": 52480
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 0,
+          "x": 340,
+          "y": 803.75
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 163.75
+        },
+        "previous": 0,
+        "progress": 52896
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": 340,
+          "y": 802.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": 162.5
+        },
+        "previous": 0,
+        "progress": 52928
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": 340,
+          "y": 457.5
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 1,
+          "x": 340,
+          "y": -182.5
+        },
+        "previous": 0,
+        "progress": 61760
+      },
+      {
+        "column": 84,
+        "even": {
+          "costume": "terrain band 0",
+          "shown": 1,
+          "x": 340,
+          "y": 456.25
+        },
+        "even_behind": 0,
+        "odd": {
+          "costume": "terrain band 1",
+          "shown": 0,
+          "x": 340,
+          "y": -183.75
+        },
+        "previous": 0,
+        "progress": 61792
+      }
+    ]
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {
@@ -133,6 +1022,11 @@
       "name": "andor part lateral",
       "scope": "Stage"
     },
+    "area-checkpoint-progress": {
+      "kind": "variable",
+      "name": "checkpoint progress",
+      "scope": "Stage"
+    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",
@@ -141,6 +1035,11 @@
     "area-number": {
       "kind": "variable",
       "name": "area number",
+      "scope": "Stage"
+    },
+    "area-previous-terrain-column": {
+      "kind": "variable",
+      "name": "previous terrain column",
       "scope": "Stage"
     },
     "area-progress": {
@@ -1023,15 +1922,75 @@
       "name": "spawn found",
       "scope": "Stage"
     },
-    "terrain-scroll-step-a": {
+    "terrain-band": {
       "kind": "variable",
-      "name": "scroll step",
-      "scope": "area_01a"
+      "name": "terrain band",
+      "scope": "Stage"
     },
-    "terrain-scroll-step-b": {
+    "terrain-band-column": {
       "kind": "variable",
-      "name": "scroll step",
-      "scope": "area_01b"
+      "name": "terrain band column",
+      "scope": "Stage"
+    },
+    "terrain-even-behind": {
+      "kind": "variable",
+      "name": "terrain even behind",
+      "scope": "Stage"
+    },
+    "terrain-even-costume": {
+      "kind": "variable",
+      "name": "terrain even costume",
+      "scope": "Stage"
+    },
+    "terrain-even-shown": {
+      "kind": "variable",
+      "name": "terrain even shown",
+      "scope": "Stage"
+    },
+    "terrain-even-x": {
+      "kind": "variable",
+      "name": "terrain even x",
+      "scope": "Stage"
+    },
+    "terrain-even-y": {
+      "kind": "variable",
+      "name": "terrain even y",
+      "scope": "Stage"
+    },
+    "terrain-line": {
+      "kind": "variable",
+      "name": "terrain line",
+      "scope": "Stage"
+    },
+    "terrain-odd-costume": {
+      "kind": "variable",
+      "name": "terrain odd costume",
+      "scope": "Stage"
+    },
+    "terrain-odd-shown": {
+      "kind": "variable",
+      "name": "terrain odd shown",
+      "scope": "Stage"
+    },
+    "terrain-odd-x": {
+      "kind": "variable",
+      "name": "terrain odd x",
+      "scope": "Stage"
+    },
+    "terrain-odd-y": {
+      "kind": "variable",
+      "name": "terrain odd y",
+      "scope": "Stage"
+    },
+    "terrain-overlap": {
+      "kind": "variable",
+      "name": "terrain overlap",
+      "scope": "Stage"
+    },
+    "terrain-top": {
+      "kind": "variable",
+      "name": "terrain top",
+      "scope": "Stage"
     },
     "terrazi-clone-slot": {
       "kind": "variable",

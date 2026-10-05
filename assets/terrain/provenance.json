@@ -1,11 +1,14 @@
 {
   "version": 1,
   "kind": "terrain-source",
-  "note": "Operator-supplied reference source art for the terrain/area slice (Part of #17). It is NOT yet ingested by any generator, so no extracted outputs are recorded here. When the terrain extractor lands it will read this source and emit its own output provenance, mirroring assets/hud-font and assets/sprite-extraction.",
+  "note": "Terrain source art. arcade_map.png and forest_filler.png are rendered by tools/terrain_render.py from the pinned arcade reference's map ROM and background tiles (see 'rendered'); `verify` re-derives them. xevious_area_map.png, the fan map, is kept as a visual cross-check only and is not read by the build.",
   "sources": {
     "xevious_area_map.png": {
       "sha256": "4d5b5270f171053c5e88be3f0c1a9cf7933e819f3e883b1660ad783bb54f3c5f",
-      "dimensions": [2048, 1024],
+      "dimensions": [
+        2048,
+        1024
+      ],
       "source": "DeviantArt: \"Xevious area map\" by ringostarr39 — https://www.deviantart.com/ringostarr39/art/Xevious-area-map-626303469",
       "credit": "ringostarr39 (DeviantArt)",
       "license": "No reusable license specified by source; third-party copyrighted material (fan-made map of Namco's Xevious)"
@@ -15,5 +18,77 @@
     "note": "A second image the operator holds locally is a fan-annotated slicing guide (the 16-area breakdown and some hidden-target locations). It is REFERENCE, not a build input, so it is cited here but deliberately not committed (kept local, git-ignored) per docs/REFERENCE_POLICY.md.",
     "source": "arcadeblogger.com: Xevious journey map — https://i0.wp.com/arcadeblogger.com/wp-content/uploads/2022/12/xevious-journey-map.jpeg",
     "license": "No reusable license specified by source; third-party copyrighted material"
+  },
+  "rendered": {
+    "arcade_map.png": {
+      "sha256": "e7f2254bb01e6161c87b6d19b2cb147677804aa30d206f4da7f79f72dbfe5e22",
+      "dimensions": [
+        1024,
+        2048
+      ],
+      "generator": "tools/terrain_render.py render",
+      "description": "The whole 128 x 256 background map, one pixel per arcade pixel: map row R at y = 8R, map column c at x = (127 - c) * 8 (mirrored as on screen)",
+      "reference": {
+        "repository": "https://github.com/jotd666/xevious",
+        "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
+        "inputs": {
+          "src/map_rom.68k": "f96a17e75caa788589755bb39fb0097a17a51d957663a54885f97b7835a7d7d6",
+          "assets/amiga/xevious_gfx.c": "3028308f85c742b1cf5569bb031ebb9c06df22943ddf3494ca5bda0c59cf66d4"
+        }
+      },
+      "license": "Arcade map and tile data of Namco's Xevious (1983), transcribed in the pinned reference; third-party copyrighted material, same class as the arcade sprites the project ships; rights review before broader distribution"
+    },
+    "forest_filler.png": {
+      "sha256": "d6252c841a6039dd2f73235cd4850722679f473abfebe3303be1e66f5d7b90e7",
+      "dimensions": [
+        224,
+        512
+      ],
+      "generator": "tools/terrain_render.py render",
+      "description": "fill_bg_with_forest's pattern over the 28 visible plane columns (screen-left first); row r holds plane row (r + 3) mod 64",
+      "reference": {
+        "repository": "https://github.com/jotd666/xevious",
+        "commit": "71473685a8c7856c8401c8519276cd97a38d4183",
+        "inputs": {
+          "src/map_rom.68k": "f96a17e75caa788589755bb39fb0097a17a51d957663a54885f97b7835a7d7d6",
+          "assets/amiga/xevious_gfx.c": "3028308f85c742b1cf5569bb031ebb9c06df22943ddf3494ca5bda0c59cf66d4"
+        }
+      },
+      "license": "Arcade map and tile data of Namco's Xevious (1983), transcribed in the pinned reference; third-party copyrighted material, same class as the arcade sprites the project ships; rights review before broader distribution"
+    }
+  },
+  "costumes": {
+    "generator": "tools/terrain_render.py generate",
+    "generator_version": 1,
+    "sources": {
+      "arcade_map.png": "e7f2254bb01e6161c87b6d19b2cb147677804aa30d206f4da7f79f72dbfe5e22",
+      "forest_filler.png": "d6252c841a6039dd2f73235cd4850722679f473abfebe3303be1e66f5d7b90e7"
+    },
+    "outputs": {
+      "bc752858218411d2975a8408a630b583.png": {
+        "name": "terrain band 0",
+        "target": "area_01a"
+      },
+      "5cfbd637cb523bec9a01f4ab78769e40.png": {
+        "name": "terrain band 1",
+        "target": "area_01b"
+      },
+      "89d07d704bce46a44d21e1f6d120fbe9.png": {
+        "name": "terrain band 2",
+        "target": "area_01a"
+      },
+      "1b7f40d3399a19a17f8e2beee9ff2ef6.png": {
+        "name": "terrain band 3",
+        "target": "area_01b"
+      },
+      "de69258893ddb0df1ac4cf36d8f60ad4.png": {
+        "name": "terrain band 3 restart",
+        "target": "area_01b"
+      },
+      "e96445466fff04178e7de0e29ec29773.png": {
+        "name": "terrain filler",
+        "target": "area_01a"
+      }
+    }
   }
 }

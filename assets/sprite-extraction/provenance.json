@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "c0f76cf93a2dabde093878a552f5fd7806439d667800d5f3edb33e1bb47c0921",
+  "manifest_sha256": "b5e3791e5c662d2fa0237d7f779d4f6e5f74a0b13728ff19ba05de5ca1090f55",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1203,171 +1203,171 @@
       ],
       "generator_version": 1
     },
-    "a5a02439b7f8b1b0e5a6639e13a34e45.png": {
+    "dc6a0363ac94adb4754d5980a8063e0c.png": {
       "frame": "sol-tower/rise/01",
       "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
+      "source_asset": "7f90e2226e98c3d79f046846412b0fbd.png",
+      "source_sha256": "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/sol_tower_render.py. The seven Sol Tower rise frames in sol_tower_animation_tbl order (xevious_main.68k 3068-3078): 1x1 codes 0xA8, 0xA9, 0xAA, 0xAB, then 2x2 codes 0xAE, 0xB2, 0xB6 each in a 32x32 cell laid from its top-left as the arcade lays the sprite from its position, the 2x2 frames as sprite_draw_double_width_and_height draws them (amiga.68k 2529-2544: low two code bits masked, codes base+0..+3 at the 16-px sub-cells), decoded at sprite CLUT 7 (pulsing_colour_1's first value; the pulse only changes CLUT entry 7, which no Sol Tower pixel uses). The Spriters Resource crops showed only the dome, without the tower's shadow, so the frames are taken from the pinned reference the build already grounds on (as the andor_genesis and bonus_flag sheets are).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
-        18,
-        327,
-        2,
-        2
+        0,
+        0,
+        32,
+        32
       ],
       "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
         16,
         16
       ],
-      "anchor": [
-        8,
-        8
-      ],
       "generator_version": 1
     },
-    "d3334453553eb37cc6c588bbf983f48b.png": {
+    "b37665dea4a074e1fc738490a932d599.png": {
       "frame": "sol-tower/rise/02",
       "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
+      "source_asset": "7f90e2226e98c3d79f046846412b0fbd.png",
+      "source_sha256": "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/sol_tower_render.py. The seven Sol Tower rise frames in sol_tower_animation_tbl order (xevious_main.68k 3068-3078): 1x1 codes 0xA8, 0xA9, 0xAA, 0xAB, then 2x2 codes 0xAE, 0xB2, 0xB6 each in a 32x32 cell laid from its top-left as the arcade lays the sprite from its position, the 2x2 frames as sprite_draw_double_width_and_height draws them (amiga.68k 2529-2544: low two code bits masked, codes base+0..+3 at the 16-px sub-cells), decoded at sprite CLUT 7 (pulsing_colour_1's first value; the pulse only changes CLUT entry 7, which no Sol Tower pixel uses). The Spriters Resource crops showed only the dome, without the tower's shadow, so the frames are taken from the pinned reference the build already grounds on (as the andor_genesis and bonus_flag sheets are).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
-        29,
-        326,
-        4,
-        4
+        32,
+        0,
+        32,
+        32
       ],
       "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
         16,
         16
       ],
-      "anchor": [
-        8,
-        8
-      ],
       "generator_version": 1
     },
-    "f5a0f43baa81437d4727faec2ca8370d.png": {
+    "6a3824e66e431a4fc441c4b74fe8a581.png": {
       "frame": "sol-tower/rise/03",
       "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
+      "source_asset": "7f90e2226e98c3d79f046846412b0fbd.png",
+      "source_sha256": "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/sol_tower_render.py. The seven Sol Tower rise frames in sol_tower_animation_tbl order (xevious_main.68k 3068-3078): 1x1 codes 0xA8, 0xA9, 0xAA, 0xAB, then 2x2 codes 0xAE, 0xB2, 0xB6 each in a 32x32 cell laid from its top-left as the arcade lays the sprite from its position, the 2x2 frames as sprite_draw_double_width_and_height draws them (amiga.68k 2529-2544: low two code bits masked, codes base+0..+3 at the 16-px sub-cells), decoded at sprite CLUT 7 (pulsing_colour_1's first value; the pulse only changes CLUT entry 7, which no Sol Tower pixel uses). The Spriters Resource crops showed only the dome, without the tower's shadow, so the frames are taken from the pinned reference the build already grounds on (as the andor_genesis and bonus_flag sheets are).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
-        40,
-        325,
-        6,
-        6
+        64,
+        0,
+        32,
+        32
       ],
       "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
         16,
         16
       ],
-      "anchor": [
-        8,
-        8
-      ],
       "generator_version": 1
     },
-    "f16fcbfb14916cb427039ce359fadd89.png": {
+    "a59122aa032aa01015ac85b8e5832400.png": {
       "frame": "sol-tower/rise/04",
       "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
+      "source_asset": "7f90e2226e98c3d79f046846412b0fbd.png",
+      "source_sha256": "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/sol_tower_render.py. The seven Sol Tower rise frames in sol_tower_animation_tbl order (xevious_main.68k 3068-3078): 1x1 codes 0xA8, 0xA9, 0xAA, 0xAB, then 2x2 codes 0xAE, 0xB2, 0xB6 each in a 32x32 cell laid from its top-left as the arcade lays the sprite from its position, the 2x2 frames as sprite_draw_double_width_and_height draws them (amiga.68k 2529-2544: low two code bits masked, codes base+0..+3 at the 16-px sub-cells), decoded at sprite CLUT 7 (pulsing_colour_1's first value; the pulse only changes CLUT entry 7, which no Sol Tower pixel uses). The Spriters Resource crops showed only the dome, without the tower's shadow, so the frames are taken from the pinned reference the build already grounds on (as the andor_genesis and bonus_flag sheets are).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
-        52,
-        324,
-        8,
-        8
+        96,
+        0,
+        32,
+        32
       ],
       "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
         16,
         16
       ],
-      "anchor": [
-        8,
-        8
-      ],
       "generator_version": 1
     },
-    "7cda5f1d707240dc5e704ca275271a60.png": {
+    "26e3ffaa95dd05dbc4643abb64580f4c.png": {
       "frame": "sol-tower/rise/05",
       "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
+      "source_asset": "7f90e2226e98c3d79f046846412b0fbd.png",
+      "source_sha256": "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/sol_tower_render.py. The seven Sol Tower rise frames in sol_tower_animation_tbl order (xevious_main.68k 3068-3078): 1x1 codes 0xA8, 0xA9, 0xAA, 0xAB, then 2x2 codes 0xAE, 0xB2, 0xB6 each in a 32x32 cell laid from its top-left as the arcade lays the sprite from its position, the 2x2 frames as sprite_draw_double_width_and_height draws them (amiga.68k 2529-2544: low two code bits masked, codes base+0..+3 at the 16-px sub-cells), decoded at sprite CLUT 7 (pulsing_colour_1's first value; the pulse only changes CLUT entry 7, which no Sol Tower pixel uses). The Spriters Resource crops showed only the dome, without the tower's shadow, so the frames are taken from the pinned reference the build already grounds on (as the andor_genesis and bonus_flag sheets are).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
-        66,
-        323,
-        10,
-        10
+        128,
+        0,
+        32,
+        32
       ],
       "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
         16,
         16
       ],
-      "anchor": [
-        8,
-        8
-      ],
       "generator_version": 1
     },
-    "c7e63a20afd78600d5231fe1a9ba3c2d.png": {
+    "614126503ada52789ef93e90d1323124.png": {
       "frame": "sol-tower/rise/06",
       "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
+      "source_asset": "7f90e2226e98c3d79f046846412b0fbd.png",
+      "source_sha256": "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/sol_tower_render.py. The seven Sol Tower rise frames in sol_tower_animation_tbl order (xevious_main.68k 3068-3078): 1x1 codes 0xA8, 0xA9, 0xAA, 0xAB, then 2x2 codes 0xAE, 0xB2, 0xB6 each in a 32x32 cell laid from its top-left as the arcade lays the sprite from its position, the 2x2 frames as sprite_draw_double_width_and_height draws them (amiga.68k 2529-2544: low two code bits masked, codes base+0..+3 at the 16-px sub-cells), decoded at sprite CLUT 7 (pulsing_colour_1's first value; the pulse only changes CLUT entry 7, which no Sol Tower pixel uses). The Spriters Resource crops showed only the dome, without the tower's shadow, so the frames are taken from the pinned reference the build already grounds on (as the andor_genesis and bonus_flag sheets are).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
-        83,
-        322,
-        12,
-        12
+        160,
+        0,
+        32,
+        32
       ],
       "canvas": [
-        16,
-        16
+        32,
+        32
       ],
       "anchor": [
-        8,
-        8
+        16,
+        16
       ],
       "generator_version": 1
     },
-    "fc50296cb3fe3d71a8fc7c05fb60d60d.png": {
+    "2f94ff707104ae9be766dbdddcd28891.png": {
       "frame": "sol-tower/rise/07",
       "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
+      "source_asset": "7f90e2226e98c3d79f046846412b0fbd.png",
+      "source_sha256": "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/sol_tower_render.py. The seven Sol Tower rise frames in sol_tower_animation_tbl order (xevious_main.68k 3068-3078): 1x1 codes 0xA8, 0xA9, 0xAA, 0xAB, then 2x2 codes 0xAE, 0xB2, 0xB6 each in a 32x32 cell laid from its top-left as the arcade lays the sprite from its position, the 2x2 frames as sprite_draw_double_width_and_height draws them (amiga.68k 2529-2544: low two code bits masked, codes base+0..+3 at the 16-px sub-cells), decoded at sprite CLUT 7 (pulsing_colour_1's first value; the pulse only changes CLUT entry 7, which no Sol Tower pixel uses). The Spriters Resource crops showed only the dome, without the tower's shadow, so the frames are taken from the pinned reference the build already grounds on (as the andor_genesis and bonus_flag sheets are).",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
-        102,
-        321,
-        14,
-        14
+        192,
+        0,
+        32,
+        32
       ],
       "canvas": [
-        16,
-        16
+        32,
+        32
       ],
       "anchor": [
-        8,
-        8
+        16,
+        16
       ],
       "generator_version": 1
     },
@@ -2650,7 +2650,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "e587cf5a9838fadfe50d9688060dd5f4512326c253c28ed1e0b831090c244006",
+    "sha256": "98d53973c6179fe3e602ff31b3fc5a8d179d2856974d84a04e9b01c62af778a4",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",

@@ -139,6 +139,11 @@ SPRITE_SHEET_HASHES = {
     "Bonus Flag": (
         "eb9d6a5422d2904de86971a35b78e2eb04eaf0222f5b5a7705e21cfcc187c6c1"
     ),
+    # Slice 20 PR-3: the Sol Tower rise sheet, decoded from the pin by tools/sol_tower_render.py (the
+    # Spriters Resource crops showed only the dome, without the tower's long shadow).
+    "Sol Tower": (
+        "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c"
+    ),
 }
 
 
@@ -341,7 +346,12 @@ class ScratchProjectTests(unittest.TestCase):
         # + the slice-20 PRES-01 cabinet bezel frame PNG (tools/bezel_panels.py), so 251 + 1 = 252.
         # + the slice-20 PRES-01 best-five header and the five ordinal ranks 1ST..5TH (all distinct whole-string
         # PNGs); PUSH START became PUSH START BUTTON in place (one PNG swapped for another). 252 + 6 = 258.
-        self.assertEqual(258, len(assets))
+        # - the 12 slice-20 AREA-01 retired prototype area01_* strip costumes (still in the baseline archive,
+        # no longer referenced) + the 6 terrain strip costumes sliced from the arcade map by
+        # tools/terrain_render.py (bands 0-3, the restart band, the forest filler). 258 - 12 + 6 = 252.
+        # + the slice-20 Sol Tower rise sheet (tools/sol_tower_render.py) on the hidden sprite_sheets library;
+        # its seven rise crops replace the seven old Spriters crops one for one. 252 + 1 = 253.
+        self.assertEqual(253, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -469,13 +479,26 @@ class ScratchProjectTests(unittest.TestCase):
                 "solvalou",
                 "solv_death",
                 "blaster",
-                "area_01a",
-                "area_01b",
             }:
-                # These targets carry director-managed variables (reload counter,
-                # terrain scroll counters) added on top of their historical content.
+                # These targets carry director-managed variables (reload counter, entry
+                # epochs) added on top of their historical content.
                 expected.pop("variables")
                 actual.pop("variables")
+            elif target["name"] in director.TERRAIN_STRIP_TARGETS.values():
+                # AREA-01 (slice 20): the terrain strips keep their identity, sounds and layer, but their
+                # prototype area-1 costumes are replaced by tools/terrain_render.py's three each, and the
+                # director sets their size (the 1.25 render scale) and cold-start position. Pin those exactly,
+                # then compare the rest.
+                parity = "even" if target["name"] == director.TERRAIN_STRIP_TARGETS["even"] else "odd"
+                tr = director.terrain_render
+                names = tr.EVEN_COSTUMES if parity == "even" else tr.ODD_COSTUMES
+                self.assertEqual(list(names), [c["name"] for c in actual["costumes"]])
+                self.assertEqual({1}, {c["bitmapResolution"] for c in actual["costumes"]})
+                self.assertEqual(director.TERRAIN_STRIP_SIZE, actual["size"])
+                self.assertEqual({}, actual["variables"])
+                for key in ("variables", "costumes", "currentCostume", "size", "x", "y", "visible"):
+                    expected.pop(key)
+                    actual.pop(key)
             elif target["name"] == "start_screen":
                 # CAB-01 (slice 17): start_screen gains the attract-display sprite-local
                 # variables (attract role/place/divisor) and hud_glyphs.py APPENDS the
@@ -1079,8 +1102,9 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_runtime_identifier_manifest_covers_scoped_duplicates(self) -> None:
         # Guards the harness's reason for existing: names that repeat across targets
-        # ("entry epoch" on solvalou and solv_death; "scroll step" on both strips) must
-        # resolve to distinct scoped entries, never collapse to one global name.
+        # ("entry epoch" on solvalou and solv_death) must resolve to distinct scoped
+        # entries, never collapse to one global name. (The terrain strips' per-strip
+        # "scroll step" counters were the other pair until AREA-01 retired them.)
         project = load_source(scratch.SOURCE_DIR)
         manifest = director.identifier_manifest(director.expected_project(project))
         variables = manifest["variables"]
@@ -1094,7 +1118,7 @@ class ScratchProjectTests(unittest.TestCase):
         scroll_steps = {
             info["scope"] for info in variables.values() if info["name"] == "scroll step"
         }
-        self.assertEqual(scroll_steps, {"area_01a", "area_01b"})
+        self.assertEqual(scroll_steps, set())
 
     def test_game_director_generator_refuses_dirty_editor_source(self) -> None:
         with (
@@ -1303,6 +1327,16 @@ class ScratchProjectTests(unittest.TestCase):
             # `swap tmp`. A pure Stage-internal working register — NOT part of the entry category below (those
             # are sprite-READ and write-forbidden); nothing outside `rank in` touches it.
             "rank cursor",
+            # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register, like
+            # `swap tmp` — written and read only inside the shared checkpoint statements, never durable.
+            "checkpoint progress",
+            # AREA-01 (slice 20): `update terrain`'s working registers (the counter in lines, a strip's band top,
+            # band, band column and overlap), written and read only inside that proc.
+            "terrain line",
+            "terrain top",
+            "terrain band",
+            "terrain band column",
+            "terrain overlap",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1331,6 +1365,18 @@ class ScratchProjectTests(unittest.TestCase):
             "terrain column",
             "schedule cursor",
             "schedule fired",
+            # AREA-01 (slice 20): the column the outgoing rows were written with, and the terrain strips'
+            # state `update terrain` derives from the clock (Stage-written, read by the strip sprites).
+            "previous terrain column",
+            "terrain even costume",
+            "terrain even x",
+            "terrain even y",
+            "terrain even shown",
+            "terrain odd costume",
+            "terrain odd x",
+            "terrain odd y",
+            "terrain odd shown",
+            "terrain even behind",
         }
         # DIF-01/FORM-01 difficulty-director state — Stage-written, sprite-read, write-forbidden
         # (like area/economy state, NOT machinery): the accumulating AI level and the incoming
@@ -1768,6 +1814,9 @@ class ScratchProjectTests(unittest.TestCase):
             # Each tick it flies the slot up-screen (slot x -= ANDOR_BRAGZA_STEP, slot y held) and culls it off
             # the top edge. Independent of the master — the wreck departs while Bragza keeps climbing. Warp.
             director.UPDATE_ANDOR_BRAGZA_PROCCODE,
+            # AREA-01 (slice 20): the terrain strips' state from the clock, called by the walk after the
+            # ground objects move and at the end of every re-top. Writes only the terrain vars. Warp.
+            director.UPDATE_TERRAIN_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -6250,6 +6299,37 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("bacura-craft-death-window")
 
+        # (9b) FAIR WINDOW (owner decision, recorded divergence docs/mechanics/037). The same gate reads the
+        # current tumble frame's opaque top row and left column through `letter of` the two digit strings, so
+        # the box shrinks to the visible slab instead of the whole 32x16 tile.
+        def cond_has_text(cond_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                for v in b.get("inputs", {}).values():
+                    if (
+                        isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list)
+                        and len(v[1]) >= 2 and v[1][0] == 10 and v[1][1] == value
+                    ):
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        if not hit_writes or not any(
+            ancestor_if(
+                h,
+                lambda c: cond_has_text(c, director.BACURA_FRAME_TOP_DIGITS)
+                and cond_has_text(c, director.BACURA_FRAME_LEFT_DIGITS),
+            )
+            for h in hit_writes
+        ):
+            failures.add("bacura-craft-fair-window")
+
         # (10) RENDERER — the position-driven 8-frame tumble, no death frame. The Bacura target carries exactly
         # the eight tumble frames bacura/slab/01..08, and the render switches costume by a
         # (floor(slot x / 128)) mod 8 index (the port image of the arcade (_X>>7)&7) rather than a fixed frame.
@@ -6498,6 +6578,18 @@ class ScratchProjectTests(unittest.TestCase):
                     if _num_operand(v) == 27:
                         b["inputs"][key] = [1, [4, "0"]]
 
+        def full_tile_window(p: dict) -> None:
+            # Rewrite the opaque-top-row digits to all zeros → every frame tests the whole tile's depth again
+            # (the arcade box), so the craft dies across an edge-on frame's empty rows.
+            stage, body = _body(p, director.UPDATE_BACURA_PROCCODE)
+            for b in body:
+                for v in b.get("inputs", {}).values():
+                    if (
+                        isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list)
+                        and len(v[1]) >= 2 and v[1][0] == 10 and v[1][1] == director.BACURA_FRAME_TOP_DIGITS
+                    ):
+                        v[1][1] = "0" * len(director.BACURA_FRAME_TOP_DIGITS)
+
         def strip_tumble_frames(p: dict) -> None:
             # Drop all but the first tumble frame → the Bacura target no longer carries the eight frames the
             # position select needs (a regression to a single static costume).
@@ -6547,6 +6639,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("bacura-no-explosion", graft_call(director.UPDATE_BACURA_PROCCODE, director.EXPLODE_TICK_PROCCODE)),
             ("bacura-never-scored", add_pts),
             ("bacura-craft-death-window", break_window),
+            ("bacura-craft-fair-window", full_tile_window),
             ("bacura-renderer-tumble-frames", strip_tumble_frames),
             ("bacura-renderer-position-select", pin_render_frame),
             ("bacura-schedule-sets-inc-cnt", rebrand_handler(director.SET_BACURA_COUNT_HANDLER)),
@@ -15759,29 +15852,85 @@ class ScratchProjectTests(unittest.TestCase):
         if not derived_ok:
             failures.add("scroll-row-derived")
 
-        # 5. completion at row == 14 advances the area (a wrap in its THEN body). The block is a
-        # plain `if` when AREA-02's consume is absent and an `if/else` once it is present.
+        # 5. completion: an `if/else` on AND(scroll row == 14, area progress > 0) whose THEN body
+        # advances the area (a wrap), CARRIES the clock (changes area progress by -65536, never sets
+        # it or the row), points the schedule at the new area, and clears no wave register — the
+        # arcade's sub_fn_3__handle_next_area does only the offset/pointer swap.
+        def and_parts(cond_spec):
+            if not (isinstance(cond_spec, list) and len(cond_spec) > 1):
+                return []
+            b = blocks.get(cond_spec[1])
+            if b is None or b["opcode"] != "operator_and":
+                return []
+            return [b["inputs"].get(s) for s in ("OPERAND1", "OPERAND2")]
+
+        def gt_var_num(spec, var_id, num):
+            b = blocks.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+            return (
+                b is not None
+                and b["opcode"] == "operator_gt"
+                and refs_var(b["inputs"].get("OPERAND1"), var_id)
+                and literal(b["inputs"].get("OPERAND2")) == num
+            )
+
         completion = next(
             (
                 bid
                 for bid in body
-                if blocks[bid]["opcode"] in ("control_if", "control_if_else")
-                and eq_var_num(
-                    blocks[bid]["inputs"].get("CONDITION"),
-                    director.SCROLL_ROW_ID,
-                    director.AREA_COMPLETE_ROW,
+                if blocks[bid]["opcode"] == "control_if_else"
+                and any(
+                    eq_var_num(p, director.SCROLL_ROW_ID, director.AREA_COMPLETE_ROW)
+                    for p in and_parts(blocks[bid]["inputs"].get("CONDITION"))
                 )
             ),
             None,
         )
         then_spec = blocks[completion]["inputs"].get("SUBSTACK") if completion else None
+        then_body = (
+            reachable(then_spec[1])
+            if isinstance(then_spec, list) and len(then_spec) > 1 and isinstance(then_spec[1], str)
+            else set()
+        )
+        if not (completion and any(is_area_wrap(x) for x in then_body)):
+            failures.add("completion-at-14")
         if not (
             completion
-            and isinstance(then_spec, list)
-            and len(then_spec) > 1
-            and any(is_area_wrap(x) for x in reachable(then_spec[1]))
+            and any(
+                gt_var_num(p, director.AREA_PROGRESS_ID, 0)
+                for p in and_parts(blocks[completion]["inputs"].get("CONDITION"))
+            )
         ):
-            failures.add("completion-at-14")
+            failures.add("completion-guard")
+
+        def writes(ids, opcode, var_id):
+            return [
+                x for x in ids
+                if blocks[x]["opcode"] == opcode
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == var_id
+            ]
+
+        carries = writes(then_body, "data_changevariableby", director.AREA_PROGRESS_ID)
+        if not (
+            len(carries) == 1
+            and blocks[carries[0]]["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]
+            and not writes(then_body, "data_setvariableto", director.AREA_PROGRESS_ID)
+            and not writes(then_body, "data_setvariableto", director.SCROLL_ROW_ID)
+        ):
+            failures.add("completion-carries")
+        if not writes(then_body, "data_setvariableto", director.SCHEDULE_CURSOR_ID) or not writes(
+            then_body, "data_setvariableto", director.TERRAIN_COLUMN_ID
+        ):
+            failures.add("completion-enters-next-area")
+        if any(
+            writes(then_body, "data_setvariableto", var_id)
+            for var_id in (
+                director.FORMATION_COUNT_ID,
+                director.FORMATION_TYPE_OFFSET_ID,
+                director.NUM_BACURA_ID,
+                director.BACURA_INC_CNT_ID,
+            )
+        ):
+            failures.add("completion-keeps-registers")
 
         # 6. every 16 -> 7 wrap is well-formed, and at least one exists.
         wrap_conditions = [
@@ -15793,45 +15942,102 @@ class ScratchProjectTests(unittest.TestCase):
         if not wrap_conditions or not all(is_area_wrap(bid) for bid in wrap_conditions):
             failures.add("area-wrap-16-7")
 
-        # 7. near-end checkpoint: a control_if on AND(scroll row > 13, 68 > scroll row) whose
-        # body advances the area — the window [14, 67] (13 and 68 exclusive).
-        checkpoint_ok = False
-        for bid, b in blocks.items():
-            if b["opcode"] != "control_if":
-                continue
-            cond = b["inputs"].get("CONDITION")
-            if not (isinstance(cond, list) and len(cond) > 1):
-                continue
-            and_b = blocks.get(cond[1])
-            if not and_b or and_b["opcode"] != "operator_and":
-                continue
-            gts = [
-                blocks.get(and_b["inputs"].get(slot, [None, None])[1])
-                for slot in ("OPERAND1", "OPERAND2")
-            ]
-            if any(g is None or g["opcode"] != "operator_gt" for g in gts):
-                continue
+        # 7. near-end checkpoint, projected, at BOTH sites (new-life re-top and the 2P handoff): the
+        # three statements `set checkpoint progress to (area progress + 1408)`; `if checkpoint
+        # progress > 65055 { wrap; change checkpoint progress by -65536 }`; `if AND(row(checkpoint
+        # progress) > 13, 68 > row(checkpoint progress)) { wrap }` — the window [14, 67] on the row
+        # the arcade reads after its 44 ticks of post-death scrolling. The row VALUES are checked by
+        # interpretation in test_spec_docs.
+        def is_row_of_checkpoint(spec):
+            # floor(((3328 - checkpoint progress) mod 65536) / 256)
+            fb = blocks.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+            if not fb or fb["opcode"] != "operator_mathop" or fb["fields"].get("OPERATOR", [None])[0] != "floor":
+                return False
+            div = blocks.get(fb["inputs"].get("NUM", [None, None])[1])
+            if not div or div["opcode"] != "operator_divide" or literal(div["inputs"].get("NUM2")) != director.AREA_ROW_DIVISOR:
+                return False
+            mod = blocks.get(div["inputs"].get("NUM1", [None, None])[1])
+            if not mod or mod["opcode"] != "operator_mod" or literal(mod["inputs"].get("NUM2")) != director.AREA_COUNTER_WRAP:
+                return False
+            sub = blocks.get(mod["inputs"].get("NUM1", [None, None])[1])
+            return (
+                sub is not None
+                and sub["opcode"] == "operator_subtract"
+                and literal(sub["inputs"].get("NUM1")) == director.AREA_COUNTER_INIT
+                and refs_var(sub["inputs"].get("NUM2"), director.CHECKPOINT_PROGRESS_ID)
+            )
+
+        def then_advances(b):
+            spec = b["inputs"].get("SUBSTACK")
+            return (
+                isinstance(spec, list)
+                and len(spec) > 1
+                and any(is_area_wrap(x) for x in reachable(spec[1]))
+            )
+
+        def checkpoint_at(start):
+            b = blocks[start]
+            val = b["inputs"].get("VALUE")
+            add = blocks.get(val[1]) if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str) else None
+            if not (
+                add
+                and add["opcode"] == "operator_add"
+                and refs_var(add["inputs"].get("NUM1"), director.AREA_PROGRESS_ID)
+                and literal(add["inputs"].get("NUM2")) == director.AREA_CHECKPOINT_PROJECTION
+            ):
+                return False
+            comp = blocks.get(b.get("next"))
+            if not (
+                comp
+                and comp["opcode"] == "control_if"
+                and gt_var_num(
+                    comp["inputs"].get("CONDITION"),
+                    director.CHECKPOINT_PROGRESS_ID,
+                    director.AREA_COMPLETE_PROGRESS - 1,
+                )
+                and then_advances(comp)
+                and any(
+                    blocks[x]["opcode"] == "data_changevariableby"
+                    and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
+                    and blocks[x]["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]
+                    for x in reachable(comp["inputs"]["SUBSTACK"][1])
+                )
+            ):
+                return False
+            band = blocks.get(comp.get("next"))
+            if not band or band["opcode"] != "control_if" or not then_advances(band):
+                return False
+            gts = [blocks.get(p[1]) if isinstance(p, list) and len(p) > 1 and isinstance(p[1], str) else None
+                   for p in and_parts(band["inputs"].get("CONDITION"))]
+            if len(gts) != 2 or any(g is None or g["opcode"] != "operator_gt" for g in gts):
+                return False
             low_ok = any(
-                refs_var(g["inputs"].get("OPERAND1"), director.SCROLL_ROW_ID)
+                is_row_of_checkpoint(g["inputs"].get("OPERAND1"))
                 and literal(g["inputs"].get("OPERAND2")) == director.AREA_CHECKPOINT_LOW_EXCL
                 for g in gts
             )
             high_ok = any(
                 literal(g["inputs"].get("OPERAND1")) == director.AREA_CHECKPOINT_HIGH_EXCL
-                and refs_var(g["inputs"].get("OPERAND2"), director.SCROLL_ROW_ID)
+                and is_row_of_checkpoint(g["inputs"].get("OPERAND2"))
                 for g in gts
             )
-            then_spec = b["inputs"].get("SUBSTACK")
-            advances = (
-                isinstance(then_spec, list)
-                and len(then_spec) > 1
-                and any(is_area_wrap(x) for x in reachable(then_spec[1]))
-            )
-            if low_ok and high_ok and advances:
-                checkpoint_ok = True
-                break
-        if not checkpoint_ok:
+            return low_ok and high_ok
+
+        starts = [
+            bid for bid, b in blocks.items()
+            if b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
+        ]
+        if len(starts) != 2 or not all(checkpoint_at(s) for s in starts):
             failures.add("checkpoint-window")
+        # No checkpoint may still read the frozen `scroll row` (the pre-slice-20 shape).
+        if any(
+            b["opcode"] == "operator_gt"
+            and literal(b["inputs"].get("OPERAND1")) == director.AREA_CHECKPOINT_HIGH_EXCL
+            and refs_var(b["inputs"].get("OPERAND2"), director.SCROLL_ROW_ID)
+            for b in blocks.values()
+        ):
+            failures.add("checkpoint-reads-frozen-row")
 
         return failures
 
@@ -15902,48 +16108,117 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["VALUE"] = [1, [4, 1]]
 
+        def gt_with(s, first, second):
+            # operator_gt blocks whose OPERAND1/OPERAND2 literal matches (None = any).
+            return [
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_gt"
+                and (first is None or (b["inputs"].get("OPERAND1") or [None, [None, None]])[1][1:2] == [first])
+                and (second is None or (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1:2] == [second])
+            ]
+
         def break_checkpoint_low(p):
-            # CAB-03 (slice 18): the near-end checkpoint window now appears at TWO sites — area_reset's
-            # new-life branch AND the two-player death-complete alternation path — both emitted from the
-            # one shared `_at_area_checkpoint` helper, so they are always byte-identical and cannot drift.
-            # The validator passes if ANY valid window exists, so the fixture must corrupt EVERY window to
-            # prove a malformed low bound is caught.
+            # The near-end checkpoint appears at TWO sites — area_reset's new-life branch AND the
+            # two-player death-complete alternation path — both emitted from the one shared
+            # `_area_checkpoint` helper. Corrupting ONE site must already fail (both are required).
             s = stage_of(p)
-            matches = [
+            matches = gt_with(s, None, director.AREA_CHECKPOINT_LOW_EXCL)
+            assert len(matches) == 2, "expected one checkpoint low bound per site"
+            matches[0]["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
+
+        def break_checkpoint_high(p):
+            s = stage_of(p)
+            matches = gt_with(s, director.AREA_CHECKPOINT_HIGH_EXCL, None)
+            assert len(matches) == 2, "expected one checkpoint high bound per site"
+            matches[1]["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
+
+        def break_checkpoint_projection(p):
+            s = stage_of(p)
+            b = next(
+                b
+                for b in s["blocks"].values()
+                if b["opcode"] == "operator_add"
+                and (b["inputs"].get("NUM2") or [None, [None, None]])[1][1:2] == [director.AREA_CHECKPOINT_PROJECTION]
+            )
+            b["inputs"]["NUM2"] = [1, [4, 0]]
+
+        def break_checkpoint_completion(p):
+            s = stage_of(p)
+            matches = gt_with(s, None, director.AREA_COMPLETE_PROGRESS - 1)
+            assert len(matches) == 2, "expected one projected-completion test per site"
+            matches[0]["inputs"]["OPERAND2"] = [1, [4, director.AREA_COMPLETE_PROGRESS + 255]]
+
+        def break_checkpoint_frozen_row(p):
+            # Restore the pre-slice-20 shape at one site: a band bound reading the frozen `scroll row`.
+            s = stage_of(p)
+            b = gt_with(s, director.AREA_CHECKPOINT_HIGH_EXCL, None)[0]
+            b["inputs"]["OPERAND2"] = [3, [12, "scroll row", director.SCROLL_ROW_ID], [10, ""]]
+
+        def break_completion_guard(p):
+            s = stage_of(p)
+            b = next(
                 b
                 for b in s["blocks"].values()
                 if b["opcode"] == "operator_gt"
                 and isinstance(b["inputs"].get("OPERAND1"), list)
-                and b["inputs"]["OPERAND1"][1][2:3] == [director.SCROLL_ROW_ID]
-                and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_LOW_EXCL
-            ]
-            assert matches, "no checkpoint low-bound block found to corrupt"
-            for b in matches:
-                b["inputs"]["OPERAND2"] = [1, [4, director.AREA_CHECKPOINT_LOW_EXCL + 2]]
+                and b["inputs"]["OPERAND1"][1][2:3] == [director.AREA_PROGRESS_ID]
+                and (b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1:2] == [0]
+            )
+            b["inputs"]["OPERAND2"] = [1, [4, -1000]]
 
-        def break_checkpoint_high(p):
-            # See break_checkpoint_low: corrupt every shared-helper checkpoint window (two sites).
+        def completion_then(s):
+            for b in s["blocks"].values():
+                if b["opcode"] == "data_changevariableby" and b["fields"].get("VARIABLE", [None, None])[1] == director.AREA_PROGRESS_ID and b["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]:
+                    return b
+            raise AssertionError("no carry block")
+
+        def break_completion_carry(p):
+            # Turn the carry back into the old re-top: `set area progress to 0`.
+            b = completion_then(stage_of(p))
+            b["opcode"] = "data_setvariableto"
+            b["inputs"]["VALUE"] = [1, [10, "0"]]
+
+        def break_completion_clears(p):
+            # Make the completion clear a wave register again (retarget its `schedule fired` write).
             s = stage_of(p)
-            matches = [
-                b
-                for b in s["blocks"].values()
-                if b["opcode"] == "operator_gt"
-                and (b["inputs"].get("OPERAND1") or [None, [None, None]])[1][1] == director.AREA_CHECKPOINT_HIGH_EXCL
-                and isinstance(b["inputs"].get("OPERAND2"), list)
-                and b["inputs"]["OPERAND2"][1][2:3] == [director.SCROLL_ROW_ID]
-            ]
-            assert matches, "no checkpoint high-bound block found to corrupt"
-            for b in matches:
-                b["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
+            carry = completion_then(s)
+            bid = carry["next"]
+            while bid:
+                b = s["blocks"][bid]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.SCHEDULE_FIRED_ID:
+                    b["fields"]["VARIABLE"] = ["num bacura", director.NUM_BACURA_ID]
+                    return
+                bid = b["next"]
+            raise AssertionError("no schedule fired write after the carry")
+
+        def break_completion_next_area(p):
+            # Drop the completion's terrain-column write (retarget it), so the new area keeps the old column.
+            s = stage_of(p)
+            bid = completion_then(s)["next"]
+            while bid:
+                b = s["blocks"][bid]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.TERRAIN_COLUMN_ID:
+                    b["fields"]["VARIABLE"] = ["scratch", "not-the-terrain-column"]
+                    return
+                bid = b["next"]
+            raise AssertionError("no terrain column write after the carry")
 
         cases = [
             ("advance-area-before-slots", break_phase_order),
             ("progress-steps-32", break_progress_step),
             ("scroll-row-derived", break_row_wrap_constant),
             ("completion-at-14", break_completion_row),
+            ("completion-guard", break_completion_guard),
+            ("completion-carries", break_completion_carry),
+            ("completion-keeps-registers", break_completion_clears),
+            ("completion-enters-next-area", break_completion_next_area),
             ("area-wrap-16-7", break_wrap_target),
             ("checkpoint-window", break_checkpoint_low),
             ("checkpoint-window", break_checkpoint_high),
+            ("checkpoint-window", break_checkpoint_projection),
+            ("checkpoint-window", break_checkpoint_completion),
+            ("checkpoint-reads-frozen-row", break_checkpoint_frozen_row),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -16109,6 +16384,294 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("consume-stop-condition")
 
         return failures
+
+    @staticmethod
+    def _terrain_wiring_failures(project: dict) -> set:
+        """AREA-01 (slice 20) terrain-state wiring — violated labels. `update terrain` is a warp proc; the walk
+        calls it straight after ADVANCE_SLOTS (once the clock and the ground objects have moved); every re-top
+        clears `previous terrain column` to -1 and then recomputes the terrain; an area completion hands the
+        outgoing `terrain column` to `previous terrain column` before entering the next area. (What the proc
+        computes is checked against the model by the harness's terrain-state-matches-model scenario.)"""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def is_call(bid, proccode):
+            b = blocks.get(bid) if bid else None
+            return bool(b) and b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+
+        def chain_from(bid):
+            out = []
+            while bid:
+                out.append(bid)
+                bid = blocks[bid].get("next")
+            return out
+
+        def sets_previous(bid):
+            b = blocks[bid]
+            return (
+                b["opcode"] == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.PREVIOUS_TERRAIN_COLUMN_ID
+            )
+
+        protos = [
+            b for b in blocks.values()
+            if b["opcode"] == "procedures_prototype"
+            and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAIN_PROCCODE
+        ]
+        if len(protos) != 1 or protos[0]["mutation"].get("warp") != "true":
+            failures.add("update-terrain-warp")
+        slots_calls = [bid for bid in blocks if is_call(bid, director.ADVANCE_SLOTS_PROCCODE)]
+        if not slots_calls or not all(
+            is_call(blocks[bid].get("next"), director.UPDATE_TERRAIN_PROCCODE) for bid in slots_calls
+        ):
+            failures.add("walk-updates-terrain-after-slots")
+        clears = [
+            bid for bid in blocks
+            if sets_previous(bid) and blocks[bid]["inputs"].get("VALUE") == [1, [4, director.terrain_render.NO_PREVIOUS_COLUMN]]
+        ]
+        if not clears or not all(
+            any(is_call(x, director.UPDATE_TERRAIN_PROCCODE) for x in chain_from(bid)) for bid in clears
+        ):
+            failures.add("retop-clears-previous-then-updates")
+        # Every re-top (a `set area progress to 0` that goes on to enter the area: set its `terrain column`)
+        # carries the clear. (The two-player handoff's bare pre-set is followed by the new-life re-top.)
+        retops = [
+            bid for bid, b in blocks.items()
+            if b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AREA_PROGRESS_ID
+            and b["inputs"].get("VALUE") == [1, [4, 0]]
+            and any(
+                blocks[x]["opcode"] == "data_setvariableto"
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.TERRAIN_COLUMN_ID
+                for x in chain_from(bid)
+            )
+        ]
+        if not retops or not all(any(x in clears for x in chain_from(bid)) for bid in retops):
+            failures.add("every-retop-clears-previous")
+        handovers = [
+            bid for bid in blocks
+            if sets_previous(bid)
+            and isinstance(blocks[bid]["inputs"].get("VALUE"), list)
+            and isinstance(blocks[bid]["inputs"]["VALUE"][1], list)
+            and blocks[bid]["inputs"]["VALUE"][1][2:3] == [director.TERRAIN_COLUMN_ID]
+        ]
+        if len(handovers) != 1 or not any(
+            blocks[x]["opcode"] == "data_setvariableto"
+            and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.TERRAIN_COLUMN_ID
+            for x in chain_from(handovers[0])[1:]
+        ):
+            failures.add("completion-hands-over-column")
+
+        # Every terrain update is drawn at once: `update terrain` is always followed by `broadcast terrain
+        # draw`, so the strips move in the same frame as the clock and the ground clones.
+        def is_draw(bid):
+            b = blocks.get(bid) if bid else None
+            return bool(b) and b["opcode"] == "event_broadcast" and b["inputs"].get("BROADCAST_INPUT", [None, [None, None]])[1][1:2] == ["terrain draw"]
+
+        updates = [bid for bid in blocks if is_call(bid, director.UPDATE_TERRAIN_PROCCODE)]
+        if not updates or not all(is_draw(blocks[bid].get("next")) for bid in updates):
+            failures.add("update-terrain-then-draw")
+
+        # Each strip is a pure renderer of its parity's state. Its one `terrain draw` script is, in order:
+        # switch costume to its costume var -> go to (its x var, its y var) -> show if its shown var is 1, else
+        # hide -> go to back -> go forward 1 if it holds the upper band (the even strip when `terrain even
+        # behind` is 0, the odd strip when it is 1). No size block: size 125 is in the target record (scratch-vm
+        # caps a block-set size at 1.5x the stage).
+        def var_of(spec):
+            return spec[1][2] if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list) and spec[1][0] == 12 else None
+
+        def num(spec):
+            try:
+                return float(spec[1][1])
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        for parity, name in director.TERRAIN_STRIP_TARGETS.items():
+            target = next((t for t in project["targets"] if t["name"] == name), None)
+            label = f"strip-draw-{parity}"
+            if target is None:
+                failures.add(label)
+                continue
+            sb = target["blocks"]
+            ids = director.TERRAIN_STRIP_VARS[parity]
+
+            def at(bid, key, sb=sb):
+                spec = sb[bid]["inputs"].get(key) if bid in sb else None
+                return spec[1] if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+
+            if any(b["opcode"] in ("looks_setsizeto", "looks_changesizeby") for b in sb.values()):
+                failures.add(f"strip-size-block-{parity}")
+            hats = [
+                bid for bid, b in sb.items()
+                if b["opcode"] == "event_whenbroadcastreceived" and b["fields"].get("BROADCAST_OPTION", [None])[0] == "terrain draw"
+            ]
+            if len(hats) != 1:
+                failures.add(label)
+                continue
+            chain = []
+            bid = sb[hats[0]].get("next")
+            while bid:
+                chain.append(bid)
+                bid = sb[bid].get("next")
+            ops = [sb[x]["opcode"] for x in chain]
+            if ops != ["looks_switchcostumeto", "motion_gotoxy", "control_if_else", "looks_gotofrontback", "control_if"]:
+                failures.add(label)
+                continue
+            switch, move, shown, back, upper = (sb[x] for x in chain)
+            join = sb.get(at(chain[0], "COSTUME") or "", {})
+            shown_cond = sb.get(at(chain[2], "CONDITION") or "", {})
+            upper_cond = sb.get(at(chain[4], "CONDITION") or "", {})
+            forward = sb.get(at(chain[4], "SUBSTACK") or "", {})
+            ok = (
+                join.get("opcode") == "operator_join" and var_of(join["inputs"].get("STRING1")) == ids["costume"][1]
+                and var_of(move["inputs"].get("X")) == ids["x"][1] and var_of(move["inputs"].get("Y")) == ids["y"][1]
+                and shown_cond.get("opcode") == "operator_equals"
+                and var_of(shown_cond["inputs"].get("OPERAND1")) == ids["shown"][1]
+                and num(shown_cond["inputs"].get("OPERAND2")) == 1
+                and sb.get(at(chain[2], "SUBSTACK") or "", {}).get("opcode") == "looks_show"
+                and sb.get(at(chain[2], "SUBSTACK2") or "", {}).get("opcode") == "looks_hide"
+                and back["fields"].get("FRONT_BACK", [None])[0] == "back"
+                and upper_cond.get("opcode") == "operator_equals"
+                and var_of(upper_cond["inputs"].get("OPERAND1")) == director.TERRAIN_EVEN_BEHIND_ID
+                and num(upper_cond["inputs"].get("OPERAND2")) == (0 if parity == "even" else 1)
+                and forward.get("opcode") == "looks_goforwardbackwardlayers"
+                and forward["fields"].get("FORWARD_BACKWARD", [None])[0] == "forward"
+                and num(forward["inputs"].get("NUM")) == 1
+                and not forward.get("next")
+            )
+            if not ok:
+                failures.add(label)
+        return failures
+
+    def test_terrain_wiring_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._terrain_wiring_failures(project))
+
+    def test_terrain_wiring_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._terrain_wiring_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def calls(s, proccode):
+            return [
+                bid for bid, b in s["blocks"].items()
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+            ]
+
+        def splice_out(s, bid):
+            b = s["blocks"][bid]
+            parent, nxt = b.get("parent"), b.get("next")
+            if parent and s["blocks"][parent].get("next") == bid:
+                s["blocks"][parent]["next"] = nxt
+            if nxt:
+                s["blocks"][nxt]["parent"] = parent
+
+        def unwarp(p):
+            for b in stage_of(p)["blocks"].values():
+                if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAIN_PROCCODE:
+                    b["mutation"]["warp"] = "false"
+
+        def drop_walk_call(p):
+            s = stage_of(p)
+            slots = calls(s, director.ADVANCE_SLOTS_PROCCODE)[0]
+            splice_out(s, s["blocks"][slots]["next"])
+
+        def drop_retop_call(p):
+            s = stage_of(p)
+            slots = calls(s, director.ADVANCE_SLOTS_PROCCODE)
+            for bid in calls(s, director.UPDATE_TERRAIN_PROCCODE):
+                if s["blocks"][bid].get("parent") not in slots:
+                    splice_out(s, bid)
+                    return
+
+        def keep_previous_at_retop(p):
+            s = stage_of(p)
+            for b in s["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PREVIOUS_TERRAIN_COLUMN_ID
+                    and b["inputs"].get("VALUE") == [1, [4, -1]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def no_handover(p):
+            s = stage_of(p)
+            for b in s["blocks"].values():
+                value = b["inputs"].get("VALUE") if b["opcode"] == "data_setvariableto" else None
+                if (
+                    value is not None
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PREVIOUS_TERRAIN_COLUMN_ID
+                    and isinstance(value, list) and isinstance(value[1], list)
+                    and value[1][2:3] == [director.TERRAIN_COLUMN_ID]
+                ):
+                    b["fields"]["VARIABLE"] = ["schedule fired", director.SCHEDULE_FIRED_ID]
+
+        def drop_retop_draw(p):  # the re-top recomputes the terrain but never draws it
+            s = stage_of(p)
+            slots = calls(s, director.ADVANCE_SLOTS_PROCCODE)
+            for bid in calls(s, director.UPDATE_TERRAIN_PROCCODE):
+                if s["blocks"][bid].get("parent") not in slots:
+                    splice_out(s, s["blocks"][bid]["next"])
+                    return
+
+        def strip_blocks(p, parity):
+            name = director.TERRAIN_STRIP_TARGETS[parity]
+            return next(t for t in p["targets"] if t["name"] == name)["blocks"]
+
+        def first_op(sb, opcode):
+            return next(b for b in sb.values() if b["opcode"] == opcode)
+
+        def draw_before_costume(p):  # move before the costume switch (one frame at the old costume's centre)
+            sb = strip_blocks(p, "even")
+            hat = next(b for b in sb.values() if b["opcode"] == "event_whenbroadcastreceived"
+                       and b["fields"]["BROADCAST_OPTION"][0] == "terrain draw")
+            switch_id = hat["next"]
+            move_id = sb[switch_id]["next"]
+            hat["next"], sb[switch_id]["next"], sb[move_id]["next"] = move_id, sb[move_id]["next"], switch_id
+
+        def read_other_strips_y(p):  # the even strip drawn at the odd strip's y
+            move = first_op(strip_blocks(p, "even"), "motion_gotoxy")
+            name, vid = director.TERRAIN_STRIP_VARS["odd"]["y"]
+            move["inputs"]["Y"] = [3, [12, name, vid], [10, ""]]
+
+        def wrong_upper_strip(p):  # the odd strip fronts itself when the even strip holds the upper band
+            sb = strip_blocks(p, "odd")
+            for b in sb.values():
+                if b["opcode"] == "operator_equals" and b["inputs"]["OPERAND1"][1][2:3] == [director.TERRAIN_EVEN_BEHIND_ID]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 0]]
+
+        def always_shown(p):  # the odd strip never hides (a far-off band gets fenced onto the stage)
+            first_op(strip_blocks(p, "odd"), "looks_hide")["opcode"] = "looks_show"
+
+        def costume_from_wrong_var(p):  # the costume switch reads the shown flag
+            sb = strip_blocks(p, "even")
+            name, vid = director.TERRAIN_STRIP_VARS["even"]["shown"]
+            first_op(sb, "operator_join")["inputs"]["STRING1"] = [3, [12, name, vid], [10, ""]]
+
+        def size_in_blocks(p):  # size set from blocks (scratch-vm caps it at 1.5x the stage)
+            first_op(strip_blocks(p, "even"), "looks_goforwardbackwardlayers")["opcode"] = "looks_setsizeto"
+
+        cases = [
+            ("update-terrain-warp", unwarp),
+            ("walk-updates-terrain-after-slots", drop_walk_call),
+            ("retop-clears-previous-then-updates", drop_retop_call),
+            ("every-retop-clears-previous", keep_previous_at_retop),
+            ("completion-hands-over-column", no_handover),
+            ("update-terrain-then-draw", drop_retop_draw),
+            ("strip-draw-even", draw_before_costume),
+            ("strip-draw-even", read_other_strips_y),
+            ("strip-draw-odd", wrong_upper_strip),
+            ("strip-draw-odd", always_shown),
+            ("strip-draw-even", costume_from_wrong_var),
+            ("strip-size-block-even", size_in_blocks),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._terrain_wiring_failures(project), label)
 
     def test_area_scheduler_contract(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -18273,47 +18836,16 @@ class ScratchProjectTests(unittest.TestCase):
         if not has("target_b", lambda b: b["opcode"] == "looks_show"):
             fails.add("B7-marker-show")
 
-        # B3 — counted-cycle terrain; the fenced position test is gone; no waits.
+        # B3 — the terrain keeps no clock of its own. Since AREA-01 the strips are pure renderers of the Stage's
+        # terrain state (their draw receiver is pinned in _terrain_wiring_failures): no loop, no wait, no
+        # relative move, so nothing can drift off the area clock.
         for strip in ("area_01a", "area_01b"):
-            if not has(
-                strip,
-                lambda b: b["opcode"] == "operator_gt"
-                and num(b["inputs"].get("OPERAND2")) == director.TERRAIN_CYCLE_STEPS - 1,
+            if any(
+                count(strip, op)
+                for op in ("control_forever", "control_repeat", "control_repeat_until", "control_wait",
+                           "motion_changeyby", "motion_changexby")
             ):
-                fails.add(f"B3-count-{strip}")
-            if has(strip, lambda b: b["opcode"] == "operator_lt"):
-                fails.add(f"B3-position-test-{strip}")
-            if count(strip, "control_wait") != 0:
                 fails.add(f"B3-wall-clock-{strip}")
-
-        # PRES01-terrain-phase — with no frame bands to hide an edge gap, the strips must stay exactly
-        # half a cycle apart: each strip's rewind seed satisfies y = 345 - 1.25 * step (the steady wrap law,
-        # one arcade px a tick at the render scale — the ground objects' scroll), and the two seeds differ by
-        # half the 552-step cycle (345 units), so the 360-tall pair covers the stage on every tick.
-        # The rewind is `go to (0, seed y)` then `set scroll step to seed`; the wrap is the reverse order.
-        seeds = {}
-        for strip in ("area_01a", "area_01b"):
-            found = []
-            for b in blocks[strip].values():
-                after = blocks[strip].get(b.get("next") or "")
-                if b["opcode"] == "motion_gotoxy" and after and after["opcode"] == "data_setvariableto":
-                    found.append(tuple(
-                        float(v) if v is not None else None
-                        for v in (num(b["inputs"].get("Y")), num(after["inputs"].get("VALUE")))
-                    ))
-            seeds[strip] = found[0] if len(found) == 1 else (None, None)
-        (ya, sa), (yb, sb) = seeds["area_01a"], seeds["area_01b"]
-        rate, cycle = 1.25, 552
-        if (
-            None in (ya, sa, yb, sb) or ya + rate * sa != 345 or yb + rate * sb != 345
-            or (sa - sb) % cycle != cycle // 2
-            or (director.TERRAIN_SCROLL_STEP, director.TERRAIN_CYCLE_STEPS) != (rate, cycle)
-            or not all(
-                has(strip, lambda b: b["opcode"] == "motion_changeyby" and float(num(b["inputs"].get("DY"))) == -rate)
-                for strip in ("area_01a", "area_01b")
-            )
-        ):
-            fails.add("PRES01-terrain-phase")
 
         # B4 — the title glides in.
         if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
@@ -18396,7 +18928,10 @@ class ScratchProjectTests(unittest.TestCase):
         if not has("solvalou", lambda b: b["opcode"] == "looks_gotofrontback"):
             fails.add("B9-craft-front")
         for strip in ("area_01a", "area_01b"):
-            if not has(strip, lambda b: b["opcode"] == "looks_goforwardbackwardlayers"):
+            if not has(
+                strip,
+                lambda b: b["opcode"] == "looks_gotofrontback" and b["fields"].get("FRONT_BACK", [None])[0] == "back",
+            ):
                 fails.add(f"B9-terrain-back-{strip}")
 
         # Units rule: no wall-clock wait survives in any touched gameplay script (the
@@ -18555,14 +19090,10 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["opcode"] = "control_wait"
 
-        def break_terrain_count(p):  # B3: reinstate the fenced position test
-            b = first(
-                p,
-                "area_01a",
-                lambda b: b["opcode"] == "operator_gt"
-                and num(b["inputs"].get("OPERAND2")) == director.TERRAIN_CYCLE_STEPS - 1,
-            )
-            b["opcode"] = "operator_lt"
+        def free_running_terrain(p):  # B3: a strip steps itself again instead of drawing the clock's state
+            b = first(p, "area_01a", lambda b: b["opcode"] == "motion_gotoxy")
+            b["opcode"] = "motion_changeyby"
+            b["inputs"] = {"DY": [1, [4, -1.25]]}
 
         def break_title_glide(p):  # B4: snap the title into place
             b = first(
@@ -18631,21 +19162,10 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["VALUE"] = [1, [4, 2]]
 
-        def restore_baseline_terrain_seed(p):  # PRES-01: a seed off the wrap law → edge gaps every half cycle
-            for b in blocks_of(p, "area_01a").values():
-                if b["opcode"] == "data_setvariableto" and str(num(b["inputs"].get("VALUE"))) == "288":
-                    b["inputs"]["VALUE"] = [1, [10, "284"]]
-
-        def unlock_terrain_scroll(p):  # PRES-01: terrain back at 1 unit a tick, drifting off the ground objects
-            for strip in ("area_01a", "area_01b"):
-                for b in blocks_of(p, strip).values():
-                    if b["opcode"] == "motion_changeyby":
-                        b["inputs"]["DY"] = [1, [4, -1]]
-
         def break_terrain_layer(p):  # B9: stop sending terrain to the back
             for b in blocks_of(p, "area_01a").values():
-                if b["opcode"] == "looks_goforwardbackwardlayers":
-                    b["opcode"] = "looks_show"
+                if b["opcode"] == "looks_gotofrontback":
+                    b["fields"]["FRONT_BACK"] = ["front", None]
 
         cases = [
             ("A1-ready-bubble", break_ready_bubble),
@@ -18654,7 +19174,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("B2-broadcast", break_bomb_broadcast),
             ("B2-arm", break_bomb_arm),
             ("B2-drop-receive", break_drop_receive),
-            ("B3-position-test-area_01a", break_terrain_count),
+            ("B3-wall-clock-area_01a", free_running_terrain),
             ("B4-glide", break_title_glide),
             ("B5B10-explosion", break_explosion_holds),
             ("B5B10-pause", break_death_pause),
@@ -18674,8 +19194,6 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-craft-speed", either_vertical_diagonal),
             ("B9-craft-front", break_craft_layer),
             ("B9-terrain-back-area_01a", break_terrain_layer),
-            ("PRES01-terrain-phase", restore_baseline_terrain_seed),
-            ("PRES01-terrain-phase", unlock_terrain_scroll),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -18942,7 +19460,7 @@ class ScratchProjectTests(unittest.TestCase):
         if not read_ok:
             fails.add("PRES01-render-map")
         # PRES01-bacura-slab — the 1x2 Bacura slab draws its second tile 16 px toward screen-right of its position
-        # (sprite_draw_double_height amiga.68k 2534-2540), so its 32-px middle sits 8 px (10 units) right of a
+        # (sprite_draw_double_height amiga.68k 2546-2552), so its 32-px middle sits 8 px (10 units) right of a
         # 16-px sprite's centre: the renderer's lateral offset is RENDER_COL_OFFSET - 10, not the shared -150.
         bacura = next(t for t in project["targets"] if t["name"] == director.BACURA_TARGET)
         offsets = [
@@ -18955,6 +19473,110 @@ class ScratchProjectTests(unittest.TestCase):
         ]
         if director.BACURA_SLAB_X_OFFSET != 8 * scale or offsets != [-(120 * scale) - 8 * scale]:
             fails.add("PRES01-bacura-slab")
+        # PRES01-garu-double-tile — a Garu Barra / Garu Derota base is a 2x2 sprite (handle_20/21 `_ATTR=3`):
+        # sprite_draw_double_width_and_height (amiga.68k 2529-2544) draws its 32-px picture 8 px right of AND 8 px
+        # below a 16-px sprite at the same position, so the ground pool places a SLOT_GARU_BASE slot 10 units right
+        # (+x) and 10 down (-y) of the shared map — and only the base, of both families. The 1x1 node is seeded one
+        # cell below and one right of its base (node `_X` MSB 1, `_Y` = base `_Y` - 0x100) at all four Garu spawn
+        # sites (schedule + debug key, both families), which centres the top on the base at the arcade's place.
+        ground = next(t for t in project["targets"] if t["name"] == director.GROUND_RENDER_TARGET)["blocks"]
+        shifted_bases = 0
+        for bid, b in ground.items():
+            if not isinstance(b, dict) or b["opcode"] != "motion_gotoxy":
+                continue
+            gx, gy = ref_in(ground, b, "X") or {}, ref_in(ground, b, "Y") or {}
+            if gx.get("opcode") != "operator_add" or gy.get("opcode") != "operator_subtract":
+                continue
+            map_x, map_y = ref_in(ground, gx, "NUM1") or {}, ref_in(ground, gy, "NUM1") or {}
+            shift_ok = (
+                as_num(num(gx["inputs"].get("NUM2"))) == 8 * scale
+                and as_num(num(gy["inputs"].get("NUM2"))) == 8 * scale
+                and map_x.get("opcode") == "operator_subtract"
+                and as_num(num(map_x["inputs"].get("NUM2"))) == -(120 * scale)
+                and map_y.get("opcode") == "operator_subtract"
+                and as_num(num(map_y["inputs"].get("NUM1"))) == 180 + 24 * scale
+            )
+            gate = ground.get(b.get("parent")) or {}
+            cond = ref_in(ground, gate, "CONDITION") or {}
+            lhs = ref_in(ground, cond, "OPERAND1") or {}
+            gated_on_base = (
+                gate.get("opcode") == "control_if_else"
+                and (gate["inputs"].get("SUBSTACK") or [None, None])[1] == bid
+                and cond.get("opcode") == "operator_equals"
+                and lhs.get("opcode") == "data_itemoflist"
+                and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                and as_num(num(cond["inputs"].get("OPERAND2"))) == director.SLOT_GARU_BASE
+            )
+            if shift_ok and gated_on_base:
+                shifted_bases += 1
+        stage_blocks = next(t for t in project["targets"] if t["isStage"])["blocks"]
+        node_x_seeds = node_y_seeds = 0
+        for b in stage_blocks.values():
+            if not isinstance(b, dict) or b["opcode"] != "data_replaceitemoflist":
+                continue
+            if b["fields"]["LIST"][1] == director.SLOT_X_ID and as_num(num(b["inputs"].get("ITEM"))) == 256:
+                node_x_seeds += 1
+            item = ref_in(stage_blocks, b, "ITEM") or {}
+            lateral = ref_in(stage_blocks, item, "NUM1") or {}
+            if (
+                b["fields"]["LIST"][1] == director.SLOT_Y_ID
+                and item.get("opcode") == "operator_add"
+                and as_num(num(item["inputs"].get("NUM2"))) == -256
+                and lateral.get("opcode") == "operator_multiply"
+                and as_num(num(lateral["inputs"].get("NUM2"))) == 32
+            ):
+                node_y_seeds += 1
+        if (
+            director.DOUBLE_TILE_STAGE_OFFSET != 8 * scale
+            or (director.GARU_NODE_SLOT_X, director.GARU_NODE_SLOT_Y_DELTA) != (256, -256)
+            or shifted_bases != 2
+            or (node_x_seeds, node_y_seeds) != (4, 4)
+        ):
+            fails.add("PRES01-garu-double-tile")
+        # PRES01-sol-double-tile — the Sol Tower rise frames (tools/sol_tower_render.py) are 32x32 cells laid from
+        # the cell's top-left as the arcade lays the sprite from its position, so every rise frame draws 10 units
+        # right (+x) and 10 down (-y) of the shared map, exactly as the 2x2 Garu base does. Only the second bomb's
+        # explosion and crater (state HIT with flag SOL_RISEN_PHASE), which handle_bomb_explosion draws centred,
+        # take the unshifted branch. Pinned as one if/else: shifted SUBSTACK under not(HIT and RISEN), plain map
+        # position in SUBSTACK2.
+        sol_ok = 0
+        for bid, b in ground.items():
+            if not isinstance(b, dict) or b["opcode"] != "control_if_else":
+                continue
+            cond = ref_in(ground, b, "CONDITION") or {}
+            inner = ref_in(ground, cond, "OPERAND") or {}
+            if cond.get("opcode") != "operator_not" or inner.get("opcode") != "operator_and":
+                continue
+            eqs = [ref_in(ground, inner, k) or {} for k in ("OPERAND1", "OPERAND2")]
+            pairs = set()
+            for eq in eqs:
+                lhs = ref_in(ground, eq, "OPERAND1") or {}
+                if eq.get("opcode") == "operator_equals" and lhs.get("opcode") == "data_itemoflist":
+                    pairs.add((lhs["fields"]["LIST"][1], as_num(num(eq["inputs"].get("OPERAND2")))))
+            if pairs != {
+                (director.SLOT_STATE_ID, float(director.SLOT_HIT)),
+                (director.SLOT_FLAG_ID, float(director.SOL_RISEN_PHASE)),
+            }:
+                continue
+            shifted = ground.get((b["inputs"].get("SUBSTACK") or [None, None])[1]) or {}
+            plain = ground.get((b["inputs"].get("SUBSTACK2") or [None, None])[1]) or {}
+            gx, gy = ref_in(ground, shifted, "X") or {}, ref_in(ground, shifted, "Y") or {}
+            px, py = ref_in(ground, plain, "X") or {}, ref_in(ground, plain, "Y") or {}
+            if (
+                shifted.get("opcode") == "motion_gotoxy"
+                and gx.get("opcode") == "operator_add"
+                and gy.get("opcode") == "operator_subtract"
+                and as_num(num(gx["inputs"].get("NUM2"))) == 8 * scale
+                and as_num(num(gy["inputs"].get("NUM2"))) == 8 * scale
+                and (ref_in(ground, gx, "NUM1") or {}).get("opcode") == "operator_subtract"
+                and (ref_in(ground, gy, "NUM1") or {}).get("opcode") == "operator_subtract"
+                and plain.get("opcode") == "motion_gotoxy"
+                and px.get("opcode") == "operator_subtract"
+                and py.get("opcode") == "operator_subtract"
+            ):
+                sol_ok += 1
+        if sol_ok != 1:
+            fails.add("PRES01-sol-double-tile")
 
         # PRES01-attract-grid — the attract, title, best-five and entry text on the arcade text cells, from the
         # source's own screen offsets: CREDIT 0x0923 with its digits two cells past the label (display_credits
@@ -19272,6 +19894,67 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "operator_subtract" and self._numeric(b["inputs"].get("NUM2")) in (-160, "-160"):
                     b["inputs"]["NUM2"] = [4, [4, -150]]
 
+        def unshift_garu_base(p):  # one Garu base drawn centred on its position again (8 px up-left of the arcade)
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            for b in blocks.values():
+                parent = blocks.get(b.get("parent") or "") or {}
+                gate = blocks.get(parent.get("parent") or "") or {}
+                cond = blocks.get((gate.get("inputs", {}).get("CONDITION") or [None, None])[1] or "") or {}
+                if (
+                    b["opcode"] == "operator_add"
+                    and parent.get("opcode") == "motion_gotoxy"
+                    and self._numeric(b["inputs"].get("NUM2")) in (10, "10")
+                    and cond.get("opcode") == "operator_equals"  # the base gate, not the Sol Tower's
+                ):
+                    b["inputs"]["NUM2"] = [4, [4, 0]]
+                    return
+
+        def unshift_sol_tower(p):  # the Sol Tower rise frames drawn at the bare position again (8 px up-left)
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            for b in blocks.values():
+                parent = blocks.get(b.get("parent") or "") or {}
+                gate = blocks.get(parent.get("parent") or "") or {}
+                cond = blocks.get((gate.get("inputs", {}).get("CONDITION") or [None, None])[1] or "") or {}
+                if (
+                    b["opcode"] == "operator_add"
+                    and parent.get("opcode") == "motion_gotoxy"
+                    and self._numeric(b["inputs"].get("NUM2")) in (10, "10")
+                    and cond.get("opcode") == "operator_not"
+                ):
+                    b["inputs"]["NUM2"] = [4, [4, 0]]
+                    return
+
+        def sol_crater_shifted(p):  # the gate's RISEN test never matches → the crater takes the shifted branch too
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            for b in blocks.values():
+                spec = (b.get("inputs", {}).get("OPERAND1") or [None, None])[1]
+                lhs = (blocks.get(spec) if isinstance(spec, str) else None) or {}
+                parent = blocks.get(b.get("parent") or "") or {}
+                if (
+                    b["opcode"] == "operator_equals"
+                    and lhs.get("opcode") == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and self._numeric(b["inputs"].get("OPERAND2")) in (director.SOL_RISEN_PHASE, str(director.SOL_RISEN_PHASE))
+                    and parent.get("opcode") == "operator_and"
+                    and (blocks.get(parent.get("parent") or "") or {}).get("opcode") == "operator_not"
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "-1"]]
+                    return
+
+        def garu_node_on_base_cell(p):  # the node seeded on the base's own row again (the old zero offset)
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                    and self._numeric(b["inputs"].get("ITEM")) in (256, "256")
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+        def garu_node_wrong_side(p):  # the node's lateral cell offset flipped to screen-left
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if b["opcode"] == "operator_add" and self._numeric(b["inputs"].get("NUM2")) in (-256, "-256"):
+                    b["inputs"]["NUM2"] = [4, [4, 256]]
+
         def drift_push_start(p):  # PUSH START back at its old project-defined spot
             for b in target(p, "start_screen")["blocks"].values():
                 if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-55, "-55"):
@@ -19310,6 +19993,11 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-render-map", flip_one_renderer),
             ("PRES01-render-map", flip_player_read),
             ("PRES01-bacura-slab", centre_bacura_slab),
+            ("PRES01-garu-double-tile", unshift_garu_base),
+            ("PRES01-sol-double-tile", unshift_sol_tower),
+            ("PRES01-sol-double-tile", sol_crater_shifted),
+            ("PRES01-garu-double-tile", garu_node_on_base_cell),
+            ("PRES01-garu-double-tile", garu_node_wrong_side),
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
             ("PRES01-attract-grid", credit_off_grid),
@@ -19421,12 +20109,20 @@ class ScratchProjectTests(unittest.TestCase):
                     values.add(right[1][1])
             return values
 
-        for name in ("area_01a", "area_01b"):
+        for name in director.TERRAIN_STRIP_TARGETS.values():
             blocks = targets[name]["blocks"]
-            # PLY-02 / audit B11: a new life now restarts the current area from its top, so the
-            # terrain rewinds on new-life too (retiring the interim preserve-terrain fixture).
-            self.assertEqual({"cold-start", "new-game", "new-life"}, scope_literals(blocks))
-            self.assertEqual(2, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
+            # PLY-02 / audit B11: a new life restarts the current area from its top. Since AREA-01 the
+            # strips hold no reset logic of their own: every re-top (cold-start, new-game, new-life) runs
+            # the Stage's `update terrain` and broadcasts `terrain draw` (test_terrain_wiring_contract), and
+            # a strip only draws what that computed — one go-to, from the Stage's state, read no scope.
+            self.assertEqual(set(), scope_literals(blocks))
+            self.assertEqual(1, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
+            hats = sorted(
+                b["fields"]["BROADCAST_OPTION"][0]
+                for b in blocks.values()
+                if b["opcode"] == "event_whenbroadcastreceived"
+            )
+            self.assertEqual(["director stop", "terrain draw"], hats)
 
         player = targets["solvalou"]["blocks"]
         self.assertEqual(
@@ -19683,11 +20379,12 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name in ("Bonus Flag", "Andor Genesis"):
+            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower"):
                 # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
                 # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
-                # and the Andor rip only shows assembled octagons that cannot be sliced into separable
-                # part tiles (BOSS-01), so both are rendered from the pin.
+                # the Andor rip only shows assembled octagons that cannot be sliced into separable
+                # part tiles (BOSS-01), and the Sol Tower crops lack the tower's shadow, so all three are
+                # rendered from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -19722,7 +20419,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "74684a18b001f2afea8a47e1e6363c02adb7a11d6191ce72f4896a97a8e565e3",
+            "65eb970e63df5fe98b667929469ee87b36b222c19ef5bdc119571489dc3d3ffe",
             build_hash,
         )
 

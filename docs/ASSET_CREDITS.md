@@ -115,13 +115,56 @@ other staged wavs duplicate sounds already in the base project (music,
 game-start, player-death, blaster fire) and are intentionally left on those base
 sounds rather than re-committed.
 
-## Terrain area map (reference source, not yet ingested)
+## Terrain rendered from the arcade map data
 
-Operator-supplied source art for the upcoming terrain/area slice (Part of #17).
-It is committed as a source only — no generator ingests it yet, so it produces
-no `src/xevious/assets/` overlay costume and no `project.json` change. When the
-terrain extractor lands it will read this source and record its extracted
-outputs, mirroring the sprite-extraction and HUD-font pipelines above.
+The in-game terrain (slice 20, AREA-01, `docs/mechanics/015-area-clock.md`) is
+rendered by `tools/terrain_render.py` from the pinned arcade reference
+(`jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`): the background
+map ROMs transcribed in `src/map_rom.68k` and the background tiles, colour
+tables and palette in `assets/amiga/xevious_gfx.c`. The tool writes two
+committed source pictures, `assets/terrain/arcade_map.png` (the whole map, one
+pixel per arcade pixel) and `assets/terrain/forest_filler.png` (the forest
+pattern a life begins over); `render --verify` re-derives both byte-for-byte.
+`terrain_render.py generate` slices them into the six terrain costumes on the
+`area_01a` / `area_01b` strips, written under their content-hash filenames in
+`src/xevious/assets/`. Input hashes, output hashes and the credit are in
+`assets/terrain/provenance.json` and `src/xevious/assets/provenance.json`.
+
+| Output | Description | Credit | Source | License |
+| --- | --- | --- | --- | --- |
+| `arcade_map.png`, `forest_filler.png`, six strip costumes | Xevious background map and forest filler | Namco (Xevious, 1983); transcription and tile conversion by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+
+This is the same class as the arcade sprites rendered from the reference for
+the Andor parts: recording provenance is not a claim that credit grants
+permission, this is Namco's copyrighted game content, no ownership is claimed,
+and a rights review is needed before broader distribution
+(`docs/REFERENCE_POLICY.md`).
+
+## Sol Tower rendered from the arcade sprite data
+
+The Sol Tower's seven rise frames (slice 20, `docs/mechanics/044-secrets.md`)
+are decoded from the same pinned reference graphics
+(`assets/amiga/xevious_gfx.c`: sprite tiles 0xA8–0xAB and the 2×2 groups
+0xAC–0xB7, sprite colour table 7, palette) by `tools/sol_tower_render.py` into
+one 224×32 sheet, `src/xevious/assets/7f90e2226e98c3d79f046846412b0fbd.png`,
+on the hidden `sprite_sheets` target; `--verify` re-derives it byte-for-byte at
+the pin. The `sol_tower` entry in `assets/sprite-extraction/manifest.json` crops
+the seven frames from it. They replace the earlier Spriters Resource crops,
+which held the tower's dome but not its shadow.
+
+| Output | Description | Credit | Source | License |
+| --- | --- | --- | --- | --- |
+| Sol Tower sheet and seven `sol-tower/rise` costumes | Sol Tower rise frames | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+
+The same rights caveat as the terrain and the Andor parts applies.
+
+## Terrain area map (fan map, cross-check only — not used by the build)
+
+Operator-supplied source art, committed earlier for the terrain slice. The build
+renders the terrain from the arcade's own map data instead (above), so no
+generator reads this image: it produces no `src/xevious/assets/` costume and has
+no effect on `project.json`. It is kept as a visual cross-check of the rendered
+map; removing it is the operator's call.
 
 | Supplied file | Description | Credit | Source | License | SHA-256 |
 | --- | --- | --- | --- | --- | --- |

@@ -48,8 +48,8 @@ a **known recorded divergence** — behavior the spec explicitly records as an i
 noted, not failed. (The former terrain-preserved-on-death fixture is retired: a new life now restarts
 the current area from its top, per the life-economy slice, and the near-end checkpoint exception to that
 rule is now built in the area clock — a death in the final fifth of an area advances the area number
-instead of restarting. The visual terrain stays decoupled from the area clock at this foundation stage,
-so area position is read from the `area progress`/`area number` variable watchers, not the screen.)
+instead of restarting. Since the visual-terrain slice the terrain is drawn from the area clock, so the
+area and its restart show on screen as well as in the `area progress`/`area number` watchers.)
 
 1. **Cold start.** Green flag: one title presentation (the logo entering as the spec's presentation
    document records), music once, no stray sprites. The small "START SPACE KEY" hint baked into the logo
@@ -66,16 +66,16 @@ so area position is read from the `area progress`/`area number` variable watcher
    drift. Open the variable watchers for **`area progress`**, **`area number`**, **`scroll row`**, and
    **`schedule fired`** — in Scratch these are hidden by default, so **tick the checkbox beside each
    one in the Variables section of the blocks palette** to show its monitor on the stage. While you
-   fly: `area progress` climbs steadily and resets to 0 **only in the
-   same moment `area number` ticks up** — a paired reset-and-advance at an area boundary is correct,
-   but an `area progress` drop that is *not* paired with `area number` changing is a bug; `scroll row`
-   counts 13 down to 0 then wraps 255 down toward 14; and `schedule fired` climbs (once per schedule
+   fly: `area progress` climbs steadily and drops by 65,536 (from about 65,056 to about −480, then keeps
+   climbing) **only in the same moment `area number` ticks up** — the clock carries straight on into the
+   next area, as the arcade's does; an `area progress` drop that is *not* paired with `area number`
+   changing is a bug; `scroll row` counts 13 down to 0 then wraps 255 down toward 14, and after a
+   completion sits on 14 for a moment before counting on from 13; and `schedule fired` climbs (once per schedule
    record as the area scrolls) and resets to 0 at each area boundary. Every area now carries its **own**
    schedule, so the peak `schedule fired` reaches **varies as the area changes** — a coarse sign that each
    area runs its own schedule. (Some areas legitimately share a record count, so two areas showing the
    *same* peak is **not** itself a bug; the exact per-area correctness is guaranteed by the build-time
-   round-trip test, not the eye.) The visual terrain is not yet driven by the clock, so these are
-   variable-watcher checks, not on-screen ones. **Also tick `ai level`, `formation count`, and
+   round-trip test, not the eye.) The terrain picture itself is checked in step 5a. **Also tick `ai level`, `formation count`, and
    `formation type offset`** (DIF-01 / FORM-01): as you fly, `ai level` climbs a little each time a raise
    record fires and stays below **128** (a raise folds it back — you should never see it reach 128); if you
    have been scoring (destroy Toroids to raise the score), it can also jump when a score-adjust record fires
@@ -189,10 +189,13 @@ so area position is read from the `area progress`/`area number` variable watcher
    lingers. Watch **`area number`** across each death, using **`area progress`** to place the death —
    and be sure to exercise **both** kinds, or the checkpoint path goes untested: an **ordinary** death
    (die while `area progress` is low, early in an area) restarts the area from its top and **keeps**
-   `area number`; a **near-end** death (die while `area progress` is above roughly **52,000** — the
-   final fifth before the ≈65,056 completion mark, i.e. `scroll row` in 14–67) **advances** `area
-   number` by one instead (the checkpoint; completing area 16 rolls to 7). With area-1-only art the
-   screen can't show the difference, so `area number` is the pass/fail signal. **You do not need to
+   `area number`; a **near-end** death (die while `area progress` is above about **50,080** — the
+   final fifth before the ≈65,056 completion mark; that is 44 ticks earlier than `scroll row` alone
+   suggests, because the arcade reads the row only after the explosion, while its scroll keeps running)
+   **advances** `area number` by one instead (the checkpoint; completing area 16 rolls to 7). Two edge cases are correct, not bugs: a death 37–44 ticks before the completion mark (`area progress` about 63,650 to 63,870) finishes the area during the explosion and then skips the next one too, so `area number` jumps by **two**; and a death just after an area change, while `area progress` is still negative (about −480 to −256), restarts the new area rather than advancing. The
+   respawn now also shows it: the next area's own terrain rather than the one you died in. The screen
+   stays frozen during the explosion, where the arcade keeps scrolling (a recorded divergence, follow-up
+   issue #158 — note, do not fail). **You do not need to
    reach area 16 by play** — there is no clock-acceleration key, so confirm a **few** real area→area+1
    advances (with `schedule fired` climbing and resetting each boundary, its peak varying as areas
    change — the coarse sanity signal of step 4); the full
@@ -200,6 +203,35 @@ so area position is read from the `area progress`/`area number` variable watcher
    trace, not by playing to the end. Losing your last craft to enemy contact reaches GAME OVER, holds, and
    returns to the title; life icons in the HUD track the count. Through each death the HUD text keeps its
    normal weight — it must never thicken or look bold (that was stacked duplicate glyphs, fixed in slice 20).
+5a. **Terrain — the arcade map, locked to the area clock.** The ground is now the arcade's own map, drawn
+   from its map data, and it scrolls with the area clock. Confirm:
+   - **Each area has its own ground.** Fly across a few area boundaries (watch `area number`): every area
+     shows a different stretch of the map, and the craft never flies over a black or empty band.
+   - **No jump at an area change.** As `area number` ticks up the picture keeps scrolling smoothly: the
+     old area's last ground slides off the bottom while the new area's ground enters at the top. It may
+     change sideways where the two meet — that seam is the arcade's own. For a moment as the new rows
+     first enter (well under a second), the very top edge can show the old area's ground for up to a
+     dozen lines before it is replaced (a Scratch limit, recorded); report anything longer or larger.
+   - **The ground matches the enemies.** Domes, turrets, Logram and the Andor Genesis sit on the same
+     spot of ground every run, and on features that look made for them (a clearing, a pad), not floating
+     over trees or water. Fly the same area twice to compare. A Garu Barra or Garu Derota's top sits
+     centred on its large base, and both sit a little right of and below where the last build drew them
+     (where the arcade draws them); bombing the top still exposes the base's red centre.
+   - **The Sol Tower rises with its shadow.** Bomb a hidden Sol Tower (area 1 hides two; the debug ground key
+     (G) brings one in as its second family, right after a Barra): it rises in seven steps into the tall tower with its long dark shadow running
+     down and to the right, as in the before/after picture you approved, sitting a little right of and below
+     where the last build drew it. A second bomb leaves the crater where the tower stood.
+   - **A Bacura only kills where it is drawn.** Fly the craft close beside a tumbling Bacura, especially
+     alongside it while it is edge-on (a thin bar): you should survive anywhere the slab is not drawn, and
+     die as soon as the craft touches the drawn slab. This is fairer than the arcade, which kills across the
+     whole slab-sized box (your call; recorded). Shots still bounce off the whole slab width as before.
+   - **A new life starts over forest.** After a death the screen shows the plain forest pattern with the
+     area's first ground entering above it and scrolling down, both for an ordinary death and a near-end
+     one (step 5). A new game does the same in area 1.
+   - **Looks sharp enough.** The map is drawn at one costume pixel per arcade pixel and scaled up 1.25×,
+     at normal size and full screen. Say if it looks soft or the frame rate drops; it can be re-rendered
+     sharper.
+   The 16→7 loop is checked by the engine's accelerated trace, not by playing to area 16.
 6. **Life economy — score, cap, bonus, HUD.** Destroy Toroids while playing: the score climbs by 30 a
    kill, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it whenever the
    score passes it. Each digit shows leading zeros, arcade-style. Reaching 20,000 grants an extra craft
@@ -236,8 +268,8 @@ so area position is read from the `area progress`/`area number` variable watcher
    anywhere on its drawn body (no longer a doubled window), and a bomb dropped directly between two ground
    objects that sit side by side — a paired Barra, say — destroys both, while one aimed well wide of a pair
    misses them. A Bacura is now drawn where the arcade draws it — a little to the right of where the last
-   build put it — so touching it anywhere along its drawn width kills you (the arcade allows a few pixels of
-   overlap at each end), and shots bounce off it across that same width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
+   build put it — and it kills only where its tumbling slab is actually drawn (step 5a), while shots
+   bounce off it across the arcade's whole slab width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
    the alternative is a recorded port speed-up, and that is your call.
    **Title and best-five layout:** on the title, PUSH START BUTTON and INSERT COIN read centred in the
    window, and the 1 PLAYER / 2 PLAYERS choices are left-aligned with each other as a pair centred under

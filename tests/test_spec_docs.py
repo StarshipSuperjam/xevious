@@ -355,35 +355,46 @@ def _eval_block(blocks, block_id, env):
         "operator_divide": lambda a, b: a / b,
         "operator_mod": lambda a, b: a % b,
         "operator_equals": lambda a, b: 1 if a == b else 0,
+        "operator_gt": lambda a, b: 1 if a > b else 0,
+        "operator_lt": lambda a, b: 1 if a < b else 0,
+        "operator_and": lambda a, b: 1 if a and b else 0,
     }
+    comparison = ("operator_equals", "operator_gt", "operator_lt", "operator_and")
     if op in binary:
         # Match scratch-vm's operand keys: arithmetic reads NUM1/NUM2, comparison reads
         # OPERAND1/OPERAND2. (The generator's _reporter makes the same distinction; keeping
         # these in lockstep is what makes this interpreter a check on the SHIPPED blocks.)
-        slot1, slot2 = ("OPERAND1", "OPERAND2") if op == "operator_equals" else ("NUM1", "NUM2")
+        slot1, slot2 = ("OPERAND1", "OPERAND2") if op in comparison else ("NUM1", "NUM2")
         left = _eval_input(blocks, block["inputs"][slot1], env)
         right = _eval_input(blocks, block["inputs"][slot2], env)
         return binary[op](left, right)
     raise AssertionError(f"unexpected reporter opcode {op}")
 
 
-def _run_statements(blocks, first_id, env):
+def _run_statements(blocks, first_id, env, limit=None):
+    # Runs the chain from `first_id`; `limit` stops after that many top-level statements (for a
+    # helper's statements spliced into a longer stack).
     block_id = first_id
-    while block_id:
+    count = 0
+    while block_id and (limit is None or count < limit):
         block = blocks[block_id]
         op = block["opcode"]
         if op == "data_setvariableto":
             env[block["fields"]["VARIABLE"][0]] = _eval_input(
                 blocks, block["inputs"]["VALUE"], env
             )
-        elif op == "control_if":
-            if _eval_input(blocks, block["inputs"]["CONDITION"], env):
-                substack = block["inputs"].get("SUBSTACK")
-                if substack:
-                    _run_statements(blocks, substack[1], env)
+        elif op == "data_changevariableby":
+            name = block["fields"]["VARIABLE"][0]
+            env[name] = env.get(name, 0) + _eval_input(blocks, block["inputs"]["VALUE"], env)
+        elif op in ("control_if", "control_if_else"):
+            taken = _eval_input(blocks, block["inputs"]["CONDITION"], env)
+            substack = block["inputs"].get("SUBSTACK" if taken else "SUBSTACK2")
+            if substack and (taken or op == "control_if_else"):
+                _run_statements(blocks, substack[1], env)
         else:
             raise AssertionError(f"unexpected statement opcode {op}")
         block_id = block["next"]
+        count += 1
 
 
 class GeneratedRngStep(unittest.TestCase):
@@ -457,8 +468,12 @@ class GeneratedAreaClock(unittest.TestCase):
         reporter = self._row_reporter(blocks)
         # area progress -> derived arcade scroll row (hand-verified): the descent 0x0D..0x00
         # wraps to 0xFF and continues down, and the area completes at the first row 0x0E, which
-        # is progress 65056 (not 65280 — the clock resets before that).
-        cases = {0: 13, 256: 12, 3328: 0, 3584: 255, 64800: 15, 65024: 15, 65056: 14, 65280: 14}
+        # is progress 65056. Completion carries the clock to 65056 - 65536 = -480, the same
+        # counter value: the row stays 0x0E through -256 and reaches 0x0D at -224.
+        cases = {
+            0: 13, 256: 12, 3328: 0, 3584: 255, 64800: 15, 65024: 15, 65056: 14, 65280: 14,
+            -480: 14, -256: 14, -224: 13,
+        }
         for progress, expected in cases.items():
             row = _eval_block(blocks, reporter, {"area progress": progress})
             self.assertEqual(expected, row, f"area progress {progress}")
@@ -477,6 +492,157 @@ class GeneratedAreaClock(unittest.TestCase):
             prev = row
             progress += 32
         self.assertEqual(14, prev)
+
+    def _completion(self, blocks):
+        # The walk's completion `if/else`: AND(scroll row == 14, area progress > 0).
+        for block in blocks.values():
+            if block["opcode"] != "control_if_else":
+                continue
+            cond = blocks.get((block["inputs"].get("CONDITION") or [None, None])[1])
+            if not cond or cond["opcode"] != "operator_and":
+                continue
+            parts = [blocks.get(cond["inputs"][s][1]) for s in ("OPERAND1", "OPERAND2")]
+            if any(p and p["opcode"] == "operator_equals"
+                   and p["inputs"]["OPERAND1"][1][1] == "scroll row" for p in parts):
+                return block
+        raise AssertionError("no area-completion if/else found in the emitted blocks")
+
+    def test_generated_completion_carries_the_clock(self):
+        # roadmap-evidence: AREA-01 success  (the emitted completion fires once per area and carries
+        #   the clock: area 1 lasts 2033 ticks, every later area the full 2048, and the 8 carry ticks at
+        #   row 0x0E never re-fire it)
+        # Interpret the SHIPPED completion condition and its progress change tick by tick across
+        # four areas: completion must fire exactly once per area, area 1 must last 65056/32 = 2033
+        # ticks and every carried area the full 65536/32 = 2048, and the carry window (row 0x0E
+        # for 8 ticks with progress <= 0) must never re-fire it.
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        reporter = self._row_reporter(blocks)
+        completion = self._completion(blocks)
+        then_ids = []
+        bid = completion["inputs"]["SUBSTACK"][1]
+        while bid:
+            then_ids.append(bid)
+            bid = blocks[bid]["next"]
+        changes = [
+            blocks[b] for b in then_ids
+            if blocks[b]["opcode"] == "data_changevariableby"
+            and blocks[b]["fields"]["VARIABLE"][0] == "area progress"
+        ]
+        self.assertEqual(1, len(changes), "completion changes area progress exactly once")
+        self.assertFalse(
+            any(blocks[b]["opcode"] == "data_setvariableto"
+                and blocks[b]["fields"]["VARIABLE"][0] in ("area progress", "scroll row")
+                for b in then_ids),
+            "completion must not re-top the clock",
+        )
+        change = _eval_input(blocks, changes[0]["inputs"]["VALUE"], {})
+        env = {"area progress": 0}
+        ticks, lengths = 0, []
+        while len(lengths) < 4:
+            env["area progress"] += 32
+            env["scroll row"] = _eval_block(blocks, reporter, env)
+            ticks += 1
+            if _eval_input(blocks, completion["inputs"]["CONDITION"], env):
+                lengths.append(ticks)
+                ticks = 0
+                env["area progress"] += change
+                self.assertEqual(-480, env["area progress"])
+                self.assertEqual(14, _eval_block(blocks, reporter, env))
+        self.assertEqual([2033, 2048, 2048, 2048], lengths)
+
+    def test_generated_completion_guard_bites(self):
+        # roadmap-evidence: AREA-01 failure  (without the progress > 0 guard the emitted completion
+        #   re-fires on the tick after a carry, still at row 0x0E)
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        completion = self._completion(blocks)
+        cond = blocks[completion["inputs"]["CONDITION"][1]]
+        guard_free = cond["inputs"]["OPERAND1"]
+        if blocks[guard_free[1]]["opcode"] != "operator_equals":
+            guard_free = cond["inputs"]["OPERAND2"]
+        env = {"area progress": -448, "scroll row": 14}
+        self.assertEqual(0, _eval_input(blocks, completion["inputs"]["CONDITION"], env))
+        self.assertEqual(1, _eval_input(blocks, guard_free, env))
+
+    @staticmethod
+    def _arcade_checkpoint(progress, area):
+        # Independent model of the arcade: after the death the scroll keeps running for 88 frames
+        # (44 ticks) with the area completion live (two-phase: row 0x0E with the counter having
+        # left it), then `main_gameplay_loop` reads the row and advances on row in [0x0E, 0x43].
+        def row(p):
+            return ((0x0D00 - p) % 0x10000) // 0x100
+
+        def advance(a):
+            return 7 if a == 16 else a + 1
+
+        for _tick in range(44):
+            progress += 32
+            if row(progress) == 14 and progress > 0:
+                area = advance(area)
+                progress -= 0x10000
+        if 14 <= row(progress) <= 0x43:
+            area = advance(area)
+        return area
+
+    def test_generated_checkpoint_matches_arcade_outcome(self):
+        # roadmap-evidence: AREA-01 success  (the emitted projected checkpoint gives every reachable
+        #   death the arcade's area outcome, including the completion-during-explosion skip and the
+        #   no-skip carry window)
+        # Run the SHIPPED checkpoint statements (both sites) for every reachable death-tick progress —
+        # area 1 (0..65024) and a carried area (-480..65024) — and compare the area they leave with the
+        # independent tick-by-tick arcade model above.
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        starts = [
+            bid for bid, b in blocks.items()
+            if b["opcode"] == "data_setvariableto"
+            and b["fields"]["VARIABLE"][0] == "checkpoint progress"
+        ]
+        self.assertEqual(2, len(starts), "the checkpoint runs at the new-life re-top and the 2P handoff")
+        outcomes = {}
+        for start in starts:
+            for area in (5, 16):
+                for progress in range(-480, 65056, 32):
+                    env = {"area progress": progress, "area number": area}
+                    _run_statements(blocks, start, env, limit=3)
+                    expected = self._arcade_checkpoint(progress, area)
+                    self.assertEqual(expected, env["area number"], f"death at {progress}, area {area}")
+                    if area == 5:
+                        outcomes[progress] = env["area number"] - area
+        # The landmarks the records state: a death in the carry window does not skip; a death 37-44
+        # ticks before the end completes during the explosion and then skips the next area too; the
+        # band floor moved 44 ticks earlier than the frozen-row read.
+        self.assertTrue(all(outcomes[p] == 0 for p in range(-480, -255, 32)))
+        self.assertEqual(
+            [p for p, d in outcomes.items() if d == 2], list(range(63648, 63873, 32))
+        )
+        self.assertEqual(0, outcomes[0])
+        first_advance = min(p for p, d in outcomes.items() if d >= 1)
+        self.assertEqual(50080, first_advance)
+
+    def test_checkpoint_projection_bites(self):
+        # roadmap-evidence: AREA-01 failure  (a checkpoint that reads the frozen death-tick row — no
+        #   projection — misses the completion-during-explosion skip and the moved band floor)
+        def frozen(progress, area):
+            row = ((0x0D00 - progress) % 0x10000) // 0x100
+            return area + 1 if 14 <= row <= 0x43 else area
+
+        mismatches = [
+            p for p in range(-480, 65056, 32)
+            if frozen(p, 5) != self._arcade_checkpoint(p, 5)
+        ]
+        self.assertIn(63648, mismatches)
+        self.assertIn(50080, mismatches)
+        # A death in the carry window: the frozen read (row 0x0E) would advance; the arcade does not.
+        self.assertIn(-480, mismatches)
+
+    def test_no_area_opens_on_the_completion_row(self):
+        # After a carry the row is 0x0E for 8 ticks with the NEW area's schedule live. No area's first
+        # record sits at row 0x0E, so the carry window fires nothing early (the consume loop only
+        # ever tests the record at the cursor, which at the start of an area is its first).
+        areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
+        for area in areas:
+            records = area["records"]
+            self.assertTrue(records, f"area {area['area']} has records")
+            self.assertNotEqual(14, records[0]["scroll_row"], f"area {area['area']}")
 
     def test_area_map_column_matches_terrain_json(self):
         project = json.loads(PROJECT_JSON.read_text())

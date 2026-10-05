@@ -77,7 +77,8 @@
   (`slot x = 0`, since the arcade never writes `_X`), `slot dx = BACURA_DRIFT_DX` (16), `slot dy = 0`, and —
   the distinctive contract — writes **no** `slot pts` (a Bacura is never scored). `install_update_bacura`
   gates the craft-death `player hit` write behind an overlap reporter carrying the **wider** `HIT_WINDOW_BACURA`
-  (28, 40, 8, 16) — recognisable by its unique dy-high bound of 11 — then drifts (`slot x += 4 × slot dx`) and
+  (28, 40, 8, 16) — recognisable by its unique lateral high bound of 27 (11 before slice 20 corrected the
+  mirrored range; since slice 20 the bounds shrink to the drawn frame, deviation (9)) — then drifts (`slot x += 4 × slot dx`) and
   culls off the bottom (`row ≥ CULL_ROW_MAX`). The live population is the per-tick pump `install_pump_bacura`,
   which flattens the two arcade coroutines into one atomic pass: the INC half counts `one second cntr` down
   `TICK_TIMER_STEP` per tick from `BACURA_INC_PERIOD_FRAMES` (60) and, on zero, admits one slab (clamped to the
@@ -111,8 +112,8 @@
   pins the render to a single frame).
 - Acceptance criteria: In areas 3/4/7/11/14 (and via the T-key debug spawn) Bacura slabs enter from the top of
   their own band and drift steadily downward; a player shot **cannot destroy** one (it bounces off, WPN-01);
-  a bomb cannot reach one; no Bacura ever scores; and touching a Bacura kills the craft through the wider
-  contact box. The operator playtest confirms the felt behavior — indestructible bars sliding down the field
+  a bomb cannot reach one; no Bacura ever scores; and touching a Bacura kills the craft — since slice 20 only
+  where the drawn slab is, deviation (9). The operator playtest confirms the felt behavior — indestructible bars sliding down the field
   that you must dodge or shoot *around*, not through.
 - Fidelity status: **Window units and orientation superseded (slice 20, [record 054](054-arcade-screen-proportions.md)).** The shadow bytes are whole pixels laterally and 2-pixel units in depth, and the carry idiom accepts [bias − width, bias − 1], so the Bacura-vs-craft box is lateral −12..+27, not the mirrored −28..+11 below. Verified line-by-line against the pinned reference this slice (`handle_01_Bacura` including
   its per-frame `bacura_sprite_tbl` tumble tail and `save_PC_to_fn_tbl_and_ret`, `check_bacura_hit_solvalou`,
@@ -148,6 +149,27 @@
   (8) **Super Xevious content excluded.** Super-Solvalou area 6 has one extra Bacura record in the arcade; the
   port's extract is normal-only by construction (mechanics 017) and area 6 is correctly empty — the exclusion
   is intended, not a gap ([aerial enemies](../spec/aerial-enemies.md) catalogs Super Xevious as excluded).
+  (9) **Craft-kill box fitted to the visible slab (owner decision, slice 20 visual-terrain playtest).** The
+  arcade's `check_bacura_hit_solvalou` (2225–2237) tests the craft's centre columns 4–12 (all 16 rows) against
+  the slab's whole 32 × 16 tile: lateral −12..+27 px, depth −8..+7 two-pixel units. The tumble frames never fill
+  that tile — the edge-on frames are only 4–8 px thick and the broadside frames leave 3–4 empty columns at each
+  end — so in the arcade, and in the faithful port, the craft dies up to 6 px from any drawn pixel. The owner
+  found this unfair in playtest and chose to fix it as a recorded divergence. The port keeps the arcade's craft
+  core but tests it against the **opaque part of the frame on screen**: per tumble frame, the opaque rows T..B
+  and columns L..R of the slab (`BACURA_FRAME_OPAQUE`, read from the eight `bacura_sprite_tbl` tiles,
+  4268–4276, in `assets/amiga/xevious_gfx.c` at the pin; every frame is symmetric in its tile), giving lateral
+  [L − 12, R − 4] px and depth [−⌊(B + 1)/2⌋, ⌊(15 − T)/2⌋] units (`bacura_fair_window`). The whole tile gives
+  back the arcade box exactly; every frame's box lies inside it. The frame is the renderer's own index,
+  `floor(slot x / 128) mod 8`, read at the tick-start position the check already uses, so the box always
+  matches the frame drawn there. `install_update_bacura` reads T and L at runtime with `letter (frame + 1) of`
+  two digit strings (`BACURA_FRAME_TOP_DIGITS`, `BACURA_FRAME_LEFT_DIGITS`) in `_bacura_fair_craft_reporter`.
+  Only the craft death changes: the shot bounce ([038](038-bacura-bounce.md)) keeps the arcade's own window, so
+  a shot still rebounds off the whole tile. Evidence: `tests/test_reference_sprite_renders.py` (the full tile
+  reproduces `HIT_WINDOW_BACURA`; every frame is inside it; the digit strings give the same bounds; the
+  extents match the reference tiles), the `bacura-craft-fair-window` clause of `_air11_failures` with a
+  corrupter that restores the full-tile depth, and the harness scenario
+  `bacura-craft-kill-box-is-the-visible-slab` (craft beside an edge-on frame's empty rows or a broadside frame's
+  empty columns survives, craft on the drawn slab dies; its negative restores the whole tile).
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

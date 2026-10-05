@@ -116,9 +116,9 @@
   - **The Garu node's 8-px offset is lateral, and its row is set absolutely.** The source sets the node
     `_Y = base_Y − 0x100` (an 8-px offset on the lateral axis) and its `_X` (row) to an absolute value, not
     a base-relative row offset; the locked spec was corrected to say "8-px lateral" at settle time
-    ([ground objects](../spec/ground-objects.md)). That arcade offset exists to centre a corner-anchored 1×1
-    node inside a corner-anchored 2×2 base; the port centre-anchors both frames, so it achieves the same
-    visual centring differently — see the port-necessity note below.
+    ([ground objects](../spec/ground-objects.md)). That arcade offset centres the 1×1 node on the 2×2 base
+    as the arcade draws it; since the visual-terrain slice the port reproduces both the offset and the
+    base's draw shift — see the placement note below.
   - **Port necessity — the destructible top is centred on the exposed base.** The faithful structure (the
     appearance the operator approved) is: **bomb the pyramid top to expose the base beneath.** The
     node draws its own top sprite (the `barra/idle` pyramid); the indestructible base **holds its red-socket
@@ -129,13 +129,20 @@
     and the crop-only pipeline has no red-off cell; an earlier port alternated the two base frames (`01`↔`02`),
     but they differ mostly in the black socket (172 of 196 px), so it read as the whole sprite flipping
     pyramid↔socket rather than the red flashing. Per the operator (2026-09-24) the exposed base holds frame
-    `02` statically. The top must be **centred** on the base (node `slot x`/`slot y` = the
-    base's): the arcade's `_X`/`_Y` cell offset is corner-centring for a corner-anchored 2×2 base, but the
-    port places sprites by their centre, so it becomes a zero relative offset. An early port copied that offset
-    literally and the top slid out of a corner as a **second** mound (the "doubling" the operator first saw);
-    a later attempt drew the base's own second frame as the node centred on it, which merged them and removed
-    the destructible top. Because `slot x`/`slot y` are both the drawn and bomb-hit position, the hit cell sits
-    under the visible top, and the base↔node linkage is by slot **index** (N+1), not coordinate. (An earlier
+    `02` statically. The top is drawn **centred** on the base. **Placement (faithful, since the
+    visual-terrain slice; supersedes the earlier "zero relative offset" port necessity):** the arcade draws a
+    2×2 sprite with its tiles at its position and 16 px toward screen-right and screen-down, so the base's
+    centre is 8 px right of and below its position, and it seeds the node one cell below and one cell right
+    (`_X` high byte 1, `_Y = base_Y − 0x100`), which lands the 1×1 node's centre on the base's. The port had
+    instead seeded the node on the base's own cell and drawn the base unshifted: centred on each other, but
+    both 8 px up-left of the arcade, node hit/fire/burst position included. It now seeds the node at +256
+    slot x / −256 slot y and draws the base 10 stage units right and 10 down
+    ([record 054](054-arcade-screen-proportions.md) deviation 20). An early port copied the offset without
+    the base's draw shift and the top slid out of a corner as a **second** mound (the "doubling" the
+    operator first saw); a later attempt drew the base's own second frame as the node centred on it, which
+    merged them and removed the destructible top. Because `slot x`/`slot y` are both the drawn and bomb-hit
+    position, the hit cell sits under the visible top, and the base↔node linkage is by slot **index** (N+1),
+    not coordinate. (An earlier
     attempt to scale the depth offset by the anamorphic ratio, `GARU_NODE_DEPTH_UNITS = 480`, only slid the
     sprite and was reverted.) The Boza composite keeps its own anamorphic spacing — see
     [042](042-boza-logram.md). *(Since slice 20 the render map is isotropic, so that spacing factor is 1 —

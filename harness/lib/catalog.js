@@ -32,6 +32,11 @@ import * as mutate from './mutate.js';
 const RNG_FIXTURES = JSON.parse(
   readFileSync(new URL('../../docs/spec/data/rng.json', import.meta.url)),
 ).generator.fixture_sequences;
+// The per-area terrain start columns (area_offset_in_map_tbl, xevious_sub.68k 731-732), indexed area - 1,
+// read from the committed spec data the generator builds the `area map column` list from.
+const AREA_MAP_COLUMNS = JSON.parse(
+  readFileSync(new URL('../../docs/spec/data/terrain.json', import.meta.url)),
+).area_offset_in_map_tbl.values;
 const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
 // Suppress ALL ground-object spawns for the rest of the run by emptying the schedule's ground-object
 // type column (the ground analogue of forcing the flying type table to the non-shooting Toroid). With no
@@ -142,13 +147,11 @@ function reachSecondDemo(vm) {
   return state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
 }
 
-// Every read resolves through a manifest id (hard-errors on a rename), including the
-// scope-duplicated ones: `terrain-scroll-step-a` is area_01a's, distinct from area_01b's.
+// Every read resolves through a manifest id (hard-errors on a rename).
 const state = stateOf;
 const epoch = (vm) => readVar(vm, 'game-director-epoch');
 const outcome = (vm) => readVar(vm, 'game-director-death-outcome');
 const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
-const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
 // Step until `pred(vm)` holds or the budget runs out; returns whether it held. Used where a finish now
 // routes through the terminal GAME OVER hold (high-score-entry -> game-over -> title) rather than straight
 // to the title, so reaching the title takes more than a couple of pumps.
@@ -555,30 +558,53 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'bomb in flight', 0, 99),
   },
   {
-    key: 'terrain-wrap',
-    behavior: 'The terrain scroll counter advances and wraps on its counted cycle',
+    key: 'terrain-strips-draw-state',
+    behavior:
+      "The two terrain strips draw the Stage's terrain state every tick: each strip's costume, position and visibility match its parity's variables",
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Each pump advances the counter by hundreds, so a handful covers several full cycles.
-      let prev = scrollA(vm);
-      let increased = false;
-      let wrapped = false;
-      for (let i = 0; i < 40; i += 1) {
+      // Seed the clock ~1250 ticks short of area 1's end, then pump until the run has sampled both sides of
+      // the area change and 12 pumps beyond it. A pump runs as many walk ticks as fit its wall-clock work
+      // budget (~100 on a dev machine; a fast runner covers more), so a short lead-in can be crossed by the
+      // very first pump; the sample count follows the crossing, not a fixed count, and the cap only bounds
+      // a run that never crosses (which the area assertion then reports).
+      // (The harness VM has no renderer: no fencing and no layer order -- the layering is pinned in pytest.)
+      writeVar(vm, 'area-progress', 24000);
+      const strips = { even: 'area_01a', odd: 'area_01b' };
+      const mismatches = [];
+      const seen = { even: new Set(), odd: new Set() };
+      let shownSamples = 0;
+      const areas = new Set();
+      let afterCrossing = 0;
+      for (let i = 0; i < 400 && afterCrossing < 12; i += 1) {
         step(vm, 1);
-        const v = scrollA(vm);
-        if (v > prev) increased = true;
-        if (v < prev) wrapped = true;
-        prev = v;
+        areas.add(Number(readVar(vm, 'area-number')));
+        if (areas.size >= 2) afterCrossing += 1;
+        for (const [parity, name] of Object.entries(strips)) {
+          const t = vm.runtime.getSpriteTargetByName(name);
+          const want = {
+            costume: String(readVar(vm, `terrain-${parity}-costume`)),
+            x: Number(readVar(vm, `terrain-${parity}-x`)),
+            y: Number(readVar(vm, `terrain-${parity}-y`)),
+            visible: Number(readVar(vm, `terrain-${parity}-shown`)) === 1,
+          };
+          const got = { costume: t.getCostumes()[t.currentCostume].name, x: t.x, y: t.y, visible: t.visible };
+          if (JSON.stringify(want) !== JSON.stringify(got)) mismatches.push({ i, parity, want, got });
+          seen[parity].add(want.costume);
+          if (want.visible) shownSamples += 1;
+        }
       }
-      return { increased, wrapped };
+      return { mismatches, even: [...seen.even], odd: [...seen.odd], shownSamples, areas: [...areas] };
     },
     assert(obs) {
-      assert.equal(obs.increased, true, 'scroll counter advances while playing');
-      assert.equal(obs.wrapped, true, 'scroll counter wraps on its cycle');
+      assert.deepEqual(obs.mismatches, [], 'every strip shows its costume, x, y and visibility from the terrain state');
+      assert.ok(obs.shownSamples > 12, `strips were on screen in the samples (${obs.shownSamples})`);
+      assert.ok(obs.areas.length >= 2 && obs.areas.includes(1), `the run sampled both sides of an area change (areas ${obs.areas})`);
+      assert.ok(obs.even.length >= 2 && obs.odd.length >= 2, `strips changed band (${obs.even} / ${obs.odd})`);
     },
-    // Freeze the counter so it never advances or wraps → assertion fails.
-    negativeMutation: (p) => mutate.freezeVariableChange(p, 'area_01a', 'scroll step'),
+    // The even strip never shows (its shown test compares against 99) → visibility mismatches.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'area_01a', 'terrain even shown', 1, 99),
   },
   {
     key: 'start-and-input-gating',
@@ -1756,44 +1782,522 @@ export const SCENARIOS = [
   {
     key: 'near-end-checkpoint',
     behavior:
-      'A new-life death advances the area when the frozen scroll row is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
+      'A new-life death advances the area when the row the arcade reads after its 44 ticks of post-death scrolling is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
     playtestStep: 5,
     async drive(vm) {
       // The live death->respawn sequence completes within a single headless pump, so it cannot be
-      // paused to inject a frozen row. Instead drive `area_reset` in isolation: green-flag to a
-      // settled state, inject the new-life scope + a chosen area number + a chosen frozen scroll
-      // row, fire `director reset`, and read the resulting area number — exactly the death-tick
-      // checkpoint decision, at every boundary.
-      const trial = (row, area) => {
+      // paused to inject a death position. Instead drive `area_reset` in isolation: green-flag to a
+      // settled state, inject the new-life scope + a chosen area number + a chosen frozen death-tick
+      // `area progress`, fire `director reset`, and read the resulting area number — exactly the
+      // checkpoint decision. The checkpoint projects 44 ticks (1408 progress) ahead, so the window's
+      // edges in death-tick progress are: projected row 67 first at 50080, row 15 at 63616.
+      const trial = (progress, area) => {
         vm.greenFlag();
         step(vm, 2);
         writeVar(vm, 'game-director-reset-scope', 'new-life');
         writeVar(vm, 'area-number', area);
-        writeVar(vm, 'area-scroll-row', row);
+        writeVar(vm, 'area-progress', progress);
         fireBroadcast(vm, 'director reset');
         step(vm, 1);
         return readVar(vm, 'area-number');
       };
       return {
-        low: trial(14, 5), // 0x0E — window low edge
-        mid: trial(40, 5),
-        high: trial(67, 5), // 0x43 — window high edge
-        belowTop: trial(13, 5), // area-top row, below the window
-        aboveWindow: trial(68, 5), // just above 0x43
-        wrap16: trial(40, 16), // in-window death in area 16
+        high: trial(50080, 5), // projected row 67 (0x43) — window high edge
+        mid: trial(57984, 5), // projected row 41
+        low: trial(63616, 5), // projected row 15 — the last tick before the projection completes the area
+        aboveWindow: trial(50048, 5), // projected row 68, just above 0x43
+        top: trial(0, 5), // projected row 7, below the window
+        wrap16: trial(57984, 16), // in-window death in area 16
       };
     },
     assert(obs) {
-      assert.equal(obs.low, 6, 'a death at row 14 (window low edge) advances the area');
-      assert.equal(obs.mid, 6, 'a death at row 40 advances the area');
-      assert.equal(obs.high, 6, 'a death at row 67 (window high edge) advances the area');
-      assert.equal(obs.belowTop, 5, 'a death at row 13 restarts (holds the area)');
-      assert.equal(obs.aboveWindow, 5, 'a death at row 68 restarts (holds the area)');
+      assert.equal(obs.high, 6, 'a death projecting to row 67 (window high edge) advances the area');
+      assert.equal(obs.mid, 6, 'a death projecting to row 41 advances the area');
+      assert.equal(obs.low, 6, 'a death projecting to row 15 advances the area');
+      assert.equal(obs.aboveWindow, 5, 'a death projecting to row 68 restarts (holds the area)');
+      assert.equal(obs.top, 5, 'a death at the area top restarts (holds the area)');
       assert.equal(obs.wrap16, 7, 'an in-window death in area 16 wraps to area 7');
     },
     // Raise the window's lower bound (row > 13) out of reach, so no death is ever near-end and the
     // in-window advances never happen → the advance assertions fail.
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 13, 999),
+  },
+  {
+    // AREA-01 (slice 20): the projection's area-change edge. The arcade keeps scrolling for 88 frames
+    // after a death with the area completion live (xevious_main.68k 507-521; xevious_sub.68k 696-730), so a
+    // death in the last 37-44 ticks of an area completes it during the explosion and THEN reads row 0x0E —
+    // skipping the next area too; a death in the 8-tick carry window at the start of an area (row 0x0E,
+    // progress -480..-256) reads row 9 after the scroll and restarts.
+    // roadmap-evidence: AREA-01 success  (a death 37-44 ticks before the end of an area skips the next area,
+    //   one 36 ticks before advances once, and a carry-window death restarts — live, through area_reset)
+    key: 'checkpoint-projected-area-change',
+    behavior:
+      'A death in the last 37-44 ticks of an area completes it during the explosion and skips the next area too, while a death in the carry window at the start of an area restarts it',
+    playtestStep: 5,
+    async drive(vm) {
+      const trial = (progress, area) => {
+        vm.greenFlag();
+        step(vm, 2);
+        writeVar(vm, 'game-director-reset-scope', 'new-life');
+        writeVar(vm, 'area-number', area);
+        writeVar(vm, 'area-progress', progress);
+        fireBroadcast(vm, 'director reset');
+        step(vm, 1);
+        return readVar(vm, 'area-number');
+      };
+      return {
+        skipFirst: trial(63648, 5), // projects to 65056: completes, carries to -480 (row 0x0E) -> advances again
+        skipLast: trial(63872, 5), // projects to 65280 -> -256, still row 0x0E
+        afterSkip: trial(63904, 5), // projects to 65312 -> -224, row 0x0D: completion only
+        skip16: trial(63648, 16), // completes 16 -> 7, then the band advances 7 -> 8
+        carryStart: trial(-480, 5), // carry window: projects to 928, row 9
+        carryEnd: trial(-256, 5),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.skipFirst, 7, 'a death 44 ticks before the end skips the next area');
+      assert.equal(obs.skipLast, 7, 'a death 37 ticks before the end skips the next area');
+      assert.equal(obs.afterSkip, 6, 'a death 36 ticks before the end advances one area');
+      assert.equal(obs.skip16, 8, 'the skip wraps 16 -> 7 and then advances to 8');
+      assert.equal(obs.carryStart, 5, 'a death at the start of the carry window restarts the area');
+      assert.equal(obs.carryEnd, 5, 'a death at the end of the carry window restarts the area');
+    },
+    // roadmap-evidence: AREA-01 failure  (a checkpoint that reads the frozen death-tick position — no
+    //   projection — misses the skip and advances on a carry-window death)
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', 1408, 0),
+  },
+  {
+    // AREA-01 (slice 20): completing an area carries the scroll clock, as the arcade does (its
+    // `sub_fn_3__handle_next_area`, xevious_sub.68k 696-730, never resets the counter): `area progress`
+    // drops by 65536 to the same counter value and keeps counting, rather than re-topping to 0. Live:
+    // seed area progress two ticks short of completion during play and let the walk run. The walk's
+    // `tick` advances once per walk tick, right after `advance area`, so `area progress` must equal
+    // seed + 32*ticks - 65536 exactly (one carry; a re-top would leave 32*(ticks after completion)).
+    // roadmap-evidence: AREA-01 success  (the clock carries across a live area completion and the 8 carry
+    //   ticks at row 0x0E never complete the area a second time)
+    key: 'area-clock-carry',
+    behavior:
+      'Completing an area carries the scroll clock (progress drops by 65536 and keeps counting) instead of re-topping it, and the carry window at row 0x0E never completes the area twice',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const seed = 64992; // two ticks short of 65056, area 1's completion
+      writeVar(vm, 'area-number', 3);
+      writeVar(vm, 'area-progress', seed);
+      const tick0 = readVar(vm, 'tick');
+      let ticks = 0;
+      for (let i = 0; i < 40 && ticks < 12; i += 1) {
+        step(vm, 1);
+        ticks = readVar(vm, 'tick') - tick0;
+      }
+      return {
+        ticks,
+        progress: readVar(vm, 'area-progress'),
+        area: readVar(vm, 'area-number'),
+        state: readVar(vm, 'game-director-state'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.state, 'playing', 'precondition: still playing (no death reset the clock)');
+      assert.ok(obs.ticks >= 12, `the walk ran past the 8-tick carry window (ran ${obs.ticks})`);
+      assert.ok(obs.ticks < 2000, 'the walk stopped before the next area could complete');
+      assert.equal(obs.area, 4, 'the area completed exactly once');
+      assert.equal(
+        obs.progress,
+        64992 + 32 * obs.ticks - 65536,
+        'area progress carried by 65536 across the completion and kept counting',
+      );
+    },
+    // Undo the carry (change by -65536 -> by 0): progress keeps climbing past completion, still at row
+    // 0x0E for 7 more ticks with progress > 0, so the area completes again on each of them.
+    negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'Stage', 'area progress', -65536, 0),
+  },
+  {
+    // AREA-01 (slice 20): the terrain phase. tools/terrain_render.py derives from the reference renderer
+    // that map row R's top edge sits 8R - C/32 + phase lines below the playfield top (xevious_sub.68k
+    // 234-245, 272; amiga.68k 136, 1372) and a ground sprite's centre at slot x/32 - 24 (amiga.68k
+    // 1651-1698, 1865), so an object the schedule fires at row S rides with its centre on the top edge of
+    // map row S - 2 — the cell Namco's own clearings are drawn round (pinned by tests/test_terrain_render.py).
+    // Live: seed the clock two ticks above area 1's first ground records (row 214: a Barra in slot 2 and a
+    // Zolbak in slot 3) with the schedule cursor on them, let the walk fire and scroll them, and check every
+    // observation lands each object exactly on its derived map line — the same constants the terrain draws by.
+    // roadmap-evidence: AREA-01 success  (live schedule-fired ground objects ride on map row S - 2, to the
+    //   line, at every position observed as they cross the field)
+    key: 'ground-object-map-row-phase',
+    behavior:
+      'A ground object the area schedule fires at row S rides with its centre on the top edge of map row S - 2 all the way down the field, the landmark the terrain draws there',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const S = 214;
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const gslot = readVar(vm, 'area-schedule-ground-slot').map(Number);
+      const first = Number(readVar(vm, 'area-schedule-start')[0]); // 1-based, area 1
+      const last = Number(readVar(vm, 'area-schedule-end')[0]);
+      let cursor = 0;
+      for (let i = first; i <= last; i += 1) {
+        if (rows[i - 1] === S) {
+          cursor = i;
+          break;
+        }
+      }
+      assert.ok(cursor > 0, 'precondition: area 1 has records at row 214');
+      assert.deepEqual(
+        [cursor, cursor + 1].map((i) => gslot[i - 1]),
+        [2, 3],
+        'precondition: the row-214 records stamp slots 2 and 3',
+      );
+      // C = 256*(S+1) + 32: two ticks before row S begins (row S fires on its first tick, C = 256*S + 224).
+      const C0 = 256 * (S + 1) + 32;
+      writeVar(vm, 'area-progress', (((constants.area_counter_init - C0) % 65536) + 65536) % 65536);
+      writeVar(vm, 'area-schedule-cursor', cursor);
+      // One headless step runs the live walk for a wall-clock-dependent number of ticks, so tick it by hand:
+      // freeze the walk and call its two clock procs in the walk's own order, one tick at a time, so every
+      // tick of the crossing is observed (48 ticks: six rows, well short of the next area-1 ground record).
+      writeVar(vm, 'game-director-state', 'frozen');
+      const samples = [];
+      for (let t = 0; t < 48; t += 1) {
+        callProc(vm, 'Stage', 'advance area');
+        step(vm, 2);
+        callProc(vm, 'Stage', 'advance slots');
+        step(vm, 2);
+        if (Number(readVar(vm, 'area-schedule-cursor')) <= cursor + 1) continue; // not fired yet
+        const C = (((constants.area_counter_init - Number(readVar(vm, 'area-progress'))) % 65536) + 65536) % 65536;
+        const types = readVar(vm, 'slot-type').map(Number);
+        const xs = readVar(vm, 'slot-x').map(Number);
+        // Scratch ground slot GROUND_SLOTS[0] + k = 1 + k is JS index k.
+        for (const slot of [2, 3]) samples.push({ slot, type: types[slot], x: xs[slot], C });
+      }
+      return { samples };
+    },
+    assert(obs) {
+      const line = (v) => ((v % 2048) + 2048) % 2048;
+      const S = 214;
+      for (const [slot, type] of [
+        [2, 0x1e],
+        [3, 0x1f],
+      ]) {
+        const seen = obs.samples.filter((s) => s.slot === slot);
+        assert.equal(seen.length, 47, `slot ${slot}: row 214 fired on the second tick and was watched for 47`);
+        assert.ok(seen.every((s) => s.type === type), `slot ${slot}: holds its row-214 object throughout`);
+        const xs = new Set(seen.map((s) => s.x));
+        assert.equal(xs.size, seen.length, `slot ${slot}: the object scrolled every tick`);
+        for (const s of seen) {
+          const centre = s.x / constants.counter_units_per_line + constants.ground_centre_line_bias;
+          const rowTop =
+            8 * (S + constants.ground_object_row_offset) -
+            s.C / constants.counter_units_per_line +
+            constants.terrain_row_phase_lines;
+          assert.equal(line(centre), line(rowTop), `slot ${slot} at slot x ${s.x}, counter ${s.C}: on map row S - 2`);
+        }
+      }
+    },
+    // roadmap-evidence: AREA-01 failure  (ground seeders that start an object one tick down the field put
+    //   it a line off its landmark)
+    // Scoped to the schedule's ground seeders in `advance area`, leaving the culls and clears alone.
+    negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 0, 32, 'advance area'),
+  },
+  {
+    // PRES-01 (record 054 (20), checked in slice 20): a Garu's destructible top sits one cell below and one
+    // cell right of its 2x2 base (handle_20_Garu_Barra / handle_21_Garu_Derota: node `_X` MSB 1, node `_Y` =
+    // base `_Y` - 0x100), which centres the 16-px top on the 32-px base the renderer draws 8 px right and down
+    // of its position. Live: fire area 3's Garu Barra and Garu Derota records from the schedule, tick the walk
+    // by hand, and check the node rides +256 slot x / -256 slot y from its base on every tick (both scroll).
+    key: 'garu-node-one-cell-below-right-of-base',
+    behavior:
+      'A schedule-spawned Garu Barra or Garu Derota puts its destructible top one cell below and one cell right of its base, and the two scroll together',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const gslot = readVar(vm, 'area-schedule-ground-slot').map(Number);
+      const gtype = readVar(vm, 'area-schedule-ground-type').map(Number);
+      const first = Number(readVar(vm, 'area-schedule-start')[2]); // 1-based, area 3
+      const last = Number(readVar(vm, 'area-schedule-end')[2]);
+      writeVar(vm, 'game-director-state', 'frozen');
+      const out = {};
+      for (const type of [0x20, 0x21]) {
+        let cursor = 0;
+        for (let i = first; i <= last; i += 1) {
+          if (gtype[i - 1] === type) {
+            cursor = i;
+            break;
+          }
+        }
+        assert.ok(cursor > 0, `precondition: area 3 schedules type ${type}`);
+        for (const id of ['slot-type', 'slot-state']) {
+          const a = readVar(vm, id);
+          for (let s = 0; s < 16; s += 1) a[s] = 0;
+        }
+        const S = rows[cursor - 1];
+        const C0 = 256 * (S + 1) + 32; // two ticks before row S begins
+        writeVar(vm, 'area-number', 3);
+        writeVar(vm, 'area-progress', (((constants.area_counter_init - C0) % 65536) + 65536) % 65536);
+        writeVar(vm, 'area-schedule-cursor', cursor);
+        const base = gslot[cursor - 1]; // arcade object slot k = Scratch slot 1 + k = JS index k
+        const samples = [];
+        for (let t = 0; t < 8; t += 1) {
+          callProc(vm, 'Stage', 'advance area');
+          step(vm, 2);
+          callProc(vm, 'Stage', 'advance slots');
+          step(vm, 2);
+          if (Number(readVar(vm, 'area-schedule-cursor')) <= cursor) continue; // not fired yet
+          const types = readVar(vm, 'slot-type').map(Number);
+          const states = readVar(vm, 'slot-state').map(Number);
+          const xs = readVar(vm, 'slot-x').map(Number);
+          const ys = readVar(vm, 'slot-y').map(Number);
+          samples.push({
+            types: [types[base], types[base + 1]],
+            states: [states[base], states[base + 1]],
+            dx: xs[base + 1] - xs[base],
+            dy: ys[base + 1] - ys[base],
+            baseX: xs[base],
+          });
+        }
+        out[type] = samples;
+      }
+      return out;
+    },
+    assert(obs) {
+      for (const type of [0x20, 0x21]) {
+        const seen = obs[type];
+        assert.ok(seen.length >= 6, `type ${type}: the Garu fired and was watched (${seen.length} ticks)`);
+        for (const s of seen) {
+          assert.deepEqual(s.types, [type, type], `type ${type}: base and node share the type`);
+          assert.deepEqual(s.states, [3, 1], `type ${type}: base sentinel, then the ACTIVE node`);
+          assert.equal(s.dx, 256, `type ${type}: the node is one cell below its base (slot x +256)`);
+          assert.equal(s.dy, -256, `type ${type}: the node is one cell right of its base (slot y -256)`);
+        }
+        assert.equal(new Set(seen.map((s) => s.baseX)).size, seen.length, `type ${type}: the pair scrolled every tick`);
+      }
+    },
+    // The node seeded on its base's own row again (the old zero offset): slot x +0, not +256.
+    negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 256, 0),
+  },
+  {
+    // AREA-01 (slice 20): what the two terrain strips show is a pure function of the clock and two map columns
+    // (tools/terrain_render.terrain_state, checked against an independent model of the arcade's 64-row plane by
+    // tests/test_terrain_render.py). The Stage's `update terrain` proc computes it in blocks. Here the built proc
+    // is driven through the model's own samples — every tick a strip's costume, x, shown flag or draw order
+    // changes and the tick before it, over a whole area after a re-top and one entered from the area before,
+    // plus the completion tick — and must reproduce every output exactly.
+    // roadmap-evidence: AREA-01 success  (the built terrain proc shows each band, the filler and the restart band
+    //   with the model's column, position and visibility at every transition of an area's clock)
+    key: 'terrain-state-matches-model',
+    behavior:
+      "The terrain strips' band, sideways position, height and visibility follow the area clock exactly as the model of the arcade's background plane does",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const fields = ['costume', 'x', 'y', 'shown'];
+      const results = [];
+      for (const s of constants.terrain_state_samples) {
+        writeVar(vm, 'area-progress', s.progress);
+        writeVar(vm, 'area-terrain-column', s.column);
+        writeVar(vm, 'area-previous-terrain-column', s.previous);
+        callProc(vm, 'Stage', 'update terrain');
+        step(vm, 1);
+        const got = { even_behind: Number(readVar(vm, 'terrain-even-behind')) };
+        for (const parity of ['even', 'odd']) {
+          got[parity] = {};
+          for (const f of fields) {
+            const v = readVar(vm, `terrain-${parity}-${f}`);
+            got[parity][f] = f === 'costume' ? String(v) : Number(v);
+          }
+        }
+        results.push({ sample: s, got });
+      }
+      return { results };
+    },
+    assert(obs) {
+      assert.ok(obs.results.length >= 40, `every model sample was driven (${obs.results.length})`);
+      const kinds = new Set(obs.results.map((r) => `${r.sample.even.costume}|${r.sample.odd.costume}`));
+      for (const pair of ['terrain filler|terrain band 3 restart', 'terrain band 0|terrain band 3', 'terrain band 2|terrain band 1']) {
+        assert.ok(kinds.has(pair), `the samples include ${pair}`);
+      }
+      for (const { sample: s, got } of obs.results) {
+        const at = `progress ${s.progress}, column ${s.column}, previous ${s.previous}`;
+        for (const parity of ['even', 'odd']) {
+          assert.deepEqual(got[parity], s[parity], `${parity} strip at ${at}`);
+        }
+        assert.equal(got.even_behind, s.even_behind, `draw order at ${at}`);
+      }
+    },
+    // roadmap-evidence: AREA-01 failure  (a terrain proc that never puts the forest filler in band 0's place
+    //   after a re-top shows band 0 at a column that does not exist)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'terrain band column', -1, '__never__'),
+  },
+  {
+    // AREA-01 (slice 20): the walk keeps the terrain state current. `update terrain` runs in every walk tick
+    // after the clock moves and at the end of every re-top; a re-top clears the previous column (the arcade
+    // fills the plane with forest), and an area's completion hands the outgoing column to the band still on
+    // screen. Live: a re-top leaves no previous column; live play moves the strips, and recomputing them from
+    // the clock afterwards changes nothing (the walk left them current); a seeded completion from area 1 sets
+    // the previous column to area 1's, which the band-0 strip then shows while the odd strip takes area 2's.
+    key: 'terrain-state-follows-clock',
+    behavior:
+      "The terrain strips move with the area clock during play, restart from forest at a re-top, and keep the old area's column for its last rows after an area change",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const snap = () =>
+        ['even', 'odd'].flatMap((parity) =>
+          ['costume', 'x', 'y', 'shown'].map((f) => String(readVar(vm, `terrain-${parity}-${f}`))),
+        );
+      const retop = {
+        area: Number(readVar(vm, 'area-number')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        evenCostume: String(readVar(vm, 'terrain-even-costume')),
+      };
+      const before = snap();
+      const progress0 = Number(readVar(vm, 'area-progress'));
+      step(vm, 1);
+      const live = { progressMoved: Number(readVar(vm, 'area-progress')) !== progress0, state: snap() };
+      writeVar(vm, 'game-director-state', 'frozen');
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      const recomputed = snap();
+      // Area 1's completion tick: row 0x0E with progress > 0 (AREA_COMPLETE_PROGRESS is the first such tick).
+      const area1Column = Number(readVar(vm, 'area-terrain-column'));
+      writeVar(vm, 'area-progress', 65024);
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      const completion = {
+        area: Number(readVar(vm, 'area-number')),
+        progress: Number(readVar(vm, 'area-progress')),
+        column: Number(readVar(vm, 'area-terrain-column')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        even: { costume: String(readVar(vm, 'terrain-even-costume')), x: Number(readVar(vm, 'terrain-even-x')) },
+        odd: { costume: String(readVar(vm, 'terrain-odd-costume')), x: Number(readVar(vm, 'terrain-odd-x')) },
+      };
+      return { retop, before, live, recomputed, area1Column, completion };
+    },
+    assert(obs) {
+      assert.equal(obs.retop.area, 1, 'precondition: the game starts in area 1');
+      assert.equal(obs.retop.previous, -1, 'a re-top leaves no previous column');
+      assert.equal(obs.retop.evenCostume, 'terrain filler', 'so band 0 is the forest filler');
+      assert.equal(obs.live.progressMoved, true, 'precondition: the clock ran during the live step');
+      assert.notDeepEqual(obs.live.state, obs.before, 'the strips moved with the clock during play');
+      assert.deepEqual(obs.recomputed, obs.live.state, 'the walk left the strips current with the clock');
+      const c = obs.completion;
+      assert.equal(c.area, 2, 'the seeded completion advanced to area 2');
+      assert.equal(c.progress, 65056 - 65536, 'the clock carried across the completion');
+      assert.equal(c.previous, obs.area1Column, "the previous column is area 1's");
+      assert.notEqual(c.column, obs.area1Column, "precondition: area 2's column differs from area 1's");
+      assert.equal(c.even.costume, 'terrain band 0', "area 1's last rows show as band 0");
+      assert.equal(c.even.x, 10 * obs.area1Column - 500, "band 0 keeps area 1's column");
+      assert.equal(c.odd.x, 10 * c.column - 500, "the odd strip takes area 2's column");
+    },
+    // Remove the walk's terrain update (and the re-top's): the strips never leave their defaults.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrain'),
+  },
+  {
+    // AREA-01 (slice 20): a new life after a mid-area death begins over forest, as the arcade's re-top does
+    // (main_gameplay_loop fills the plane with fill_bg_with_forest, xevious_main.68k 490 / 648-669): the clock
+    // goes back to the area top, the previous column is cleared, so band 0 shows the filler while the area's
+    // first rows enter above it at its own column. Live through `area_reset`: inject a new-life scope, a
+    // mid-area death position and a stale previous column left by an earlier completion, then fire the reset.
+    // roadmap-evidence: AREA-01 success  (a new life after a death shows forest filler with the area's first
+    //   rows entering above it, at the area's column, from the area top)
+    key: 'terrain-new-life-filler',
+    behavior:
+      'A new life after a mid-area death restarts the terrain over forest filler, with the area top entering above it at the area\'s column',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-reset-scope', 'new-life');
+      writeVar(vm, 'area-number', 5);
+      writeVar(vm, 'area-progress', 20000); // mid-area: the checkpoint restarts area 5
+      writeVar(vm, 'area-previous-terrain-column', 42); // stale, as an earlier completion would leave it
+      fireBroadcast(vm, 'director reset');
+      step(vm, 1);
+      const retop = {
+        area: Number(readVar(vm, 'area-number')),
+        progress: Number(readVar(vm, 'area-progress')),
+        column: Number(readVar(vm, 'area-terrain-column')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        even: String(readVar(vm, 'terrain-even-costume')),
+        evenShown: Number(readVar(vm, 'terrain-even-shown')),
+        oddShown: Number(readVar(vm, 'terrain-odd-shown')),
+      };
+      // The area's first rows are written ~14 rows ahead of the top edge, so the field is all filler at the
+      // top; 128 ticks on, the area top has scrolled into view above the filler.
+      writeVar(vm, 'game-director-state', 'frozen');
+      writeVar(vm, 'area-progress', 4096);
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      const entered = {
+        even: String(readVar(vm, 'terrain-even-costume')),
+        odd: String(readVar(vm, 'terrain-odd-costume')),
+        oddX: Number(readVar(vm, 'terrain-odd-x')),
+        oddShown: Number(readVar(vm, 'terrain-odd-shown')),
+      };
+      return { retop, entered };
+    },
+    assert(obs) {
+      const r = obs.retop;
+      assert.equal(r.area, 5, 'precondition: a mid-area death restarts the area');
+      assert.equal(r.progress, 0, 'the clock is back at the area top');
+      assert.equal(r.column, AREA_MAP_COLUMNS[4], "the terrain column is area 5's");
+      assert.equal(r.previous, -1, 'the re-top clears the previous column');
+      assert.equal(r.even, 'terrain filler', 'band 0 is the forest filler');
+      assert.equal(r.evenShown, 1, 'the filler fills the field at the area top');
+      assert.equal(r.oddShown, 0, 'no map rows are on screen yet');
+      const e = obs.entered;
+      assert.equal(e.even, 'terrain filler', 'the filler is still below');
+      assert.equal(e.odd, 'terrain band 3 restart', 'the area top enters as the restart band');
+      assert.equal(e.oddShown, 1, 'the area top is on screen');
+      assert.equal(e.oddX, 10 * AREA_MAP_COLUMNS[4] - 500, "the area top is at area 5's column");
+    },
+    // Every `set previous terrain column` writes 42 instead: the re-top no longer clears it, so band 0 shows
+    // map rows at a stale column instead of the filler.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'previous terrain column', 42),
+  },
+  {
+    // AREA-01 (slice 20): the 16 -> 7 loop is an ordinary area change for the terrain: completing area 16
+    // carries the clock, hands area 16's column to the band still on screen, and area 7's rows arrive at
+    // area 7's column (sub_fn_3__handle_next_area, xevious_sub.68k 696-730; offsets 731-732). Seeded on the
+    // completion tick with the walk frozen, as `terrain-state-follows-clock` does for area 1 -> 2.
+    // roadmap-evidence: AREA-01 success  (the 16 -> 7 loop keeps area 16's last rows at its column while
+    //   area 7's rows enter at area 7's column, with the clock carried)
+    key: 'terrain-loop-16-to-7',
+    behavior:
+      "Completing area 16 loops to area 7 with no jump: area 16's last rows keep its column while area 7's enter at its own",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      writeVar(vm, 'area-number', 16);
+      writeVar(vm, 'area-terrain-column', AREA_MAP_COLUMNS[15]);
+      writeVar(vm, 'area-progress', 65024);
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      return {
+        area: Number(readVar(vm, 'area-number')),
+        progress: Number(readVar(vm, 'area-progress')),
+        column: Number(readVar(vm, 'area-terrain-column')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        even: { costume: String(readVar(vm, 'terrain-even-costume')), x: Number(readVar(vm, 'terrain-even-x')) },
+        odd: { costume: String(readVar(vm, 'terrain-odd-costume')), x: Number(readVar(vm, 'terrain-odd-x')) },
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.area, 7, 'completing area 16 continues at area 7');
+      assert.equal(obs.progress, 65056 - 65536, 'the clock carried across the loop');
+      assert.equal(obs.column, AREA_MAP_COLUMNS[6], "the terrain column is area 7's");
+      assert.equal(obs.previous, AREA_MAP_COLUMNS[15], "the previous column is area 16's");
+      assert.equal(obs.even.costume, 'terrain band 0', "area 16's last rows show as band 0");
+      assert.equal(obs.even.x, 10 * AREA_MAP_COLUMNS[15] - 500, "band 0 keeps area 16's column");
+      assert.equal(obs.odd.x, 10 * AREA_MAP_COLUMNS[6] - 500, "the odd strip takes area 7's column");
+    },
+    // Break the loop's `area number = 16` test: area 16 completes to 17, which has no column.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'area number', 16, 99),
   },
   {
     key: 'difficulty-and-formations',
@@ -1944,22 +2448,45 @@ export const SCENARIOS = [
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // Raises fold at 0x80 (>=128 subtracts 64 once), so the AI level from raises ALONE can never be
       // observed >= 128. The score adjust adds floor(floor(score/1000)/craft) (capped 16) WITHOUT
-      // folding, so a heavy score with craft in reserve is the ONLY way the live AI level crosses 128.
-      // Inject that state and pump area 1: crossing 128 is the adjust's unique signature (the raise-
-      // only baseline tops out at 126 here — see the `difficulty-and-formations` scenario).
+      // folding, so a heavy score with craft in reserve is the ONLY way the AI level crosses 128.
+      // The level sits >= 128 only until the next raise folds it, so sampling it between live pumps (which
+      // run a wall-clock-dependent number of ticks) could miss that stretch on a loaded machine. Instead,
+      // freeze the walk and run the real `advance area` exactly once on area 1's first adjust record:
+      // point the schedule cursor at it and seed the progress one tick before its trigger row, with the AI
+      // level at 120 (reachable by raises alone) and a heavy score with one craft in reserve.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const triggers = readVar(vm, 'area-schedule-trigger-row');
+      const start = Number(readVar(vm, 'area-schedule-start')[0]); // area 1's first record, Scratch 1-based
+      let idx = start - 1;
+      while (idx < handlers.length && handlers[idx] !== 'adjust_ai_level_from_score') idx += 1;
+      assert.ok(idx < handlers.length, "precondition: area 1's schedule has a score-adjust record");
+      const row = Number(triggers[idx]);
+      // scroll row = floor(((0x0D00 - progress) mod 0x10000) / 256); land mid-row after the tick's +32.
+      const after = (((0x0d00 - row * 256 - 128) % 0x10000) + 0x10000) % 0x10000;
+      writeVar(vm, 'area-number', 1);
+      writeVar(vm, 'area-schedule-cursor', idx + 1);
+      writeVar(vm, 'area-progress', after - 32);
+      writeVar(vm, 'difficulty-ai-level', 120);
       writeVar(vm, 'eco-score', 999000);
       writeVar(vm, 'eco-craft', 1);
-      let maxAi = 0;
-      for (let i = 0; i < 200; i += 1) {
-        step(vm, 1);
-        maxAi = Math.max(maxAi, Number(readVar(vm, 'difficulty-ai-level')));
-      }
-      return { maxAi };
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      return {
+        row,
+        scrollRow: Number(readVar(vm, 'area-scroll-row')),
+        cursorMoved: Number(readVar(vm, 'area-schedule-cursor')) > idx + 1,
+        ai: Number(readVar(vm, 'difficulty-ai-level')),
+      };
     },
     assert(obs) {
+      assert.equal(obs.scrollRow, obs.row, "precondition: the tick lands on the adjust record's trigger row");
+      assert.ok(obs.cursorMoved, 'the schedule consumed the adjust record');
       assert.ok(
-        obs.maxAi >= 128,
-        'the score adjust pushes the AI level past the raise-only fold ceiling (127)',
+        obs.ai >= 128,
+        `the score adjust pushes the AI level past the raise-only fold ceiling (127), unfolded (got ${obs.ai})`,
       );
     },
     // Sever the adjust dispatch (its handler == comparison never matches) so only raises drive the AI
@@ -3505,7 +4032,7 @@ export const SCENARIOS = [
   {
     key: 'bacura-touch-raises-craft-death',
     behavior:
-      'AIR-11 (.play): a Bacura overlapping the craft raises the player-hit death signal through the wider Bacura collision box, and a slab one cell off does NOT — the slab kills on contact even though it is itself indestructible',
+      'AIR-11 (.play): a Bacura overlapping the craft raises the player-hit death signal through the Bacura collision box (the visible-slab box: see bacura-craft-kill-box-is-the-visible-slab), and a slab one cell off does NOT — the slab kills on contact even though it is itself indestructible',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3549,6 +4076,77 @@ export const SCENARIOS = [
     // Pin every `set player hit` to 0 so the craft-touch consequence can never fire → onCell stays 0 → the
     // death assertion bites (proving it is the Bacura's craft_hit that raises the signal).
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'player hit', 0),
+  },
+  {
+    key: 'bacura-craft-kill-box-is-the-visible-slab',
+    behavior:
+      'AIR-11 fair box (owner decision, recorded divergence docs/mechanics/037): a Bacura kills the craft only where its on-screen tumble frame is opaque — beside an edge-on frame (inside the arcade whole-tile box, outside the drawn slab) the craft survives; on the drawn slab it dies',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 16; // JS index; Scratch 1-based slot 17 (first Bacura band slot)
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      const CRAFT_Y = 3840; // lateral shadow 120 px
+      // Each case: the slab's slot x picks its tumble frame (floor(x/128) mod 8); depth shadow units are
+      // floor((x + 256) / 64), lateral px floor(y / 32). Deltas are slab - craft.
+      const probe = (slabX, craftX, latPx) => {
+        put('slot-type', 1);
+        put('slot-state', 1);
+        put('slot-dx', 16);
+        put('slot-dy', 0);
+        put('slot-x', slabX);
+        put('slot-y', CRAFT_Y + latPx * 32);
+        writeVar(vm, 'player-slot-x', craftX);
+        writeVar(vm, 'player-slot-y', CRAFT_Y);
+        writeVar(vm, 'slot-index', slot + 1);
+        writeVar(vm, 'player-hit', 0);
+        callProc(vm, 'Stage', 'update bacura');
+        step(vm, 1);
+        return Number(readVar(vm, 'player-hit'));
+      };
+      // Frame 0 (edge-on: opaque rows 6-9, fair depth [-5, 4] units; arcade [-8, 7]). Slab x 6144 = 100 units.
+      const f0DepthPlus6 = probe(6144, 94 * 64 - 256, 0); // +6 units: arcade kills, slab not drawn there
+      const f0DepthMinus7 = probe(6144, 107 * 64 - 256, 0); // -7 units: the same on the other edge
+      const f0DepthPlus4 = probe(6144, 96 * 64 - 256, 0); // +4 units: on the drawn rows
+      // Frame 4 (broadside: opaque columns 4-27, fair lateral [-8, 23] px; arcade [-12, 27]). Slab x 6656.
+      const f4LatPlus25 = probe(6656, 6656, 25);
+      const f4LatMinus10 = probe(6656, 6656, -10);
+      const f4LatPlus23 = probe(6656, 6656, 23);
+      const f4LatMinus8 = probe(6656, 6656, -8);
+      return { f0DepthPlus6, f0DepthMinus7, f0DepthPlus4, f4LatPlus25, f4LatMinus10, f4LatPlus23, f4LatMinus8 };
+    },
+    assert(obs) {
+      assert.equal(obs.f0DepthPlus6, 0, 'craft 6 depth units from an edge-on slab (empty tile rows) survives');
+      assert.equal(obs.f0DepthMinus7, 0, 'craft 7 depth units the other side of an edge-on slab survives');
+      assert.equal(obs.f0DepthPlus4, 1, 'craft on the edge-on slab\'s drawn rows dies');
+      assert.equal(obs.f4LatPlus25, 0, 'craft 25 px beside a broadside slab (its empty columns) survives');
+      assert.equal(obs.f4LatMinus10, 0, 'craft 10 px the other side of a broadside slab survives');
+      assert.equal(obs.f4LatPlus23, 1, 'craft overlapping the broadside slab\'s last drawn column dies');
+      assert.equal(obs.f4LatMinus8, 1, 'craft overlapping the broadside slab\'s first drawn column dies');
+    },
+    // Put the arcade's whole-tile box back: every frame's opaque top row and left column read as 0, so the
+    // survivors die again → the survive assertions bite.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        for (const v of Object.values((b && b.inputs) || {})) {
+          if (Array.isArray(v) && Array.isArray(v[1]) && v[1][0] === 10 && (v[1][1] === '64210124' || v[1][1] === '01234321')) {
+            v[1][1] = '00000000';
+            patched += 1;
+          }
+        }
+      }
+      if (patched === 0) throw new Error('mutate: no Bacura frame digit strings in the Stage');
+    },
   },
   {
     key: 'bacura-tumbles-with-position',
@@ -4100,23 +4698,36 @@ export const SCENARIOS = [
     playtestStep: 6,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Warm the detector with live pumps (a hand-called air detector does not fire on a VM that has not
+      // stepped live), then FREEZE the walk and run the detector exactly once per probe. A live pump runs
+      // as many walk ticks as fit its wall-clock budget, so a live MISS probe let the Toroid steer (and
+      // turn back) for an unbounded number of ticks over a still-live shot and could score on a fast runner;
+      // one frozen detector call tests the window on exactly the seeded deltas. The live dispatch from the
+      // flying-enemy walk is proved by `barra-blaster-cannot-destroy` and the live air-kill scenarios.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
-      // Park the Toroid 8 columns from the craft so the real tapped shot (craft column) can never reach
-      // it — only the CONTROLLED shot we seed into a real detector slot (37) can score it. `eResult`
-      // maps offset -> score delta; the enemy is re-parked before each probe (a scoring hit frees it).
-      // One column is 256 slot units = 8 px, so a shot dCol columns over sits at lateral delta
-      // enemy - shot = -8*dCol px: +2 columns is -16 (the band's low edge, a hit), -2 is +16 (past 15).
-      // The Toroid steers sideways toward the craft while a step runs several ticks, and a shot that misses
-      // on the first tick stays in depth range for a tick or two — so a MISS probe must put the Toroid on the
-      // side where that drift carries it AWAY from the shot. `side` -1 parks it below the craft column
-      // (drift raises enemy - shot), +1 above (drift lowers it); hits land on the first tick either way.
-      const eResult = (dCol, side = -1) => {
+      // The Toroid sits in the last flying slot (JS 63 = Scratch 64) and a controlled shot in a real detector
+      // slot (JS 37 = Scratch 38; SHOT_SLOTS 37-39). Both are re-seeded before each probe (a scoring hit frees
+      // them) with the flying band and the shot slots cleared, so nothing else is offered. One column is 256
+      // slot units = 8 px, so a shot dCol columns over sits at lateral delta enemy - shot = -8*dCol px: +2
+      // columns is -16 (the band's low edge, a hit), -2 is +16 (one past 15).
+      const eResult = (dCol) => {
         const pr = readVar(vm, 'player-row'),
           pc = readVar(vm, 'player-col');
         const eRow = pr - 6,
-          eCol = pc + 8 * side;
+          eCol = pc - 8;
+        for (let s = 58; s <= 63; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        for (let s = 36; s <= 38; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
         put('slot-type', 63, 10);
         put('slot-state', 63, 1);
         put('slot-pts', 63, 3);
@@ -4127,13 +4738,15 @@ export const SCENARIOS = [
         put('slot-flag', 63, 9);
         put('slot-timer', 63, 0);
         put('slot-code', 63, 8);
-        const score0 = readVar(vm, 'eco-score');
-        put('slot-type', 37, 1); // a controlled shot in a real detector slot (SHOT_SLOTS = 37-39)
+        put('slot-type', 37, 1);
         put('slot-state', 37, 1);
         put('slot-x', 37, eRow * 256);
         put('slot-y', 37, (eCol + dCol) * 256);
+        const score0 = Number(readVar(vm, 'eco-score'));
+        writeVar(vm, 'slot-index', 64); // the detector tests the flying enemy at `slot index` (Scratch 1-based)
+        callProc(vm, 'Stage', 'check air shot hit');
         step(vm, 1);
-        return readVar(vm, 'eco-score') - score0;
+        return Number(readVar(vm, 'eco-score')) - score0;
       };
       return {
         onCol: eResult(0),
@@ -4141,8 +4754,9 @@ export const SCENARIOS = [
         oneMinus: eResult(-1),
         twoPlus: eResult(2),
         twoMinus: eResult(-2),
-        threePlus: eResult(3, 1), // delta -24: parked above the craft so the drift deepens the miss
-        award: readVar(vm, 'eco-value-table')[2],
+        threePlus: eResult(3),
+        threeMinus: eResult(-3),
+        award: Number(readVar(vm, 'eco-value-table')[2]),
       };
     },
     assert(obs) {
@@ -4152,6 +4766,7 @@ export const SCENARIOS = [
       assert.equal(obs.twoPlus, obs.award, 'a shot at delta -16 px (the low edge) scores');
       assert.equal(obs.twoMinus, 0, 'a shot at delta +16 px (one past the high edge 15) does NOT score');
       assert.equal(obs.threePlus, 0, 'a shot at delta -24 px does NOT score');
+      assert.equal(obs.threeMinus, 0, 'a shot at delta +24 px does NOT score');
     },
     // Empty the shot-vs-air detector so no controlled shot ever resolves → the on-column assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
@@ -4937,9 +5552,9 @@ export const SCENARIOS = [
       'The blaster (air weapon) structurally cannot destroy a ground object: the shot-vs-air detector is dispatched only from FLYING enemy updates, so a Barra (routed to `update barra`) is never offered to it. The SAME controlled shot on the SAME cell scores an overlapping flying enemy but scores NOTHING against an overlapping ground Barra',
     playtestStep: 7,
     async drive(vm) {
-      // Live-drive both probes exactly like `air-shot-hit-column-bounded`: the shot-vs-air detector is
-      // dispatched from the live flying-enemy walk (a hand-called detector needs live warming, and driving
-      // the real walk is what proves the routing anyway). Invuln stays ON from reachPlaying so the craft
+      // Live-drive both probes: the shot-vs-air detector is dispatched from the live flying-enemy walk, and
+      // driving the real walk is what proves the routing (`air-shot-hit-column-bounded` tests the window
+      // itself with a frozen, single detector call instead). Invuln stays ON from reachPlaying so the craft
       // never dies. Each probe fires an identical CONTROLLED shot in a real detector slot (SHOT_SLOTS =
       // 37-39, JS index 37) on a cell 6 rows / 8 columns off the craft — far enough that only the seeded
       // shot reaches the target, not the craft's own tapped shot.
@@ -8535,13 +9150,14 @@ export const SCENARIOS = [
       vm.greenFlag();
       step(vm, 2);
       // Two-player game, player 1 active, both players holding craft; distinct P1 (live) and P2 (other/shadow)
-      // score + area so the swap is observable per field. `scroll row` sits BELOW the near-end window so the
-      // outgoing player's checkpoint does not advance their area (which would confound the saved-area read).
+      // score + area so the swap is observable per field. `area progress` sits at the area top, BELOW the
+      // near-end window, so the outgoing player's checkpoint does not advance their area (which would confound
+      // the saved-area read).
       const setupDead = (currPlayer) => {
         writeVar(vm, 'game-director-state', 'player-dead');
         writeVar(vm, 'cabinet-two-player', 1);
         writeVar(vm, 'cabinet-curr-player', currPlayer);
-        writeVar(vm, 'area-scroll-row', 0);
+        writeVar(vm, 'area-progress', 0);
         // A real game, not an attract demo: green flag leaves the cabinet in attract, and since PRES-01's
         // arcade-size craft box a demo craft can die inside the settle steps, ending the demo and resetting
         // the scores before the second swap is read.
@@ -8594,6 +9210,47 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'swap players'),
   },
   {
+    // AREA-01 (slice 20) / ARCH-5: the two-player handoff applies the projected near-end checkpoint to the
+    // OUTGOING player's area before the swap, then puts the clock at the area top so the INCOMING player's
+    // new-life re-top (which runs the same checkpoint first) leaves their area alone. Same director-receiver
+    // isolation as two-player-alternation.
+    // roadmap-evidence: AREA-01 success  (a two-player death 44 ticks before the end skips the outgoing
+    //   player's next area, and the incoming player resumes their own area unadvanced)
+    key: 'two-player-checkpoint-outgoing-only',
+    behavior:
+      "On a two-player handoff the projected near-end checkpoint advances only the outgoing player's area; the incoming player resumes their own area",
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'player-dead');
+      writeVar(vm, 'cabinet-two-player', 1);
+      writeVar(vm, 'cabinet-curr-player', 0);
+      writeVar(vm, 'cabinet-attract', 0);
+      writeVar(vm, 'eco-craft', 2);
+      writeVar(vm, 'other-craft', 3);
+      writeVar(vm, 'area-number', 5);
+      writeVar(vm, 'other-area-number', 9);
+      writeVar(vm, 'area-progress', 63648); // projects to completion + row 0x0E: skip 5 -> 7
+      fireBroadcast(vm, 'death complete');
+      step(vm, 3);
+      return {
+        currPlayer: readVar(vm, 'cabinet-curr-player'),
+        liveArea: readVar(vm, 'area-number'),
+        savedArea: readVar(vm, 'other-area-number'),
+      };
+    },
+    assert(obs) {
+      assert.equal(Number(obs.currPlayer), 1, 'precondition: the handoff passed control to player 2');
+      assert.equal(Number(obs.savedArea), 7, "the outgoing player's near-end death skipped their next area");
+      assert.equal(Number(obs.liveArea), 9, "the incoming player resumes their own area, unadvanced");
+    },
+    // Pin every `set area progress` to the death position: the handoff no longer puts the clock at the
+    // area top, so the incoming player's re-top re-runs the checkpoint on the outgoing player's position
+    // and advances THEIR area (9 -> 11).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'area progress', 63648),
+  },
+  {
     // CAB-03 (slice 18): solo continuation — when the OTHER player is already out, a craft death does NOT
     // alternate; the current player simply respawns and plays on (the swap is gated on the other player still
     // holding craft, xevious_main 682). Same director-receiver isolation as two-player-alternation.
@@ -8609,7 +9266,7 @@ export const SCENARIOS = [
       writeVar(vm, 'game-director-state', 'player-dead');
       writeVar(vm, 'cabinet-two-player', 1);
       writeVar(vm, 'cabinet-curr-player', 0);
-      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'area-progress', 0);
       writeVar(vm, 'eco-craft', 2); // the current player still has craft -> respawn
       writeVar(vm, 'other-craft', 0); // the other player is OUT -> no alternation
       writeVar(vm, 'eco-score', 1111);
@@ -8700,7 +9357,7 @@ export const SCENARIOS = [
       writeVar(vm, 'game-director-state', 'player-dead');
       writeVar(vm, 'cabinet-two-player', 1);
       writeVar(vm, 'cabinet-curr-player', 0);
-      writeVar(vm, 'area-scroll-row', 0);
+      writeVar(vm, 'area-progress', 0);
       writeVar(vm, 'eco-craft', 0); // the current player (player 1) is ELIMINATED
       writeVar(vm, 'other-craft', 3); // the other player (player 2) is still in -> banner + handoff
       fireBroadcast(vm, 'death complete');
