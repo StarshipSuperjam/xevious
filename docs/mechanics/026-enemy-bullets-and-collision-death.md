@@ -121,3 +121,12 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (presentation slice, CAB-05)
+
+Deviation (2), **no bullet colour pulse**, and the stand-in costume in deviation (6) and the License status are
+superseded ([record 055](055-presentation-fidelity.md)). Every enemy bullet — aimed and radiating — now draws the arcade's own bullet sprite (tile
+0x11E from the second graphics bank, decoded from the pinned reference's graphics data by
+`tools/effects_sprite_render.py`) in one shared colour that steps through four colours, a new one every two
+arcade frames (`sub_fn_5__handle_pulsing_colours` 208–218 in `src/xevious_sub.68k`), at the shared sprite size.
+The Toroid frame it borrowed stays in the project unreferenced. The motion, collision and kill path are unchanged.

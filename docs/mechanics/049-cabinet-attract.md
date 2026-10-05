@@ -13,3 +13,13 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (presentation slice, CAB-05)
+
+Deviation (3), **music during the demo**, is reversed ([record 055](055-presentation-fidelity.md)). The arcade mutes every sound when it enters its
+attract cycle with no credit banked (`main_thread_main_loop` 355–356 in `src/xevious_main.68k`) and unmutes at
+`coined_up` (379–380), and it never requests the flight tune or the death cue in a demo (2009, 2028–2030). The
+Stage — the owner of every game sound — is now silent while `attract` is 1 and no credit is banked, and the flight
+tune, start theme and death cue are gated on `attract` = 0. The coin sound is the one cue heard from the attract
+cycle: it plays once the credit it announces has lifted the mute. The `start_sound` gate named in the Scratch
+evidence above is now the `attract` = 0 gate on the Stage's start-theme and flight-tune script.

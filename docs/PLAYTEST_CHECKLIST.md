@@ -275,6 +275,30 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    window, and the 1 PLAYER / 2 PLAYERS choices are left-aligned with each other as a pair centred under
    them; the best-five screen shows the logo above a centred header and the five ranked rows (1ST–5TH) in
    the middle of the window.
-9. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
-10. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
+9. **Sound and effects.** With the sound on:
+   - **Attract is silent.** From a cold start with no credit, the title, both demos and the best-five
+     table make no sound at all. Press C: one coin chirp per credit; at 99 credits a further C makes no
+     chirp.
+   - **Music.** Start a game: the main theme plays first, then the flight tune loops for the rest of the
+     life. Shots, bombs and hits sound over both.
+   - **Death.** On a death the music cuts at once and the death sound plays **to its end** — through the
+     explosion, the pause and into READY — and the next life opens with the theme again. Nothing is cut
+     short and nothing from the previous life keeps playing into the next.
+   - **Shot and bomb.** Each shot and each bomb has the arcade sound; the bomb sound may ring a moment past
+     the landing (by design).
+   - **Andor Genesis.** While the boss descends, hovers and leaves, its drone hums continuously with no gap
+     or stutter; after you destroy its core the last hum plays out and does not restart.
+   - **Initials entry.** A new first place plays the top-score tune; a lower place in the best five plays
+     the other tune. The tune loops until you finish or the entry times out, then stops.
+   - **Explosions.** The craft's explosion grows through seven frames, tumbling (flipping) as it goes, then
+     the craft is gone for a short pause before READY. A shot flying enemy bursts in an explosion
+     that grows to double size and spins; a bombed ground target bursts, then leaves a flickering crater
+     that scrolls away with the ground.
+   - **Bomb and crosshair.** A dropped bomb changes shape twice as it falls, then holds, and shimmers
+     through four colours. The crosshair changes colour while a bomb is in flight, and blinks brighter
+     whenever a ground target sits under it.
+   - **Enemy bullets.** Every bullet is the small arcade bullet, all bullets pulsing through the same four
+     colours together.
+10. **Stop and reload.** Stop, green-flag again: identical cold start, no accumulated state.
+11. **The PR's own changes.** Walk the list of behavior added or changed that the PR declares, one item
     at a time, against the spec sections it cites.

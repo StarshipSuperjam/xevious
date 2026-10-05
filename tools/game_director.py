@@ -2577,7 +2577,7 @@ BOMB_COLOURS = 4
 CROSSHAIR_ART_BASE_ORDINAL = 4  # after the 3 preserved target_01, target_02, target_04
 CROSSHAIR_LIT_TICK_DIVISOR = 2  # countup & 4 at 2 frames a tick: floor(tick / 2) is odd
 CROSSHAIR_CHECK_OBJECTS = (2, 15)  # the 14 ground objects 0x02..0x0F the arcade sweeps (moveq #14-1)
-BOMB_TARGET_ART_COSTUME = "bomb-target/mark/01"  # code 0x22, colour 0x14 (init_bombing 2469)
+BOMB_TARGET_ART_COSTUME = "bomb-target/mark/01"  # code 0x14 (bank 1), colour 0x22 (init_bombing 2469)
 # --- BOSS-01 C3 geometry: the Andor Genesis lifecycle positions + composite offsets (all source-verified at the
 # pin). Placed here so the slot-unit / frame / render-stage primitives above are already defined; the matching ID
 # strings live up by the other Andor constants. ------------------------------------------------------------------

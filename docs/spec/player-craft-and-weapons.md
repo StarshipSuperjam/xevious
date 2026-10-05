@@ -100,7 +100,7 @@ flies ballistically, never re-aiming (`handle_06_Bullet` 4278–4283; the four a
 belong to their firing families in [Aerial enemies](aerial-enemies.md). Bullets expire at the recorded
 screen-edge margins — beyond roughly 320 pixels on the scroll axis or 248 laterally, in reference
 pixels (`check_scroll_offscreen` 4826–4839) and pulse through the shared four-color cycle
-(`xevious_sub.68k` `sub_fn_5__handle_pulsing_colours` 208–232).
+(`xevious_sub.68k` `sub_fn_5__handle_pulsing_colours` 208–218).
 
 **Object slots (shared vocabulary).** The reference runs 64 32-byte object slots: 16 ground objects
 (0x00–0x0F, of which 0x02–0x0F are crosshair-targetable), 16 Bacura (0x10–0x1F), bomb target 0x20, bomb

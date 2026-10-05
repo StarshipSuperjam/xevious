@@ -28,3 +28,13 @@ The full behavior, source citations, and Scratch evidence for the two-player sta
 banner live in the CAB-03 record ([051](051-cabinet-two-player.md)). With `CAB-02.two-player` now built,
 **CAB-02 remains `partial` only because the coin sound is still deferred** pending the operator's
 provenance decision — the credit/cap/gate/start logic ships complete for both one- and two-player.
+(Slice 20 adds the coin sound; see the update below.)
+
+## Slice 20 — coin sound delivered; CAB-02 present
+
+The coin sound deferred in deviation (2) is built ([record 055](055-presentation-fidelity.md)). The operator chose the staged arcade recording
+(`credit`, recorded in `assets/game-sounds/manifest.json` and `docs/ASSET_CREDITS.md`). It plays only when a coin
+actually banks a credit — never at the 99 cap, where the arcade skips both the add and the sound
+(`sub_fn_4__handle_credits_and_start` 171–181 in `src/xevious_sub.68k`). The cut noted in deviation (2) does not
+happen: the Stage's coin loop plays the sound after the coin-abort transition has run its stop-all, and after the
+banked credit has lifted the attract mute. With both starts and the coin sound built, **CAB-02 is present**.

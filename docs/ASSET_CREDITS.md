@@ -88,12 +88,17 @@ claimed.
 
 ## Arcade gameplay sound effects (Sounds Spriters Resource)
 
-Six of the arcade's gameplay sound effects, supplied by the repository operator
-from local staging and committed here byte-for-byte. Each is attached unmodified
-as a Stage sound by `tools/hud_glyphs.py` under its content-hash filename in
-`src/xevious/assets/`, and played at the arcade play point cited in
-`docs/mechanics/040-arcade-sound-cues.md`. The provenance manifest is
-`assets/game-sounds/manifest.json`.
+The arcade's gameplay sounds, committed here byte-for-byte. Each is attached
+unmodified as a Stage sound by `tools/hud_glyphs.py` under its content-hash
+filename in `src/xevious/assets/`, and played at the arcade play point cited in
+`docs/mechanics/040-arcade-sound-cues.md` (the first six),
+`docs/mechanics/044-secrets.md` (the Bonus Flag) and
+`docs/mechanics/055-presentation-fidelity.md` (the slice-20 CAB-05 cues). The
+provenance manifest is `assets/game-sounds/manifest.json`. All but
+`bonus_flag.wav` were supplied by the repository operator from local staging;
+`bonus_flag.wav` is the pinned reference's own named source sound
+(`jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`,
+`assets/sounds/bonus_flag.wav`).
 
 | Supplied file | Cue (arcade sound) | Plays when | License | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -103,17 +108,28 @@ as a Stage sound by `tools/hud_glyphs.py` under its content-hash filename in
 | `garu_zakato.wav` | Garu Zakato (`GARU_ZAKATO_SND`, 0x06) | A Garu Zakato detonates | No reusable license specified by source; third-party copyrighted material | `782ba3a40112a60c55999d1dacfcd4ec014b964208c9d66bf9c7b7830e6b8a35` |
 | `bacura.wav` | Bacura hit (`BACURA_HIT_SND`, 0x0a) | A shot bounces off a Bacura slab | No reusable license specified by source; third-party copyrighted material | `87ec0bcf2b770f94de03c7dc90e375bf20318d3abab9f868df842777627badcd` |
 | `sheonite.wav` | Sheonite retreat (`SHEONITE_SND`, 0x08) | The right Sheonite peels off and retreats | No reusable license specified by source; third-party copyrighted material | `e78543787183a8d7b34740255b7a02c08b319a954e9240acab6273c50a6f7bd4` |
+| `bonus_flag.wav` | Bonus Flag (`BONUS_FLAG_SND`, 0x0d) | A revealed Bonus Flag is collected | No reusable license specified by source; third-party copyrighted material | `9840624569987af8022e8fb09c73de63298c7dfe6f97d4dee5767445975678f2` |
+| `credit.wav` | Coin (`COIN_SND`, 0x10) | A coin adds a credit (never at the 99 cap) | No reusable license specified by source; third-party copyrighted material | `92f8e4ac27118cd71e83b052ea32f9ef7b9ce772134a880fb658855317e525d5` |
+| `name_entry_top.wav` | Highest score (`HIGHEST_SCORE_SND`, 0x02) | Initials entry opens for a new first place (loops) | No reusable license specified by source; third-party copyrighted material | `e95e0990f536743356f421b2a27148789e4063f858ebe5bf12c45dae852310ea` |
+| `name_entry.wav` | High score (`HIGH_SCORE_SND`, 0x03) | Initials entry opens for a lower rank (loops) | No reusable license specified by source; third-party copyrighted material | `c0f855a8fe1220a0dd1d4ac268a78f794028c574a2be16f3c9735a68cee19eb2` |
+| `andor_genesis.wav` | Andor Genesis (`ANDOR_GENESIS_SND`, 0x07) | The Andor Genesis descends, hovers or leaves | No reusable license specified by source; third-party copyrighted material | `1fb855ba2ffec4a3a5979b8a88c9880656858a6f5e836251ae48b31f55392104` |
+| `start.wav` | Main theme (`MAIN_THEME_SND`, 0x01) | Every life starts | No reusable license specified by source; third-party copyrighted material | `2e5bff2e4c3c8bb64450775188b412847d793f76be53d28939bf958ca18d5fe0` |
+| `bgm.wav` | Flight tune (`SOLVALOU_SND`, 0x0e) | Loops in play after the theme; stops at death | No reusable license specified by source; third-party copyrighted material | `cef95196fda166d09cbafc52f48eb8bf509a1fbaa889579d2a44d99f0435ef10` |
+| `solvalou_explode.wav` | Solvalou explosion (`SOLVALOU_EXPLOSION_SND`, 0x12) | The Solvalou is destroyed | No reusable license specified by source; third-party copyrighted material | `ae5fdf7442b6e70603277d84e5d8ab013358d6ec03186061a22c663cb8c959ff` |
+| `zapper_fire.wav` | Shot (`SHOT_SND`, 0x0b) | A Zapper shot is fired | No reusable license specified by source; third-party copyrighted material | `b04dcbaf56b3956332d052dfffb097d2265f5403323fcef1f1c38bc2ed9504fe` |
+| `blaster_fire.wav` | Bomb (`BOMB_SND`, 0x0c) | A Blaster bomb is dropped | No reusable license specified by source; third-party copyrighted material | `c6c88e4b3c4d0ff939748a775119334621b92f080babdfb50027a74ad04edef6` |
 
 Each raw wav is committed byte-for-byte to `src/xevious/assets/` under its
 content-hash filename and to `assets/game-sounds/` under the readable name above.
-No individual contributor credit was listed, and the exact upstream page was not
-recorded, so no per-file URL is asserted; the family matches the Sounds Spriters
-Resource Xevious audio (asset 449687). These carry the same rights-status caveat
-as the material above: recording provenance is not a claim that credit grants
-permission, this is Namco copyrighted audio, and no ownership is claimed. Several
-other staged wavs duplicate sounds already in the base project (music,
-game-start, player-death, blaster fire) and are intentionally left on those base
-sounds rather than re-committed.
+For the operator-supplied files no individual contributor credit was listed,
+and the exact upstream page was not recorded, so no per-file URL is asserted;
+the family matches the Sounds Spriters Resource Xevious audio (asset 449687).
+These carry the same rights-status caveat as the material above: recording
+provenance is not a claim that credit grants permission, this is Namco
+copyrighted audio, and no ownership is claimed. Slice 20 (CAB-05) replaced the
+base project's own music, game-start, player-death, shot and bomb sounds with
+`start`, `bgm`, `solvalou_explode`, `zapper_fire` and `blaster_fire`; the
+replaced baseline sounds stay in the project unplayed, as preserved history.
 
 ## Terrain rendered from the arcade map data
 
@@ -155,6 +171,28 @@ which held the tower's dome but not its shadow.
 | Output | Description | Credit | Source | License |
 | --- | --- | --- | --- | --- |
 | Sol Tower sheet and seven `sol-tower/rise` costumes | Sol Tower rise frames | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+
+The same rights caveat as the terrain and the Andor parts applies.
+
+## Explosions, bomb and crosshair rendered from the arcade sprite data
+
+The player, air and ground explosions, the bomb crater, the crosshair, the bomb
+target, the bomb and the enemy bullet (slice 20, CAB-05,
+`docs/mechanics/055-presentation-fidelity.md`) are decoded from the same pinned
+reference graphics (`assets/amiga/xevious_gfx.c`: the explosion sprite codes,
+the bank-1 crosshair and bomb tiles, their colour tables and the palette) by
+`tools/effects_sprite_render.py` into one 224×128 sheet,
+`src/xevious/assets/92f9eb9bdf3015dee68c2169b50c2b8a.png`, on the hidden
+`sprite_sheets` target; `--verify` re-derives it byte-for-byte at the pin. The
+`effects` entries in `assets/sprite-extraction/manifest.json` crop the frames
+from it, flip-expanding the player and air explosions. They replace the
+Spriters Resource stand-ins (the shared eight-frame burst, the crater crops and
+the Toroid frames the enemy bullet borrowed); the replaced baseline costumes stay
+in the project unreferenced.
+
+| Output | Description | Credit | Source | License |
+| --- | --- | --- | --- | --- |
+| Effects sheet and its explosion, crater, crosshair, bomb-target, bomb and bullet costumes | Arcade effects sprites at their colour steps | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
 
 The same rights caveat as the terrain and the Andor parts applies.
 

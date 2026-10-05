@@ -63,9 +63,11 @@ are recorded with their reasons in the build's framing and screen-proportions me
 
 **Animation timing.** Where this spec records frame counts — the ~56-frame player explosion, the bomb's
 two-stage flight animation and four-color cycle, the Sol Tower's seven-step rise, bullet color pulsing
-(`src/xevious_sub.68k` `sub_fn_5__handle_pulsing_colours` 208–232, an eight-entry two-palette cycle
-driven by the frame counter) — the build times those animations in the game's frame clock to the
-recorded counts. Animations not yet extracted keep the preserved baseline's proven presentation until a
+(`src/xevious_sub.68k` `sub_fn_5__handle_pulsing_colours` 208–218: every enemy bullet takes one of four
+colors from the frame counter, a new color every two frames, held while the scroll is stopped; the
+eight-entry two-palette tables beside it, `colour_lut_pulsing_1` 229–230 and `colour_lut_pulsing_2`
+231–232, set the shared pulsing colors other objects read, not the bullets') — the build times those
+animations in the game's frame clock to the recorded counts. Animations not yet extracted keep the preserved baseline's proven presentation until a
 fidelity pass records the arcade value; replacing a working animation without a recorded value is the
 regression class the principles forbid.
 
@@ -73,11 +75,14 @@ regression class the principles forbid.
 and explosions, score awards, the extra-life sound, the Bacura deflection sound, the coin sound, the
 Bonus Flag sound, state transitions, the boss encounter, and the game-over and high-score flows each
 trigger at their owning event and must fit inside their state's window without being cut off by a
-transition (the death cue is the worked example: the post-death pause lets its measured 1.361 s finish
-before the transition stops sounds — [record 003](../mechanics/003-game-director-and-state-reset.md)).
-The current inventory is the preserved baseline's music and sounds, the credited arcade sound effects
-recorded in `docs/ASSET_CREDITS.md`, and sounds taken from the pinned reference (recorded in the asset
-provenance files); the reference's cue sites (sound calls throughout
+transition (the death cue is the worked example: the arcade stops only the flight tune at a death and
+plays the death cue, `src/xevious_main.68k` `update_solvalou` 2026–2030, which then plays out through the
+post-death pause and the forest wait, `main_gameplay_loop` 511–536, before the next life's theme; the
+build keeps every sound through the one transition after a death —
+[record 055](../mechanics/055-presentation-fidelity.md)). The current inventory is the credited arcade
+music and sound effects recorded in `docs/ASSET_CREDITS.md` and sounds taken from the pinned reference
+(recorded in the asset provenance files); the preserved baseline's own music and sounds stay in the
+project unplayed. The reference's cue sites (sound calls throughout
 `src/xevious_main.68k`) name *when* a cue exists, and matching each cue's sound content is arcade
 observation work, recorded per mechanic as it lands.
 
