@@ -43,11 +43,6 @@ BOMB_INFLIGHT_ID = "weapon-bomb-in-flight"
 # it (to pick its falling frame). Cleared to 0 on every reset scope alongside the guard.
 BOMB_DX_ID = "weapon-bomb-dx"
 RELOAD_ID = "weapon-blaster-reload"
-# Per-strip terrain scroll counter (preserved across a new life; only cold-start /
-# new-game rewinds it), driving the counted-cycle wrap that replaces the position
-# test Scratch fencing made unreachable (audit B3).
-TERRAIN_STEP_A_ID = "terrain-scroll-step-a"
-TERRAIN_STEP_B_ID = "terrain-scroll-step-b"
 
 # Gameplay timing is counted in build ticks — 1 build tick = 2 arcade frames
 # (core-game-systems.md units rule); arcade-frame originals live in their locked
@@ -3145,6 +3140,9 @@ MESSAGES = {
     # sound directly; it broadcasts this and the Stage plays BACURA_HIT_SND (src deactivate_shot
     # xevious_main.68k:2559). All other arcade SFX play from Stage-thread procs directly.
     "sfx bacura": "broadcastMsgId-sfx-bacura",
+    # AREA-01 (slice 20): the Stage has just computed the terrain strips' state (`update terrain`) — at the
+    # end of each walk tick and of each re-top; each strip draws itself from it, in the same frame.
+    "terrain draw": "broadcastMsgId-terrain-draw",
 }
 
 PROCCODE = "transition to %s reset %s"
@@ -3506,11 +3504,24 @@ class Blocks:
             fields={"FRONT_BACK": ["front", None]},
         )
 
+    def to_back(self) -> str:
+        return self.add(
+            "looks_gotofrontback",
+            fields={"FRONT_BACK": ["back", None]},
+        )
+
     def send_backward(self, layers: int = 1) -> str:
         return self.add(
             "looks_goforwardbackwardlayers",
             inputs={"NUM": number(layers)},
             fields={"FORWARD_BACKWARD": ["backward", None]},
+        )
+
+    def bring_forward(self, layers: int = 1) -> str:
+        return self.add(
+            "looks_goforwardbackwardlayers",
+            inputs={"NUM": number(layers)},
+            fields={"FORWARD_BACKWARD": ["forward", None]},
         )
 
     def switch_costume(self, costume: str) -> str:
@@ -3523,13 +3534,13 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
-    def switch_costume_expr(self, reporter_id: str) -> str:
+    def switch_costume_expr(self, reporter_id: str, shadow_costume: str = "digit/0") -> str:
         # Like switch_costume(), but the costume NAME is computed at runtime (a reporter,
         # e.g. a joined "digit/<n>" string). The costume input is a MENU input, so the
         # reporter must OBSCURE a costume-menu shadow ([3, reporter, shadow]) — a bare
         # [2, reporter] leaves the menu input unread and the switch never happens.
         menu = self.add(
-            "looks_costume", fields={"COSTUME": ["digit/0", None]}, shadow=True
+            "looks_costume", fields={"COSTUME": [shadow_costume, None]}, shadow=True
         )
         block_id = self.add(
             "looks_switchcostumeto", inputs={"COSTUME": [3, reporter_id, menu]}
@@ -9001,8 +9012,9 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
         # area boundary or a respawn (the natural sheonite_start also clears it, but a debug pre-arm or a
         # partial run must not carry a stuck "time to leave" into the next area).
         blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(0)),
-        # AREA-01 (slice 20): the strips' state for the re-topped clock, before anything draws.
+        # AREA-01 (slice 20): the strips' state for the re-topped clock, and the strips draw it.
         blocks.call_proc(UPDATE_TERRAIN_PROCCODE, warp=True),
+        blocks.send("terrain draw"),
     ]
 
 
@@ -11112,8 +11124,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
         blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
         # AREA-01 (slice 20): the terrain strips' state for this tick's clock, once the clock and the ground
-        # objects have moved (outside the ADVANCE_AREA -> ADVANCE_SLOTS pair, which must stay adjacent).
+        # objects have moved (outside the ADVANCE_AREA -> ADVANCE_SLOTS pair, which must stay adjacent); the
+        # strips draw it later in this same frame, as the ground clones draw this tick's slots.
         blocks.call_proc(UPDATE_TERRAIN_PROCCODE, warp=True),
+        blocks.send("terrain draw"),
         # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
         # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
         blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
@@ -12314,82 +12328,41 @@ def death_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
-# PRES-01 (docs/mechanics/054): the terrain strips scroll one arcade pixel a tick at the render scale —
-# the same 1.25 stage units the ground objects move (32 slot units = 1/8 row of RENDER_ROW_STAGE) — from
-# y TERRAIN_STRIP_TOP to the fence at -TERRAIN_STRIP_TOP, so a strip's y is always
-# TERRAIN_STRIP_TOP - TERRAIN_SCROLL_STEP * step, and it wraps after TERRAIN_CYCLE_STEPS (690 / 1.25).
-TERRAIN_SCROLL_STEP = ARCADE_STAGE_PER_PX
-TERRAIN_STRIP_TOP = 345
-TERRAIN_CYCLE_STEPS = 552
-assert TERRAIN_CYCLE_STEPS * TERRAIN_SCROLL_STEP == 2 * TERRAIN_STRIP_TOP
+# AREA-01 (slice 20): the two terrain strips only draw what `update terrain` computed (see
+# UPDATE_TERRAIN_PROCCODE) — the even strip (area_01a) band 0 / band 2 / the forest filler, the odd strip
+# (area_01b) band 1 / band 3 / the restart band. Their costumes, at one costume px per arcade px, are
+# tools/terrain_render.py's; their size of 125 (the 1.25 render scale) is only the target record's
+# (TERRAIN_STRIP_SIZE): scratch-vm caps a size set by a block at 1.5x the stage, about 70% for a 1024-px band.
+TERRAIN_STRIP_TARGETS = terrain_render.STRIP_TARGETS
+TERRAIN_STRIP_SIZE = round(100 * terrain_render.STAGE_PER_PX)
+assert TERRAIN_STRIP_SIZE == 125
+# The decoupled prototype strips' per-strip step counters, removed from the strip targets.
+RETIRED_TERRAIN_VARIABLE_IDS = ("terrain-scroll-step-a", "terrain-scroll-step-b")
 
 
-def terrain_seed_y(step: int) -> float:
-    # The steady wrap law: where a strip seeded at `step` stands.
-    y = TERRAIN_STRIP_TOP - TERRAIN_SCROLL_STEP * step
-    return int(y) if y == int(y) else y
-
-
-def terrain_blocks(
-    name: str, costume: str, start_y: float, step_id: str, initial_step: int
-) -> dict[str, dict[str, Any]]:
-    blocks = Blocks(name)
+def terrain_strip_blocks(parity: str) -> dict[str, dict[str, Any]]:
+    blocks = Blocks(TERRAIN_STRIP_TARGETS[parity])
     common_stop(blocks, hide=False)
-    reset = blocks.receive("director reset")
-    switch = blocks.switch_costume(costume)
-    rewind = [
-        switch,
-        blocks.go(0, start_y),
-        blocks.set_var("scroll step", step_id, number(initial_step)),
-        blocks.send_backward(),  # B9: terrain sits behind the sprites
-        blocks.show(),
-    ]
-    # Rewind to the strip's top on cold-start, new-game, AND new-life: a new life now restarts
-    # the current area from its top, the arcade rule the locked area-progression spec makes
-    # normative — retiring the interim B11 preserve-terrain-on-death fixture (audit 2026-08-09).
-    # The visual strip stays DECOUPLED from the area clock this slice (only area-1 art exists);
-    # the near-end checkpoint lives in the Stage `area_reset` receiver, where it advances the
-    # AREA NUMBER on a near-end death. Coupling this visual scroll to the clock is the
-    # presentation slice's (20) work.
-    reset_control = blocks.add("control_if")
-    tail = blocks.add("operator_or")
-    ng = blocks.scope_is(tail, "new-game")
-    nl = blocks.scope_is(tail, "new-life")
-    blocks.blocks[tail]["inputs"] = {"OPERAND1": [2, ng], "OPERAND2": [2, nl]}
-    condition = blocks.add("operator_or")
-    blocks.blocks[tail]["parent"] = condition
-    cs = blocks.scope_is(condition, "cold-start")
-    blocks.blocks[condition]["inputs"] = {"OPERAND1": [2, cs], "OPERAND2": [2, tail]}
-    blocks.blocks[condition]["parent"] = reset_control
-    blocks.blocks[reset_control]["inputs"]["CONDITION"] = [2, condition]
-    blocks.substack(reset_control, rewind)
-    blocks.chain(reset, [reset_control])
-
-    enter = blocks.receive("director enter")
-    loop = blocks.add("control_repeat_until")
-    condition = blocks.not_state(loop, "playing")
-    blocks.blocks[loop]["inputs"]["CONDITION"] = [2, condition]
-    move = blocks.add("motion_changeyby", inputs={"DY": number(-TERRAIN_SCROLL_STEP)})
-    advance = blocks.change_var("scroll step", step_id, 1)
-    # B3: counted-cycle wrap (TERRAIN_CYCLE_STEPS per strip). The former position test
-    # (y < -345) was unreachable — Scratch fencing pins a full-height strip at -345, so
-    # both strips parked and the screen went black. Counting the steps always fires.
-    wrap_if = blocks.add("control_if")
-    reached = blocks.greater(wrap_if, "scroll step", step_id, TERRAIN_CYCLE_STEPS - 1)
-    blocks.blocks[wrap_if]["inputs"]["CONDITION"] = [2, reached]
-    blocks.substack(
-        wrap_if,
-        [
-            blocks.set_var("scroll step", step_id, number(0)),
-            blocks.go(0, TERRAIN_STRIP_TOP),
-            blocks.add("looks_nextcostume"),
-        ],
+    out = TERRAIN_STRIP_VARS[parity]
+    # Costume first, so the position is fenced (when a renderer fences it) against the new costume's box.
+    switch = blocks.switch_costume_expr(
+        blocks.op_join(variable(*out["costume"]), text("")),
+        shadow_costume=(terrain_render.EVEN_COSTUMES if parity == "even" else terrain_render.ODD_COSTUMES)[0],
     )
-    blocks.substack(loop, [move, advance, wrap_if])
-    blocks.chain(
-        enter,
-        [blocks.if_state("playing", [blocks.send_backward(), blocks.show(), loop])],
+    move = blocks.go_expr(variable(*out["x"]), variable(*out["y"]))
+    shown = blocks.add("control_if_else")
+    shown_cond = blocks.op_eq(variable(*out["shown"]), number(1))
+    blocks.blocks[shown_cond]["parent"] = shown
+    blocks.blocks[shown]["inputs"]["CONDITION"] = [2, shown_cond]
+    blocks.substack(shown, [blocks.show()])
+    blocks.substack(shown, [blocks.hide()], name="SUBSTACK2")
+    # The upper strip draws in front, hiding the lower strip's overlap rows. Both go to the back (behind
+    # every other sprite); the upper one then steps forward over the lower, whichever of the two runs first.
+    upper = blocks.if_reporter(
+        blocks.op_eq(variable("terrain even behind", TERRAIN_EVEN_BEHIND_ID), number(0 if parity == "even" else 1)),
+        [blocks.bring_forward()],
     )
+    blocks.chain(blocks.receive("terrain draw"), [switch, move, shown, blocks.to_back(), upper])
     return blocks.blocks
 
 
@@ -16233,16 +16206,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         "Stage": stage_blocks(),
         "solvalou": solvalou_blocks(),
         "blaster": blaster_blocks(),
-        # The two strips leapfrog: each moves down TERRAIN_SCROLL_STEP a tick from y 345 to
-        # the fence at y -345 and wraps after TERRAIN_CYCLE_STEPS, so a strip's y is always
-        # terrain_seed_y(step). Seeded half a cycle apart (y 345 apart; the 360-tall strips
-        # overlap by 15), the pair covers the stage on every tick. The baseline seeds (y -15 /
-        # step 355, y 344 / step 0) broke the wrap law, so the spacing alternated 336 / 355 and
-        # a gap of up to 10 opened at the top or bottom edge every half cycle, hidden by the
-        # retired frame bands until PRES-01 removed them. Same positions as before (y -15 and
-        # 330); only the step counts follow the 1.25 scroll.
-        "area_01a": terrain_blocks("area_01a", "area01_12-0", terrain_seed_y(288), TERRAIN_STEP_A_ID, 288),
-        "area_01b": terrain_blocks("area_01b", "area01_11-0", terrain_seed_y(12), TERRAIN_STEP_B_ID, 12),
+        # AREA-01: the terrain strips draw the Stage's terrain state (terrain_strip_blocks).
+        TERRAIN_STRIP_TARGETS["even"]: terrain_strip_blocks("even"),
+        TERRAIN_STRIP_TARGETS["odd"]: terrain_strip_blocks("odd"),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
         "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, "target_01"),
@@ -16286,14 +16252,24 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 CLONE_SLOT_ID: ["clone slot", 0],
                 SHOT_DEPTH_ID: ["shot depth", 0],
             }
-        elif target["name"] == "area_01a":
-            target["variables"] = target["variables"] | {
-                TERRAIN_STEP_A_ID: ["scroll step", 288]
+        elif target["name"] in TERRAIN_STRIP_TARGETS.values():
+            # AREA-01: the decoupled strips' `scroll step` counters are retired (idempotent), and each strip
+            # rests at the cold-start terrain state, at the render scale.
+            target["variables"] = {
+                var_id: value
+                for var_id, value in target["variables"].items()
+                if var_id not in RETIRED_TERRAIN_VARIABLE_IDS
             }
-        elif target["name"] == "area_01b":
-            target["variables"] = target["variables"] | {
-                TERRAIN_STEP_B_ID: ["scroll step", 12]
-            }
+            parity = next(p for p, name in TERRAIN_STRIP_TARGETS.items() if name == target["name"])
+            initial = _initial_terrain_strip_vars()
+            target.update(
+                {
+                    "size": TERRAIN_STRIP_SIZE,
+                    "x": initial[TERRAIN_STRIP_VARS[parity]["x"][1]][1],
+                    "y": initial[TERRAIN_STRIP_VARS[parity]["y"][1]][1],
+                    "visible": bool(initial[TERRAIN_STRIP_VARS[parity]["shown"][1]][1]),
+                }
+            )
         elif target["name"] == "start_screen":
             # CAB-01: all attract-display state is sprite-local to start_screen (never a Stage
             # variable) — the role snapshotted into each clone at creation, the digit's place, and

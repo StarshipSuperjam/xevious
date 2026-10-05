@@ -56,5 +56,39 @@
       },
       "license": "Arcade map and tile data of Namco's Xevious (1983), transcribed in the pinned reference; third-party copyrighted material, same class as the arcade sprites the project ships; rights review before broader distribution"
     }
+  },
+  "costumes": {
+    "generator": "tools/terrain_render.py generate",
+    "generator_version": 1,
+    "sources": {
+      "arcade_map.png": "e7f2254bb01e6161c87b6d19b2cb147677804aa30d206f4da7f79f72dbfe5e22",
+      "forest_filler.png": "d6252c841a6039dd2f73235cd4850722679f473abfebe3303be1e66f5d7b90e7"
+    },
+    "outputs": {
+      "bc752858218411d2975a8408a630b583.png": {
+        "name": "terrain band 0",
+        "target": "area_01a"
+      },
+      "5cfbd637cb523bec9a01f4ab78769e40.png": {
+        "name": "terrain band 1",
+        "target": "area_01b"
+      },
+      "89d07d704bce46a44d21e1f6d120fbe9.png": {
+        "name": "terrain band 2",
+        "target": "area_01a"
+      },
+      "1b7f40d3399a19a17f8e2beee9ff2ef6.png": {
+        "name": "terrain band 3",
+        "target": "area_01b"
+      },
+      "de69258893ddb0df1ac4cf36d8f60ad4.png": {
+        "name": "terrain band 3 restart",
+        "target": "area_01b"
+      },
+      "e96445466fff04178e7de0e29ec29773.png": {
+        "name": "terrain filler",
+        "target": "area_01a"
+      }
+    }
   }
 }

@@ -478,6 +478,104 @@ class TerrainStateTests(unittest.TestCase):
         self.assertEqual((tr.BAND_COSTUMES[0], -140), (end.even.costume, end.even.x))
 
 
+class StripCostumeTests(unittest.TestCase):
+    """AREA-01: the six strip costumes sliced from the committed master map and filler (`generate` / `check`)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.map_png, cls.filler_png = tr.MAP_PNG.read_bytes(), tr.FILLER_PNG.read_bytes()
+        cls.costumes = tr.strip_costumes(cls.map_png, cls.filler_png)
+        _w, _h, cls.map_raw = tr.decode_rgba(cls.map_png, "map")
+        _w, _h, cls.filler_raw = tr.decode_rgba(cls.filler_png, "filler")
+
+    @staticmethod
+    def _row(raw: bytes, width: int, y: int) -> bytes:
+        return raw[y * width * 4:(y + 1) * width * 4]
+
+    def _costume_raw(self, name: str) -> tuple[int, int, bytes]:
+        return tr.decode_rgba(self.costumes[name].png, name)
+
+    def test_committed_costumes_project_and_provenance_are_current(self) -> None:
+        self.assertEqual(6, tr.check_costumes())
+
+    def test_slicing_is_byte_deterministic(self) -> None:
+        again = tr.strip_costumes(self.map_png, self.filler_png)
+        self.assertEqual(
+            {n: (c.filename, c.png) for n, c in self.costumes.items()},
+            {n: (c.filename, c.png) for n, c in again.items()},
+        )
+        self.assertEqual(6, len({c.filename for c in self.costumes.values()}))
+
+    def test_band_costumes_are_their_map_rows_with_the_overlap_on_top(self) -> None:
+        # Band b is map pixel rows 512b-16 .. 512b+511 (mod 2048), its top edge at costume row 16 -- the
+        # rotation centre the strip model's y puts on the band's top line.
+        for band, name in enumerate(tr.BAND_COSTUMES):
+            width, height, raw = self._costume_raw(name)
+            self.assertEqual((1024, 528), (width, height))
+            self.assertEqual((512, 16), self.costumes[name].centre)
+            self.assertEqual(tr.BAND_OVERLAP_LINES, self.costumes[name].centre[1])
+            for k in (0, 15, 16, 300, 527):
+                want = self._row(self.map_raw, 1024, (512 * band + k - 16) % 2048)
+                self.assertEqual(want, self._row(raw, width, k), (name, k))
+        # Biting: band 0's overlap really wraps to the map's last rows (not rows 0..15 again).
+        _w, _h, raw0 = self._costume_raw(tr.BAND_COSTUMES[0])
+        self.assertNotEqual(self._row(self.map_raw, 1024, 0), self._row(raw0, 1024, 0))
+
+    def test_restart_costume_is_band_3_without_row_255(self) -> None:
+        width, height, band3 = self._costume_raw(tr.BAND_COSTUMES[3])
+        _w, _h, restart = self._costume_raw(tr.RESTART_COSTUME)
+        cut = (height - tr.TILE) * width * 4
+        self.assertEqual(band3[:cut], restart[:cut])
+        self.assertTrue(all(a == 0 for a in restart[cut + 3::4]))
+        self.assertTrue(any(a != 0 for a in band3[cut + 3::4]))  # row 255 itself is drawn ground
+        self.assertEqual(self.costumes[tr.BAND_COSTUMES[3]].centre, self.costumes[tr.RESTART_COSTUME].centre)
+
+    def test_filler_costume_wraps_its_pattern_over_the_top(self) -> None:
+        width, height, raw = self._costume_raw(tr.FILLER_COSTUME)
+        self.assertEqual((224, 536), (width, height))
+        self.assertEqual((112, tr.FILLER_OVERLAP_LINES), self.costumes[tr.FILLER_COSTUME].centre)
+        for k in (0, 23, 24, 535):
+            want = self._row(self.filler_raw, 224, (k - tr.FILLER_OVERLAP_LINES) % tr.FILLER_HEIGHT)
+            self.assertEqual(want, self._row(raw, width, k), k)
+
+    def test_each_strip_holds_its_parity_and_rests_on_its_cold_start_costume(self) -> None:
+        project = json.loads(tr.PROJECT_PATH.read_text(encoding="utf-8"))
+        targets = {t["name"]: t for t in project["targets"]}
+        cold = tr.terrain_state(0, 0, tr.NO_PREVIOUS_COLUMN)
+        for parity, names, rest in (
+            ("even", tr.EVEN_COSTUMES, cold.even.costume), ("odd", tr.ODD_COSTUMES, cold.odd.costume),
+        ):
+            target = targets[tr.STRIP_TARGETS[parity]]
+            self.assertEqual(list(names), [c["name"] for c in target["costumes"]])
+            self.assertEqual({1}, {c["bitmapResolution"] for c in target["costumes"]})
+            self.assertEqual(
+                [self.costumes[n].filename for n in names], [c["md5ext"] for c in target["costumes"]]
+            )
+            self.assertEqual(rest, target["costumes"][target["currentCostume"]]["name"])
+        self.assertEqual(tr.FILLER_COSTUME, cold.even.costume)
+
+    def test_missing_strip_target_fails_loudly(self) -> None:
+        with self.assertRaises(se.SpriteExtractionError):
+            tr.expected_strip_project({"targets": []}, self.costumes)
+
+    def test_provenance_credits_namco_and_pins_the_sources(self) -> None:
+        overlay = json.loads(tr.OVERLAY_PROVENANCE.read_text(encoding="utf-8"))["assets"]
+        terrain = json.loads(tr.PROVENANCE.read_text(encoding="utf-8"))["costumes"]
+        self.assertEqual(
+            {c.filename: {"name": c.name, "target": tr.STRIP_TARGETS["even" if c.name in tr.EVEN_COSTUMES else "odd"]}
+             for c in self.costumes.values()},
+            terrain["outputs"],
+        )
+        source_sha = {tr.MAP_PNG.name: se._sha256(self.map_png), tr.FILLER_PNG.name: se._sha256(self.filler_png)}
+        self.assertEqual(source_sha, terrain["sources"])
+        for costume in self.costumes.values():
+            record = overlay[costume.filename]
+            self.assertIn("No reusable license", record["license"])
+            self.assertIn("Namco", record["notes"])
+            self.assertIn(source_sha[costume.source], record["notes"])
+            self.assertIn(tr.PINNED_COMMIT, record["origin"])
+
+
 @unittest.skipUnless(REFERENCE is not None, "no verified reference checkout at the pin")
 class ReferenceTerrainTests(unittest.TestCase):
     @classmethod

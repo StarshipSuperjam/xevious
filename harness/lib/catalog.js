@@ -142,13 +142,11 @@ function reachSecondDemo(vm) {
   return state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
 }
 
-// Every read resolves through a manifest id (hard-errors on a rename), including the
-// scope-duplicated ones: `terrain-scroll-step-a` is area_01a's, distinct from area_01b's.
+// Every read resolves through a manifest id (hard-errors on a rename).
 const state = stateOf;
 const epoch = (vm) => readVar(vm, 'game-director-epoch');
 const outcome = (vm) => readVar(vm, 'game-director-death-outcome');
 const bombInFlight = (vm) => readVar(vm, 'weapon-bomb-in-flight');
-const scrollA = (vm) => readVar(vm, 'terrain-scroll-step-a');
 // Step until `pred(vm)` holds or the budget runs out; returns whether it held. Used where a finish now
 // routes through the terminal GAME OVER hold (high-score-entry -> game-over -> title) rather than straight
 // to the title, so reaching the title takes more than a couple of pumps.
@@ -555,30 +553,45 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'bomb in flight', 0, 99),
   },
   {
-    key: 'terrain-wrap',
-    behavior: 'The terrain scroll counter advances and wraps on its counted cycle',
+    key: 'terrain-strips-draw-state',
+    behavior:
+      "The two terrain strips draw the Stage's terrain state every tick: each strip's costume, position and visibility match its parity's variables",
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Each pump advances the counter by hundreds, so a handful covers several full cycles.
-      let prev = scrollA(vm);
-      let increased = false;
-      let wrapped = false;
-      for (let i = 0; i < 40; i += 1) {
+      // A pump runs the walk a few hundred ticks, so 24 pumps cross area ends and every band hand-over.
+      // (The harness VM has no renderer: no fencing and no layer order -- the layering is pinned in pytest.)
+      const strips = { even: 'area_01a', odd: 'area_01b' };
+      const mismatches = [];
+      const seen = { even: new Set(), odd: new Set() };
+      let shownSamples = 0;
+      const areas = new Set();
+      for (let i = 0; i < 24; i += 1) {
         step(vm, 1);
-        const v = scrollA(vm);
-        if (v > prev) increased = true;
-        if (v < prev) wrapped = true;
-        prev = v;
+        areas.add(Number(readVar(vm, 'area-number')));
+        for (const [parity, name] of Object.entries(strips)) {
+          const t = vm.runtime.getSpriteTargetByName(name);
+          const want = {
+            costume: String(readVar(vm, `terrain-${parity}-costume`)),
+            x: Number(readVar(vm, `terrain-${parity}-x`)),
+            y: Number(readVar(vm, `terrain-${parity}-y`)),
+            visible: Number(readVar(vm, `terrain-${parity}-shown`)) === 1,
+          };
+          const got = { costume: t.getCostumes()[t.currentCostume].name, x: t.x, y: t.y, visible: t.visible };
+          if (JSON.stringify(want) !== JSON.stringify(got)) mismatches.push({ i, parity, want, got });
+          seen[parity].add(want.costume);
+          if (want.visible) shownSamples += 1;
+        }
       }
-      return { increased, wrapped };
+      return { mismatches, even: [...seen.even], odd: [...seen.odd], shownSamples, areas: [...areas] };
     },
     assert(obs) {
-      assert.equal(obs.increased, true, 'scroll counter advances while playing');
-      assert.equal(obs.wrapped, true, 'scroll counter wraps on its cycle');
+      assert.deepEqual(obs.mismatches, [], 'every strip shows its costume, x, y and visibility from the terrain state');
+      assert.ok(obs.shownSamples > 24, `strips were on screen in the samples (${obs.shownSamples})`);
+      assert.ok(obs.even.length >= 2 && obs.odd.length >= 2, `strips changed band (${obs.even} / ${obs.odd})`);
     },
-    // Freeze the counter so it never advances or wraps → assertion fails.
-    negativeMutation: (p) => mutate.freezeVariableChange(p, 'area_01a', 'scroll step'),
+    // The even strip never shows (its shown test compares against 99) → visibility mismatches.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'area_01a', 'terrain even shown', 1, 99),
   },
   {
     key: 'start-and-input-gating',

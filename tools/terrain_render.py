@@ -41,10 +41,18 @@ draws a map row and a ground object on screen (the "screen phase" constants), an
 ``calibrate`` draws an area's strip of the master map with each of its scheduled
 ground objects boxed at that derived position -- a picture to check landmarks by eye.
 
+``generate`` slices the committed master map and filler into the two terrain strips'
+six costumes (four bands, the restart band, the filler), writes them to
+``src/xevious/assets/`` and the strip targets' costume lists in ``project.json``, with
+their provenance; ``check`` verifies all of that is current. Run it after
+``tools/game_director.py generate``.
+
 Usage:
     python tools/terrain_render.py render --checkout PATH
     python tools/terrain_render.py verify --checkout PATH
     python tools/terrain_render.py calibrate --area N [--out PATH]
+    python tools/terrain_render.py generate
+    python tools/terrain_render.py check
 """
 
 from __future__ import annotations
@@ -962,6 +970,203 @@ def cmd_calibrate(area: int, out: Path | None) -> int:
     return 0
 
 
+# --- the strip costumes (generate / check) ----------------------------------------------------
+#
+# Ownership (the bezel's split): tools/game_director.py owns the two strip targets' existence, blocks, size and
+# position; this module owns their costumes, the overlay provenance records for them, and the "costumes" part of
+# assets/terrain/provenance.json. The costumes are sliced from the committed master map and filler, at one
+# costume px per arcade px (bitmapResolution 1); the strips' size of 125 makes that the 1.25 render scale.
+
+ASSET_DIR = ROOT / "src" / "xevious" / "assets"
+OVERLAY_PROVENANCE = ASSET_DIR / "provenance.json"
+PROJECT_PATH = ROOT / "src" / "xevious" / "project.json"
+STRIP_TARGETS = {"even": "area_01a", "odd": "area_01b"}
+COSTUME_GENERATOR_VERSION = 1
+LICENSE = "No reusable license specified by source; third-party copyrighted material"
+
+
+@dataclass(frozen=True)
+class StripCostume:
+    name: str
+    source: str        # file under assets/terrain/
+    rows: str          # which map rows it holds, for the provenance note
+    png: bytes
+    width: int
+    height: int
+    centre: tuple[int, int]
+
+    @property
+    def filename(self) -> str:
+        return hashlib.md5(self.png).hexdigest() + ".png"
+
+
+def _rows(raw: bytes, width: int, ys: list[int]) -> bytearray:
+    stride = width * 4
+    out = bytearray()
+    for y in ys:
+        out += raw[y * stride:(y + 1) * stride]
+    return out
+
+
+def strip_costumes(map_png: bytes, filler_png: bytes) -> dict[str, StripCostume]:
+    """The six strip costumes, by name: a band is its 64 map rows with the two rows above it on top (the band
+    top, the rotation centre, is costume row 16); the restart band is band 3 with map row 255 transparent; the
+    filler is the 64-row forest pattern with its last three rows on top (rotation centre row 24)."""
+    width, height, raw = decode_rgba(map_png, MAP_PNG.name)
+    if (width, height) != (MAP_WIDTH, MAP_HEIGHT):
+        raise SpriteExtractionError(f"{MAP_PNG.name} is not the {MAP_WIDTH} x {MAP_HEIGHT} master map")
+    band_height = TERRAIN_BAND_LINES + BAND_OVERLAP_LINES
+    costumes: dict[str, StripCostume] = {}
+    for band, name in enumerate(BAND_COSTUMES):
+        first = TERRAIN_BAND_ROWS * band
+        ys = [(TERRAIN_BAND_LINES * band + k) % MAP_HEIGHT for k in range(-BAND_OVERLAP_LINES, TERRAIN_BAND_LINES)]
+        pixels = _rows(raw, width, ys)
+        overlap = f"{(first - BAND_OVERLAP_ROWS) % MAP_ROWS}..{(first - 1) % MAP_ROWS}"
+        costumes[name] = StripCostume(
+            name, MAP_PNG.name, f"map rows {first}..{first + TERRAIN_BAND_ROWS - 1}, overlap rows {overlap} on top",
+            encode_rgba(width, band_height, bytes(pixels)), width, band_height, (width // 2, BAND_OVERLAP_LINES),
+        )
+        if band == TERRAIN_BANDS - 1:
+            # Map row 255 is the band's last TILE costume rows: a re-top never writes it (see the model above).
+            pixels[(band_height - TILE) * width * 4:] = bytes(TILE * width * 4)
+            costumes[RESTART_COSTUME] = StripCostume(
+                RESTART_COSTUME, MAP_PNG.name,
+                f"map rows {first}..{MAP_ROWS - 2} (row {MAP_ROWS - 1} transparent), overlap rows {overlap} on top",
+                encode_rgba(width, band_height, bytes(pixels)), width, band_height, (width // 2, BAND_OVERLAP_LINES),
+            )
+    f_width, f_height, f_raw = decode_rgba(filler_png, FILLER_PNG.name)
+    if (f_width, f_height) != (FILLER_WIDTH, FILLER_HEIGHT):
+        raise SpriteExtractionError(f"{FILLER_PNG.name} is not the {FILLER_WIDTH} x {FILLER_HEIGHT} filler")
+    filler_height = FILLER_HEIGHT + FILLER_OVERLAP_LINES
+    ys = [(k % FILLER_HEIGHT) for k in range(-FILLER_OVERLAP_LINES, FILLER_HEIGHT)]
+    costumes[FILLER_COSTUME] = StripCostume(
+        FILLER_COSTUME, FILLER_PNG.name,
+        f"pattern rows 0..{PLANE_ROWS - 1}, rows {PLANE_ROWS - FILLER_OVERLAP_ROWS}..{PLANE_ROWS - 1} again on top",
+        encode_rgba(f_width, filler_height, bytes(_rows(f_raw, f_width, ys))), f_width, filler_height,
+        (f_width // 2, FILLER_OVERLAP_LINES),
+    )
+    return costumes
+
+
+def _costume_record(costume: StripCostume) -> dict:
+    return {
+        "name": costume.name,
+        "bitmapResolution": 1,
+        "dataFormat": "png",
+        "assetId": costume.filename.removesuffix(".png"),
+        "md5ext": costume.filename,
+        "rotationCenterX": costume.centre[0],
+        "rotationCenterY": costume.centre[1],
+    }
+
+
+def expected_strip_project(project: dict, costumes: dict[str, StripCostume]) -> dict:
+    """The project with each strip target's costumes set to its three, resting on its cold-start costume."""
+    result = json.loads(json.dumps(project))
+    cold_start = terrain_state(0, 0, NO_PREVIOUS_COLUMN)
+    for parity, names, rest in (
+        ("even", EVEN_COSTUMES, cold_start.even.costume), ("odd", ODD_COSTUMES, cold_start.odd.costume),
+    ):
+        target = next((t for t in result["targets"] if t.get("name") == STRIP_TARGETS[parity]), None)
+        if target is None:
+            raise SpriteExtractionError(
+                f"Scratch project has no {STRIP_TARGETS[parity]} target; run tools/game_director.py generate first"
+            )
+        target["costumes"] = [_costume_record(costumes[name]) for name in names]
+        target["currentCostume"] = names.index(rest)
+    return result
+
+
+def _overlay_record(costume: StripCostume, source_sha256: str) -> dict:
+    return {
+        "origin": (
+            f"Terrain strip costume '{costume.name}' (AREA-01) sliced by tools/terrain_render.py generate from "
+            f"assets/terrain/{costume.source}, which tools/terrain_render.py render decodes from the pinned arcade "
+            f"reference {REFERENCE_REPO} @{PINNED_COMMIT} ({MAP_ROM}, {GFX_C})"
+        ),
+        "license": LICENSE,
+        "notes": (
+            "Credit: Namco (arcade map ROM and background tiles); transcribed in the pinned reference by jotd666. "
+            "The repository operator did not create this asset. "
+            f"Source assets/terrain/{costume.source} at SHA-256 {source_sha256}; {costume.rows}; "
+            f"{costume.width}x{costume.height}, bitmapResolution 1, rotation centre {list(costume.centre)}."
+        ),
+    }
+
+
+def _expected_costume_state() -> tuple[dict[str, StripCostume], bytes, bytes, bytes, set[str]]:
+    map_png, filler_png = MAP_PNG.read_bytes(), FILLER_PNG.read_bytes()
+    costumes = strip_costumes(map_png, filler_png)
+    terrain_provenance = json.loads(PROVENANCE.read_text(encoding="utf-8"))
+    prior = set(terrain_provenance.get("costumes", {}).get("outputs", {}))
+    project = json.loads(PROJECT_PATH.read_text(encoding="utf-8"))
+    project_bytes = _ordered_json_bytes(expected_strip_project(project, costumes))
+    overlay = json.loads(OVERLAY_PROVENANCE.read_text(encoding="utf-8"))
+    if overlay.get("version") != 1 or not isinstance(overlay.get("assets"), dict):
+        raise SpriteExtractionError("overlay provenance must use version 1")
+    assets = {name: record for name, record in overlay["assets"].items() if name not in prior}
+    source_sha = {MAP_PNG.name: _sha256(map_png), FILLER_PNG.name: _sha256(filler_png)}
+    for costume in costumes.values():
+        assets[costume.filename] = _overlay_record(costume, source_sha[costume.source])
+    overlay_bytes = _ordered_json_bytes({"version": 1, "assets": dict(sorted(assets.items()))})
+    terrain_provenance["costumes"] = {
+        "generator": "tools/terrain_render.py generate",
+        "generator_version": COSTUME_GENERATOR_VERSION,
+        "sources": source_sha,
+        "outputs": {
+            costume.filename: {"name": costume.name, "target": STRIP_TARGETS[
+                "even" if costume.name in EVEN_COSTUMES else "odd"
+            ]}
+            for costume in costumes.values()
+        },
+    }
+    return costumes, project_bytes, overlay_bytes, _ordered_json_bytes(terrain_provenance), prior
+
+
+def _require_bytes(path: Path, expected: bytes) -> None:
+    try:
+        actual = path.read_bytes()
+    except OSError as exc:
+        raise SpriteExtractionError(f"missing generated output {path}") from exc
+    if actual != expected:
+        raise SpriteExtractionError(f"generated output is stale; run terrain_render.py generate: {path}")
+
+
+def check_costumes() -> int:
+    costumes, project_bytes, overlay_bytes, provenance_bytes, prior = _expected_costume_state()
+    current = {costume.filename for costume in costumes.values()}
+    stale = prior - current
+    if stale:
+        raise SpriteExtractionError("stale generated terrain costumes: " + ", ".join(sorted(stale)))
+    for costume in costumes.values():
+        _require_bytes(ASSET_DIR / costume.filename, costume.png)
+    _require_bytes(PROJECT_PATH, project_bytes)
+    _require_bytes(OVERLAY_PROVENANCE, overlay_bytes)
+    _require_bytes(PROVENANCE, provenance_bytes)
+    return len(costumes)
+
+
+def cmd_generate() -> int:
+    costumes, project_bytes, overlay_bytes, provenance_bytes, prior = _expected_costume_state()
+    current = {costume.filename for costume in costumes.values()}
+    for stale in sorted(prior - current):
+        path = ASSET_DIR / stale
+        if path.is_file() and not path.is_symlink():
+            path.unlink()
+    for costume in costumes.values():
+        (ASSET_DIR / costume.filename).write_bytes(costume.png)
+    PROJECT_PATH.write_bytes(project_bytes)
+    OVERLAY_PROVENANCE.write_bytes(overlay_bytes)
+    PROVENANCE.write_bytes(provenance_bytes)
+    print(f"generated and verified {check_costumes()} terrain strip costumes")
+    return 0
+
+
+def cmd_check() -> int:
+    print(f"verified {check_costumes()} terrain strip costumes")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -972,12 +1177,18 @@ def main(argv: list[str] | None = None) -> int:
     calibrate = sub.add_parser("calibrate")
     calibrate.add_argument("--area", required=True, type=int, help="area number, 1..16")
     calibrate.add_argument("--out", type=Path, help="output PNG (default dist/terrain-calibration/area-NN.png)")
+    sub.add_parser("generate")
+    sub.add_parser("check")
     args = parser.parse_args(argv)
     try:
         if args.command == "render":
             return cmd_render(args.checkout)
         if args.command == "calibrate":
             return cmd_calibrate(args.area, args.out)
+        if args.command == "generate":
+            return cmd_generate()
+        if args.command == "check":
+            return cmd_check()
         return cmd_verify(args.checkout)
     except SpriteExtractionError as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -1987,16 +1987,6 @@
       "name": "terrain overlap",
       "scope": "Stage"
     },
-    "terrain-scroll-step-a": {
-      "kind": "variable",
-      "name": "scroll step",
-      "scope": "area_01a"
-    },
-    "terrain-scroll-step-b": {
-      "kind": "variable",
-      "name": "scroll step",
-      "scope": "area_01b"
-    },
     "terrain-top": {
       "kind": "variable",
       "name": "terrain top",

@@ -341,7 +341,10 @@ class ScratchProjectTests(unittest.TestCase):
         # + the slice-20 PRES-01 cabinet bezel frame PNG (tools/bezel_panels.py), so 251 + 1 = 252.
         # + the slice-20 PRES-01 best-five header and the five ordinal ranks 1ST..5TH (all distinct whole-string
         # PNGs); PUSH START became PUSH START BUTTON in place (one PNG swapped for another). 252 + 6 = 258.
-        self.assertEqual(258, len(assets))
+        # - the 12 slice-20 AREA-01 retired prototype area01_* strip costumes (still in the baseline archive,
+        # no longer referenced) + the 6 terrain strip costumes sliced from the arcade map by
+        # tools/terrain_render.py (bands 0-3, the restart band, the forest filler). 258 - 12 + 6 = 252.
+        self.assertEqual(252, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -469,13 +472,26 @@ class ScratchProjectTests(unittest.TestCase):
                 "solvalou",
                 "solv_death",
                 "blaster",
-                "area_01a",
-                "area_01b",
             }:
-                # These targets carry director-managed variables (reload counter,
-                # terrain scroll counters) added on top of their historical content.
+                # These targets carry director-managed variables (reload counter, entry
+                # epochs) added on top of their historical content.
                 expected.pop("variables")
                 actual.pop("variables")
+            elif target["name"] in director.TERRAIN_STRIP_TARGETS.values():
+                # AREA-01 (slice 20): the terrain strips keep their identity, sounds and layer, but their
+                # prototype area-1 costumes are replaced by tools/terrain_render.py's three each, and the
+                # director sets their size (the 1.25 render scale) and cold-start position. Pin those exactly,
+                # then compare the rest.
+                parity = "even" if target["name"] == director.TERRAIN_STRIP_TARGETS["even"] else "odd"
+                tr = director.terrain_render
+                names = tr.EVEN_COSTUMES if parity == "even" else tr.ODD_COSTUMES
+                self.assertEqual(list(names), [c["name"] for c in actual["costumes"]])
+                self.assertEqual({1}, {c["bitmapResolution"] for c in actual["costumes"]})
+                self.assertEqual(director.TERRAIN_STRIP_SIZE, actual["size"])
+                self.assertEqual({}, actual["variables"])
+                for key in ("variables", "costumes", "currentCostume", "size", "x", "y", "visible"):
+                    expected.pop(key)
+                    actual.pop(key)
             elif target["name"] == "start_screen":
                 # CAB-01 (slice 17): start_screen gains the attract-display sprite-local
                 # variables (attract role/place/divisor) and hud_glyphs.py APPENDS the
@@ -1079,8 +1095,9 @@ class ScratchProjectTests(unittest.TestCase):
 
     def test_runtime_identifier_manifest_covers_scoped_duplicates(self) -> None:
         # Guards the harness's reason for existing: names that repeat across targets
-        # ("entry epoch" on solvalou and solv_death; "scroll step" on both strips) must
-        # resolve to distinct scoped entries, never collapse to one global name.
+        # ("entry epoch" on solvalou and solv_death) must resolve to distinct scoped
+        # entries, never collapse to one global name. (The terrain strips' per-strip
+        # "scroll step" counters were the other pair until AREA-01 retired them.)
         project = load_source(scratch.SOURCE_DIR)
         manifest = director.identifier_manifest(director.expected_project(project))
         variables = manifest["variables"]
@@ -1094,7 +1111,7 @@ class ScratchProjectTests(unittest.TestCase):
         scroll_steps = {
             info["scope"] for info in variables.values() if info["name"] == "scroll step"
         }
-        self.assertEqual(scroll_steps, {"area_01a", "area_01b"})
+        self.assertEqual(scroll_steps, set())
 
     def test_game_director_generator_refuses_dirty_editor_source(self) -> None:
         with (
@@ -16381,6 +16398,86 @@ class ScratchProjectTests(unittest.TestCase):
             for x in chain_from(handovers[0])[1:]
         ):
             failures.add("completion-hands-over-column")
+
+        # Every terrain update is drawn at once: `update terrain` is always followed by `broadcast terrain
+        # draw`, so the strips move in the same frame as the clock and the ground clones.
+        def is_draw(bid):
+            b = blocks.get(bid) if bid else None
+            return bool(b) and b["opcode"] == "event_broadcast" and b["inputs"].get("BROADCAST_INPUT", [None, [None, None]])[1][1:2] == ["terrain draw"]
+
+        updates = [bid for bid in blocks if is_call(bid, director.UPDATE_TERRAIN_PROCCODE)]
+        if not updates or not all(is_draw(blocks[bid].get("next")) for bid in updates):
+            failures.add("update-terrain-then-draw")
+
+        # Each strip is a pure renderer of its parity's state. Its one `terrain draw` script is, in order:
+        # switch costume to its costume var -> go to (its x var, its y var) -> show if its shown var is 1, else
+        # hide -> go to back -> go forward 1 if it holds the upper band (the even strip when `terrain even
+        # behind` is 0, the odd strip when it is 1). No size block: size 125 is in the target record (scratch-vm
+        # caps a block-set size at 1.5x the stage).
+        def var_of(spec):
+            return spec[1][2] if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list) and spec[1][0] == 12 else None
+
+        def num(spec):
+            try:
+                return float(spec[1][1])
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        for parity, name in director.TERRAIN_STRIP_TARGETS.items():
+            target = next((t for t in project["targets"] if t["name"] == name), None)
+            label = f"strip-draw-{parity}"
+            if target is None:
+                failures.add(label)
+                continue
+            sb = target["blocks"]
+            ids = director.TERRAIN_STRIP_VARS[parity]
+
+            def at(bid, key, sb=sb):
+                spec = sb[bid]["inputs"].get(key) if bid in sb else None
+                return spec[1] if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
+
+            if any(b["opcode"] in ("looks_setsizeto", "looks_changesizeby") for b in sb.values()):
+                failures.add(f"strip-size-block-{parity}")
+            hats = [
+                bid for bid, b in sb.items()
+                if b["opcode"] == "event_whenbroadcastreceived" and b["fields"].get("BROADCAST_OPTION", [None])[0] == "terrain draw"
+            ]
+            if len(hats) != 1:
+                failures.add(label)
+                continue
+            chain = []
+            bid = sb[hats[0]].get("next")
+            while bid:
+                chain.append(bid)
+                bid = sb[bid].get("next")
+            ops = [sb[x]["opcode"] for x in chain]
+            if ops != ["looks_switchcostumeto", "motion_gotoxy", "control_if_else", "looks_gotofrontback", "control_if"]:
+                failures.add(label)
+                continue
+            switch, move, shown, back, upper = (sb[x] for x in chain)
+            join = sb.get(at(chain[0], "COSTUME") or "", {})
+            shown_cond = sb.get(at(chain[2], "CONDITION") or "", {})
+            upper_cond = sb.get(at(chain[4], "CONDITION") or "", {})
+            forward = sb.get(at(chain[4], "SUBSTACK") or "", {})
+            ok = (
+                join.get("opcode") == "operator_join" and var_of(join["inputs"].get("STRING1")) == ids["costume"][1]
+                and var_of(move["inputs"].get("X")) == ids["x"][1] and var_of(move["inputs"].get("Y")) == ids["y"][1]
+                and shown_cond.get("opcode") == "operator_equals"
+                and var_of(shown_cond["inputs"].get("OPERAND1")) == ids["shown"][1]
+                and num(shown_cond["inputs"].get("OPERAND2")) == 1
+                and sb.get(at(chain[2], "SUBSTACK") or "", {}).get("opcode") == "looks_show"
+                and sb.get(at(chain[2], "SUBSTACK2") or "", {}).get("opcode") == "looks_hide"
+                and back["fields"].get("FRONT_BACK", [None])[0] == "back"
+                and upper_cond.get("opcode") == "operator_equals"
+                and var_of(upper_cond["inputs"].get("OPERAND1")) == director.TERRAIN_EVEN_BEHIND_ID
+                and num(upper_cond["inputs"].get("OPERAND2")) == (0 if parity == "even" else 1)
+                and forward.get("opcode") == "looks_goforwardbackwardlayers"
+                and forward["fields"].get("FORWARD_BACKWARD", [None])[0] == "forward"
+                and num(forward["inputs"].get("NUM")) == 1
+                and not forward.get("next")
+            )
+            if not ok:
+                failures.add(label)
         return failures
 
     def test_terrain_wiring_contract(self) -> None:
@@ -16448,12 +16545,64 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["fields"]["VARIABLE"] = ["schedule fired", director.SCHEDULE_FIRED_ID]
 
+        def drop_retop_draw(p):  # the re-top recomputes the terrain but never draws it
+            s = stage_of(p)
+            slots = calls(s, director.ADVANCE_SLOTS_PROCCODE)
+            for bid in calls(s, director.UPDATE_TERRAIN_PROCCODE):
+                if s["blocks"][bid].get("parent") not in slots:
+                    splice_out(s, s["blocks"][bid]["next"])
+                    return
+
+        def strip_blocks(p, parity):
+            name = director.TERRAIN_STRIP_TARGETS[parity]
+            return next(t for t in p["targets"] if t["name"] == name)["blocks"]
+
+        def first_op(sb, opcode):
+            return next(b for b in sb.values() if b["opcode"] == opcode)
+
+        def draw_before_costume(p):  # move before the costume switch (one frame at the old costume's centre)
+            sb = strip_blocks(p, "even")
+            hat = next(b for b in sb.values() if b["opcode"] == "event_whenbroadcastreceived"
+                       and b["fields"]["BROADCAST_OPTION"][0] == "terrain draw")
+            switch_id = hat["next"]
+            move_id = sb[switch_id]["next"]
+            hat["next"], sb[switch_id]["next"], sb[move_id]["next"] = move_id, sb[move_id]["next"], switch_id
+
+        def read_other_strips_y(p):  # the even strip drawn at the odd strip's y
+            move = first_op(strip_blocks(p, "even"), "motion_gotoxy")
+            name, vid = director.TERRAIN_STRIP_VARS["odd"]["y"]
+            move["inputs"]["Y"] = [3, [12, name, vid], [10, ""]]
+
+        def wrong_upper_strip(p):  # the odd strip fronts itself when the even strip holds the upper band
+            sb = strip_blocks(p, "odd")
+            for b in sb.values():
+                if b["opcode"] == "operator_equals" and b["inputs"]["OPERAND1"][1][2:3] == [director.TERRAIN_EVEN_BEHIND_ID]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 0]]
+
+        def always_shown(p):  # the odd strip never hides (a far-off band gets fenced onto the stage)
+            first_op(strip_blocks(p, "odd"), "looks_hide")["opcode"] = "looks_show"
+
+        def costume_from_wrong_var(p):  # the costume switch reads the shown flag
+            sb = strip_blocks(p, "even")
+            name, vid = director.TERRAIN_STRIP_VARS["even"]["shown"]
+            first_op(sb, "operator_join")["inputs"]["STRING1"] = [3, [12, name, vid], [10, ""]]
+
+        def size_in_blocks(p):  # size set from blocks (scratch-vm caps it at 1.5x the stage)
+            first_op(strip_blocks(p, "even"), "looks_goforwardbackwardlayers")["opcode"] = "looks_setsizeto"
+
         cases = [
             ("update-terrain-warp", unwarp),
             ("walk-updates-terrain-after-slots", drop_walk_call),
             ("retop-clears-previous-then-updates", drop_retop_call),
             ("every-retop-clears-previous", keep_previous_at_retop),
             ("completion-hands-over-column", no_handover),
+            ("update-terrain-then-draw", drop_retop_draw),
+            ("strip-draw-even", draw_before_costume),
+            ("strip-draw-even", read_other_strips_y),
+            ("strip-draw-odd", wrong_upper_strip),
+            ("strip-draw-odd", always_shown),
+            ("strip-draw-even", costume_from_wrong_var),
+            ("strip-size-block-even", size_in_blocks),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -18623,47 +18772,16 @@ class ScratchProjectTests(unittest.TestCase):
         if not has("target_b", lambda b: b["opcode"] == "looks_show"):
             fails.add("B7-marker-show")
 
-        # B3 — counted-cycle terrain; the fenced position test is gone; no waits.
+        # B3 — the terrain keeps no clock of its own. Since AREA-01 the strips are pure renderers of the Stage's
+        # terrain state (their draw receiver is pinned in _terrain_wiring_failures): no loop, no wait, no
+        # relative move, so nothing can drift off the area clock.
         for strip in ("area_01a", "area_01b"):
-            if not has(
-                strip,
-                lambda b: b["opcode"] == "operator_gt"
-                and num(b["inputs"].get("OPERAND2")) == director.TERRAIN_CYCLE_STEPS - 1,
+            if any(
+                count(strip, op)
+                for op in ("control_forever", "control_repeat", "control_repeat_until", "control_wait",
+                           "motion_changeyby", "motion_changexby")
             ):
-                fails.add(f"B3-count-{strip}")
-            if has(strip, lambda b: b["opcode"] == "operator_lt"):
-                fails.add(f"B3-position-test-{strip}")
-            if count(strip, "control_wait") != 0:
                 fails.add(f"B3-wall-clock-{strip}")
-
-        # PRES01-terrain-phase — with no frame bands to hide an edge gap, the strips must stay exactly
-        # half a cycle apart: each strip's rewind seed satisfies y = 345 - 1.25 * step (the steady wrap law,
-        # one arcade px a tick at the render scale — the ground objects' scroll), and the two seeds differ by
-        # half the 552-step cycle (345 units), so the 360-tall pair covers the stage on every tick.
-        # The rewind is `go to (0, seed y)` then `set scroll step to seed`; the wrap is the reverse order.
-        seeds = {}
-        for strip in ("area_01a", "area_01b"):
-            found = []
-            for b in blocks[strip].values():
-                after = blocks[strip].get(b.get("next") or "")
-                if b["opcode"] == "motion_gotoxy" and after and after["opcode"] == "data_setvariableto":
-                    found.append(tuple(
-                        float(v) if v is not None else None
-                        for v in (num(b["inputs"].get("Y")), num(after["inputs"].get("VALUE")))
-                    ))
-            seeds[strip] = found[0] if len(found) == 1 else (None, None)
-        (ya, sa), (yb, sb) = seeds["area_01a"], seeds["area_01b"]
-        rate, cycle = 1.25, 552
-        if (
-            None in (ya, sa, yb, sb) or ya + rate * sa != 345 or yb + rate * sb != 345
-            or (sa - sb) % cycle != cycle // 2
-            or (director.TERRAIN_SCROLL_STEP, director.TERRAIN_CYCLE_STEPS) != (rate, cycle)
-            or not all(
-                has(strip, lambda b: b["opcode"] == "motion_changeyby" and float(num(b["inputs"].get("DY"))) == -rate)
-                for strip in ("area_01a", "area_01b")
-            )
-        ):
-            fails.add("PRES01-terrain-phase")
 
         # B4 — the title glides in.
         if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
@@ -18746,7 +18864,10 @@ class ScratchProjectTests(unittest.TestCase):
         if not has("solvalou", lambda b: b["opcode"] == "looks_gotofrontback"):
             fails.add("B9-craft-front")
         for strip in ("area_01a", "area_01b"):
-            if not has(strip, lambda b: b["opcode"] == "looks_goforwardbackwardlayers"):
+            if not has(
+                strip,
+                lambda b: b["opcode"] == "looks_gotofrontback" and b["fields"].get("FRONT_BACK", [None])[0] == "back",
+            ):
                 fails.add(f"B9-terrain-back-{strip}")
 
         # Units rule: no wall-clock wait survives in any touched gameplay script (the
@@ -18905,14 +19026,10 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["opcode"] = "control_wait"
 
-        def break_terrain_count(p):  # B3: reinstate the fenced position test
-            b = first(
-                p,
-                "area_01a",
-                lambda b: b["opcode"] == "operator_gt"
-                and num(b["inputs"].get("OPERAND2")) == director.TERRAIN_CYCLE_STEPS - 1,
-            )
-            b["opcode"] = "operator_lt"
+        def free_running_terrain(p):  # B3: a strip steps itself again instead of drawing the clock's state
+            b = first(p, "area_01a", lambda b: b["opcode"] == "motion_gotoxy")
+            b["opcode"] = "motion_changeyby"
+            b["inputs"] = {"DY": [1, [4, -1.25]]}
 
         def break_title_glide(p):  # B4: snap the title into place
             b = first(
@@ -18981,21 +19098,10 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["VALUE"] = [1, [4, 2]]
 
-        def restore_baseline_terrain_seed(p):  # PRES-01: a seed off the wrap law → edge gaps every half cycle
-            for b in blocks_of(p, "area_01a").values():
-                if b["opcode"] == "data_setvariableto" and str(num(b["inputs"].get("VALUE"))) == "288":
-                    b["inputs"]["VALUE"] = [1, [10, "284"]]
-
-        def unlock_terrain_scroll(p):  # PRES-01: terrain back at 1 unit a tick, drifting off the ground objects
-            for strip in ("area_01a", "area_01b"):
-                for b in blocks_of(p, strip).values():
-                    if b["opcode"] == "motion_changeyby":
-                        b["inputs"]["DY"] = [1, [4, -1]]
-
         def break_terrain_layer(p):  # B9: stop sending terrain to the back
             for b in blocks_of(p, "area_01a").values():
-                if b["opcode"] == "looks_goforwardbackwardlayers":
-                    b["opcode"] = "looks_show"
+                if b["opcode"] == "looks_gotofrontback":
+                    b["fields"]["FRONT_BACK"] = ["front", None]
 
         cases = [
             ("A1-ready-bubble", break_ready_bubble),
@@ -19004,7 +19110,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("B2-broadcast", break_bomb_broadcast),
             ("B2-arm", break_bomb_arm),
             ("B2-drop-receive", break_drop_receive),
-            ("B3-position-test-area_01a", break_terrain_count),
+            ("B3-wall-clock-area_01a", free_running_terrain),
             ("B4-glide", break_title_glide),
             ("B5B10-explosion", break_explosion_holds),
             ("B5B10-pause", break_death_pause),
@@ -19024,8 +19130,6 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-craft-speed", either_vertical_diagonal),
             ("B9-craft-front", break_craft_layer),
             ("B9-terrain-back-area_01a", break_terrain_layer),
-            ("PRES01-terrain-phase", restore_baseline_terrain_seed),
-            ("PRES01-terrain-phase", unlock_terrain_scroll),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -19771,12 +19875,20 @@ class ScratchProjectTests(unittest.TestCase):
                     values.add(right[1][1])
             return values
 
-        for name in ("area_01a", "area_01b"):
+        for name in director.TERRAIN_STRIP_TARGETS.values():
             blocks = targets[name]["blocks"]
-            # PLY-02 / audit B11: a new life now restarts the current area from its top, so the
-            # terrain rewinds on new-life too (retiring the interim preserve-terrain fixture).
-            self.assertEqual({"cold-start", "new-game", "new-life"}, scope_literals(blocks))
-            self.assertEqual(2, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
+            # PLY-02 / audit B11: a new life restarts the current area from its top. Since AREA-01 the
+            # strips hold no reset logic of their own: every re-top (cold-start, new-game, new-life) runs
+            # the Stage's `update terrain` and broadcasts `terrain draw` (test_terrain_wiring_contract), and
+            # a strip only draws what that computed — one go-to, from the Stage's state, read no scope.
+            self.assertEqual(set(), scope_literals(blocks))
+            self.assertEqual(1, sum(b["opcode"] == "motion_gotoxy" for b in blocks.values()))
+            hats = sorted(
+                b["fields"]["BROADCAST_OPTION"][0]
+                for b in blocks.values()
+                if b["opcode"] == "event_whenbroadcastreceived"
+            )
+            self.assertEqual(["director stop", "terrain draw"], hats)
 
         player = targets["solvalou"]["blocks"]
         self.assertEqual(
@@ -20072,7 +20184,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "7538dab48ad0ec25d8205a46f578c661b33fca21355d502f868f3fbfe76c85b7",
+            "d90dc332f669d969dfdfe43706f9c4373a767ea06650c69d01f6e1ae600b59c0",
             build_hash,
         )
 
