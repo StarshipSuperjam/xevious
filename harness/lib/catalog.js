@@ -649,6 +649,10 @@ export const SCENARIOS = [
     async drive(vm) {
       vm.greenFlag();
       step(vm, 1);
+      // The cold-start reset (boot -> resetting -> title) is ~16 ms of work: one pump finishes it on a
+      // fast machine, but a pump's budget is wall-clock, so a slower runner can still be mid-reset after
+      // it. Pump on (bounded) only while the director is in that transient, then read where it rests.
+      for (let i = 0; i < 30 && (state(vm) === 'boot' || state(vm) === 'resetting'); i += 1) step(vm, 1);
       const titleState = state(vm);
       const epochBefore = epoch(vm);
       tapKey(vm, 'b'); // a gameplay key (bomb) must do nothing at title
@@ -2772,7 +2776,11 @@ export const SCENARIOS = [
       // pump is many ticks, not one — see step()), but cull keeps `slot flag`/`slot dx`, so the
       // committed-glide and reversed-forward evidence survives to read (the same reason the Toroid swing
       // scenario reads its post-cull `slot dy`). Magnitude is not asserted, only the sign flip.
+      // A pump's tick count is wall-clock bound, so a slow runner can stop after four ticks with dx
+      // exactly 0 (8 - 4*2): pump on, bounded, until the sign has flipped. The negative fixture never
+      // decelerates, so it exhausts the bound with dx still 8.
       step(vm, 1);
+      for (let i = 0; i < 20 && !(readVar(vm, 'slot-dx')[slot] < 0); i += 1) step(vm, 1);
       return { dx: readVar(vm, 'slot-dx')[slot], flag: readVar(vm, 'slot-flag')[slot] };
     },
     assert(obs) {
