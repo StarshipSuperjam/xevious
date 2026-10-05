@@ -1157,6 +1157,11 @@
       "name": "coin sound",
       "scope": "Stage"
     },
+    "audio-death-cue-playing": {
+      "kind": "variable",
+      "name": "death cue playing",
+      "scope": "Stage"
+    },
     "audio-keep-sounds": {
       "kind": "variable",
       "name": "keep sounds",

@@ -1298,10 +1298,12 @@ class ScratchProjectTests(unittest.TestCase):
             "attract stage",
             # CAB-05 (slice 20): audio machinery. `coin sound` is the poll-to-loop coin-sound latch, `audio muted`
             # the last volume the attract mute applied (-1 unknown), `keep sounds` the death-complete handler's
-            # one-transition stop-all skip, `andor drone timer` the boss drone's replay countdown. All transient.
+            # one-transition stop-all skip, `death cue playing` the death cue's own stop-all skip while it sounds,
+            # `andor drone timer` the boss drone's replay countdown. All transient.
             "coin sound",
             "audio muted",
             "keep sounds",
+            "death cue playing",
             "andor drone timer",
             # CAB-01 (slice 17): the auto-pilot's virtual input register. `input up/down/left/right/fire` are
             # the 0/1 flags `install_attract_pilot` drives while the cabinet demos (attract==1), read through
@@ -7405,8 +7407,9 @@ class ScratchProjectTests(unittest.TestCase):
 
         Every new cue plays from the Stage (the owner of every game sound); every sound a block names exists
         on that block's own target (a missing one silently does nothing); no block plays a replaced base sound;
-        every stop-all is gated on `keep sounds` = 0 and the transition consumes the keep only after its
-        stop-all; the death-complete handler sets it; the shot and death cues relay to the Stage; the death
+        every stop-all is gated on `keep sounds` = 0 AND `death cue playing` = 0 and the transition consumes the
+        keep only after its stop-all; the death-complete handler sets it; the Stage's death-cue receiver holds
+        the playing latch up exactly across its play-until-done; the shot and death cues relay to the Stage; the death
         cue, start theme and flight loop are off in attract; the coin sound is latched by the poll and played by
         the coin loop; the Stage mutes in the uncredited attract cycle; the Andor drone replays on its own
         timer; and the entry tune picks the top tune by the placed rank."""
@@ -7505,10 +7508,12 @@ class ScratchProjectTests(unittest.TestCase):
                     and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == message
                 ):
                     nxt = blocks.get(b.get("next"))
-                    if isinstance(nxt, dict) and nxt.get("opcode") == "sound_play":
-                        menu = blocks.get(inp_ref(nxt, "SOUND_MENU"))
-                        if isinstance(menu, dict) and menu["fields"]["SOUND_MENU"][0] == sound:
-                            return True
+                    while isinstance(nxt, dict):
+                        if nxt.get("opcode") in ("sound_play", "sound_playuntildone"):
+                            menu = blocks.get(inp_ref(nxt, "SOUND_MENU"))
+                            if isinstance(menu, dict) and menu["fields"]["SOUND_MENU"][0] == sound:
+                                return True
+                        nxt = blocks.get(nxt.get("next"))
             return False
 
         def gated_on(blocks, owner, bid, var_id, value=None):
@@ -7555,13 +7560,21 @@ class ScratchProjectTests(unittest.TestCase):
             for bid in stops_here:
                 ctl = owner.get(bid)
                 cond = inp_ref(blocks[ctl], "CONDITION") if ctl else None
-                if not (
-                    ctl and blocks[ctl]["opcode"] == "control_if"
-                    and cond and blocks[cond]["opcode"] == "operator_equals"
-                    and reads(blocks, cond, var_is(director.KEEP_SOUNDS_ID))
-                    and reads(blocks, cond, lit_is(0))
-                ):
+                cond_b = blocks.get(cond) if isinstance(cond, str) else None
+                gate = bool(ctl) and blocks[ctl]["opcode"] == "control_if" and isinstance(cond_b, dict) and cond_b["opcode"] == "operator_and"
+                arms = [inp_ref(cond_b, "OPERAND1"), inp_ref(cond_b, "OPERAND2")] if gate else []
+
+                def eq_zero(ref, var_id, blocks=blocks):
+                    b = blocks.get(ref) if isinstance(ref, str) else None
+                    return (
+                        isinstance(b, dict) and b.get("opcode") == "operator_equals"
+                        and reads(blocks, ref, var_is(var_id)) and reads(blocks, ref, lit_is(0))
+                    )
+
+                if not any(eq_zero(a, director.KEEP_SOUNDS_ID) for a in arms):
                     failures.add(f"stopall-not-keep-gated:{t['name']}")
+                if not any(eq_zero(a, director.DEATH_CUE_PLAYING_ID) for a in arms):
+                    failures.add(f"stopall-not-cue-gated:{t['name']}")
         # The transition consumes the keep straight after its own gated stop-all (after `director stop` returned).
         clear_after_stop = any(
             isinstance(sb.get(sb[c].get("next")), dict) and sb[c]["opcode"] == "control_if"
@@ -7585,6 +7598,32 @@ class ScratchProjectTests(unittest.TestCase):
             sender_t = targets.get(sender)
             if sender_t is None or not broadcasts(sender_t["blocks"], message):
                 failures.add(f"relay-no-broadcast:{message}")
+        # The death cue holds `death cue playing` up exactly across its play-until-done: set 1, play the cue to its
+        # end, set 0 — so every stop-all waits for the cue whatever the browser's pacing of the holds after death.
+        def death_latch_ok():
+            for b in sb.values():
+                if not (
+                    isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived"
+                    and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == "sfx death"
+                ):
+                    continue
+                chain, cur = [], b.get("next")
+                while isinstance(cur, str) and cur in sb:
+                    chain.append(cur)
+                    cur = sb[cur].get("next")
+                if len(chain) != 3:
+                    continue
+                raise_, play, clear = chain
+                if (
+                    raise_ in sets(sb, director.DEATH_CUE_PLAYING_ID, 1)
+                    and play in plays(sb, "solvalou_explode") and sb[play]["opcode"] == "sound_playuntildone"
+                    and clear in sets(sb, director.DEATH_CUE_PLAYING_ID, 0)
+                ):
+                    return True
+            return False
+
+        if not death_latch_ok():
+            failures.add("death-cue-latch-missing")
         death_t = targets.get("solv_death")
         if death_t is not None:
             downer = enclosures(death_t["blocks"])
@@ -7665,6 +7704,21 @@ class ScratchProjectTests(unittest.TestCase):
                         b["fields"]["SOUND_MENU"][0] = new
             return _mut
 
+        def ungate_cue(target_name):
+            # Swap the `death cue playing` read in one stop-all gate for `tick`.
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "operator_equals" and any(
+                        isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12 and v[1][2] == director.DEATH_CUE_PLAYING_ID
+                        for v in b.get("inputs", {}).values()
+                    ):
+                        for v in b["inputs"].values():
+                            if isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12:
+                                v[1][1], v[1][2] = "tick", director.TICK_ID
+                        return
+            return _mut
+
         def ungate_one_stopall(target_name):
             def _mut(p):
                 t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
@@ -7741,6 +7795,10 @@ class ScratchProjectTests(unittest.TestCase):
             ("stopall-not-keep-gated:Stage", ungate_one_stopall("Stage")),
             ("stopall-not-keep-gated:toroid", ungate_one_stopall("toroid")),
             ("stopall-count:kapi", strip_stopall("kapi")),
+            ("stopall-not-cue-gated:Stage", ungate_cue("Stage")),
+            ("stopall-not-cue-gated:toroid", ungate_cue("toroid")),
+            ("death-cue-latch-missing", retarget_var(director.DEATH_CUE_PLAYING_ID, 0, 7)),
+            ("death-cue-latch-missing", retarget_var(director.DEATH_CUE_PLAYING_ID, 1, 7)),
             ("keep-not-consumed-after-stop", retarget_var(director.KEEP_SOUNDS_ID, 0, 7)),
             ("keep-not-set-at-death", retarget_var(director.KEEP_SOUNDS_ID, 1, 7)),
             ("relay-no-stage-receiver:sfx shot", drop_receiver("sfx shot")),
@@ -19061,8 +19119,13 @@ class ScratchProjectTests(unittest.TestCase):
         gate = blocks[cursor]
         self.assertEqual("sound_stopallsounds", blocks[gate["inputs"]["SUBSTACK"][1]]["opcode"])
         gate_cond = blocks[gate["inputs"]["CONDITION"][1]]
-        self.assertEqual("operator_equals", gate_cond["opcode"])
-        self.assertEqual(director.KEEP_SOUNDS_ID, gate_cond["inputs"]["OPERAND1"][1][2])
+        self.assertEqual("operator_and", gate_cond["opcode"])
+        keep_arm = blocks[gate_cond["inputs"]["OPERAND1"][1]]
+        cue_arm = blocks[gate_cond["inputs"]["OPERAND2"][1]]
+        self.assertEqual("operator_equals", keep_arm["opcode"])
+        self.assertEqual(director.KEEP_SOUNDS_ID, keep_arm["inputs"]["OPERAND1"][1][2])
+        self.assertEqual("operator_equals", cue_arm["opcode"])
+        self.assertEqual(director.DEATH_CUE_PLAYING_ID, cue_arm["inputs"]["OPERAND1"][1][2])
         clear = blocks[gate["next"]]
         self.assertEqual(["keep sounds", director.KEEP_SOUNDS_ID], clear["fields"]["VARIABLE"])
         self.assertEqual("0", str(clear["inputs"]["VALUE"][1][1]))
@@ -21442,7 +21505,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "b1489cb914e6ce1a35b3ab1b202fdecaacd393237b36d433533f27cba3cd25c3",
+            "612ff06a0c03fa17fc5619d7f2ca3973dda48f7a94b07b73f18255e6e675b3f6",
             build_hash,
         )
 

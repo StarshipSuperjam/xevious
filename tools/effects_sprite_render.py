@@ -17,8 +17,9 @@ Three explosion families, each with its own sprite codes and colour:
   then 64, 68, 6C at 2x2, then 62, 63, colour 0x0C (4905); then the crater
   A6/A7 at colour 0x0D (``bomb_explosion_finished`` 4931-4942).
 
-The player and air explosions flip every frame (``_ATTR`` bits 2-3 from the
-frame counter, 2072-2075 / 4884-4887); those flips are left to the sprite
+The player and air explosions flip (``_ATTR`` bits 2-3 from the frame counter:
+the player's every 4 frames, ``countup & 0x0C``, 2072-2075; the air burst's every
+frame, ``TIMER & 3``, 4884-4887); those flips are left to the sprite
 extractor's ``flips`` attribute, so only the unflipped picture is rendered here.
 
 Explosion cells are 32x32 and every frame is centred in its cell. The arcade
@@ -29,7 +30,7 @@ bits masked off), but each explosion moves the object one position MSB (8 px)
 up and left on screen as it enters a 2x2 frame and back as it leaves one
 (``_X`` -1 / ``_Y`` +1: player 2056-2063 with 2102-2111, air 4872-4875, ground
 4919-4923 with 4953-4961; on screen ``_X`` runs down and ``_Y`` runs left,
-``amiga.68k`` 1677-1697 and 2026). The nudge cancels exactly half the 2x2's
+``amiga.68k`` 1677-1697 and 2027). The nudge cancels exactly half the 2x2's
 overhang, so every frame of an explosion shares one centre: a 1x1 frame sits at
 (8, 8) in its cell and a 2x2 frame fills it. Because each frame is centred, the
 extractor's flip about the canvas centre mirrors it in place -- the Neo Geo
@@ -141,6 +142,11 @@ def _tile(gfx: _Gfx, code: int, clut: int) -> list[tuple[int, int, int, int]]:
         if value == 0 or entries[value] == TRANSPARENT_ENTRY:
             out.append((0, 0, 0, 0))
             continue
+        if entries[value] >= len(gfx.palette):
+            raise SpriteExtractionError(
+                f"sprite {code:#x} CLUT {clut:#x} names colour {entries[value]:#x}, past the "
+                f"{len(gfx.palette)}-colour palette"
+            )
         red, green, blue = gfx.palette[entries[value]]
         if (red, green, blue) == MATTE:
             raise SpriteExtractionError(

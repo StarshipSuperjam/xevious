@@ -62,7 +62,7 @@ text. The window geometry, the clamp values, the row-4 cut, the text-cell placem
 are recorded with their reasons in the build's framing and screen-proportions mechanics records.
 
 **Animation timing.** Where this spec records frame counts — the ~56-frame player explosion, the bomb's
-two-stage flight animation and four-color cycle, the Sol Tower's seven-step rise, bullet color pulsing
+three-frame flight animation and four-color cycle, the Sol Tower's seven-step rise, bullet color pulsing
 (`src/xevious_sub.68k` `sub_fn_5__handle_pulsing_colours` 208–218: every enemy bullet takes one of four
 colors from the frame counter, a new color every two frames, held while the scroll is stopped; the
 eight-entry two-palette tables beside it, `colour_lut_pulsing_1` 229–230 and `colour_lut_pulsing_2`

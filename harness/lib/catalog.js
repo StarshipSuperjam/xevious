@@ -853,6 +853,38 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'playing -> title'),
   },
   {
+    // CAB-05 (slice 20): no demo runs while a credit is banked. The arcade runs the attract cycle only with no
+    // credits (main_thread_main_loop xevious_main.68k 348-357); with one it goes to coined_up (377-380), which
+    // waits for START and never runs a demo — so every demo is a silent one. Here a coin at the title, then far
+    // past the 372-tick title hold: the title stays up and no demo starts.
+    key: 'attract-no-demo-with-a-credit',
+    behavior: 'With a credit banked the title stays up and waits for START; the attract demo never starts',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      insertCoin(vm, 1);
+      let left = false;
+      for (let t = 0; t < 600 && !left; t += 1) {
+        step(vm, 1);
+        if (state(vm) !== 'title') left = true;
+      }
+      return {
+        left,
+        st: state(vm),
+        credits: readVar(vm, 'cabinet-credits'),
+        stage: readVar(vm, 'cabinet-attract-stage'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.credits, 1, 'precondition: the coin banked a credit');
+      assert.equal(obs.left, false, `the title never hands over to a demo while a credit is banked (now ${obs.st})`);
+      assert.equal(obs.stage, 0, 'no demo was launched');
+    },
+    // Make the hold's `credits = 0` gate read `credits = 1`, so the banked credit launches the demo.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'credits', 0, 1),
+  },
+  {
     // CAB-02: a credit-gated real start atomically clears the attract flag, so a started game can never
     // inherit the attract cycle (no auto-pilot, scoring, real deaths). `reachPlaying` is the shared start
     // path (~20 scenarios), so this also pins that every gameplay scenario runs a REAL game, not a demo.
@@ -9742,6 +9774,75 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'keep sounds', 0),
   },
   {
+    // CAB-05: the death cue also holds off every LATER stop-all until it has actually ended. In a browser the
+    // post-death pause and READY hold collapse when nothing redraws, so the respawning -> playing stop-all can
+    // land ~1 s into the 1.81 s cue; the Stage's death-cue thread keeps `death cue playing` up across its
+    // play-until-done. The harness has no audio engine (a play-until-done returns at once), so this scenario
+    // stands in for the real sample: the death cue's play-until-done is held pending until released, as a
+    // still-sounding cue would be. Observed: no stop-all from the cue's start through the new life, and once
+    // the cue ends the latch drops.
+    key: 'death-cue-holds-off-stop-all-until-it-ends',
+    behavior:
+      'While the death sound is still playing, no stop-all runs, even at the start of the next life; when it ends, stop-alls work again',
+    playtestStep: 5,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      const prims = vm.runtime._primitives;
+      const recorded = prims.sound_playuntildone;
+      let release = null;
+      prims.sound_playuntildone = (args, util) => {
+        const result = recorded(args, util);
+        if (String(args.SOUND_MENU) !== 'solvalou_explode' || release) return result;
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      };
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      const from = log.length;
+      const deathCue = () => log.slice(from).some((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      let died = false;
+      for (let i = 0; i < 160 && !died; i += 1) {
+        writeVar(vm, 'invuln', 0);
+        seedCraftHit(vm);
+        step(vm, 1);
+        died = deathCue() || stateOf(vm) !== 'playing';
+      }
+      writeVar(vm, 'invuln', 1);
+      const slotType = readVar(vm, 'slot-type');
+      slotType[63] = 0;
+      let back = false;
+      for (let i = 0; i < 300 && !back; i += 1) {
+        step(vm, 1);
+        if (stateOf(vm) === 'playing') back = true;
+      }
+      step(vm, 3);
+      const held = log.slice(from);
+      const latchWhileHeld = readVar(vm, 'audio-death-cue-playing');
+      if (release) release();
+      // The VM resumes a promise-waiting thread from the promise's own callback, so let it run before stepping.
+      await new Promise((resolve) => setImmediate(resolve));
+      step(vm, 3);
+      return { died, back, held, latchWhileHeld, latchAfter: readVar(vm, 'audio-death-cue-playing') };
+    },
+    assert(obs) {
+      assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
+      assert.ok(obs.back, 'precondition: the craft respawns into playing');
+      const deathAt = obs.held.findIndex((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      assert.ok(deathAt >= 0, 'the death sound starts');
+      const stops = obs.held.slice(deathAt + 1).filter((e) => e.kind === 'stop');
+      assert.deepEqual(
+        stops.map((e) => `${e.state}@${e.epoch}`),
+        [],
+        'no stop-all runs while the death sound is still playing, through the start of the next life',
+      );
+      assert.equal(obs.latchWhileHeld, 1, 'the latch is up while the cue plays');
+      assert.equal(obs.latchAfter, 0, 'the latch drops once the cue has ended');
+    },
+    // Make the Stage's stop-all gate read `death cue playing = 1`, so the still-playing cue no longer holds it off.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'death cue playing', 0, 1),
+  },
+  {
     // CAB-05: the air explosion is the arcade's own (`flying_enemy_hit`, xevious_main.68k 4865-4896): codes 70, 71,
     // then the 2x2 74/78/7C, a phase every 4 frames (TIMER>>2), with the flip bits taken from TIMER&3 every frame
     // (4883-4887), the 2x2 art carrying the growth (its one scale is pinned structurally). Driven with the Stage's scripts halted so the
@@ -10090,20 +10191,27 @@ export const SCENARIOS = [
         callProc(vm, 'Stage', 'update andor master');
         step(vm, 1);
       };
-      const d0 = drones();
-      tick();
-      const first = { plays: drones() - d0, timer: readVar(vm, 'audio-andor-drone-timer') };
-      const d1 = drones();
-      tick();
-      const second = { plays: drones() - d1, timer: readVar(vm, 'audio-andor-drone-timer') };
+      // Run the whole period and one tick past it: the drone must start on alive tick 0 and restart exactly on
+      // tick 53, never between (the period is consumed for real, not re-armed by the scenario).
+      const playTicks = [];
+      const timers = [];
+      for (let t = 0; t <= 53; t += 1) {
+        const before = drones();
+        tick();
+        for (let n = drones() - before; n > 0; n -= 1) playTicks.push(t);
+        timers.push(readVar(vm, 'audio-andor-drone-timer'));
+      }
+      const first = { plays: playTicks.filter((t) => t === 0).length, timer: timers[0] };
+      const second = { plays: playTicks.filter((t) => t === 1).length, timer: timers[1] };
       writeVar(vm, 'andor-destroyed-timer', 1);
       writeVar(vm, 'audio-andor-drone-timer', 0);
       const d2 = drones();
       tick();
       const destroyed = { plays: drones() - d2, timer: readVar(vm, 'audio-andor-drone-timer') };
-      return { first, second, destroyed };
+      return { first, second, playTicks, destroyed };
     },
     assert(obs) {
+      assert.deepEqual(obs.playTicks, [0, 53], `the drone plays on alive tick 0 and again on tick 53, never between (saw ${obs.playTicks})`);
       assert.equal(obs.first.plays, 1, 'the first alive tick starts the drone');
       assert.equal(obs.first.timer, 52, 'the drone re-arms for 53 ticks (52 left after its own tick)');
       assert.equal(obs.second.plays, 0, 'the next tick does not restart the drone');

@@ -152,7 +152,7 @@ class EffectsRenderTests(unittest.TestCase):
         gfx = asr._Gfx(asr._read_reference(REFERENCE, asr.GFX_C))
         self.assertEqual(set(gfx.sprite_clut[0]), {fx.TRANSPARENT_ENTRY})
         self.assertEqual(len(gfx.palette), fx.TRANSPARENT_ENTRY)
-        with self.assertRaises(Exception):
+        with self.assertRaisesRegex(fx.SpriteExtractionError, "draws nothing"):
             fx._tile(gfx, 0xC0, 0)  # every pixel transparent -> "draws nothing"
 
 

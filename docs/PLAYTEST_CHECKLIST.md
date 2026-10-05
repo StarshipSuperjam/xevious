@@ -278,12 +278,14 @@ area and its restart show on screen as well as in the `area progress`/`area numb
 9. **Sound and effects.** With the sound on:
    - **Attract is silent.** From a cold start with no credit, the title, both demos and the best-five
      table make no sound at all. Press C: one coin chirp per credit; at 99 credits a further C makes no
-     chirp.
+     chirp. With a credit in, the title stays up and waits for START — no demo starts, however long you wait.
    - **Music.** Start a game: the main theme plays first, then the flight tune loops for the rest of the
      life. Shots, bombs and hits sound over both.
    - **Death.** On a death the music cuts at once and the death sound plays **to its end** — through the
-     explosion, the pause and into READY — and the next life opens with the theme again. Nothing is cut
-     short and nothing from the previous life keeps playing into the next.
+     explosion, the pause and READY — and the next life opens with the theme again. The death sound is never
+     cut short. If the respawn comes quickly, the last moment of the death sound may overlap the start of the
+     theme (or the high-score tune or GAME OVER after the last life): that is expected. Tell me if it sounds
+     wrong.
    - **Shot and bomb.** Each shot and each bomb has the arcade sound; the bomb sound may ring a moment past
      the landing (by design).
    - **Andor Genesis.** While the boss descends, hovers and leaves, its drone hums continuously with no gap

@@ -61,7 +61,9 @@ POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
 PLAYER_EXPLOSION_BASE_ORDINAL = 9
 PLAYER_EXPLOSION_FLIP_COSTUMES = 4
 PLAYER_EXPLOSION_FLIP_TICKS = 2
-READY_HOLD_TICKS = 32  # arcade 64-frame forest wait before the life starts (xevious_main.68k 511, 535-536; CAB-05)
+READY_HOLD_TICKS = 32  # port READY beat, sized to the arcade's 64-frame post-death forest wait (511, 535-536;
+# CAB-05). The arcade runs that wait only after a death (scroll is off only then, 2087) and draws no craft in it;
+# the port keeps its READY hold on the first life too and shows the craft, a port reading recorded in 055.
 GAME_OVER_HOLD_TICKS = 64  # arcade 128-frame GAME OVER hold (`game_over` 549-591; ECO-04)
 
 # SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
@@ -1172,10 +1174,18 @@ COIN_EDGE_ID = "cabinet-coin-edge"  # 1 on the tick a coin was inserted (rising 
 #   GAME OVER) skips every stop-all-sounds, letting the 1.81 s death cue finish (update_solvalou 2030; the arcade
 #   stops only the flight tune at 2026 and the cue then plays out through the forest wait, 511/535-536). The
 #   transition clears it after its stop phase, so it covers exactly one transition.
+# * `death cue playing` — 1 while the Stage's death-cue thread is inside its play-until-done, so every stop-all is
+#   also skipped until the cue has actually ended. The keep alone counts transitions, not time: the post-death pause
+#   and the READY hold are collapsing `hold_ticks`, so in a browser with nothing else redrawing the respawning ->
+#   playing stop-all can land ~1 s after the cue starts and cut it. The arcade's gap is ~2.5 s (explosion 56 +
+#   pause 32 + forest wait 64 frames), so the cue never meets a stop there; this latch keeps that outcome whatever
+#   the browser's pacing (operator decision, 2026-10-05). The cost, recorded in 055: when the gap is short, the
+#   cue's tail can overlap the next life's start theme or the entry tune.
 # * `andor drone timer` — the Andor Genesis drone's restart countdown (ANDOR_DRONE_TICKS; see there).
 COIN_SOUND_ID = "audio-coin-sound"
 AUDIO_MUTED_ID = "audio-muted"
 KEEP_SOUNDS_ID = "audio-keep-sounds"
+DEATH_CUE_PLAYING_ID = "audio-death-cue-playing"
 ANDOR_DRONE_TIMER_ID = "audio-andor-drone-timer"
 # CAB-05: the arcade requests ANDOR_GENESIS_SND every frame while the boss descends, hovers or leaves
 # (handle_4B_Andor_Genesis_obj_15 xevious_main.68k:5392/5404, andor_genesis_leave 5436). Scratch cannot ask whether
@@ -2677,9 +2687,9 @@ TOROID_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px s
 # While exploding it neither hits nor is hit. CAB-05: the burst is the arcade's own air explosion
 # (codes 70 71 74 78 7C at colour 7, rendered from the pin by tools/effects_sprite_render.py): phases 2-4
 # are 2x2 sprites, so the picture is double size from arcade frame 8 to the end, and the one-cell recentre
-# at frame 8 (4871-4874) is built into the art (every frame is centred in one 32-px cell), so the clone
+# at frame 8 (4872-4875) is built into the art (every frame is centred in one 32-px cell), so the clone
 # draws every phase at the shared scale with no size change. The flips cycle every frame from TIMER&3
-# (4883-4887); each phase is four costumes (none/x/y/xy).
+# (4884-4887); each phase is four costumes (none/x/y/xy).
 TOROID_HIT_DURATION_FRAMES = 20
 TOROID_EXPLOSION_PHASE_FRAMES = 4  # 20 / 4 = five phases
 TOROID_EXPLOSION_PHASES = 5
@@ -2689,7 +2699,7 @@ AIR_EXPLOSION_FLIP_COSTUMES = 4  # air-explosion/burst/NN/{none,x,y,xy}: the spr
 # 0x11E (the bomb's last frame), every bullet coloured 0x25 + ((countup >> 1) & 3)
 # (sub_fn_5__handle_pulsing_colours, xevious_sub.68k 208-218) — a new colour every tick at 2 frames a tick.
 # The arcade skips the pulse while scroll is disabled (209-210), which is only set outside play (attract,
-# coin-up, and the death pause at 2087); the port's bullets draw only while playing, so the tick-driven pulse
+# coin-up, and the forest wait after a death, set at the end of the pause, 2087); the port's bullets draw only while playing, so the tick-driven pulse
 # matches. bomb/fall/03/c25..c28 by `tick mod 4`, at the shared sprite scale.
 ENEMY_BULLET_TARGET = "enemy_bullet"
 ENEMY_BULLET_CLONE_SLOT_ID = "enemy-bullet-clone-slot"
@@ -2854,7 +2864,7 @@ GROUND_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px s
 ANDOR_RENDER_SIZE = 100 * SLOT_UNITS_PER_PIXEL * abs(RENDER_COL_STAGE) / SLOT_UNITS_PER_CELL  # = 125.0
 # CAB-05: every ground family's burst is the arcade's own ground explosion, codes 60 61 64 68 6C 62 63 at
 # colour 0x0C (handle_bomb_explosion 4904-4951; explode_and_remove_object 4963-4994; gun_port_explosion
-# 5715-5749 — one shared code table), rendered from the pin by tools/effects_sprite_render.py as the seven
+# 5715-5750, its own table gun_port_explosion_sprite_tbl with the same codes), rendered from the pin by tools/effects_sprite_render.py as the seven
 # ground-explosion/burst costumes, every frame centred in one 32-px cell (the 2x2 recentres at steps 2 and 5,
 # 4919-4923, are built into the art). The crater is codes A6/A7 at colour 0x0D (4931-4941), the two
 # ground-crater/flicker costumes. Ground explosions carry no flip bits.
@@ -3697,9 +3707,13 @@ class Blocks:
 
     def stop_all_sounds_unless_kept(self) -> str:
         # CAB-05: every stop-all-sounds in the project goes through here, so the death-cue keep (KEEP_SOUNDS_ID)
-        # reaches all of them — the transition's own stop and every sprite's director-stop (common_stop).
+        # and the cue's own playing latch (DEATH_CUE_PLAYING_ID) reach all of them — the transition's own stop and
+        # every sprite's director-stop (common_stop).
         return self.if_reporter(
-            self.op_eq(variable("keep sounds", KEEP_SOUNDS_ID), number(0)),
+            self.op_and(
+                self.op_eq(variable("keep sounds", KEEP_SOUNDS_ID), number(0)),
+                self.op_eq(variable("death cue playing", DEATH_CUE_PLAYING_ID), number(0)),
+            ),
             [self.add("sound_stopallsounds")],
         )
 
@@ -10885,6 +10899,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # loop's first pass applies the attract mute whatever volume the previous run left behind.
             blocks.set_var("coin sound", COIN_SOUND_ID, number(0)),
             blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(0)),
+            blocks.set_var("death cue playing", DEATH_CUE_PLAYING_ID, number(0)),
             blocks.set_var("audio muted", AUDIO_MUTED_ID, number(-1)),
             blocks.call_transition("title", "cold-start"),
         ],
@@ -11102,7 +11117,17 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # CAB-05: the same relay for the two other sprite-side cues — SHOT_SND from a blaster clone (main_fn_30_shot_fn
     # xevious_main.68k:2366) and SOLVALOU_EXPLOSION_SND from the death renderer (update_solvalou 2030).
     blocks.chain(blocks.receive("sfx shot"), [blocks.play_sound("zapper_fire")])
-    blocks.chain(blocks.receive("sfx death"), [blocks.play_sound("solvalou_explode")])
+    # The death cue runs to its end in its own thread, holding `death cue playing` up meanwhile so no stop-all can
+    # cut it (see DEATH_CUE_PLAYING_ID). A stop-all from outside the gate (the green flag) ends the play, and the
+    # green flag re-zeroes the latch. Re-broadcasting restarts this receiver, which raises the latch again.
+    blocks.chain(
+        blocks.receive("sfx death"),
+        [
+            blocks.set_var("death cue playing", DEATH_CUE_PLAYING_ID, number(1)),
+            blocks.play_sound_until_done("solvalou_explode"),
+            blocks.set_var("death cue playing", DEATH_CUE_PLAYING_ID, number(0)),
+        ],
+    )
 
     # CAB-05: the initials-entry tune. The arcade plays HIGHEST_SCORE_SND for a new first place (entry index 0) and
     # HIGH_SCORE_SND otherwise (score_lower_than_entry xevious_main.68k:1707-1711); both are looping tunes stopped at
@@ -11211,8 +11236,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # left means respawn; none left means the game is over. This is reached for a one-player game and for the
     # last player of a two-player game (the other already out, so the alternate condition above is false). On
     # the no-craft branch the ECO-04 best-five check + initials routing run HERE, at the death decision, BEFORE
-    # any GAME OVER hold — faithful to the arcade, which calls check_for_high_score the instant the game ends
-    # and reaches the game_over hold only after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
+    # any GAME OVER hold — faithful to the arcade's order, which calls check_for_high_score once the game ends
+    # (after the 64-frame forest wait, 534-536, which the port does not have) and reaches the game_over hold only
+    # after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
     # RECORDS the decision (kept on both branches, not removed, so the transition-cleanup opcode sequence and
     # the reset-scope matrix stay byte-identical) — it is no longer the input.
     decide = blocks.add("control_if_else")
@@ -11233,8 +11259,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(alt, [decide], name="SUBSTACK2")
     # CAB-05: every route out of here runs exactly one transition (respawn, initials entry or GAME OVER); `keep
     # sounds` makes that transition skip its stop-alls so the death cue (1.81 s, longer than the 44-tick explosion +
-    # pause) plays out, as in the arcade (update_solvalou xevious_main.68k:2030; nothing stops it before the next
-    # life's theme at 498). The transition consumes the keep, so the respawning -> playing edge stops sounds as before.
+    # pause) is not cut there (update_solvalou xevious_main.68k:2030; in the arcade it ends inside the forest wait,
+    # 535-536, before the next life's theme at 498). The transition consumes the keep; any later stop-all (the
+    # respawning -> playing edge) is held off only while the cue is still playing (DEATH_CUE_PLAYING_ID).
     keep = blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(1))
     blocks.chain(death, [blocks.if_state("player-dead", [keep, alt])])
 
@@ -11268,6 +11295,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # between (a credited start, a coin-abort, the demo's own death) cancels the pending launch. This receiver
     # RESTARTS on every `director enter` (Scratch re-broadcast semantics), so a stale hold is also abandoned.
     # It is never killed by `director stop`: that runs `stop_others` only on sprites, and this is the Stage.
+    # CAB-05: neither hold launches a demo while a credit is banked. The arcade runs the attract cycle only with
+    # no credits (main_thread_main_loop xevious_main.68k:348-357); with a credit it goes to coined_up (377-380),
+    # which unmutes and waits for START without ever running a demo. So after a coin, or after a game that ends
+    # with credits left, the title simply stays up until START — and every demo that does run is a silent one.
     attract_enter = blocks.receive("director enter")
     attract_snapshot = blocks.set_var(
         "attract epoch", ATTRACT_EPOCH_ID, variable("state epoch", EPOCH_ID)
@@ -11277,7 +11308,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.hold_frames(ATTRACT_TITLE_HOLD_TICKS),
             blocks.if_reporter(
-                _attract_epoch_state(blocks, "title"),
+                _attract_demo_launch(blocks, "title"),
                 [
                     # demo 1 (after the title) -> best-five on death.
                     blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(1)),
@@ -11291,7 +11322,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.hold_frames(ATTRACT_SCORES_HOLD_TICKS),
             blocks.if_reporter(
-                _attract_epoch_state(blocks, ATTRACT_SCORES_STATE),
+                _attract_demo_launch(blocks, ATTRACT_SCORES_STATE),
                 [
                     # demo 2 (after best-five) -> the title on death.
                     blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(2)),
@@ -11687,10 +11718,21 @@ def _attract_epoch_state(blocks: Blocks, state: str) -> str:
     return blocks.op_and(epoch, state_ok)
 
 
+def _attract_demo_launch(blocks: Blocks, state: str) -> str:
+    # CAB-05: an attract hold launches its demo only if it is still current (_attract_epoch_state) AND no credit
+    # is banked (`credits` == 0) — with a credit the arcade leaves the attract cycle for coined_up
+    # (main_thread_main_loop xevious_main.68k:348-357), so a demo never runs with a credit in.
+    return blocks.op_and(
+        _attract_epoch_state(blocks, state),
+        blocks.op_eq(variable("credits", CREDITS_ID), number(0)),
+    )
+
+
 def _game_over_route(blocks: Blocks) -> list[str]:
     # ECO-04 (slice 19): the end-of-game best-five check + initials routing, run at the DEATH decision (the last
-    # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade, which
-    # calls check_for_high_score the instant the game ends and reaches the game_over hold only after name entry
+    # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade's order,
+    # which calls check_for_high_score once the game ends (after the 64-frame forest wait, 534-536, which the port
+    # does not have) and reaches the game_over hold only after name entry
     # (xevious_main.68k:546 jra check_for_high_score; :1671-1672 a non-qualifier -> game_over; :1757-1769
     # name_entry_finished -> game_over). `qualified` = the final score REACHES-OR-BEATS fifth place in the live
     # table (`>=`, a tie places — the move_high_score_entry_down fall-through, :1653-1656), OR'd over the OTHER
@@ -11922,10 +11964,9 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
         variable("state epoch", EPOCH_ID),
     )
     title = blocks.if_state("title", [blocks.hide()])
-    # A1: the invented READY speech bubble is removed, but its 30-tick READY beat is
-    # kept — re-expressed as a tick-counted hold (project-defined placeholder, no
-    # reference basis; core-game-systems). Removing it bare would silently collapse the
-    # recorded READY hold to zero.
+    # A1: the invented READY speech bubble is removed, but the READY beat is kept as a
+    # tick-counted hold: READY_HOLD_TICKS (32, CAB-05), sized to the arcade's post-death forest
+    # wait — see the constant for what is and is not the arcade's here.
     ready_hold = blocks.hold_ticks(READY_HOLD_TICKS)
     ready_body = [
         blocks.go(CRAFT_SPAWN_X, CRAFT_SPAWN_Y),
@@ -12610,7 +12651,8 @@ def death_blocks() -> dict[str, dict[str, Any]]:
     # B5/B10: the ~56-frame (28-tick) explosion, then a 32-frame (16-tick) pause before
     # the respawn transition. CAB-05: the arcade death cue (solvalou_explode, 1.81 s) is
     # longer than that 1.467 s window; the death-complete handler sets `keep sounds` so
-    # the transition it runs does not cut it, and it ends inside the READY hold. The
+    # the transition it runs does not cut it, and `death cue playing` holds off any later
+    # stop-all until the cue has ended (the holds below collapse in a browser). The
     # explosion is one repeat of exactly its 28 ticks (a non-empty loop yields one walk pass
     # per iteration, like an empty hold); the pause is a flat, empty repeat.
     # Arcade frame counts cite PLY-02; only the tick roundings live here.
@@ -15465,7 +15507,7 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
     # holds `type_code`, hidden otherwise. The clone writes no state. While ACTIVE it holds the static body
     # stand-in (ordinal 1); on a hit it plays the air explosion FORWARD from the slot clock. `flipped`
     # selects the kill: the Brag and Garu Zakato use the shared ~20-frame flying kill with its per-frame flips
-    # (`flying_enemy_hit`); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit 3451-3475, codes 4..7 with
+    # (`flying_enemy_hit`); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit xevious_main.68k 5241-5253, codes 4..7 with
     # no flip bits) plays the unflipped first phases — a small pop (its handler frees it at frame 8).
     blocks = Blocks(target)
     common_stop(blocks, hide=True, clones=True)
@@ -16202,10 +16244,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID,
         ATTRACT_EPOCH_ID,
         ATTRACT_STAGE_ID,
-        # CAB-05 (slice 20): the audio machinery (coin-sound latch, attract mute, death-cue keep, Andor drone).
+        # CAB-05 (slice 20): the audio machinery (coin-sound latch, attract mute, death-cue keep and playing latch,
+        # Andor drone).
         COIN_SOUND_ID,
         AUDIO_MUTED_ID,
         KEEP_SOUNDS_ID,
+        DEATH_CUE_PLAYING_ID,
         ANDOR_DRONE_TIMER_ID,
         # CAB-01 (slice 17): the auto-pilot's virtual input register and its held direction (all machinery).
         INPUT_UP_ID,
@@ -16421,6 +16465,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         COIN_SOUND_ID: ["coin sound", 0],
         AUDIO_MUTED_ID: ["audio muted", -1],
         KEEP_SOUNDS_ID: ["keep sounds", 0],
+        DEATH_CUE_PLAYING_ID: ["death cue playing", 0],
         ANDOR_DRONE_TIMER_ID: ["andor drone timer", 0],
         INPUT_UP_ID: ["input up", 0],
         INPUT_DOWN_ID: ["input down", 0],

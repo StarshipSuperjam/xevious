@@ -23,3 +23,9 @@ Stage — the owner of every game sound — is now silent while `attract` is 1 a
 tune, start theme and death cue are gated on `attract` = 0. The coin sound is the one cue heard from the attract
 cycle: it plays once the credit it announces has lifted the mute. The `start_sound` gate named in the Scratch
 evidence above is now the `attract` = 0 gate on the Stage's start-theme and flight-tune script.
+
+The attract cycle above now runs only with no credit banked. The arcade checks the credits before it enters
+the cycle and goes straight to `coined_up` when one is banked (`main_thread_main_loop` 353–354), which waits for
+START and never runs a demo. The port's title and best-five holds used to launch their demos whatever the credit
+count, so after a coin — or after a game that ended with credits left — a demo ran, and with sound. Both holds
+now launch a demo only at 0 credits; with a credit in, the title stays up until START (record 055 deviation (17)).

@@ -62,7 +62,7 @@ drives its base color independently (`handle_crosshairs` 2239–2295).
 **Bomb (WPN-04).** One bomb in flight at a time: arming requires the bomb-target slot idle
 (`init_bombing` 2445–2448). The target point fixes at the crosshair position at the moment of release and
 then scrolls with the world; the bomb accelerates toward it (velocity grows 2 raw units per frame rather
-than flying at constant speed), stepping through a two-stage sprite animation with a four-color cycle
+than flying at constant speed), stepping through a three-frame sprite animation (0x11C, then 0x11D at frame 8 and 0x11E at frame 16, holding there) with a four-color cycle
 (2452–2496), and detonates when it reaches the scrolled target (`check_bomb_finished` 2502–2514). The
 blast tests all 16 ground slots with the recorded hit window — bias 10 width 20 on byte 0 and bias 5 width
 10 on byte 1 (shadow units above): each object within [−10, 9] pixels of the target laterally and [−5, 4]
