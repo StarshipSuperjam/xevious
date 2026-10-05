@@ -509,9 +509,9 @@ REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABL
 
 # ECO-04 game over (docs/spec/scoring-lives-and-game-over.md `check_for_high_score` 1618-1672;
 # docs/spec/data/scores.json high_score_defaults). Losing the last craft first runs the best-five
-# check: `qualified` records whether the final score beats fifth place — a VERDICT ONLY. The
-# initials-entry screen a qualifying score would show (cabinet-flow.md) is DEFERRED to slice 19;
-# both a qualifying and a non-qualifying score still show GAME OVER and return to title here.
+# check: `qualified` records whether the final score beats fifth place. A qualifying score opens
+# the initials-entry screen (CAB-04, cabinet-flow.md; docs/mechanics/052-cabinet-high-scores.md);
+# a non-qualifying one goes straight to GAME OVER.
 QUALIFIED_ID = "eco-qualified"
 HIGH_SCORE_TABLE_ID = "eco-high-score-table"
 HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
@@ -4161,8 +4161,8 @@ def install_clear_slots(blocks: Blocks) -> None:
 def install_advance_slots(blocks: Blocks) -> None:
     # SYS-04 centralized ordered update: one atomic (warp) pass over the 64 slots in ascending
     # index order, advancing the tick clock and dispatching each occupied slot by its type. The
-    # Toroid (types 0x0A / 0x0B) is the first live occupant (slice 8); other occupant types keep
-    # the empty seam their slices fill. Empty slots are skipped first (the cheap fast path).
+    # Toroid (types 0x0A / 0x0B) was the first live occupant (slice 8); each later family slice added
+    # its own branch. Empty slots are skipped first (the cheap fast path).
     definition = _install_warp_proc(blocks, ADVANCE_SLOTS_PROCCODE)
 
     cursor = lambda: variable("slot index", SLOT_INDEX_ID)
@@ -4175,9 +4175,8 @@ def install_advance_slots(blocks: Blocks) -> None:
     occupied = blocks.add("operator_not")
     blocks.blocks[occupied]["inputs"] = {"OPERAND": [2, is_empty]}
     blocks.blocks[is_empty]["parent"] = occupied
-    # ENGINE-TODO: the other flying/ground/boss families append their per-type branches to this
-    # walk dispatch as their slices build them (the occupant's type is read once into `walk type`
-    # first, then dispatched — Toroid and enemy-bullet branches are wired this slice).
+    # Every built flying, ground and boss family has its per-type branch in this walk dispatch: the
+    # occupant's type is read once into `walk type` first, then dispatched.
     read_type = blocks.set_var_expr(
         "walk type", WALK_TYPE_ID, blocks.list_item("slot type", SLOT_TYPE_ID, cursor())
     )
