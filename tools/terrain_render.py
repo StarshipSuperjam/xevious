@@ -36,9 +36,15 @@ reference's own background video-RAM snapshot (``assets/amiga/bg_data_scroll``):
 a run of consecutive plane rows must match the decoded map exactly, both bytes,
 across all 32 plane columns.
 
+The module also derives, from the reference renderer's own terms, where the arcade
+draws a map row and a ground object on screen (the "screen phase" constants), and
+``calibrate`` draws an area's strip of the master map with each of its scheduled
+ground objects boxed at that derived position -- a picture to check landmarks by eye.
+
 Usage:
     python tools/terrain_render.py render --checkout PATH
     python tools/terrain_render.py verify --checkout PATH
+    python tools/terrain_render.py calibrate --area N [--out PATH]
 """
 
 from __future__ import annotations
@@ -114,6 +120,165 @@ FOREST_PERIOD = 0x1C
 EXPECTED_SNAPSHOT_OFFSET = 42
 EXPECTED_SNAPSHOT_FIRST_PLANE_ROW = 28
 EXPECTED_SNAPSHOT_MAP_ROWS = tuple(range(217, 255))
+
+# --- screen phase: where the arcade draws a map row and a ground object --------------------------
+#
+# In arcade display lines (line 0 = the top of the 288-line playfield, lines counting DOWN the screen)
+# and display pixels across (the background plane's own x), from the terms the reference applies. C is
+# the scroll counter (`scroll_cntr`), counting down 0x10 a frame, i.e. COUNTER_UNITS_PER_LINE a line.
+#
+# A map row. get_map_row writes map row R to plane row (R + PLANE_ROW_BIAS) & 63 (xevious_sub.68k 272);
+# amiga.68k draws plane row r at plane line 8 * ((r + AMIGA_TILE_ROW_BIAS) & 63) + AMIGA_BG_LINE_BIAS
+# (GET_XY_FROM_OFFSET 134-142, the -2 at 136; the bg_screen_data - 4 lines base at 1372); and the plane is
+# shown from line ((C + SCROLL_REGISTER_BIAS) >> 5) & 0x1FF (sub_fn_30__handle_scroll 234-245: the 0x40 at
+# 238, doubled at 240). So row R's top edge is on display line 8R - C/32 + TERRAIN_ROW_PHASE_LINES (mod the
+# 512-line plane). The -14 at sub 260 (add.b #0xF2) only decides WHEN a row is written: as the counter's
+# high byte first reaches R + 14, about fifteen rows above the top edge.
+PLANE_ROW_BIAS = 3            # xevious_sub.68k 272 (addq.w #3)
+AMIGA_TILE_ROW_BIAS = -2      # amiga.68k 136 (subq.w #2)
+AMIGA_BG_LINE_BIAS = -4       # amiga.68k 1372 (bg_screen_data - NB_BYTES_PER_ROW * 4)
+SCROLL_REGISTER_BIAS = 0x80   # xevious_sub.68k 238-240 (0x40, doubled)
+COUNTER_UNITS_PER_LINE = 32   # xevious_sub.68k 242 (lsr.w #5)
+TERRAIN_ROW_PHASE_LINES = (
+    TILE * (PLANE_ROW_BIAS + AMIGA_TILE_ROW_BIAS) + AMIGA_BG_LINE_BIAS
+    - SCROLL_REGISTER_BIAS // COUNTER_UNITS_PER_LINE
+)
+assert TERRAIN_ROW_PHASE_LINES == 0, TERRAIN_ROW_PHASE_LINES
+
+# A ground object. osd_update_sprite_shadow (amiga.68k 1651-1698) takes _X >> 5 as the sprite's line and
+# 256 - (_Y >> 5) as its x, and the draw takes 32 lines (1865) and 8 px (2624) off them for the 16 x 16
+# cell's top-left corner. So its centre is on line _X/32 + GROUND_CENTRE_LINE_BIAS, at background x
+# GROUND_CENTRE_PX_BIAS - _Y/32.
+#
+# Not applied: the Amiga's 2-px shift of its foreground playfield (bplcon1, amiga.68k 984). Its comment
+# says it lines the foreground TILES up with the background tiles ("can be seen in the title screen");
+# the sprites ride along only because the Amiga draws them into that playfield. The arcade's own data says
+# sprites line up with the background without it: Namco's purpose-built two-dome clearings (four of them,
+# shared by areas 1, 6 and 15) centre their scheduled domes to the pixel, both ways, with the shift left
+# out, and two pixels off with it in (tests/test_terrain_render.py pins this).
+AMIGA_SPRITE_LINE_BIAS = -32  # amiga.68k 1865 (sub.w #4*8)
+AMIGA_SPRITE_PX_BIAS = -8     # amiga.68k 2624 (subq.w #8)
+AMIGA_SPRITE_MIRROR = 256     # amiga.68k 1697-1698 (neg.w; add.w #32*8)
+SPRITE_CELL = 16
+GROUND_CENTRE_LINE_BIAS = AMIGA_SPRITE_LINE_BIAS + SPRITE_CELL // 2                     # -24
+GROUND_CENTRE_PX_BIAS = AMIGA_SPRITE_MIRROR + AMIGA_SPRITE_PX_BIAS + SPRITE_CELL // 2   # 256
+
+# Which map row a ground object sits on. sub_fn_2__handle_objects (xevious_sub.68k 574-599) fires a record
+# when the counter's high byte equals its row S, and sub_2_fn_1__ground_object (673) leaves _X = 0; the
+# object then moves down with the scroll (_X +0x10 a frame as C -0x10). The port fires on its first tick at
+# row S (C = 256S + 224) and scrolls the new object in that same tick, so from then on _X = 256(S + 1) - C:
+# the arcade's own _X to within half a line (one frame). Its centre line minus row R's top line is then
+# 8(S + 1) + GROUND_CENTRE_LINE_BIAS - TERRAIN_ROW_PHASE_LINES - 8R, a constant: the object's centre is on
+# the top edge of map row S + GROUND_OBJECT_ROW_OFFSET, so its 16 x 16 cell covers rows S - 3 and S - 2.
+_CENTRE_LINES_FROM_ROW_S = TILE + GROUND_CENTRE_LINE_BIAS - TERRAIN_ROW_PHASE_LINES
+assert _CENTRE_LINES_FROM_ROW_S % TILE == 0, _CENTRE_LINES_FROM_ROW_S
+GROUND_OBJECT_ROW_OFFSET = _CENTRE_LINES_FROM_ROW_S // TILE
+assert GROUND_OBJECT_ROW_OFFSET == -2, GROUND_OBJECT_ROW_OFFSET
+
+# Across. get_map_row's i-th cell (column -2 + i, sub 264) holds map column offset - 1 + i (262) at plane
+# column (column + 3) & 31, and amiga.68k draws plane column p at x = 8 * (32 - p) (GET_XY_FROM_OFFSET
+# 138-140). So map column offset + j has its left edge at background x TERRAIN_COLUMN0_LEFT_PX - 8j.
+TERRAIN_COLUMN0_LEFT_PX = TILE * (PLANE_COLUMNS - FIRST_VISIBLE_PLANE_COLUMN)  # 240
+
+# The ground families the calibration image boxes as exact: single-slot objects that only ever move with
+# the scroll (handle_1B_Derota, handle_1E_Barra, handle_1F_Zolbak, handle_26_Logram). Every other ground
+# record is boxed at the same base position, which its family's own offsets or movement then move away from.
+STATIC_GROUND_TYPES = (0x1B, 0x1E, 0x1F, 0x26)
+
+
+def map_row_top_line(map_row: int, counter: int) -> int:
+    """Display line of map row R's top edge at scroll counter C (mod the 2048-line map)."""
+    return (TILE * map_row - counter // COUNTER_UNITS_PER_LINE + TERRAIN_ROW_PHASE_LINES) % MAP_HEIGHT
+
+
+def ground_centre_line(slot_x: int) -> int:
+    """Display line of a ground object's centre (slot x = the arcade's _X)."""
+    return slot_x // COUNTER_UNITS_PER_LINE + GROUND_CENTRE_LINE_BIAS
+
+
+def ground_centre_map_y(trigger_row: int, row_offset: int = GROUND_OBJECT_ROW_OFFSET) -> int:
+    """Master-map y of a ground object's centre, fired at trigger row S (row R's top is at y = 8R)."""
+    return (TILE * (trigger_row + row_offset)) % MAP_HEIGHT
+
+
+def ground_centre_map_x(area_offset: int, sprite_y: int, px_bias: int = GROUND_CENTRE_PX_BIAS) -> int:
+    """Master-map x of a ground object's centre (map column c spans x = (127 - c) * 8 .. + 8)."""
+    background_x = px_bias - sprite_y
+    return background_x - TERRAIN_COLUMN0_LEFT_PX + (MAP_COLUMNS - 1 - area_offset) * TILE
+
+
+@dataclass(frozen=True)
+class PadFit:
+    pad: tuple[int, int, int, int]       # x0, x1, y0, y1 (inclusive) in the master map
+    objects: tuple[tuple[int, int, int], ...]  # (area, trigger row, type)
+    dx: float                            # object group centre minus pad centre
+    dy: float
+
+
+def designed_pad_fits(
+    map_raw: bytes,
+    schedules: list[dict],
+    offsets: list[int],
+    *,
+    px_bias: int = GROUND_CENTRE_PX_BIAS,
+    row_offset: int = GROUND_OBJECT_ROW_OFFSET,
+    min_objects: int = 4,
+) -> list[PadFit]:
+    """How centred the static ground objects sit on the map's purpose-built clearings.
+
+    Each static object's pad is the one-colour region under its centre (4-connected, within 40 px). Pads
+    that hold at least `min_objects` scheduled objects, across all areas, are the designed ones; for each,
+    the offset of the objects' combined 16 x 16 cells from the pad's centre. A correct screen phase puts
+    every designed pad's objects dead centre."""
+    def colour(x: int, y: int) -> bytes:
+        at = ((y % MAP_HEIGHT) * MAP_WIDTH + x) * 4
+        return map_raw[at:at + 3]
+
+    pads: dict[tuple[int, int, int, int], list[tuple[int, int, int, int, int]]] = {}
+    for area in schedules:
+        offset = offsets[area["area"] - 1]
+        for record in area["records"]:
+            if record["handler"] != "add_ground_object" or record["object_type"] not in STATIC_GROUND_TYPES:
+                continue
+            cx = ground_centre_map_x(offset, record["params"]["sprite_y"], px_bias)
+            cy = ground_centre_map_y(record["scroll_row"], row_offset)
+            if not 3 <= cx < MAP_WIDTH - 3:
+                continue
+            window = [(cx + dx, cy + dy) for dx in range(-3, 4) for dy in range(-3, 4)]
+            around = [colour(x, y) for x, y in window]
+            pad_colour = max(sorted(set(around)), key=around.count)
+            seen: set[tuple[int, int]] = set()
+            stack = [(x, y) for x, y in window if colour(x, y) == pad_colour]
+            xs: list[int] = []
+            ys: list[int] = []
+            while stack:
+                x, y = stack.pop()
+                if (x, y) in seen or abs(x - cx) > 40 or abs(y - cy) > 40 or not 0 <= x < MAP_WIDTH:
+                    continue
+                seen.add((x, y))
+                if colour(x, y) != pad_colour:
+                    continue
+                xs.append(x)
+                ys.append(y)
+                stack += [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+            key = (min(xs), max(xs), min(ys), max(ys))
+            pads.setdefault(key, []).append((area["area"], record["scroll_row"], record["object_type"], cx, cy))
+    fits = []
+    half = SPRITE_CELL // 2
+    for (x0, x1, y0, y1), objects in sorted(pads.items()):
+        if len(objects) < min_objects:
+            continue
+        ox0 = min(o[3] for o in objects) - half
+        ox1 = max(o[3] for o in objects) + half
+        oy0 = min(o[4] for o in objects) - half
+        oy1 = max(o[4] for o in objects) + half
+        fits.append(PadFit(
+            pad=(x0, x1, y0, y1),
+            objects=tuple(o[:3] for o in objects),
+            dx=((ox0 + ox1) - (x0 + x1 + 1)) / 2,
+            dy=((oy0 + oy1) - (y0 + y1 + 1)) / 2,
+        ))
+    return fits
 
 
 @dataclass(frozen=True)
@@ -572,6 +737,106 @@ def cmd_verify(checkout: Path) -> int:
     return 0
 
 
+# --- calibration image -----------------------------------------------------------------------
+
+SCHEDULES_JSON = ROOT / "docs" / "spec" / "data" / "area-schedules.json"
+TERRAIN_JSON = ROOT / "docs" / "spec" / "data" / "terrain.json"
+CALIBRATION_DIR = ROOT / "dist" / "terrain-calibration"
+CALIBRATION_MARGIN = 32  # px of map shown each side of the 28 visible columns, dimmed
+GROUND_HANDLERS = ("add_ground_object", "add_domogram_with_path")
+STATIC_BOX = (255, 255, 0)
+OTHER_BOX = (255, 0, 255)
+
+
+@dataclass(frozen=True)
+class CalibrationBox:
+    trigger_row: int
+    object_type: int
+    sprite_y: int
+    centre_x: int  # in the calibration image
+    centre_y: int
+    static: bool
+
+
+def area_offsets() -> list[int]:
+    return list(json.loads(TERRAIN_JSON.read_text(encoding="utf-8"))["area_offset_in_map_tbl"]["values"])
+
+
+def calibration_boxes(area: int) -> list[CalibrationBox]:
+    """Every scheduled ground object of an area, at its derived centre in that area's calibration image."""
+    offset = area_offsets()[area - 1]
+    left = (MAP_COLUMNS - VISIBLE_COLUMNS - offset) * TILE - CALIBRATION_MARGIN
+    schedules = json.loads(SCHEDULES_JSON.read_text(encoding="utf-8"))["areas"]
+    (entry,) = [a for a in schedules if a["area"] == area]
+    boxes = []
+    for record in entry["records"]:
+        if record["handler"] not in GROUND_HANDLERS:
+            continue
+        sprite_y = record["params"]["sprite_y"]
+        boxes.append(CalibrationBox(
+            trigger_row=record["scroll_row"],
+            object_type=record["object_type"],
+            sprite_y=sprite_y,
+            centre_x=ground_centre_map_x(offset, sprite_y) - left,
+            centre_y=ground_centre_map_y(record["scroll_row"]),
+            static=record["object_type"] in STATIC_GROUND_TYPES,
+        ))
+    return boxes
+
+
+def render_calibration(area: int, map_png: bytes) -> bytes:
+    """The area's strip of the master map (its 28 visible columns plus a dimmed margin each side), with
+    each scheduled ground object's 16 x 16 cell outlined at its derived position: yellow for the static
+    single-slot families, magenta for the rest (base position only)."""
+    width, height, raw = decode_rgba(map_png, "arcade_map.png")
+    if (width, height) != (MAP_WIDTH, MAP_HEIGHT):
+        raise SpriteExtractionError("arcade_map.png is not the 1024 x 2048 master map")
+    offset = area_offsets()[area - 1]
+    left = (MAP_COLUMNS - VISIBLE_COLUMNS - offset) * TILE - CALIBRATION_MARGIN
+    out_width = VISIBLE_COLUMNS * TILE + 2 * CALIBRATION_MARGIN
+    image = bytearray(out_width * height * 4)
+    for y in range(height):
+        for x in range(out_width):
+            source_x = left + x
+            at = (y * out_width + x) * 4
+            if not 0 <= source_x < width:
+                image[at:at + 4] = b"\x00\x00\x00\xff"
+                continue
+            pixel = raw[(y * width + source_x) * 4:(y * width + source_x) * 4 + 4]
+            if not CALIBRATION_MARGIN <= x < out_width - CALIBRATION_MARGIN:
+                pixel = bytes((pixel[0] // 3, pixel[1] // 3, pixel[2] // 3, 255))
+            image[at:at + 4] = pixel
+    half = SPRITE_CELL // 2
+    for box in calibration_boxes(area):
+        colour = bytes(STATIC_BOX if box.static else OTHER_BOX) + b"\xff"
+        for d in range(SPRITE_CELL):
+            for x, y in (
+                (box.centre_x - half + d, box.centre_y - half),
+                (box.centre_x - half + d, box.centre_y + half - 1),
+                (box.centre_x - half, box.centre_y - half + d),
+                (box.centre_x + half - 1, box.centre_y - half + d),
+            ):
+                if 0 <= x < out_width:
+                    at = ((y % height) * out_width + x) * 4
+                    image[at:at + 4] = colour
+    return encode_rgba(out_width, height, bytes(image))
+
+
+def cmd_calibrate(area: int, out: Path | None) -> int:
+    if not 1 <= area <= 16:
+        raise SpriteExtractionError(f"area must be 1..16, not {area}")
+    path = out or CALIBRATION_DIR / f"area-{area:02d}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(render_calibration(area, MAP_PNG.read_bytes()))
+    boxes = calibration_boxes(area)
+    print(
+        f"wrote {path} (area {area}, start column {area_offsets()[area - 1]}): "
+        f"{sum(b.static for b in boxes)} static and {sum(not b.static for b in boxes)} other ground objects, "
+        f"each centred on the top edge of map row S{GROUND_OBJECT_ROW_OFFSET:+d}"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -579,10 +844,15 @@ def main(argv: list[str] | None = None) -> int:
         command = sub.add_parser(name)
         command.add_argument("--checkout", required=True, type=Path,
                              help="path to the pinned jotd666/xevious checkout")
+    calibrate = sub.add_parser("calibrate")
+    calibrate.add_argument("--area", required=True, type=int, help="area number, 1..16")
+    calibrate.add_argument("--out", type=Path, help="output PNG (default dist/terrain-calibration/area-NN.png)")
     args = parser.parse_args(argv)
     try:
         if args.command == "render":
             return cmd_render(args.checkout)
+        if args.command == "calibrate":
+            return cmd_calibrate(args.area, args.out)
         return cmd_verify(args.checkout)
     except SpriteExtractionError as exc:
         print(f"error: {exc}", file=sys.stderr)

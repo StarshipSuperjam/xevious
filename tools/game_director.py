@@ -15,6 +15,7 @@ import sys
 from typing import Any
 
 import scratch_project
+import terrain_render
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -2409,6 +2410,18 @@ RENDER_ROW_TOP = 210
 RENDER_ROW_STAGE = 10
 # The stage's top edge (y 180) is the screen top: rows 0-3 lie above it, outside the arcade's visible window.
 RENDER_STAGE_TOP = 180
+# AREA-01 (slice 20): the terrain shares this map. terrain_render derives, from the reference renderer, a ground
+# sprite's centre line (_X/32 - 24) and background x (256 - _Y/32), and that the 28 visible map columns span
+# background x 24..247 (centre 136). This y map puts line 0 (the playfield top) at the stage top, and this x
+# map puts the visible columns' centre at stage x 0 — so terrain and ground objects land on one grid.
+_TERRAIN_VISIBLE_CENTRE_PX = (
+    terrain_render.TERRAIN_COLUMN0_LEFT_PX + terrain_render.TILE
+    - terrain_render.VISIBLE_COLUMNS * terrain_render.TILE // 2
+)
+assert RENDER_ROW_TOP - RENDER_STAGE_TOP == (
+    -RENDER_ROW_STAGE * terrain_render.GROUND_CENTRE_LINE_BIAS // terrain_render.TILE
+)
+assert -RENDER_COL_OFFSET == ARCADE_STAGE_PER_PX * (terrain_render.GROUND_CENTRE_PX_BIAS - _TERRAIN_VISIBLE_CENTRE_PX)
 # PRES-01 visibility gate (docs/mechanics/053, 054). World objects (every slot-driven flying/bullet/ground
 # renderer) are shown only while their slot's scroll row is inside [RENDER_VIEW_FIRST_ROW, RENDER_VIEW_ROWS) —
 # the arcade's visible rows 4..39; row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839).
@@ -16180,6 +16193,14 @@ def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
         "render_view_first_row": RENDER_VIEW_FIRST_ROW,
         "render_view_rows": RENDER_VIEW_ROWS,
         "slot_units_per_cell": SLOT_UNITS_PER_CELL,
+        # AREA-01 screen phase (tools/terrain_render.py): a map row's top line is 8R - C/32 + phase, a
+        # ground object's centre line is slot x / 32 + bias, and an object fired at row S rides with its
+        # centre on the top edge of map row S + offset. C = (area counter init - area progress) mod 65536.
+        "area_counter_init": AREA_COUNTER_INIT,
+        "counter_units_per_line": terrain_render.COUNTER_UNITS_PER_LINE,
+        "terrain_row_phase_lines": terrain_render.TERRAIN_ROW_PHASE_LINES,
+        "ground_centre_line_bias": terrain_render.GROUND_CENTRE_LINE_BIAS,
+        "ground_object_row_offset": terrain_render.GROUND_OBJECT_ROW_OFFSET,
     }
     return {
         "schema": MANIFEST_SCHEMA,

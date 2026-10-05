@@ -1,15 +1,20 @@
 {
   "constants": {
+    "area_counter_init": 3328,
+    "counter_units_per_line": 32,
     "craft_x_limit": 130,
     "craft_y_bottom": -170,
     "craft_y_top": 30,
+    "ground_centre_line_bias": -24,
+    "ground_object_row_offset": -2,
     "render_row_stage": 10,
     "render_row_top": 210,
     "render_stage_top": 180,
     "render_view_first_row": 4,
     "render_view_rows": 40,
     "shot_slot_count": 3,
-    "slot_units_per_cell": 256
+    "slot_units_per_cell": 256,
+    "terrain_row_phase_lines": 0
   },
   "schema": "xevious-runtime-identifiers/1",
   "variables": {

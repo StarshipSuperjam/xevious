@@ -95,6 +95,26 @@ export function pinVariableSet(project, spriteName, varName, constValue) {
   if (!patched) throw new Error(`mutate: no 'set ${varName}' block on ${spriteName}`);
 }
 
+/**
+ * Rewrite the literal ITEM of every `replace item (...) of <list> with <fromValue>` on a sprite. Used to
+ * start the ground seeders' `slot x` one tick down the field (0 → 32) — a one-line shift of where every
+ * spawned ground object rides against the map, the severing negative for the terrain-phase scenario.
+ */
+export function changeListReplaceLiteral(project, spriteName, listName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'data_replaceitemoflist' || !b.fields.LIST || b.fields.LIST[0] !== listName) continue;
+    const item = b.inputs.ITEM;
+    if (Array.isArray(item) && Array.isArray(item[1]) && String(item[1][1]) === String(fromValue)) {
+      b.inputs.ITEM = [1, [10, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'replace item of ${listName} with ${fromValue}' on ${spriteName}`);
+}
+
 /** Change an `operator_equals` literal right-hand value on a sprite (breaks an == guard). */
 export function changeEqualsOperand(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);

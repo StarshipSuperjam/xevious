@@ -1887,6 +1887,90 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'Stage', 'area progress', -65536, 0),
   },
   {
+    // AREA-01 (slice 20): the terrain phase. tools/terrain_render.py derives from the reference renderer
+    // that map row R's top edge sits 8R - C/32 + phase lines below the playfield top (xevious_sub.68k
+    // 234-245, 272; amiga.68k 136, 1372) and a ground sprite's centre at slot x/32 - 24 (amiga.68k
+    // 1651-1698, 1865), so an object the schedule fires at row S rides with its centre on the top edge of
+    // map row S - 2 — the cell Namco's own clearings are drawn round (pinned by tests/test_terrain_render.py).
+    // Live: seed the clock two ticks above area 1's first ground records (row 214: a Barra in slot 2 and a
+    // Zolbak in slot 3) with the schedule cursor on them, let the walk fire and scroll them, and check every
+    // observation lands each object exactly on its derived map line — the same constants the terrain draws by.
+    // roadmap-evidence: AREA-01 success  (live schedule-fired ground objects ride on map row S - 2, to the
+    //   line, at every position observed as they cross the field)
+    key: 'ground-object-map-row-phase',
+    behavior:
+      'A ground object the area schedule fires at row S rides with its centre on the top edge of map row S - 2 all the way down the field, the landmark the terrain draws there',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const S = 214;
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const gslot = readVar(vm, 'area-schedule-ground-slot').map(Number);
+      const first = Number(readVar(vm, 'area-schedule-start')[0]); // 1-based, area 1
+      const last = Number(readVar(vm, 'area-schedule-end')[0]);
+      let cursor = 0;
+      for (let i = first; i <= last; i += 1) {
+        if (rows[i - 1] === S) {
+          cursor = i;
+          break;
+        }
+      }
+      assert.ok(cursor > 0, 'precondition: area 1 has records at row 214');
+      assert.deepEqual(
+        [cursor, cursor + 1].map((i) => gslot[i - 1]),
+        [2, 3],
+        'precondition: the row-214 records stamp slots 2 and 3',
+      );
+      // C = 256*(S+1) + 32: two ticks before row S begins (row S fires on its first tick, C = 256*S + 224).
+      const C0 = 256 * (S + 1) + 32;
+      writeVar(vm, 'area-progress', (((constants.area_counter_init - C0) % 65536) + 65536) % 65536);
+      writeVar(vm, 'area-schedule-cursor', cursor);
+      // One headless step runs the live walk for a wall-clock-dependent number of ticks, so tick it by hand:
+      // freeze the walk and call its two clock procs in the walk's own order, one tick at a time, so every
+      // tick of the crossing is observed (48 ticks: six rows, well short of the next area-1 ground record).
+      writeVar(vm, 'game-director-state', 'frozen');
+      const samples = [];
+      for (let t = 0; t < 48; t += 1) {
+        callProc(vm, 'Stage', 'advance area');
+        step(vm, 2);
+        callProc(vm, 'Stage', 'advance slots');
+        step(vm, 2);
+        if (Number(readVar(vm, 'area-schedule-cursor')) <= cursor + 1) continue; // not fired yet
+        const C = (((constants.area_counter_init - Number(readVar(vm, 'area-progress'))) % 65536) + 65536) % 65536;
+        const types = readVar(vm, 'slot-type').map(Number);
+        const xs = readVar(vm, 'slot-x').map(Number);
+        // Scratch ground slot GROUND_SLOTS[0] + k = 1 + k is JS index k.
+        for (const slot of [2, 3]) samples.push({ slot, type: types[slot], x: xs[slot], C });
+      }
+      return { samples };
+    },
+    assert(obs) {
+      const line = (v) => ((v % 2048) + 2048) % 2048;
+      const S = 214;
+      for (const [slot, type] of [
+        [2, 0x1e],
+        [3, 0x1f],
+      ]) {
+        const seen = obs.samples.filter((s) => s.slot === slot);
+        assert.equal(seen.length, 47, `slot ${slot}: row 214 fired on the second tick and was watched for 47`);
+        assert.ok(seen.every((s) => s.type === type), `slot ${slot}: holds its row-214 object throughout`);
+        const xs = new Set(seen.map((s) => s.x));
+        assert.equal(xs.size, seen.length, `slot ${slot}: the object scrolled every tick`);
+        for (const s of seen) {
+          const centre = s.x / constants.counter_units_per_line + constants.ground_centre_line_bias;
+          const rowTop =
+            8 * (S + constants.ground_object_row_offset) -
+            s.C / constants.counter_units_per_line +
+            constants.terrain_row_phase_lines;
+          assert.equal(line(centre), line(rowTop), `slot ${slot} at slot x ${s.x}, counter ${s.C}: on map row S - 2`);
+        }
+      }
+    },
+    // roadmap-evidence: AREA-01 failure  (ground seeders that start an object one tick down the field put
+    //   it a line off its landmark)
+    negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 0, 32),
+  },
+  {
     key: 'difficulty-and-formations',
     behavior:
       'The area schedule raises the AI level (folding back below 0x80) and selects a valid flying formation live',

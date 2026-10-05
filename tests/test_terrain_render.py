@@ -201,6 +201,82 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(tuple(range(105, 110)), best.map_rows)
 
 
+class ScreenPhaseTests(unittest.TestCase):
+    """AREA-01 landmark alignment: where the arcade draws a map row and a ground object."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.map_png = tr.MAP_PNG.read_bytes()
+        _, _, cls.map_raw = tr.decode_rgba(cls.map_png, "arcade map")
+        cls.schedules = json.loads(tr.SCHEDULES_JSON.read_text(encoding="utf-8"))["areas"]
+        cls.offsets = tr.area_offsets()
+
+    def test_phase_terms_derive_the_constants(self) -> None:
+        # Map row R's top: 8 * ((R + 3) - 2) - 4 - (C + 0x80) / 32 = 8R - C/32 exactly.
+        self.assertEqual(0, tr.TERRAIN_ROW_PHASE_LINES)
+        # A ground sprite's centre: _X/32 - 32 + 8; across, 256 - _Y/32 - 8 + 8 (no foreground shift).
+        self.assertEqual(-24, tr.GROUND_CENTRE_LINE_BIAS)
+        self.assertEqual(256, tr.GROUND_CENTRE_PX_BIAS)
+        self.assertEqual(-2, tr.GROUND_OBJECT_ROW_OFFSET)
+        self.assertEqual(240, tr.TERRAIN_COLUMN0_LEFT_PX)
+        # The 28 visible columns span background x 24..247 and a centred sprite (sprite_y 128) is at 128:
+        # both centred on the playfield's 224-px width, 8 px in from x 16 (the stage map's x = 1.25u - 170).
+        self.assertEqual(24, tr.TERRAIN_COLUMN0_LEFT_PX - tr.TILE * (tr.VISIBLE_COLUMNS - 1))
+        self.assertEqual(136, (24 + 248) // 2)
+
+    def test_a_port_spawned_object_rides_on_map_row_s_minus_2(self) -> None:
+        # The port fires a ground record on its first tick at row S (counter 256S + 224) and scrolls the new
+        # object that tick, so after t more ticks slot x = 32(t + 1) and the counter is 256S + 224 - 32t.
+        for trigger_row in (255, 214, 120, 13, 1):
+            for t in range(0, 360):
+                counter = (256 * trigger_row + 224 - 32 * t) % 65536
+                slot_x = 32 * (t + 1)
+                self.assertEqual((256 * (trigger_row + 1)) % 65536, (slot_x + counter) % 65536)
+                centre = tr.ground_centre_line(slot_x) % tr.MAP_HEIGHT
+                self.assertEqual(tr.map_row_top_line(trigger_row - 2, counter), centre, (trigger_row, t))
+                self.assertNotEqual(tr.map_row_top_line(trigger_row - 1, counter), centre)
+
+    def test_designed_clearings_centre_their_ground_objects(self) -> None:
+        # roadmap-evidence: AREA-01 success  (the derived screen phase puts every scheduled static ground
+        #   object dead centre on the map's purpose-built two-dome clearings, both ways, to the pixel)
+        fits = tr.designed_pad_fits(self.map_raw, self.schedules, self.offsets)
+        self.assertGreaterEqual(len(fits), 4)
+        self.assertGreaterEqual(sum(len(f.objects) for f in fits), 20)
+        self.assertEqual({1, 6, 15}, {o[0] for f in fits for o in f.objects})
+        for fit in fits:
+            self.assertEqual((0.0, 0.0), (fit.dx, fit.dy), fit)
+
+    def test_a_shifted_phase_misses_the_clearings(self) -> None:
+        # roadmap-evidence: AREA-01 failure  (the Amiga's 2-px foreground shift, or a one-row phase slip,
+        #   puts the objects off centre on every designed clearing)
+        shifted = tr.designed_pad_fits(self.map_raw, self.schedules, self.offsets,
+                                       px_bias=tr.GROUND_CENTRE_PX_BIAS + 2)
+        self.assertTrue(shifted)
+        self.assertTrue(all(f.dx == 2.0 for f in shifted), shifted)
+        slipped = tr.designed_pad_fits(self.map_raw, self.schedules, self.offsets,
+                                       row_offset=tr.GROUND_OBJECT_ROW_OFFSET + 1)
+        self.assertTrue(slipped)
+        self.assertTrue(all(f.dy != 0.0 for f in slipped), slipped)
+
+    def test_calibration_image_boxes_each_object_at_its_derived_cell(self) -> None:
+        image = tr.render_calibration(1, self.map_png)
+        self.assertEqual(image, tr.render_calibration(1, self.map_png))
+        width, height, raw = tr.decode_rgba(image, "calibration")
+        self.assertEqual((224 + 2 * tr.CALIBRATION_MARGIN, 2048), (width, height))
+        boxes = tr.calibration_boxes(1)
+        self.assertEqual(25, len(boxes))
+        barra = next(b for b in boxes if b.trigger_row == 214 and b.object_type == 0x1E)
+        self.assertTrue(barra.static)
+        # Area 1 starts at column 36: the image's x 0 is master x (128 - 28 - 36) * 8 - 32 = 480.
+        self.assertEqual(tr.ground_centre_map_x(36, 128) - 480, barra.centre_x)
+        self.assertEqual(8 * 212, barra.centre_y)
+        corner = ((barra.centre_y - 8) * width + barra.centre_x - 8) * 4
+        self.assertEqual(bytes(tr.STATIC_BOX) + b"\xff", raw[corner:corner + 4])
+        inside = (barra.centre_y * width + barra.centre_x) * 4
+        source = (barra.centre_y * tr.MAP_WIDTH + barra.centre_x + 480) * 4
+        self.assertEqual(self.map_raw[source:source + 4], raw[inside:inside + 4])
+
+
 @unittest.skipUnless(REFERENCE is not None, "no verified reference checkout at the pin")
 class ReferenceTerrainTests(unittest.TestCase):
     @classmethod
