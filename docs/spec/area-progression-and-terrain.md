@@ -12,20 +12,26 @@ License status of extracted values: the reference states no reusable license (re
 
 ## Summary
 
-The game advances through sixteen areas of continuously scrolling terrain. One monotonic scroll clock per
-area drives everything: the terrain imagery, the scheduled appearance of every ground object, formation
+The game advances through sixteen areas of continuously scrolling terrain. One monotonic scroll clock,
+running without a break from area to area within a life, drives everything: the terrain imagery, the scheduled appearance of every ground object, formation
 change, and special event, and the transition to the next area. Completing area 16 returns the game to
 area 7 — the arcade has no win screen; this loop is its ending.
 
 ## Behavior
 
-**The scroll clock.** Each area runs one 16-bit scroll counter, initialized to 0x0D00 at gameplay start
-(`xevious_main.68k` `main_gameplay_loop` region, lines 474 and 1305) and decreased by 16 per frame — the
+**The scroll clock.** One 16-bit scroll counter runs the whole game. It is set to 0x0D00 only when a
+life begins — the first life of a game and every life after a death (`xevious_main.68k`
+`main_gameplay_loop` region, lines 474 and 1305) — and is decreased by 16 per frame: the
 scroll delta is −8 (`xevious_main.68k` line 346) and the per-frame map step applies it twice
 (`xevious_sub.68k` `get_map_row` 247–290). The counter's high byte is the *scroll row*, descending 0x0D,
 0x0C … 0x00, wrapping to 0xFF and continuing down. When it reaches 0x0E, the area is complete
-(`xevious_sub.68k` `sub_fn_3__handle_next_area` 696–730): one full area is 0xFF00 counter steps ≈ 4080
-frames ≈ 68 seconds at the arcade's 60 frames per second.
+(`xevious_sub.68k` `sub_fn_3__handle_next_area` 696–730). Completion does not touch the counter: it
+keeps running into the next area, whose rows begin arriving while the old area's last rows scroll off.
+So an area entered at the start of a life lasts 0xFE10 counter steps (0x0D00 down to 0x0EF0, the last
+value still above row 0x0E) ≈ 4065 frames ≈ 68 seconds at the arcade's 60 frames per second, and an
+area entered by completing the one before lasts the full 0x10000 steps = 4096 frames. The completion
+routine waits for the row to leave 0x0E and then return to it, so it fires once per area and never
+during the 8 ticks the counter spends on row 0x0E after a completion.
 
 **Area advance and the 16→7 loop.** On completion the area number increments; if the finished area is
 area 16, play continues at area 7, not area 1 and not a victory screen (`sub_fn_3__handle_next_area`,
@@ -50,22 +56,35 @@ names; behaviors are detailed in [Difficulty and formations](difficulty-and-form
 Every table ends with a single 0x0D sentinel row that can never trigger, because the area advances at
 row 0x0E first; the extractor proves every table decodes exactly to its sentinel.
 
-**Terrain.** Terrain imagery is the arcade map scrolled at the clock above; the Scratch build renders its
-own terrain art (per the asset provenance policy) anchored to the same scroll positions. Terrain must be
-continuous for the whole area — the craft never flies over undrawn space — and the map column for each
-area comes from the offset table above. The detailed map tile data (`map_rom.68k`) is deliberately not
-transcribed; the Scratch terrain is a visual interpretation anchored to the schedule's coordinate system,
-recorded here as a port necessity.
+**Terrain.** Terrain imagery is the arcade map scrolled at the clock above. The map is one picture
+128 tiles wide and 256 rows long (8×8-pixel tiles; the map ROMs in `map_rom.68k`, decoded by
+`src/xevious_sub.68k` `xevious_bb_r` 1558–1633). Every area flies the whole length of it, at its own sideways start column
+from the offset table above; 28 columns are visible, so the largest offset (100) reaches exactly the
+map's right edge. A life begins over a fixed forest filler pattern (`xevious_main.68k`
+`fill_bg_with_forest` 648–669), with the area's first rows written above it and scrolling down. At an
+area change nothing is cleared: the new column's rows enter at the top. The Scratch build renders the
+map from the reference's own map data and background tiles (the tile data, palettes and colour tables in
+`assets/amiga/xevious_gfx.c`), by a deterministic tool whose decode is proved against the reference's
+video-memory snapshot, and positions it from the scroll counter every tick, so each ground object sits on
+the map row its schedule places it on. Terrain must be continuous for the whole area — the craft never
+flies over undrawn space.
 
 **Reset scope.** Every new life restarts the current area from its top: the gameplay loop re-derives the
 schedule pointer from the area's table start and resets the scroll counter to 0x0D00 each time a life
 begins (`xevious_main.68k` `main_gameplay_loop` 471–483) — the arcade does not resume mid-area. One
 checkpoint softens this: a death in roughly the final fifth of an area (scroll high byte between 0x0E and
-0x43) advances to the *next* area instead of restarting the current one (`xevious_main.68k` `main_gameplay_loop` 514–521). Only
+0x43) advances to the *next* area instead of restarting the current one (`xevious_main.68k` `main_gameplay_loop` 514–521).
+The row is read when the next life is set up, not at the moment of death: the scroll keeps running
+through the 88-frame explosion and pause that follow a death (`xevious_main.68k`
+`explode_solvalou` 2034–2077, seven 8-frame steps; `finish_solvalou_exploding` 2079–2090, a further 32 frames, then the
+scroll stops), and the area completion stays live through it. So the window effectively opens 44 ticks
+(88 frames) earlier than the death-moment row suggests, and a death in the last 44 ticks of an area
+completes that area during the explosion, after which the checkpoint reads the next area's row: a death
+37–44 ticks before the end lands on that row's 0x0E and skips the next area as well, while a death in
+the 8 ticks just after a completion has scrolled clear of row 0x0E by the time it is read and restarts
+the new area from its top. One tick in the port is two arcade frames. Only
 the area number otherwise survives a death (and, in a two-player game, travels with each player's own
-state). Starting a new game resets to area 1. The current build's preserve-terrain-on-death behavior is
-an interim project-defined fixture that diverges from this rule and is recorded for correction with the
-life-economy work.
+state). Starting a new game resets to area 1.
 
 **Recorded reference anomaly.** Area 14's schedule contains one out-of-order record (its final
 formation-reset row sits above the row that precedes it, so it can never fire before the area advances) —

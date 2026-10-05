@@ -135,7 +135,7 @@
   - **The Garu Derota node's felt fire cadence is an operator observation.** The node fires one aimed
     bullet per masked reload with no row gate; the mechanism is proven in the harness, but the exact
     on-screen rhythm relative to a Derota is a point for the operator playtest to confirm.
-  - **Port necessity — the destructible top is centred on the exposed base, not offset by a cell.** The
+  - **The destructible top is centred on the exposed base.** The
     faithful structure (source-confirmed, and the appearance the operator approved in the PR #139 playtest)
     is: you **bomb the pyramid/turret top to expose the base beneath it.** The destructible node is
     the arcade's small top object — Barra `_CODE=0x17` (the `barra/idle` pyramid) / Derota `_CODE=0x27` (the
@@ -150,12 +150,16 @@
     frames differ by 196 px of which only 24 are the red lights (the other 172 are the black socket), so that
     read as the **whole sprite flipping pyramid↔socket**, not the red lights flashing. Per the operator's
     decision (2026-09-24) the exposed base therefore holds frame `02` statically with the red lit; frame `01`
-    is retained as a crop but not rendered. That is why the node must be
-    **centred** on the base rather than offset: the arcade offsets the node by +1 cell on each axis
-    (`_X = 0x0100`, `_Y = base_Y - 0x0100`) only to re-centre a **corner-anchored** node inside a
-    corner-anchored 2×2 base, but the port's `go_expr` places every sprite by its **centre**, so that
-    corner-centring must become a **zero relative offset** (node `slot x`/`slot y` = the base's). An early
-    port copied the arcade offset literally, which slid the top out of a corner as a **second** pyramid/turret
+    is retained as a crop but not rendered. The node is drawn **centred** on the base. **Placement
+    (faithful, since the visual-terrain slice; supersedes the earlier "zero relative offset" port
+    necessity):** the arcade offsets the node by +1 cell on each axis (`_X = 0x0100`,
+    `_Y = base_Y - 0x0100`) and draws the 2×2 base with its tiles 16 px toward screen-right and screen-down
+    from its position, so the node's centre lands on the base's centre 8 px right of and below the base's
+    position. The port had seeded the node on the base's own cell and drawn the base unshifted — centred on
+    each other, but both 8 px up-left of the arcade, the node's hit, fire and burst position included. It
+    now seeds the node at +256 slot x / −256 slot y and draws the base 10 stage units right and 10 down
+    ([record 054](054-arcade-screen-proportions.md) deviation 20). An early
+    port copied the arcade offset without the base's draw shift, which slid the top out of a corner as a **second** pyramid/turret
     (the "doubling" the operator first saw); a later attempt drew the base's *own* second frame as the node
     centred on it, which merged the two into one mound and **removed the destructible top the player bombs**
     (the operator: "you removed the destroyable parts"). The base↔node linkage is by slot **index** (N+1),

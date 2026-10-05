@@ -85,7 +85,16 @@
     arcade grows the object 1×1 → 2×2 by writing `_ATTR=3` at rise step 4. The port renders the seven rise
     frames as pre-scaled costumes, so the growth is inherent to the frame the renderer shows for each step and
     there is no runtime `setsizeto`. Behaviour (which frame at which step, the destroy-stage hit window) is
-    unchanged.
+    unchanged. **Open (found in the visual-terrain slice's 2×2 placement check, [054](054-arcade-screen-proportions.md)
+    deviation 20):** the arcade's rise frames are 1×1 codes 0xA8–0xAB (pictures about 3, 6, 9 and 12 px across)
+    and, from step 4, 2×2 codes 0xAE, 0xB2 and 0xB6 (about 17, 23 and 31 px), drawn with the 2×2 tiles 16 px
+    toward screen-right and screen-down, so the picture's centre drifts from about 8.5 px to 16.5 px from the
+    object's position. The port's seven costumes are 16-px cells cropped from the fan sprite sheet, holding
+    pictures of only 2–14 px, centred at 8 px. So the port's risen tower is about half the arcade's size and up
+    to 8 px up-left of it. The hit windows are unaffected (they are the source's, on the slot position). A
+    faithful fix renders the seven frames from the reference's own sprite data (the Andor-parts precedent) and
+    places the 2×2 frames like the Garu base; it is new art needing the owner's pixel check, so it is left for
+    the owner to schedule.
   - **Port necessity — the display and rise clocks are arcade-frame counts, stepped by the frame convention.**
     The Sol Tower rise (`SOL_RISE_PHASE_FRAMES = 16` per step, `SOL_RISE_STEP_COUNT = 7`) and the credit
     display (`EASTER_EGG_DISPLAY_FRAMES = 128`) are counted by `TICK_TIMER_STEP` (2 arcade frames per tick),
