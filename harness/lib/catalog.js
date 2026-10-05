@@ -2448,22 +2448,45 @@ export const SCENARIOS = [
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
       // Raises fold at 0x80 (>=128 subtracts 64 once), so the AI level from raises ALONE can never be
       // observed >= 128. The score adjust adds floor(floor(score/1000)/craft) (capped 16) WITHOUT
-      // folding, so a heavy score with craft in reserve is the ONLY way the live AI level crosses 128.
-      // Inject that state and pump area 1: crossing 128 is the adjust's unique signature (the raise-
-      // only baseline tops out at 126 here — see the `difficulty-and-formations` scenario).
+      // folding, so a heavy score with craft in reserve is the ONLY way the AI level crosses 128.
+      // The level sits >= 128 only until the next raise folds it, so sampling it between live pumps (which
+      // run a wall-clock-dependent number of ticks) could miss that stretch on a loaded machine. Instead,
+      // freeze the walk and run the real `advance area` exactly once on area 1's first adjust record:
+      // point the schedule cursor at it and seed the progress one tick before its trigger row, with the AI
+      // level at 120 (reachable by raises alone) and a heavy score with one craft in reserve.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const triggers = readVar(vm, 'area-schedule-trigger-row');
+      const start = Number(readVar(vm, 'area-schedule-start')[0]); // area 1's first record, Scratch 1-based
+      let idx = start - 1;
+      while (idx < handlers.length && handlers[idx] !== 'adjust_ai_level_from_score') idx += 1;
+      assert.ok(idx < handlers.length, "precondition: area 1's schedule has a score-adjust record");
+      const row = Number(triggers[idx]);
+      // scroll row = floor(((0x0D00 - progress) mod 0x10000) / 256); land mid-row after the tick's +32.
+      const after = (((0x0d00 - row * 256 - 128) % 0x10000) + 0x10000) % 0x10000;
+      writeVar(vm, 'area-number', 1);
+      writeVar(vm, 'area-schedule-cursor', idx + 1);
+      writeVar(vm, 'area-progress', after - 32);
+      writeVar(vm, 'difficulty-ai-level', 120);
       writeVar(vm, 'eco-score', 999000);
       writeVar(vm, 'eco-craft', 1);
-      let maxAi = 0;
-      for (let i = 0; i < 200; i += 1) {
-        step(vm, 1);
-        maxAi = Math.max(maxAi, Number(readVar(vm, 'difficulty-ai-level')));
-      }
-      return { maxAi };
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      return {
+        row,
+        scrollRow: Number(readVar(vm, 'area-scroll-row')),
+        cursorMoved: Number(readVar(vm, 'area-schedule-cursor')) > idx + 1,
+        ai: Number(readVar(vm, 'difficulty-ai-level')),
+      };
     },
     assert(obs) {
+      assert.equal(obs.scrollRow, obs.row, "precondition: the tick lands on the adjust record's trigger row");
+      assert.ok(obs.cursorMoved, 'the schedule consumed the adjust record');
       assert.ok(
-        obs.maxAi >= 128,
-        'the score adjust pushes the AI level past the raise-only fold ceiling (127)',
+        obs.ai >= 128,
+        `the score adjust pushes the AI level past the raise-only fold ceiling (127), unfolded (got ${obs.ai})`,
       );
     },
     // Sever the adjust dispatch (its handler == comparison never matches) so only raises drive the AI
