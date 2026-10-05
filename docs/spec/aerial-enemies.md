@@ -38,8 +38,7 @@ one-time re-aim it verified against the source, under the operator's guardrail a
 remaining families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) were
 each verified line-by-line against the reference by their own build slice (10–11), and this document was
 amended where it diverged, under the operator's acknowledgement; every family below is now checked ground.
-Known port gaps that remain are tracked as slice-21 leaves, not as unverified prose: the standard bullet's
-in-flight re-aim (`air.bullet-reaim`), the scheduled `add_object` spawns of Garu Zakato and the extra
+Known port gaps that remain are tracked as slice-21 leaves, not as unverified prose: the scheduled `add_object` spawns of Garu Zakato and the extra
 Torkan/Kapi/Terrazi (`area.add-object-dispatch`), and the remaining reference art
 (`presentation.reference-art`).
 
@@ -95,9 +94,9 @@ craft (`zoshi_0D_init` 3427–3429, which writes the *enemy's* `_dX`/`_dY` via
 `handle_0E_Zoshi_bottom` 3414–3418) with a craft-excluding column draw; the other two enter from the top
 row with a plain draw. **All three fire the same aimed shot.** A Zoshi shot is a TYPE-6 bullet
 (`init_new_bullet` 5012 → `found_idle_bullet_slot` 5039 → `set_state_and_copy_obj_coords` 5032, which
-copies only the firer's *position* to the bullet — never a direction), and every TYPE-6 bullet re-vectors
-onto the craft each frame (`handle_06_Bullet` 4278), so the shot homes on the craft whichever variant
-fired it. What differs per variant is the *enemy's own drift re-heading* at each shot: top and bottom
+copies only the firer's *position* to the bullet — never a direction), and every TYPE-6 bullet is aimed at the
+craft once, at launch, and then flies straight (`handle_06_Bullet` 4278–4283: it aims, saves its resume point,
+and every later frame only moves the bullet), so the shot is aimed at the craft whichever variant fired it. What differs per variant is the *enemy's own drift re-heading* at each shot: top and bottom
 re-aim their drift toward the craft (`zoshi_0D_init` 3448–3449), while the random variant re-headings its
 drift to an erratic angle (`handle_0C_Zoshi_rnd` 3487–3490, via `get_dX_dY_and_cpy_to_obj` 5129) and
 scores lower (70 pts vs 100). The `handle_0C` source comment "shoots in a random direction" describes that
@@ -128,8 +127,8 @@ Kapi below); the source's "left/right" names the **spin frame order**, not a hor
 **spins** a 6-frame cycle `0xA0..0xA5` advancing every 2 ticks (`(TIMER>>1) & 7`, reset at 6, 3521–3528); the
 away-from-craft arc uses the reversed table (`jara_left_sprite_tbl` 0xA5..0xA0 3574). The **shooter** additionally
 fires **exactly one** aimed bullet at the turn instant (`jara_shoot` 3544 → `init_new_bullet` once 3546); the
-**silent** type never fires. That bullet is a TYPE-6 that re-vectors onto the craft each frame (`handle_06_Bullet`
-4278), so it homes. Exit is the standard offscreen cull; the ramping `_dY` carries it off. **150 pts each, both
+**silent** type never fires. That bullet is a TYPE-6, aimed at the craft once at launch and then straight (`handle_06_Bullet`
+4278–4283). Exit is the standard offscreen cull; the ramping `_dY` carries it off. **150 pts each, both
 variants, scored independently.** Built and verified against the pinned source (AIR-04); see
 [031 — Jara variants](../mechanics/031-jara-variants.md) for the port deviations.
 

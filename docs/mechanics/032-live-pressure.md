@@ -108,5 +108,7 @@ Two notes on the status above. First, the ground-only permission demonstration (
 Second, a known error in DIF-02 is now tracked: the arcade's score-per-craft adjust divides by the ship number
 (`solvalou_number`: 1 at game start and +1 per death, read by `avg_score_per_solvalou` in
 `src/xevious_sub.68k`), while the port divides by the craft in reserve
-([record 021](021-score-adaptive-ai-level.md)). The correction, with its amendment to the locked difficulty
+([record 021](021-score-adaptive-ai-level.md)). The dividend differs too: the arcade reads the score's
+thousands digits as a raw binary number (`curr_player_score_msb` at `sub_2_fn_23__adjust_AI_level_based_on_score`
+346, the source noting it at 356), so 20,000 points counts as 32, where the port uses the decimal thousands. The correction, with its amendment to the locked difficulty
 description, is the slice-21 leaf `difficulty.ship-number-divisor`.
