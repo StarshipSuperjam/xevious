@@ -25,7 +25,7 @@
   "matte": [0, 128, 0],
   "cell_canvas": [100, 100],
   "cell_anchor": [50, 50],
-  "downscale": 4,
+  "downscale": 5,
   "bitmap_resolution": 2,
   "glyph_threshold": 128,
   "glyphs": [

@@ -364,6 +364,9 @@ class ScratchProjectTests(unittest.TestCase):
         # bomb target, bomb codes x colours). 262 + 1 + 74 = 337.
         # - the 2 slice-20 CAB-05 retired rip crater crops: the ground families now draw the pinned crater render
         # (solv_death's historical explode_01..08 stay as preserved baseline content). 337 - 2 = 335.
+        # = the slice-20 CAB-05 text re-render at the drawn size (resolution 2, one 20-px column per character):
+        # every HUD, attract, banner and credit PNG is replaced one for one; the HUD digits (20-px canvas) stay
+        # distinct from the attract digits (18-px composite) and glyph/O still dedups to digit/0. Still 335.
         self.assertEqual(335, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
@@ -20290,10 +20293,10 @@ class ScratchProjectTests(unittest.TestCase):
                 )
         if not life_ok or life_x + 10 * (director.HUD_LIFE_MAX - 1) > 135:
             fails.add("hud-life-row")
-        # Glyph sizes for the 10-unit pitch: 25-px resolution-2 glyphs at 80%, the 16-px life icon at 62.5%, and
-        # the 17-px-advance banner at 100 * 10 / 17.
+        # Glyph sizes for the 10-unit pitch: the glyphs and banner are drawn at their on-stage size (a 20-px
+        # resolution-2 column, CAB-05), so both draw at 100%; the 16-px life icon stays at 62.5%.
         sizes = {as_num(num(b["inputs"].get("SIZE"))) for b in hud.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"}
-        if sizes != {80.0, 62.5, round(1000 / 17, 2)}:
+        if sizes != {100.0, 62.5}:
             fails.add("hud-size")
 
         def ref_in(bl, block, slot):
@@ -20523,9 +20526,9 @@ class ScratchProjectTests(unittest.TestCase):
             (0.0, float(round(50 - 51.5 * logo_size / 100)))
         }:
             fails.add("PRES01-attract-grid")
-        # The text costumes draw at the 10-unit pitch (17-px advance) and the logo at its arcade width; the text
-        # size is set on the clone's own script, so every text clone draws on the grid.
-        text_size = round(100 * 10 / 17, 2)
+        # The text costumes draw at the 10-unit pitch (a 20-px resolution-2 advance at 100%, CAB-05) and the logo
+        # at its arcade width; the text size is set on the clone's own script, so every text clone draws on the grid.
+        text_size = 100.0
         start_sizes = {
             as_num(num(b["inputs"].get("SIZE"))): top_of(start, bid)
             for bid, b in start.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
@@ -20533,7 +20536,7 @@ class ScratchProjectTests(unittest.TestCase):
         if start_sizes != {logo_size: "event_whenflagclicked", text_size: "control_start_as_clone"}:
             fails.add("PRES01-attract-grid")
         # The hidden credit on the arcade's credit rows 33-34 (display_easter_egg 6018-6048: 0x1921 / 0x1722), its
-        # 20-character line centred on columns 8..27, the 22-px glyph advance on the 10-unit pitch.
+        # 20-character line centred on columns 8..27, its 20-px resolution-2 advance drawn at 100% on the 10-unit pitch.
         egg = targets[director.EASTER_EGG_TARGET]["blocks"]
         egg_gotos = {
             (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
@@ -20544,7 +20547,7 @@ class ScratchProjectTests(unittest.TestCase):
             for b in egg.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
         }
         credit_y = (run_centre(0x1921, 1)[1] + run_centre(0x1722, 1)[1]) / 2
-        if egg_gotos != {(0.0, credit_y)} or egg_sizes != {round(100 * 10 / 22, 2)}:
+        if egg_gotos != {(0.0, credit_y)} or egg_sizes != {100.0}:
             fails.add("PRES01-attract-grid")
 
         # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
@@ -20653,6 +20656,105 @@ class ScratchProjectTests(unittest.TestCase):
             ):
                 fails.add("PRES01-shadow-units")
         return fails
+
+    @staticmethod
+    def _text_pitch_failures(project: dict, sizes: dict[str, float]) -> set[str]:
+        # CAB-05 (054 deviation 16): every text costume is drawn at its on-stage pixel size — resolution 2, one
+        # 20-px column per character — so a character's advance (costume px / resolution x size / 100) is exactly
+        # one HUD_TEXT_PITCH column, with no fractional run-time scale to blur it. `sizes` carries the run-time
+        # size of each text kind (hud glyphs, banner, attract text, credit); the framing contract pins the
+        # project's own set-size literals to the same values.
+        fails: set[str] = set()
+        targets = {t["name"]: t for t in project["targets"]}
+        manifest = json.loads((ROOT / "assets" / "hud-font" / "manifest.json").read_text())
+        gap = hud_glyphs.SHEET_SMALL_GLYPH_GAP / hud_glyphs.SHEET_SMALL_DOWNSCALE
+        line_gap = hud_glyphs.SHEET_CREDIT_LINE_GAP / hud_glyphs.SHEET_CREDIT_DOWNSCALE
+        attract = (
+            [(f"digit/{d}", (str(d),)) for d in range(10)]
+            + [(f"glyph/{c}", (c,)) for c in hud_glyphs.ATTRACT_NAME_GLYPHS]
+            + [
+                (name, (text,))
+                for name, text in hud_glyphs.ATTRACT_LABELS
+                + hud_glyphs.ATTRACT_SELECTOR_LABELS
+                + hud_glyphs.ATTRACT_TABLE_LABELS
+                + hud_glyphs.ATTRACT_ENTRY_LABELS
+            ]
+        )
+        # (target, size kind, costume name, text lines, trailing gap px): the HUD font glyphs fill their whole
+        # 20-px canvas; the sheet-composited strings drop the last glyph's 2-px gap.
+        expected = (
+            [("hud", "hud", g["name"], ("X",), 0.0) for g in manifest["glyphs"]]
+            + [("hud", "banner", name, (text,), gap) for name, text in hud_glyphs.BANNER_LABELS]
+            + [(hud_glyphs.ATTRACT_TARGET, "attract", name, lines, gap) for name, lines in attract]
+            + [(hud_glyphs.CREDIT_TARGET, "credit", hud_glyphs.CREDIT_COSTUME_NAME, hud_glyphs.CREDIT_TEXT_LINES, gap)]
+        )
+        for target_name, kind, name, lines, trailing in expected:
+            costume = next((c for c in targets[target_name]["costumes"] if c["name"] == name), None)
+            if costume is None:
+                fails.add(f"missing-{target_name}")
+                continue
+            res = costume["bitmapResolution"]
+            if res != 2:
+                fails.add(f"resolution-{target_name}")
+            png = (scratch.SOURCE_DIR / "assets" / costume["md5ext"]).read_bytes()
+            width, height = int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+            scale = sizes[kind] / 100 / res
+            if abs((width + trailing) / max(len(line) for line in lines) * scale - director.HUD_TEXT_PITCH) > 1e-9:
+                fails.add(f"column-{target_name}")
+            # The two-line credit keeps its own row pitch: 22 px = 11 units, the whole-pixel pitch nearest the
+            # owner-kept 10.9-unit spacing (docs/mechanics/054 deviation 16).
+            if len(lines) > 1 and abs((height + line_gap) / len(lines) * scale - 11) > 1e-9:
+                fails.add("credit-row")
+        return fails
+
+    # roadmap-evidence: CAB-05 success  (test_text_costumes_draw_one_column_per_character — every HUD, banner, attract and credit text costume is rendered at resolution 2 with a 20-px advance per character and drawn at 100%, so each character steps exactly one 10-unit column with no fractional run-time scale)
+    def test_text_costumes_draw_one_column_per_character(self) -> None:
+        sizes = {
+            "hud": director.HUD_GLYPH_SIZE,
+            "banner": director.HUD_BANNER_SIZE,
+            "attract": director.ATTRACT_TEXT_SIZE,
+            "credit": director.EASTER_EGG_CREDIT_SIZE,
+        }
+        self.assertEqual({100}, set(sizes.values()))
+        self.assertEqual(2, hud_glyphs.TEXT_BITMAP_RESOLUTION)
+        self.assertEqual(set(), self._text_pitch_failures(load_source(scratch.SOURCE_DIR), sizes))
+
+    # roadmap-evidence: CAB-05 failure  (test_text_costumes_draw_one_column_per_character_negative_fixtures: a string costume with the wrong character count, a glyph back at resolution 1, the banner, attract text or credit back at its old fractional run-time size, and a missing rank costume each go red)
+    def test_text_costumes_draw_one_column_per_character_negative_fixtures(self) -> None:
+        sizes = {"hud": 100, "banner": 100, "attract": 100, "credit": 100}
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._text_pitch_failures(base, sizes))
+
+        def costume(p, target_name, name):
+            target = next(t for t in p["targets"] if t["name"] == target_name)
+            return next(c for c in target["costumes"] if c["name"] == name)
+
+        def swap_push_start(p):  # PUSH START BUTTON drawn with the shorter INSERT COIN bitmap
+            costume(p, "start_screen", "push-start")["md5ext"] = costume(p, "start_screen", "insert-coin")["md5ext"]
+
+        def glyph_low_res(p):  # one HUD glyph back at resolution 1 (double size)
+            costume(p, "hud", "glyph/A")["bitmapResolution"] = 1
+
+        def drop_rank(p):  # a rank costume missing
+            target = next(t for t in p["targets"] if t["name"] == "start_screen")
+            target["costumes"] = [c for c in target["costumes"] if c["name"] != "rank/3"]
+
+        mutations = [
+            ("column-start_screen", swap_push_start, sizes),
+            ("resolution-hud", glyph_low_res, sizes),
+            ("column-hud", glyph_low_res, sizes),
+            ("missing-start_screen", drop_rank, sizes),
+            ("column-hud", None, {**sizes, "banner": round(1000 / 17, 2)}),
+            ("column-start_screen", None, {**sizes, "attract": 58.82}),
+            ("column-easter-egg", None, {**sizes, "credit": 45.45}),
+            ("credit-row", None, {**sizes, "credit": 45.45}),
+        ]
+        for label, mutate, case_sizes in mutations:
+            with self.subTest(label=label, mutate=getattr(mutate, "__name__", None)):
+                project = copy.deepcopy(base)
+                if mutate:
+                    mutate(project)
+                self.assertIn(label, self._text_pitch_failures(project, case_sizes))
 
     # roadmap-evidence: PRES-01 success  (test_pres01_collision_and_crosshair_contract — the craft's exact slot position, read once per walk with no cell rounding, drives the crosshair and the bomb drop, so the sight moves with the ship pixel for pixel; the air, ground and Bacura-bounce detectors reduce positions to the reference shadow bytes — lateral px, depth 2-px units — and test the carry idiom's range, so the bomb box is the arcade's 20 x 20 px; harness pres01-bomb-between-pair-hits-both / pres01-crosshair-follows-exact-craft run it live)
     # roadmap-evidence: PRES-01 failure  (test_pres01_collision_and_crosshair_contract negatives: a rounded craft read, a crosshair or bomb drop back on the rounded cell, a detector on the old half-px divisor, and a ground window bound off the carry range each go red; harness negative pres01-bomb-off-pair-misses keeps a bomb 11 px beside an object a miss)
@@ -20784,10 +20886,10 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "operator_multiply" and self._numeric(b["inputs"].get("NUM2")) in (10, "10"):
                     b["inputs"]["NUM2"] = [4, [4, 18]]
 
-        def unscale_hud(p):  # glyphs back at their full 12.5-unit size
+        def unscale_hud(p):  # glyphs back at the old 80% run-time downscale
             for b in target(p, "hud")["blocks"].values():
-                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (80, "80"):
-                    b["inputs"]["SIZE"] = [4, [4, 100]]
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (100, "100"):
+                    b["inputs"]["SIZE"] = [4, [4, 80]]
 
         def flip_one_renderer(p):  # one family drawn with the old un-mirrored lateral factor
             for b in target(p, director.TOROID_TARGET)["blocks"].values():
@@ -20874,10 +20976,15 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-55, "-55"):
                     b["inputs"]["Y"] = [4, [4, -60]]
 
-        def unscale_attract_text(p):  # attract text back at its costume's own 17-px advance
+        def unscale_attract_text(p):  # attract text back at the old 58.82% run-time downscale
             for b in target(p, "start_screen")["blocks"].values():
-                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (58.82, "58.82"):
-                    b["inputs"]["SIZE"] = [4, [4, 100]]
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (100, "100"):
+                    b["inputs"]["SIZE"] = [4, [4, 58.82]]
+
+        def unscale_credit(p):  # the hidden credit back at the old 45.45% run-time downscale
+            for b in target(p, director.EASTER_EGG_TARGET)["blocks"].values():
+                if b["opcode"] == "looks_setsizeto":
+                    b["inputs"]["SIZE"] = [4, [4, 45.45]]
 
         def unshift_table(p):  # the best-five ranks back on the arcade's own column 6 (the left-leaning layout)
             for b in target(p, "start_screen")["blocks"].values():
@@ -20914,6 +21021,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-garu-double-tile", garu_node_wrong_side),
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
+            ("PRES01-attract-grid", unscale_credit),
             ("PRES01-attract-grid", credit_off_grid),
             ("PRES01-attract-grid", unshift_table),
             ("PRES01-attract-grid", selector_from_col_10),
@@ -21334,7 +21442,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d9607aa1a94385d599118c678f9a5d1528dff959df1a10372d10f2be50844a72",
+            "b1489cb914e6ce1a35b3ab1b202fdecaacd393237b36d433533f27cba3cd25c3",
             build_hash,
         )
 

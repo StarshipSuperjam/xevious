@@ -406,12 +406,16 @@ HUD_LIFE_SPACING = HUD_TEXT_PITCH
 # right bezel panel and cost a clone for nothing). The true `craft` count is unaffected — only the icon DISPLAY is
 # bounded.
 HUD_LIFE_MAX = 28
-# Glyph sizes for the 10-unit pitch: the 25-px bitmap-resolution-2 HUD glyphs (12.5 units at 100%), the 16-px
-# resolution-1 life icon, and the two-player banner set in the 17-px-advance small text cell (tools/hud_glyphs.py
-# SMALL_TEXT_GEOM).
-HUD_GLYPH_SIZE = 80
+# Glyph sizes for the 10-unit pitch. CAB-05 (docs/mechanics 054 deviation 16): tools/hud_glyphs.py renders every
+# text costume — the HUD glyphs (manifest downscale 5), the two-player banner and the attract text
+# (SMALL_TEXT_GEOM), the hidden credit — at its drawn size, one 20-px column at bitmap resolution 2 =
+# TEXT_COSTUME_COLUMN_UNITS, so text draws at 100% and is resampled only once. The size is still set, as a
+# clone inherits its parent's (start_screen's parent draws the logo at ATTRACT_LOGO_SIZE). The 16-px
+# resolution-1 life icon is art, not text, and keeps its run-time scale.
+TEXT_COSTUME_COLUMN_UNITS = 10
+HUD_GLYPH_SIZE = round(100 * HUD_TEXT_PITCH / TEXT_COSTUME_COLUMN_UNITS)
 HUD_LIFE_SIZE = 62.5
-HUD_BANNER_SIZE = round(100 * HUD_TEXT_PITCH / 17, 2)
+HUD_BANNER_SIZE = HUD_GLYPH_SIZE
 HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
 # (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
 HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
@@ -1231,10 +1235,10 @@ ATTRACT_ROLE_TABLE_NAME = 8  # one best-five name letter (letter `place` of name
 ATTRACT_ROLE_TABLE_SCORE = 9  # one best-five score digit (digit `place` of table[row])
 ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
 # PRES-01 (docs/mechanics/054): the attract text sits on the arcade text layer like the HUD (text_cell_x/y), drawn
-# at the 10-unit pitch — every start_screen text costume is the hud_glyphs SMALL_TEXT_GEOM cell (17-px advance,
-# bitmap resolution 1), so its clones draw at ATTRACT_TEXT_SIZE. A whole-string costume is placed by its centre:
-# text_run_x(first column, character count).
-ATTRACT_TEXT_SIZE = round(100 * HUD_TEXT_PITCH / 17, 2)
+# at the 10-unit pitch — every start_screen text costume is the hud_glyphs SMALL_TEXT_GEOM cell (20-px advance,
+# bitmap resolution 2 since CAB-05), so its clones draw at ATTRACT_TEXT_SIZE (100%). A whole-string costume is
+# placed by its centre: text_run_x(first column, character count).
+ATTRACT_TEXT_SIZE = HUD_GLYPH_SIZE
 
 
 def text_run_x(first_col: int, chars: int) -> float:
@@ -2223,7 +2227,7 @@ EASTER_EGG_CREDIT_COSTUME = "credit"
 # longest line is 20 characters on the 10-unit pitch, so centring it at x 0 puts every glyph on a column (8..27).
 EASTER_EGG_CREDIT_X = 0
 EASTER_EGG_CREDIT_Y = text_cell_y(33.5)
-EASTER_EGG_CREDIT_SIZE = round(100 * HUD_TEXT_PITCH / 22, 2)  # the costume's 22-px glyph advance on the text pitch
+EASTER_EGG_CREDIT_SIZE = HUD_GLYPH_SIZE  # CAB-05: the costume's 20-px resolution-2 advance is one column at 100%
 
 # GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
 # SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
