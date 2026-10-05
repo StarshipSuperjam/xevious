@@ -564,18 +564,23 @@ export const SCENARIOS = [
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Seed the clock 33 ticks short of area 1's end, so the very first pumps cross an area change and its
-      // band hand-over however fast the machine runs the walk; the rest of the 24 pumps run on into area 2.
+      // Seed the clock ~1250 ticks short of area 1's end, then pump until the run has sampled both sides of
+      // the area change and 12 pumps beyond it. A pump runs as many walk ticks as fit its wall-clock work
+      // budget (~100 on a dev machine; a fast runner covers more), so a short lead-in can be crossed by the
+      // very first pump; the sample count follows the crossing, not a fixed count, and the cap only bounds
+      // a run that never crosses (which the area assertion then reports).
       // (The harness VM has no renderer: no fencing and no layer order -- the layering is pinned in pytest.)
-      writeVar(vm, 'area-progress', 64000);
+      writeVar(vm, 'area-progress', 24000);
       const strips = { even: 'area_01a', odd: 'area_01b' };
       const mismatches = [];
       const seen = { even: new Set(), odd: new Set() };
       let shownSamples = 0;
       const areas = new Set();
-      for (let i = 0; i < 24; i += 1) {
+      let afterCrossing = 0;
+      for (let i = 0; i < 400 && afterCrossing < 12; i += 1) {
         step(vm, 1);
         areas.add(Number(readVar(vm, 'area-number')));
+        if (areas.size >= 2) afterCrossing += 1;
         for (const [parity, name] of Object.entries(strips)) {
           const t = vm.runtime.getSpriteTargetByName(name);
           const want = {
@@ -594,8 +599,8 @@ export const SCENARIOS = [
     },
     assert(obs) {
       assert.deepEqual(obs.mismatches, [], 'every strip shows its costume, x, y and visibility from the terrain state');
-      assert.ok(obs.shownSamples > 24, `strips were on screen in the samples (${obs.shownSamples})`);
-      assert.ok(obs.areas.length >= 2, `the run crossed an area change (areas ${obs.areas})`);
+      assert.ok(obs.shownSamples > 12, `strips were on screen in the samples (${obs.shownSamples})`);
+      assert.ok(obs.areas.length >= 2 && obs.areas.includes(1), `the run sampled both sides of an area change (areas ${obs.areas})`);
       assert.ok(obs.even.length >= 2 && obs.odd.length >= 2, `strips changed band (${obs.even} / ${obs.odd})`);
     },
     // The even strip never shows (its shown test compares against 99) → visibility mismatches.
