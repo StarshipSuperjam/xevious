@@ -16,6 +16,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -275,6 +276,206 @@ class ScreenPhaseTests(unittest.TestCase):
         inside = (barra.centre_y * width + barra.centre_x) * 4
         source = (barra.centre_y * tr.MAP_WIDTH + barra.centre_x + 480) * 4
         self.assertEqual(self.map_raw[source:source + 4], raw[inside:inside + 4])
+
+
+FOREST = "forest"
+
+
+class ArcadePlane:
+    """The arcade's background plane, written the way the reference writes it -- an oracle that shares
+    nothing with terrain_state but the screen phase.
+
+    get_map_row (xevious_sub.68k 247-290) writes map row (high byte - 14) & 0xFF into plane row
+    (row + 3) & 63 each time the counter's high byte drops, with the area offset current then; a re-top
+    (main_gameplay_loop xevious_main.68k 466-490) fills the plane with forest (fill_bg_with_forest
+    648-669) and sets the counter to 0x0D00; handle_next_area (xevious_sub.68k 696-730) swaps the offset
+    after that tick's write. The port's clock does the same: completion at high byte 0x0E with progress
+    above 0, carrying the counter. It mirrors the port's `terrain column` / `previous terrain column`."""
+
+    def __init__(self, offsets: list[int], area: int) -> None:
+        self.offsets = offsets
+        self.retop(area)
+
+    def retop(self, area: int) -> None:
+        self.area = area
+        self.progress = 0
+        self.plane: list[tuple[int, int] | None] = [None] * tr.PLANE_ROWS
+        self.column = self.offsets[area - 1]
+        self.previous = tr.NO_PREVIOUS_COLUMN
+
+    def counter(self) -> int:
+        return (0x0D00 - self.progress) % 0x10000
+
+    def tick(self) -> bool:
+        before = self.counter() >> 8
+        self.progress += 32
+        high = self.counter() >> 8
+        if high != before:
+            row = (high - 14) & 0xFF
+            self.plane[(row + 3) & 63] = (row, self.offsets[self.area - 1])
+        if high == 14 and self.progress > 0:
+            self.area = 7 if self.area == 16 else self.area + 1
+            self.progress -= 0x10000
+            self.previous, self.column = self.column, self.offsets[self.area - 1]
+            return True
+        return False
+
+    def screen(self) -> list[object]:
+        c = self.counter() // 32
+        out: list[object] = []
+        for line in range(tr.SCREEN_LINES):
+            row = (line + c) // 8 % 256
+            cell = self.plane[(row + 3) & 63]
+            assert cell is None or cell[0] == row, (line, row, cell)  # never a stale row on screen
+            out.append(FOREST if cell is None else cell)
+        return out
+
+
+def _strip_content(strip: tr.StripState, line: int) -> object:
+    """What one strip draws at a display line (None: nothing, or a transparent pixel)."""
+    rel = line - strip.top_line
+    if strip.costume == tr.FILLER_COSTUME:
+        return FOREST if -tr.FILLER_OVERLAP_LINES <= rel < tr.TERRAIN_BAND_LINES else None
+    if not -tr.BAND_OVERLAP_LINES <= rel < tr.TERRAIN_BAND_LINES:
+        return None
+    band = 3 if strip.costume == tr.RESTART_COSTUME else tr.BAND_COSTUMES.index(strip.costume)
+    row = (tr.TERRAIN_BAND_ROWS * band + rel // 8) % 256
+    if strip.costume == tr.RESTART_COSTUME and row == 255:
+        return None
+    return (row, (strip.x - tr.BAND_X_AT_COLUMN0) // tr.BAND_X_PER_COLUMN)
+
+
+def _model_screen(state: tr.TerrainState) -> list[object]:
+    order = (state.odd, state.even) if state.even_behind else (state.even, state.odd)
+    out: list[object] = []
+    for line in range(tr.SCREEN_LINES):
+        content = None
+        for strip in order:
+            if strip.shown:
+                content = _strip_content(strip, line)
+                if content is not None:
+                    break
+        out.append(content)
+    return out
+
+
+class TerrainStateTests(unittest.TestCase):
+    """AREA-01: the two terrain strips show what the arcade's plane shows, tick for tick."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.offsets = tr.area_offsets()
+        cls.report = cls._scenarios()
+
+    @staticmethod
+    def _check(plane: ArcadePlane, report: dict) -> None:
+        state = tr.terrain_state(plane.progress, plane.column, plane.previous)
+        report["states"].append(state)
+        for line, (want, got) in enumerate(zip(plane.screen(), _model_screen(state))):
+            if want != got:
+                report["residual"].append((plane.area, plane.progress, line, want, got))
+
+    @classmethod
+    def _run(cls, plane: ArcadePlane, ticks: int, report: dict) -> None:
+        cls._check(plane, report)
+        for _ in range(ticks):
+            report["changes"] += plane.tick()
+            cls._check(plane, report)
+
+    @classmethod
+    def _scenarios(cls) -> dict:
+        report: dict = {"changes": 0, "states": [], "residual": []}
+        # A cold start through two area changes (1 -> 2 -> 3).
+        plane = ArcadePlane(cls.offsets, 1)
+        cls._run(plane, 2 * 2048 + 300, report)
+        # The 16 -> 7 loop, from a re-top in area 16.
+        plane.retop(16)
+        cls._run(plane, 2048 + 300, report)
+        # A new life mid-area (a re-top into the same area, 1000 ticks in) and on through its end.
+        plane.retop(5)
+        cls._run(plane, 1000, report)
+        plane.retop(5)
+        cls._run(plane, 2048 + 300, report)
+        return report
+
+    def test_strips_show_what_the_arcade_plane_shows(self) -> None:
+        # roadmap-evidence: AREA-01 success  (an arcade-plane simulation -- rows written 14 ahead with the
+        #   offset current then, forest after a re-top -- matches the strips line for line on every tick of a
+        #   cold start, two area changes, the 16 -> 7 loop and a new life; only the recorded top <= 13 lines
+        #   differ while an entering band is still hidden)
+        report = self.report
+        self.assertEqual(4, report["changes"])
+        residual = report["residual"]
+        self.assertTrue(all(line < tr.TERRAIN_SHOW_LINES - 1 for _a, _p, line, _w, _g in residual), residual[:5])
+        # The residual is only the two recorded cases: the old column above a new area's first rows, and
+        # forest for rows 253-254 after a re-top. Never a gap.
+        self.assertTrue(all(g is not None for *_rest, g in residual))
+        for _area, _progress, _line, want, got in residual:
+            if got == FOREST:
+                self.assertIn(want[0], (253, 254))
+            else:
+                self.assertEqual(want[0], got[0])
+                self.assertNotEqual(want[1], got[1])
+        self.assertTrue(any(g == FOREST for *_rest, g in residual))
+        self.assertTrue(any(g != FOREST for *_rest, g in residual))
+
+    def test_a_model_without_the_previous_column_or_restart_costume_disagrees(self) -> None:
+        # roadmap-evidence: AREA-01 failure  (band 0 taking the new column at once, or a re-top's band 3
+        #   drawing its unwritten row 255, shows the wrong ground well below the recorded top lines)
+        for name, value in (("TERRAIN_PREVIOUS_BAND0_BELOW", 0), ("RESTART_COSTUME", tr.BAND_COSTUMES[3])):
+            with self.subTest(name), mock.patch.object(tr, name, value):
+                report = self._scenarios()
+                self.assertTrue(
+                    any(line >= tr.TERRAIN_SHOW_LINES for _a, _p, line, _w, _g in report["residual"])
+                )
+
+    def test_a_shown_strip_is_never_fenced(self) -> None:
+        # scratch-render pushes a sprite back until its costume box overlaps the stage by 15 units; a strip
+        # is shown only where it overlaps by more, and every area's column keeps it on stage across.
+        states = self.report["states"]
+        shown = 0
+        for state in states:
+            for strip in (state.even, state.odd):
+                if not strip.shown:
+                    continue
+                shown += 1
+                overlap = tr.FILLER_OVERLAP_LINES if strip.costume == tr.FILLER_COSTUME else tr.BAND_OVERLAP_LINES
+                top = strip.y + tr.STAGE_PER_PX * overlap
+                bottom = strip.y - tr.STAGE_PER_PX * tr.TERRAIN_BAND_LINES
+                self.assertGreaterEqual(top, -(tr.STAGE_TOP - tr.STAGE_FENCE_UNITS) + 2, strip)
+                self.assertLessEqual(bottom, tr.STAGE_TOP - tr.STAGE_FENCE_UNITS - 2, strip)
+        self.assertGreater(shown, len(states))
+        for column in set(self.offsets) | {0, tr.MAP_COLUMNS - tr.VISIBLE_COLUMNS}:
+            x = tr.BAND_X_PER_COLUMN * column + tr.BAND_X_AT_COLUMN0
+            half = tr.STAGE_PER_PX * tr.MAP_WIDTH / 2
+            self.assertLessEqual(x - half, -140)
+            self.assertGreaterEqual(x + half, 140)
+
+    def test_band_and_filler_x_put_the_visible_columns_on_the_render_map(self) -> None:
+        # Map column `offset` has its left edge at background x 240, stage x 1.25 * (240 - 136) = 130; the
+        # band costume has column m at x (127 - m) * 8 about its centre 512.
+        for column in set(self.offsets):
+            x = tr.BAND_X_PER_COLUMN * column + tr.BAND_X_AT_COLUMN0
+            for j in (0, 13, 27):
+                costume_x = (tr.MAP_COLUMNS - 1 - (column + j)) * tr.TILE
+                self.assertEqual(130 - 10 * j, x + tr.STAGE_PER_PX * (costume_x - tr.MAP_WIDTH // 2))
+        # The filler's left edge is background x 24, stage -140.
+        self.assertEqual(-140, tr.FILLER_X - tr.STAGE_PER_PX * tr.FILLER_WIDTH / 2)
+
+    def test_restart_shows_forest_then_the_area_top(self) -> None:
+        # At a re-top the screen is forest, all of it the even strip's filler; the odd strip (band 1, far
+        # below) is hidden. The first map row to reach the screen is 254, through the restart costume.
+        state = tr.terrain_state(0, 36, tr.NO_PREVIOUS_COLUMN)
+        self.assertEqual((tr.FILLER_COSTUME, 0, True), (state.even.costume, state.even.x, state.even.shown))
+        self.assertEqual(-104, state.even.top_line)
+        self.assertFalse(state.odd.shown)
+        late = tr.terrain_state(32 * 200, 36, tr.NO_PREVIOUS_COLUMN)
+        self.assertEqual((tr.RESTART_COSTUME, -140, True), (late.odd.costume, late.odd.x, late.odd.shown))
+        self.assertTrue(late.even_behind)
+        # Mid-area the even strip is band 2 at the area's column; band 0 returns with it near the end.
+        self.assertEqual(tr.BAND_COSTUMES[2], tr.terrain_state(32 * 1000, 36, -1).even.costume)
+        end = tr.terrain_state(65056 - 32, 36, tr.NO_PREVIOUS_COLUMN)
+        self.assertEqual((tr.BAND_COSTUMES[0], -140), (end.even.costume, end.even.x))
 
 
 @unittest.skipUnless(REFERENCE is not None, "no verified reference checkout at the pin")

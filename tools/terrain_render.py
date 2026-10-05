@@ -207,6 +207,131 @@ def ground_centre_map_x(area_offset: int, sprite_y: int, px_bias: int = GROUND_C
     return background_x - TERRAIN_COLUMN0_LEFT_PX + (MAP_COLUMNS - 1 - area_offset) * TILE
 
 
+# --- the terrain strips: what the port shows of the map, from the clock ----------------------------------
+#
+# The arcade never holds the whole map on screen: get_map_row writes each map row into the 64-row plane about
+# fourteen rows before it scrolls into view, with the area offset current at that moment, and a (re)start
+# fills the plane with forest first. So what is on screen is a pure function of the clock and two columns:
+# the area's own, and the one the rows still on screen were written with. The port shows it with two strip
+# sprites over the map cut into four bands of 64 rows. A band is 512 lines, more than the 288-line screen, so
+# at most two bands are on screen, and they are neighbours: one even (band 0 or 2), one odd (1 or 3). The even
+# strip shows the even band, the odd strip the odd one.
+#
+# Which column a band was written with. The current area's rows are written from the completion of the
+# area before it (row 255 at counter high byte 0x0D) to its own completion (row 0 at 0x0E, still with its
+# own offset: the write comes before handle_next_area swaps it). So bands 1-3 on screen are always the
+# current area's. Band 0 is on screen only early in an area (the previous area's last rows, scrolling out)
+# or late (the current area's last rows, written from progress 49152), so it takes the previous column
+# while progress is below half the counter span. After a re-top there is no previous area: everything not
+# yet written is forest. That is all of band 0 until the area's end, so the even strip shows the forest
+# filler in its place. It is also row 255, the first row above the re-top screen, because writing starts
+# at row 254 (high byte 0x0D -> 0x0C). So after a re-top the odd strip's band 3 uses a restart costume
+# whose row 255 is transparent, letting the filler strip behind it show through there.
+#
+# Seams. Each band costume carries two overlap rows above its top (the bottom of the band above it, from
+# the same column), and the filler carries three: rows 61-63 of its pattern, i.e. map rows 253-255. The
+# upper strip draws in front, so the lower strip's overlap is hidden behind it. Scratch fences a sprite that
+# overlaps the stage by less than 15 units (scratch-render RenderWebGL.js FENCE_WIDTH, over the costume's
+# whole box). So a strip shows only while at least TERRAIN_SHOW_LINES of its costume are on stage: 12 lines
+# for the fence plus a 2-line margin. While an entering band is still hidden, the band below shows its
+# overlap rows in the top <= 13 lines. Those are the same map rows unless the two bands were written with
+# different columns. That happens for the first few lines of a new area's rows, which show the old column,
+# and for rows 253-254 after a re-top, which show forest. It is a recorded Scratch necessity.
+SCROLL_COUNTER_INIT = 0x0D00     # xevious_main.68k 471: the counter at game start and each new life
+SCROLL_COUNTER_SPAN = 0x10000    # the 16-bit counter wraps; one area flies the whole map
+MAP_LINES_PER_COUNTER_SPAN = SCROLL_COUNTER_SPAN // COUNTER_UNITS_PER_LINE
+assert MAP_LINES_PER_COUNTER_SPAN == MAP_HEIGHT
+SCREEN_LINES = 288
+TERRAIN_BAND_ROWS = 64
+TERRAIN_BANDS = MAP_ROWS // TERRAIN_BAND_ROWS          # 4
+TERRAIN_BAND_LINES = TERRAIN_BAND_ROWS * TILE           # 512
+assert SCREEN_LINES < TERRAIN_BAND_LINES and TERRAIN_BANDS % 2 == 0
+BAND_OVERLAP_ROWS = 2
+FILLER_OVERLAP_ROWS = 3
+BAND_OVERLAP_LINES = BAND_OVERLAP_ROWS * TILE           # 16
+FILLER_OVERLAP_LINES = FILLER_OVERLAP_ROWS * TILE       # 24
+# Band 0 takes the previous area's column below this progress (see above: band 0 is never on screen from
+# progress 12544 to 52480, and the current area writes it from 49152).
+TERRAIN_PREVIOUS_BAND0_BELOW = SCROLL_COUNTER_SPAN // 2  # 32768
+NO_PREVIOUS_COLUMN = -1  # after a re-top: band 0 is forest filler
+# The stage map (game_director's PRES-01 render map): line 0 is the stage top, 1.25 units per arcade pixel,
+# and the visible columns' centre (background x 136) is stage x 0.
+STAGE_PER_PX = 1.25
+STAGE_TOP = 180
+STAGE_FENCE_UNITS = 15   # scratch-render RenderWebGL.js FENCE_WIDTH
+TERRAIN_SHOW_MARGIN_LINES = 2
+TERRAIN_SHOW_LINES = int(STAGE_FENCE_UNITS / STAGE_PER_PX) + TERRAIN_SHOW_MARGIN_LINES  # 14
+VISIBLE_CENTRE_PX = TERRAIN_COLUMN0_LEFT_PX + TILE - VISIBLE_COLUMNS * TILE // 2      # 136
+# A band costume is the map's full width at one costume px per arcade px, rotation centre at its band top
+# (x = MAP_WIDTH / 2). Its column `area offset` lands at background x TERRAIN_COLUMN0_LEFT_PX, so the sprite
+# x for area offset col is BAND_X_PER_COLUMN * col + BAND_X_AT_COLUMN0.
+BAND_X_PER_COLUMN = int(STAGE_PER_PX * TILE)  # 10
+BAND_X_AT_COLUMN0 = int(STAGE_PER_PX * (
+    MAP_WIDTH // 2 - TILE * (MAP_COLUMNS - 1) + TERRAIN_COLUMN0_LEFT_PX - VISIBLE_CENTRE_PX
+))  # -500
+# The filler costume is the 28 visible columns, fixed to the screen: its left edge at background x 24.
+FILLER_LEFT_PX = TERRAIN_COLUMN0_LEFT_PX - TILE * (VISIBLE_COLUMNS - 1)
+FILLER_X = int(STAGE_PER_PX * (FILLER_LEFT_PX + FILLER_WIDTH // 2 - VISIBLE_CENTRE_PX))  # 0
+assert (BAND_X_PER_COLUMN, BAND_X_AT_COLUMN0, FILLER_X) == (10, -500, 0)
+
+BAND_COSTUMES = ("terrain band 0", "terrain band 1", "terrain band 2", "terrain band 3")
+RESTART_COSTUME = "terrain band 3 restart"
+FILLER_COSTUME = "terrain filler"
+EVEN_COSTUMES = (BAND_COSTUMES[0], BAND_COSTUMES[2], FILLER_COSTUME)
+ODD_COSTUMES = (BAND_COSTUMES[1], BAND_COSTUMES[3], RESTART_COSTUME)
+
+
+@dataclass(frozen=True)
+class StripState:
+    costume: str
+    x: int
+    y: float
+    shown: bool
+    top_line: int  # display line of the band top (row 64b, or filler row 0); the costume's rotation centre
+
+
+@dataclass(frozen=True)
+class TerrainState:
+    even: StripState
+    odd: StripState
+    even_behind: bool  # the even strip is the lower one, so it draws behind the odd strip
+
+
+def terrain_line(progress: int) -> int:
+    """The scroll counter in lines (0..2047): map row R's top edge is on display line 8R - this."""
+    return ((SCROLL_COUNTER_INIT - progress) % SCROLL_COUNTER_SPAN) // COUNTER_UNITS_PER_LINE
+
+
+def _strip(parity: int, progress: int, column: int, previous: int) -> StripState:
+    c = terrain_line(progress)
+    # The top line of the nearest band of this parity, in [-512, 512): the only one that can be on screen.
+    top = (TERRAIN_BAND_LINES * parity - c + TERRAIN_BAND_LINES) % (2 * TERRAIN_BAND_LINES) - TERRAIN_BAND_LINES
+    band = (top + c) % MAP_HEIGHT // TERRAIN_BAND_LINES
+    overlap = BAND_OVERLAP_LINES
+    if band == 0:
+        band_column = previous if progress < TERRAIN_PREVIOUS_BAND0_BELOW else column
+        if band_column == NO_PREVIOUS_COLUMN:
+            costume, x, overlap = FILLER_COSTUME, FILLER_X, FILLER_OVERLAP_LINES
+        else:
+            costume, x = BAND_COSTUMES[0], BAND_X_PER_COLUMN * band_column + BAND_X_AT_COLUMN0
+    else:
+        costume = RESTART_COSTUME if band == 3 and previous == NO_PREVIOUS_COLUMN else BAND_COSTUMES[band]
+        x = BAND_X_PER_COLUMN * column + BAND_X_AT_COLUMN0
+    shown = (
+        top >= TERRAIN_SHOW_LINES - TERRAIN_BAND_LINES
+        and top <= SCREEN_LINES - TERRAIN_SHOW_LINES + overlap
+    )
+    return StripState(costume, x, STAGE_TOP - STAGE_PER_PX * top, shown, top)
+
+
+def terrain_state(progress: int, column: int, previous: int) -> TerrainState:
+    """What the two terrain strips show at a clock value: `column` is the area's map start column (offset),
+    `previous` the column the outgoing rows were written with (NO_PREVIOUS_COLUMN after a re-top)."""
+    even = _strip(0, progress, column, previous)
+    odd = _strip(1, progress, column, previous)
+    return TerrainState(even, odd, even.top_line > odd.top_line)
+
+
 @dataclass(frozen=True)
 class PadFit:
     pad: tuple[int, int, int, int]       # x0, x1, y0, y1 (inclusive) in the master map

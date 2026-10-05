@@ -1306,6 +1306,13 @@ class ScratchProjectTests(unittest.TestCase):
             # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register, like
             # `swap tmp` — written and read only inside the shared checkpoint statements, never durable.
             "checkpoint progress",
+            # AREA-01 (slice 20): `update terrain`'s working registers (the counter in lines, a strip's band top,
+            # band, band column and overlap), written and read only inside that proc.
+            "terrain line",
+            "terrain top",
+            "terrain band",
+            "terrain band column",
+            "terrain overlap",
         }
         # ECO economy state — Stage-written, HUD reads only. Held in its own category and
         # enforced Stage-only-write below (a HUD sprite writing `score` is the bug this guards).
@@ -1334,6 +1341,18 @@ class ScratchProjectTests(unittest.TestCase):
             "terrain column",
             "schedule cursor",
             "schedule fired",
+            # AREA-01 (slice 20): the column the outgoing rows were written with, and the terrain strips'
+            # state `update terrain` derives from the clock (Stage-written, read by the strip sprites).
+            "previous terrain column",
+            "terrain even costume",
+            "terrain even x",
+            "terrain even y",
+            "terrain even shown",
+            "terrain odd costume",
+            "terrain odd x",
+            "terrain odd y",
+            "terrain odd shown",
+            "terrain even behind",
         }
         # DIF-01/FORM-01 difficulty-director state — Stage-written, sprite-read, write-forbidden
         # (like area/economy state, NOT machinery): the accumulating AI level and the incoming
@@ -1771,6 +1790,9 @@ class ScratchProjectTests(unittest.TestCase):
             # Each tick it flies the slot up-screen (slot x -= ANDOR_BRAGZA_STEP, slot y held) and culls it off
             # the top edge. Independent of the master — the wreck departs while Bragza keeps climbing. Warp.
             director.UPDATE_ANDOR_BRAGZA_PROCCODE,
+            # AREA-01 (slice 20): the terrain strips' state from the clock, called by the walk after the
+            # ground objects move and at the end of every re-top. Writes only the terrain vars. Warp.
+            director.UPDATE_TERRAIN_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -16282,6 +16304,162 @@ class ScratchProjectTests(unittest.TestCase):
 
         return failures
 
+    @staticmethod
+    def _terrain_wiring_failures(project: dict) -> set:
+        """AREA-01 (slice 20) terrain-state wiring — violated labels. `update terrain` is a warp proc; the walk
+        calls it straight after ADVANCE_SLOTS (once the clock and the ground objects have moved); every re-top
+        clears `previous terrain column` to -1 and then recomputes the terrain; an area completion hands the
+        outgoing `terrain column` to `previous terrain column` before entering the next area. (What the proc
+        computes is checked against the model by the harness's terrain-state-matches-model scenario.)"""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def is_call(bid, proccode):
+            b = blocks.get(bid) if bid else None
+            return bool(b) and b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+
+        def chain_from(bid):
+            out = []
+            while bid:
+                out.append(bid)
+                bid = blocks[bid].get("next")
+            return out
+
+        def sets_previous(bid):
+            b = blocks[bid]
+            return (
+                b["opcode"] == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.PREVIOUS_TERRAIN_COLUMN_ID
+            )
+
+        protos = [
+            b for b in blocks.values()
+            if b["opcode"] == "procedures_prototype"
+            and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAIN_PROCCODE
+        ]
+        if len(protos) != 1 or protos[0]["mutation"].get("warp") != "true":
+            failures.add("update-terrain-warp")
+        slots_calls = [bid for bid in blocks if is_call(bid, director.ADVANCE_SLOTS_PROCCODE)]
+        if not slots_calls or not all(
+            is_call(blocks[bid].get("next"), director.UPDATE_TERRAIN_PROCCODE) for bid in slots_calls
+        ):
+            failures.add("walk-updates-terrain-after-slots")
+        clears = [
+            bid for bid in blocks
+            if sets_previous(bid) and blocks[bid]["inputs"].get("VALUE") == [1, [4, director.terrain_render.NO_PREVIOUS_COLUMN]]
+        ]
+        if not clears or not all(
+            any(is_call(x, director.UPDATE_TERRAIN_PROCCODE) for x in chain_from(bid)) for bid in clears
+        ):
+            failures.add("retop-clears-previous-then-updates")
+        # Every re-top (a `set area progress to 0` that goes on to enter the area: set its `terrain column`)
+        # carries the clear. (The two-player handoff's bare pre-set is followed by the new-life re-top.)
+        retops = [
+            bid for bid, b in blocks.items()
+            if b["opcode"] == "data_setvariableto"
+            and b["fields"].get("VARIABLE", [None, None])[1] == director.AREA_PROGRESS_ID
+            and b["inputs"].get("VALUE") == [1, [4, 0]]
+            and any(
+                blocks[x]["opcode"] == "data_setvariableto"
+                and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.TERRAIN_COLUMN_ID
+                for x in chain_from(bid)
+            )
+        ]
+        if not retops or not all(any(x in clears for x in chain_from(bid)) for bid in retops):
+            failures.add("every-retop-clears-previous")
+        handovers = [
+            bid for bid in blocks
+            if sets_previous(bid)
+            and isinstance(blocks[bid]["inputs"].get("VALUE"), list)
+            and isinstance(blocks[bid]["inputs"]["VALUE"][1], list)
+            and blocks[bid]["inputs"]["VALUE"][1][2:3] == [director.TERRAIN_COLUMN_ID]
+        ]
+        if len(handovers) != 1 or not any(
+            blocks[x]["opcode"] == "data_setvariableto"
+            and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.TERRAIN_COLUMN_ID
+            for x in chain_from(handovers[0])[1:]
+        ):
+            failures.add("completion-hands-over-column")
+        return failures
+
+    def test_terrain_wiring_contract(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._terrain_wiring_failures(project))
+
+    def test_terrain_wiring_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._terrain_wiring_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def calls(s, proccode):
+            return [
+                bid for bid, b in s["blocks"].items()
+                if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+            ]
+
+        def splice_out(s, bid):
+            b = s["blocks"][bid]
+            parent, nxt = b.get("parent"), b.get("next")
+            if parent and s["blocks"][parent].get("next") == bid:
+                s["blocks"][parent]["next"] = nxt
+            if nxt:
+                s["blocks"][nxt]["parent"] = parent
+
+        def unwarp(p):
+            for b in stage_of(p)["blocks"].values():
+                if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == director.UPDATE_TERRAIN_PROCCODE:
+                    b["mutation"]["warp"] = "false"
+
+        def drop_walk_call(p):
+            s = stage_of(p)
+            slots = calls(s, director.ADVANCE_SLOTS_PROCCODE)[0]
+            splice_out(s, s["blocks"][slots]["next"])
+
+        def drop_retop_call(p):
+            s = stage_of(p)
+            slots = calls(s, director.ADVANCE_SLOTS_PROCCODE)
+            for bid in calls(s, director.UPDATE_TERRAIN_PROCCODE):
+                if s["blocks"][bid].get("parent") not in slots:
+                    splice_out(s, bid)
+                    return
+
+        def keep_previous_at_retop(p):
+            s = stage_of(p)
+            for b in s["blocks"].values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PREVIOUS_TERRAIN_COLUMN_ID
+                    and b["inputs"].get("VALUE") == [1, [4, -1]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 0]]
+
+        def no_handover(p):
+            s = stage_of(p)
+            for b in s["blocks"].values():
+                value = b["inputs"].get("VALUE") if b["opcode"] == "data_setvariableto" else None
+                if (
+                    value is not None
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PREVIOUS_TERRAIN_COLUMN_ID
+                    and isinstance(value, list) and isinstance(value[1], list)
+                    and value[1][2:3] == [director.TERRAIN_COLUMN_ID]
+                ):
+                    b["fields"]["VARIABLE"] = ["schedule fired", director.SCHEDULE_FIRED_ID]
+
+        cases = [
+            ("update-terrain-warp", unwarp),
+            ("walk-updates-terrain-after-slots", drop_walk_call),
+            ("retop-clears-previous-then-updates", drop_retop_call),
+            ("every-retop-clears-previous", keep_previous_at_retop),
+            ("completion-hands-over-column", no_handover),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._terrain_wiring_failures(project), label)
+
     def test_area_scheduler_contract(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._area02_failures(project))
@@ -19894,7 +20072,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "b762311ccde93f370227b50d8cba51eee4d14538831ee30a9196277f833a3e5f",
+            "7538dab48ad0ec25d8205a46f578c661b33fca21355d502f868f3fbfe76c85b7",
             build_hash,
         )
 

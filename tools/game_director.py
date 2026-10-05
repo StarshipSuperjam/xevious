@@ -522,6 +522,36 @@ AREA_TOP_ROW = 0x0D  # 13; the row at area top (progress 0), also each table's e
 AREA_FIRST = 1
 AREA_MAX = 16
 AREA_LOOP_BACK = 7  # completing area 16 continues at area 7, not area 1 and not a win screen
+# AREA-01 (slice 20): the terrain the two strips show is a pure function of the clock (terrain_render's
+# terrain_state, which tests/test_terrain_render.py checks line for line against a simulation of the arcade's
+# background plane). `update terrain` computes it on the Stage each tick, after the clock moves, and at every
+# re-top; the strips only read it. Inputs: `area progress`, `terrain column`, and `previous terrain column` --
+# the column the outgoing rows were written with: the old area's at a completion, NO_PREVIOUS_COLUMN (forest)
+# at a re-top. Outputs, per strip (even: band 0/2 or the forest filler; odd: band 1/3 or the restart band):
+# costume name, x, y, shown (1/0), and which strip is behind. The working registers hold one strip at a time.
+UPDATE_TERRAIN_PROCCODE = "update terrain"
+PREVIOUS_TERRAIN_COLUMN_ID = "area-previous-terrain-column"
+TERRAIN_STRIP_VARS = {
+    parity: {
+        field: (f"terrain {parity} {field}", f"terrain-{parity}-{field}")
+        for field in ("costume", "x", "y", "shown")
+    }
+    for parity in ("even", "odd")
+}
+TERRAIN_EVEN_BEHIND_ID = "terrain-even-behind"
+TERRAIN_LINE_ID = "terrain-line"
+TERRAIN_TOP_ID = "terrain-top"
+TERRAIN_BAND_ID = "terrain-band"
+TERRAIN_BAND_COLUMN_ID = "terrain-band-column"
+TERRAIN_OVERLAP_ID = "terrain-overlap"
+TERRAIN_BAND_COSTUME_PREFIX = "terrain band "
+assert terrain_render.BAND_COSTUMES == tuple(
+    f"{TERRAIN_BAND_COSTUME_PREFIX}{band}" for band in range(terrain_render.TERRAIN_BANDS)
+)
+assert (terrain_render.SCROLL_COUNTER_INIT, terrain_render.SCROLL_COUNTER_SPAN) == (
+    AREA_COUNTER_INIT, AREA_COUNTER_WRAP
+)
+assert terrain_render.COUNTER_UNITS_PER_LINE == AREA_PROGRESS_STEP
 
 
 def _area_row(progress: int) -> int:
@@ -2422,6 +2452,9 @@ assert RENDER_ROW_TOP - RENDER_STAGE_TOP == (
     -RENDER_ROW_STAGE * terrain_render.GROUND_CENTRE_LINE_BIAS // terrain_render.TILE
 )
 assert -RENDER_COL_OFFSET == ARCADE_STAGE_PER_PX * (terrain_render.GROUND_CENTRE_PX_BIAS - _TERRAIN_VISIBLE_CENTRE_PX)
+assert (terrain_render.STAGE_PER_PX, terrain_render.STAGE_TOP, terrain_render.VISIBLE_CENTRE_PX) == (
+    ARCADE_STAGE_PER_PX, RENDER_STAGE_TOP, _TERRAIN_VISIBLE_CENTRE_PX
+)
 # PRES-01 visibility gate (docs/mechanics/053, 054). World objects (every slot-driven flying/bullet/ground
 # renderer) are shown only while their slot's scroll row is inside [RENDER_VIEW_FIRST_ROW, RENDER_VIEW_ROWS) —
 # the arcade's visible rows 4..39; row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839).
@@ -8944,6 +8977,9 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
         blocks.set_var("area progress", AREA_PROGRESS_ID, number(0)),
         blocks.set_var("scroll row", SCROLL_ROW_ID, number(AREA_TOP_ROW)),
         *_enter_next_area(blocks),
+        # AREA-01 (slice 20): the re-top fills the background with forest (fill_bg_with_forest,
+        # xevious_main.68k 648-669), so no rows from an earlier area remain: the terrain's band 0 is filler.
+        blocks.set_var("previous terrain column", PREVIOUS_TERRAIN_COLUMN_ID, number(terrain_render.NO_PREVIOUS_COLUMN)),
         # CAB-03 (cabinet.two-player, slice 18): clear the incoming wave registers on every area-top entry,
         # exactly as the arcade's enter-area-top routine clears num_flying_enemies + flying_enemy_type_tbl_offset
         # (xevious_main 484-485) in the SAME block that clears num_bacura (486-487, mirrored just below). The
@@ -8965,6 +9001,8 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
         # area boundary or a respawn (the natural sheonite_start also clears it, but a debug pre-arm or a
         # partial run must not carry a stuck "time to leave" into the next area).
         blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(0)),
+        # AREA-01 (slice 20): the strips' state for the re-topped clock, before anything draws.
+        blocks.call_proc(UPDATE_TERRAIN_PROCCODE, warp=True),
     ]
 
 
@@ -10016,6 +10054,10 @@ def install_advance_area(blocks: Blocks) -> None:
     blocks.substack(
         completion,
         [
+            # AREA-01 (slice 20): the rows still on screen were written with the outgoing area's column.
+            blocks.set_var(
+                "previous terrain column", PREVIOUS_TERRAIN_COLUMN_ID, variable("terrain column", TERRAIN_COLUMN_ID)
+            ),
             _advance_area_number(blocks),
             blocks.change_var("area progress", AREA_PROGRESS_ID, -AREA_COUNTER_WRAP),
             *_enter_next_area(blocks),
@@ -10023,6 +10065,194 @@ def install_advance_area(blocks: Blocks) -> None:
     )
     blocks.substack(completion, _consume_schedule(blocks), name="SUBSTACK2")
     blocks.chain(definition, [step, set_row, completion])
+
+
+def _terrain_strip(blocks: Blocks, parity: int) -> list[str]:
+    # One strip of terrain_render.terrain_state, statement for statement (see UPDATE_TERRAIN_PROCCODE). `terrain
+    # line` (the counter in lines) is already set. Parity 0 is the even strip (band 0 or 2), 1 the odd (1 or 3).
+    tr = terrain_render
+    name = ("even", "odd")[parity]
+    out = TERRAIN_STRIP_VARS[name]
+
+    def line() -> list[Any]:
+        return variable("terrain line", TERRAIN_LINE_ID)
+
+    def top() -> list[Any]:
+        return variable("terrain top", TERRAIN_TOP_ID)
+
+    def band() -> list[Any]:
+        return variable("terrain band", TERRAIN_BAND_ID)
+
+    span = 2 * tr.TERRAIN_BAND_LINES
+    # The top line of the nearest band of this parity, in [-512, 512), and which band that is.
+    set_top = blocks.set_var_expr(
+        "terrain top",
+        TERRAIN_TOP_ID,
+        blocks.op_sub(
+            blocks.op_mod(
+                blocks.op_sub(number(tr.TERRAIN_BAND_LINES * parity + tr.TERRAIN_BAND_LINES), line()),
+                number(span),
+            ),
+            number(tr.TERRAIN_BAND_LINES),
+        ),
+    )
+    set_band = blocks.set_var_expr(
+        "terrain band",
+        TERRAIN_BAND_ID,
+        blocks.op_div(blocks.op_mod(blocks.op_add(top(), line()), number(tr.MAP_HEIGHT)), number(tr.TERRAIN_BAND_LINES)),
+    )
+    band_costume = blocks.set_var_expr(
+        out["costume"][0], out["costume"][1], blocks.op_join(text(TERRAIN_BAND_COSTUME_PREFIX), band())
+    )
+    set_overlap = blocks.set_var("terrain overlap", TERRAIN_OVERLAP_ID, number(tr.BAND_OVERLAP_LINES))
+    body: list[str] = [set_top, set_band, band_costume, set_overlap]
+    if parity == 0:
+        # Band 0 takes the previous area's column early in an area; with none (after a re-top) it is forest.
+        body.append(
+            blocks.set_var(
+                "terrain band column", TERRAIN_BAND_COLUMN_ID, variable("terrain column", TERRAIN_COLUMN_ID)
+            )
+        )
+        body.append(
+            blocks.if_reporter(
+                blocks.op_and(
+                    blocks.op_eq(band(), number(0)),
+                    blocks.op_lt(
+                        variable("area progress", AREA_PROGRESS_ID), number(tr.TERRAIN_PREVIOUS_BAND0_BELOW)
+                    ),
+                ),
+                [
+                    blocks.set_var(
+                        "terrain band column",
+                        TERRAIN_BAND_COLUMN_ID,
+                        variable("previous terrain column", PREVIOUS_TERRAIN_COLUMN_ID),
+                    )
+                ],
+            )
+        )
+        filler = blocks.add("control_if_else")
+        filler_cond = blocks.op_eq(
+            variable("terrain band column", TERRAIN_BAND_COLUMN_ID), number(tr.NO_PREVIOUS_COLUMN)
+        )
+        blocks.blocks[filler_cond]["parent"] = filler
+        blocks.blocks[filler]["inputs"]["CONDITION"] = [2, filler_cond]
+        blocks.substack(
+            filler,
+            [
+                blocks.set_var(out["costume"][0], out["costume"][1], text(tr.FILLER_COSTUME)),
+                blocks.set_var(out["x"][0], out["x"][1], number(tr.FILLER_X)),
+                blocks.set_var("terrain overlap", TERRAIN_OVERLAP_ID, number(tr.FILLER_OVERLAP_LINES)),
+            ],
+        )
+        column_for_x = variable("terrain band column", TERRAIN_BAND_COLUMN_ID)
+        blocks.substack(
+            filler,
+            [
+                blocks.set_var_expr(
+                    out["x"][0],
+                    out["x"][1],
+                    blocks.op_add(
+                        blocks.op_mul(column_for_x, number(tr.BAND_X_PER_COLUMN)), number(tr.BAND_X_AT_COLUMN0)
+                    ),
+                )
+            ],
+            name="SUBSTACK2",
+        )
+        body.append(filler)
+    else:
+        # After a re-top the arcade never wrote row 255: the restart band leaves it to the filler behind.
+        body.append(
+            blocks.if_reporter(
+                blocks.op_and(
+                    blocks.op_eq(band(), number(tr.TERRAIN_BANDS - 1)),
+                    blocks.op_eq(
+                        variable("previous terrain column", PREVIOUS_TERRAIN_COLUMN_ID), number(tr.NO_PREVIOUS_COLUMN)
+                    ),
+                ),
+                [blocks.set_var(out["costume"][0], out["costume"][1], text(tr.RESTART_COSTUME))],
+            )
+        )
+        body.append(
+            blocks.set_var_expr(
+                out["x"][0],
+                out["x"][1],
+                blocks.op_add(
+                    blocks.op_mul(variable("terrain column", TERRAIN_COLUMN_ID), number(tr.BAND_X_PER_COLUMN)),
+                    number(tr.BAND_X_AT_COLUMN0),
+                ),
+            )
+        )
+    body.append(
+        blocks.set_var_expr(
+            out["y"][0],
+            out["y"][1],
+            blocks.op_sub(number(tr.STAGE_TOP), blocks.op_mul(top(), number(tr.STAGE_PER_PX))),
+        )
+    )
+    # Shown while TERRAIN_SHOW_LINES of the costume are on stage: an entering band's bottom, a leaving band's
+    # top overlap row (Scratch has no <=, so both bounds are tested as NOT strictly outside).
+    shown = blocks.add("control_if_else")
+    shown_cond = blocks.op_and(
+        blocks.op_not(blocks.op_lt(top(), number(tr.TERRAIN_SHOW_LINES - tr.TERRAIN_BAND_LINES))),
+        blocks.op_not(
+            blocks.op_gt(
+                top(),
+                blocks.op_add(number(tr.SCREEN_LINES - tr.TERRAIN_SHOW_LINES), variable("terrain overlap", TERRAIN_OVERLAP_ID)),
+            )
+        ),
+    )
+    blocks.blocks[shown_cond]["parent"] = shown
+    blocks.blocks[shown]["inputs"]["CONDITION"] = [2, shown_cond]
+    blocks.substack(shown, [blocks.set_var(out["shown"][0], out["shown"][1], number(1))])
+    blocks.substack(shown, [blocks.set_var(out["shown"][0], out["shown"][1], number(0))], name="SUBSTACK2")
+    body.append(shown)
+    return body
+
+
+def _initial_terrain_strip_vars() -> dict[str, list[Any]]:
+    """The strip outputs' defaults: the cold-start re-top's terrain state (area 1 top, no previous column)."""
+    state = terrain_render.terrain_state(0, AREA_MAP_COLUMNS[0], terrain_render.NO_PREVIOUS_COLUMN)
+    values: dict[str, list[Any]] = {}
+    for parity, strip in (("even", state.even), ("odd", state.odd)):
+        for field, value in (
+            ("costume", strip.costume), ("x", strip.x), ("y", strip.y if strip.y % 1 else int(strip.y)),
+            ("shown", int(strip.shown)),
+        ):
+            name, var_id = TERRAIN_STRIP_VARS[parity][field]
+            values[var_id] = [name, value]
+    values[TERRAIN_EVEN_BEHIND_ID] = ["terrain even behind", int(state.even_behind)]
+    return values
+
+
+def install_update_terrain(blocks: Blocks) -> None:
+    # AREA-01 (slice 20): see UPDATE_TERRAIN_PROCCODE. Runs in the walk after the clock and the ground objects
+    # move, and at the end of every re-top, so the strips always read the state of the current clock.
+    tr = terrain_render
+    definition = _install_warp_proc(blocks, UPDATE_TERRAIN_PROCCODE)
+    set_line = blocks.set_var_expr(
+        "terrain line",
+        TERRAIN_LINE_ID,
+        blocks.op_floor(
+            blocks.op_div(
+                blocks.op_mod(
+                    blocks.op_sub(number(tr.SCROLL_COUNTER_INIT), variable("area progress", AREA_PROGRESS_ID)),
+                    number(tr.SCROLL_COUNTER_SPAN),
+                ),
+                number(tr.COUNTER_UNITS_PER_LINE),
+            )
+        ),
+    )
+    behind = blocks.add("control_if_else")
+    even_y, odd_y = TERRAIN_STRIP_VARS["even"]["y"], TERRAIN_STRIP_VARS["odd"]["y"]
+    # The lower strip (the larger top line, so the smaller stage y) draws behind.
+    behind_cond = blocks.op_lt(variable(*even_y), variable(*odd_y))
+    blocks.blocks[behind_cond]["parent"] = behind
+    blocks.blocks[behind]["inputs"]["CONDITION"] = [2, behind_cond]
+    blocks.substack(behind, [blocks.set_var("terrain even behind", TERRAIN_EVEN_BEHIND_ID, number(1))])
+    blocks.substack(
+        behind, [blocks.set_var("terrain even behind", TERRAIN_EVEN_BEHIND_ID, number(0))], name="SUBSTACK2"
+    )
+    blocks.chain(definition, [set_line, *_terrain_strip(blocks, 0), *_terrain_strip(blocks, 1), behind])
 
 
 def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
@@ -10354,6 +10584,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_debug_ground_spawn(blocks)  # DEBUG / temporary (tracked for removal, #119)
     install_debug_pause(blocks)  # DEBUG / temporary (tracked for removal, #119)
     install_advance_area(blocks)
+    install_update_terrain(blocks)
     install_score(blocks)
     install_check_bonus_life(blocks)
     install_resolve_hit(blocks)
@@ -10880,6 +11111,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True),
         blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
         blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
+        # AREA-01 (slice 20): the terrain strips' state for this tick's clock, once the clock and the ground
+        # objects have moved (outside the ADVANCE_AREA -> ADVANCE_SLOTS pair, which must stay adjacent).
+        blocks.call_proc(UPDATE_TERRAIN_PROCCODE, warp=True),
         # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
         # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
         blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
@@ -15483,6 +15717,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AREA_NUMBER_ID,
         SCROLL_ROW_ID,
         TERRAIN_COLUMN_ID,
+        PREVIOUS_TERRAIN_COLUMN_ID,
+        *(var_id for fields in TERRAIN_STRIP_VARS.values() for _name, var_id in fields.values()),
+        TERRAIN_EVEN_BEHIND_ID,
+        TERRAIN_LINE_ID,
+        TERRAIN_TOP_ID,
+        TERRAIN_BAND_ID,
+        TERRAIN_BAND_COLUMN_ID,
+        TERRAIN_OVERLAP_ID,
         CHECKPOINT_PROGRESS_ID,
         SCHEDULE_CURSOR_ID,
         SCHEDULE_FIRED_ID,
@@ -15655,6 +15897,16 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         AREA_NUMBER_ID: ["area number", AREA_FIRST],
         SCROLL_ROW_ID: ["scroll row", AREA_TOP_ROW],
         TERRAIN_COLUMN_ID: ["terrain column", AREA_MAP_COLUMNS[0]],
+        # AREA-01 (slice 20): the terrain strips' state (Stage-written, strip-read, write-forbidden, like the
+        # area state above), defaulting to the cold-start re-top's; and `update terrain`'s working registers
+        # (machinery, like `swap tmp`).
+        PREVIOUS_TERRAIN_COLUMN_ID: ["previous terrain column", terrain_render.NO_PREVIOUS_COLUMN],
+        **_initial_terrain_strip_vars(),
+        TERRAIN_LINE_ID: ["terrain line", 0],
+        TERRAIN_TOP_ID: ["terrain top", 0],
+        TERRAIN_BAND_ID: ["terrain band", 0],
+        TERRAIN_BAND_COLUMN_ID: ["terrain band column", 0],
+        TERRAIN_OVERLAP_ID: ["terrain overlap", 0],
         # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register (machinery,
         # like `swap tmp`): written and read only inside `_area_checkpoint`.
         CHECKPOINT_PROGRESS_ID: ["checkpoint progress", 0],
@@ -16158,6 +16410,32 @@ def project_bytes(project: dict[str, Any]) -> bytes:
     return scratch_project._ordered_json_bytes(project)
 
 
+def _terrain_state_samples() -> list[dict[str, Any]]:
+    """Model terrain states the harness checks `update terrain` against: the tick each strip's costume, x,
+    or shown flag (or the front strip) changes and the tick before it, across an area's clock (carry window included), for an area
+    after a re-top (no previous column) and one entered from the area before; plus the completion tick."""
+    tr = terrain_render
+    column, previous = AREA_MAP_COLUMNS[2], AREA_MAP_COLUMNS[1]
+    cases: list[tuple[int, int, int]] = [(AREA_COMPLETE_PROGRESS - AREA_COUNTER_WRAP, AREA_MAP_COLUMNS[3], column)]
+    for prev in (tr.NO_PREVIOUS_COLUMN, previous):
+        before = None
+        for progress in range(-15 * AREA_PROGRESS_STEP, AREA_COMPLETE_PROGRESS + 1, AREA_PROGRESS_STEP):
+            state = tr.terrain_state(progress, column, prev)
+            key = tuple((s.costume, s.x, s.shown) for s in (state.even, state.odd)) + (state.even_behind,)
+            if before is not None and key != before:
+                cases.extend([(progress - AREA_PROGRESS_STEP, column, prev), (progress, column, prev)])
+            before = key
+    samples = []
+    for progress, col, prev in dict.fromkeys(cases):
+        state = tr.terrain_state(progress, col, prev)
+        sample: dict[str, Any] = {"progress": progress, "column": col, "previous": prev}
+        for parity, strip in (("even", state.even), ("odd", state.odd)):
+            sample[parity] = {"costume": strip.costume, "x": strip.x, "y": strip.y, "shown": int(strip.shown)}
+        sample["even_behind"] = int(state.even_behind)
+        samples.append(sample)
+    return samples
+
+
 def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
     """Name↔id↔scope index the JS runtime harness reads.
 
@@ -16201,6 +16479,9 @@ def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
         "terrain_row_phase_lines": terrain_render.TERRAIN_ROW_PHASE_LINES,
         "ground_centre_line_bias": terrain_render.GROUND_CENTRE_LINE_BIAS,
         "ground_object_row_offset": terrain_render.GROUND_OBJECT_ROW_OFFSET,
+        # AREA-01 terrain strips: the model's state (tools/terrain_render.terrain_state) at clock values that
+        # cover every branch of `update terrain`, for the harness to compare the Scratch proc against.
+        "terrain_state_samples": _terrain_state_samples(),
     }
     return {
         "schema": MANIFEST_SCHEMA,

@@ -1971,6 +1971,126 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 0, 32),
   },
   {
+    // AREA-01 (slice 20): what the two terrain strips show is a pure function of the clock and two map columns
+    // (tools/terrain_render.terrain_state, checked against an independent model of the arcade's 64-row plane by
+    // tests/test_terrain_render.py). The Stage's `update terrain` proc computes it in blocks. Here the built proc
+    // is driven through the model's own samples — every tick a strip's costume, x, shown flag or draw order
+    // changes and the tick before it, over a whole area after a re-top and one entered from the area before,
+    // plus the completion tick — and must reproduce every output exactly.
+    // roadmap-evidence: AREA-01 success  (the built terrain proc shows each band, the filler and the restart band
+    //   with the model's column, position and visibility at every transition of an area's clock)
+    key: 'terrain-state-matches-model',
+    behavior:
+      "The terrain strips' band, sideways position, height and visibility follow the area clock exactly as the model of the arcade's background plane does",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const fields = ['costume', 'x', 'y', 'shown'];
+      const results = [];
+      for (const s of constants.terrain_state_samples) {
+        writeVar(vm, 'area-progress', s.progress);
+        writeVar(vm, 'area-terrain-column', s.column);
+        writeVar(vm, 'area-previous-terrain-column', s.previous);
+        callProc(vm, 'Stage', 'update terrain');
+        step(vm, 1);
+        const got = { even_behind: Number(readVar(vm, 'terrain-even-behind')) };
+        for (const parity of ['even', 'odd']) {
+          got[parity] = {};
+          for (const f of fields) {
+            const v = readVar(vm, `terrain-${parity}-${f}`);
+            got[parity][f] = f === 'costume' ? String(v) : Number(v);
+          }
+        }
+        results.push({ sample: s, got });
+      }
+      return { results };
+    },
+    assert(obs) {
+      assert.ok(obs.results.length >= 40, `every model sample was driven (${obs.results.length})`);
+      const kinds = new Set(obs.results.map((r) => `${r.sample.even.costume}|${r.sample.odd.costume}`));
+      for (const pair of ['terrain filler|terrain band 3 restart', 'terrain band 0|terrain band 3', 'terrain band 2|terrain band 1']) {
+        assert.ok(kinds.has(pair), `the samples include ${pair}`);
+      }
+      for (const { sample: s, got } of obs.results) {
+        const at = `progress ${s.progress}, column ${s.column}, previous ${s.previous}`;
+        for (const parity of ['even', 'odd']) {
+          assert.deepEqual(got[parity], s[parity], `${parity} strip at ${at}`);
+        }
+        assert.equal(got.even_behind, s.even_behind, `draw order at ${at}`);
+      }
+    },
+    // roadmap-evidence: AREA-01 failure  (a terrain proc that never puts the forest filler in band 0's place
+    //   after a re-top shows band 0 at a column that does not exist)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'terrain band column', -1, '__never__'),
+  },
+  {
+    // AREA-01 (slice 20): the walk keeps the terrain state current. `update terrain` runs in every walk tick
+    // after the clock moves and at the end of every re-top; a re-top clears the previous column (the arcade
+    // fills the plane with forest), and an area's completion hands the outgoing column to the band still on
+    // screen. Live: a re-top leaves no previous column; live play moves the strips, and recomputing them from
+    // the clock afterwards changes nothing (the walk left them current); a seeded completion from area 1 sets
+    // the previous column to area 1's, which the band-0 strip then shows while the odd strip takes area 2's.
+    key: 'terrain-state-follows-clock',
+    behavior:
+      "The terrain strips move with the area clock during play, restart from forest at a re-top, and keep the old area's column for its last rows after an area change",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const snap = () =>
+        ['even', 'odd'].flatMap((parity) =>
+          ['costume', 'x', 'y', 'shown'].map((f) => String(readVar(vm, `terrain-${parity}-${f}`))),
+        );
+      const retop = {
+        area: Number(readVar(vm, 'area-number')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        evenCostume: String(readVar(vm, 'terrain-even-costume')),
+      };
+      const before = snap();
+      const progress0 = Number(readVar(vm, 'area-progress'));
+      step(vm, 1);
+      const live = { progressMoved: Number(readVar(vm, 'area-progress')) !== progress0, state: snap() };
+      writeVar(vm, 'game-director-state', 'frozen');
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      const recomputed = snap();
+      // Area 1's completion tick: row 0x0E with progress > 0 (AREA_COMPLETE_PROGRESS is the first such tick).
+      const area1Column = Number(readVar(vm, 'area-terrain-column'));
+      writeVar(vm, 'area-progress', 65024);
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      const completion = {
+        area: Number(readVar(vm, 'area-number')),
+        progress: Number(readVar(vm, 'area-progress')),
+        column: Number(readVar(vm, 'area-terrain-column')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        even: { costume: String(readVar(vm, 'terrain-even-costume')), x: Number(readVar(vm, 'terrain-even-x')) },
+        odd: { costume: String(readVar(vm, 'terrain-odd-costume')), x: Number(readVar(vm, 'terrain-odd-x')) },
+      };
+      return { retop, before, live, recomputed, area1Column, completion };
+    },
+    assert(obs) {
+      assert.equal(obs.retop.area, 1, 'precondition: the game starts in area 1');
+      assert.equal(obs.retop.previous, -1, 'a re-top leaves no previous column');
+      assert.equal(obs.retop.evenCostume, 'terrain filler', 'so band 0 is the forest filler');
+      assert.equal(obs.live.progressMoved, true, 'precondition: the clock ran during the live step');
+      assert.notDeepEqual(obs.live.state, obs.before, 'the strips moved with the clock during play');
+      assert.deepEqual(obs.recomputed, obs.live.state, 'the walk left the strips current with the clock');
+      const c = obs.completion;
+      assert.equal(c.area, 2, 'the seeded completion advanced to area 2');
+      assert.equal(c.progress, 65056 - 65536, 'the clock carried across the completion');
+      assert.equal(c.previous, obs.area1Column, "the previous column is area 1's");
+      assert.notEqual(c.column, obs.area1Column, "precondition: area 2's column differs from area 1's");
+      assert.equal(c.even.costume, 'terrain band 0', "area 1's last rows show as band 0");
+      assert.equal(c.even.x, 10 * obs.area1Column - 500, "band 0 keeps area 1's column");
+      assert.equal(c.odd.x, 10 * c.column - 500, "the odd strip takes area 2's column");
+    },
+    // Remove the walk's terrain update (and the re-top's): the strips never leave their defaults.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrain'),
+  },
+  {
     key: 'difficulty-and-formations',
     behavior:
       'The area schedule raises the AI level (folding back below 0x80) and selects a valid flying formation live',
