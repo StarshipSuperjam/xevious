@@ -4675,23 +4675,36 @@ export const SCENARIOS = [
     playtestStep: 6,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Warm the detector with live pumps (a hand-called air detector does not fire on a VM that has not
+      // stepped live), then FREEZE the walk and run the detector exactly once per probe. A live pump runs
+      // as many walk ticks as fit its wall-clock budget, so a live MISS probe let the Toroid steer (and
+      // turn back) for an unbounded number of ticks over a still-live shot and could score on a fast runner;
+      // one frozen detector call tests the window on exactly the seeded deltas. The live dispatch from the
+      // flying-enemy walk is proved by `barra-blaster-cannot-destroy` and the live air-kill scenarios.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
       const put = (id, i, v) => {
         readVar(vm, id)[i] = v;
       };
-      // Park the Toroid 8 columns from the craft so the real tapped shot (craft column) can never reach
-      // it — only the CONTROLLED shot we seed into a real detector slot (37) can score it. `eResult`
-      // maps offset -> score delta; the enemy is re-parked before each probe (a scoring hit frees it).
-      // One column is 256 slot units = 8 px, so a shot dCol columns over sits at lateral delta
-      // enemy - shot = -8*dCol px: +2 columns is -16 (the band's low edge, a hit), -2 is +16 (past 15).
-      // The Toroid steers sideways toward the craft while a step runs several ticks, and a shot that misses
-      // on the first tick stays in depth range for a tick or two — so a MISS probe must put the Toroid on the
-      // side where that drift carries it AWAY from the shot. `side` -1 parks it below the craft column
-      // (drift raises enemy - shot), +1 above (drift lowers it); hits land on the first tick either way.
-      const eResult = (dCol, side = -1) => {
+      // The Toroid sits in the last flying slot (JS 63 = Scratch 64) and a controlled shot in a real detector
+      // slot (JS 37 = Scratch 38; SHOT_SLOTS 37-39). Both are re-seeded before each probe (a scoring hit frees
+      // them) with the flying band and the shot slots cleared, so nothing else is offered. One column is 256
+      // slot units = 8 px, so a shot dCol columns over sits at lateral delta enemy - shot = -8*dCol px: +2
+      // columns is -16 (the band's low edge, a hit), -2 is +16 (one past 15).
+      const eResult = (dCol) => {
         const pr = readVar(vm, 'player-row'),
           pc = readVar(vm, 'player-col');
         const eRow = pr - 6,
-          eCol = pc + 8 * side;
+          eCol = pc - 8;
+        for (let s = 58; s <= 63; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        for (let s = 36; s <= 38; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
         put('slot-type', 63, 10);
         put('slot-state', 63, 1);
         put('slot-pts', 63, 3);
@@ -4702,13 +4715,15 @@ export const SCENARIOS = [
         put('slot-flag', 63, 9);
         put('slot-timer', 63, 0);
         put('slot-code', 63, 8);
-        const score0 = readVar(vm, 'eco-score');
-        put('slot-type', 37, 1); // a controlled shot in a real detector slot (SHOT_SLOTS = 37-39)
+        put('slot-type', 37, 1);
         put('slot-state', 37, 1);
         put('slot-x', 37, eRow * 256);
         put('slot-y', 37, (eCol + dCol) * 256);
+        const score0 = Number(readVar(vm, 'eco-score'));
+        writeVar(vm, 'slot-index', 64); // the detector tests the flying enemy at `slot index` (Scratch 1-based)
+        callProc(vm, 'Stage', 'check air shot hit');
         step(vm, 1);
-        return readVar(vm, 'eco-score') - score0;
+        return Number(readVar(vm, 'eco-score')) - score0;
       };
       return {
         onCol: eResult(0),
@@ -4716,8 +4731,9 @@ export const SCENARIOS = [
         oneMinus: eResult(-1),
         twoPlus: eResult(2),
         twoMinus: eResult(-2),
-        threePlus: eResult(3, 1), // delta -24: parked above the craft so the drift deepens the miss
-        award: readVar(vm, 'eco-value-table')[2],
+        threePlus: eResult(3),
+        threeMinus: eResult(-3),
+        award: Number(readVar(vm, 'eco-value-table')[2]),
       };
     },
     assert(obs) {
@@ -4727,6 +4743,7 @@ export const SCENARIOS = [
       assert.equal(obs.twoPlus, obs.award, 'a shot at delta -16 px (the low edge) scores');
       assert.equal(obs.twoMinus, 0, 'a shot at delta +16 px (one past the high edge 15) does NOT score');
       assert.equal(obs.threePlus, 0, 'a shot at delta -24 px does NOT score');
+      assert.equal(obs.threeMinus, 0, 'a shot at delta +24 px does NOT score');
     },
     // Empty the shot-vs-air detector so no controlled shot ever resolves → the on-column assertion fails.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check air shot hit'),
@@ -5512,9 +5529,9 @@ export const SCENARIOS = [
       'The blaster (air weapon) structurally cannot destroy a ground object: the shot-vs-air detector is dispatched only from FLYING enemy updates, so a Barra (routed to `update barra`) is never offered to it. The SAME controlled shot on the SAME cell scores an overlapping flying enemy but scores NOTHING against an overlapping ground Barra',
     playtestStep: 7,
     async drive(vm) {
-      // Live-drive both probes exactly like `air-shot-hit-column-bounded`: the shot-vs-air detector is
-      // dispatched from the live flying-enemy walk (a hand-called detector needs live warming, and driving
-      // the real walk is what proves the routing anyway). Invuln stays ON from reachPlaying so the craft
+      // Live-drive both probes: the shot-vs-air detector is dispatched from the live flying-enemy walk, and
+      // driving the real walk is what proves the routing (`air-shot-hit-column-bounded` tests the window
+      // itself with a frozen, single detector call instead). Invuln stays ON from reachPlaying so the craft
       // never dies. Each probe fires an identical CONTROLLED shot in a real detector slot (SHOT_SLOTS =
       // 37-39, JS index 37) on a cell 6 rows / 8 columns off the craft — far enough that only the seeded
       // shot reaches the target, not the craft's own tapped shot.
