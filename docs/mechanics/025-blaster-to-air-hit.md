@@ -93,3 +93,11 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (presentation slice, CAB-05)
+
+Deviation (3), **explosion stand-in**, and the stand-in note in the License status are superseded
+([record 055](055-presentation-fidelity.md)). A struck flying enemy now draws the arcade's own air explosion —
+codes 70 and 71, then 74, 78 and 7C at double size, colour 7, re-centred by one cell when it grows, a new flip
+state every frame (`flying_enemy_hit` 4865–4893 in `src/xevious_main.68k`) — decoded from the pinned reference's
+graphics data by `tools/effects_sprite_render.py`. The `solv_death` frames are no longer used for it.

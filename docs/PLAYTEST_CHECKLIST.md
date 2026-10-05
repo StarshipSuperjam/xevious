@@ -104,11 +104,9 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    the definitive pass signal), and the wreck is gone — no lingering sprite. The enemy **scale and aspect**
    should look right against the craft (report if they look stretched or mis-sized). Finally, **stop and
    green-flag again while a wave is on screen:** no Toroid or bullet sprite should survive the reset (no
-   orphan clones). **Two recorded art stand-ins — note, do not fail (they are interim, per records 025/026):**
-   the enemy bullet is not a dedicated bullet sprite yet — it renders as a small stand-in costume (a shrunk
-   Toroid frame), so a small enemy-looking dot flying straight *is* the bullet; and the kill explosion reuses
-   the player craft's own death-burst frames as a placeholder. Both are deliberate deferrals to a later art
-   pass, so judge the *behavior* (fires / flies / kills; explodes / scores / clears), not the placeholder art.
+   orphan clones). The enemy bullet draws the arcade's own bullet sprite, pulsing through four colours, and
+   the kill explosion is the arcade's air explosion, which doubles in size partway through (both from
+   [record 055](mechanics/055-presentation-fidelity.md); step 9, *Sound and effects*, checks the art itself).
 4b. **Terrazi combat — the first firing family (temporary debug spawn).** Terrazi only spawns at very high
    AI levels, unreachable in a normal area-1 flight, so this build carries a **temporary playtest key**:
    while playing, **hold `T`** to bring in one debug enemy at a time. The tool **cycles through the built
@@ -126,8 +124,8 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    forward approach** (reversing its onward motion) while drifting slightly to one side, rather than diving
    into you. **Shoot one:** it explodes and the score rises by **700** (the HUD digits are the definitive
    signal), the wreck clears. Check the **roll sprite** reads right (the small green banking-light on two
-   of the frames is correct, not an artifact); the shared explosion is the same placeholder burst as the
-   Toroid (note, do not fail). Then **keep holding `T`**: once the Terrazi is gone the tool advances to the
+   of the frames is correct, not an artifact); the shared explosion is the same air explosion as the
+   Toroid. Then **keep holding `T`**: once the Terrazi is gone the tool advances to the
    next family — go to step 4c. (Release `T` at any point and normal Toroid waves resume.)
 4c. **Kapi combat — the peel-away diving family (temporary debug spawn, next in the `T` cycle).** With the
    Terrazi gone and `T` still held, the next debug enemy is a **Kapi**. Kapi, like Terrazi, only spawns at
@@ -144,7 +142,7 @@ area and its restart show on screen as well as in the `area progress`/`area numb
      *silent* when it glides. Silent on the way in, firing once it dives.
    **Shoot one:** it explodes and the score rises by **300** (the HUD digits are the definitive signal), the
    wreck clears. Check the **dive sprite** cycles through its frames; the shared explosion is the same
-   placeholder burst as the Toroid (note, do not fail). Then **keep holding `T`**: once the Kapi is gone the
+   air explosion as the Toroid. Then **keep holding `T`**: once the Kapi is gone the
    tool advances to the next family — go to step 4d. (Release `T` at any point and normal Toroid waves resume.)
 4d. **Torkan combat — the approach → one-shot → hover → break-away family (temporary debug spawn, next in the
    `T` cycle).** With the Kapi gone and `T` still held, the next debug enemy is a **Torkan**. Torkan, like the
@@ -163,7 +161,7 @@ area and its restart show on screen as well as in the `area progress`/`area numb
      2 px/frame tier instead of the fast one, is the failure to flag (the away-direction and the faster tier
      are the fidelity-critical points here).
    **Shoot one:** it explodes and the score rises by **50** (the HUD digits are the definitive signal), the
-   wreck clears. The shared explosion is the same placeholder burst as the Toroid (note, do not fail). Release
+   wreck clears. The shared explosion is the same air explosion as the Toroid. Release
    `T` and confirm normal Toroid waves resume.
 4e. **Ground families — the debug ground cycle (temporary `G` key).** Ground objects only enter by scrolling
    up from the area schedule — a narrow, one-shot window — so this build carries a **temporary ground playtest
