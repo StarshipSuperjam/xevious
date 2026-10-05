@@ -1253,6 +1253,13 @@ class ScratchProjectTests(unittest.TestCase):
             "attract",
             "attract epoch",
             "attract stage",
+            # CAB-05 (slice 20): audio machinery. `coin sound` is the poll-to-loop coin-sound latch, `audio muted`
+            # the last volume the attract mute applied (-1 unknown), `keep sounds` the death-complete handler's
+            # one-transition stop-all skip, `andor drone timer` the boss drone's replay countdown. All transient.
+            "coin sound",
+            "audio muted",
+            "keep sounds",
+            "andor drone timer",
             # CAB-01 (slice 17): the auto-pilot's virtual input register. `input up/down/left/right/fire` are
             # the 0/1 flags `install_attract_pilot` drives while the cabinet demos (attract==1), read through
             # `input_active` in place of the keyboard by the solvalou/blaster seams; `pilot dir` is the held
@@ -7333,6 +7340,378 @@ class ScratchProjectTests(unittest.TestCase):
             project = load_source(scratch.SOURCE_DIR)
             mutate(project)
             self.assertIn(label, self._audio_failures(project), label)
+
+    # CAB-05 (presentation.audio-animation, slice 20 PR-4): the nine arcade cues taken in for this slice.
+    CAB05_STAGE_CUES = (
+        "credit", "name_entry", "name_entry_top", "andor_genesis", "start", "bgm",
+        "solvalou_explode", "zapper_fire", "blaster_fire",
+    )
+    # The base-project sounds these cues replace. They stay in the project as preserved baseline content, but
+    # nothing may play them any more.
+    CAB05_REPLACED_SOUNDS = (
+        "Game Start.mp3", "BGM.mp3", "01_Game Start.mp3", "05_BGM.mp3",
+        "blaster", "solvalou_death", "bomb_drop", "bomb_explode",
+    )
+
+    @staticmethod
+    def _cab05_audio_failures(project: dict) -> set:
+        """CAB-05 audio contract (docs/mechanics/055-presentation-fidelity.md) — violated labels.
+
+        Every new cue plays from the Stage (the owner of every game sound); every sound a block names exists
+        on that block's own target (a missing one silently does nothing); no block plays a replaced base sound;
+        every stop-all is gated on `keep sounds` = 0 and the transition consumes the keep only after its
+        stop-all; the death-complete handler sets it; the shot and death cues relay to the Stage; the death
+        cue, start theme and flight loop are off in attract; the coin sound is latched by the poll and played by
+        the coin loop; the Stage mutes in the uncredited attract cycle; the Andor drone replays on its own
+        timer; and the entry tune picks the top tune by the placed rank."""
+        failures = set()
+
+        def inp_ref(block, key):
+            v = block.get("inputs", {}).get(key)
+            return v[1] if isinstance(v, list) and len(v) >= 2 else None
+
+        def reads(blocks, node, pred_prim) -> bool:
+            # Walk a reporter subtree; `pred_prim` sees each compact primitive ([12, name, id], [4, "0"], ...).
+            stack, seen = [node], set()
+            while stack:
+                x = stack.pop()
+                if isinstance(x, list):
+                    if pred_prim(x):
+                        return True
+                    stack.extend(x)
+                elif isinstance(x, str) and x in blocks and x not in seen:
+                    seen.add(x)
+                    b = blocks[x]
+                    if not isinstance(b, dict):
+                        if pred_prim(b):
+                            return True
+                        continue
+                    if b.get("opcode") == "data_variable" and pred_prim([12, *b["fields"]["VARIABLE"]]):
+                        return True
+                    stack.extend(b.get("inputs", {}).values())
+            return False
+
+        def var_is(var_id):
+            return lambda p: len(p) >= 3 and p[0] == 12 and p[2] == var_id
+
+        def lit_is(value):
+            return lambda p: len(p) >= 2 and p[0] in (4, 5, 6, 7, 8, 10) and str(p[1]) == str(value)
+
+        def enclosures(blocks):
+            # child -> enclosing control, by a DOWNWARD walk of every SUBSTACK/SUBSTACK2 `next` chain.
+            owner = {}
+            for cid, b in blocks.items():
+                if not isinstance(b, dict):
+                    continue
+                for key in ("SUBSTACK", "SUBSTACK2"):
+                    cur = inp_ref(b, key)
+                    while isinstance(cur, str) and cur in blocks and cur not in owner:
+                        owner[cur] = cid
+                        cur = blocks[cur].get("next")
+            return owner
+
+        def enclosing_conds(blocks, owner, bid):
+            # The CONDITION subtrees of every if / if-else / repeat-until enclosing `bid`.
+            conds, cur = [], bid
+            while cur in owner:
+                ctl = owner[cur]
+                cond = inp_ref(blocks[ctl], "CONDITION")
+                if cond:
+                    conds.append(cond)
+                cur = ctl
+            return conds
+
+        def stack_head(blocks, bid):
+            cur = bid
+            while isinstance(blocks.get(cur), dict) and blocks[cur].get("parent"):
+                cur = blocks[cur]["parent"]
+            return cur
+
+        def plays(blocks, sound):
+            out = []
+            for bid, b in blocks.items():
+                if isinstance(b, dict) and b.get("opcode") in ("sound_play", "sound_playuntildone"):
+                    menu = blocks.get(inp_ref(b, "SOUND_MENU"))
+                    if isinstance(menu, dict) and menu.get("fields", {}).get("SOUND_MENU", [None])[0] == sound:
+                        out.append(bid)
+            return out
+
+        def sets(blocks, var_id, value):
+            return [
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto"
+                and b["fields"]["VARIABLE"][1] == var_id
+                and reads(blocks, b["inputs"].get("VALUE"), lit_is(value))
+            ]
+
+        def broadcasts(blocks, message):
+            return [
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") in ("event_broadcast", "event_broadcastandwait")
+                and isinstance(b.get("inputs", {}).get("BROADCAST_INPUT"), list)
+                and b["inputs"]["BROADCAST_INPUT"][1][1] == message
+            ]
+
+        def receiver_plays(blocks, message, sound):
+            for b in blocks.values():
+                if (
+                    isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived"
+                    and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == message
+                ):
+                    nxt = blocks.get(b.get("next"))
+                    if isinstance(nxt, dict) and nxt.get("opcode") == "sound_play":
+                        menu = blocks.get(inp_ref(nxt, "SOUND_MENU"))
+                        if isinstance(menu, dict) and menu["fields"]["SOUND_MENU"][0] == sound:
+                            return True
+            return False
+
+        def gated_on(blocks, owner, bid, var_id, value=None):
+            return any(
+                reads(blocks, c, var_is(var_id)) and (value is None or reads(blocks, c, lit_is(value)))
+                for c in enclosing_conds(blocks, owner, bid)
+            )
+
+        targets = {t.get("name"): t for t in project["targets"]}
+        stage = next(t for t in project["targets"] if t.get("isStage"))
+        sb = stage["blocks"]
+        stage_owner = enclosures(sb)
+
+        for name in ScratchProjectTests.CAB05_STAGE_CUES:
+            if not plays(sb, name):
+                failures.add(f"cab05-stage-cue-missing:{name}")
+
+        for t in project["targets"]:
+            own = {s["name"] for s in t.get("sounds", [])}
+            for b in t["blocks"].values():
+                if isinstance(b, dict) and b.get("opcode") == "sound_sounds_menu":
+                    name = b["fields"]["SOUND_MENU"][0]
+                    if name not in own:
+                        failures.add(f"sound-not-on-own-target:{t['name']}:{name}")
+                    if name in ScratchProjectTests.CAB05_REPLACED_SOUNDS:
+                        failures.add(f"replaced-sound-played:{name}")
+
+        # Every stop-all, on every target, sits directly in an `if keep sounds = 0`.
+        for t in project["targets"]:
+            blocks = t["blocks"]
+            owner = enclosures(blocks)
+            # Every sprite that runs common_stop (a `director stop` receiver) keeps its stop-all — gated, not
+            # removed — so the global stop still lands on every non-death transition.
+            stops_here = [
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "sound_stopallsounds"
+            ]
+            if not t.get("isStage") and not stops_here and any(
+                isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived"
+                and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == "director stop"
+                for b in blocks.values()
+            ):
+                failures.add(f"stopall-count:{t['name']}")
+            for bid in stops_here:
+                ctl = owner.get(bid)
+                cond = inp_ref(blocks[ctl], "CONDITION") if ctl else None
+                if not (
+                    ctl and blocks[ctl]["opcode"] == "control_if"
+                    and cond and blocks[cond]["opcode"] == "operator_equals"
+                    and reads(blocks, cond, var_is(director.KEEP_SOUNDS_ID))
+                    and reads(blocks, cond, lit_is(0))
+                ):
+                    failures.add(f"stopall-not-keep-gated:{t['name']}")
+        # The transition consumes the keep straight after its own gated stop-all (after `director stop` returned).
+        clear_after_stop = any(
+            isinstance(sb.get(sb[c].get("next")), dict) and sb[c]["opcode"] == "control_if"
+            and any(sb.get(x, {}).get("opcode") == "sound_stopallsounds"
+                    for x, o in stage_owner.items() if o == c)
+            and sb[c]["next"] in sets(sb, director.KEEP_SOUNDS_ID, 0)
+            for c in set(stage_owner.values())
+        )
+        if not clear_after_stop:
+            failures.add("keep-not-consumed-after-stop")
+        if not any(
+            gated_on(sb, stage_owner, s, director.STATE_ID, "player-dead")
+            for s in sets(sb, director.KEEP_SOUNDS_ID, 1)
+        ):
+            failures.add("keep-not-set-at-death")
+
+        # Relays: the clone/sprite broadcasts, the Stage receiver plays.
+        for message, sound, sender in (("sfx shot", "zapper_fire", "blaster"), ("sfx death", "solvalou_explode", "solv_death")):
+            if not receiver_plays(sb, message, sound):
+                failures.add(f"relay-no-stage-receiver:{message}")
+            sender_t = targets.get(sender)
+            if sender_t is None or not broadcasts(sender_t["blocks"], message):
+                failures.add(f"relay-no-broadcast:{message}")
+        death_t = targets.get("solv_death")
+        if death_t is not None:
+            downer = enclosures(death_t["blocks"])
+            if not all(
+                gated_on(death_t["blocks"], downer, x, director.ATTRACT_ID, 0)
+                for x in broadcasts(death_t["blocks"], "sfx death")
+            ):
+                failures.add("death-cue-in-attract")
+        for name in ("start", "bgm"):
+            if not plays(sb, name) or not all(
+                gated_on(sb, stage_owner, x, director.ATTRACT_ID, 0) for x in plays(sb, name)
+            ):
+                failures.add(f"music-in-attract:{name}")
+
+        # Coin: the poll latches, the coin loop plays.
+        def proc_of(bid):
+            head = sb.get(stack_head(sb, bid))
+            proto = sb.get(inp_ref(head, "custom_block")) if isinstance(head, dict) else None
+            return proto.get("mutation", {}).get("proccode") if isinstance(proto, dict) else None
+
+        poll_sets = [
+            s for s in sets(sb, director.COIN_SOUND_ID, 1) if proc_of(s) == director.COIN_POLL_PROCCODE
+        ]
+        if not poll_sets:
+            failures.add("coin-sound-not-latched-by-poll")
+        if not plays(sb, "credit") or not all(
+            gated_on(sb, stage_owner, x, director.COIN_SOUND_ID, 1) for x in plays(sb, "credit")
+        ):
+            failures.add("coin-sound-not-gated-on-latch")
+
+        # Attract mute: volume 0 only under a condition reading both `attract` and `credits`.
+        mutes = [
+            bid for bid, b in sb.items()
+            if isinstance(b, dict) and b.get("opcode") == "sound_setvolumeto"
+            and reads(sb, b["inputs"].get("VOLUME"), lit_is(0))
+        ]
+        if not mutes or not all(
+            gated_on(sb, stage_owner, m, director.ATTRACT_ID, 1)
+            and gated_on(sb, stage_owner, m, director.CREDITS_ID, 0)
+            for m in mutes
+        ):
+            failures.add("attract-mute-missing")
+
+        # Andor drone.
+        drone = plays(sb, "andor_genesis")
+        if not drone or not all(
+            gated_on(sb, stage_owner, x, director.ANDOR_DRONE_TIMER_ID) for x in drone
+        ):
+            failures.add("andor-drone-not-timed")
+        if not sets(sb, director.ANDOR_DRONE_TIMER_ID, director.ANDOR_DRONE_TICKS):
+            failures.add("andor-drone-no-rearm")
+
+        # Entry tune: the top tune under the placed-rank condition.
+        top = plays(sb, "name_entry_top")
+        if not top or not all(gated_on(sb, stage_owner, x, director.ENTRY_ROW_ID, 1) for x in top):
+            failures.add("entry-tune-not-rank-gated")
+        return failures
+
+    def test_cab05_audio_contract_holds(self) -> None:
+        # roadmap-evidence: CAB-05 success  (every new cue plays from the Stage, gated and relayed as recorded)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_audio_failures(project))
+        self.assertEqual(53, director.ANDOR_DRONE_TICKS)
+
+    def test_cab05_audio_contract_negative_fixtures(self) -> None:
+        # roadmap-evidence: CAB-05 failure  (each broken cue, gate or relay is named by the contract)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_audio_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t.get("isStage"))
+
+        def rename_menu(target_name, old, new):
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "sound_sounds_menu" and b["fields"]["SOUND_MENU"][0] == old:
+                        b["fields"]["SOUND_MENU"][0] = new
+            return _mut
+
+        def ungate_one_stopall(target_name):
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "operator_equals" and any(
+                        isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12 and v[1][2] == director.KEEP_SOUNDS_ID
+                        for v in b.get("inputs", {}).values()
+                    ):
+                        for k, v in b["inputs"].items():
+                            if isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12:
+                                v[1][1], v[1][2] = "tick", director.TICK_ID
+                        return
+            return _mut
+
+        def strip_stopall(target_name):
+            def _mut(p):
+                t = next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "sound_stopallsounds":
+                        b["opcode"] = "control_wait"
+            return _mut
+
+        def retarget_var(var_id, value, new_value):
+            # Rewrite every `set <var> to <value>` on the Stage to <new_value>.
+            def _mut(p):
+                sb = stage_of(p)["blocks"]
+                for b in sb.values():
+                    if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var_id:
+                        v = b["inputs"].get("VALUE")
+                        if isinstance(v, list) and isinstance(v[1], list) and str(v[1][1]) == str(value):
+                            v[1][1] = str(new_value)
+            return _mut
+
+        def drop_receiver(message):
+            def _mut(p):
+                for b in stage_of(p)["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived" and b["fields"]["BROADCAST_OPTION"][0] == message:
+                        b["fields"]["BROADCAST_OPTION"][0] = "wrong"
+            return _mut
+
+        def blank_var_in_conds(target_name, var_id):
+            # Swap every read of `var_id` for `tick` (so no condition gates on it any more).
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if not isinstance(b, dict) or b.get("opcode") == "data_setvariableto":
+                        continue
+                    for v in b.get("inputs", {}).values():
+                        if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list) and v[1][0] == 12 and v[1][2] == var_id:
+                            v[1][1], v[1][2] = "tick", director.TICK_ID
+            return _mut
+
+        def play_on_wrong_target(p):
+            solv = next(x for x in p["targets"] if x["name"] == "solvalou")
+            solv["blocks"]["cab05_menu"] = {
+                "opcode": "sound_sounds_menu", "next": None, "parent": "cab05_play", "inputs": {},
+                "fields": {"SOUND_MENU": ["credit", None]}, "shadow": True, "topLevel": False,
+            }
+            solv["blocks"]["cab05_play"] = {
+                "opcode": "sound_play", "next": None, "parent": None,
+                "inputs": {"SOUND_MENU": [1, "cab05_menu"]}, "fields": {}, "shadow": False,
+                "topLevel": True, "x": 0, "y": 0,
+            }
+
+        cases = [
+            ("cab05-stage-cue-missing:credit", rename_menu("Stage", "credit", "wrong")),
+            ("cab05-stage-cue-missing:andor_genesis", rename_menu("Stage", "andor_genesis", "wrong")),
+            ("cab05-stage-cue-missing:zapper_fire", rename_menu("Stage", "zapper_fire", "wrong")),
+            ("cab05-stage-cue-missing:blaster_fire", rename_menu("Stage", "blaster_fire", "wrong")),
+            ("sound-not-on-own-target:Stage:wrong", rename_menu("Stage", "credit", "wrong")),
+            ("sound-not-on-own-target:solvalou:credit", play_on_wrong_target),
+            ("replaced-sound-played:BGM.mp3", rename_menu("Stage", "bgm", "BGM.mp3")),
+            ("replaced-sound-played:Game Start.mp3", rename_menu("Stage", "start", "Game Start.mp3")),
+            ("stopall-not-keep-gated:Stage", ungate_one_stopall("Stage")),
+            ("stopall-not-keep-gated:toroid", ungate_one_stopall("toroid")),
+            ("stopall-count:kapi", strip_stopall("kapi")),
+            ("keep-not-consumed-after-stop", retarget_var(director.KEEP_SOUNDS_ID, 0, 7)),
+            ("keep-not-set-at-death", retarget_var(director.KEEP_SOUNDS_ID, 1, 7)),
+            ("relay-no-stage-receiver:sfx shot", drop_receiver("sfx shot")),
+            ("relay-no-stage-receiver:sfx death", drop_receiver("sfx death")),
+            ("death-cue-in-attract", blank_var_in_conds("solv_death", director.ATTRACT_ID)),
+            ("music-in-attract:bgm", blank_var_in_conds("Stage", director.ATTRACT_ID)),
+            ("coin-sound-not-latched-by-poll", retarget_var(director.COIN_SOUND_ID, 1, 7)),
+            ("coin-sound-not-gated-on-latch", blank_var_in_conds("Stage", director.COIN_SOUND_ID)),
+            ("attract-mute-missing", blank_var_in_conds("Stage", director.CREDITS_ID)),
+            ("andor-drone-not-timed", blank_var_in_conds("Stage", director.ANDOR_DRONE_TIMER_ID)),
+            ("andor-drone-no-rearm", retarget_var(director.ANDOR_DRONE_TIMER_ID, director.ANDOR_DRONE_TICKS, 7)),
+            ("entry-tune-not-rank-gated", blank_var_in_conds("Stage", director.ENTRY_ROW_ID)),
+        ]
+        for label, mutate in cases:
+            project = copy.deepcopy(base)
+            mutate(project)
+            self.assertIn(label, self._cab05_audio_failures(project), label)
 
     @staticmethod
     def _wpn01_failures(project: dict) -> set:
@@ -18617,7 +18996,8 @@ class ScratchProjectTests(unittest.TestCase):
                 "data_changevariableby",
                 "data_setvariableto",
                 "event_broadcastandwait",
-                "sound_stopallsounds",
+                "control_if",  # CAB-05: the stop-all, skipped while `keep sounds` is set
+                "data_setvariableto",  # CAB-05: consume the keep, after `director stop` returned
                 "data_setvariableto",
                 "control_if",
                 "event_broadcastandwait",
@@ -18627,6 +19007,19 @@ class ScratchProjectTests(unittest.TestCase):
             opcodes,
             definition_id,
         )
+        # CAB-05: the gate holds exactly the stop-all, and the step after it clears `keep sounds` to 0.
+        blocks = stage["blocks"]
+        cursor = guard["inputs"]["SUBSTACK"][1]
+        for _ in range(3):
+            cursor = blocks[cursor]["next"]
+        gate = blocks[cursor]
+        self.assertEqual("sound_stopallsounds", blocks[gate["inputs"]["SUBSTACK"][1]]["opcode"])
+        gate_cond = blocks[gate["inputs"]["CONDITION"][1]]
+        self.assertEqual("operator_equals", gate_cond["opcode"])
+        self.assertEqual(director.KEEP_SOUNDS_ID, gate_cond["inputs"]["OPERAND1"][1][2])
+        clear = blocks[gate["next"]]
+        self.assertEqual(["keep sounds", director.KEEP_SOUNDS_ID], clear["fields"]["VARIABLE"])
+        self.assertEqual("0", str(clear["inputs"]["VALUE"][1][1]))
 
     @staticmethod
     def _numeric(value: object) -> int | float | None:
@@ -18806,8 +19199,8 @@ class ScratchProjectTests(unittest.TestCase):
 
         # B2 — single guarded bomb. WPN-04 (slice 9) moved the bomb logic OFF the bomb sprite (now a
         # pure slot renderer) and INTO the Stage walk (`advance bomb`): the walk arms the one-bomb
-        # guard, re-arms it at the finish, tests idle before arming, and broadcasts the drop. The bomb
-        # sprite keeps no clone and only RECEIVES the drop/land sounds.
+        # guard, re-arms it at the finish, tests idle before arming, and plays the drop sound. The bomb
+        # sprite keeps no clone.
         if count("bomb", "control_start_as_clone") != 0:
             fails.add("B2-clone")
         if not sets_var("Stage", "bomb in flight", 1):
@@ -18821,11 +19214,18 @@ class ScratchProjectTests(unittest.TestCase):
             and b["inputs"].get("OPERAND1", [None, [None, None]])[1][1] == "bomb in flight",
         ):
             fails.add("B2-idle-test")
-        if not broadcasts("Stage", "bomb"):
-            fails.add("B2-broadcast")
-        # The bomb sprite renderer still receives the drop-sound broadcast.
-        if not receives("bomb", "bomb"):
-            fails.add("B2-drop-receive")
+        # CAB-05 (slice 20): the drop sound is the one BOMB_SND (init_bombing xevious_main.68k:2463), played by
+        # the Stage walk on the arm — no `bomb`/`bomb landed` broadcast, and the bomb sprite plays nothing.
+        if not has(
+            "Stage",
+            lambda b: b["opcode"] == "sound_sounds_menu"
+            and b["fields"].get("SOUND_MENU", [None])[0] == "blaster_fire",
+        ):
+            fails.add("B2-drop-sound")
+        if receives("bomb", "bomb") or has(
+            "bomb", lambda b: b["opcode"] in ("sound_play", "sound_playuntildone")
+        ):
+            fails.add("B2-no-sprite-sound")
 
         # B6 — the crosshair is a pure slot renderer (slice 9): it no longer receives the bomb
         # broadcast; it switches to the targeting reticle costume off its slot state.
@@ -18964,9 +19364,17 @@ class ScratchProjectTests(unittest.TestCase):
         # own position at the four stop lines (pinned in the regression contract below as PRES01-craft-clamp).
         self.assertNotIn("sensing_touchingobject", {b["opcode"] for b in solvalou.values()})
         death = targets["solv_death"]["blocks"]
-        self.assertIn("sound_play", {block["opcode"] for block in death.values()})
+        # CAB-05: the death cue relays to the Stage (`sfx death`), so the death renderer plays nothing itself.
+        self.assertNotIn("sound_play", {block["opcode"] for block in death.values()})
         self.assertNotIn(
             "sound_playuntildone", {block["opcode"] for block in death.values()}
+        )
+        self.assertTrue(
+            any(
+                block["opcode"] == "event_broadcast"
+                and block["inputs"]["BROADCAST_INPUT"][1][1] == "sfx death"
+                for block in death.values()
+            )
         )
         self.assertTrue(
             any(
@@ -19085,15 +19493,14 @@ class ScratchProjectTests(unittest.TestCase):
                       and num(b["inputs"].get("OPERAND2")) == director.CRAFT_Y_BOTTOM)
             b["opcode"] = "sensing_touchingobject"
 
-        def break_bomb_broadcast(p):  # B2: drop the Stage walk's bomb-drop broadcast
+        def break_bomb_broadcast(p):  # B2: drop the Stage walk's bomb-drop sound
             b = first(
                 p,
                 "Stage",
-                lambda b: b["opcode"] == "event_broadcast"
-                and b["inputs"].get("BROADCAST_INPUT", [None, [None, None, None]])[1][1]
-                == "bomb",
+                lambda b: b["opcode"] == "sound_sounds_menu"
+                and b["fields"].get("SOUND_MENU", [None])[0] == "blaster_fire",
             )
-            b["opcode"] = "control_wait"
+            b["fields"]["SOUND_MENU"][0] = "wrong"
 
         def free_running_terrain(p):  # B3: a strip steps itself again instead of drawing the clock's state
             b = first(p, "area_01a", lambda b: b["opcode"] == "motion_gotoxy")
@@ -19131,14 +19538,9 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_a", lambda b: b["opcode"] == "looks_switchcostumeto")
             b["opcode"] = "looks_show"
 
-        def break_drop_receive(p):  # B2: drop the bomb sprite's drop-sound receiver
-            b = first(
-                p,
-                "bomb",
-                lambda b: b["opcode"] == "event_whenbroadcastreceived"
-                and b["fields"]["BROADCAST_OPTION"][0] == "bomb",
-            )
-            b["fields"]["BROADCAST_OPTION"][0] = "director stop"
+        def break_drop_receive(p):  # B2: regress the bomb sprite back to a drop-sound receiver
+            b = first(p, "bomb", lambda b: b["opcode"] == "event_whenbroadcastreceived")
+            b["fields"]["BROADCAST_OPTION"][0] = "bomb"
 
         def couple_crosshair_to_bomb(p):  # B6: regress the crosshair back to a bomb receiver
             b = first(p, "target_a", lambda b: b["opcode"] == "event_whenbroadcastreceived")
@@ -19176,9 +19578,9 @@ class ScratchProjectTests(unittest.TestCase):
             ("A1-ready-bubble", break_ready_bubble),
             ("A2-gameover-bubble", break_gameover_bubble),
             ("B1-reload-gate", break_reload_gate),
-            ("B2-broadcast", break_bomb_broadcast),
+            ("B2-drop-sound", break_bomb_broadcast),
             ("B2-arm", break_bomb_arm),
-            ("B2-drop-receive", break_drop_receive),
+            ("B2-no-sprite-sound", break_drop_receive),
             ("B3-wall-clock-area_01a", free_running_terrain),
             ("B4-glide", break_title_glide),
             ("B5B10-explosion", break_explosion_holds),
@@ -20087,7 +20489,7 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(4, director.EXPLOSION_HOLD_TICKS)  # PLY-02: 8-frame hold
         self.assertEqual(28, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS)  # 56 frames
         self.assertEqual(16, director.POST_DEATH_PAUSE_TICKS)  # PLY-02: 32-frame pause
-        self.assertEqual(30, director.READY_HOLD_TICKS)  # project-defined 30-tick beat
+        self.assertEqual(32, director.READY_HOLD_TICKS)  # CAB-05: 64-frame forest wait
         self.assertEqual(64, director.GAME_OVER_HOLD_TICKS)  # ECO-04: 128-frame hold
 
     def test_reset_scope_matrix_has_canonical_and_preserving_paths(self) -> None:
@@ -20424,7 +20826,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "9fe1f38f6da74fffea1427e924d972769ce481862a330d59412c99bb15ad9560",
+            "f4b1184f9761365f893023fe6bcb75917d82ef3b30323f79118f3a04a882081c",
             build_hash,
         )
 

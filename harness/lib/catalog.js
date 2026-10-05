@@ -11,6 +11,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   step,
+  stepSettled,
+  greenFlag,
+  recordSounds,
   keyDown,
   keyUp,
   tapKey,
@@ -9547,6 +9550,248 @@ export const SCENARIOS = [
     // roadmap-evidence: ECO-02 failure  (the active nUP label no longer follows the current player)
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'curr player', 0),
   },
+  {
+    // CAB-05 (slice 20 PR-4): the coin sound. The arcade plays CREDIT_SND only when a credit is actually added
+    // (xevious_sub.68k 171-181), so never at the 99 cap, and the Amiga lets it through the attract mute
+    // (amiga.68k 718-735). The port latches `coin sound` in the poll's below-cap branch and the coin loop plays
+    // `credit` once the attract mute has lifted. Pumped with stepSettled so the mute loop's volume set resolves.
+    key: 'coin-sound-on-credit-not-at-cap',
+    // roadmap-evidence: CAB-05 success  (a coin that banks a credit plays the credit sound after the mute lifts; none at the cap)
+    behavior:
+      'Inserting a coin at the title raises the credit count, lifts the attract mute (volume back to 100) and then plays the credit sound; a coin at the 99-credit cap adds nothing and plays no credit sound',
+    playtestStep: 10,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      greenFlag(vm);
+      await stepSettled(vm, 2);
+      const coin = async () => {
+        keyDown(vm, 'c');
+        await stepSettled(vm, 1);
+        keyUp(vm, 'c');
+        await stepSettled(vm, 4);
+      };
+      const before = log.length;
+      await coin();
+      const added = log.slice(before);
+      const credits = readVar(vm, 'cabinet-credits');
+      writeVar(vm, 'cabinet-credits', 99);
+      const capStart = log.length;
+      await coin();
+      const atCap = log.slice(capStart);
+      return { added, credits, capCredits: readVar(vm, 'cabinet-credits'), atCap, all: log };
+    },
+    assert(obs) {
+      assert.equal(obs.credits, 1, 'one coin at the title banks one credit');
+      const creditAt = obs.added.findIndex((e) => e.kind === 'play' && e.sound === 'credit');
+      assert.ok(creditAt >= 0, 'the coin plays the credit sound');
+      const volumesBefore = obs.added.slice(0, creditAt).filter((e) => e.kind === 'volume');
+      assert.ok(
+        volumesBefore.length && volumesBefore[volumesBefore.length - 1].sound === 100,
+        'the credit sound plays after the attract mute lifts (volume 100)',
+      );
+      assert.equal(obs.capCredits, 99, 'a coin at the cap adds no credit');
+      assert.equal(
+        obs.atCap.filter((e) => e.kind === 'play' && e.sound === 'credit').length,
+        0,
+        'a coin at the cap plays no credit sound',
+      );
+      assert.deepEqual(obs.all.filter((e) => String(e.sound).startsWith('?')), [], 'every played sound is on its own target');
+    },
+    // roadmap-evidence: CAB-05 failure  (the poll never latches the coin sound, so no credit sound plays)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'coin sound', 0),
+  },
+  {
+    // CAB-05: silent attract. The arcade mutes all sound on entering attract (xevious_main.68k 356) and
+    // unmutes at coined_up (380); the flight loop (2009) and death sound (2030) are also gated off in attract.
+    // The port's Stage mute loop sets the volume to 0 whenever the cabinet is uncredited in the attract cycle,
+    // and the start theme, flight loop and death cue are gated on `attract = 0`.
+    key: 'attract-cycle-is-silent',
+    // roadmap-evidence: CAB-05 success  (the uncredited attract cycle mutes the Stage and starts no theme, loop or death cue)
+    behavior:
+      'From the green flag through the title and into the attract demo with no coin, the Stage volume is set to 0, never raised, and the start theme, flight loop and death sound never start',
+    playtestStep: 1,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      greenFlag(vm);
+      await stepSettled(vm, 1);
+      let pumps = 0;
+      while (!(stateOf(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && pumps < 500) {
+        await stepSettled(vm, 1);
+        pumps += 1;
+      }
+      const reachedDemo = stateOf(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
+      await stepSettled(vm, 20);
+      return { reachedDemo, credits: readVar(vm, 'cabinet-credits'), log };
+    },
+    assert(obs) {
+      assert.ok(obs.reachedDemo, 'precondition: the attract demo starts with no coin');
+      assert.equal(obs.credits, 0, 'precondition: no credit was banked');
+      const volumes = obs.log.filter((e) => e.kind === 'volume').map((e) => e.sound);
+      assert.ok(volumes.includes(0), 'the attract cycle mutes the Stage (volume 0)');
+      assert.ok(!volumes.some((v) => v !== 0), `the volume is never raised in attract (saw ${volumes})`);
+      const music = obs.log.filter((e) => e.kind === 'play' && ['start', 'bgm', 'solvalou_explode'].includes(e.sound));
+      assert.deepEqual(music, [], 'no start theme, flight loop or death sound starts in attract');
+      assert.deepEqual(obs.log.filter((e) => String(e.sound).startsWith('?')), [], 'every played sound is on its own target');
+    },
+    // roadmap-evidence: CAB-05 failure  (the attract mute sets full volume, so the attract cycle is not silent)
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        const volume = b.opcode === 'sound_setvolumeto' && b.inputs.VOLUME && b.inputs.VOLUME[1];
+        if (Array.isArray(volume) && String(volume[1]) === '0') {
+          b.inputs.VOLUME = [1, [4, '100']];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error("mutate: no 'set volume to 0' block on Stage");
+    },
+  },
+  {
+    // CAB-05: the death cue plays out. The arcade stops the flight loop at death (xevious_main.68k 2026) and plays
+    // SOLVALOU_EXPLOSION_SND (2030); the sample ends inside the explosion + forest wait before the next life's start
+    // theme (498). Scratch's only stop is stop-all, so the death-complete handler raises `keep sounds` and the one
+    // transition after death (here player-dead -> respawning) skips every stop-all; the respawning -> playing edge
+    // stops all as before. Observed: the first stop-all after the death cue starts lands two epochs later.
+    key: 'death-cue-survives-the-respawn-edge',
+    // roadmap-evidence: CAB-05 success  (no stop-all cuts the death sound on the death-to-respawn edge)
+    behavior:
+      'When the craft dies the death sound starts, no stop-all runs on the death-to-respawn edge (it would cut the sound), the next stop-all is the respawn-to-playing edge, and the start theme plays for the new life',
+    playtestStep: 5,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      const from = log.length;
+      // One settled pump can run a whole death and respawn back into 'playing', so the death is read from the
+      // sound log (the death cue started), not from the state; seeding stops after the first death so the
+      // re-seeded attacker cannot kill the new life too.
+      const deathCue = () => log.slice(from).some((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      let died = false;
+      for (let i = 0; i < 160 && !died; i += 1) {
+        writeVar(vm, 'invuln', 0);
+        seedCraftHit(vm);
+        step(vm, 1);
+        died = deathCue() || stateOf(vm) !== 'playing';
+      }
+      writeVar(vm, 'invuln', 1);
+      const slotType = readVar(vm, 'slot-type');
+      slotType[63] = 0;
+      let back = false;
+      for (let i = 0; i < 300 && !back; i += 1) {
+        step(vm, 1);
+        if (stateOf(vm) === 'playing') back = true;
+      }
+      step(vm, 3);
+      return { died, back, log: log.slice(from) };
+    },
+    assert(obs) {
+      assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
+      assert.ok(obs.back, 'precondition: the craft respawns into playing');
+      const deathAt = obs.log.findIndex((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      assert.ok(deathAt >= 0, 'the death sound starts');
+      const deathEpoch = obs.log[deathAt].epoch;
+      const nextStop = obs.log.slice(deathAt + 1).find((e) => e.kind === 'stop');
+      assert.ok(nextStop, 'a stop-all runs again once the new life starts');
+      assert.ok(
+        nextStop.epoch >= deathEpoch + 2,
+        `no stop-all on the death-to-respawn edge (death cue at epoch ${deathEpoch}, next stop at ${nextStop.epoch} in ${nextStop.state})`,
+      );
+      assert.ok(
+        obs.log.slice(deathAt + 1).some((e) => e.kind === 'play' && e.sound === 'start'),
+        'the start theme plays for the new life',
+      );
+      assert.deepEqual(obs.log.filter((e) => String(e.sound).startsWith('?')), [], 'every played sound is on its own target');
+    },
+    // roadmap-evidence: CAB-05 failure  (the keep flag never rises, so the respawn edge's stop-all cuts the death sound)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'keep sounds', 0),
+  },
+  {
+    // CAB-05: the initials-entry tune. score_lower_than_entry (xevious_main.68k 1707-1711) plays HIGHEST_SCORE_SND
+    // for a new first place and HIGH_SCORE_SND otherwise. Driven in isolation: no green flag, the entry state and
+    // its rank injected, then the director-enter broadcast fired at the Stage's receiver.
+    key: 'entry-tune-follows-rank',
+    // roadmap-evidence: CAB-05 success  (a first-place entry plays the top-score tune, a lower rank the high-score tune)
+    behavior:
+      'Entering initials for a new first place plays the top-score tune (name_entry_top); entering them for a lower rank plays the high-score tune (name_entry)',
+    playtestStep: 10,
+    async drive(vm) {
+      // One build under test (possibly mutated) for both ranks: leave the entry state between them so the first
+      // tune's loop ends, then re-enter with the other rank.
+      const log = recordSounds(vm);
+      const tuneFor = (row) => {
+        const from = log.length;
+        writeVar(vm, 'game-director-state', 'high-score-entry');
+        writeVar(vm, 'cabinet-entry-row', row);
+        fireBroadcast(vm, 'director enter');
+        step(vm, 2);
+        const played = log.slice(from).filter((e) => e.kind === 'play' && e.target === 'Stage').map((e) => e.sound);
+        writeVar(vm, 'game-director-state', 'frozen');
+        step(vm, 2);
+        return played;
+      };
+      const top = tuneFor(1);
+      const lower = tuneFor(3);
+      return { top, lower };
+    },
+    assert(obs) {
+      assert.ok(obs.top.includes('name_entry_top'), `a first-place entry plays the top-score tune (saw ${obs.top})`);
+      assert.ok(!obs.top.includes('name_entry'), 'a first-place entry does not play the lower tune');
+      assert.ok(obs.lower.includes('name_entry'), `a lower-rank entry plays the high-score tune (saw ${obs.lower})`);
+      assert.ok(!obs.lower.includes('name_entry_top'), 'a lower-rank entry does not play the top-score tune');
+    },
+    // roadmap-evidence: CAB-05 failure  (the rank test never matches first place, so a new top score plays the lower tune)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'entry row', 1, 99),
+  },
+  {
+    // CAB-05: the Andor Genesis drone. The arcade requests ANDOR_GENESIS_SND every frame while the boss descends,
+    // holds or leaves (xevious_main.68k 5392/5404/5436) and never while destroyed (5409). The port replays the
+    // sample once per 53 ticks (its length) from the master's alive branch. Driven deterministically: freeze the
+    // director and tick `update andor master` by hand.
+    key: 'andor-drone-repeats-on-its-period',
+    // roadmap-evidence: CAB-05 success  (the Andor drone restarts once per 53 ticks while alive, never once destroyed)
+    behavior:
+      'While the Andor Genesis is alive its drone starts at once and then restarts only every 53 ticks; once the boss is destroyed the drone is never re-armed',
+    playtestStep: 8,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-genesis-end-flag', 0);
+      writeVar(vm, 'andor-destroyed-timer', 0);
+      writeVar(vm, 'andor-master-x', ANDOR.START_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'audio-andor-drone-timer', 0);
+      const drones = () => log.filter((e) => e.kind === 'play' && e.sound === 'andor_genesis').length;
+      const tick = () => {
+        callProc(vm, 'Stage', 'update andor master');
+        step(vm, 1);
+      };
+      const d0 = drones();
+      tick();
+      const first = { plays: drones() - d0, timer: readVar(vm, 'audio-andor-drone-timer') };
+      const d1 = drones();
+      tick();
+      const second = { plays: drones() - d1, timer: readVar(vm, 'audio-andor-drone-timer') };
+      writeVar(vm, 'andor-destroyed-timer', 1);
+      writeVar(vm, 'audio-andor-drone-timer', 0);
+      const d2 = drones();
+      tick();
+      const destroyed = { plays: drones() - d2, timer: readVar(vm, 'audio-andor-drone-timer') };
+      return { first, second, destroyed };
+    },
+    assert(obs) {
+      assert.equal(obs.first.plays, 1, 'the first alive tick starts the drone');
+      assert.equal(obs.first.timer, 52, 'the drone re-arms for 53 ticks (52 left after its own tick)');
+      assert.equal(obs.second.plays, 0, 'the next tick does not restart the drone');
+      assert.equal(obs.second.timer, 51, 'the drone period counts down one per tick');
+      assert.equal(obs.destroyed.plays, 0, 'a destroyed boss never restarts the drone');
+      assert.equal(obs.destroyed.timer, 0, 'a destroyed boss does not run the drone counter');
+    },
+    // roadmap-evidence: CAB-05 failure  (the period never re-arms, so the drone restarts every tick)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'andor drone timer', 0),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"
@@ -9554,6 +9799,8 @@ export const SCENARIOS = [
 export const EXCLUSIONS = [
   'The bomb flight/explosion duration and true concurrent lockout (timing collapses headless)',
   'Collision-driven death from an enemy or bullet (rendered collision)',
-  "Sprite visibility, layering, a costume's rendered pixels, audio, and overall feel (the digit " +
+  "Sprite visibility, layering, a costume's rendered pixels, and overall feel (the digit " +
     'scenario observes WHICH costume a clone switches to — deterministic state — never how it looks)',
+  'Audible sound: how a cue sounds, how long it rings and whether it finishes inside its state window (the ' +
+    'CAB-05 scenarios observe WHICH cue starts, on which target and against which stop-all — never the audio)',
 ];

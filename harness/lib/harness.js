@@ -4,8 +4,9 @@
 // runs the shipped build in the official scratch-vm with no renderer and reads back
 // game-state variables and clone counts. It can therefore observe deterministic logic
 // (counters, flags, broadcasts, clone allocation) but NOT anything rendered: pixel or
-// sprite collision, visibility, layering, audio, or feel. Those stay the operator's
-// playtest — see harness/README.md and docs/principles.md.
+// sprite collision, visibility, layering, audible sound, or feel. Those stay the operator's
+// playtest — see harness/README.md and docs/principles.md. (Which sound a block STARTS is
+// observable — see recordSounds — but not what it sounds like or how long it rings.)
 //
 // Determinism here is of OUTCOMES, not of pacing. Scenarios assert on pacing-invariant
 // state — ceilings, sticky flags, reachability — plus the project's own fixed-seed RNG.
@@ -62,6 +63,20 @@ export async function loadBuild() {
  */
 export function step(vm, times = 1) {
   for (let i = 0; i < times; i += 1) vm.runtime._step();
+}
+
+/**
+ * CAB-05: like `step`, but hands the JS event loop a turn after each pump so a thread waiting on a promise
+ * (a Scratch volume set — `sound_setvolumeto` returns a promise even with no audio engine) can resume. The
+ * plain synchronous `step` never yields, so such a thread waits forever there; that is harmless to every
+ * other scenario (the attract-mute loop is its own Stage thread), but an audio scenario that watches the
+ * mute must pump with this.
+ */
+export async function stepSettled(vm, times = 1) {
+  for (let i = 0; i < times; i += 1) {
+    vm.runtime._step();
+    await new Promise((done) => setImmediate(done));
+  }
 }
 
 export function greenFlag(vm) {
@@ -151,6 +166,48 @@ export function callProc(vm, scope, proccode) {
     }
   }
   throw new Error(`harness: no procedure '${proccode}' on scope '${scope}'`);
+}
+
+/**
+ * CAB-05: record every sound START, stop-all and volume set from here on. The harness has no audio engine,
+ * so nothing is heard and a play-until-done does not wait — but the primitive CALL is deterministic, so a
+ * scenario can see which cue started, on which target, and in what order against the stop-alls and the
+ * director state. Each entry is { kind: 'play' | 'stop' | 'volume', sound, target, state, epoch, seq }. Assert on
+ * EDGES (a first play, a stop between two plays, a play in some state), never on counts: a looping
+ * play-until-done replays every tick here. Wraps `runtime._primitives` after load, so it must be called
+ * before the green flag.
+ */
+export function recordSounds(vm) {
+  const log = [];
+  const prims = vm.runtime._primitives;
+  const stateOf = () => readVariable(vm, 'Stage', 'game state');
+  const epochOf = () => readVariable(vm, 'Stage', 'state epoch');
+  const soundName = (args, util) => {
+    const menu = args.SOUND_MENU;
+    const sounds = util.target.sprite.sounds;
+    const byName = sounds.find((s) => s.name === String(menu));
+    if (byName) return byName.name;
+    const index = Number(menu);
+    return Number.isInteger(index) && sounds[index - 1] ? sounds[index - 1].name : `?${menu}`;
+  };
+  for (const opcode of ['sound_play', 'sound_playuntildone']) {
+    const original = prims[opcode];
+    prims[opcode] = (args, util) => {
+      log.push({ kind: 'play', sound: soundName(args, util), target: util.target.sprite.name, state: stateOf(), epoch: epochOf(), seq: log.length });
+      return original(args, util);
+    };
+  }
+  const originalStop = prims.sound_stopallsounds;
+  prims.sound_stopallsounds = (args, util) => {
+    log.push({ kind: 'stop', sound: null, target: util.target.sprite.name, state: stateOf(), epoch: epochOf(), seq: log.length });
+    return originalStop(args, util);
+  };
+  const originalVolume = prims.sound_setvolumeto;
+  prims.sound_setvolumeto = (args, util) => {
+    log.push({ kind: 'volume', sound: Number(args.VOLUME), target: util.target.sprite.name, state: stateOf(), epoch: epochOf(), seq: log.length });
+    return originalVolume(args, util);
+  };
+  return log;
 }
 
 /** Count live clones of a sprite (originals excluded). */
