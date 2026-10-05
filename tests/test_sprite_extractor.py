@@ -37,8 +37,9 @@ class SpriteExtractorTests(unittest.TestCase):
         # plus the slice-16 additions — the 4 Bragza fly frames (BOSS-03; the destroyed core's fly-up form,
         # handle_Bragza codes 0xb8..0xbb at CLUT 0x15), plus the slice-20 CAB-05 effects — 74 derivatives
         # rendered from the pin (7 player-explosion and 5 air-explosion frames each flip-expanded x4, 7
-        # ground-explosion frames, 2 crater, 4 crosshair colours, 1 bomb target, 3 bomb codes x 4 colours).
-        self.assertEqual(184, count)
+        # ground-explosion frames, 2 crater, 4 crosshair colours, 1 bomb target, 3 bomb codes x 4 colours),
+        # less the 2 retired rip crater crops (CAB-05: the crater now draws from the pinned render).
+        self.assertEqual(182, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -202,7 +203,6 @@ class SpriteExtractorTests(unittest.TestCase):
             # the shared explosion burst + crater, so it adds no proof crops of its own.
             + [f"sol-tower/rise/{index:02d}" for index in range(1, 8)]
             + [f"logram/open/{index:02d}" for index in range(1, 5)]
-            + [f"crater/idle/{index:02d}" for index in range(1, 3)]
             # GND-06 (slice 13) ground.grobda: the 12 variants share one tank tread set (4 frames).
             + [f"grobda/roll/{index:02d}" for index in range(1, 5)]
             + [f"garu/base/{index:02d}" for index in range(1, 3)]

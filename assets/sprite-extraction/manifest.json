@@ -746,28 +746,6 @@
       "duration_frames": 1
     },
     {
-      "name": "crater/idle/01",
-      "sheet": "ground_enemies",
-      "rect": [170, 48, 12, 12],
-      "canvas": [16, 16],
-      "anchor": [8, 8],
-      "target": "toroid_sprite_proof",
-      "family": "crater",
-      "animation": "idle",
-      "duration_frames": 1
-    },
-    {
-      "name": "crater/idle/02",
-      "sheet": "ground_enemies",
-      "rect": [187, 48, 12, 12],
-      "canvas": [16, 16],
-      "anchor": [8, 8],
-      "target": "toroid_sprite_proof",
-      "family": "crater",
-      "animation": "idle",
-      "duration_frames": 1
-    },
-    {
       "name": "grobda/roll/01",
       "sheet": "ground_enemies",
       "rect": [10, 82, 12, 14],

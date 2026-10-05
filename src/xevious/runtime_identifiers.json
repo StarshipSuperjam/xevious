@@ -1922,6 +1922,11 @@
       "name": "entry epoch",
       "scope": "solv_death"
     },
+    "solv-death-explosion-tick": {
+      "kind": "variable",
+      "name": "explosion tick",
+      "scope": "solv_death"
+    },
     "solvalou-director-entry-epoch": {
       "kind": "variable",
       "name": "entry epoch",

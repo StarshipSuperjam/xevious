@@ -250,6 +250,38 @@ function groundCloneEffect(vm, scratchSlot, effect = 'color') {
   return null;
 }
 
+/** CAB-05: a render clone's costume and visibility by the slot it is bound to (its sprite-local
+ * `<sprite> clone slot`). Size is not read: headless scratch-vm stores a size only with a renderer attached, so
+ * the one-scale rule is pinned structurally (test_scratch_project `_cab05_explosion_failures`). */
+function cloneRender(vm, spriteName, slotVarId, scratchSlot) {
+  const slotName = variable(slotVarId).name;
+  for (const c of vm.runtime.targets) {
+    if (c.isStage || c.isOriginal || !c.sprite || c.sprite.name !== spriteName) continue;
+    const bound = Object.values(c.variables).find((v) => v.name === slotName);
+    if (bound && Number(bound.value) === scratchSlot) {
+      const costume = c.sprite.costumes[c.currentCostume];
+      return { costume: costume ? costume.name : null, visible: c.visible };
+    }
+  }
+  return null;
+}
+/** CAB-05: the flip costume suffix for the attr flip bits v (0..3) — bit 3 mirrors left-to-right on the rotated
+ * screen (amiga.68k ~2613), so v=1 is the y costume and v=2 the x costume. */
+const FLIP_SUFFIX = ['none', 'y', 'x', 'xy'];
+/** Turn an operator_mod `<x> mod 4` on a sprite into `<x> mod 1` (every flip collapses to none). */
+function collapseFlipMod(p, spriteName) {
+  const t = p.targets.find((x) => x.name === spriteName);
+  let patched = 0;
+  for (const b of Object.values(t.blocks)) {
+    const rhs = b.opcode === 'operator_mod' && b.inputs.NUM2 && b.inputs.NUM2[1];
+    if (Array.isArray(rhs) && String(rhs[1]) === '4') {
+      b.inputs.NUM2 = [1, [4, '1']];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'mod 4' on ${spriteName}`);
+}
+
 export const SCENARIOS = [
   {
     key: 'shot-cap-ceiling',
@@ -7341,7 +7373,7 @@ export const SCENARIOS = [
   {
     // Slice-15 PR-1: render-equivalence of the shared ground pool. Each ground clone reads its slot's live
     // `slot type` and dispatches to that family's costume subtree, with the family's costume ordinals rebased
-    // into ONE combined 129-costume list (GROUND_FAMILY_OFFSETS via _sw). The correctness crux (the riskiest
+    // into ONE combined costume list (GROUND_FAMILY_OFFSETS via _sw; 154 costumes since CAB-05). The correctness crux (the riskiest
     // seam in the plan) is that a clone on a slot of family X shows a costume from X's OWN band — a wrong
     // offset would send it into another family's costumes. This drives live play and, for every ACTIVE ground
     // slot whose clone is drawn, asserts the clone's current costume belongs to that slot type's family.
@@ -7415,11 +7447,12 @@ export const SCENARIOS = [
         'a Logram (a non-zero-offset family) was observed rendering through the shared pool (non-vacuous)',
       );
     },
-    // Zero the Logram family's costume-ordinal offset (39) in the combined list, so every Logram clone
+    // Zero the Logram family's costume-ordinal offset (36 since CAB-05's 7-frame ground explosion) in the
+    // combined list, so every Logram clone
     // switches into the WRONG (Barra) band instead of logram/open — the exact class of bug the per-family
     // ordinal rebase risks. Logram still dispatches and shows (visible), so it is observed with a wrong
     // costume and the no-mismatch assertion goes red.
-    negativeMutation: (p) => mutate.changeAddLiteral(p, 'ground', '39', '0'),
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'ground', '36', '0'),
   },
   {
     // BOSS-01 / andor.lifecycle (#94): the arrival state machine (handle_4B_Andor_Genesis, xevious_main.68k
@@ -8033,7 +8066,8 @@ export const SCENARIOS = [
   {
     // BOSS-03 / andor.core-destruction (#96): bombing the core (ACTIVE, worth 4,000) scores 4,000 once through
     // the shared ground detector and marks it HIT; the core then bursts in place under `update andor part` and,
-    // when its burst finishes (floor(slot timer / 8) >= EXPLODE_COSTUME_COUNT, i.e. timer >= 64), CONVERTS in
+    // when its burst finishes (CAB-05: the 7-code explosion at 4 frames a code, floor(slot timer / 4) >= 7, i.e.
+    // timer >= 28 — `gun_port_explosion` xevious_main.68k:5715-5749), CONVERTS in
     // place to the indestructible fly-up Bragza (ANDOR_BRAGZA_TYPE + immune sentinel) — faithful to
     // andor_genesis_core_hit waiting for `_STATE==4` before the conversion (xevious_main.68k:5475-5491).
     key: 'andor-core-bomb-scores-and-destroys',
@@ -8070,11 +8104,11 @@ export const SCENARIOS = [
       step(vm, 1);
       const reScoreDelta = readVar(vm, 'eco-score') - reScore0;
       // Burst then convert: drive `update andor part` on the core; the burst clock climbs 2/tick, and the core
-      // converts on the tick floor(timer/8) >= 8 (timer 64 -> 32 ticks).
+      // converts on the tick floor(timer/4) >= 7 (timer 28 -> 14 ticks).
       put('slot-timer', CORE, 0); // the detector zeroed the burst clock on the hit tick
       writeVar(vm, 'slot-index', 15); // Scratch 1-based core slot
       const snaps = [];
-      for (let t = 0; t < 32; t += 1) {
+      for (let t = 0; t < 14; t += 1) {
         callProc(vm, 'Stage', 'update andor part');
         step(vm, 1);
         snaps.push({
@@ -8090,11 +8124,11 @@ export const SCENARIOS = [
       assert.equal(obs.scoreDelta, obs.award, 'bombing the core scores exactly 4,000 once (shared ground detector)');
       assert.equal(obs.hitState, 2, 'the bombed core is marked HIT (state 2), so it cannot re-score');
       assert.equal(obs.reScoreDelta, 0, 'a second bomb on the HIT core scores nothing');
-      const mid = obs.snaps[30]; // tick 31: timer 62, still bursting as the core
+      const mid = obs.snaps[12]; // tick 13: timer 26, still bursting as the core
       assert.equal(mid.type, 74, 'mid-burst the core is still the core (type 0x4A)');
       assert.equal(mid.state, 2, 'mid-burst the core is still HIT (bursting)');
-      assert.equal(mid.timer, 62, 'the burst clock counts 2 frames/tick');
-      const done = obs.snaps[31]; // tick 32: timer reaches 64 -> burst finishes -> convert
+      assert.equal(mid.timer, 26, 'the burst clock counts 2 frames/tick');
+      const done = obs.snaps[13]; // tick 14: timer reaches 28 -> the 28-frame burst finishes -> convert
       assert.equal(done.type, 76, 'the finished core CONVERTS to the fly-up Bragza (ANDOR_BRAGZA_TYPE 0x4C)');
       assert.equal(done.state, 3, 'the converted Bragza carries the immune sentinel (never re-bombable)');
     },
@@ -9705,6 +9739,154 @@ export const SCENARIOS = [
     },
     // roadmap-evidence: CAB-05 failure  (the keep flag never rises, so the respawn edge's stop-all cuts the death sound)
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'keep sounds', 0),
+  },
+  {
+    // CAB-05: the air explosion is the arcade's own (`flying_enemy_hit`, xevious_main.68k 4865-4896): codes 70, 71,
+    // then the 2x2 74/78/7C, a phase every 4 frames (TIMER>>2), with the flip bits taken from TIMER&3 every frame
+    // (4883-4887), the 2x2 art carrying the growth (its one scale is pinned structurally). Driven with the Stage's scripts halted so the
+    // walk cannot advance or free the seeded slot: each step only lets the Toroid render clone draw it.
+    key: 'air-explosion-frames-and-flips',
+    // roadmap-evidence: CAB-05 success  (a shot Toroid draws air-explosion phase TIMER>>2 with the TIMER&3 flip)
+    behavior:
+      'A shot Toroid draws the arcade air explosion: phase floor(timer / 4) of the five, mirrored by the timer\'s low bits (none at timer 0 mod 4, mirrored left-to-right at 2 mod 4)',
+    playtestStep: 3,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // director enter creates the render clones
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage()); // halt the walk: the seeded slot holds still
+      const slot = 58; // JS index; Scratch flying slot 59
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 10); // TOROID_TYPE
+      put('slot-state', 2); // SLOT_HIT
+      put('slot-x', 20 * 256); // row 20, inside the window
+      put('slot-y', 15 * 256);
+      const frames = [];
+      for (const timer of [0, 2, 4, 6, 8, 10, 14, 18]) {
+        put('slot-timer', timer);
+        step(vm, 1);
+        frames.push({ timer, ...cloneRender(vm, 'toroid', 'toroid-clone-slot', slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const want = `air-explosion/burst/${String(Math.floor(f.timer / 4) + 1).padStart(2, '0')}/${FLIP_SUFFIX[f.timer % 4]}`;
+        assert.equal(f.visible, true, `the exploding Toroid is drawn at timer ${f.timer}`);
+        assert.equal(f.costume, want, `timer ${f.timer} draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the explosion never mirrors, so timer 2 mod 4 draws the unflipped frame)
+    negativeMutation: (p) => collapseFlipMod(p, 'toroid'),
+  },
+  {
+    // CAB-05: the ground explosion is the arcade's own (`handle_bomb_explosion`, xevious_main.68k 4904-4951): codes
+    // 60 61 64 68 6C 62 63 a step every 8 frames, then the crater A6/A7 flickering every 4 frames. Driven like the
+    // air scenario, with the walk halted, on a bombed Barra in the shared ground pool.
+    key: 'ground-explosion-frames-then-crater',
+    // roadmap-evidence: CAB-05 success  (a bombed Barra draws the 7 ground-explosion frames on its clock, then the 2-frame crater)
+    behavior:
+      'A bombed Barra draws the arcade ground explosion — frame floor(timer / 8) of the seven — and from timer 56 the crater, alternating its two frames every 4 frames',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      const slot = 1; // JS index; Scratch ground slot 2
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 30); // BARRA_TYPE
+      put('slot-state', 2); // SLOT_HIT
+      put('slot-x', 20 * 256);
+      put('slot-y', 3000);
+      const frames = [];
+      for (const timer of [0, 8, 24, 48, 54, 56, 60]) {
+        put('slot-timer', timer);
+        step(vm, 1);
+        frames.push({ timer, ...cloneRender(vm, 'ground', 'ground-clone-slot', slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const want =
+          f.timer < 56
+            ? `ground-explosion/burst/${String(Math.floor(f.timer / 8) + 1).padStart(2, '0')}`
+            : `ground-crater/flicker/0${(Math.floor(f.timer / 4) % 2) + 1}`;
+        assert.equal(f.visible, true, `the bombed Barra is drawn at timer ${f.timer}`);
+        assert.equal(f.costume, want, `timer ${f.timer} draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the ground step stretched to 16 frames, timer 8 still draws the first frame)
+    negativeMutation: (p) => mutate.changeDivideLiteral(p, 'ground', 8, 16),
+  },
+  {
+    // CAB-05: the player explosion is the arcade's own (`explode_solvalou`, xevious_main.68k 2034-2075): codes C0 C1
+    // C4 C8 C2 C3 CC a step every 8 frames (4 ticks), flipped by `countup & 0x0C` (a new flip every 4 frames = 2
+    // ticks), then the 32-frame pause with the craft cleared (`finish_solvalou_exploding` 2079-2090), so nothing
+    // is drawn. Every sample is checked against the frame its own tick count selects.
+    key: 'player-explosion-frames-flips-then-hidden',
+    // roadmap-evidence: CAB-05 success  (the dying craft draws the 7 player-explosion steps with their flips, then vanishes for the pause)
+    behavior:
+      'When the craft dies the death sprite draws the arcade player explosion — step tick // 4 of the seven, its flip changing every 2 ticks through none, mirrored top-to-bottom, mirrored left-to-right and both — then is hidden for the pause before the respawn',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      writeVar(vm, 'eco-craft', 9999);
+      // Headless, one settled step runs the whole death (no renderer, so no redraw ends the step early), so the
+      // death sprite's own costume and visibility changes are logged as they happen, each with the explosion
+      // tick it was drawn at and the director state.
+      const death = vm.runtime.getSpriteTargetByName('solv_death');
+      const log = [];
+      const tick = () => Number(readVar(vm, 'solv-death-explosion-tick'));
+      const setCostume = death.setCostume.bind(death);
+      death.setCostume = (i) => {
+        setCostume(i);
+        log.push({ kind: 'costume', name: death.getCostumes()[death.currentCostume].name, tick: tick(), state: stateOf(vm) });
+      };
+      const setVisible = death.setVisible.bind(death);
+      death.setVisible = (v) => {
+        setVisible(v);
+        log.push({ kind: 'visible', visible: Boolean(v), tick: tick(), state: stateOf(vm) });
+      };
+      let died = false;
+      for (let i = 0; i < 160 && !died; i += 1) {
+        writeVar(vm, 'invuln', 0);
+        seedCraftHit(vm);
+        step(vm, 1);
+        died = log.some((e) => e.kind === 'costume' && e.name.startsWith('player-explosion/'));
+      }
+      writeVar(vm, 'invuln', 1);
+      readVar(vm, 'slot-type')[63] = 0;
+      for (let i = 0; i < 300 && stateOf(vm) !== 'playing'; i += 1) step(vm, 1);
+      return { died, back: stateOf(vm) === 'playing', log };
+    },
+    assert(obs) {
+      assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
+      assert.ok(obs.back, 'precondition: the craft respawns into playing');
+      const frames = obs.log.filter((e) => e.kind === 'costume' && e.name.startsWith('player-explosion/'));
+      assert.equal(frames.length, 28, `the explosion draws 28 ticks (7 steps x 4), got ${frames.length}`);
+      const flips = new Set();
+      frames.forEach((e, k) => {
+        const want = `player-explosion/burst/0${Math.floor(k / 4) + 1}/${FLIP_SUFFIX[Math.floor(k / 2) % 4]}`;
+        assert.equal(e.tick, k, `the explosion's tick ${k} is drawn in order`);
+        assert.equal(e.name, want, `explosion tick ${k} draws ${want}`);
+        flips.add(want.split('/').pop());
+      });
+      assert.ok(flips.has('x') && flips.has('y') && flips.has('xy'), `the explosion flips both ways (${[...flips]})`);
+      const last = obs.log.lastIndexOf(frames[frames.length - 1]);
+      const after = obs.log.slice(last + 1).filter((e) => e.state === 'player-dead');
+      assert.ok(after.length > 0 && after[0].kind === 'visible' && !after[0].visible, 'the craft is hidden as the explosion ends');
+      assert.ok(
+        after.every((e) => e.kind === 'visible' && !e.visible),
+        'nothing of the craft is drawn for the rest of the death pause',
+      );
+    },
+    // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the dying craft never mirrors)
+    negativeMutation: (p) => collapseFlipMod(p, 'solv_death'),
   },
   {
     // CAB-05: the initials-entry tune. score_lower_than_entry (xevious_main.68k 1707-1711) plays HIGHEST_SCORE_SND

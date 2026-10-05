@@ -362,7 +362,9 @@ class ScratchProjectTests(unittest.TestCase):
         # + the slice-20 CAB-05 effects sheet (tools/effects_sprite_render.py) on the sprite_sheets library and
         # its 74 derivatives on the proof pen (the three explosions with flip states, crater, crosshair colours,
         # bomb target, bomb codes x colours). 262 + 1 + 74 = 337.
-        self.assertEqual(337, len(assets))
+        # - the 2 slice-20 CAB-05 retired rip crater crops: the ground families now draw the pinned crater render
+        # (solv_death's historical explode_01..08 stay as preserved baseline content). 337 - 2 = 335.
+        self.assertEqual(335, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -372,19 +374,24 @@ class ScratchProjectTests(unittest.TestCase):
         # grows the hit boss parts by the shared explosion burst so they animate on death (andor-port +8,
         # andor-core +8) and adds the destroyed core's 4-frame Bragza, so the Andor block is now andor-armor
         # 129 (9), andor-port 138 (4 idle + 8 burst = 12), andor-core 150 (4 idle + 8 burst = 12), andor-bragza
-        # 162 (4) -> 166 total. scratch-vm's SB3 loader
+        # 162 (4) -> 166 total. Slice-20 CAB-05 swaps the 8-frame solv_death stand-in burst for the 7-frame
+        # ground explosion rendered from the pin (`handle_bomb_explosion` 4904-4951) and the rip crater pair for
+        # the pinned crater, so every burst-carrying slice is one shorter: barra 0 (10), sol-tower 10 (16),
+        # garu 26 (10), logram 36 (13), zolbak 49 (10), derota 59 (10), garu derota 69 (10), boza 79 (14),
+        # grobda 93 (13), domogram 106 (13) -> 119, then andor-armor 119 (9), andor-port 128 (4 + 7 = 11),
+        # andor-core 139 (4 + 7 = 11), andor-bragza 150 (4) -> 154 total. scratch-vm's SB3 loader
         # enforces uniqueItems on a target's costumes array: two byte-identical costume OBJECTS are legal
-        # across separate targets but NOT within one, and the families share many crops by ref (the solv_death
-        # burst, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
+        # across separate targets but NOT within one, and the families share many crops by ref (the ground
+        # explosion, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
         # pins the merge-safety contract at the pytest level too (the loader failure only surfaced in the full
-        # harness before): the combined list is 166 costumes, no two costume OBJECTS are identical, and every
+        # harness before): the combined list is 154 costumes, no two costume OBJECTS are identical, and every
         # NAME is unique — later duplicates are disambiguated with a " #<family>" suffix while each name's first
         # occurrence stays canonical, so the renderer's by-name switch_costume still resolves to the right crop.
         project, _project_bytes, _assets = scratch.validate_source()
         ground = next(t for t in project["targets"] if t.get("name") == "ground")
         costumes = ground["costumes"]
         self.assertEqual(
-            166, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
+            154, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
         )
         objects = [json.dumps(c, sort_keys=True) for c in costumes]
         self.assertEqual(
@@ -444,6 +451,15 @@ class ScratchProjectTests(unittest.TestCase):
         source_solvalou["costumes"] = source_solvalou["costumes"][
             :len(original_solvalou["costumes"])
         ]
+        # CAB-05: solv_death keeps its historical explode_01..08 in place (preserved, no longer selected) and
+        # appends the pinned player explosion after them, so only the original prefix is historical content.
+        original_death = next(t for t in original["targets"] if t["name"] == "solv_death")
+        source_death = next(t for t in historical_targets if t["name"] == "solv_death")
+        self.assertEqual(
+            [c["name"] for c in source_death["costumes"][len(original_death["costumes"]):]][:1],
+            ["player-explosion/burst/01/none"],
+        )
+        source_death["costumes"] = source_death["costumes"][:len(original_death["costumes"])]
         changed_scripts = {
             "Stage",
             "solvalou",
@@ -19265,12 +19281,31 @@ class ScratchProjectTests(unittest.TestCase):
         if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
             fails.add("B4-glide")
 
-        # B5/B10 — tick-counted explosion holds then the post-death pause; no waits.
-        if (
-            count("solv_death", "control_repeat", director.EXPLOSION_HOLD_TICKS)
-            != director.EXPLOSION_STEPS
-        ):
+        # B5/B10 — the tick-counted explosion then the post-death pause; no waits. CAB-05: the explosion is ONE
+        # repeat of exactly its 7 x 4 ticks that picks a costume every tick, and the craft is hidden (straight
+        # after it) for the pause — `finish_solvalou_exploding` clears its STATE (xevious_main.68k 2079-2090).
+        death = blocks["solv_death"]
+        explosion_loops = [
+            b
+            for b in death.values()
+            if b["opcode"] == "control_repeat"
+            and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS
+        ]
+        if len(explosion_loops) != 1 or death.get(
+            (explosion_loops[0]["inputs"].get("SUBSTACK") or [None, None])[1], {}
+        ).get("opcode") != "looks_switchcostumeto":
             fails.add("B5B10-explosion")
+        else:
+            after = death.get(explosion_loops[0]["next"])
+            pause = death.get(after["next"]) if after else None
+            if (
+                after is None
+                or after["opcode"] != "looks_hide"
+                or pause is None
+                or pause["opcode"] != "control_repeat"
+                or num(pause["inputs"].get("TIMES")) != director.POST_DEATH_PAUSE_TICKS
+            ):
+                fails.add("CAB05-death-hidden-pause")
         if count("solv_death", "control_repeat", director.POST_DEATH_PAUSE_TICKS) != 1:
             fails.add("B5B10-pause")
         if count("solv_death", "control_wait") != 0:
@@ -19559,14 +19594,19 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_b", lambda b: b["opcode"] == "event_whenbroadcastreceived")
             b["fields"]["BROADCAST_OPTION"][0] = "bomb"
 
-        def break_explosion_holds(p):  # B5: shorten one explosion hold
-            b = first(
+        def explosion_loop(p):
+            return first(
                 p,
                 "solv_death",
                 lambda b: b["opcode"] == "control_repeat"
-                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_HOLD_TICKS,
+                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS,
             )
-            b["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_HOLD_TICKS + 1]]
+
+        def break_explosion_holds(p):  # B5: lengthen the explosion by a tick
+            explosion_loop(p)["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + 1]]
+
+        def show_through_pause(p):  # CAB-05: leave the last explosion frame drawn over the pause
+            blocks_of(p, "solv_death")[explosion_loop(p)["next"]]["opcode"] = "looks_show"
 
         def break_bomb_arm(p):  # B2: fail to set the in-flight guard on arm (now Stage-owned)
             b = first(
@@ -19593,6 +19633,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("B3-wall-clock-area_01a", free_running_terrain),
             ("B4-glide", break_title_glide),
             ("B5B10-explosion", break_explosion_holds),
+            ("CAB05-death-hidden-pause", show_through_pause),
             ("B5B10-pause", break_death_pause),
             ("B6-crosshair-costume", break_crosshair_costume),
             ("B6-crosshair-not-receiver", couple_crosshair_to_bomb),
@@ -19616,6 +19657,139 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
+
+    CAB05_AIR_EXPLOSION_TARGETS = (
+        director.TOROID_TARGET,
+        director.TERRAZI_TARGET,
+        director.KAPI_TARGET,
+        director.TORKAN_TARGET,
+        director.ZOSHI_TARGET,
+        director.JARA_TARGET,
+        director.ZAKATO_TARGET,
+        director.GIDDO_SPARIO_TARGET,
+        director.BRAG_SPARIO_TARGET,
+        director.GARU_ZAKATO_TARGET,
+    )
+
+    def _cab05_explosion_failures(self, project: dict) -> set[str]:
+        """CAB-05 explosion art as a static contract (docs/mechanics/055): the three explosion families are the
+        pinned renders laid out in the order their renderers index — the player explosion's 7 steps and the air
+        explosion's 5 phases each as four flip costumes none/x/y/xy (the order `_flip_costume_offset` maps the
+        attr flip bits onto), the ground explosion as 7 frames then the 2-frame crater — every air family
+        draws its explosion at its one shared scale (the art carries the 2x2 growth, so nothing doubles), and
+        the retired solv_death stand-in burst is drawn by no one."""
+        targets = {t["name"]: t for t in project["targets"]}
+        num = self._numeric
+        fails: set[str] = set()
+        flips = ("none", "x", "y", "xy")
+
+        def names(target):
+            return [c.get("name") for c in targets[target]["costumes"]]
+
+        air = [f"air-explosion/burst/{phase:02d}/{flip}" for phase in range(1, 6) for flip in flips]
+        for target in self.CAB05_AIR_EXPLOSION_TARGETS:
+            listed = names(target)
+            if air[0] not in listed or listed[listed.index(air[0]):] != air:
+                fails.add(f"air-layout-{target}")
+            sizes = {
+                num(b["inputs"].get("SIZE"))
+                for b in targets[target]["blocks"].values()
+                if b["opcode"] == "looks_setsizeto"
+            }
+            if len(sizes) != 1:
+                fails.add(f"air-one-size-{target}")
+
+        player = [f"player-explosion/burst/{step:02d}/{flip}" for step in range(1, 8) for flip in flips]
+        base = director.PLAYER_EXPLOSION_BASE_ORDINAL - 1
+        if names("solv_death")[base:] != player:
+            fails.add("player-layout")
+
+        # Every ground-explosion run in the shared pool is the 7 frames in order (a family's " #<family>"
+        # duplicates included); every crater run follows a burst and is the 2-frame flicker.
+        ground = [n.split(" #")[0] for n in names("ground")]
+        burst = [f"ground-explosion/burst/{frame:02d}" for frame in range(1, 8)]
+        starts = [i for i, n in enumerate(ground) if n == burst[0]]
+        if not starts or any(ground[i:i + len(burst)] != burst for i in starts):
+            fails.add("ground-layout")
+        if any(n.startswith("ground-explosion/") for i, n in enumerate(ground) if not any(s <= i < s + 7 for s in starts)):
+            fails.add("ground-layout")
+        for i, n in enumerate(ground):
+            if n == "ground-crater/flicker/01" and (
+                ground[i - 1] != burst[-1] or ground[i + 1:i + 2] != ["ground-crater/flicker/02"]
+            ):
+                fails.add("ground-crater")
+
+        for name, target in targets.items():
+            if name != "solv_death" and any(str(n).startswith("explode_") for n in names(name)):
+                fails.add(f"stand-in-burst-{name}")
+        return fails
+
+    def test_cab05_explosion_art_contract(self) -> None:
+        # The renderers' arithmetic rests on these: 4 flip costumes per frame, the player flip every 2 ticks
+        # (`countup & 0x0C`, xevious_main.68k 2072-2073), the ground burst's 7 codes, and the Andor parts'
+        # 4-frame `gun_port_explosion` cadence (5715-5749).
+        self.assertEqual(4, director.AIR_EXPLOSION_FLIP_COSTUMES)
+        self.assertEqual(4, director.PLAYER_EXPLOSION_FLIP_COSTUMES)
+        self.assertEqual(2, director.PLAYER_EXPLOSION_FLIP_TICKS)
+        self.assertEqual(9, director.PLAYER_EXPLOSION_BASE_ORDINAL)
+        self.assertEqual(7, director.GROUND_EXPLOSION_FRAME_COUNT)
+        self.assertEqual(4, director.ANDOR_EXPLOSION_PHASE_FRAMES)
+        self.assertEqual(4, director.TOROID_EXPLOSION_PHASE_FRAMES)
+        self.assertFalse(hasattr(director, "TOROID_EXPLODE_SIZE"), "the air explosion no longer doubles its scale")
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_explosion_failures(project))
+        # The death sprite never steps costumes blindly any more — every frame is computed from the tick.
+        death = next(t for t in project["targets"] if t["name"] == "solv_death")["blocks"]
+        self.assertNotIn("looks_nextcostume", {b["opcode"] for b in death.values()})
+
+    def test_cab05_explosion_art_contract_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_explosion_failures(base))
+
+        def target(p, name):
+            return next(t for t in p["targets"] if t["name"] == name)
+
+        def swap_air_flips(p):  # the y and x flip costumes of one phase swapped (the axis mix-up)
+            costumes = target(p, director.TOROID_TARGET)["costumes"]
+            i = next(i for i, c in enumerate(costumes) if c["name"] == "air-explosion/burst/03/x")
+            costumes[i], costumes[i + 1] = costumes[i + 1], costumes[i]
+
+        def double_air_explosion(p):  # the old 2x big-phase scale brought back on one family
+            blocks = target(p, director.KAPI_TARGET)["blocks"]
+            b = next(b for b in blocks.values() if b["opcode"] == "looks_setsizeto")
+            b["inputs"]["SIZE"] = [1, [4, 2 * self._numeric(b["inputs"]["SIZE"])]]
+
+        def drop_player_step(p):  # one player-explosion step lost
+            costumes = target(p, "solv_death")["costumes"]
+            del costumes[director.PLAYER_EXPLOSION_BASE_ORDINAL - 1 + 8]
+
+        def short_ground_burst(p):  # one family's burst a frame short
+            costumes = target(p, "ground")["costumes"]
+            i = next(i for i, c in enumerate(costumes) if c["name"] == "ground-explosion/burst/04 #logram")
+            del costumes[i]
+
+        def stray_crater(p):  # the crater no longer straight after the burst
+            costumes = target(p, "ground")["costumes"]
+            i = next(i for i, c in enumerate(costumes) if c["name"] == "ground-crater/flicker/01 #zolbak")
+            costumes.insert(i, copy.deepcopy(costumes[0]))
+
+        def stand_in_back(p):  # an air family drawing the retired solv_death burst again
+            target(p, director.JARA_TARGET)["costumes"].append(
+                copy.deepcopy(target(p, "solv_death")["costumes"][0])
+            )
+
+        cases = [
+            (f"air-layout-{director.TOROID_TARGET}", swap_air_flips),
+            (f"air-one-size-{director.KAPI_TARGET}", double_air_explosion),
+            ("player-layout", drop_player_step),
+            ("ground-layout", short_ground_burst),
+            ("ground-crater", stray_crater),
+            (f"stand-in-burst-{director.JARA_TARGET}", stand_in_back),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._cab05_explosion_failures(project), f"corruption '{label}' was not caught")
 
     def _pres01_framing_failures(self, project: dict) -> set[str]:
         """PRES-01 playfield framing as a static contract (docs/mechanics/053): no border sprites; every
@@ -20060,8 +20234,16 @@ class ScratchProjectTests(unittest.TestCase):
             fails.add("PRES01-attract-grid")
 
         # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
-        # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25.
-        for name in ("solvalou", "blaster", "target_a", "target_b", "bomb", "solv_death"):
+        # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25. CAB-05: the
+        # death sprite draws only the pinned player explosion (resolution 1), so it sets the shared sprite scale.
+        death_sizes = [
+            (as_num(num(b["inputs"].get("SIZE"))), top_of(targets["solv_death"]["blocks"], bid))
+            for bid, b in targets["solv_death"]["blocks"].items()
+            if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+        ]
+        if death_sizes != [(director.SPRITE_RENDER_SIZE, "event_whenflagclicked")]:
+            fails.add("PRES01-sprite-size")
+        for name in ("solvalou", "blaster", "target_a", "target_b", "bomb"):
             bl = targets[name]["blocks"]
             found = [
                 (as_num(num(b["inputs"].get("SIZE"))), top_of(bl, bid))
@@ -20836,7 +21018,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "499a399950ec2c0da3db554fe36554cd57157bd9f595f7b8a516a5dbd28491d5",
+            "6ff009f373532aa40af0fd0fc1a96bf8196bd7ab52724c5162bb8c9cfbf386f6",
             build_hash,
         )
 

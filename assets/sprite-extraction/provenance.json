@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "dd1d9b6ebe27fcb6b719d3ec5c494faed208689342fabd6d29231318545b8a44",
+  "manifest_sha256": "f95ad7ca008a5619d987f3d83e51d1ebe1d87d9fe67dc189e02379123ade8702",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -1456,54 +1456,6 @@
         58,
         13,
         13
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1
-    },
-    "b07fb7052b32ea9332a0c62bb1a0207c.png": {
-      "frame": "crater/idle/01",
-      "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        170,
-        48,
-        12,
-        12
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1
-    },
-    "78e7e9e2773a3391238a1a99b8845c86.png": {
-      "frame": "crater/idle/02",
-      "target": "toroid_sprite_proof",
-      "source_asset": "f403a157b02a3f785d8ab4e2bfcc0e43.png",
-      "source_sha256": "bfcb48cb942c959bfcf482f86dca7c9a98f36d58913fb09133ee6529f0c566cf",
-      "source": "The Spriters Resource: Xevious (Arcade), Ground Enemies — https://www.spriters-resource.com/arcade/xevious/asset/42385/",
-      "credit": "CrazyCarl",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        187,
-        48,
-        12,
-        12
       ],
       "canvas": [
         16,
@@ -4474,7 +4426,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "54c101dcb2ee0867d03f374c8380bfa383768efebcad1acbdf0f175205cde217",
+    "sha256": "2a120f4c3c6208a68294443b8b8b4c2f87829a463fd074463763562de55c7340",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -4537,8 +4489,6 @@
       "logram/open/02",
       "logram/open/03",
       "logram/open/04",
-      "crater/idle/01",
-      "crater/idle/02",
       "grobda/roll/01",
       "grobda/roll/02",
       "grobda/roll/03",
