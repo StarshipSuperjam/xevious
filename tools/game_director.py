@@ -2720,11 +2720,22 @@ BACURA_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px s
 BACURA_TUMBLE_FRAMES = 8  # bacura/slab/01..08 — the tumble cycle (bacura_sprite_tbl has 8 entries)
 BACURA_TUMBLE_UNITS_PER_FRAME = 128  # slot-x units per frame flip: (_X>>7) => /128 (arcade lsr#6 + and#0x0e)
 # The slab is a 1x2 sprite (bacura_sprite_tbl "sprite size is 1x2"): sprite_draw_double_height (amiga.68k
-# 2534-2540) draws one 16-px tile at the object's own position and the second 16 px further toward screen-right,
+# 2546-2552) draws one 16-px tile at the object's own position and the second 16 px further toward screen-right,
 # so the 32-px slab's centre sits 8 arcade px right of a 16-px sprite's centre at the same position. Both Bacura
 # hit windows are lopsided the same way (craft [-12, 27], shot [-8, 23] px, centred ~+8). The costume's rotation
 # centre is the slab's middle, so the renderer shifts it 8 px * 1.25 = 10 stage units right (screen-right is -Y).
 BACURA_SLAB_X_OFFSET = round(8 * ARCADE_STAGE_PER_PX)  # 10
+# A 2x2 sprite (_ATTR=3) is drawn by sprite_draw_double_width_and_height (amiga.68k 2529-2544): four 16-px tiles
+# at the object's position and 16 px toward screen-right and screen-down, so its 32-px picture's centre sits 8
+# arcade px right of AND 8 px below a 16-px sprite's centre at the same position. The Garu Barra / Garu Derota
+# bases (handle_20/21 `_ATTR=3`, codes 0x48/0x44 fill the whole 32x32 box) use centre-anchored 32x32 costumes,
+# so the renderer shifts a base 10 stage units right and 10 down.
+DOUBLE_TILE_STAGE_OFFSET = round(8 * ARCADE_STAGE_PER_PX)  # 10
+# The Garu node (1x1) sits one cell below and one cell right of its base (handle_20_Garu_Barra /
+# handle_21_Garu_Derota: node `_X` MSB = 0x01, node `_Y` = base `_Y` - 0x0100), which centres the 16-px top on
+# the 32-px base. Slot x grows down the screen and slot y grows LEFT, so: +1 cell in slot x, -1 cell in slot y.
+GARU_NODE_SLOT_X = SLOT_UNITS_PER_CELL  # 256
+GARU_NODE_SLOT_Y_DELTA = -SLOT_UNITS_PER_CELL  # -256
 
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
@@ -9281,11 +9292,11 @@ def _ground_seed_garu(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) ->
     # destructible pyramid top (state ACTIVE, 300 pts, arcade _CODE=0x17 = the Barra pyramid, barra/idle) that
     # you bomb AWAY to expose the flashing base. Both scroll at the shared terrain rate.
     #
-    # Port necessity (centre-anchor): the arcade node carries absolute offsets _X=+0x0100 (+1 cell) and
-    # _Y=base_Y-0x0100 only to re-centre a CORNER-anchored node inside a corner-anchored 2x2 base. The port's
-    # go_expr places every sprite by its CENTRE, so that corner-centring must become a ZERO relative offset:
-    # the node is seeded on the base's own cell (slot x = 0, same slot y) so the pyramid top sits centred on
-    # the flashing base — offsetting it instead makes the top poke out a corner ("doubling").
+    # Placement (faithful): the node is seeded where the arcade puts it, one cell below and one cell right of
+    # the base (node _X MSB = 0x01, _Y = base_Y - 0x0100), so its drawn, bomb-hit and burst position is the
+    # arcade's. The 2x2 base draws 8 px right and down of a 16-px sprite at its own position, so the renderer
+    # shifts the base by DOUBLE_TILE_STAGE_OFFSET and the top sits centred on it. (An earlier port seeded the
+    # node on the base's cell and drew the base unshifted: centred, but both 8 px up-left of the arcade.)
     return [
         blocks.list_replace("slot type", SLOT_TYPE_ID, slot(), type_val()),
         blocks.list_replace("slot state", SLOT_STATE_ID, slot(), number(SLOT_GARU_BASE)),
@@ -9298,12 +9309,14 @@ def _ground_seed_garu(blocks: Blocks, *, slot, slot_next, type_val, sprite_y) ->
         ),
         blocks.list_replace("slot type", SLOT_TYPE_ID, slot_next(), type_val()),
         blocks.list_replace("slot state", SLOT_STATE_ID, slot_next(), number(SLOT_ACTIVE)),
-        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(0)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(GARU_NODE_SLOT_X)),
         blocks.list_replace(
             "slot y",
             SLOT_Y_ID,
             slot_next(),
-            blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+            blocks.op_add(
+                blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)), number(GARU_NODE_SLOT_Y_DELTA)
+            ),
         ),
         blocks.list_replace("slot pts", SLOT_PTS_ID, slot_next(), number(GARU_BARRA_PTS)),
     ]
@@ -9317,9 +9330,9 @@ def _ground_seed_garu_derota(blocks: Blocks, *, slot, slot_next, type_val, sprit
     # captured Derota fire mask, and a masked-random initial reload for the shared fire-permission gate
     # (`_TIMER=(rand & mask)+1` on the node object). cull clears only type/state, so seed mask + timer.
     #
-    # Port necessity (centre-anchor): identical to the Garu Barra — the arcade node's _X=+0x0100 / _Y adjust is
-    # corner-centring for a corner-anchored 2x2 base, so under the port's centre-anchored go_expr the node is
-    # seeded on the base's own cell (zero relative offset) to centre the turret top on the flashing base.
+    # Placement (faithful): identical to the Garu Barra — the node is seeded one cell below and one cell right of
+    # the base (node _X MSB = 1, _Y = base_Y - 0x0100), and the renderer shifts the 2x2 base by
+    # DOUBLE_TILE_STAGE_OFFSET, so the turret top is centred on the base at the arcade's position.
     return [
         blocks.list_replace("slot type", SLOT_TYPE_ID, slot(), type_val()),
         blocks.list_replace("slot state", SLOT_STATE_ID, slot(), number(SLOT_GARU_BASE)),
@@ -9332,12 +9345,14 @@ def _ground_seed_garu_derota(blocks: Blocks, *, slot, slot_next, type_val, sprit
         ),
         blocks.list_replace("slot type", SLOT_TYPE_ID, slot_next(), type_val()),
         blocks.list_replace("slot state", SLOT_STATE_ID, slot_next(), number(SLOT_ACTIVE)),
-        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(0)),
+        blocks.list_replace("slot x", SLOT_X_ID, slot_next(), number(GARU_NODE_SLOT_X)),
         blocks.list_replace(
             "slot y",
             SLOT_Y_ID,
             slot_next(),
-            blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)),
+            blocks.op_add(
+                blocks.op_mul(sprite_y(), number(SLOT_UNITS_PER_PIXEL)), number(GARU_NODE_SLOT_Y_DELTA)
+            ),
         ),
         blocks.list_replace("slot pts", SLOT_PTS_ID, slot_next(), number(GARU_DEROTA_PTS)),
         blocks.list_replace(
@@ -14019,6 +14034,33 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
     def plain_arm(subtree_fn) -> list[str]:
         return show_arm(subtree_fn())
 
+    def garu_arm(subtree_fn) -> list[str]:
+        # Garu Barra / Garu Derota: the 2x2 base (state SLOT_GARU_BASE) draws its 32-px picture 8 px right and
+        # 8 px down of a 16-px sprite at its position (sprite_draw_double_width_and_height), so it is placed
+        # DOUBLE_TILE_STAGE_OFFSET right (+x) and down (-y); the 1x1 node draws at its own position.
+        base_x, base_y = stage_xy()
+        node_x, node_y = stage_xy()
+        is_base = blocks.op_eq(
+            blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_GARU_BASE)
+        )
+        place = _ground_if_else(
+            blocks,
+            is_base,
+            [
+                blocks.go_expr(
+                    blocks.op_add(base_x, number(DOUBLE_TILE_STAGE_OFFSET)),
+                    blocks.op_sub(base_y, number(DOUBLE_TILE_STAGE_OFFSET)),
+                )
+            ],
+            [blocks.go_expr(node_x, node_y)],
+        )
+        return [
+            place,
+            subtree_fn(),
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+            blocks.show(),
+        ]
+
     def sol_arm() -> list[str]:
         # Sol Tower keeps its HIDDEN-idle hide exception: HIDDEN only coincides with
         # ACTIVE (the update flips it to RISING on the reveal tick before render), so
@@ -14140,7 +14182,7 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         (lambda: type_eq(SOL_TOWER_TYPE), sol_arm),
         (
             lambda: type_eq(GARU_BARRA_TYPE),
-            lambda: plain_arm(
+            lambda: garu_arm(
                 lambda: _garu_costume_subtree(
                     blocks, slotvar, off["garu"], GARU_BASE_EXPOSED_COSTUME,
                     "barra/idle/01", GARU_EXPLODE_BASE_ORDINAL,
@@ -14171,7 +14213,7 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
         ),
         (
             lambda: type_eq(GARU_DEROTA_TYPE),
-            lambda: plain_arm(
+            lambda: garu_arm(
                 lambda: _garu_costume_subtree(
                     blocks, slotvar, off["garu derota"], GARU_DEROTA_BASE_EXPOSED_COSTUME,
                     "derota/idle/01", GARU_DEROTA_EXPLODE_BASE_ORDINAL,

@@ -1984,6 +1984,83 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 0, 32),
   },
   {
+    // PRES-01 (record 054 (20), checked in slice 20): a Garu's destructible top sits one cell below and one
+    // cell right of its 2x2 base (handle_20_Garu_Barra / handle_21_Garu_Derota: node `_X` MSB 1, node `_Y` =
+    // base `_Y` - 0x100), which centres the 16-px top on the 32-px base the renderer draws 8 px right and down
+    // of its position. Live: fire area 3's Garu Barra and Garu Derota records from the schedule, tick the walk
+    // by hand, and check the node rides +256 slot x / -256 slot y from its base on every tick (both scroll).
+    key: 'garu-node-one-cell-below-right-of-base',
+    behavior:
+      'A schedule-spawned Garu Barra or Garu Derota puts its destructible top one cell below and one cell right of its base, and the two scroll together',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const gslot = readVar(vm, 'area-schedule-ground-slot').map(Number);
+      const gtype = readVar(vm, 'area-schedule-ground-type').map(Number);
+      const first = Number(readVar(vm, 'area-schedule-start')[2]); // 1-based, area 3
+      const last = Number(readVar(vm, 'area-schedule-end')[2]);
+      writeVar(vm, 'game-director-state', 'frozen');
+      const out = {};
+      for (const type of [0x20, 0x21]) {
+        let cursor = 0;
+        for (let i = first; i <= last; i += 1) {
+          if (gtype[i - 1] === type) {
+            cursor = i;
+            break;
+          }
+        }
+        assert.ok(cursor > 0, `precondition: area 3 schedules type ${type}`);
+        for (const id of ['slot-type', 'slot-state']) {
+          const a = readVar(vm, id);
+          for (let s = 0; s < 16; s += 1) a[s] = 0;
+        }
+        const S = rows[cursor - 1];
+        const C0 = 256 * (S + 1) + 32; // two ticks before row S begins
+        writeVar(vm, 'area-number', 3);
+        writeVar(vm, 'area-progress', (((constants.area_counter_init - C0) % 65536) + 65536) % 65536);
+        writeVar(vm, 'area-schedule-cursor', cursor);
+        const base = gslot[cursor - 1]; // arcade object slot k = Scratch slot 1 + k = JS index k
+        const samples = [];
+        for (let t = 0; t < 8; t += 1) {
+          callProc(vm, 'Stage', 'advance area');
+          step(vm, 2);
+          callProc(vm, 'Stage', 'advance slots');
+          step(vm, 2);
+          if (Number(readVar(vm, 'area-schedule-cursor')) <= cursor) continue; // not fired yet
+          const types = readVar(vm, 'slot-type').map(Number);
+          const states = readVar(vm, 'slot-state').map(Number);
+          const xs = readVar(vm, 'slot-x').map(Number);
+          const ys = readVar(vm, 'slot-y').map(Number);
+          samples.push({
+            types: [types[base], types[base + 1]],
+            states: [states[base], states[base + 1]],
+            dx: xs[base + 1] - xs[base],
+            dy: ys[base + 1] - ys[base],
+            baseX: xs[base],
+          });
+        }
+        out[type] = samples;
+      }
+      return out;
+    },
+    assert(obs) {
+      for (const type of [0x20, 0x21]) {
+        const seen = obs[type];
+        assert.ok(seen.length >= 6, `type ${type}: the Garu fired and was watched (${seen.length} ticks)`);
+        for (const s of seen) {
+          assert.deepEqual(s.types, [type, type], `type ${type}: base and node share the type`);
+          assert.deepEqual(s.states, [3, 1], `type ${type}: base sentinel, then the ACTIVE node`);
+          assert.equal(s.dx, 256, `type ${type}: the node is one cell below its base (slot x +256)`);
+          assert.equal(s.dy, -256, `type ${type}: the node is one cell right of its base (slot y -256)`);
+        }
+        assert.equal(new Set(seen.map((s) => s.baseX)).size, seen.length, `type ${type}: the pair scrolled every tick`);
+      }
+    },
+    // The node seeded on its base's own row again (the old zero offset): slot x +0, not +256.
+    negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 256, 0),
+  },
+  {
     // AREA-01 (slice 20): what the two terrain strips show is a pure function of the clock and two map columns
     // (tools/terrain_render.terrain_state, checked against an independent model of the arcade's 64-row plane by
     // tests/test_terrain_render.py). The Stage's `update terrain` proc computes it in blocks. Here the built proc

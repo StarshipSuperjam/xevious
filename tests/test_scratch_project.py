@@ -19396,7 +19396,7 @@ class ScratchProjectTests(unittest.TestCase):
         if not read_ok:
             fails.add("PRES01-render-map")
         # PRES01-bacura-slab — the 1x2 Bacura slab draws its second tile 16 px toward screen-right of its position
-        # (sprite_draw_double_height amiga.68k 2534-2540), so its 32-px middle sits 8 px (10 units) right of a
+        # (sprite_draw_double_height amiga.68k 2546-2552), so its 32-px middle sits 8 px (10 units) right of a
         # 16-px sprite's centre: the renderer's lateral offset is RENDER_COL_OFFSET - 10, not the shared -150.
         bacura = next(t for t in project["targets"] if t["name"] == director.BACURA_TARGET)
         offsets = [
@@ -19409,6 +19409,66 @@ class ScratchProjectTests(unittest.TestCase):
         ]
         if director.BACURA_SLAB_X_OFFSET != 8 * scale or offsets != [-(120 * scale) - 8 * scale]:
             fails.add("PRES01-bacura-slab")
+        # PRES01-garu-double-tile — a Garu Barra / Garu Derota base is a 2x2 sprite (handle_20/21 `_ATTR=3`):
+        # sprite_draw_double_width_and_height (amiga.68k 2529-2544) draws its 32-px picture 8 px right of AND 8 px
+        # below a 16-px sprite at the same position, so the ground pool places a SLOT_GARU_BASE slot 10 units right
+        # (+x) and 10 down (-y) of the shared map — and only the base, of both families. The 1x1 node is seeded one
+        # cell below and one right of its base (node `_X` MSB 1, `_Y` = base `_Y` - 0x100) at all four Garu spawn
+        # sites (schedule + debug key, both families), which centres the top on the base at the arcade's place.
+        ground = next(t for t in project["targets"] if t["name"] == director.GROUND_RENDER_TARGET)["blocks"]
+        shifted_bases = 0
+        for bid, b in ground.items():
+            if not isinstance(b, dict) or b["opcode"] != "motion_gotoxy":
+                continue
+            gx, gy = ref_in(ground, b, "X") or {}, ref_in(ground, b, "Y") or {}
+            if gx.get("opcode") != "operator_add" or gy.get("opcode") != "operator_subtract":
+                continue
+            map_x, map_y = ref_in(ground, gx, "NUM1") or {}, ref_in(ground, gy, "NUM1") or {}
+            shift_ok = (
+                as_num(num(gx["inputs"].get("NUM2"))) == 8 * scale
+                and as_num(num(gy["inputs"].get("NUM2"))) == 8 * scale
+                and map_x.get("opcode") == "operator_subtract"
+                and as_num(num(map_x["inputs"].get("NUM2"))) == -(120 * scale)
+                and map_y.get("opcode") == "operator_subtract"
+                and as_num(num(map_y["inputs"].get("NUM1"))) == 180 + 24 * scale
+            )
+            gate = ground.get(b.get("parent")) or {}
+            cond = ref_in(ground, gate, "CONDITION") or {}
+            lhs = ref_in(ground, cond, "OPERAND1") or {}
+            gated_on_base = (
+                gate.get("opcode") == "control_if_else"
+                and (gate["inputs"].get("SUBSTACK") or [None, None])[1] == bid
+                and cond.get("opcode") == "operator_equals"
+                and lhs.get("opcode") == "data_itemoflist"
+                and lhs["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                and as_num(num(cond["inputs"].get("OPERAND2"))) == director.SLOT_GARU_BASE
+            )
+            if shift_ok and gated_on_base:
+                shifted_bases += 1
+        stage_blocks = next(t for t in project["targets"] if t["isStage"])["blocks"]
+        node_x_seeds = node_y_seeds = 0
+        for b in stage_blocks.values():
+            if not isinstance(b, dict) or b["opcode"] != "data_replaceitemoflist":
+                continue
+            if b["fields"]["LIST"][1] == director.SLOT_X_ID and as_num(num(b["inputs"].get("ITEM"))) == 256:
+                node_x_seeds += 1
+            item = ref_in(stage_blocks, b, "ITEM") or {}
+            lateral = ref_in(stage_blocks, item, "NUM1") or {}
+            if (
+                b["fields"]["LIST"][1] == director.SLOT_Y_ID
+                and item.get("opcode") == "operator_add"
+                and as_num(num(item["inputs"].get("NUM2"))) == -256
+                and lateral.get("opcode") == "operator_multiply"
+                and as_num(num(lateral["inputs"].get("NUM2"))) == 32
+            ):
+                node_y_seeds += 1
+        if (
+            director.DOUBLE_TILE_STAGE_OFFSET != 8 * scale
+            or (director.GARU_NODE_SLOT_X, director.GARU_NODE_SLOT_Y_DELTA) != (256, -256)
+            or shifted_bases != 2
+            or (node_x_seeds, node_y_seeds) != (4, 4)
+        ):
+            fails.add("PRES01-garu-double-tile")
 
         # PRES01-attract-grid — the attract, title, best-five and entry text on the arcade text cells, from the
         # source's own screen offsets: CREDIT 0x0923 with its digits two cells past the label (display_credits
@@ -19726,6 +19786,32 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "operator_subtract" and self._numeric(b["inputs"].get("NUM2")) in (-160, "-160"):
                     b["inputs"]["NUM2"] = [4, [4, -150]]
 
+        def unshift_garu_base(p):  # one Garu base drawn centred on its position again (8 px up-left of the arcade)
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            for b in blocks.values():
+                parent = blocks.get(b.get("parent") or "") or {}
+                if (
+                    b["opcode"] == "operator_add"
+                    and parent.get("opcode") == "motion_gotoxy"
+                    and self._numeric(b["inputs"].get("NUM2")) in (10, "10")
+                ):
+                    b["inputs"]["NUM2"] = [4, [4, 0]]
+                    return
+
+        def garu_node_on_base_cell(p):  # the node seeded on the base's own row again (the old zero offset)
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                    and self._numeric(b["inputs"].get("ITEM")) in (256, "256")
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+        def garu_node_wrong_side(p):  # the node's lateral cell offset flipped to screen-left
+            for b in next(t for t in p["targets"] if t["isStage"])["blocks"].values():
+                if b["opcode"] == "operator_add" and self._numeric(b["inputs"].get("NUM2")) in (-256, "-256"):
+                    b["inputs"]["NUM2"] = [4, [4, 256]]
+
         def drift_push_start(p):  # PUSH START back at its old project-defined spot
             for b in target(p, "start_screen")["blocks"].values():
                 if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-55, "-55"):
@@ -19764,6 +19850,9 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-render-map", flip_one_renderer),
             ("PRES01-render-map", flip_player_read),
             ("PRES01-bacura-slab", centre_bacura_slab),
+            ("PRES01-garu-double-tile", unshift_garu_base),
+            ("PRES01-garu-double-tile", garu_node_on_base_cell),
+            ("PRES01-garu-double-tile", garu_node_wrong_side),
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
             ("PRES01-attract-grid", credit_off_grid),
@@ -20184,7 +20273,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "d90dc332f669d969dfdfe43706f9c4373a767ea06650c69d01f6e1ae600b59c0",
+            "e3e126c2706fa220c79eea8c39c066f25818b0784607b54600699e7e77cd7093",
             build_hash,
         )
 
