@@ -35,11 +35,13 @@ paragraphs (the slice-8 vertical slice), the **Terrazi (AIR-06)** paragraph toge
 the **Torkan (AIR-02)** paragraph (its own family slice — the first three-phase attack-and-retreat
 family, firing one un-gated shot; its earlier "~64-frame cycle recomputes" prose is corrected to the
 one-time re-aim it verified against the source, under the operator's guardrail acknowledgement). The
-remaining families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) are
-transcribed from the reference as the plan of record, but their line-by-line verification lands with their
-own build slice (10–11); each is confirmed against the reference — and this document amended where it
-diverges, with the operator's acknowledgement — as that slice builds. Treat an unbuilt family's description as drafted-pending-
-verification, not as checked ground.
+remaining families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) were
+each verified line-by-line against the reference by their own build slice (10–11), and this document was
+amended where it diverged, under the operator's acknowledgement; every family below is now checked ground.
+Known port gaps that remain are tracked as slice-21 leaves, not as unverified prose: the standard bullet's
+in-flight re-aim (`air.bullet-reaim`), the scheduled `add_object` spawns of Garu Zakato and the extra
+Torkan/Kapi/Terrazi (`area.add-object-dispatch`), and the remaining reference art
+(`presentation.reference-art`).
 
 ## Behavior
 
