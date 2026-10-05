@@ -32,6 +32,11 @@ import * as mutate from './mutate.js';
 const RNG_FIXTURES = JSON.parse(
   readFileSync(new URL('../../docs/spec/data/rng.json', import.meta.url)),
 ).generator.fixture_sequences;
+// The per-area terrain start columns (area_offset_in_map_tbl, xevious_sub.68k 731-732), indexed area - 1,
+// read from the committed spec data the generator builds the `area map column` list from.
+const AREA_MAP_COLUMNS = JSON.parse(
+  readFileSync(new URL('../../docs/spec/data/terrain.json', import.meta.url)),
+).area_offset_in_map_tbl.values;
 const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
 // Suppress ALL ground-object spawns for the rest of the run by emptying the schedule's ground-object
 // type column (the ground analogue of forcing the flying type table to the non-shooting Toroid). With no
@@ -559,8 +564,10 @@ export const SCENARIOS = [
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // A pump runs the walk a few hundred ticks, so 24 pumps cross area ends and every band hand-over.
+      // Seed the clock 33 ticks short of area 1's end, so the very first pumps cross an area change and its
+      // band hand-over however fast the machine runs the walk; the rest of the 24 pumps run on into area 2.
       // (The harness VM has no renderer: no fencing and no layer order -- the layering is pinned in pytest.)
+      writeVar(vm, 'area-progress', 64000);
       const strips = { even: 'area_01a', odd: 'area_01b' };
       const mismatches = [];
       const seen = { even: new Set(), odd: new Set() };
@@ -588,6 +595,7 @@ export const SCENARIOS = [
     assert(obs) {
       assert.deepEqual(obs.mismatches, [], 'every strip shows its costume, x, y and visibility from the terrain state');
       assert.ok(obs.shownSamples > 24, `strips were on screen in the samples (${obs.shownSamples})`);
+      assert.ok(obs.areas.length >= 2, `the run crossed an area change (areas ${obs.areas})`);
       assert.ok(obs.even.length >= 2 && obs.odd.length >= 2, `strips changed band (${obs.even} / ${obs.odd})`);
     },
     // The even strip never shows (its shown test compares against 99) → visibility mismatches.
@@ -1981,7 +1989,8 @@ export const SCENARIOS = [
     },
     // roadmap-evidence: AREA-01 failure  (ground seeders that start an object one tick down the field put
     //   it a line off its landmark)
-    negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 0, 32),
+    // Scoped to the schedule's ground seeders in `advance area`, leaving the culls and clears alone.
+    negativeMutation: (p) => mutate.changeListReplaceLiteral(p, 'Stage', 'slot x', 0, 32, 'advance area'),
   },
   {
     // PRES-01 (record 054 (20), checked in slice 20): a Garu's destructible top sits one cell below and one
@@ -2179,6 +2188,111 @@ export const SCENARIOS = [
     },
     // Remove the walk's terrain update (and the re-top's): the strips never leave their defaults.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update terrain'),
+  },
+  {
+    // AREA-01 (slice 20): a new life after a mid-area death begins over forest, as the arcade's re-top does
+    // (main_gameplay_loop fills the plane with fill_bg_with_forest, xevious_main.68k 490 / 648-669): the clock
+    // goes back to the area top, the previous column is cleared, so band 0 shows the filler while the area's
+    // first rows enter above it at its own column. Live through `area_reset`: inject a new-life scope, a
+    // mid-area death position and a stale previous column left by an earlier completion, then fire the reset.
+    // roadmap-evidence: AREA-01 success  (a new life after a death shows forest filler with the area's first
+    //   rows entering above it, at the area's column, from the area top)
+    key: 'terrain-new-life-filler',
+    behavior:
+      'A new life after a mid-area death restarts the terrain over forest filler, with the area top entering above it at the area\'s column',
+    playtestStep: 5,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2);
+      writeVar(vm, 'game-director-reset-scope', 'new-life');
+      writeVar(vm, 'area-number', 5);
+      writeVar(vm, 'area-progress', 20000); // mid-area: the checkpoint restarts area 5
+      writeVar(vm, 'area-previous-terrain-column', 42); // stale, as an earlier completion would leave it
+      fireBroadcast(vm, 'director reset');
+      step(vm, 1);
+      const retop = {
+        area: Number(readVar(vm, 'area-number')),
+        progress: Number(readVar(vm, 'area-progress')),
+        column: Number(readVar(vm, 'area-terrain-column')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        even: String(readVar(vm, 'terrain-even-costume')),
+        evenShown: Number(readVar(vm, 'terrain-even-shown')),
+        oddShown: Number(readVar(vm, 'terrain-odd-shown')),
+      };
+      // The area's first rows are written ~14 rows ahead of the top edge, so the field is all filler at the
+      // top; 128 ticks on, the area top has scrolled into view above the filler.
+      writeVar(vm, 'game-director-state', 'frozen');
+      writeVar(vm, 'area-progress', 4096);
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      const entered = {
+        even: String(readVar(vm, 'terrain-even-costume')),
+        odd: String(readVar(vm, 'terrain-odd-costume')),
+        oddX: Number(readVar(vm, 'terrain-odd-x')),
+        oddShown: Number(readVar(vm, 'terrain-odd-shown')),
+      };
+      return { retop, entered };
+    },
+    assert(obs) {
+      const r = obs.retop;
+      assert.equal(r.area, 5, 'precondition: a mid-area death restarts the area');
+      assert.equal(r.progress, 0, 'the clock is back at the area top');
+      assert.equal(r.column, AREA_MAP_COLUMNS[4], "the terrain column is area 5's");
+      assert.equal(r.previous, -1, 'the re-top clears the previous column');
+      assert.equal(r.even, 'terrain filler', 'band 0 is the forest filler');
+      assert.equal(r.evenShown, 1, 'the filler fills the field at the area top');
+      assert.equal(r.oddShown, 0, 'no map rows are on screen yet');
+      const e = obs.entered;
+      assert.equal(e.even, 'terrain filler', 'the filler is still below');
+      assert.equal(e.odd, 'terrain band 3 restart', 'the area top enters as the restart band');
+      assert.equal(e.oddShown, 1, 'the area top is on screen');
+      assert.equal(e.oddX, 10 * AREA_MAP_COLUMNS[4] - 500, "the area top is at area 5's column");
+    },
+    // Every `set previous terrain column` writes 42 instead: the re-top no longer clears it, so band 0 shows
+    // map rows at a stale column instead of the filler.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'previous terrain column', 42),
+  },
+  {
+    // AREA-01 (slice 20): the 16 -> 7 loop is an ordinary area change for the terrain: completing area 16
+    // carries the clock, hands area 16's column to the band still on screen, and area 7's rows arrive at
+    // area 7's column (sub_fn_3__handle_next_area, xevious_sub.68k 696-730; offsets 731-732). Seeded on the
+    // completion tick with the walk frozen, as `terrain-state-follows-clock` does for area 1 -> 2.
+    // roadmap-evidence: AREA-01 success  (the 16 -> 7 loop keeps area 16's last rows at its column while
+    //   area 7's rows enter at area 7's column, with the clock carried)
+    key: 'terrain-loop-16-to-7',
+    behavior:
+      "Completing area 16 loops to area 7 with no jump: area 16's last rows keep its column while area 7's enter at its own",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      writeVar(vm, 'area-number', 16);
+      writeVar(vm, 'area-terrain-column', AREA_MAP_COLUMNS[15]);
+      writeVar(vm, 'area-progress', 65024);
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      callProc(vm, 'Stage', 'update terrain');
+      step(vm, 1);
+      return {
+        area: Number(readVar(vm, 'area-number')),
+        progress: Number(readVar(vm, 'area-progress')),
+        column: Number(readVar(vm, 'area-terrain-column')),
+        previous: Number(readVar(vm, 'area-previous-terrain-column')),
+        even: { costume: String(readVar(vm, 'terrain-even-costume')), x: Number(readVar(vm, 'terrain-even-x')) },
+        odd: { costume: String(readVar(vm, 'terrain-odd-costume')), x: Number(readVar(vm, 'terrain-odd-x')) },
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.area, 7, 'completing area 16 continues at area 7');
+      assert.equal(obs.progress, 65056 - 65536, 'the clock carried across the loop');
+      assert.equal(obs.column, AREA_MAP_COLUMNS[6], "the terrain column is area 7's");
+      assert.equal(obs.previous, AREA_MAP_COLUMNS[15], "the previous column is area 16's");
+      assert.equal(obs.even.costume, 'terrain band 0', "area 16's last rows show as band 0");
+      assert.equal(obs.even.x, 10 * AREA_MAP_COLUMNS[15] - 500, "band 0 keeps area 16's column");
+      assert.equal(obs.odd.x, 10 * AREA_MAP_COLUMNS[6] - 500, "the odd strip takes area 7's column");
+    },
+    // Break the loop's `area number = 16` test: area 16 completes to 17, which has no column.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'area number', 16, 99),
   },
   {
     key: 'difficulty-and-formations',

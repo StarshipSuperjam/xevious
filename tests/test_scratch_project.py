@@ -16141,6 +16141,18 @@ class ScratchProjectTests(unittest.TestCase):
                 bid = b["next"]
             raise AssertionError("no schedule fired write after the carry")
 
+        def break_completion_next_area(p):
+            # Drop the completion's terrain-column write (retarget it), so the new area keeps the old column.
+            s = stage_of(p)
+            bid = completion_then(s)["next"]
+            while bid:
+                b = s["blocks"][bid]
+                if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.TERRAIN_COLUMN_ID:
+                    b["fields"]["VARIABLE"] = ["scratch", "not-the-terrain-column"]
+                    return
+                bid = b["next"]
+            raise AssertionError("no terrain column write after the carry")
+
         cases = [
             ("advance-area-before-slots", break_phase_order),
             ("progress-steps-32", break_progress_step),
@@ -16149,6 +16161,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("completion-guard", break_completion_guard),
             ("completion-carries", break_completion_carry),
             ("completion-keeps-registers", break_completion_clears),
+            ("completion-enters-next-area", break_completion_next_area),
             ("area-wrap-16-7", break_wrap_target),
             ("checkpoint-window", break_checkpoint_low),
             ("checkpoint-window", break_checkpoint_high),

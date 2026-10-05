@@ -113,6 +113,15 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(se.encode_png(image), tr.encode_rgba(5, 3, raw))
         self.assertEqual((5, 3, raw), tr.decode_rgba(tr.encode_rgba(5, 3, raw), "round trip"))
 
+    def test_truncated_or_corrupt_png_fails_with_a_plain_error(self) -> None:
+        good = tr.encode_rgba(5, 3, bytes(5 * 3 * 4))
+        with self.assertRaisesRegex(se.SpriteExtractionError, "truncated or corrupt"):
+            tr.decode_rgba(good[:len(tr.PNG_SIGNATURE) + 6], "cut short")
+        idat = good.index(b"IDAT")
+        corrupt = good[:idat + 4] + bytes(8) + good[idat + 12:]
+        with self.assertRaisesRegex(se.SpriteExtractionError, "corrupt image data"):
+            tr.decode_rgba(corrupt, "bad deflate")
+
     def test_tile_code_and_colour_table_follow_the_reference_renderer(self) -> None:
         # amiga.68k 1304-1337: attribute bit 0 is tile code bit 8; the colour table is
         # attr bits 5..2 -> 3..0 and bits 1..0 -> 6..5, plus 0x10 when tile bit 7 is set.

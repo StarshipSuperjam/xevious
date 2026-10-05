@@ -12347,7 +12347,8 @@ def death_blocks() -> dict[str, dict[str, Any]]:
 # UPDATE_TERRAIN_PROCCODE) — the even strip (area_01a) band 0 / band 2 / the forest filler, the odd strip
 # (area_01b) band 1 / band 3 / the restart band. Their costumes, at one costume px per arcade px, are
 # tools/terrain_render.py's; their size of 125 (the 1.25 render scale) is only the target record's
-# (TERRAIN_STRIP_SIZE): scratch-vm caps a size set by a block at 1.5x the stage, about 70% for a 1024-px band.
+# (TERRAIN_STRIP_SIZE): scratch-vm caps a size set by a block at 1.5x the stage, about 70% for a 1024-px band,
+# so no block (and no editor size edit) may ever set or change these sprites' size; pytest forbids the blocks.
 TERRAIN_STRIP_TARGETS = terrain_render.STRIP_TARGETS
 TERRAIN_STRIP_SIZE = round(100 * terrain_render.STAGE_PER_PX)
 assert TERRAIN_STRIP_SIZE == 125

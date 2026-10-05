@@ -99,20 +99,34 @@ export function pinVariableSet(project, spriteName, varName, constValue) {
  * Rewrite the literal ITEM of every `replace item (...) of <list> with <fromValue>` on a sprite. Used to
  * start the ground seeders' `slot x` one tick down the field (0 → 32) — a one-line shift of where every
  * spawned ground object rides against the map, the severing negative for the terrain-phase scenario.
+ * `withinProc` (optional) limits the rewrite to blocks inside that procedure's definition, so the culls
+ * and clears elsewhere that also write the literal are left alone.
  */
-export function changeListReplaceLiteral(project, spriteName, listName, fromValue, toValue) {
+export function changeListReplaceLiteral(project, spriteName, listName, fromValue, toValue, withinProc = null) {
   const t = target(project, spriteName);
+  const procOf = (id) => {
+    let top = id;
+    while (t.blocks[top].parent) top = t.blocks[top].parent;
+    const def = t.blocks[top];
+    if (def.opcode !== 'procedures_definition') return null;
+    const proto = t.blocks[def.inputs.custom_block[1]];
+    return proto && proto.mutation ? proto.mutation.proccode : null;
+  };
   let patched = 0;
   for (const id of Object.keys(t.blocks)) {
     const b = t.blocks[id];
     if (b.opcode !== 'data_replaceitemoflist' || !b.fields.LIST || b.fields.LIST[0] !== listName) continue;
+    if (withinProc !== null && procOf(id) !== withinProc) continue;
     const item = b.inputs.ITEM;
     if (Array.isArray(item) && Array.isArray(item[1]) && String(item[1][1]) === String(fromValue)) {
       b.inputs.ITEM = [1, [10, String(toValue)]];
       patched += 1;
     }
   }
-  if (!patched) throw new Error(`mutate: no 'replace item of ${listName} with ${fromValue}' on ${spriteName}`);
+  if (!patched) {
+    const scope = withinProc === null ? spriteName : `'${withinProc}' on ${spriteName}`;
+    throw new Error(`mutate: no 'replace item of ${listName} with ${fromValue}' in ${scope}`);
+  }
 }
 
 /** Change an `operator_equals` literal right-hand value on a sprite (breaks an == guard). */

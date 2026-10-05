@@ -666,21 +666,29 @@ def decode_rgba(data: bytes, label: str) -> tuple[int, int, bytes]:
     position = len(PNG_SIGNATURE)
     header = None
     idat = bytearray()
-    while position < len(data):
-        length = struct.unpack_from(">I", data, position)[0]
-        kind = data[position + 4:position + 8]
-        payload = data[position + 8:position + 8 + length]
-        position += 12 + length
-        if kind == b"IHDR":
-            header = struct.unpack(">IIBBBBB", payload)
-        elif kind == b"IDAT":
-            idat += payload
-        elif kind == b"IEND":
-            break
+    try:
+        while position < len(data):
+            length = struct.unpack_from(">I", data, position)[0]
+            if position + 12 + length > len(data):
+                raise struct.error(f"chunk at byte {position} runs past the end of the file")
+            kind = data[position + 4:position + 8]
+            payload = data[position + 8:position + 8 + length]
+            position += 12 + length
+            if kind == b"IHDR":
+                header = struct.unpack(">IIBBBBB", payload)
+            elif kind == b"IDAT":
+                idat += payload
+            elif kind == b"IEND":
+                break
+    except struct.error as exc:
+        raise SpriteExtractionError(f"{label} is truncated or corrupt ({exc})") from exc
     if header is None or header[2:] != (8, 6, 0, 0, 0):
         raise SpriteExtractionError(f"{label} is not an 8-bit RGBA PNG from this tool")
     width, height = header[0], header[1]
-    filtered = zlib.decompress(bytes(idat))
+    try:
+        filtered = zlib.decompress(bytes(idat))
+    except zlib.error as exc:
+        raise SpriteExtractionError(f"{label} has corrupt image data ({exc})") from exc
     stride = width * 4
     if len(filtered) != height * (stride + 1):
         raise SpriteExtractionError(f"{label} has the wrong amount of image data")
@@ -1192,6 +1200,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_verify(args.checkout)
     except SpriteExtractionError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, ValueError, KeyError) as exc:
+        # A missing or unreadable input, or a provenance/data file without the expected record.
+        print(f"error: a terrain input or record is missing or malformed: {exc!r}", file=sys.stderr)
         return 2
 
 

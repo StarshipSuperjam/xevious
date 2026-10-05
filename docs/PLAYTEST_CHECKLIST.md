@@ -192,7 +192,7 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    `area number`; a **near-end** death (die while `area progress` is above about **50,080** — the
    final fifth before the ≈65,056 completion mark; that is 44 ticks earlier than `scroll row` alone
    suggests, because the arcade reads the row only after the explosion, while its scroll keeps running)
-   **advances** `area number` by one instead (the checkpoint; completing area 16 rolls to 7). The
+   **advances** `area number` by one instead (the checkpoint; completing area 16 rolls to 7). Two edge cases are correct, not bugs: a death 37–44 ticks before the completion mark (`area progress` about 63,650 to 63,870) finishes the area during the explosion and then skips the next one too, so `area number` jumps by **two**; and a death just after an area change, while `area progress` is still negative (about −480 to −256), restarts the new area rather than advancing. The
    respawn now also shows it: the next area's own terrain rather than the one you died in. The screen
    stays frozen during the explosion, where the arcade keeps scrolling (a recorded divergence, follow-up
    issue #158 — note, do not fail). **You do not need to

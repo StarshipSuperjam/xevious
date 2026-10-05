@@ -21,14 +21,14 @@ area 7 — the arcade has no win screen; this loop is its ending.
 
 **The scroll clock.** One 16-bit scroll counter runs the whole game. It is set to 0x0D00 only when a
 life begins — the first life of a game and every life after a death (`xevious_main.68k`
-`main_gameplay_loop` region, lines 474 and 1305) — and is decreased by 16 per frame: the
+`main_gameplay_loop` line 474; the attract demo sets it at its own line 1305) — and is decreased by 16 per frame: the
 scroll delta is −8 (`xevious_main.68k` line 346) and the per-frame map step applies it twice
 (`xevious_sub.68k` `get_map_row` 247–290). The counter's high byte is the *scroll row*, descending 0x0D,
 0x0C … 0x00, wrapping to 0xFF and continuing down. When it reaches 0x0E, the area is complete
 (`xevious_sub.68k` `sub_fn_3__handle_next_area` 696–730). Completion does not touch the counter: it
 keeps running into the next area, whose rows begin arriving while the old area's last rows scroll off.
-So an area entered at the start of a life lasts 0xFE10 counter steps (0x0D00 down to 0x0EF0, the last
-value still above row 0x0E) ≈ 4065 frames ≈ 68 seconds at the arcade's 60 frames per second, and an
+So an area entered at the start of a life lasts 0xFE10 counter steps (0x0D00 down to 0x0EF0, the first
+value on row 0x0E) ≈ 4065 frames ≈ 68 seconds at the arcade's 60 frames per second, and an
 area entered by completing the one before lasts the full 0x10000 steps = 4096 frames. The completion
 routine waits for the row to leave 0x0E and then return to it, so it fires once per area and never
 during the 8 ticks the counter spends on row 0x0E after a completion.
@@ -60,7 +60,7 @@ row 0x0E first; the extractor proves every table decodes exactly to its sentinel
 128 tiles wide and 256 rows long (8×8-pixel tiles; the map ROMs in `map_rom.68k`, decoded by
 `src/xevious_sub.68k` `xevious_bb_r` 1558–1633). Every area flies the whole length of it, at its own sideways start column
 from the offset table above; 28 columns are visible, so the largest offset (100) reaches exactly the
-map's right edge. A life begins over a fixed forest filler pattern (`xevious_main.68k`
+map's last column (127). A life begins over a fixed forest filler pattern (`xevious_main.68k`
 `fill_bg_with_forest` 648–669), with the area's first rows written above it and scrolling down. At an
 area change nothing is cleared: the new column's rows enter at the top. The Scratch build renders the
 map from the reference's own map data and background tiles (the tile data, palettes and colour tables in
