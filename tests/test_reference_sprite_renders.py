@@ -1,6 +1,8 @@
 """Sprite data the build derives from the pinned reference's graphics (assets/amiga/xevious_gfx.c).
 
 - The Sol Tower rise sheet (tools/sol_tower_render.py) re-derives byte-for-byte from the pin.
+- The CAB-05 effects sheet (tools/effects_sprite_render.py: the three explosions, crater, crosshair, bomb
+  target and bomb) re-derives byte-for-byte from the pin, from the reference's own code and colour tables.
 - The fair Bacura craft-kill box (game_director.BACURA_FRAME_OPAQUE, a recorded divergence in
   docs/mechanics/037) uses each tumble frame's opaque extents exactly as the reference tiles draw them.
 
@@ -17,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import andor_sprite_render as asr  # noqa: E402
+import effects_sprite_render as fx  # noqa: E402
 import game_director as director  # noqa: E402
 import reference_checkout as checkout  # noqa: E402
 import sol_tower_render as sol  # noqa: E402
@@ -102,6 +105,55 @@ class SolTowerRenderTests(unittest.TestCase):
     @unittest.skipIf(REFERENCE is None, "no verified reference checkout at the pin")
     def test_committed_sheet_rerenders_at_the_pin(self) -> None:
         self.assertEqual(sol.main(["--checkout", str(REFERENCE), "--verify"]), 0)
+
+
+class EffectsRenderTests(unittest.TestCase):
+    """CAB-05: the explosion, crater, crosshair, bomb-target and bomb cells (tools/effects_sprite_render.py)."""
+
+    def test_codes_and_colours_are_the_reference_tables(self) -> None:
+        # solvalou_explosion_tbl 2093-2100, flying_obj_explosion_sprites 4892-4897,
+        # bomb_explosion_animation_tbl 4944-4951 (code, 2x2?) in animation order.
+        self.assertEqual(fx.PLAYER_EXPLOSION, [(0xC0, False), (0xC1, False), (0xC4, True), (0xC8, True),
+                                               (0xC2, False), (0xC3, False), (0xCC, True)])
+        self.assertEqual(fx.AIR_EXPLOSION, [(0x70, False), (0x71, False), (0x74, True), (0x78, True),
+                                            (0x7C, True)])
+        self.assertEqual(fx.GROUND_EXPLOSION, [(0x60, False), (0x61, False), (0x64, True), (0x68, True),
+                                               (0x6C, True), (0x62, False), (0x63, False)])
+        self.assertEqual((fx.PLAYER_EXPLOSION_CLUT_BASE, fx.AIR_EXPLOSION_CLUT, fx.GROUND_EXPLOSION_CLUT),
+                         (0x30, 7, 0x0C))
+        self.assertEqual((fx.CRATER_CODES, fx.CRATER_CLUT), ([0xA6, 0xA7], 0x0D))
+        # Bank 1 adds 0x100 (amiga.68k 1774-1778): crosshair 0x14, bomb 0x1C..0x1E.
+        self.assertEqual(fx.CROSSHAIR_CODE, 0x114)
+        self.assertEqual(fx.CROSSHAIR_CLUTS, [32, 33, 41, 42])
+        self.assertEqual(fx.BOMB_TARGET_CLUT, 0x22)
+        self.assertEqual(fx.BOMB_CODES, [0x11C, 0x11D, 0x11E])
+        self.assertEqual(fx.BOMB_CLUTS, [0x25, 0x26, 0x27, 0x28])
+
+    def test_layout(self) -> None:
+        # 32-px explosion cells, every frame concentric: the arcade nudges the object half a 2x2's overhang
+        # (8 px) up-left on entering a 2x2 frame, so a 1x1 frame and a 2x2 frame share one centre.
+        self.assertEqual(fx.EXPLOSION_CELL, 2 * asr.TILE)
+        self.assertEqual(fx.ONE_BY_ONE_ORIGIN + asr.TILE // 2, fx.EXPLOSION_CELL // 2)
+        self.assertEqual(fx.TWO_BY_TWO_ORIGIN + asr.TILE, fx.EXPLOSION_CELL // 2)
+        self.assertEqual(fx.ONE_BY_ONE_ORIGIN - fx.TWO_BY_TWO_ORIGIN, 8)  # one position MSB
+        self.assertEqual((fx.SHEET_WIDTH, fx.SHEET_HEIGHT), (32 * 7, 32 * 3 + 16 * 2))
+        small = fx.CRATER_ORIGINS + fx.CROSSHAIR_ORIGINS + [fx.BOMB_TARGET_ORIGIN]
+        self.assertEqual(small, [(16 * i, 96) for i in range(7)])
+        self.assertEqual(fx.BOMB_ORIGINS, [(16 * i, 112) for i in range(12)])
+
+    @unittest.skipIf(REFERENCE is None, "no verified reference checkout at the pin")
+    def test_committed_sheet_rerenders_at_the_pin(self) -> None:
+        self.assertEqual(fx.main(["--checkout", str(REFERENCE), "--verify"]), 0)
+
+    @unittest.skipIf(REFERENCE is None, "no verified reference checkout at the pin")
+    def test_colour_entry_0x80_is_transparent(self) -> None:
+        # Colour table 0 is all 0x80: past the 128-colour palette, so it draws nothing; the decoder must say so
+        # rather than index past the palette.
+        gfx = asr._Gfx(asr._read_reference(REFERENCE, asr.GFX_C))
+        self.assertEqual(set(gfx.sprite_clut[0]), {fx.TRANSPARENT_ENTRY})
+        self.assertEqual(len(gfx.palette), fx.TRANSPARENT_ENTRY)
+        with self.assertRaises(Exception):
+            fx._tile(gfx, 0xC0, 0)  # every pixel transparent -> "draws nothing"
 
 
 if __name__ == "__main__":

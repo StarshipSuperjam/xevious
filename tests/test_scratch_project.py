@@ -144,6 +144,12 @@ SPRITE_SHEET_HASHES = {
     "Sol Tower": (
         "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c"
     ),
+    # Slice 20 PR-4 (CAB-05): the effects sheet — the three explosions, crater, crosshair, bomb target and bomb
+    # (bank-1 tiles the Spriters Resource rips do not break out at their colour steps), decoded from the pin
+    # by tools/effects_sprite_render.py.
+    "Effects": (
+        "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c"
+    ),
 }
 
 
@@ -353,7 +359,10 @@ class ScratchProjectTests(unittest.TestCase):
         # its seven rise crops replace the seven old Spriters crops one for one. 252 + 1 = 253.
         # + the 9 slice-20 CAB-05 arcade sounds on the Stage (credit, name_entry, name_entry_top,
         # andor_genesis, start, bgm, solvalou_explode, zapper_fire, blaster_fire). 253 + 9 = 262.
-        self.assertEqual(262, len(assets))
+        # + the slice-20 CAB-05 effects sheet (tools/effects_sprite_render.py) on the sprite_sheets library and
+        # its 74 derivatives on the proof pen (the three explosions with flip states, crater, crosshair colours,
+        # bomb target, bomb codes x colours). 262 + 1 + 74 = 337.
+        self.assertEqual(337, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -20786,12 +20795,13 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower"):
+            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower", "Effects"):
                 # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
                 # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
                 # the Andor rip only shows assembled octagons that cannot be sliced into separable
-                # part tiles (BOSS-01), and the Sol Tower crops lack the tower's shadow, so all three are
-                # rendered from the pin.
+                # part tiles (BOSS-01), the Sol Tower crops lack the tower's shadow, and the effects rows
+                # (CAB-05) need the reference's own codes at each colour step, so all four are rendered
+                # from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -20826,7 +20836,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f4b1184f9761365f893023fe6bcb75917d82ef3b30323f79118f3a04a882081c",
+            "499a399950ec2c0da3db554fe36554cd57157bd9f595f7b8a516a5dbd28491d5",
             build_hash,
         )
 

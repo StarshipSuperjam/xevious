@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "b5e3791e5c662d2fa0237d7f779d4f6e5f74a0b13728ff19ba05de5ca1090f55",
+  "manifest_sha256": "dd1d9b6ebe27fcb6b719d3ec5c494faed208689342fabd6d29231318545b8a44",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -2646,11 +2646,1835 @@
         8
       ],
       "generator_version": 1
+    },
+    "5559843ea7aebd99883f288c657142ec.png": {
+      "frame": "player-explosion/burst/01/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "f6d829e7ab32ad13041a89dcb5d40d3c.png": {
+      "frame": "player-explosion/burst/01/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "cc7114cc6cff3009ad9d4f0fd251858a.png": {
+      "frame": "player-explosion/burst/01/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "a3af1914c0dc912ff31095e1e6556612.png": {
+      "frame": "player-explosion/burst/01/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "aac514367a3511e774e0066ed961cd65.png": {
+      "frame": "player-explosion/burst/02/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "f45ca5d4a27585c00902ed0c3abd9fc7.png": {
+      "frame": "player-explosion/burst/02/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "dd3d8caa584d6a03d1548bccbbe0117e.png": {
+      "frame": "player-explosion/burst/02/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "5931b2897f8520b885744e9baa77f993.png": {
+      "frame": "player-explosion/burst/02/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "83d5da65a37364fee5597fcb897ce6b3.png": {
+      "frame": "player-explosion/burst/03/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "ad6f5e55d18ffc5d2b2996843a5d523c.png": {
+      "frame": "player-explosion/burst/03/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "dceb9589fc6fb718a1a4b8472b988602.png": {
+      "frame": "player-explosion/burst/03/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "2956d909c2a11471823059bb8c7685c4.png": {
+      "frame": "player-explosion/burst/03/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "73f67a55d8e89bd7594d5813258a7b99.png": {
+      "frame": "player-explosion/burst/04/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "7e789fca1792b31a3148bf9c53b086ac.png": {
+      "frame": "player-explosion/burst/04/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "07f2e5065a7a833a97edfb791979c102.png": {
+      "frame": "player-explosion/burst/04/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "149bce1ea1bd23f06bf0e910b57b9edc.png": {
+      "frame": "player-explosion/burst/04/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "0f1d49c7253766499f63460af3a28407.png": {
+      "frame": "player-explosion/burst/05/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "40ee6775d7615026a3a245297611ba47.png": {
+      "frame": "player-explosion/burst/05/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "971cf74ceff9bf3f07b82f9f038fca4c.png": {
+      "frame": "player-explosion/burst/05/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "cadb0c3dfc04f960289486dceeab7017.png": {
+      "frame": "player-explosion/burst/05/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "ffca36ce2429ad8b30d94448b1a98a3a.png": {
+      "frame": "player-explosion/burst/06/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        160,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "9027b96c196502b966d764cd621b3334.png": {
+      "frame": "player-explosion/burst/06/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        160,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "2e75a8e9a423655a199a7fe342503f25.png": {
+      "frame": "player-explosion/burst/06/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        160,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "f2eceb349870b9a94fa1bc07fe74a2dd.png": {
+      "frame": "player-explosion/burst/06/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        160,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "83d9b3fc4b8549c4da6f155a55c75e3a.png": {
+      "frame": "player-explosion/burst/07/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        192,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "e7d776add21e65d4744910c964708c71.png": {
+      "frame": "player-explosion/burst/07/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        192,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "de2ae39ec004e00d2afc55ab2209a315.png": {
+      "frame": "player-explosion/burst/07/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        192,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "8581d5f1247340c30a67619e0c4e3938.png": {
+      "frame": "player-explosion/burst/07/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        192,
+        0,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "7f7d19060743f38278761785cd1dbfb9.png": {
+      "frame": "air-explosion/burst/01/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "4d3fe4219828731e928e0f241c70f9fc.png": {
+      "frame": "air-explosion/burst/01/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "4fe6ae547c8cee15643027b52f9bbe12.png": {
+      "frame": "air-explosion/burst/01/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "5717ff80f4245a4cb37ab660bf5effe8.png": {
+      "frame": "air-explosion/burst/01/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "fc19ec175fa5c88e3047f017fb4b97c2.png": {
+      "frame": "air-explosion/burst/02/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "dcc21bf6d8060508ea21d85b34820af6.png": {
+      "frame": "air-explosion/burst/02/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "a4fd4ec35d83cdfa681b5ffd5e9de4ce.png": {
+      "frame": "air-explosion/burst/02/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "09ab7b84a52ef43d26fd0115ec8d6982.png": {
+      "frame": "air-explosion/burst/02/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "789a43a5fcad01bbbdeef81e318059b3.png": {
+      "frame": "air-explosion/burst/03/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "3140c8d32bab30f4a21b49b06a6db070.png": {
+      "frame": "air-explosion/burst/03/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "dc1006d8eb0affd7dad22970f17d7d19.png": {
+      "frame": "air-explosion/burst/03/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "f453623ea189c3ab6df815fb0a675cbf.png": {
+      "frame": "air-explosion/burst/03/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "5bc9f8dad1454284bd2c108875c1fac8.png": {
+      "frame": "air-explosion/burst/04/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "ff9c3fe3977ee43f9ba39e0dae54c7d8.png": {
+      "frame": "air-explosion/burst/04/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "ffaece584d00080be0674de542218203.png": {
+      "frame": "air-explosion/burst/04/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "b5531fcb2c757b9a465d8c98d3cc3c9b.png": {
+      "frame": "air-explosion/burst/04/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "bbddea519bff26d8a280b7ebe6dad1f2.png": {
+      "frame": "air-explosion/burst/05/none",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "none"
+    },
+    "dd74f118394285ed2098b75ecc39719a.png": {
+      "frame": "air-explosion/burst/05/x",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "x"
+    },
+    "2fb6d868a798811e64f11b60ba5da9c8.png": {
+      "frame": "air-explosion/burst/05/y",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "y"
+    },
+    "a2be3485bd113103ea2c16a54fea5200.png": {
+      "frame": "air-explosion/burst/05/xy",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        32,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1,
+      "flip": "xy"
+    },
+    "537883fcfaca59c0e5ac57f5c65b3828.png": {
+      "frame": "ground-explosion/burst/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "ac265006e9dd300b75a825a8ddbaedf4.png": {
+      "frame": "ground-explosion/burst/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "c68236084f4b5e89801b2e126eb0efdf.png": {
+      "frame": "ground-explosion/burst/03",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "2884b5def3a7f51654aa7594fc1cce47.png": {
+      "frame": "ground-explosion/burst/04",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "d7e6d4074aeccccee903ad04f6aafa5a.png": {
+      "frame": "ground-explosion/burst/05",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "4eb0d697328d42e767e9d1ff293a9269.png": {
+      "frame": "ground-explosion/burst/06",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        160,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "1bbe6fcd815c413acd268ceaccaa3bf6.png": {
+      "frame": "ground-explosion/burst/07",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        192,
+        64,
+        32,
+        32
+      ],
+      "canvas": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        16
+      ],
+      "generator_version": 1
+    },
+    "6e071701f63c9ab3ea4eacd06f74b351.png": {
+      "frame": "ground-crater/flicker/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "2c1b91ed0229492ee04f80d0000c1c7e.png": {
+      "frame": "ground-crater/flicker/02",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        16,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "b17b054e1b9dd928e0e23a2c952ad372.png": {
+      "frame": "crosshair/aim/idle",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "f6c434539051e655a49a419f1061ea25.png": {
+      "frame": "crosshair/aim/bombing",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        48,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "fe73d83abab84aa9eb85216ac240cb7c.png": {
+      "frame": "crosshair/aim/idle-lit",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "327a6ad0e69e62fc2f9ebdcb3f1c67d8.png": {
+      "frame": "crosshair/aim/bombing-lit",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        80,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "cf5c223b333294482d641f847a9ad50e.png": {
+      "frame": "bomb-target/mark/01",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        96,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "cff2a39272dd91c94af2520f9d0abbca.png": {
+      "frame": "bomb/fall/01/c25",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        0,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "d2c2971b6d30186c58b1bd67dc748b1d.png": {
+      "frame": "bomb/fall/01/c26",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        16,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "177f5faa6ff988f014d9162b29c2099a.png": {
+      "frame": "bomb/fall/01/c27",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        32,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "01048d6902e54ece9ef21f0aebd3233d.png": {
+      "frame": "bomb/fall/01/c28",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        48,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "e7e3658352dc99643c458a76c7475212.png": {
+      "frame": "bomb/fall/02/c25",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        64,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "8878e8e030797ecda5c59f0bd3421b19.png": {
+      "frame": "bomb/fall/02/c26",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        80,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "e65744ef3b6105a0b2432f3b6f458ac3.png": {
+      "frame": "bomb/fall/02/c27",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        96,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "43b162f4ff4662b7d4ca4f9748a03311.png": {
+      "frame": "bomb/fall/02/c28",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        112,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "13ff8c18143d5ddfacffac68e9873c8a.png": {
+      "frame": "bomb/fall/03/c25",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        128,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "7392877b69586a514423505b24ab007f.png": {
+      "frame": "bomb/fall/03/c26",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        144,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "a32414ce314c4560002ee8aa32a15304.png": {
+      "frame": "bomb/fall/03/c27",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        160,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
+    },
+    "54c0e58fea28d81ccac081ab38fe4185.png": {
+      "frame": "bomb/fall/03/c28",
+      "target": "toroid_sprite_proof",
+      "source_asset": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
+      "source_sha256": "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/effects_sprite_render.py. Row 1: the player explosion (solvalou_explosion_tbl, xevious_main.68k 2093-2100: C0, C1, C4 2x2, C8 2x2, C2, C3, CC 2x2, step n at colour 0x30+n). Row 2: the air explosion (flying_obj_explosion_sprites 4892-4897: 70, 71, 74/78/7C 2x2, colour 7). Row 3: the ground explosion (bomb_explosion_animation_tbl 4944-4951: 60, 61, 64/68/6C 2x2, 62, 63, colour 0x0C). Explosion cells are 32x32 with every frame centred: each explosion nudges the object 8 px up-left as it enters a 2x2 frame (player 2056-2063, air 4872-4875, ground 4919-4923), which cancels half of the 2x2's right/down overhang (sprite_draw_double_width_and_height, amiga.68k 2529-2544), so a 1x1 frame sits centred and a 2x2 frame fills the cell. Row 4, 16x16 cells: the crater A6/A7 at colour 0x0D (bomb_explosion_finished 4931-4942), the bank-1 crosshair tile 0x114 at colours 32/33/41/42 (handle_crosshairs 2239-2281) and the bomb target (same tile, colour 0x22, init_bombing 2469). Row 5: the bank-1 bomb tiles 0x11C/0x11D/0x11E at colours 0x25-0x28 (2468-2488); the enemy bullet is tile 0x11E at those colours (4763; xevious_sub.68k 208-218) and reuses the last four cells. A colour-table entry of 0x80 draws nothing.",
+      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "rect": [
+        176,
+        112,
+        16,
+        16
+      ],
+      "canvas": [
+        16,
+        16
+      ],
+      "anchor": [
+        8,
+        8
+      ],
+      "generator_version": 1
     }
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "98d53973c6179fe3e602ff31b3fc5a8d179d2856974d84a04e9b01c62af778a4",
+    "sha256": "54c101dcb2ee0867d03f374c8380bfa383768efebcad1acbdf0f175205cde217",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -2761,7 +4585,81 @@
       "andor-bragza/fly/01",
       "andor-bragza/fly/02",
       "andor-bragza/fly/03",
-      "andor-bragza/fly/04"
+      "andor-bragza/fly/04",
+      "player-explosion/burst/01/none",
+      "player-explosion/burst/01/x",
+      "player-explosion/burst/01/y",
+      "player-explosion/burst/01/xy",
+      "player-explosion/burst/02/none",
+      "player-explosion/burst/02/x",
+      "player-explosion/burst/02/y",
+      "player-explosion/burst/02/xy",
+      "player-explosion/burst/03/none",
+      "player-explosion/burst/03/x",
+      "player-explosion/burst/03/y",
+      "player-explosion/burst/03/xy",
+      "player-explosion/burst/04/none",
+      "player-explosion/burst/04/x",
+      "player-explosion/burst/04/y",
+      "player-explosion/burst/04/xy",
+      "player-explosion/burst/05/none",
+      "player-explosion/burst/05/x",
+      "player-explosion/burst/05/y",
+      "player-explosion/burst/05/xy",
+      "player-explosion/burst/06/none",
+      "player-explosion/burst/06/x",
+      "player-explosion/burst/06/y",
+      "player-explosion/burst/06/xy",
+      "player-explosion/burst/07/none",
+      "player-explosion/burst/07/x",
+      "player-explosion/burst/07/y",
+      "player-explosion/burst/07/xy",
+      "air-explosion/burst/01/none",
+      "air-explosion/burst/01/x",
+      "air-explosion/burst/01/y",
+      "air-explosion/burst/01/xy",
+      "air-explosion/burst/02/none",
+      "air-explosion/burst/02/x",
+      "air-explosion/burst/02/y",
+      "air-explosion/burst/02/xy",
+      "air-explosion/burst/03/none",
+      "air-explosion/burst/03/x",
+      "air-explosion/burst/03/y",
+      "air-explosion/burst/03/xy",
+      "air-explosion/burst/04/none",
+      "air-explosion/burst/04/x",
+      "air-explosion/burst/04/y",
+      "air-explosion/burst/04/xy",
+      "air-explosion/burst/05/none",
+      "air-explosion/burst/05/x",
+      "air-explosion/burst/05/y",
+      "air-explosion/burst/05/xy",
+      "ground-explosion/burst/01",
+      "ground-explosion/burst/02",
+      "ground-explosion/burst/03",
+      "ground-explosion/burst/04",
+      "ground-explosion/burst/05",
+      "ground-explosion/burst/06",
+      "ground-explosion/burst/07",
+      "ground-crater/flicker/01",
+      "ground-crater/flicker/02",
+      "crosshair/aim/idle",
+      "crosshair/aim/bombing",
+      "crosshair/aim/idle-lit",
+      "crosshair/aim/bombing-lit",
+      "bomb-target/mark/01",
+      "bomb/fall/01/c25",
+      "bomb/fall/01/c26",
+      "bomb/fall/01/c27",
+      "bomb/fall/01/c28",
+      "bomb/fall/02/c25",
+      "bomb/fall/02/c26",
+      "bomb/fall/02/c27",
+      "bomb/fall/02/c28",
+      "bomb/fall/03/c25",
+      "bomb/fall/03/c26",
+      "bomb/fall/03/c27",
+      "bomb/fall/03/c28"
     ]
   }
 }
