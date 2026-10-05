@@ -85,16 +85,23 @@
     arcade grows the object 1×1 → 2×2 by writing `_ATTR=3` at rise step 4. The port renders the seven rise
     frames as pre-scaled costumes, so the growth is inherent to the frame the renderer shows for each step and
     there is no runtime `setsizeto`. Behaviour (which frame at which step, the destroy-stage hit window) is
-    unchanged. **Open (found in the visual-terrain slice's 2×2 placement check, [054](054-arcade-screen-proportions.md)
-    deviation 20):** the arcade's rise frames are 1×1 codes 0xA8–0xAB (pictures about 3, 6, 9 and 12 px across)
-    and, from step 4, 2×2 codes 0xAE, 0xB2 and 0xB6 (about 17, 23 and 31 px), drawn with the 2×2 tiles 16 px
-    toward screen-right and screen-down, so the picture's centre drifts from about 8.5 px to 16.5 px from the
-    object's position. The port's seven costumes are 16-px cells cropped from the fan sprite sheet, holding
-    pictures of only 2–14 px, centred at 8 px. So the port's risen tower is about half the arcade's size and up
-    to 8 px up-left of it. The hit windows are unaffected (they are the source's, on the slot position). A
-    faithful fix renders the seven frames from the reference's own sprite data (the Andor-parts precedent) and
-    places the 2×2 frames like the Garu base; it is new art needing the owner's pixel check, so it is left for
-    the owner to schedule.
+    unchanged. **Fixed in the visual-terrain slice (found by its 2×2 placement check,
+    [054](054-arcade-screen-proportions.md) deviation 20; the owner asked for it in the same PR and approved the
+    before/after picture):** the arcade's rise frames are 1×1 codes 0xA8–0xAB and, from step 4, 2×2 codes 0xAE,
+    0xB2 and 0xB6 (`sol_tower_animation_tbl`, `xevious_main.68k` 3068–3078), the 2×2 tiles drawn 16 px toward
+    screen-right and screen-down (`sprite_draw_double_width_and_height`, `src/amiga/amiga.68k` 2529–2544). The
+    old costumes were 16-px cells cropped from the fan sprite sheet: they held the dome at about the right size
+    but none of the tower's long diagonal shadow, which is most of the risen 2×2 picture, and they were centred
+    on the position, up to 8 px up-left of the arcade's picture. (An earlier note here called the old tower
+    "about half the arcade's size"; the missing part was the shadow.) The seven frames are now rendered from the
+    reference's own sprite data by `tools/sol_tower_render.py` (the Andor-parts precedent; `--verify`
+    re-derives the committed sheet at the pin), each in a 32×32 cell laid from its top-left as the arcade lays
+    the sprite from the object's position, and the renderer places every rise frame 8 arcade px right and down
+    of the position like the Garu base. Only the second bomb's explosion and crater, which
+    `handle_bomb_explosion` draws centred, stay unshifted. Colour: every step writes `_COLOUR =
+    pulsing_colour_1`, which cycles CLUTs 7–0x0B (`colour_lut_pulsing_1`, `xevious_sub.68k` 229–230); those
+    differ only in entry 7, which no Sol Tower pixel uses, so the frames are decoded at CLUT 7 and the port
+    draws no pulse. The hit windows are unchanged (they are the source's, on the slot position).
   - **Port necessity — the display and rise clocks are arcade-frame counts, stepped by the frame convention.**
     The Sol Tower rise (`SOL_RISE_PHASE_FRAMES = 16` per step, `SOL_RISE_STEP_COUNT = 7`) and the credit
     display (`EASTER_EGG_DISPLAY_FRAMES = 128`) are counted by `TICK_TIMER_STEP` (2 arcade frames per tick),
@@ -189,9 +196,11 @@
 - License status: The pinned reference states no reusable license; only instruction-derived behaviour and the
   committed, hash-pinned tables (the [schedule data](../spec/data/area-schedules.json), the
   [object registry](../spec/data/object-types.json), and the scoring values) are used, cited to the settled
-  spec and the data files, and no reference source text, credit strings, or media were reproduced. The Sol
-  Tower and Bonus Flag sprite crops are credited in `src/xevious/assets/provenance.json`
-  (https://www.spriters-resource.com/arcade/xevious/); the bonus-flag pickup sound is credited in the same
+  spec and the data files, and no reference source text, credit strings, or media were reproduced. The Bonus
+  Flag sprite crop is credited in `src/xevious/assets/provenance.json`; the Sol Tower rise sheet (since slice
+  20) is decoded from the pinned reference's sprite graphics (`assets/amiga/xevious_gfx.c`, Namco arcade
+  graphics) by `tools/sol_tower_render.py` and credited there too, replacing the earlier Spriters Resource
+  crops (https://www.spriters-resource.com/arcade/xevious/); the bonus-flag pickup sound is credited in the same
   provenance; the hidden-credit overlay's WORDING is port-original content, but its letterforms are rendered
   from the credited CC-BY Xevious HUD font sheet the HUD and attract text also use, so it carries the same
   font attribution (credited in `src/xevious/assets/provenance.json`).

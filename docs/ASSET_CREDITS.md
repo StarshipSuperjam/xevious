@@ -140,6 +140,24 @@ permission, this is Namco's copyrighted game content, no ownership is claimed,
 and a rights review is needed before broader distribution
 (`docs/REFERENCE_POLICY.md`).
 
+## Sol Tower rendered from the arcade sprite data
+
+The Sol Tower's seven rise frames (slice 20, `docs/mechanics/044-secrets.md`)
+are decoded from the same pinned reference graphics
+(`assets/amiga/xevious_gfx.c`: sprite tiles 0xA8–0xAB and the 2×2 groups
+0xAC–0xB7, sprite colour table 7, palette) by `tools/sol_tower_render.py` into
+one 224×32 sheet, `src/xevious/assets/7f90e2226e98c3d79f046846412b0fbd.png`,
+on the hidden `sprite_sheets` target; `--verify` re-derives it byte-for-byte at
+the pin. The `sol_tower` entry in `assets/sprite-extraction/manifest.json` crops
+the seven frames from it. They replace the earlier Spriters Resource crops,
+which held the tower's dome but not its shadow.
+
+| Output | Description | Credit | Source | License |
+| --- | --- | --- | --- | --- |
+| Sol Tower sheet and seven `sol-tower/rise` costumes | Sol Tower rise frames | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+
+The same rights caveat as the terrain and the Andor parts applies.
+
 ## Terrain area map (fan map, cross-check only — not used by the build)
 
 Operator-supplied source art, committed earlier for the terrain slice. The build

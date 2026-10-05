@@ -242,6 +242,7 @@ class SpriteExtractorTests(unittest.TestCase):
                 costume["name"].startswith("garu/")
                 or costume["name"].startswith("garu-derota/")
                 or costume["name"].startswith("andor-armor/")
+                or costume["name"].startswith("sol-tower/")  # 32x32 rise cells (tools/sol_tower_render.py)
             ):
                 expected_center = (16, 16)
             elif costume["name"].startswith("bacura/"):

@@ -139,6 +139,11 @@ SPRITE_SHEET_HASHES = {
     "Bonus Flag": (
         "eb9d6a5422d2904de86971a35b78e2eb04eaf0222f5b5a7705e21cfcc187c6c1"
     ),
+    # Slice 20 PR-3: the Sol Tower rise sheet, decoded from the pin by tools/sol_tower_render.py (the
+    # Spriters Resource crops showed only the dome, without the tower's long shadow).
+    "Sol Tower": (
+        "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c"
+    ),
 }
 
 
@@ -344,7 +349,9 @@ class ScratchProjectTests(unittest.TestCase):
         # - the 12 slice-20 AREA-01 retired prototype area01_* strip costumes (still in the baseline archive,
         # no longer referenced) + the 6 terrain strip costumes sliced from the arcade map by
         # tools/terrain_render.py (bands 0-3, the restart band, the forest filler). 258 - 12 + 6 = 252.
-        self.assertEqual(252, len(assets))
+        # + the slice-20 Sol Tower rise sheet (tools/sol_tower_render.py) on the hidden sprite_sheets library;
+        # its seven rise crops replace the seven old Spriters crops one for one. 252 + 1 = 253.
+        self.assertEqual(253, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -6292,6 +6299,37 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("bacura-craft-death-window")
 
+        # (9b) FAIR WINDOW (owner decision, recorded divergence docs/mechanics/037). The same gate reads the
+        # current tumble frame's opaque top row and left column through `letter of` the two digit strings, so
+        # the box shrinks to the visible slab instead of the whole 32x16 tile.
+        def cond_has_text(cond_id, value):
+            seen, frontier = set(), [cond_id]
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                b = blocks[cid]
+                for v in b.get("inputs", {}).values():
+                    if (
+                        isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list)
+                        and len(v[1]) >= 2 and v[1][0] == 10 and v[1][1] == value
+                    ):
+                        return True
+                    if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], str):
+                        frontier.append(v[1])
+            return False
+
+        if not hit_writes or not any(
+            ancestor_if(
+                h,
+                lambda c: cond_has_text(c, director.BACURA_FRAME_TOP_DIGITS)
+                and cond_has_text(c, director.BACURA_FRAME_LEFT_DIGITS),
+            )
+            for h in hit_writes
+        ):
+            failures.add("bacura-craft-fair-window")
+
         # (10) RENDERER — the position-driven 8-frame tumble, no death frame. The Bacura target carries exactly
         # the eight tumble frames bacura/slab/01..08, and the render switches costume by a
         # (floor(slot x / 128)) mod 8 index (the port image of the arcade (_X>>7)&7) rather than a fixed frame.
@@ -6540,6 +6578,18 @@ class ScratchProjectTests(unittest.TestCase):
                     if _num_operand(v) == 27:
                         b["inputs"][key] = [1, [4, "0"]]
 
+        def full_tile_window(p: dict) -> None:
+            # Rewrite the opaque-top-row digits to all zeros → every frame tests the whole tile's depth again
+            # (the arcade box), so the craft dies across an edge-on frame's empty rows.
+            stage, body = _body(p, director.UPDATE_BACURA_PROCCODE)
+            for b in body:
+                for v in b.get("inputs", {}).values():
+                    if (
+                        isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list)
+                        and len(v[1]) >= 2 and v[1][0] == 10 and v[1][1] == director.BACURA_FRAME_TOP_DIGITS
+                    ):
+                        v[1][1] = "0" * len(director.BACURA_FRAME_TOP_DIGITS)
+
         def strip_tumble_frames(p: dict) -> None:
             # Drop all but the first tumble frame → the Bacura target no longer carries the eight frames the
             # position select needs (a regression to a single static costume).
@@ -6589,6 +6639,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("bacura-no-explosion", graft_call(director.UPDATE_BACURA_PROCCODE, director.EXPLODE_TICK_PROCCODE)),
             ("bacura-never-scored", add_pts),
             ("bacura-craft-death-window", break_window),
+            ("bacura-craft-fair-window", full_tile_window),
             ("bacura-renderer-tumble-frames", strip_tumble_frames),
             ("bacura-renderer-position-select", pin_render_frame),
             ("bacura-schedule-sets-inc-cnt", rebrand_handler(director.SET_BACURA_COUNT_HANDLER)),
@@ -19482,6 +19533,50 @@ class ScratchProjectTests(unittest.TestCase):
             or (node_x_seeds, node_y_seeds) != (4, 4)
         ):
             fails.add("PRES01-garu-double-tile")
+        # PRES01-sol-double-tile — the Sol Tower rise frames (tools/sol_tower_render.py) are 32x32 cells laid from
+        # the cell's top-left as the arcade lays the sprite from its position, so every rise frame draws 10 units
+        # right (+x) and 10 down (-y) of the shared map, exactly as the 2x2 Garu base does. Only the second bomb's
+        # explosion and crater (state HIT with flag SOL_RISEN_PHASE), which handle_bomb_explosion draws centred,
+        # take the unshifted branch. Pinned as one if/else: shifted SUBSTACK under not(HIT and RISEN), plain map
+        # position in SUBSTACK2.
+        sol_ok = 0
+        for bid, b in ground.items():
+            if not isinstance(b, dict) or b["opcode"] != "control_if_else":
+                continue
+            cond = ref_in(ground, b, "CONDITION") or {}
+            inner = ref_in(ground, cond, "OPERAND") or {}
+            if cond.get("opcode") != "operator_not" or inner.get("opcode") != "operator_and":
+                continue
+            eqs = [ref_in(ground, inner, k) or {} for k in ("OPERAND1", "OPERAND2")]
+            pairs = set()
+            for eq in eqs:
+                lhs = ref_in(ground, eq, "OPERAND1") or {}
+                if eq.get("opcode") == "operator_equals" and lhs.get("opcode") == "data_itemoflist":
+                    pairs.add((lhs["fields"]["LIST"][1], as_num(num(eq["inputs"].get("OPERAND2")))))
+            if pairs != {
+                (director.SLOT_STATE_ID, float(director.SLOT_HIT)),
+                (director.SLOT_FLAG_ID, float(director.SOL_RISEN_PHASE)),
+            }:
+                continue
+            shifted = ground.get((b["inputs"].get("SUBSTACK") or [None, None])[1]) or {}
+            plain = ground.get((b["inputs"].get("SUBSTACK2") or [None, None])[1]) or {}
+            gx, gy = ref_in(ground, shifted, "X") or {}, ref_in(ground, shifted, "Y") or {}
+            px, py = ref_in(ground, plain, "X") or {}, ref_in(ground, plain, "Y") or {}
+            if (
+                shifted.get("opcode") == "motion_gotoxy"
+                and gx.get("opcode") == "operator_add"
+                and gy.get("opcode") == "operator_subtract"
+                and as_num(num(gx["inputs"].get("NUM2"))) == 8 * scale
+                and as_num(num(gy["inputs"].get("NUM2"))) == 8 * scale
+                and (ref_in(ground, gx, "NUM1") or {}).get("opcode") == "operator_subtract"
+                and (ref_in(ground, gy, "NUM1") or {}).get("opcode") == "operator_subtract"
+                and plain.get("opcode") == "motion_gotoxy"
+                and px.get("opcode") == "operator_subtract"
+                and py.get("opcode") == "operator_subtract"
+            ):
+                sol_ok += 1
+        if sol_ok != 1:
+            fails.add("PRES01-sol-double-tile")
 
         # PRES01-attract-grid — the attract, title, best-five and entry text on the arcade text cells, from the
         # source's own screen offsets: CREDIT 0x0923 with its digits two cells past the label (display_credits
@@ -19803,12 +19898,47 @@ class ScratchProjectTests(unittest.TestCase):
             blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
             for b in blocks.values():
                 parent = blocks.get(b.get("parent") or "") or {}
+                gate = blocks.get(parent.get("parent") or "") or {}
+                cond = blocks.get((gate.get("inputs", {}).get("CONDITION") or [None, None])[1] or "") or {}
                 if (
                     b["opcode"] == "operator_add"
                     and parent.get("opcode") == "motion_gotoxy"
                     and self._numeric(b["inputs"].get("NUM2")) in (10, "10")
+                    and cond.get("opcode") == "operator_equals"  # the base gate, not the Sol Tower's
                 ):
                     b["inputs"]["NUM2"] = [4, [4, 0]]
+                    return
+
+        def unshift_sol_tower(p):  # the Sol Tower rise frames drawn at the bare position again (8 px up-left)
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            for b in blocks.values():
+                parent = blocks.get(b.get("parent") or "") or {}
+                gate = blocks.get(parent.get("parent") or "") or {}
+                cond = blocks.get((gate.get("inputs", {}).get("CONDITION") or [None, None])[1] or "") or {}
+                if (
+                    b["opcode"] == "operator_add"
+                    and parent.get("opcode") == "motion_gotoxy"
+                    and self._numeric(b["inputs"].get("NUM2")) in (10, "10")
+                    and cond.get("opcode") == "operator_not"
+                ):
+                    b["inputs"]["NUM2"] = [4, [4, 0]]
+                    return
+
+        def sol_crater_shifted(p):  # the gate's RISEN test never matches → the crater takes the shifted branch too
+            blocks = target(p, director.GROUND_RENDER_TARGET)["blocks"]
+            for b in blocks.values():
+                spec = (b.get("inputs", {}).get("OPERAND1") or [None, None])[1]
+                lhs = (blocks.get(spec) if isinstance(spec, str) else None) or {}
+                parent = blocks.get(b.get("parent") or "") or {}
+                if (
+                    b["opcode"] == "operator_equals"
+                    and lhs.get("opcode") == "data_itemoflist"
+                    and lhs["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                    and self._numeric(b["inputs"].get("OPERAND2")) in (director.SOL_RISEN_PHASE, str(director.SOL_RISEN_PHASE))
+                    and parent.get("opcode") == "operator_and"
+                    and (blocks.get(parent.get("parent") or "") or {}).get("opcode") == "operator_not"
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "-1"]]
                     return
 
         def garu_node_on_base_cell(p):  # the node seeded on the base's own row again (the old zero offset)
@@ -19864,6 +19994,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-render-map", flip_player_read),
             ("PRES01-bacura-slab", centre_bacura_slab),
             ("PRES01-garu-double-tile", unshift_garu_base),
+            ("PRES01-sol-double-tile", unshift_sol_tower),
+            ("PRES01-sol-double-tile", sol_crater_shifted),
             ("PRES01-garu-double-tile", garu_node_on_base_cell),
             ("PRES01-garu-double-tile", garu_node_wrong_side),
             ("PRES01-attract-grid", drift_push_start),
@@ -20247,11 +20379,12 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name in ("Bonus Flag", "Andor Genesis"):
+            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower"):
                 # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
                 # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
-                # and the Andor rip only shows assembled octagons that cannot be sliced into separable
-                # part tiles (BOSS-01), so both are rendered from the pin.
+                # the Andor rip only shows assembled octagons that cannot be sliced into separable
+                # part tiles (BOSS-01), and the Sol Tower crops lack the tower's shadow, so all three are
+                # rendered from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -20286,7 +20419,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "e3e126c2706fa220c79eea8c39c066f25818b0784607b54600699e7e77cd7093",
+            "65eb970e63df5fe98b667929469ee87b36b222c19ef5bdc119571489dc3d3ffe",
             build_hash,
         )
 

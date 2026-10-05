@@ -217,6 +217,14 @@ area and its restart show on screen as well as in the `area progress`/`area numb
      over trees or water. Fly the same area twice to compare. A Garu Barra or Garu Derota's top sits
      centred on its large base, and both sit a little right of and below where the last build drew them
      (where the arcade draws them); bombing the top still exposes the base's red centre.
+   - **The Sol Tower rises with its shadow.** Bomb a hidden Sol Tower (area 1 hides two; the debug ground key
+     (G) brings one in as its second family, right after a Barra): it rises in seven steps into the tall tower with its long dark shadow running
+     down and to the right, as in the before/after picture you approved, sitting a little right of and below
+     where the last build drew it. A second bomb leaves the crater where the tower stood.
+   - **A Bacura only kills where it is drawn.** Fly the craft close beside a tumbling Bacura, especially
+     alongside it while it is edge-on (a thin bar): you should survive anywhere the slab is not drawn, and
+     die as soon as the craft touches the drawn slab. This is fairer than the arcade, which kills across the
+     whole slab-sized box (your call; recorded). Shots still bounce off the whole slab width as before.
    - **A new life starts over forest.** After a death the screen shows the plain forest pattern with the
      area's first ground entering above it and scrolling down, both for an ordinary death and a near-end
      one (step 5). A new game does the same in area 1.
@@ -260,8 +268,8 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    anywhere on its drawn body (no longer a doubled window), and a bomb dropped directly between two ground
    objects that sit side by side — a paired Barra, say — destroys both, while one aimed well wide of a pair
    misses them. A Bacura is now drawn where the arcade draws it — a little to the right of where the last
-   build put it — so touching it anywhere along its drawn width kills you (the arcade allows a few pixels of
-   overlap at each end), and shots bounce off it across that same width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
+   build put it — and it kills only where its tumbling slab is actually drawn (step 5a), while shots
+   bounce off it across the arcade's whole slab width. Judge the feel: if the arcade speeds feel wrong for this screen, say so;
    the alternative is a recorded port speed-up, and that is your call.
    **Title and best-five layout:** on the title, PUSH START BUTTON and INSERT COIN read centred in the
    window, and the 1 PLAYER / 2 PLAYERS choices are left-aligned with each other as a pair centred under

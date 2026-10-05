@@ -4004,7 +4004,7 @@ export const SCENARIOS = [
   {
     key: 'bacura-touch-raises-craft-death',
     behavior:
-      'AIR-11 (.play): a Bacura overlapping the craft raises the player-hit death signal through the wider Bacura collision box, and a slab one cell off does NOT — the slab kills on contact even though it is itself indestructible',
+      'AIR-11 (.play): a Bacura overlapping the craft raises the player-hit death signal through the Bacura collision box (the visible-slab box: see bacura-craft-kill-box-is-the-visible-slab), and a slab one cell off does NOT — the slab kills on contact even though it is itself indestructible',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -4048,6 +4048,77 @@ export const SCENARIOS = [
     // Pin every `set player hit` to 0 so the craft-touch consequence can never fire → onCell stays 0 → the
     // death assertion bites (proving it is the Bacura's craft_hit that raises the signal).
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'player hit', 0),
+  },
+  {
+    key: 'bacura-craft-kill-box-is-the-visible-slab',
+    behavior:
+      'AIR-11 fair box (owner decision, recorded divergence docs/mechanics/037): a Bacura kills the craft only where its on-screen tumble frame is opaque — beside an edge-on frame (inside the arcade whole-tile box, outside the drawn slab) the craft survives; on the drawn slab it dies',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 16; s <= 31; s += 1) {
+        readVar(vm, 'slot-type')[s] = 0;
+        readVar(vm, 'slot-state')[s] = 0;
+      }
+      const slot = 16; // JS index; Scratch 1-based slot 17 (first Bacura band slot)
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      const CRAFT_Y = 3840; // lateral shadow 120 px
+      // Each case: the slab's slot x picks its tumble frame (floor(x/128) mod 8); depth shadow units are
+      // floor((x + 256) / 64), lateral px floor(y / 32). Deltas are slab - craft.
+      const probe = (slabX, craftX, latPx) => {
+        put('slot-type', 1);
+        put('slot-state', 1);
+        put('slot-dx', 16);
+        put('slot-dy', 0);
+        put('slot-x', slabX);
+        put('slot-y', CRAFT_Y + latPx * 32);
+        writeVar(vm, 'player-slot-x', craftX);
+        writeVar(vm, 'player-slot-y', CRAFT_Y);
+        writeVar(vm, 'slot-index', slot + 1);
+        writeVar(vm, 'player-hit', 0);
+        callProc(vm, 'Stage', 'update bacura');
+        step(vm, 1);
+        return Number(readVar(vm, 'player-hit'));
+      };
+      // Frame 0 (edge-on: opaque rows 6-9, fair depth [-5, 4] units; arcade [-8, 7]). Slab x 6144 = 100 units.
+      const f0DepthPlus6 = probe(6144, 94 * 64 - 256, 0); // +6 units: arcade kills, slab not drawn there
+      const f0DepthMinus7 = probe(6144, 107 * 64 - 256, 0); // -7 units: the same on the other edge
+      const f0DepthPlus4 = probe(6144, 96 * 64 - 256, 0); // +4 units: on the drawn rows
+      // Frame 4 (broadside: opaque columns 4-27, fair lateral [-8, 23] px; arcade [-12, 27]). Slab x 6656.
+      const f4LatPlus25 = probe(6656, 6656, 25);
+      const f4LatMinus10 = probe(6656, 6656, -10);
+      const f4LatPlus23 = probe(6656, 6656, 23);
+      const f4LatMinus8 = probe(6656, 6656, -8);
+      return { f0DepthPlus6, f0DepthMinus7, f0DepthPlus4, f4LatPlus25, f4LatMinus10, f4LatPlus23, f4LatMinus8 };
+    },
+    assert(obs) {
+      assert.equal(obs.f0DepthPlus6, 0, 'craft 6 depth units from an edge-on slab (empty tile rows) survives');
+      assert.equal(obs.f0DepthMinus7, 0, 'craft 7 depth units the other side of an edge-on slab survives');
+      assert.equal(obs.f0DepthPlus4, 1, 'craft on the edge-on slab\'s drawn rows dies');
+      assert.equal(obs.f4LatPlus25, 0, 'craft 25 px beside a broadside slab (its empty columns) survives');
+      assert.equal(obs.f4LatMinus10, 0, 'craft 10 px the other side of a broadside slab survives');
+      assert.equal(obs.f4LatPlus23, 1, 'craft overlapping the broadside slab\'s last drawn column dies');
+      assert.equal(obs.f4LatMinus8, 1, 'craft overlapping the broadside slab\'s first drawn column dies');
+    },
+    // Put the arcade's whole-tile box back: every frame's opaque top row and left column read as 0, so the
+    // survivors die again → the survive assertions bite.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        for (const v of Object.values((b && b.inputs) || {})) {
+          if (Array.isArray(v) && Array.isArray(v[1]) && v[1][0] === 10 && (v[1][1] === '64210124' || v[1][1] === '01234321')) {
+            v[1][1] = '00000000';
+            patched += 1;
+          }
+        }
+      }
+      if (patched === 0) throw new Error('mutate: no Bacura frame digit strings in the Stage');
+    },
   },
   {
     key: 'bacura-tumbles-with-position',

@@ -260,6 +260,42 @@ HIT_WINDOW_BULLET_FLYING = (8, 16, 4, 8)
 # objX-craftX in [-8,7] 2-px units — 40 px lateral (lopsided toward +Y, the craft's left) x 32 px deep. Before
 # PRES-01 the port read the asymmetric bound mirrored ([-28,11]).
 HIT_WINDOW_BACURA = (28, 40, 8, 16)
+# AIR-11 fair Bacura craft-kill box (owner decision, slice 20 playtest; recorded divergence, docs/mechanics/037).
+# The arcade box above is the craft's centre columns 4..12 (all 16 rows) against the slab's whole 32x16 tile,
+# so on the edge-on tumble frames it kills the craft across up to 6 px of empty tile. The port keeps the
+# arcade's craft core but tests it against the opaque part of the frame actually on screen. Per tumble frame
+# (bacura_sprite_tbl, xevious_main.68k 4268-4276: bank-1 codes 0x120,121,124,125,128,129,12C,12D, 1x2;
+# frame = (_X>>7)&7) the opaque
+# rows T..B (depth) and columns L..R (lateral) of the 32x16 slab, read from assets/amiga/xevious_gfx.c at the
+# pin — each frame is symmetric in the tile (T+B = 15, L+R = 31). The full tile (T,B,L,R) = (0,15,0,31)
+# reproduces HIT_WINDOW_BACURA exactly (pinned by test).
+BACURA_FRAME_OPAQUE = (
+    (6, 9, 0, 31),
+    (4, 11, 1, 30),
+    (2, 13, 2, 29),
+    (1, 14, 3, 28),
+    (0, 15, 4, 27),
+    (1, 14, 3, 28),
+    (2, 13, 2, 29),
+    (4, 11, 1, 30),
+)
+
+
+def bacura_fair_window(top: int, bottom: int, left: int, right: int) -> tuple[int, int, int, int]:
+    """The (y_bias, y_width, x_bias, x_width) carry-idiom window for the craft core (columns 4..12, rows
+    0..15) against slab rows top..bottom, columns left..right. Lateral: the core overlaps the columns for
+    obj-craft px in [left-12, right-4]. Depth: the 16-row craft overlaps the rows for objTop-craftTop px in
+    [-bottom, 15-top], which in the 2-px shadow units is [-floor((bottom+1)/2), floor((15-top)/2)] — the
+    rounding that gives the arcade's own [-8, 7] for the full tile."""
+    lat_low, lat_high = left - 12, right - 4
+    dep_low, dep_high = -((bottom + 1) // 2), (15 - top) // 2
+    return lat_high + 1, lat_high - lat_low + 1, dep_high + 1, dep_high - dep_low + 1
+
+
+# The opaque top row and left column of each frame as a digit string, indexed in Scratch by frame+1
+# (`letter of`); bottom and right follow from the symmetry.
+BACURA_FRAME_TOP_DIGITS = "".join(str(t) for t, _b, _l, _r in BACURA_FRAME_OPAQUE)
+BACURA_FRAME_LEFT_DIGITS = "".join(str(l) for _t, _b, l, _r in BACURA_FRAME_OPAQUE)
 # WPN-02 player shot vs flying enemy (`check_shot_hit_flying_enemy`, 2565-2577): enemyY-shotY in [-16,15] px,
 # enemyX-shotX in [-8,7] 2-px units — a 32x32 px box (shot sprite + enemy sprite). The shot moves 12 px a tick
 # (6 depth units) against a 16-unit-deep window, so it is sampled on every crossing and never tunnels: the
@@ -4342,6 +4378,49 @@ def _craft_overlap_reporter(
     return _shadow_hit(blocks, d_lat, d_dep, window)
 
 
+def _bacura_fair_craft_reporter(blocks: Blocks) -> str:
+    """AIR-11 fair craft kill (recorded divergence, docs/mechanics/037): boolean — does the craft core
+    overlap the opaque part of the Bacura frame on screen? The same shadow deltas as `_craft_overlap_reporter`
+    (obj - craft, both axes), but the bounds are `bacura_fair_window` of the current tumble frame, read at
+    runtime: frame f = floor(slot x / 128) mod 8 (the renderer's own costume index), top row T and left
+    column L by `letter (f+1) of` the digit strings. Lateral hits for obj-craft px in [L-12, 27-L]; depth for
+    obj-craft units in [-floor((16-T)/2), floor((15-T)/2)]. Every bound and delta is a fresh reporter per
+    use (dsl-reporter-single-parent-steal)."""
+
+    def frame_digit(digits: str) -> str:
+        frame = blocks.op_mod(
+            blocks.op_floor(
+                blocks.op_div(_cur_item(blocks, "slot x", SLOT_X_ID), number(BACURA_TUMBLE_UNITS_PER_FRAME))
+            ),
+            number(BACURA_TUMBLE_FRAMES),
+        )
+        return blocks.op_letter_of(blocks.op_add(frame, number(1)), text(digits))
+
+    left = lambda: frame_digit(BACURA_FRAME_LEFT_DIGITS)
+    top = lambda: frame_digit(BACURA_FRAME_TOP_DIGITS)
+    lat_low = lambda: blocks.op_sub(left(), number(12))
+    lat_high = lambda: blocks.op_sub(number(27), left())
+    dep_low = lambda: blocks.op_sub(number(0), blocks.op_floor(blocks.op_div(blocks.op_sub(number(16), top()), number(2))))
+    dep_high = lambda: blocks.op_floor(blocks.op_div(blocks.op_sub(number(15), top()), number(2)))
+    d_lat = lambda: blocks.op_sub(
+        _lateral_shadow(blocks, _cur_item(blocks, "slot y", SLOT_Y_ID)),
+        _lateral_shadow(blocks, variable("player slot y", PLAYER_SLOT_Y_ID)),
+    )
+    d_dep = lambda: blocks.op_sub(
+        _depth_shadow(blocks, _cur_item(blocks, "slot x", SLOT_X_ID)),
+        _depth_shadow(blocks, variable("player slot x", PLAYER_SLOT_X_ID)),
+    )
+    hit_lat = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_lat(), lat_low())),
+        blocks.op_not(blocks.op_gt(d_lat(), lat_high())),
+    )
+    hit_dep = blocks.op_and(
+        blocks.op_not(blocks.op_lt(d_dep(), dep_low())),
+        blocks.op_not(blocks.op_gt(d_dep(), dep_high())),
+    )
+    return blocks.op_and(hit_lat, hit_dep)
+
+
 def install_compute_aim_index(blocks: Blocks) -> None:
     # AIR-01/AIR-12 aim quantizer (get_index_for_angle 0EB2): turn the vector (aim dx diff, aim dy
     # diff) — player minus slot, in 8-px cells — into a 1-based index into the 32-entry aim tables.
@@ -6273,14 +6352,17 @@ def install_update_bacura(blocks: Blocks) -> None:
     # no player shot ever HIT-tests it (there is no HIT state, no explosion, no score) — that omission IS
     # the shot-invulnerability. It DOES run the WPN-01 shot-bounce detector (`check shot bacura`), which
     # only marks an overlapping shot for its rebound and never touches the slab. Per tick it (1) kills the
-    # craft on contact using the TALLER HIT_WINDOW_BACURA (check_bacura_hit_solvalou 2225-2237, the same
-    # overlap compare as the flying check but a 40 x 32 px box reaching 27 px to one side, 12 to the other), checked at the tick-start position; (2) marks
+    # craft on contact, checked at the tick-start position. The arcade's check_bacura_hit_solvalou
+    # (2225-2237) tests the craft core against the slab's whole 32x16 tile (HIT_WINDOW_BACURA); the port
+    # tests it against the opaque part of the frame on screen (`_bacura_fair_craft_reporter`, owner
+    # decision, recorded divergence in docs/mechanics/037), so an edge-on frame no longer kills across
+    # its empty tile; (2) marks
     # any overlapping player shot for the bounce; (3) drifts DOWN the scroll axis at BACURA_DRIFT_DX
     # (1 px/frame, dy=0); and (4) culls once it scrolls off the bottom. It enters at the top and only moves
     # down, so the bottom edge is its only exit (unlike the maneuvering flying families, no four-edge cull).
     definition = _install_warp_proc(blocks, UPDATE_BACURA_PROCCODE)
     craft_hit = blocks.if_reporter(
-        _craft_overlap_reporter(blocks, HIT_WINDOW_BACURA),
+        _bacura_fair_craft_reporter(blocks),
         [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))],
     )
     shot_bounce = blocks.call_proc(CHECK_SHOT_BACURA_PROCCODE, warp=True)
@@ -14072,10 +14154,41 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
                 blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
             ),
         )
+        # The rise frames (tools/sol_tower_render.py) are 32x32 cells holding the arcade picture laid from the
+        # cell's top-left, as the arcade lays the sprite from the object's position — a 1x1 tile (rise steps
+        # 0-3) in the top-left 16x16, a 2x2 (steps 4-6, handle_sol_tower_rising `_ATTR=3`) across the whole
+        # cell. Their rotation centre is the cell's middle, 8 px right of and 8 px below a 16-px sprite's centre
+        # at the position, so — like the Garu base — every rise frame is placed DOUBLE_TILE_STAGE_OFFSET right
+        # and down. The condition mirrors _sol_tower_costume_subtree: only HIT and RISEN (the second bomb's
+        # explosion and crater, which handle_bomb_explosion draws centred on the position) draws unshifted.
+        is_double = blocks.op_not(
+            blocks.op_and(
+                blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+                blocks.op_eq(blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()), number(SOL_RISEN_PHASE)),
+            )
+        )
+        double_x, double_y = stage_xy()
+        single_x, single_y = stage_xy()
+        place = _ground_if_else(
+            blocks,
+            is_double,
+            [
+                blocks.go_expr(
+                    blocks.op_add(double_x, number(DOUBLE_TILE_STAGE_OFFSET)),
+                    blocks.op_sub(double_y, number(DOUBLE_TILE_STAGE_OFFSET)),
+                )
+            ],
+            [blocks.go_expr(single_x, single_y)],
+        )
         gate = _ground_if_else(
             blocks,
             blocks.op_not(hidden_idle),
-            show_arm(_sol_tower_costume_subtree(blocks, slotvar, GROUND_FAMILY_OFFSETS["sol-tower"])),
+            [
+                place,
+                _sol_tower_costume_subtree(blocks, slotvar, GROUND_FAMILY_OFFSETS["sol-tower"]),
+                blocks.add("looks_setsizeto", inputs={"SIZE": number(GROUND_RENDER_SIZE)}),
+                blocks.show(),
+            ],
             [blocks.hide()],
         )
         return [gate]
