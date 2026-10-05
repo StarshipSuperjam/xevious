@@ -351,7 +351,9 @@ class ScratchProjectTests(unittest.TestCase):
         # tools/terrain_render.py (bands 0-3, the restart band, the forest filler). 258 - 12 + 6 = 252.
         # + the slice-20 Sol Tower rise sheet (tools/sol_tower_render.py) on the hidden sprite_sheets library;
         # its seven rise crops replace the seven old Spriters crops one for one. 252 + 1 = 253.
-        self.assertEqual(253, len(assets))
+        # + the 9 slice-20 CAB-05 arcade sounds on the Stage (credit, name_entry, name_entry_top,
+        # andor_genesis, start, bgm, solvalou_explode, zapper_fire, blaster_fire). 253 + 9 = 262.
+        self.assertEqual(262, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -465,12 +467,15 @@ class ScratchProjectTests(unittest.TestCase):
                 # hud_glyphs.py appends its added Stage sounds on top of the historical
                 # two (docs/mechanics/010): first the "extend" cue, then the seven arcade
                 # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040 — bonus_flag added
-                # for SEC-02, slice 14). Verify the exact list, then drop sounds from the general
-                # preserved-content comparison.
+                # for SEC-02, slice 14; CAB-05 slice 20 adds the coin, high/top-score, Andor and
+                # five base-sound replacement cues). Verify the exact list, then drop sounds from the
+                # general preserved-content comparison.
                 self.assertEqual(
                     [sound["name"] for sound in expected["sounds"]]
-                    + ["extend", "air_destroy", "bacura", "bonus_flag", "garu_zakato",
-                       "ground_destroy", "sheonite", "zakato"],
+                    + ["extend", "air_destroy", "andor_genesis", "bacura", "bgm", "blaster_fire",
+                       "bonus_flag", "credit", "garu_zakato", "ground_destroy", "name_entry",
+                       "name_entry_top", "sheonite", "solvalou_explode", "start", "zakato",
+                       "zapper_fire"],
                     [sound["name"] for sound in actual["sounds"]],
                 )
                 expected.pop("sounds")
@@ -20419,7 +20424,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "65eb970e63df5fe98b667929469ee87b36b222c19ef5bdc119571489dc3d3ffe",
+            "9fe1f38f6da74fffea1427e924d972769ce481862a330d59412c99bb15ad9560",
             build_hash,
         )
 

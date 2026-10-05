@@ -229285,6 +229285,15 @@
           "md5ext": "a9fb984e02299e273f1d5e38f2d8c898.wav"
         },
         {
+          "name": "andor_genesis",
+          "assetId": "26cad25da9d13a924450938e174db27a",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 85106,
+          "md5ext": "26cad25da9d13a924450938e174db27a.wav"
+        },
+        {
           "name": "bacura",
           "assetId": "57fc7f1fc0968d5bb0ca08ccbef35740",
           "dataFormat": "wav",
@@ -229294,6 +229303,24 @@
           "md5ext": "57fc7f1fc0968d5bb0ca08ccbef35740.wav"
         },
         {
+          "name": "bgm",
+          "assetId": "04be97cfa6686cb23d0294eb3e162492",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 152043,
+          "md5ext": "04be97cfa6686cb23d0294eb3e162492.wav"
+        },
+        {
+          "name": "blaster_fire",
+          "assetId": "83598aacae5f7c3ebc37501c6a803443",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 35920,
+          "md5ext": "83598aacae5f7c3ebc37501c6a803443.wav"
+        },
+        {
           "name": "bonus_flag",
           "assetId": "bc057a046ad0628da56171dda196976e",
           "dataFormat": "wav",
@@ -229301,6 +229328,15 @@
           "rate": 44100,
           "sampleCount": 26204,
           "md5ext": "bc057a046ad0628da56171dda196976e.wav"
+        },
+        {
+          "name": "credit",
+          "assetId": "6fcac907d92df318159f97a75769c2af",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 25662,
+          "md5ext": "6fcac907d92df318159f97a75769c2af.wav"
         },
         {
           "name": "garu_zakato",
@@ -229321,6 +229357,24 @@
           "md5ext": "cf0da6ef637845d87ed79274159b8cdd.wav"
         },
         {
+          "name": "name_entry",
+          "assetId": "aadd29f6eeb1f65f49c0406d174025fb",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 304422,
+          "md5ext": "aadd29f6eeb1f65f49c0406d174025fb.wav"
+        },
+        {
+          "name": "name_entry_top",
+          "assetId": "618c9eaf07180a8ba7b4c69b1866efb5",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 253431,
+          "md5ext": "618c9eaf07180a8ba7b4c69b1866efb5.wav"
+        },
+        {
           "name": "sheonite",
           "assetId": "53c4552f29ecb3bf31211d23a382fa39",
           "dataFormat": "wav",
@@ -229330,6 +229384,24 @@
           "md5ext": "53c4552f29ecb3bf31211d23a382fa39.wav"
         },
         {
+          "name": "solvalou_explode",
+          "assetId": "f07945a1b65713209ff680a8a1b8d1e9",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 86669,
+          "md5ext": "f07945a1b65713209ff680a8a1b8d1e9.wav"
+        },
+        {
+          "name": "start",
+          "assetId": "cdeaffc7fc6d20f1fe0a4ac857094082",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 309019,
+          "md5ext": "cdeaffc7fc6d20f1fe0a4ac857094082.wav"
+        },
+        {
           "name": "zakato",
           "assetId": "69c1e82bac42ff81d7af0124a69990a2",
           "dataFormat": "wav",
@@ -229337,6 +229409,15 @@
           "rate": 48000,
           "sampleCount": 4776,
           "md5ext": "69c1e82bac42ff81d7af0124a69990a2.wav"
+        },
+        {
+          "name": "zapper_fire",
+          "assetId": "fa1955e97059f766f68afaf17462081f",
+          "dataFormat": "wav",
+          "format": "",
+          "rate": 48000,
+          "sampleCount": 3182,
+          "md5ext": "fa1955e97059f766f68afaf17462081f.wav"
         }
       ],
       "volume": 100,

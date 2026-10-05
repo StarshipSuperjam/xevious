@@ -393,14 +393,34 @@
       "name": "air_destroy",
       "generator_version": 1
     },
+    "26cad25da9d13a924450938e174db27a.wav": {
+      "kind": "game_sound",
+      "name": "andor_genesis",
+      "generator_version": 1
+    },
     "57fc7f1fc0968d5bb0ca08ccbef35740.wav": {
       "kind": "game_sound",
       "name": "bacura",
       "generator_version": 1
     },
+    "04be97cfa6686cb23d0294eb3e162492.wav": {
+      "kind": "game_sound",
+      "name": "bgm",
+      "generator_version": 1
+    },
+    "83598aacae5f7c3ebc37501c6a803443.wav": {
+      "kind": "game_sound",
+      "name": "blaster_fire",
+      "generator_version": 1
+    },
     "bc057a046ad0628da56171dda196976e.wav": {
       "kind": "game_sound",
       "name": "bonus_flag",
+      "generator_version": 1
+    },
+    "6fcac907d92df318159f97a75769c2af.wav": {
+      "kind": "game_sound",
+      "name": "credit",
       "generator_version": 1
     },
     "16c42ba9bdcbdb001971e90d341a6382.wav": {
@@ -413,14 +433,39 @@
       "name": "ground_destroy",
       "generator_version": 1
     },
+    "aadd29f6eeb1f65f49c0406d174025fb.wav": {
+      "kind": "game_sound",
+      "name": "name_entry",
+      "generator_version": 1
+    },
+    "618c9eaf07180a8ba7b4c69b1866efb5.wav": {
+      "kind": "game_sound",
+      "name": "name_entry_top",
+      "generator_version": 1
+    },
     "53c4552f29ecb3bf31211d23a382fa39.wav": {
       "kind": "game_sound",
       "name": "sheonite",
       "generator_version": 1
     },
+    "f07945a1b65713209ff680a8a1b8d1e9.wav": {
+      "kind": "game_sound",
+      "name": "solvalou_explode",
+      "generator_version": 1
+    },
+    "cdeaffc7fc6d20f1fe0a4ac857094082.wav": {
+      "kind": "game_sound",
+      "name": "start",
+      "generator_version": 1
+    },
     "69c1e82bac42ff81d7af0124a69990a2.wav": {
       "kind": "game_sound",
       "name": "zakato",
+      "generator_version": 1
+    },
+    "fa1955e97059f766f68afaf17462081f.wav": {
+      "kind": "game_sound",
+      "name": "zapper_fire",
       "generator_version": 1
     },
     "3dd97ce85f8370f1c6f887e06d69b1a4.png": {
