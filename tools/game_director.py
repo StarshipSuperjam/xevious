@@ -40,6 +40,8 @@ DEATH_EXPLOSION_TICK_ID = "solv-death-explosion-tick"
 # guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
 # run on different threads — share it; the reload counter is blaster-local.
 BOMB_INFLIGHT_ID = "weapon-bomb-in-flight"
+# CAB-05: the crosshair's on-target flash (check_targeted_ground_object), worked out by `track crosshair`.
+CROSSHAIR_LIT_ID = "weapon-crosshair-lit"
 # The in-flight bomb's accelerating scroll-axis velocity (init_bombing $188C `_dX`). A Stage
 # variable for the same reason as the guard: the walk thread writes it and the bomb renderer reads
 # it (to pick its falling frame). Cleared to 0 on every reset scope alongside the guard.
@@ -2542,20 +2544,36 @@ CRAFT_DIAGONAL_LATERAL_STEP = 2.5  # 2 px/tick * 1.25
 # The player shot moves 6 px/frame up (move_shot 2419-2424) = 12 px/tick = 15 stage units/tick.
 SHOT_STEP = 15
 # Sprite sizes. A 16-px (bitmap resolution 1) costume at ARCADE_STAGE_PER_PX is drawn at 125%. The baseline
-# sprites (craft, shot, crosshair, bomb target, bomb — bitmap resolution 2 art) were sized for the old 2.25
-# stage-units-per-pixel look; each keeps its proportions and is rescaled by 1.25 / 2.25. The craft explosion
-# left this table in CAB-05: solv_death now draws only the pinned player explosion (resolution 1 art), so it
-# takes SPRITE_RENDER_SIZE like every other arcade-rendered sprite.
+# sprites (craft, shot — bitmap resolution 2 art) were sized for the old 2.25 stage-units-per-pixel look; each
+# keeps its proportions and is rescaled by 1.25 / 2.25. The craft explosion, crosshair, bomb target and bomb
+# left this table in CAB-05: each now draws only art rendered from the pin (resolution 1), so it takes
+# SPRITE_RENDER_SIZE like every other arcade-rendered sprite.
 SPRITE_RENDER_SIZE = 100 * ARCADE_STAGE_PER_PX
 assert SHEONITE_RENDER_SIZE == SPRITE_RENDER_SIZE, "Sheonite (defined earlier) must use the shared sprite scale"
 BASELINE_RESCALE = ARCADE_STAGE_PER_PX / 2.25
 BASELINE_SPRITE_SIZES = {
     "solvalou": round(150 * BASELINE_RESCALE, 2),
     "blaster": round(200 * BASELINE_RESCALE, 2),
-    "target_a": round(150 * BASELINE_RESCALE, 2),
-    "target_b": round(150 * BASELINE_RESCALE, 2),
-    "bomb": round(150 * BASELINE_RESCALE, 2),
 }
+# CAB-05 bomb, crosshair, bomb-target and enemy-bullet art, rendered from the pin's second graphics bank
+# (tools/effects_sprite_render.py; `_ATTR` 0x80 selects it). The crosshair, bomb target and bomb append it
+# after their preserved baseline costumes, which no block selects any more.
+# The bomb (init_bombing and the bomb-active block, xevious_main.68k 2445-2489): code 1C, then 1D at frame 8
+# and 1E at frame 16, holding there (`_TIMER1` stops at 2), coloured 0x25 + ((TIMER >> 2) & 3) — a new colour
+# every 4 frames. bomb/fall/<code>/c25..c28 is colour-minor, so the ordinal is base + 4 * code + colour.
+BOMB_ART_BASE_ORDINAL = 6  # after the 5 preserved bomb_01..05
+BOMB_CODE_STEP_FRAMES = 8
+BOMB_CODE_STEPS = 3
+BOMB_COLOUR_STEP_FRAMES = 4
+BOMB_COLOURS = 4
+# The crosshair (handle_crosshairs 2239-2272): colour 32 idle, 33 while the bomb object is active, plus 9 on
+# the frames where countup & 4 is set AND an active ground object 2..15 sits in the crosshair's box
+# (check_targeted_ground_object 2282-2295 — the bomb's own 20 x 20 px box, HIT_WINDOW_BOMB_GROUND).
+# crosshair/aim/{idle, bombing, idle-lit, bombing-lit}: the ordinal is base + bombing + 2 * lit.
+CROSSHAIR_ART_BASE_ORDINAL = 4  # after the 3 preserved target_01, target_02, target_04
+CROSSHAIR_LIT_TICK_DIVISOR = 2  # countup & 4 at 2 frames a tick: floor(tick / 2) is odd
+CROSSHAIR_CHECK_OBJECTS = (2, 15)  # the 14 ground objects 0x02..0x0F the arcade sweeps (moveq #14-1)
+BOMB_TARGET_ART_COSTUME = "bomb-target/mark/01"  # code 0x22, colour 0x14 (init_bombing 2469)
 # --- BOSS-01 C3 geometry: the Andor Genesis lifecycle positions + composite offsets (all source-verified at the
 # pin). Placed here so the slot-unit / frame / render-stage primitives above are already defined; the matching ID
 # strings live up by the other Andor constants. ------------------------------------------------------------------
@@ -2663,11 +2681,17 @@ TOROID_EXPLOSION_PHASE_FRAMES = 4  # 20 / 4 = five phases
 TOROID_EXPLOSION_PHASES = 5
 TOROID_TURN_FRAME_COUNT = 7  # turn costumes precede the referenced explosion costumes on the target
 AIR_EXPLOSION_FLIP_COSTUMES = 4  # air-explosion/burst/NN/{none,x,y,xy}: the sprite_extractor flip states
-# AIR-12 enemy-bullet renderer: one persistent clone per bullet slot (40-58), a small stand-in sprite
-# (dedicated bullet crops + the reference's 4-colour pulse deferred with the other art, record 026).
+# AIR-12 enemy-bullet renderer: one persistent clone per bullet slot (40-58). CAB-05: the bullet is code
+# 0x11E (the bomb's last frame), every bullet coloured 0x25 + ((countup >> 1) & 3)
+# (sub_fn_5__handle_pulsing_colours, xevious_sub.68k 208-218) — a new colour every tick at 2 frames a tick.
+# The arcade skips the pulse while scroll is disabled (209-210), which is only set outside play (attract,
+# coin-up, and the death pause at 2087); the port's bullets draw only while playing, so the tick-driven pulse
+# matches. bomb/fall/03/c25..c28 by `tick mod 4`, at the shared sprite scale.
 ENEMY_BULLET_TARGET = "enemy_bullet"
 ENEMY_BULLET_CLONE_SLOT_ID = "enemy-bullet-clone-slot"
-ENEMY_BULLET_RENDER_SIZE = 90 * BASELINE_RESCALE  # 50: the stand-in dot, kept at its old proportion to enemies
+ENEMY_BULLET_ART_FAMILY = "bomb/fall/03/"
+ENEMY_BULLET_PULSE_COLOURS = 4
+ENEMY_BULLET_RENDER_SIZE = SPRITE_RENDER_SIZE
 
 # AIR-06 Terrazi renderer: one persistent clone per flying slot (59-64), gated on the Terrazi type,
 # costumed by the 7-frame roll cycle extracted onto the shared sprite-extraction proof (record 002's
@@ -4824,8 +4848,41 @@ def install_track_crosshair(blocks: Blocks) -> None:
     # LEAD, player slot y); the renderer maps that to 120 stage units (96 arcade px) ahead of the ship, moving
     # with it pixel for pixel. PRES-01: it used to read the rounded cell, so it jumped 8 px at a time.
     # The crosshair carries no gameplay state — it is only marked ACTIVE so its renderer shows it while
-    # playing. The reference's on-target colour flash (check_targeted_ground_object) is a deferred cosmetic.
+    # playing. CAB-05: first it works out the on-target flash (handle_crosshairs 2245-2259): on ticks where
+    # countup & 4 is set, sweep ground objects 2..15 and raise `crosshair lit` if an ACTIVE one sits in the
+    # bomb's box around the crosshair (check_targeted_ground_object 2282-2295: byte 0 `crosshair - obj`, so the
+    # lateral delta is obj - crosshair in px, byte 1 `obj - crosshair` in 2-px units). The sweep runs BEFORE
+    # the move, as the arcade reads the crosshair's sprite shadow from the frame before. It only colours the
+    # crosshair; nothing reads it for play.
     definition = _install_warp_proc(blocks, TRACK_CROSSHAIR_PROCCODE)
+    cross_x = lambda: blocks.list_item("slot x", SLOT_X_ID, number(CROSSHAIR_SLOT))
+    cross_y = lambda: blocks.list_item("slot y", SLOT_Y_ID, number(CROSSHAIR_SLOT))
+    lit_checks: list[str] = []
+    for obj in range(CROSSHAIR_CHECK_OBJECTS[0], CROSSHAIR_CHECK_OBJECTS[1] + 1):
+        s = GROUND_SLOTS[0] + obj  # Scratch ground slot = 1 + arcade object slot
+        obj_live = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE))
+        d_lat = lambda s=s: blocks.op_sub(
+            _lateral_shadow(blocks, blocks.list_item("slot y", SLOT_Y_ID, number(s))), _lateral_shadow(blocks, cross_y())
+        )
+        d_dep = lambda s=s: blocks.op_sub(
+            _depth_shadow(blocks, blocks.list_item("slot x", SLOT_X_ID, number(s))), _depth_shadow(blocks, cross_x())
+        )
+        lit_checks.append(
+            blocks.if_reporter(
+                blocks.op_and(obj_live, _shadow_hit(blocks, d_lat, d_dep, HIT_WINDOW_BOMB_GROUND)),
+                [blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(1))],
+            )
+        )
+    lit_frame = blocks.op_eq(
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(CROSSHAIR_LIT_TICK_DIVISOR))), number(2)
+        ),
+        number(1),
+    )
+    lit = [
+        blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(0)),
+        blocks.if_reporter(lit_frame, lit_checks),
+    ]
     set_x = blocks.list_replace(
         "slot x",
         SLOT_X_ID,
@@ -4838,7 +4895,7 @@ def install_track_crosshair(blocks: Blocks) -> None:
     set_state = blocks.list_replace(
         "slot state", SLOT_STATE_ID, number(CROSSHAIR_SLOT), number(SLOT_ACTIVE)
     )
-    blocks.chain(definition, [set_x, set_y, set_state])
+    blocks.chain(definition, [*lit, set_x, set_y, set_state])
 
 
 def install_advance_bomb(blocks: Blocks) -> None:
@@ -11463,6 +11520,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # bomb/target/crosshair are already zeroed by `clear slots` above.
             blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
             blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
+            # CAB-05: the crosshair's on-target flash starts each scope unlit.
+            blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(0)),
             # SEC-03 (secrets.hidden-credit #93): lower the credit overlay signal on every reset scope, so a
             # credit still holding when a death/transition/new-game clears the field (clear slots above frees the
             # egg's slot without running `update easter egg`) can never linger into the next playing state.
@@ -12992,14 +13051,18 @@ def _render_stage_y(blocks: Blocks, slot: int) -> str:
     )
 
 
-def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str, Any]]:
+def slot_marker_blocks(name: str, slot: int, costume: Any) -> dict[str, dict[str, Any]]:
     # WPN-04 pure single-slot renderer for the crosshair (35) and the bomb target (33). Each is one
     # persistent sprite (not a clone pool — there is exactly one of each) that, while playing, shows
     # itself at its slot's mapped stage position when the slot is ACTIVE and hides otherwise. It writes
-    # no state; the walk-thread procs own the slot's position and active flag.
+    # no state; the walk-thread procs own the slot's position and active flag. CAB-05: `costume` is a
+    # costume name, or a builder taking the sprite's Blocks and returning its costume-ordinal reporter (the
+    # crosshair's colours).
     blocks = Blocks(name)
     common_stop(blocks, hide=True)
-    install_baseline_size(blocks, name)
+    # CAB-05: the pinned art is 1 costume px per arcade px, so it draws at the shared sprite scale (set on the
+    # green flag — the committed target size is preserved history).
+    blocks.chain(blocks.flag(), [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})])
     blocks.chain(blocks.receive("director reset"), [blocks.hide()])
 
     enter = blocks.receive("director enter")
@@ -13015,7 +13078,7 @@ def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str
     blocks.substack(
         render,
         [
-            blocks.switch_costume(costume),
+            blocks.switch_costume(costume) if isinstance(costume, str) else blocks.switch_costume_expr(costume(blocks)),
             blocks.go_expr(_render_stage_x(blocks, slot), _render_stage_y(blocks, slot)),
             blocks.to_front(),  # B9: the reticle/target render above the terrain
             blocks.show(),
@@ -13027,14 +13090,25 @@ def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str
     return blocks.blocks
 
 
+def crosshair_ordinal(blocks: Blocks) -> str:
+    """CAB-05: the crosshair's costume ordinal — base + bombing + 2 * lit (handle_crosshairs 2239-2272): a bomb
+    in flight (the port's 0/1 mirror of the bomb object's ACTIVE state) picks colour 33 over 32, and
+    `crosshair lit` the +9 on-target flash."""
+    return blocks.op_add(
+        blocks.op_add(number(CROSSHAIR_ART_BASE_ORDINAL), variable("bomb in flight", BOMB_INFLIGHT_ID)),
+        blocks.op_mul(variable("crosshair lit", CROSSHAIR_LIT_ID), number(2)),
+    )
+
+
 def bomb_blocks() -> dict[str, dict[str, Any]]:
-    # WPN-04 pure renderer for the in-flight bomb (slot 34). Like slot_marker_blocks, but it also
-    # animates through the 5 bomb frames as the bomb accelerates (the falling frame is a render-only
-    # function of the bomb's velocity, kept in range by mod 5). It writes no game state and plays no
-    # sound: the Stage's bomb arm plays the single arcade bomb sound (CAB-05).
+    # WPN-04 pure renderer for the in-flight bomb (slot 34). Like slot_marker_blocks, but it also animates the
+    # bomb as it falls. CAB-05: the arcade's own frames (bomb-active block, xevious_main.68k 2470-2489) — the
+    # code steps every 8 frames and holds on the third, the colour every 4 — keyed on the frames since launch,
+    # which is |bomb dx| / 2 (`_dX` drops by 2 every frame from 0, BOMB_ACCEL_PER_FRAME). It writes no game
+    # state and plays no sound: the Stage's bomb arm plays the single arcade bomb sound.
     blocks = Blocks("bomb")
     common_stop(blocks, hide=True)
-    install_baseline_size(blocks, "bomb")
+    blocks.chain(blocks.flag(), [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})])
     blocks.chain(blocks.receive("director reset"), [blocks.hide()])
 
     enter = blocks.receive("director enter")
@@ -13044,17 +13118,19 @@ def bomb_blocks() -> dict[str, dict[str, Any]]:
     is_active = blocks.op_eq(
         blocks.list_item("slot state", SLOT_STATE_ID, number(BOMB_SLOT)), number(SLOT_ACTIVE)
     )
-    # Falling frame ordinal 1..5 from |bomb dx| (grows as it accelerates); mod 5 keeps it in range.
-    ordinal = blocks.op_add(
-        number(1),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(
-                    blocks.op_abs(variable("bomb dx", BOMB_DX_ID)), number(BOMB_ACCEL_PER_FRAME)
-                )
-            ),
-            number(5),
+    frames = lambda: blocks.op_div(blocks.op_abs(variable("bomb dx", BOMB_DX_ID)), number(BOMB_ACCEL_PER_FRAME))
+    # min(floor(frames / 8), 2) as (a + 2 - |a - 2|) / 2 — Scratch has no min block. `_TIMER1` stops at 2.
+    step = lambda: blocks.op_floor(blocks.op_div(frames(), number(BOMB_CODE_STEP_FRAMES)))
+    code_step = blocks.op_div(
+        blocks.op_sub(
+            blocks.op_add(step(), number(BOMB_CODE_STEPS - 1)),
+            blocks.op_abs(blocks.op_sub(step(), number(BOMB_CODE_STEPS - 1))),
         ),
+        number(2),
+    )
+    colour = blocks.op_mod(blocks.op_floor(blocks.op_div(frames(), number(BOMB_COLOUR_STEP_FRAMES))), number(BOMB_COLOURS))
+    ordinal = blocks.op_add(
+        blocks.op_add(number(BOMB_ART_BASE_ORDINAL), blocks.op_mul(code_step, number(BOMB_COLOURS))), colour
     )
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_active]
@@ -15648,8 +15724,8 @@ def sheonite_blocks() -> dict[str, dict[str, Any]]:
 
 
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
-    # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
+    # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the pinned bullet renders
+    # mirrored on in expected_project — CAB-05). One persistent clone per bullet slot (40..58), created on
     # director enter while playing and cleared on stop. Each clone shows a small sprite at its slot's
     # mapped position when the slot holds a bullet, else hides. Writes no state (the walk owns the slot).
     blocks = Blocks(ENEMY_BULLET_TARGET)
@@ -15691,7 +15767,12 @@ def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
         render,
         [
             blocks.go_expr(stage_x, stage_y),
-            blocks.switch_costume("toroid/turn/01"),  # stand-in: the first mirrored frame, drawn small
+            # CAB-05: code 0x11E in the pulsing colour 0x25 + (tick mod 4) (xevious_sub.68k 208-218).
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(1), blocks.op_mod(variable("tick", TICK_ID), number(ENEMY_BULLET_PULSE_COLOURS))
+                )
+            ),
             blocks.add("looks_setsizeto", inputs={"SIZE": number(ENEMY_BULLET_RENDER_SIZE)}),
             blocks.show(),
         ],
@@ -15983,12 +16064,28 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     if proof is not None and bonus_flag is not None:
         bonus_flag["costumes"] = proof_by_family("bonus-flag/")
         bonus_flag["currentCostume"] = 0
-    # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
-    # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
+    # AIR-12 / CAB-05: the enemy-bullet renderer draws code 0x11E in its four pulse colours, rendered from the
+    # pin (bomb/fall/03/c25..c28) — replacing the Toroid stand-in it used before.
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
     if proof is not None and enemy_bullet is not None:
-        enemy_bullet["costumes"] = proof_by_family("toroid/")
+        enemy_bullet["costumes"] = proof_by_family(ENEMY_BULLET_ART_FAMILY)
         enemy_bullet["currentCostume"] = 0
+    # CAB-05: the crosshair, bomb target and bomb append the pinned art after their preserved baseline costumes
+    # (no block selects those any more). Idempotent: a previous append is dropped first.
+    for marker_name, family, base in (
+        ("target_a", "crosshair/", CROSSHAIR_ART_BASE_ORDINAL),
+        ("target_b", "bomb-target/", None),
+        ("bomb", "bomb/fall/", BOMB_ART_BASE_ORDINAL),
+    ):
+        marker = next((t for t in result["targets"] if t.get("name") == marker_name), None)
+        if proof is None or marker is None:
+            continue
+        marker["costumes"] = [
+            c for c in marker["costumes"] if not str(c.get("name", "")).startswith(family)
+        ] + proof_by_family(family)
+        names = [c.get("name") for c in marker["costumes"]]
+        if base is not None and not str(names[base - 1]).startswith(family):
+            raise AssertionError(f"{marker_name}: the pinned art must start at ordinal {base}")
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,
@@ -15997,6 +16094,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         OUTCOME_ID,
         BOMB_INFLIGHT_ID,
         BOMB_DX_ID,
+        CROSSHAIR_LIT_ID,
         RNG_STATE_ID,
         RNG_OUT_ID,
         RNG_HIGH_ID,
@@ -16157,6 +16255,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         BOMB_INFLIGHT_ID: ["bomb in flight", 0],
         # WPN-04: the in-flight bomb's accelerating scroll-axis velocity (init_bombing `_dX`).
         BOMB_DX_ID: ["bomb dx", 0],
+        # CAB-05: the crosshair's on-target flash, worked out each tick by `track crosshair`.
+        CROSSHAIR_LIT_ID: ["crosshair lit", 0],
         # SYS-04 shared stream: the seed, its latest output byte, and the four per-step
         # working values (custom blocks have no locals). Cited to rng.json / SYS-04.
         RNG_STATE_ID: ["rng state", 0],
@@ -16548,8 +16648,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TERRAIN_STRIP_TARGETS["odd"]: terrain_strip_blocks("odd"),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
-        "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, "target_01"),
-        "target_b": slot_marker_blocks("target_b", BOMB_TARGET_SLOT, "target_03"),
+        "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, crosshair_ordinal),
+        "target_b": slot_marker_blocks("target_b", BOMB_TARGET_SLOT, BOMB_TARGET_ART_COSTUME),
         "bomb": bomb_blocks(),
         "hud": hud_blocks(),
         "toroid": toroid_blocks(),

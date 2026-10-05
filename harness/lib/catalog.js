@@ -268,7 +268,8 @@ function cloneRender(vm, spriteName, slotVarId, scratchSlot) {
 /** CAB-05: the flip costume suffix for the attr flip bits v (0..3) — bit 3 mirrors left-to-right on the rotated
  * screen (amiga.68k ~2613), so v=1 is the y costume and v=2 the x costume. */
 const FLIP_SUFFIX = ['none', 'y', 'x', 'xy'];
-/** Turn an operator_mod `<x> mod 4` on a sprite into `<x> mod 1` (every flip collapses to none). */
+/** Turn an operator_mod `<x> mod 4` on a sprite into `<x> mod 1` (every flip collapses to none; on the enemy
+ * bullet, every pulse colour collapses to the first). */
 function collapseFlipMod(p, spriteName) {
   const t = p.targets.find((x) => x.name === spriteName);
   let patched = 0;
@@ -9887,6 +9888,145 @@ export const SCENARIOS = [
     },
     // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the dying craft never mirrors)
     negativeMutation: (p) => collapseFlipMod(p, 'solv_death'),
+  },
+  {
+    // CAB-05: the falling bomb is the arcade's own (bomb-active block, xevious_main.68k 2470-2499): code 1C → 1D →
+    // 1E a step every 8 frames then held on 1E, in colour 0x25 + ((TIMER >> 2) & 3). The port reads the frames
+    // since launch from |bomb dx| / 2. Driven with the Stage halted, so only the bomb renderer reads the seeded
+    // bomb.
+    key: 'bomb-frames-hold-and-colours',
+    // roadmap-evidence: CAB-05 success  (the bomb draws code floor(frames / 8) held at the third, colour floor(frames / 4) mod 4)
+    behavior:
+      'A falling bomb draws the arcade bomb: its shape steps every 8 frames and holds on the third, its colour cycles through four every 4 frames',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      readVar(vm, 'slot-state')[33] = 1; // JS index; Scratch BOMB_SLOT 34, ACTIVE
+      readVar(vm, 'slot-x')[33] = 20 * 256;
+      readVar(vm, 'slot-y')[33] = 15 * 256;
+      const bomb = vm.runtime.getSpriteTargetByName('bomb');
+      const frames = [];
+      for (const frame of [0, 3, 4, 8, 13, 16, 24, 31, 40]) {
+        writeVar(vm, 'weapon-bomb-dx', -2 * frame); // _dX drops by 2 a frame from 0
+        step(vm, 1);
+        frames.push({ frame, costume: bomb.sprite.costumes[bomb.currentCostume].name, visible: bomb.visible });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const code = Math.min(Math.floor(f.frame / 8), 2) + 1;
+        const want = `bomb/fall/0${code}/c${(0x25 + (Math.floor(f.frame / 4) % 4)).toString(16)}`;
+        assert.equal(f.visible, true, `the bomb is drawn ${f.frame} frames after launch`);
+        assert.equal(f.costume, want, `${f.frame} frames after launch draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the code step stretched to 16 frames, 8 frames after launch still draws the first shape)
+    negativeMutation: (p) => mutate.changeDivideLiteral(p, 'bomb', 8, 16),
+  },
+  {
+    // CAB-05: the crosshair's colours (handle_crosshairs, xevious_main.68k 2239-2281): 32 idle, 33 with a bomb in
+    // flight, +9 while countup & 4 and an ACTIVE ground object 2..15 sits in the bomb's box around it
+    // (check_targeted_ground_object 2282-2295). The walk is halted and `track crosshair` called alone each
+    // case, so the seeded crosshair position is the one it reads (the arcade reads the previous frame's
+    // shadow); the renderer then draws the result.
+    key: 'crosshair-colours-and-target-flash',
+    // roadmap-evidence: CAB-05 success  (the crosshair flashes only on its sampled ticks, only over an active ground object 2..15 in the bomb box)
+    behavior:
+      'The crosshair draws the arcade colours: one idle, another while a bomb falls, and a flash on alternate 2-tick spells when a live ground target is under it (nothing flashes for an off-box, destroyed, or object-1 target)',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      const cross = { x: 20 * 256, y: 100 * 32 }; // depth 20 rows; lateral shadow 100
+      const target = vm.runtime.getSpriteTargetByName('target_a');
+      const run = ({ tick, obj = 4, state = 1, dDepth = 0, dLat = 0, bombing = 0 }) => {
+        for (let s = 1; s <= 15; s += 1) readVar(vm, 'slot-state')[s] = 0; // JS 1..15 = ground objects 1..15
+        readVar(vm, 'slot-x')[34] = cross.x; // JS 34 = Scratch CROSSHAIR_SLOT 35
+        readVar(vm, 'slot-y')[34] = cross.y;
+        readVar(vm, 'slot-state')[obj] = state;
+        readVar(vm, 'slot-x')[obj] = cross.x + dDepth * 64; // one depth shadow unit = 64 slot units
+        readVar(vm, 'slot-y')[obj] = cross.y + dLat * 32; // one lateral shadow unit = 32 slot units
+        writeVar(vm, 'tick', tick);
+        writeVar(vm, 'weapon-bomb-in-flight', bombing);
+        callProc(vm, 'Stage', 'track crosshair');
+        step(vm, 1);
+        const lit = readVar(vm, 'weapon-crosshair-lit');
+        step(vm, 1); // the renderer draws the settled state
+        return { lit, costume: target.sprite.costumes[target.currentCostume].name, visible: target.visible };
+      };
+      return {
+        onTarget: run({ tick: 2 }),
+        onTargetBombing: run({ tick: 3, bombing: 1 }),
+        offTick: run({ tick: 4 }),
+        offTickBombing: run({ tick: 5, bombing: 1 }),
+        latEdgeIn: run({ tick: 2, dLat: 9 }),
+        latEdgeOut: run({ tick: 2, dLat: 10 }),
+        depthEdgeIn: run({ tick: 2, dDepth: -5 }),
+        depthEdgeOut: run({ tick: 2, dDepth: -6 }),
+        destroyed: run({ tick: 2, state: 2 }),
+        objectOne: run({ tick: 2, obj: 1 }),
+        objectFifteen: run({ tick: 2, obj: 15 }),
+      };
+    },
+    assert(obs) {
+      const want = {
+        onTarget: [1, 'idle-lit'],
+        onTargetBombing: [1, 'bombing-lit'],
+        offTick: [0, 'idle'],
+        offTickBombing: [0, 'bombing'],
+        latEdgeIn: [1, 'idle-lit'],
+        latEdgeOut: [0, 'idle'],
+        depthEdgeIn: [1, 'idle-lit'],
+        depthEdgeOut: [0, 'idle'],
+        destroyed: [0, 'idle'],
+        objectOne: [0, 'idle'],
+        objectFifteen: [1, 'idle-lit'],
+      };
+      for (const [name, [lit, colour]] of Object.entries(want)) {
+        assert.equal(obs[name].lit, lit, `${name}: crosshair lit = ${lit}`);
+        assert.equal(obs[name].visible, true, `${name}: the crosshair is drawn`);
+        assert.equal(obs[name].costume, `crosshair/aim/${colour}`, `${name}: draws the ${colour} crosshair`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the flash pinned off, a live ground target under the crosshair never lights it)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'crosshair lit', 0),
+  },
+  {
+    // CAB-05: every enemy bullet pulses through four colours, 0x25 + ((countup >> 1) & 3) (xevious_sub.68k
+    // 208-232), one a tick, on the arcade's bomb-sprite code 1E. Driven with the Stage halted.
+    key: 'enemy-bullet-pulse-by-tick',
+    // roadmap-evidence: CAB-05 success  (a bullet draws colour tick mod 4 of the four pinned bullet colours)
+    behavior: 'An enemy bullet draws the arcade bullet, its colour stepping through four, one a tick',
+    playtestStep: 3,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      const slot = 39; // JS index; Scratch bullet slot 40
+      readVar(vm, 'slot-type')[slot] = 2; // BULLET_TYPE
+      readVar(vm, 'slot-x')[slot] = 20 * 256;
+      readVar(vm, 'slot-y')[slot] = 15 * 256;
+      const frames = [];
+      for (const tick of [0, 1, 2, 3, 4, 7]) {
+        writeVar(vm, 'tick', tick);
+        step(vm, 1);
+        frames.push({ tick, ...cloneRender(vm, 'enemy_bullet', 'enemy-bullet-clone-slot', slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const want = `bomb/fall/03/c${(0x25 + (f.tick % 4)).toString(16)}`;
+        assert.equal(f.visible, true, `the bullet is drawn at tick ${f.tick}`);
+        assert.equal(f.costume, want, `tick ${f.tick} draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the pulse collapsed to one colour, tick 1 still draws the first colour)
+    negativeMutation: (p) => collapseFlipMod(p, 'enemy_bullet'),
   },
   {
     // CAB-05: the initials-entry tune. score_lower_than_entry (xevious_main.68k 1707-1711) plays HIGHEST_SCORE_SND

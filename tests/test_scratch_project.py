@@ -460,6 +460,21 @@ class ScratchProjectTests(unittest.TestCase):
             ["player-explosion/burst/01/none"],
         )
         source_death["costumes"] = source_death["costumes"][:len(original_death["costumes"])]
+        # CAB-05: the crosshair, bomb target and bomb likewise append their pinned art after the preserved
+        # baseline costumes.
+        for marker_name, first_appended in (
+            ("target_a", "crosshair/aim/idle"),
+            ("target_b", "bomb-target/mark/01"),
+            ("bomb", "bomb/fall/01/c25"),
+        ):
+            original_marker = next(t for t in original["targets"] if t["name"] == marker_name)
+            source_marker = next(t for t in historical_targets if t["name"] == marker_name)
+            self.assertEqual(
+                [c["name"] for c in source_marker["costumes"][len(original_marker["costumes"]):]][:1],
+                [first_appended],
+                marker_name,
+            )
+            source_marker["costumes"] = source_marker["costumes"][:len(original_marker["costumes"])]
         changed_scripts = {
             "Stage",
             "solvalou",
@@ -1300,6 +1315,9 @@ class ScratchProjectTests(unittest.TestCase):
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
             "bomb dx",
+            # CAB-05 (slice 20): the crosshair's on-target flash — recomputed every tick by `track crosshair`
+            # and read only by the crosshair renderer for its colour. Machinery, not durable Stage state.
+            "crosshair lit",
             # AIR-11 (slice 11): the live Bacura spawn pump's registers — the active slab count, the
             # remaining one-per-second increments, the frame countdown to the next increment, and the
             # init loop's band cursor. Stage-written by the pump proc, never sprite-written; transient
@@ -19791,6 +19809,302 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             self.assertIn(label, self._cab05_explosion_failures(project), f"corruption '{label}' was not caught")
 
+    @staticmethod
+    def _block_tree(blocks: dict, spec: Any) -> Any:
+        """A block (by id) or an input spec as a comparable nested tuple: (opcode, sorted inputs, sorted
+        fields) for a block, ("var", name) for a variable reporter, a number or string for a literal.
+        Substacks are left out, so a condition or reporter compares by its own expression only."""
+        if isinstance(spec, str):
+            b = blocks[spec]
+            ins = tuple(sorted(
+                (k, ScratchProjectTests._block_tree(blocks, v))
+                for k, v in b.get("inputs", {}).items() if k not in ("SUBSTACK", "SUBSTACK2")
+            ))
+            return (b["opcode"], ins, tuple(sorted((k, v[0]) for k, v in b.get("fields", {}).items())))
+        if isinstance(spec, list) and len(spec) > 1:
+            value = spec[1]
+            if isinstance(value, str):
+                return ScratchProjectTests._block_tree(blocks, value) if value in blocks else None
+            if isinstance(value, list):
+                if value[0] in (12, 13):
+                    return ("var", value[1])
+                try:
+                    return float(value[1])
+                except (TypeError, ValueError):
+                    return value[1]
+        return None
+
+    def _cab05_weapon_art_failures(self, project: dict) -> set[str]:
+        """CAB-05 bomb, crosshair, bomb-target and enemy-bullet art as a static contract (docs/mechanics/055):
+        each draws the pinned bank-1 render picked by the arcade's own counters —
+        - the bomb: code 1C→1D→1E a step every 8 frames then held, colour 0x25 + ((TIMER >> 2) & 3)
+          (init_bombing / handle_bomb xevious_main.68k 2445-2499), its age read from |bomb dx| / 2 frames;
+        - the crosshair: colour 32 idle, 33 with the bomb in flight, +9 on the on-target flash
+          (handle_crosshairs 2239-2281), the flash swept over ground objects 2..15 in the bomb's own box
+          (check_targeted_ground_object 2282-2295) BEFORE the crosshair moves, on ticks where countup & 4;
+        - the enemy bullet: code 1E, colour 0x25 + ((countup >> 1) & 3) (xevious_sub.68k 208-232), one colour
+          a tick."""
+        targets = {t["name"]: t for t in project["targets"]}
+        tree = self._block_tree
+        fails: set[str] = set()
+
+        def op(opcode, **ins):
+            return (opcode, tuple(sorted(ins.items())), ())
+
+        def mathop(name, x):
+            return ("operator_mathop", (("NUM", x),), (("OPERATOR", name),))
+
+        def item(lst, idx):
+            return ("data_itemoflist", (("INDEX", idx),), (("LIST", lst),))
+
+        add = lambda a, b: op("operator_add", NUM1=a, NUM2=b)
+        sub = lambda a, b: op("operator_subtract", NUM1=a, NUM2=b)
+        mul = lambda a, b: op("operator_multiply", NUM1=a, NUM2=b)
+        div = lambda a, b: op("operator_divide", NUM1=a, NUM2=b)
+        mod = lambda a, b: op("operator_mod", NUM1=a, NUM2=b)
+        eq = lambda a, b: op("operator_equals", OPERAND1=a, OPERAND2=b)
+        lt = lambda a, b: op("operator_lt", OPERAND1=a, OPERAND2=b)
+        gt = lambda a, b: op("operator_gt", OPERAND1=a, OPERAND2=b)
+        and_ = lambda a, b: op("operator_and", OPERAND1=a, OPERAND2=b)
+        not_ = lambda a: op("operator_not", OPERAND=a)
+        floor = lambda x: mathop("floor", x)
+        abs_ = lambda x: mathop("abs", x)
+        var = lambda name: ("var", name)
+
+        def names(target):
+            return [c.get("name") for c in targets[target]["costumes"]]
+
+        def costume_switches(target):
+            blocks = targets[target]["blocks"]
+            return [
+                tree(blocks, b["inputs"].get("COSTUME"))
+                for b in blocks.values() if isinstance(b, dict) and b["opcode"] == "looks_switchcostumeto"
+            ]
+
+        # Costume layouts: each family in the order its ordinal arithmetic indexes.
+        colours = [f"c{0x25 + i:02x}" for i in range(4)]
+        crosshair = [f"crosshair/aim/{s}" for s in ("idle", "bombing", "idle-lit", "bombing-lit")]
+        bomb = [f"bomb/fall/{code:02d}/{c}" for code in range(1, 4) for c in colours]
+        if names("target_a")[3:] != crosshair:
+            fails.add("crosshair-layout")
+        if names("target_b")[1:] != ["bomb-target/mark/01"]:
+            fails.add("bomb-target-layout")
+        if names("bomb")[5:] != bomb:
+            fails.add("bomb-layout")
+        if names(director.ENEMY_BULLET_TARGET) != [f"bomb/fall/03/{c}" for c in colours]:
+            fails.add("bullet-layout")
+
+        # The bomb: frames since launch = |bomb dx| / 2; code step = min(floor(frames / 8), 2), as
+        # (s + 2 - |s - 2|) / 2; colour = floor(frames / 4) mod 4. Costume 6 is the first pinned frame.
+        frames = lambda: div(abs_(var("bomb dx")), 2)
+        step = lambda: floor(div(frames(), 8))
+        code = div(sub(add(step(), 2), abs_(sub(step(), 2))), 2)
+        colour = mod(floor(div(frames(), 4)), 4)
+        if costume_switches("bomb") != [add(add(6, mul(code, 4)), colour)]:
+            fails.add("bomb-ordinal")
+
+        # The crosshair: 4 + bomb in flight + 2 * lit (idle, bombing, idle-lit, bombing-lit).
+        if costume_switches("target_a") != [add(add(4, var("bomb in flight")), mul(var("crosshair lit"), 2))]:
+            fails.add("crosshair-ordinal")
+        if costume_switches("target_b") != [("looks_costume", (), (("COSTUME", "bomb-target/mark/01"),))]:
+            fails.add("bomb-target-costume")
+        if costume_switches(director.ENEMY_BULLET_TARGET) != [add(1, mod(var("tick"), 4))]:
+            fails.add("bullet-pulse")
+
+        # The on-target sweep inside `track crosshair`: lit = 0; if floor(tick / 2) mod 2 = 1, raise it for
+        # each ACTIVE ground object (Scratch slots 3..16) whose shadow sits in the bomb box around the
+        # crosshair (slot 35) — lateral obj - crosshair in [-10, 9] px, depth in [-5, 4] 2-px units; then move.
+        stage = targets["Stage"]["blocks"]
+        proto = next(
+            (bid for bid, b in stage.items() if isinstance(b, dict) and b["opcode"] == "procedures_prototype"
+             and b.get("mutation", {}).get("proccode") == director.TRACK_CROSSHAIR_PROCCODE),
+            None,
+        )
+        definition = next(
+            (b for b in stage.values() if isinstance(b, dict) and b["opcode"] == "procedures_definition"
+             and b["inputs"].get("custom_block", [None, None])[1] == proto),
+            None,
+        )
+
+        def chain(first):
+            out = []
+            while first:
+                out.append(first)
+                first = stage[first].get("next")
+            return out
+
+        body = chain(definition.get("next")) if definition else []
+        reset = ("data_setvariableto", (("VALUE", 0.0),), (("VARIABLE", "crosshair lit"),))
+        raise_lit = ("data_setvariableto", (("VALUE", 1.0),), (("VARIABLE", "crosshair lit"),))
+        if len(body) < 3 or tree(stage, body[0]) != reset:
+            fails.add("crosshair-reset")
+            return fails
+        gate = stage[body[1]]
+        if gate["opcode"] != "control_if" or tree(stage, gate["inputs"].get("CONDITION")) != eq(
+            mod(floor(div(var("tick"), 2)), 2), 1
+        ):
+            fails.add("crosshair-gate")
+        mover = stage[body[2]]
+        if mover["opcode"] != "data_replaceitemoflist" or mover["fields"]["LIST"][0] != "slot x":
+            fails.add("crosshair-sweep-before-move")
+
+        def lateral(slot):
+            return floor(div(item("slot y", slot), director.SLOT_UNITS_PER_LATERAL_SHADOW))
+
+        def depth(slot):
+            return floor(div(add(item("slot x", slot), director.DEPTH_SHADOW_OFFSET), director.SLOT_UNITS_PER_DEPTH_SHADOW))
+
+        def in_box(s):
+            d_lat = lambda: sub(lateral(s), lateral(35))
+            d_dep = lambda: sub(depth(s), depth(35))
+            return and_(
+                eq(item("slot state", s), 1),
+                and_(
+                    and_(not_(lt(d_lat(), -10)), not_(gt(d_lat(), 9))),
+                    and_(not_(lt(d_dep(), -5)), not_(gt(d_dep(), 4))),
+                ),
+            )
+
+        sweep = chain((gate["inputs"].get("SUBSTACK") or [None, None])[1])
+        if [tree(stage, bid) for bid in sweep] != [
+            ("control_if", (("CONDITION", in_box(s)),), ()) for s in range(3, 17)
+        ] or any(
+            [tree(stage, x) for x in chain((stage[bid]["inputs"].get("SUBSTACK") or [None, None])[1])] != [raise_lit]
+            for bid in sweep
+        ):
+            fails.add("crosshair-sweep")
+        return fails
+
+    def test_cab05_weapon_art_contract(self) -> None:
+        # The renderers' arithmetic rests on the arcade's own counters (docs/mechanics/055).
+        self.assertEqual(6, director.BOMB_ART_BASE_ORDINAL)
+        self.assertEqual(8, director.BOMB_CODE_STEP_FRAMES)  # 1C → 1D → 1E every 8 frames (2490-2499)
+        self.assertEqual(3, director.BOMB_CODE_STEPS)
+        self.assertEqual(4, director.BOMB_COLOUR_STEP_FRAMES)  # (TIMER >> 2) & 3
+        self.assertEqual(4, director.BOMB_COLOURS)
+        self.assertEqual(2, director.BOMB_ACCEL_PER_FRAME)  # |bomb dx| / 2 = frames since launch
+        self.assertEqual(4, director.CROSSHAIR_ART_BASE_ORDINAL)
+        self.assertEqual(2, director.CROSSHAIR_LIT_TICK_DIVISOR)  # countup & 4 at 2 frames a tick
+        self.assertEqual((2, 15), director.CROSSHAIR_CHECK_OBJECTS)  # check_targeted_ground_object d7 = 2..15
+        self.assertEqual((10, 20, 5, 10), director.HIT_WINDOW_BOMB_GROUND)
+        self.assertEqual(4, director.ENEMY_BULLET_PULSE_COLOURS)  # (countup >> 1) & 3, one colour a tick
+        self.assertEqual(director.SPRITE_RENDER_SIZE, director.ENEMY_BULLET_RENDER_SIZE)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_weapon_art_failures(project))
+
+    def test_cab05_weapon_art_contract_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_weapon_art_failures(base))
+
+        def target(p, name):
+            return next(t for t in p["targets"] if t["name"] == name)
+
+        def crosshair_ids(p):
+            # Every block id in `track crosshair` (the Stage's bomb hit box shares its literals).
+            stage = target(p, "Stage")["blocks"]
+            proto = next(
+                bid for bid, b in stage.items() if isinstance(b, dict) and b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.TRACK_CROSSHAIR_PROCCODE
+            )
+            start = next(
+                b["next"] for b in stage.values() if isinstance(b, dict) and b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto
+            )
+            seen, stack = set(), [start]
+            while stack:
+                bid = stack.pop()
+                if not isinstance(bid, str) or bid in seen or bid not in stage:
+                    continue
+                seen.add(bid)
+                stack.append(stage[bid].get("next"))
+                stack.extend(v[1] for v in stage[bid].get("inputs", {}).values() if isinstance(v, list) and len(v) > 1)
+            return seen
+
+        def set_literal(p, name, opcode, key, old, new, nth=0):
+            # Rewrite the nth `opcode` block in `name` (the Stage: in `track crosshair`) whose `key` input is
+            # the literal `old`.
+            within = crosshair_ids(p) if name == "Stage" else None
+            hits = [
+                b for bid, b in target(p, name)["blocks"].items()
+                if (within is None or bid in within)
+                and isinstance(b, dict) and b["opcode"] == opcode
+                and isinstance((b["inputs"].get(key) or [None, None])[1], list)
+                and float(b["inputs"][key][1][1]) == old
+            ]
+            hits[nth]["inputs"][key][1][1] = str(new)
+
+        def two_bomb_colours(p):  # the colour cycle on 2 colours, not 4
+            set_literal(p, "bomb", "operator_mod", "NUM2", 4, 2)
+
+        def bomb_never_holds(p):  # the code step clamp moved off 2, so the bomb runs past code 1E
+            set_literal(p, "bomb", "operator_subtract", "NUM2", 2, 3)
+
+        def bomb_codes_every_4(p):  # the code steps every 4 frames instead of 8
+            set_literal(p, "bomb", "operator_divide", "NUM2", 8, 4)
+
+        def lit_without_offset(p):  # the flash adds 1 costume instead of 2 (lit idle draws the bombing colour)
+            set_literal(p, "target_a", "operator_multiply", "NUM2", 2, 1)
+
+        def bullet_8_colours(p):  # the bullet pulse over 8 costumes
+            set_literal(p, director.ENEMY_BULLET_TARGET, "operator_mod", "NUM2", 4, 8)
+
+        def gate_every_4(p):  # the flash sampled on countup & 8, not & 4
+            set_literal(p, "Stage", "operator_divide", "NUM2", 2, 4)
+
+        def wide_box(p):  # one object's lateral box a pixel wider
+            set_literal(p, "Stage", "operator_lt", "OPERAND2", -10, -11, nth=5)
+
+        def drop_last_object(p):  # the sweep stops at object 14
+            stage = target(p, "Stage")["blocks"]
+            within = crosshair_ids(p)
+            last = next(
+                bid for bid, b in stage.items() if bid in within and b["opcode"] == "data_itemoflist"
+                and b["fields"]["LIST"][0] == "slot state" and float(b["inputs"]["INDEX"][1][1]) == 16
+            )
+            cond = stage[last]["parent"]
+            if_id = stage[stage[cond]["parent"]]["parent"]
+            stage[stage[if_id]["parent"]]["next"] = None
+
+        def reset_lit_to_1(p):  # the flash never clears
+            stage = target(p, "Stage")["blocks"]
+            b = next(
+                b for b in stage.values() if isinstance(b, dict) and b["opcode"] == "data_setvariableto"
+                and b["fields"]["VARIABLE"][0] == "crosshair lit" and b.get("parent")
+                and stage[b["parent"]]["opcode"] == "procedures_definition"
+            )
+            b["inputs"]["VALUE"][1][1] = "1"
+
+        def swap_crosshair_costumes(p):  # idle-lit and bombing swapped
+            costumes = target(p, "target_a")["costumes"]
+            costumes[4], costumes[5] = costumes[5], costumes[4]
+
+        def drop_bomb_colour(p):
+            del target(p, "bomb")["costumes"][7]
+
+        def bullet_stand_in(p):  # the Toroid stand-in back on the bullet
+            target(p, director.ENEMY_BULLET_TARGET)["costumes"][0] = copy.deepcopy(
+                target(p, director.TOROID_TARGET)["costumes"][0]
+            )
+
+        cases = [
+            ("bomb-ordinal", two_bomb_colours),
+            ("bomb-ordinal", bomb_never_holds),
+            ("bomb-ordinal", bomb_codes_every_4),
+            ("crosshair-ordinal", lit_without_offset),
+            ("bullet-pulse", bullet_8_colours),
+            ("crosshair-gate", gate_every_4),
+            ("crosshair-sweep", wide_box),
+            ("crosshair-sweep", drop_last_object),
+            ("crosshair-reset", reset_lit_to_1),
+            ("crosshair-layout", swap_crosshair_costumes),
+            ("bomb-layout", drop_bomb_colour),
+            ("bullet-layout", bullet_stand_in),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._cab05_weapon_art_failures(project), f"corruption '{label}' was not caught")
+
     def _pres01_framing_failures(self, project: dict) -> set[str]:
         """PRES-01 playfield framing as a static contract (docs/mechanics/053): no border sprites; every
         slot-driven world renderer draws only inside the visible rows [4, 40) and hides whole otherwise;
@@ -20235,15 +20549,17 @@ class ScratchProjectTests(unittest.TestCase):
 
         # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
         # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25. CAB-05: the
-        # death sprite draws only the pinned player explosion (resolution 1), so it sets the shared sprite scale.
-        death_sizes = [
-            (as_num(num(b["inputs"].get("SIZE"))), top_of(targets["solv_death"]["blocks"], bid))
-            for bid, b in targets["solv_death"]["blocks"].items()
-            if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
-        ]
-        if death_sizes != [(director.SPRITE_RENDER_SIZE, "event_whenflagclicked")]:
-            fails.add("PRES01-sprite-size")
-        for name in ("solvalou", "blaster", "target_a", "target_b", "bomb"):
+        # death sprite, crosshair, bomb target and bomb draw only art rendered from the pin (resolution 1), so each
+        # sets the shared sprite scale on the green flag.
+        for name in ("solv_death", "target_a", "target_b", "bomb"):
+            pinned_sizes = [
+                (as_num(num(b["inputs"].get("SIZE"))), top_of(targets[name]["blocks"], bid))
+                for bid, b in targets[name]["blocks"].items()
+                if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+            ]
+            if pinned_sizes != [(director.SPRITE_RENDER_SIZE, "event_whenflagclicked")]:
+                fails.add("PRES01-sprite-size")
+        for name in ("solvalou", "blaster"):
             bl = targets[name]["blocks"]
             found = [
                 (as_num(num(b["inputs"].get("SIZE"))), top_of(bl, bid))
@@ -21018,7 +21334,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "6ff009f373532aa40af0fd0fc1a96bf8196bd7ab52724c5162bb8c9cfbf386f6",
+            "d9607aa1a94385d599118c678f9a5d1528dff959df1a10372d10f2be50844a72",
             build_hash,
         )
 

@@ -2062,6 +2062,11 @@
       "name": "bomb in flight",
       "scope": "Stage"
     },
+    "weapon-crosshair-lit": {
+      "kind": "variable",
+      "name": "crosshair lit",
+      "scope": "Stage"
+    },
     "zakato-clone-slot": {
       "kind": "variable",
       "name": "zakato clone slot",
