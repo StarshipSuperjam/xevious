@@ -40,12 +40,36 @@ def _stack(*opcodes: str, top_id: str = "a") -> dict:
     return blocks
 
 
+def _overlapping_scripts(blocks: dict) -> list[tuple[str, str]]:
+    """Pairs of top-level scripts whose drawn areas meet, or that sit closer than a hat's
+    curve can rise (so a hat would draw over the script above it). Scripts are compared as
+    full-width bands: every script here sits in one column."""
+    spans = sorted(
+        (blocks[block_id]["y"], blocks[block_id]["y"] + sl.stack_height(blocks, block_id), block_id)
+        for block_id in sl.top_level_ids(blocks)
+    )
+    return [
+        (upper_id, lower_id)
+        for (_, upper_bottom, upper_id), (lower_top, _, lower_id) in zip(spans, spans[1:])
+        if lower_top - upper_bottom <= sl.START_HAT_HEIGHT
+    ]
+
+
 class EditorMeasurementTests(unittest.TestCase):
     blocks = FIXTURE["blocks"]
 
-    def test_every_shape_was_measured_in_the_editor(self) -> None:
-        measured = {self.blocks[block_id]["opcode"] for block_id in FIXTURE["block_heights"]}
-        self.assertEqual(set(sl.SHAPES) - measured, set())
+    def test_every_kind_was_measured_in_the_editor(self) -> None:
+        # Height follows from a block's kind, not its opcode, so a new opcode of a measured
+        # kind needs only its SHAPES line. A new kind needs measuring first (the fixture's
+        # `method` says how).
+        measured = [self.blocks[block_id] for block_id in FIXTURE["block_heights"]]
+        table_kinds = {kind for kind, _ in sl.SHAPES.values()}
+        self.assertEqual(table_kinds - {sl.SHAPES[b["opcode"]][0] for b in measured}, set())
+        drawn_kinds = {"hat", "define", "stack", "cap", "c", "c_cap", "reporter", "field"}
+        self.assertEqual(drawn_kinds - {sl._kind(b) for b in measured}, set())
+        mouth_counts = {len(mouths) for kind, mouths in sl.SHAPES.values() if kind == "c"}
+        self.assertEqual(mouth_counts - {len(sl.SHAPES[b["opcode"]][1]) for b in measured
+                                         if sl._kind(b) == "c"}, set())
 
     def test_block_heights_match_the_editor(self) -> None:
         for block_id, height in FIXTURE["block_heights"].items():
@@ -158,17 +182,17 @@ class LayOutTests(unittest.TestCase):
 
     def test_overlap_is_reported(self) -> None:
         blocks = self._laid_out_sample()
-        self.assertEqual(sl.overlapping_scripts(blocks), [])
+        self.assertEqual(_overlapping_scripts(blocks), [])
         tops = sl.top_level_ids(blocks)
         upper, lower = tops[0], tops[1]
         bottom = blocks[upper]["y"] + sl.stack_height(blocks, upper)
         blocks[lower]["y"] = bottom - 8
-        self.assertEqual(sl.overlapping_scripts(blocks), [(upper, lower)])
+        self.assertEqual(_overlapping_scripts(blocks), [(upper, lower)])
         # Clear of the block but within a hat's curve still counts: the hat would draw over it.
         blocks[lower]["y"] = bottom + sl.START_HAT_HEIGHT
-        self.assertEqual(sl.overlapping_scripts(blocks), [(upper, lower)])
+        self.assertEqual(_overlapping_scripts(blocks), [(upper, lower)])
         blocks[lower]["y"] = bottom + sl.START_HAT_HEIGHT + 1
-        self.assertEqual(sl.overlapping_scripts(blocks), [])
+        self.assertEqual(_overlapping_scripts(blocks), [])
 
     def test_a_block_under_a_cap_is_reported(self) -> None:
         blocks = _stack("event_whenbroadcastreceived", "control_delete_this_clone", "looks_hide")
@@ -188,7 +212,7 @@ class ShippedProjectTests(unittest.TestCase):
     def test_no_two_scripts_overlap(self) -> None:
         for target in PROJECT["targets"]:
             with self.subTest(target=target["name"]):
-                self.assertEqual(sl.overlapping_scripts(target["blocks"]), [])
+                self.assertEqual(_overlapping_scripts(target["blocks"]), [])
 
     def test_nothing_is_chained_under_a_cap(self) -> None:
         for target in PROJECT["targets"]:

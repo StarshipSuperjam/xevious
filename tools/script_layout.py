@@ -116,8 +116,8 @@ SHAPES: dict[str, tuple[str, tuple[str, ...]]] = {
 LONE_FIELD_PRIMITIVES = {4, 5, 6, 7, 8, 9, 10, 11}
 REPORTER_PRIMITIVES = {12, 13}
 
-# Block kinds with a next connection: anything chained under one that lacks it is
-# something the editor refuses to load (see `is_cap`).
+# Drawn kinds (see `_kind`) with a next connection: anything chained under one that lacks
+# it is something the editor refuses to load (see `is_cap`).
 _HAS_NEXT = {"hat", "define", "stack", "c"}
 
 
@@ -130,14 +130,23 @@ def _shape(block: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
         ) from None
 
 
-def has_next_connection(block: dict[str, Any]) -> bool:
-    kind, _ = _shape(block)
+def _kind(block: dict[str, Any]) -> str:
+    """How this block is drawn, with the two kinds that depend on the block resolved:
+    control_stop to "stack" or "cap", and a menu to "field" (a lone-field shadow) or
+    "reporter"."""
+    kind = _shape(block)[0]
     if kind == "stop":
         # scratch-blocks builds control_stop with a next connection only when its mutation
         # says hasnext (what "other scripts in sprite" sets); with no mutation it is a cap.
         mutation = block.get("mutation") or {}
-        return str(mutation.get("hasnext", "false")).lower() == "true"
-    return kind in _HAS_NEXT
+        return "stack" if str(mutation.get("hasnext", "false")).lower() == "true" else "cap"
+    if kind == "menu":
+        return "field" if block.get("shadow") else "reporter"
+    return kind
+
+
+def has_next_connection(block: dict[str, Any]) -> bool:
+    return _kind(block) in _HAS_NEXT
 
 
 def is_cap(block: dict[str, Any]) -> bool:
@@ -147,7 +156,7 @@ def is_cap(block: dict[str, Any]) -> bool:
     a next connection, fails to attach what follows, and abandons the rest of the
     sprite's workspace: the sprite opens with scripts missing.
     """
-    return _shape(block)[0] in {"cap", "stop", "c_cap"} and not has_next_connection(block)
+    return _kind(block) in {"cap", "c_cap"}
 
 
 def _input_child_height(blocks: dict[str, Any], value: Any) -> int | None:
@@ -190,11 +199,9 @@ def _mouth_row(blocks: dict[str, Any], block: dict[str, Any], name: str) -> int:
 def block_height(blocks: dict[str, Any], block_id: str) -> int:
     """The drawn height of one block (what scratch-blocks stores as `block.height`)."""
     block = blocks[block_id]
-    kind, mouths = _shape(block)
-    if kind == "menu":
-        if block.get("shadow"):
-            return MIN_BLOCK_Y_SINGLE_FIELD_OUTPUT
-        kind = "reporter"
+    kind, mouths = _kind(block), _shape(block)[1]
+    if kind == "field":
+        return MIN_BLOCK_Y_SINGLE_FIELD_OUTPUT
 
     # The first row holds the label and every value input ahead of the first mouth.
     first_row = MIN_BLOCK_Y_REPORTER if kind == "reporter" else MIN_BLOCK_Y
@@ -251,23 +258,6 @@ def lay_out(blocks: dict[str, Any]) -> None:
         blocks[block_id]["x"] = 0
         blocks[block_id]["y"] = y
         y += stack_height(blocks, block_id) + MIN_BLOCK_Y
-
-
-def overlapping_scripts(blocks: dict[str, Any]) -> list[tuple[str, str]]:
-    """Pairs of top-level scripts whose drawn areas meet, or that sit closer than a
-    hat's curve can rise (so a hat would draw over the script above it).
-
-    Scripts are compared as full-width bands: every script here sits in one column.
-    """
-    spans = sorted(
-        (blocks[block_id]["y"], blocks[block_id]["y"] + stack_height(blocks, block_id), block_id)
-        for block_id in top_level_ids(blocks)
-    )
-    return [
-        (upper_id, lower_id)
-        for (_, upper_bottom, upper_id), (lower_top, _, lower_id) in zip(spans, spans[1:])
-        if lower_top - upper_bottom <= START_HAT_HEIGHT
-    ]
 
 
 def blocks_under_caps(blocks: dict[str, Any]) -> list[str]:
