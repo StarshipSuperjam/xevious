@@ -11001,6 +11001,18 @@ def _forest_terrain(blocks: Blocks) -> list[str]:
     return [*sets, blocks.send("terrain draw")]
 
 
+def _black_background(blocks: Blocks) -> list[str]:
+    """CAB-01 (slice 21): clear the background to black, as `clear_bg_to_black` (xevious_main.68k 633-646) does
+    before the flashing logo is drawn — on the title (attract_mode_title_screen 1217-1222), at a coin-up (383-387)
+    and on the logo-and-best-five page (flash_logo_and_high_score_table 1465-1468). Both strips are hidden, so the
+    Stage's black backdrop shows; the logo's background layer is opaque black around its letters, which the
+    arcade's black screen hides. The next re-top or forest fill draws the strips again."""
+    sets = [
+        blocks.set_var(*TERRAIN_STRIP_VARS[parity]["shown"], number(0)) for parity in ("even", "odd")
+    ]
+    return [*sets, blocks.send("terrain draw")]
+
+
 def install_update_terrain(blocks: Blocks) -> None:
     # AREA-01 (slice 20): see UPDATE_TERRAIN_PROCCODE. Runs in the walk after the clock and the ground objects
     # move, and at the end of every re-top, so the strips always read the state of the current clock.
@@ -11890,7 +11902,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             ),
         ],
     )
-    blocks.chain(attract_enter, [attract_snapshot, title_hold, scores_hold])
+    # CAB-01: the title and the logo-and-best-five page draw on black (`_black_background`); the demo and the
+    # initials entry keep the forest (fill_bg_with_forest, 1316 and 1471-1473).
+    black = blocks.if_either_state("title", ATTRACT_SCORES_STATE, _black_background(blocks))
+    blocks.chain(attract_enter, [attract_snapshot, black, title_hold, scores_hold])
 
     # CAB-04 (slice 19): the fixed TOTAL entry countdown — its own `director enter` receiver (the attract-hold
     # pattern). On entering high-score-entry it counts `entry timer` (armed by the entry-scope reset) down one

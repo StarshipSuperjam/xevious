@@ -915,6 +915,69 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'start_screen', 0, 99),
   },
   {
+    // CAB-01 (slice 21): the title and the best-five page draw on black. The arcade clears the background with
+    // clear_bg_to_black (xevious_main.68k 633-646) before the flashing logo on the title (1217-1222) and on
+    // flash_logo_and_high_score_table (1465-1468); the demo fills the forest (fill_bg_with_forest, 1316). The
+    // logo's background tiles are opaque black, so drawn over the forest they showed as black blocks (build 1).
+    key: 'title-draws-on-black',
+    // roadmap-evidence: CAB-01 success  (CAB-01.title-sparkle: the title and the best-five page hide both terrain
+    //   strips so the logo sits on black, and the demo between them draws the forest again)
+    behavior: 'The title and the best-five page draw on a black background; the attract demo between them shows the forest',
+    playtestStep: 1,
+    async drive(vm) {
+      const strips = () => {
+        const shown = ['terrain-even-shown', 'terrain-odd-shown'].map((id) => Number(readVar(vm, id)));
+        const drawn = vm.runtime.targets
+          .filter((t) => t.isOriginal && t.sprite && ['area_01a', 'area_01b'].includes(t.sprite.name))
+          .map((t) => t.visible);
+        return { shown, drawn };
+      };
+      vm.greenFlag();
+      step(vm, 1);
+      let t = 0;
+      while (Number(readVar(vm, 'cabinet-title-tick')) < 10 && t < 200) {
+        step(vm, 1);
+        t += 1;
+      }
+      const title = { st: state(vm), ...strips() };
+      const demoReached = reachDemo(vm);
+      const demo = { st: state(vm), ...strips() };
+      const scoresReached = killDemoToState(vm, 'attract-scores');
+      step(vm, 1);
+      const scores = { st: state(vm), ...strips() };
+      return { title, demoReached, demo, scoresReached, scores };
+    },
+    assert(obs) {
+      assert.equal(obs.title.st, 'title', 'precondition: the cabinet is on the title');
+      assert.deepEqual(obs.title.shown, [0, 0], 'the title hides both terrain strips');
+      assert.deepEqual(obs.title.drawn, [false, false], 'neither strip is drawn behind the title logo');
+      assert.ok(obs.demoReached, 'precondition: the attract demo starts');
+      assert.ok(obs.demo.drawn.includes(true), 'the demo draws the forest');
+      assert.ok(obs.scoresReached, 'precondition: the demo death routes to the best-five page');
+      assert.equal(obs.scores.st, 'attract-scores', 'precondition: the best-five page is up');
+      assert.deepEqual(obs.scores.drawn, [false, false], 'the best-five page draws on black');
+    },
+    // roadmap-evidence: CAB-01 failure  (with the title's black clear set back to show the strips, the forest
+    //   draws behind the logo and the title assertions go red)
+    negativeMutation: (p) => {
+      const stage = p.targets.find((x) => x.isStage).blocks;
+      const shownVar = (b) =>
+        b && b.opcode === 'data_setvariableto' && /^terrain (even|odd) shown$/.test(b.fields.VARIABLE[0]);
+      let patched = 0;
+      for (const b of Object.values(stage)) {
+        if (b.opcode !== 'control_if' || !b.inputs.SUBSTACK) continue;
+        let link = b.inputs.SUBSTACK[1];
+        if (!shownVar(stage[link])) continue;
+        while (shownVar(stage[link])) {
+          stage[link].inputs.VALUE = [1, [10, '1']];
+          patched += 1;
+          link = stage[link].next;
+        }
+      }
+      if (patched !== 2) throw new Error(`mutate: expected the title's two strip clears, found ${patched}`);
+    },
+  },
+  {
     // CAB-01: the demo ends the way the arcade demo does — the craft dies (no timer). A demo death routes to
     // the best-five (attract-scores) screen, spends no craft, and keeps the attract cycle running; it never
     // hits the real death paths (respawn / game-over). (demo exit main 1298-1328; the death branch spends no

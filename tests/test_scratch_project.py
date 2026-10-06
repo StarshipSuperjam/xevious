@@ -21451,6 +21451,61 @@ class ScratchProjectTests(unittest.TestCase):
         if has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy") or not has("Stage", counts_title):
             fails.add("B4-title-clock")
 
+        # B4 — the title and the logo-and-best-five page draw on black (slice 21, CAB-01): the arcade runs
+        # clear_bg_to_black (xevious_main.68k 633-646) before the flashing logo on the title (1217-1222) and on
+        # flash_logo_and_high_score_table (1465-1468), so the logo's opaque black tiles sit on a black screen. On
+        # entering either state the Stage hides both terrain strips and redraws them, before the title hold. The
+        # demo and the initials entry keep the forest (fill_bg_with_forest, 1316 and 1471-1473).
+        stage_blocks = blocks["Stage"]
+
+        def literals(root):
+            out, stack = set(), [root]
+            while stack:
+                b = stage_blocks.get(stack.pop()) if stack else None
+                for spec in (b or {}).get("inputs", {}).values():
+                    if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str):
+                        stack.append(spec[1])
+                    elif isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list):
+                        out.add(spec[1][1])
+            return out - {"game state"}
+
+        def below(root):
+            seen, stack = set(), [root]
+            while stack:
+                bid = stack.pop()
+                if not isinstance(bid, str) or bid in seen or bid not in stage_blocks:
+                    continue
+                seen.add(bid)
+                stack.append(stage_blocks[bid].get("next"))
+                for spec in stage_blocks[bid].get("inputs", {}).values():
+                    if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str):
+                        stack.append(spec[1])
+            return seen
+
+        def blacks_title(b):
+            if b["opcode"] != "control_if":
+                return False
+            if literals(b["inputs"]["CONDITION"][1]) != {"title", director.ATTRACT_SCORES_STATE}:
+                return False
+            body, link = [], (b["inputs"].get("SUBSTACK") or [None, None])[1]
+            while link:
+                body.append(stage_blocks[link])
+                link = stage_blocks[link]["next"]
+            hidden = {
+                step["fields"]["VARIABLE"][1]
+                for step in body
+                if step["opcode"] == "data_setvariableto" and num(step["inputs"].get("VALUE")) == 0
+            }
+            strips = {director.TERRAIN_STRIP_VARS[parity]["shown"][1] for parity in ("even", "odd")}
+            redrawn = bool(body) and body[-1]["opcode"] == "event_broadcast" and (
+                body[-1]["inputs"]["BROADCAST_INPUT"][1][1] == "terrain draw"
+            )
+            then_title = any(counts_title(stage_blocks[x]) for x in below(b.get("next")))
+            return strips <= hidden and redrawn and then_title
+
+        if not has("Stage", blacks_title):
+            fails.add("B4-title-black")
+
         # B5/B10 — the tick-counted explosion then the post-death pause; no waits. #158 (slice 21): the walk owns
         # the 44-tick window, so the explosion keeps no clock of its own. Each tick the walk sends `death draw`;
         # the renderer's ONE receiver draws while `dying tick < 28` (the 7 x 4-tick explosion, a costume picked
@@ -21858,6 +21913,31 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["inputs"]["VALUE"] = [1, [4, 2]]
 
+        def title_black_blocks(p):
+            stage = blocks_of(p, "Stage")
+            return [
+                b for b in stage.values()
+                if b["opcode"] == "data_setvariableto"
+                and b["fields"]["VARIABLE"][1] in {director.TERRAIN_STRIP_VARS[x]["shown"][1] for x in ("even", "odd")}
+                and num(b["inputs"].get("VALUE")) == 0
+                and stage.get(b["parent"], {}).get("opcode") in ("control_if", "data_setvariableto")
+            ]
+
+        def forest_title(p):  # B4: the title keeps the forest behind the logo (build 1's black blocks)
+            for b in title_black_blocks(p):
+                b["inputs"]["VALUE"] = [1, [10, "1"]]
+
+        def black_demo_not_scores(p):  # B4: the black screen moved from the best-five page to the demo
+            stage = blocks_of(p, "Stage")
+            for b in title_black_blocks(p):
+                guard = stage[b["parent"]]
+                if guard["opcode"] != "control_if":
+                    continue
+                for spec in stage[guard["inputs"]["CONDITION"][1]]["inputs"].values():
+                    literal = stage[spec[1]]["inputs"]["OPERAND2"][1]
+                    if literal[1] == director.ATTRACT_SCORES_STATE:
+                        literal[1] = "attract-demo"
+
         def break_terrain_layer(p):  # B9: stop sending terrain to the back
             for b in blocks_of(p, "area_01a").values():
                 if b["opcode"] == "looks_gotofrontback":
@@ -21874,6 +21954,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("B4-title-clock", reglide_title),
             ("B4-title-clock", double_title_clock),
             ("B4-title-clock", lengthen_title),
+            ("B4-title-black", forest_title),
+            ("B4-title-black", black_demo_not_scores),
             ("B5B10-explosion", break_explosion_holds),
             ("CAB05-death-hidden-pause", show_through_pause),
             ("B5B10-pause", break_death_pause),
@@ -23713,7 +23795,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "79ffccdd6f262b234f54470ca0d98657600c891cf5aa6018d2884849bb4319bb",
+            "a700230c5c75935f2f329472cc7275de9a94f0d2ba4d70e036ba262c68bd0a58",
             build_hash,
         )
 
