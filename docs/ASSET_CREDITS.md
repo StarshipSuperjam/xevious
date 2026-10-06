@@ -22,8 +22,11 @@ rights to, the Xevious artwork or trademarks. A rights review is needed before
 broader distribution or promotion.
 
 The sheets are stored byte-for-byte as supplied, including their green
-backgrounds and embedded credit panels. They remain available on the hidden
-`sprite_sheets` target.
+backgrounds and embedded credit panels. Four of them remain available on the
+hidden `sprite_sheets` target. The fifth, `42386.png` (Andor Genesis), no longer
+ships: it shows only assembled octagons, which cannot be cut into the boss's
+separable parts, so the parts are rendered from the arcade sprite data instead
+(below). It stays credited here as supplied source art.
 
 ## Gameplay-ready derivatives
 
@@ -60,7 +63,10 @@ high-score, 1UP, and GAME OVER glyphs, and to **yellow** (RGB 255,255,0) for the
 `hs/*` glyphs of the arcade's yellow **HIGH SCORE** label — then centers each
 glyph on a fixed monospace cell and downscales it with nearest-neighbor sampling.
 Both colour variants are recorded in `src/xevious/assets/provenance.json` with
-this same CC BY 3.0 attribution.
+this same CC BY 3.0 attribution. The same glyphs, composited by `tools/hud_glyphs.py`,
+also draw the title and attract-screen text, the best-five table, initials entry,
+the two-player banner and the hidden credit (SEC-03); each of those costumes
+carries the same attribution in its provenance record.
 
 The license deed is [Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/).
 Attribution is given per its terms. Two provenance caveats, both for the
@@ -220,6 +226,54 @@ target's preserved baseline costume; the build no longer shows it.
 | Reference-art sheet and its Giddo Spario, Zakato body, self-destruct, teleport, Brag Spario, shot, rebound, title-sparkle and title-logo costumes | Arcade enemy, shot and sparkle sprites at their colour steps and flips, and the title logo's tile art | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
 
 The same rights caveat as the terrain and the Andor parts applies.
+
+## Andor Genesis parts rendered from the arcade sprite data
+
+The Andor Genesis boss's fourteen part cells (nine armour plates, four gun ports
+and the core) and the four Bragza fly-up cells are decoded from the same pinned
+reference graphics (`assets/amiga/xevious_gfx.c`: each part's sprite code read
+at the pin in `xevious_main.68k`, sprite colour table 3 for the parts and 0x15
+for the Bragza, and the palette) by `tools/andor_sprite_render.py` into one
+sheet, `src/xevious/assets/233c35c614f27343780ebf4967597aab.png`, on the hidden
+`sprite_sheets` target; `--verify` re-derives it at the pin. The
+`andor_genesis` entries in `assets/sprite-extraction/manifest.json` crop the
+part costumes from it. They replace the crops of the Spriters Resource sheet
+42386, which is no longer shipped.
+
+| Output | Description | Credit | Source | License |
+| --- | --- | --- | --- | --- |
+| Andor Genesis sheet and its part and Bragza costumes | Arcade Andor Genesis parts and Bragza | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+
+The same rights caveat as the terrain applies.
+
+## Bonus Flag rendered from the arcade sprite data
+
+No Spriters Resource sheet breaks out the hidden Special Flag (SEC-02,
+`docs/mechanics/044-secrets.md`), so its sprite is decoded from the pinned
+reference graphics (`assets/amiga/xevious_gfx.c` sprite index 287, labelled
+`flag` in the reference's `sprite_config.json`) at sprite colour table 0x0E, the
+colour `reveal_bonus_flag` writes (`xevious_main.68k` 3148), as one 16×16 cell:
+`src/xevious/assets/6ca6cf679d389290d64bd6417973df2c.png` on the hidden
+`sprite_sheets` target. The `bonus_flag` entry in
+`assets/sprite-extraction/manifest.json` crops the flag costume from it.
+
+| Output | Description | Credit | Source | License |
+| --- | --- | --- | --- | --- |
+| Bonus Flag sheet and its flag costume | The Special Flag bonus item | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+
+The same rights caveat as the terrain applies.
+
+## The base Scratch project (2017)
+
+The build starts from a historical Scratch project, preserved byte-for-byte at
+`assets/original/Xevious.sb3` with its record in `assets/original/provenance.json`:
+[Scratch project 195680409](https://scratch.mit.edu/projects/195680409/), created
+by StarshipSuperjam (2017-12-31, last publicly modified 2018-01-11). The media
+the build still references from it — its baseline costumes and sounds, most kept
+unplayed and unshown as preserved history — ship under their original
+content-hash names and are not repeated in `src/xevious/assets/provenance.json`.
+That project contains media recognizable as Namco Xevious material; preserving it
+here asserts no ownership of, and grants no license to, third-party material.
 
 ## Terrain area map (fan map, cross-check only — not used by the build)
 
