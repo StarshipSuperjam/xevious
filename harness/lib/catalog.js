@@ -4738,6 +4738,100 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check shot bacura'),
   },
   {
+    key: 'shot-rebounds-off-a-bacura-in-four-ticks',
+    // roadmap-evidence: CAB-05 success  (presentation.reference-art shot: a live shot draws the arcade's own
+    //   flight frame for the tick, and a shot marked for the bounce draws its hit frame at colour 0x23 in place,
+    //   then the four mirrored rebound codes 0x118-0x11B one a tick, backing off 3.75 units a tick, then deletes)
+    behavior:
+      'WPN-01 / CAB-05 (.play): a player shot draws code 0x116 + ((countup >> 2) & 1) at colour 0x23 + ((countup >> 1) & 1) each tick; marked SHOT_BOUNCE by a Bacura it holds its place for the hit tick at colour 0x23, then draws rebound codes 0x118-0x11B mirrored, one a tick, moving back 3.75 units a tick (shot_destroyed, xevious_main.68k 2400-2417: eight frames at two a tick), and deletes',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      suppressGroundSpawns(vm);
+      // Sample every shot clone after each step of its own clone thread: a non-warp loop yields once per
+      // iteration, so each sample is one port tick of that shot (a harness pump runs several ticks).
+      const samples = new Map(); // clone id -> [{ costume, y, tick, state }]
+      const seq = vm.runtime.sequencer;
+      const original = seq.stepThread;
+      seq.stepThread = function hooked(thread) {
+        original.call(this, thread);
+        const t = thread.target;
+        if (!t || t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') return;
+        if (!vm.runtime.targets.includes(t)) return; // the step that deleted it
+        const top = t.blocks.getBlock(thread.topBlock);
+        if (!top || top.opcode !== 'control_start_as_clone') return;
+        const slotVar = Object.values(t.variables).find((v) => v.name === 'clone slot');
+        const slot = Number(slotVar.value) - 1;
+        if (target === null) target = t.id;
+        if (t.id !== target) return;
+        // Keep the flying band and the Bacura band empty, so no detector spends the shot first.
+        for (const s of [...Array(16).keys()].map((i) => 16 + i).concat([58, 59, 60, 61, 62, 63])) {
+          readVar(vm, 'slot-type')[s] = 0;
+          readVar(vm, 'slot-state')[s] = 0;
+        }
+        if (!samples.has(t.id)) samples.set(t.id, []);
+        const trace = samples.get(t.id);
+        trace.push({
+          costume: t.sprite.costumes[t.currentCostume].name,
+          y: t.y,
+          tick: Number(readVar(vm, 'tick')),
+          state: Number(readVar(vm, 'slot-state')[slot]),
+        });
+        // After three flight ticks, mark it as `check shot bacura` does (the detector itself is pinned by
+        // bacura-bounces-the-shot-and-survives); marking inside the hook keeps the shot low on the screen.
+        if (trace.length === 3) readVar(vm, 'slot-state')[slot] = 6; // SHOT_BOUNCE
+      };
+      let target = null;
+      try {
+        keyDown(vm, ' ');
+        for (let i = 0; i < 20 && target === null; i += 1) step(vm, 1);
+        keyUp(vm, ' ');
+        assert.ok(target !== null, 'precondition: a shot was fired');
+        for (let i = 0; i < 40 && vm.runtime.targets.some((t) => t.id === target); i += 1) step(vm, 1);
+      } finally {
+        seq.stepThread = original;
+      }
+      const trace = samples.get(target);
+      const marked = trace.findIndex((sample) => sample.state === 6);
+      return {
+        flight: trace.slice(0, Math.max(marked, 0)),
+        lastFlight: marked > 0 ? trace[marked - 1] : null,
+        rebound: marked >= 0 ? trace.slice(marked) : [],
+        deleted: !vm.runtime.targets.some((t) => t.id === target),
+      };
+    },
+    assert(obs) {
+      assert.ok(
+        obs.flight.length > 0 && obs.lastFlight !== null,
+        `precondition: the shot flew before it was marked (flight ${obs.flight.length}, rebound ${obs.rebound.length})`,
+      );
+      for (const sample of obs.flight) {
+        // countup = 2 * tick: code (countup >> 2) & 1, colour (countup >> 1) & 1, never mirrored on an even countup.
+        const code = Math.floor(sample.tick / 2) % 2 + 1;
+        const clut = sample.tick % 2 ? 'c24' : 'c23';
+        assert.equal(sample.costume, `zapper-shot/fly/0${code}/${clut}/none`, `flight frame at tick ${sample.tick}`);
+      }
+      const [hit, ...frames] = obs.rebound;
+      assert.ok(hit, 'the marked shot drew a hit tick');
+      const hitCode = Math.floor(hit.tick / 2) % 2 + 1;
+      assert.equal(hit.costume, `zapper-shot/fly/0${hitCode}/c23/none`, 'the hit tick draws the shot code at colour 0x23');
+      assert.equal(hit.y, obs.lastFlight.y, 'the hit tick does not move the shot');
+      assert.deepEqual(
+        frames.map((frame) => frame.costume),
+        ['01', '02', '03', '04'].map((code) => `zapper-shot/rebound/${code}/x`),
+        'four rebound ticks: codes 0x118-0x11B, mirrored (the drawn frames are TIMER 1, 3, 5, 7)',
+      );
+      frames.forEach((frame, index) => {
+        assert.equal(frame.y, hit.y - 3.75 * (index + 1), `rebound tick ${index + 1} backs off 3.75 units a tick`);
+      });
+      assert.equal(obs.deleted, true, 'the shot deletes after its fourth rebound tick');
+    },
+    // The old build's length: stepping the rebound clock one frame a tick plays the eight frames twice as long
+    // and twice as far, so the four-tick assertion bites.
+    negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'blaster', 'bounce timer', 2, 1),
+  },
+  {
     key: 'bacura-touch-raises-craft-death',
     behavior:
       'AIR-11 (.play): a Bacura overlapping the craft raises the player-hit death signal through the Bacura collision box (the visible-slab box: see bacura-craft-kill-box-is-the-visible-slab), and a slab one cell off does NOT — the slab kills on contact even though it is itself indestructible',

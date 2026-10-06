@@ -2427,7 +2427,7 @@
       "family": "zapper-shot",
       "animation": "fly",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["none"]
     },
     {
       "name": "zapper-shot/fly/01/c24",
@@ -2439,7 +2439,7 @@
       "family": "zapper-shot",
       "animation": "fly",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["none"]
     },
     {
       "name": "zapper-shot/fly/02/c23",
@@ -2451,7 +2451,7 @@
       "family": "zapper-shot",
       "animation": "fly",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["none"]
     },
     {
       "name": "zapper-shot/fly/02/c24",
@@ -2463,7 +2463,7 @@
       "family": "zapper-shot",
       "animation": "fly",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["none"]
     },
     {
       "name": "zapper-shot/rebound/01",
@@ -2475,7 +2475,7 @@
       "family": "zapper-shot",
       "animation": "rebound",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["x"]
     },
     {
       "name": "zapper-shot/rebound/02",
@@ -2487,7 +2487,7 @@
       "family": "zapper-shot",
       "animation": "rebound",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["x"]
     },
     {
       "name": "zapper-shot/rebound/03",
@@ -2499,7 +2499,7 @@
       "family": "zapper-shot",
       "animation": "rebound",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["x"]
     },
     {
       "name": "zapper-shot/rebound/04",
@@ -2511,7 +2511,7 @@
       "family": "zapper-shot",
       "animation": "rebound",
       "duration_frames": 2,
-      "flips": ["none", "x"]
+      "flips": ["x"]
     },
     {
       "name": "title-sparkle/twinkle/01",

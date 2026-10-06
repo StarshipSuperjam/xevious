@@ -254193,6 +254193,10 @@
         "blaster-shot-depth": [
           "shot depth",
           0
+        ],
+        "blaster-bounce-timer": [
+          "bounce timer",
+          0
         ]
       },
       "lists": {},
@@ -254374,7 +254378,7 @@
               1,
               [
                 4,
-                111.11
+                125.0
               ]
             ]
           },
@@ -255873,7 +255877,7 @@
         },
         "gd-blaster-083": {
           "opcode": "control_start_as_clone",
-          "next": "gd-blaster-119",
+          "next": "gd-blaster-143",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -255884,8 +255888,8 @@
         },
         "gd-blaster-084": {
           "opcode": "control_repeat_until",
-          "next": "gd-blaster-118",
-          "parent": "gd-blaster-124",
+          "next": "gd-blaster-142",
+          "parent": "gd-blaster-157",
           "inputs": {
             "CONDITION": [
               2,
@@ -255970,7 +255974,7 @@
         "gd-blaster-088": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-blaster-106",
+          "parent": "gd-blaster-114",
           "inputs": {
             "CONDITION": [
               2,
@@ -256332,7 +256336,7 @@
         },
         "gd-blaster-105": {
           "opcode": "motion_sety",
-          "next": "gd-blaster-106",
+          "next": "gd-blaster-114",
           "parent": "gd-blaster-104",
           "inputs": {
             "Y": [
@@ -256353,40 +256357,218 @@
           "topLevel": false
         },
         "gd-blaster-106": {
-          "opcode": "looks_nextcostume",
-          "next": "gd-blaster-088",
-          "parent": "gd-blaster-105",
-          "inputs": {},
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-blaster-107": {
-          "opcode": "control_if_else",
+          "opcode": "operator_divide",
           "next": null,
-          "parent": "gd-blaster-114",
+          "parent": "gd-blaster-107",
           "inputs": {
-            "CONDITION": [
-              2,
-              "gd-blaster-108"
+            "NUM1": [
+              3,
+              [
+                12,
+                "tick",
+                "tick"
+              ],
+              [
+                10,
+                ""
+              ]
             ],
-            "SUBSTACK": [
-              2,
-              "gd-blaster-109"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-blaster-110"
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
+        "gd-blaster-107": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-blaster-108",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-blaster-106"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
         "gd-blaster-108": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-blaster-109",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-107"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-109": {
+          "opcode": "operator_multiply",
+          "next": null,
+          "parent": "gd-blaster-110",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-108"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-110": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-blaster-112",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                9
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-blaster-109"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-111": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-blaster-112",
+          "inputs": {
+            "NUM1": [
+              3,
+              [
+                12,
+                "tick",
+                "tick"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-112": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-blaster-114",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-110"
+            ],
+            "NUM2": [
+              2,
+              "gd-blaster-111"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-113": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-blaster-114",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-blaster-114": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-blaster-088",
+          "parent": "gd-blaster-105",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-blaster-112",
+              "gd-blaster-113"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-115": {
+          "opcode": "control_if_else",
+          "next": null,
+          "parent": "gd-blaster-128",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-blaster-116"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-blaster-117"
+            ],
+            "SUBSTACK2": [
+              2,
+              "gd-blaster-118"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-116": {
           "opcode": "operator_gt",
           "next": null,
-          "parent": "gd-blaster-107",
+          "parent": "gd-blaster-115",
           "inputs": {
             "OPERAND1": [
               3,
@@ -256412,49 +256594,104 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-109": {
+        "gd-blaster-117": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-blaster-107",
+          "parent": "gd-blaster-115",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-110": {
+        "gd-blaster-118": {
           "opcode": "looks_show",
           "next": null,
-          "parent": "gd-blaster-107",
+          "parent": "gd-blaster-115",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-111": {
-          "opcode": "control_repeat",
+        "gd-blaster-119": {
+          "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-blaster-117",
+          "parent": "gd-blaster-141",
           "inputs": {
-            "TIMES": [
-              1,
-              [
-                4,
-                8
-              ]
+            "CONDITION": [
+              2,
+              "gd-blaster-120"
             ],
             "SUBSTACK": [
               2,
-              "gd-blaster-112"
+              "gd-blaster-129"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-112": {
+        "gd-blaster-120": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-blaster-119",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "bounce timer",
+                "blaster-bounce-timer"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                7
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-121": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-blaster-129",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "bounce timer",
+                "blaster-bounce-timer"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                -1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-122": {
           "opcode": "data_changevariableby",
-          "next": "gd-blaster-113",
-          "parent": "gd-blaster-111",
+          "next": "gd-blaster-123",
+          "parent": "gd-blaster-129",
           "inputs": {
             "VALUE": [
               1,
@@ -256473,10 +256710,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-113": {
+        "gd-blaster-123": {
           "opcode": "motion_sety",
-          "next": "gd-blaster-114",
-          "parent": "gd-blaster-112",
+          "next": "gd-blaster-128",
+          "parent": "gd-blaster-122",
           "inputs": {
             "Y": [
               3,
@@ -256495,19 +256732,288 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-114": {
-          "opcode": "looks_nextcostume",
-          "next": "gd-blaster-107",
-          "parent": "gd-blaster-113",
-          "inputs": {},
+        "gd-blaster-124": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-blaster-125",
+          "inputs": {
+            "NUM1": [
+              3,
+              [
+                12,
+                "bounce timer",
+                "blaster-bounce-timer"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-115": {
+        "gd-blaster-125": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-blaster-126",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-blaster-124"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-126": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-blaster-128",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                13
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-blaster-125"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-127": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-blaster-128",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-blaster-128": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-blaster-115",
+          "parent": "gd-blaster-123",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-blaster-126",
+              "gd-blaster-127"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-129": {
+          "opcode": "control_if",
+          "next": "gd-blaster-130",
+          "parent": "gd-blaster-119",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-blaster-121"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-blaster-122"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-130": {
+          "opcode": "data_changevariableby",
+          "next": null,
+          "parent": "gd-blaster-129",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "bounce timer",
+              "blaster-bounce-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-131": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-blaster-132",
+          "inputs": {
+            "NUM1": [
+              3,
+              [
+                12,
+                "tick",
+                "tick"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-132": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-blaster-133",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-blaster-131"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-133": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-blaster-134",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-132"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-134": {
+          "opcode": "operator_multiply",
+          "next": null,
+          "parent": "gd-blaster-135",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-133"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-135": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-blaster-137",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                9
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-blaster-134"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-136": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-blaster-137",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-blaster-137": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-blaster-141",
+          "parent": "gd-blaster-140",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-blaster-135",
+              "gd-blaster-136"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-138": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-blaster-116",
+          "parent": "gd-blaster-139",
           "inputs": {
             "INDEX": [
               3,
@@ -256531,14 +257037,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-116": {
+        "gd-blaster-139": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-blaster-118",
+          "parent": "gd-blaster-142",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-blaster-115"
+              "gd-blaster-138"
             ],
             "OPERAND2": [
               1,
@@ -256552,10 +257058,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-117": {
+        "gd-blaster-140": {
           "opcode": "event_broadcast",
-          "next": "gd-blaster-111",
-          "parent": "gd-blaster-118",
+          "next": "gd-blaster-137",
+          "parent": "gd-blaster-142",
           "inputs": {
             "BROADCAST_INPUT": [
               1,
@@ -256570,27 +257076,49 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-118": {
+        "gd-blaster-141": {
+          "opcode": "data_setvariableto",
+          "next": "gd-blaster-119",
+          "parent": "gd-blaster-137",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                -1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "bounce timer",
+              "blaster-bounce-timer"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-142": {
           "opcode": "control_if",
-          "next": "gd-blaster-125",
+          "next": "gd-blaster-158",
           "parent": "gd-blaster-084",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-blaster-116"
+              "gd-blaster-139"
             ],
             "SUBSTACK": [
               2,
-              "gd-blaster-117"
+              "gd-blaster-140"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-119": {
+        "gd-blaster-143": {
           "opcode": "data_setvariableto",
-          "next": "gd-blaster-121",
+          "next": "gd-blaster-145",
           "parent": "gd-blaster-083",
           "inputs": {
             "VALUE": [
@@ -256615,23 +257143,23 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-120": {
+        "gd-blaster-144": {
           "opcode": "motion_yposition",
           "next": null,
-          "parent": "gd-blaster-121",
+          "parent": "gd-blaster-145",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-121": {
+        "gd-blaster-145": {
           "opcode": "data_setvariableto",
-          "next": "gd-blaster-122",
-          "parent": "gd-blaster-119",
+          "next": "gd-blaster-154",
+          "parent": "gd-blaster-143",
           "inputs": {
             "VALUE": [
               3,
-              "gd-blaster-120",
+              "gd-blaster-144",
               [
                 10,
                 ""
@@ -256647,10 +257175,197 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-122": {
+        "gd-blaster-146": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-blaster-147",
+          "inputs": {
+            "NUM1": [
+              3,
+              [
+                12,
+                "tick",
+                "tick"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-147": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-blaster-148",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-blaster-146"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-148": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-blaster-149",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-147"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-149": {
+          "opcode": "operator_multiply",
+          "next": null,
+          "parent": "gd-blaster-150",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-148"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-150": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-blaster-152",
+          "inputs": {
+            "NUM1": [
+              1,
+              [
+                4,
+                9
+              ]
+            ],
+            "NUM2": [
+              2,
+              "gd-blaster-149"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-151": {
+          "opcode": "operator_mod",
+          "next": null,
+          "parent": "gd-blaster-152",
+          "inputs": {
+            "NUM1": [
+              3,
+              [
+                12,
+                "tick",
+                "tick"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-152": {
+          "opcode": "operator_add",
+          "next": null,
+          "parent": "gd-blaster-154",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-blaster-150"
+            ],
+            "NUM2": [
+              2,
+              "gd-blaster-151"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-153": {
+          "opcode": "looks_costume",
+          "next": null,
+          "parent": "gd-blaster-154",
+          "inputs": {},
+          "fields": {
+            "COSTUME": [
+              "digit/0",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "gd-blaster-154": {
+          "opcode": "looks_switchcostumeto",
+          "next": "gd-blaster-155",
+          "parent": "gd-blaster-145",
+          "inputs": {
+            "COSTUME": [
+              3,
+              "gd-blaster-152",
+              "gd-blaster-153"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-155": {
           "opcode": "looks_gotofrontback",
-          "next": "gd-blaster-123",
-          "parent": "gd-blaster-121",
+          "next": "gd-blaster-156",
+          "parent": "gd-blaster-154",
           "inputs": {},
           "fields": {
             "FRONT_BACK": [
@@ -256661,19 +257376,19 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-123": {
+        "gd-blaster-156": {
           "opcode": "looks_show",
-          "next": "gd-blaster-124",
-          "parent": "gd-blaster-122",
+          "next": "gd-blaster-157",
+          "parent": "gd-blaster-155",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-124": {
+        "gd-blaster-157": {
           "opcode": "event_broadcast",
           "next": "gd-blaster-084",
-          "parent": "gd-blaster-123",
+          "parent": "gd-blaster-156",
           "inputs": {
             "BROADCAST_INPUT": [
               1,
@@ -256688,10 +257403,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-125": {
+        "gd-blaster-158": {
           "opcode": "data_replaceitemoflist",
-          "next": "gd-blaster-126",
-          "parent": "gd-blaster-118",
+          "next": "gd-blaster-159",
+          "parent": "gd-blaster-142",
           "inputs": {
             "INDEX": [
               3,
@@ -256722,10 +257437,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-126": {
+        "gd-blaster-159": {
           "opcode": "data_replaceitemoflist",
-          "next": "gd-blaster-127",
-          "parent": "gd-blaster-125",
+          "next": "gd-blaster-160",
+          "parent": "gd-blaster-158",
           "inputs": {
             "INDEX": [
               3,
@@ -256756,10 +257471,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-127": {
+        "gd-blaster-160": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-blaster-126",
+          "parent": "gd-blaster-159",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -256840,6 +257555,78 @@
           "md5ext": "556dcc0318b122e8a5f7ce5d51be430d.png",
           "rotationCenterX": 14,
           "rotationCenterY": 2
+        },
+        {
+          "name": "zapper-shot/fly/01/c23/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9b022ea4e59559318c3c19bcb7b28e23",
+          "md5ext": "9b022ea4e59559318c3c19bcb7b28e23.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/01/c24/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "eb691780760d92753e2e4a6793f9502a",
+          "md5ext": "eb691780760d92753e2e4a6793f9502a.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/02/c23/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "6918caa80de9b10bbefed3b1c713045b",
+          "md5ext": "6918caa80de9b10bbefed3b1c713045b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/02/c24/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "830e5126b73d7d1f01862f77e0904979",
+          "md5ext": "830e5126b73d7d1f01862f77e0904979.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/01/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5befdcca57a84cc2939f4f2cd41eca2a",
+          "md5ext": "5befdcca57a84cc2939f4f2cd41eca2a.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/02/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "eb0fe42a5654ad83274e131070bada56",
+          "md5ext": "eb0fe42a5654ad83274e131070bada56.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/03/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e339f18bd43625c42244d0d0f134a9f4",
+          "md5ext": "e339f18bd43625c42244d0d0f134a9f4.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/04/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "631340afb2d7f6e0ec0bdd977d90ac2e",
+          "md5ext": "631340afb2d7f6e0ec0bdd977d90ac2e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
         }
       ],
       "sounds": [
@@ -334817,29 +335604,11 @@
           "rotationCenterY": 8
         },
         {
-          "name": "zapper-shot/fly/01/c23/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "3f5bd4f212fbce66f00d34059d752abe",
-          "md5ext": "3f5bd4f212fbce66f00d34059d752abe.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
           "name": "zapper-shot/fly/01/c24/none",
           "bitmapResolution": 1,
           "dataFormat": "png",
           "assetId": "eb691780760d92753e2e4a6793f9502a",
           "md5ext": "eb691780760d92753e2e4a6793f9502a.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
-          "name": "zapper-shot/fly/01/c24/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "639d879f5f38dab0d321c324e4a60d0e",
-          "md5ext": "639d879f5f38dab0d321c324e4a60d0e.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -334853,38 +335622,11 @@
           "rotationCenterY": 8
         },
         {
-          "name": "zapper-shot/fly/02/c23/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "ea571fa98a9705bf41eddb3708d05f58",
-          "md5ext": "ea571fa98a9705bf41eddb3708d05f58.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
           "name": "zapper-shot/fly/02/c24/none",
           "bitmapResolution": 1,
           "dataFormat": "png",
           "assetId": "830e5126b73d7d1f01862f77e0904979",
           "md5ext": "830e5126b73d7d1f01862f77e0904979.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
-          "name": "zapper-shot/fly/02/c24/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "2b4acd4c12013264f7cf1deee26427ec",
-          "md5ext": "2b4acd4c12013264f7cf1deee26427ec.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
-          "name": "zapper-shot/rebound/01/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "b5724a261ef4b600933bf859bb914d94",
-          "md5ext": "b5724a261ef4b600933bf859bb914d94.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },
@@ -334898,15 +335640,6 @@
           "rotationCenterY": 8
         },
         {
-          "name": "zapper-shot/rebound/02/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "26e0a4e109abfc4ae1f1edbf695cd304",
-          "md5ext": "26e0a4e109abfc4ae1f1edbf695cd304.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
           "name": "zapper-shot/rebound/02/x",
           "bitmapResolution": 1,
           "dataFormat": "png",
@@ -334916,29 +335649,11 @@
           "rotationCenterY": 8
         },
         {
-          "name": "zapper-shot/rebound/03/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "1fbf75dcb0b730e2dd8580bcd29327eb",
-          "md5ext": "1fbf75dcb0b730e2dd8580bcd29327eb.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
           "name": "zapper-shot/rebound/03/x",
           "bitmapResolution": 1,
           "dataFormat": "png",
           "assetId": "e339f18bd43625c42244d0d0f134a9f4",
           "md5ext": "e339f18bd43625c42244d0d0f134a9f4.png",
-          "rotationCenterX": 8,
-          "rotationCenterY": 8
-        },
-        {
-          "name": "zapper-shot/rebound/04/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "cd7c297c218439bcd4ae85a7b7949224",
-          "md5ext": "cd7c297c218439bcd4ae85a7b7949224.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
         },

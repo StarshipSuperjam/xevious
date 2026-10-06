@@ -195,6 +195,8 @@ CLONE_SLOT_ID = "blaster-clone-slot"
 # top, where Scratch's fence would hold the sprite back on stage, so the shot's travel, slot mirror, expiry and
 # hide all read this variable rather than the sprite's y position.
 SHOT_DEPTH_ID = "blaster-shot-depth"
+# Slice 21: each shot clone's own rebound clock, the arcade shot's _TIMER after a Bacura hit (BACURA_BOUNCE_*).
+BOUNCE_TIMER_ID = "blaster-bounce-timer"
 ALLOC_SHOT_PROCCODE = "alloc shot slot"
 
 # SYS-03 collision groups and single-hit resolution. Exactly five groups (below), no
@@ -1786,13 +1788,16 @@ FLYING_HANDLED_TYPES = (
 BACURA_TYPE = 1  # 0x01, handle_01_Bacura: drifts down its own band, never destroyed/scored
 BACURA_DRIFT_DX = 16  # raw scroll-axis velocity (arcade _dX=16 => 4*16 units/tick = 1 px/frame down)
 # WPN-01 (player.bacura-bounce #77) shot rebound. When a player shot is marked SHOT_BOUNCE by
-# `check shot bacura`, its blaster clone reverses and animates in place before deleting, instead of
-# vanishing at once. The arcade's `shot_destroyed` (2400-2417) sets the reflected shot _dX=+24 = 1/4 of
-# the normal 6 px/frame, reversed — so from the port's forward `changeyby 20` the reversed step is
-# 20 * (1/4) reversed = -5 stage-px/frame (NOT a naive halve, NOT a literal 1.5). The animation runs the
-# reference's 8 frames (_TIMER 0..7, deleted at 8; sprite code 0x18+((TIMER>>1)&3), four costume codes).
-BACURA_BOUNCE_DY = -3.75  # reversed shot step: SHOT_STEP (15) * 1/4, reversed (arcade reflected _dX=+24)
-BACURA_BOUNCE_FRAMES = 8  # bounce animation length (arcade shot_destroyed deletes at _TIMER==8)
+# `check shot bacura`, its blaster clone rebounds before deleting, instead of vanishing at once. The arcade's
+# `shot_destroyed` (xevious_main.68k 2400-2417): on the frame the shot sees STATE 3 it sets the reflected
+# _dX=+24 (1/4 of the normal speed, reversed), colour 0x23 and _TIMER=0xff, and returns — so that frame draws
+# the ordinary shot code at colour 0x23 without moving. Each later frame increments _TIMER, deletes at 8, and
+# otherwise draws code 0x118+((TIMER>>1)&3) mirrored on TIMER&1 and moves. At two frames a tick the port draws
+# the hit frame and then TIMER 1, 3, 5, 7: codes 0x118..0x11B, all mirrored, one a tick, each tick moving two
+# frames' worth of the reflected step. Then it deletes.
+BACURA_BOUNCE_DY = -3.75  # reversed shot step per tick: SHOT_STEP (15) * 1/4, reversed (arcade reflected _dX=+24)
+BACURA_BOUNCE_FRAMES = 8  # rebound frames (arcade shot_destroyed deletes at _TIMER==8)
+BACURA_BOUNCE_ARM = -1  # _TIMER = 0xff on the hit frame; the port's clock steps TICK_TIMER_STEP a tick from it
 # AIR-11 live spawn pipeline (main_fn_3__init_bacura 5188-5199, main_fn_5__inc_num_bacura 5201-5217).
 # The schedule sets `bacura inc cnt` (a per-window quota); the pump admits one slab per arcade second
 # into the reserved band, refilling any band slot whose slab has drifted off and culled. All three are
@@ -2623,16 +2628,15 @@ CRAFT_DIAGONAL_LATERAL_STEP = 2.5  # 2 px/tick * 1.25
 # The player shot moves 6 px/frame up (move_shot 2419-2424) = 12 px/tick = 15 stage units/tick.
 SHOT_STEP = 15
 # Sprite sizes. A 16-px (bitmap resolution 1) costume at ARCADE_STAGE_PER_PX is drawn at 125%. The baseline
-# sprites (craft, shot — bitmap resolution 2 art) were sized for the old 2.25 stage-units-per-pixel look; each
+# sprites (the craft — bitmap resolution 2 art) were sized for the old 2.25 stage-units-per-pixel look; each
 # keeps its proportions and is rescaled by 1.25 / 2.25. The craft explosion, crosshair, bomb target and bomb
-# left this table in CAB-05: each now draws only art rendered from the pin (resolution 1), so it takes
-# SPRITE_RENDER_SIZE like every other arcade-rendered sprite.
+# left this table in CAB-05, and the shot in slice 21: each now draws only art rendered from the pin
+# (resolution 1), so it takes SPRITE_RENDER_SIZE like every other arcade-rendered sprite.
 SPRITE_RENDER_SIZE = 100 * ARCADE_STAGE_PER_PX
 assert SHEONITE_RENDER_SIZE == SPRITE_RENDER_SIZE, "Sheonite (defined earlier) must use the shared sprite scale"
 BASELINE_RESCALE = ARCADE_STAGE_PER_PX / 2.25
 BASELINE_SPRITE_SIZES = {
     "solvalou": round(150 * BASELINE_RESCALE, 2),
-    "blaster": round(200 * BASELINE_RESCALE, 2),
 }
 # CAB-05 bomb, crosshair, bomb-target and enemy-bullet art, rendered from the pin's second graphics bank
 # (tools/effects_sprite_render.py; `_ATTR` 0x80 selects it). The crosshair, bomb target and bomb append it
@@ -2641,6 +2645,14 @@ BASELINE_SPRITE_SIZES = {
 # and 1E at frame 16, holding there (`_TIMER1` stops at 2), coloured 0x25 + ((TIMER >> 2) & 3) — a new colour
 # every 4 frames. bomb/fall/<code>/c25..c28 is colour-minor, so the ordinal is base + 4 * code + colour.
 BOMB_ART_BASE_ORDINAL = 6  # after the 5 preserved bomb_01..05
+# The player shot (main_fn_30_shot_fn 2374-2388): code 0x116 + ((countup >> 2) & 1), colour
+# 0x23 + ((countup >> 1) & 1), mirrored on countup & 1. At two frames a tick the port draws only even countups,
+# so the shot is never drawn mirrored: zapper-shot/fly/<code>/c23..c24 is colour-minor, and the ordinal is
+# base + 2 * (floor(tick / 2) mod 2) + (tick mod 2). The rebound (shot_destroyed, see BACURA_BOUNCE_*) follows
+# as zapper-shot/rebound/01..04, mirrored. All of it is appended after the preserved Fire_1..8.
+SHOT_ART_BASE_ORDINAL = 9  # after the 8 preserved Fire_1..8
+SHOT_ART_COLOURS = 2
+SHOT_REBOUND_ART_BASE_ORDINAL = SHOT_ART_BASE_ORDINAL + 2 * SHOT_ART_COLOURS  # 13
 BOMB_CODE_STEP_FRAMES = 8
 BOMB_CODE_STEPS = 3
 BOMB_COLOUR_STEP_FRAMES = 4
@@ -13352,7 +13364,7 @@ def install_alloc_bullet_slot(blocks: Blocks) -> None:
 def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("blaster")
     common_stop(blocks, hide=True, clones=True)
-    install_baseline_size(blocks, "blaster")
+    blocks.chain(blocks.flag(), [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})])
     install_alloc_shot_slot(blocks)
     # Reset clears the reload counter (WPN-01: a fresh press fires at once) so holding
     # fire through death never delays the first post-respawn shot.
@@ -13498,6 +13510,17 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             )
         ),
     )
+    # Slice 21 (CAB-05): the shot draws the arcade's own code and colour for the tick (SHOT_ART_BASE_ORDINAL);
+    # `code_step` is (countup >> 2) & 1 at two frames a tick. A fresh reporter per call.
+    code_step = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(2))), number(2)
+    )
+    fly_costume = lambda: blocks.switch_costume_expr(
+        blocks.op_add(
+            blocks.op_add(number(SHOT_ART_BASE_ORDINAL), blocks.op_mul(code_step(), number(SHOT_ART_COLOURS))),
+            blocks.op_mod(variable("tick", TICK_ID), number(SHOT_ART_COLOURS)),
+        )
+    )
     blocks.substack(
         travel,
         [
@@ -13505,14 +13528,16 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             mirror_y,
             blocks.change_var("shot depth", SHOT_DEPTH_ID, SHOT_STEP),
             blocks.add("motion_sety", inputs={"Y": shot_depth()}),
-            blocks.add("looks_nextcostume"),
+            fly_costume(),
             past_top_hide,
         ],
     )
     # WPN-01 shot bounce: the travel loop above exits the instant the walk marks this shot non-ACTIVE.
     # When that mark is SHOT_BOUNCE (a `check shot bacura` overlap), the shot does not simply vanish — it
-    # rebounds. Reverse it (BACURA_BOUNCE_DY, the arcade's reflected 1/4-speed) and run the reference's
-    # BACURA_BOUNCE_FRAMES (8) costume frames in place, then fall through to the shared free+delete below.
+    # rebounds (shot_destroyed, see BACURA_BOUNCE_*). The hit tick draws the shot's own code at colour 0x23 in
+    # place; the clone's `bounce timer` then steps from BACURA_BOUNCE_ARM by TICK_TIMER_STEP, and each tick it
+    # moves BACURA_BOUNCE_DY and draws rebound code floor(timer / 2), until the timer passes the last arcade
+    # rebound frame (BACURA_BOUNCE_FRAMES - 1); then it falls through to the shared free+delete below.
     # The Bacura is untouched; only the shot animates away. Ordinary air-kill spends (SHOT_SPENT) and
     # top-expiry (still ACTIVE) skip this branch and delete at once as before. The real BACURA_HIT_SND now
     # plays (src deactivate_shot xevious_main.68k:2559): this branch runs on a blaster clone, which cannot
@@ -13524,22 +13549,42 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[above_top]["parent"] = bounce_visible
     blocks.substack(bounce_visible, [blocks.add("looks_hide")])
     blocks.substack(bounce_visible, [blocks.show()], name="SUBSTACK2")
-    bounce_anim = blocks.add("control_repeat", inputs={"TIMES": number(BACURA_BOUNCE_FRAMES)})
-    blocks.substack(
-        bounce_anim,
+    bounce_timer = lambda: variable("bounce timer", BOUNCE_TIMER_ID)
+    bounce_anim = blocks.add("control_repeat_until")
+    bounce_done = blocks.op_gt(bounce_timer(), number(BACURA_BOUNCE_FRAMES - 1))
+    blocks.blocks[bounce_anim]["inputs"]["CONDITION"] = [2, bounce_done]
+    blocks.blocks[bounce_done]["parent"] = bounce_anim
+    rebound_frame = blocks.if_reporter(
+        blocks.op_gt(bounce_timer(), number(BACURA_BOUNCE_ARM)),
         [
             blocks.change_var("shot depth", SHOT_DEPTH_ID, BACURA_BOUNCE_DY),
             blocks.add("motion_sety", inputs={"Y": shot_depth()}),
-            blocks.add("looks_nextcostume"),
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(SHOT_REBOUND_ART_BASE_ORDINAL),
+                    blocks.op_floor(blocks.op_div(bounce_timer(), number(2))),
+                )
+            ),
             bounce_visible,
         ],
+    )
+    blocks.substack(
+        bounce_anim, [rebound_frame, blocks.change_var("bounce timer", BOUNCE_TIMER_ID, TICK_TIMER_STEP)]
+    )
+    hit_costume = blocks.switch_costume_expr(
+        blocks.op_add(number(SHOT_ART_BASE_ORDINAL), blocks.op_mul(code_step(), number(SHOT_ART_COLOURS)))
     )
     bounce = blocks.if_reporter(
         blocks.op_eq(
             blocks.list_item("slot state", SLOT_STATE_ID, variable("clone slot", CLONE_SLOT_ID)),
             number(SHOT_BOUNCE),
         ),
-        [blocks.send("sfx bacura"), bounce_anim],
+        [
+            blocks.send("sfx bacura"),
+            hit_costume,
+            blocks.set_var("bounce timer", BOUNCE_TIMER_ID, number(BACURA_BOUNCE_ARM)),
+            bounce_anim,
+        ],
     )
     # The clone snapshots `alloc result` (its allocated index) into its own `clone slot`
     # at birth, and frees that slot on expiry — so every delete path returns the slot to
@@ -13553,6 +13598,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             ),
             # Born at the craft (go_to_sprite before create_clone), which is always on stage.
             blocks.set_var_expr("shot depth", SHOT_DEPTH_ID, blocks.yposition()),
+            fly_costume(),
             blocks.to_front(),  # B9: shots render above the terrain
             blocks.show(),
             # CAB-05: SHOT_SND (main_fn_30_shot_fn xevious_main.68k:2366), relayed to the Stage that owns it.
@@ -16681,12 +16727,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     if proof is not None and enemy_bullet is not None:
         enemy_bullet["costumes"] = proof_by_family(ENEMY_BULLET_ART_FAMILY)
         enemy_bullet["currentCostume"] = 0
-    # CAB-05: the crosshair, bomb target and bomb append the pinned art after their preserved baseline costumes
-    # (no block selects those any more). Idempotent: a previous append is dropped first.
+    # CAB-05: the crosshair, bomb target and bomb — and, since slice 21, the shot — append the pinned art after
+    # their preserved baseline costumes (no block selects those any more). Idempotent: a previous append is dropped first.
     for marker_name, family, base in (
         ("target_a", "crosshair/", CROSSHAIR_ART_BASE_ORDINAL),
         ("target_b", "bomb-target/", None),
         ("bomb", "bomb/fall/", BOMB_ART_BASE_ORDINAL),
+        ("blaster", "zapper-shot/", SHOT_ART_BASE_ORDINAL),
     ):
         marker = next((t for t in result["targets"] if t.get("name") == marker_name), None)
         if proof is None or marker is None:
@@ -17317,6 +17364,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 ALLOC_RESULT_ID: ["alloc result", 0],
                 CLONE_SLOT_ID: ["clone slot", 0],
                 SHOT_DEPTH_ID: ["shot depth", 0],
+                BOUNCE_TIMER_ID: ["bounce timer", 0],
             }
         elif target["name"] in TERRAIN_STRIP_TARGETS.values():
             # AREA-01: the decoupled strips' `scroll step` counters are retired (idempotent), and each strip

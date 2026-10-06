@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "d24862fac2282cbe25651458bad40865923a2f126e205dc8b4eaac2d23d6433a",
+  "manifest_sha256": "5a1cdd95b514500be095df41163ba7fea46a6f65a6336b636217b70592334d87",
   "outputs": {
     "30ace72a60fb7cb015e10e9e1dbf833f.png": {
       "frame": "solvalou/flight/01",
@@ -6156,31 +6156,6 @@
       "generator_version": 1,
       "flip": "none"
     },
-    "3f5bd4f212fbce66f00d34059d752abe.png": {
-      "frame": "zapper-shot/fly/01/c23/x",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        16,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "x"
-    },
     "eb691780760d92753e2e4a6793f9502a.png": {
       "frame": "zapper-shot/fly/01/c24/none",
       "target": "toroid_sprite_proof",
@@ -6205,31 +6180,6 @@
       ],
       "generator_version": 1,
       "flip": "none"
-    },
-    "639d879f5f38dab0d321c324e4a60d0e.png": {
-      "frame": "zapper-shot/fly/01/c24/x",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        32,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "x"
     },
     "6918caa80de9b10bbefed3b1c713045b.png": {
       "frame": "zapper-shot/fly/02/c23/none",
@@ -6256,31 +6206,6 @@
       "generator_version": 1,
       "flip": "none"
     },
-    "ea571fa98a9705bf41eddb3708d05f58.png": {
-      "frame": "zapper-shot/fly/02/c23/x",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        48,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "x"
-    },
     "830e5126b73d7d1f01862f77e0904979.png": {
       "frame": "zapper-shot/fly/02/c24/none",
       "target": "toroid_sprite_proof",
@@ -6291,56 +6216,6 @@
       "license": "No reusable license specified by source; third-party copyrighted material",
       "rect": [
         64,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "none"
-    },
-    "2b4acd4c12013264f7cf1deee26427ec.png": {
-      "frame": "zapper-shot/fly/02/c24/x",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        64,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "x"
-    },
-    "b5724a261ef4b600933bf859bb914d94.png": {
-      "frame": "zapper-shot/rebound/01/none",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        80,
         64,
         16,
         16
@@ -6381,31 +6256,6 @@
       "generator_version": 1,
       "flip": "x"
     },
-    "26e0a4e109abfc4ae1f1edbf695cd304.png": {
-      "frame": "zapper-shot/rebound/02/none",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        96,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "none"
-    },
     "eb0fe42a5654ad83274e131070bada56.png": {
       "frame": "zapper-shot/rebound/02/x",
       "target": "toroid_sprite_proof",
@@ -6431,31 +6281,6 @@
       "generator_version": 1,
       "flip": "x"
     },
-    "1fbf75dcb0b730e2dd8580bcd29327eb.png": {
-      "frame": "zapper-shot/rebound/03/none",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        112,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "none"
-    },
     "e339f18bd43625c42244d0d0f134a9f4.png": {
       "frame": "zapper-shot/rebound/03/x",
       "target": "toroid_sprite_proof",
@@ -6480,31 +6305,6 @@
       ],
       "generator_version": 1,
       "flip": "x"
-    },
-    "cd7c297c218439bcd4ae85a7b7949224.png": {
-      "frame": "zapper-shot/rebound/04/none",
-      "target": "toroid_sprite_proof",
-      "source_asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "source_sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
-      "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
-      "license": "No reusable license specified by source; third-party copyrighted material",
-      "rect": [
-        128,
-        64,
-        16,
-        16
-      ],
-      "canvas": [
-        16,
-        16
-      ],
-      "anchor": [
-        8,
-        8
-      ],
-      "generator_version": 1,
-      "flip": "none"
     },
     "631340afb2d7f6e0ec0bdd977d90ac2e.png": {
       "frame": "zapper-shot/rebound/04/x",
@@ -7288,7 +7088,7 @@
   },
   "contact_sheet": {
     "file": "docs/images/sprite-extraction-proof.png",
-    "sha256": "c7529a63f2092cebb5f9d102513961edc086a6e15e3b62c763f7b113b7828c85",
+    "sha256": "a294acd9828aab07d78cfb4b7d5207f7bd754ac370fc78abea4511c6374bedc8",
     "frames": [
       "solvalou/flight/01",
       "solvalou/flight/02",
@@ -7544,20 +7344,12 @@
       "brag-spario/spin/01/y",
       "brag-spario/spin/01/xy",
       "zapper-shot/fly/01/c23/none",
-      "zapper-shot/fly/01/c23/x",
       "zapper-shot/fly/01/c24/none",
-      "zapper-shot/fly/01/c24/x",
       "zapper-shot/fly/02/c23/none",
-      "zapper-shot/fly/02/c23/x",
       "zapper-shot/fly/02/c24/none",
-      "zapper-shot/fly/02/c24/x",
-      "zapper-shot/rebound/01/none",
       "zapper-shot/rebound/01/x",
-      "zapper-shot/rebound/02/none",
       "zapper-shot/rebound/02/x",
-      "zapper-shot/rebound/03/none",
       "zapper-shot/rebound/03/x",
-      "zapper-shot/rebound/04/none",
       "zapper-shot/rebound/04/x",
       "title-sparkle/twinkle/01",
       "title-sparkle/twinkle/02",

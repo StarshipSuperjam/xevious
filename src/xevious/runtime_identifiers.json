@@ -1187,6 +1187,11 @@
       "name": "alloc result",
       "scope": "blaster"
     },
+    "blaster-bounce-timer": {
+      "kind": "variable",
+      "name": "bounce timer",
+      "scope": "blaster"
+    },
     "blaster-clone-slot": {
       "kind": "variable",
       "name": "clone slot",

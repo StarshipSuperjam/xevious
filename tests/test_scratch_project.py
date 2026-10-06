@@ -404,7 +404,9 @@ class ScratchProjectTests(unittest.TestCase):
         # - the teleport sparkle's y and xy flips (10), which the build's even slot timer never draws, + the
         # self-destruct at the teleport colour 0x24 (5) for a Zakato that fires on its first live frame. 459 - 10 + 5
         # = 454.
-        self.assertEqual(454, len(assets))
+        # - the shot's mirrored flight frames and unmirrored rebound frames (8), which a tick's even countup never
+        # draws. 454 - 8 = 446.
+        self.assertEqual(446, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -500,12 +502,13 @@ class ScratchProjectTests(unittest.TestCase):
             ["player-explosion/burst/01/none"],
         )
         source_death["costumes"] = source_death["costumes"][:len(original_death["costumes"])]
-        # CAB-05: the crosshair, bomb target and bomb likewise append their pinned art after the preserved
-        # baseline costumes.
+        # CAB-05: the crosshair, bomb target, bomb and (slice 21) shot likewise append their pinned art after the
+        # preserved baseline costumes.
         for marker_name, first_appended in (
             ("target_a", "crosshair/aim/idle"),
             ("target_b", "bomb-target/mark/01"),
             ("bomb", "bomb/fall/01/c25"),
+            ("blaster", "zapper-shot/fly/01/c23/none"),
         ):
             original_marker = next(t for t in original["targets"] if t["name"] == marker_name)
             source_marker = next(t for t in historical_targets if t["name"] == marker_name)
@@ -6760,10 +6763,48 @@ class ScratchProjectTests(unittest.TestCase):
             or garu[director.GARU_ZAKATO_BURST_ORDINAL_BASE - 1] != "air-explosion/burst/01/none"
         ):
             failures.add("garu-renders-pinned-frames")
+        # SHOT. main_fn_30_shot_fn (2374-2388) draws code 0x116 + ((countup>>2)&1) at colour 0x23 + ((countup>>1)&1),
+        # mirrored on countup & 1 — never drawn at two frames a tick — and shot_destroyed (2400-2417) the rebound
+        # 0x118..0x11B, drawn on its odd (mirrored) timer frames. The blaster appends them after its preserved
+        # Fire_1..8 and picks the flight frame from `tick` each step: no `next costume`.
+        shot = names("blaster")
+        shot_layout = [
+            f"zapper-shot/fly/{code:02d}/c{clut:02x}/none" for code in (1, 2) for clut in (0x23, 0x24)
+        ] + [f"zapper-shot/rebound/{code:02d}/x" for code in range(1, 5)]
+        if shot[director.SHOT_ART_BASE_ORDINAL - 1 :] != shot_layout or (
+            director.SHOT_REBOUND_ART_BASE_ORDINAL != director.SHOT_ART_BASE_ORDINAL + 4
+        ):
+            failures.add("shot-renders-pinned-frames")
+        blaster_blocks = targets["blaster"]["blocks"] if "blaster" in targets else {}
+
+        def reads_tick(root_id):
+            seen, frontier = set(), [root_id]
+            while frontier:
+                cid = frontier.pop()
+                if not isinstance(cid, str) or cid in seen or cid not in blaster_blocks:
+                    continue
+                seen.add(cid)
+                for value in blaster_blocks[cid].get("inputs", {}).values():
+                    for part in value[1:] if isinstance(value, list) else ():
+                        if isinstance(part, list) and len(part) >= 3 and part[0] == 12 and part[2] == director.TICK_ID:
+                            return True
+                        if isinstance(part, str):
+                            frontier.append(part)
+            return False
+
+        tick_switches = [
+            bid
+            for bid, b in blaster_blocks.items()
+            if isinstance(b, dict) and b["opcode"] == "looks_switchcostumeto" and reads_tick(bid)
+        ]
+        if len(tick_switches) < 2 or any(
+            isinstance(b, dict) and b["opcode"] == "looks_nextcostume" for b in blaster_blocks.values()
+        ):
+            failures.add("shot-costume-from-tick")
         return failures
 
-    # roadmap-evidence: CAB-05 success  (presentation.reference-art consumers: test_reference_art_consumers_present — Zakato-family colour written after the fire test and 0x24 at init, Garu pulses, Giddo colour cycles and its hit keeps it, each renderer mirrors its pinned frames at its ordinals; harness reference-art-enemy-frames)
-    # roadmap-evidence: CAB-05 failure  (test_reference_art_consumer_negatives — colour written before the fire test, init colour 0, Garu/Giddo colour write dropped, a burst that rewrites the colour, reordered or foreign costumes, a Brag Spario spin with its flip axes swapped each bite)
+    # roadmap-evidence: CAB-05 success  (presentation.reference-art consumers: test_reference_art_consumers_present — Zakato-family colour written after the fire test and 0x24 at init, Garu pulses, Giddo colour cycles and its hit keeps it, each renderer mirrors its pinned frames at its ordinals, the shot draws its pinned flight and rebound frames picked from the tick; harness reference-art-enemy-frames, shot-rebounds-off-a-bacura-in-four-ticks)
+    # roadmap-evidence: CAB-05 failure  (test_reference_art_consumer_negatives — colour written before the fire test, init colour 0, Garu/Giddo colour write dropped, a burst that rewrites the colour, reordered or foreign costumes, a Brag Spario spin with its flip axes swapped, reversed shot costumes and a shot stepping `next costume` each bite)
     def test_reference_art_consumers_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._reference_art_consumer_failures(project))
@@ -6850,6 +6891,14 @@ class ScratchProjectTests(unittest.TestCase):
                 return
             raise AssertionError("no flip offset on the brag spario target")
 
+        def shot_steps_costume(p):
+            # The old build: each travel step advances to the next costume instead of reading the tick.
+            blocks = next(t for t in p["targets"] if t["name"] == "blaster")["blocks"]
+            for b in blocks.values():
+                if isinstance(b, dict) and b["opcode"] == "looks_switchcostumeto":
+                    b["opcode"] = "looks_nextcostume"
+                    b["inputs"] = {}
+
         def garu_without_burst(p):
             t = next(t for t in p["targets"] if t["name"] == director.GARU_ZAKATO_TARGET)
             t["costumes"] = [c for c in t["costumes"] if not c["name"].startswith("air-explosion/")]
@@ -6879,6 +6928,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("brag-spario-flip-axes", spario_flip_axes_swapped),
             ("garu-renders-pinned-frames", reverse_costumes(director.GARU_ZAKATO_TARGET)),
             ("garu-renders-pinned-frames", garu_without_burst),
+            ("shot-renders-pinned-frames", reverse_costumes("blaster")),
+            ("shot-costume-from-tick", shot_steps_costume),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -8573,9 +8624,12 @@ class ScratchProjectTests(unittest.TestCase):
         `award value` write, and it never writes a Bacura field — the slab drifts on untouched.
 
         SHOT. The blaster clone reads SHOT_BOUNCE when its travel loop ends and, instead of vanishing at
-        once, reverses (motion_changeyby BACURA_BOUNCE_DY, the negative step) and runs BACURA_BOUNCE_FRAMES
-        costume frames before the shared free+delete. That reversal + visible travel is the whole of
-        "bounces"."""
+        once, rebounds (shot_destroyed 2400-2417): the hit tick arms its `bounce timer` at BACURA_BOUNCE_ARM
+        (_TIMER = 0xff) and draws in place; each later tick the timer steps TICK_TIMER_STEP, and while it has
+        passed the arm the shot reverses (`shot depth` by BACURA_BOUNCE_DY, the negative step) and draws a
+        rebound frame — until the timer passes BACURA_BOUNCE_FRAMES - 1, then the shared free+delete. Eight
+        arcade frames at two a tick is four rebound ticks; stepping the timer by one would play them twice
+        as long and twice as far."""
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         blocks = stage["blocks"]
@@ -8674,10 +8728,12 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("bounce-not-scored")
 
-        # (6) THE SHOT REBOUNDS. In the blaster sprite a control_if gated on SHOT_BOUNCE runs the reversal: a
-        # control_repeat of BACURA_BOUNCE_FRAMES whose body changes the clone's `shot depth` by BACURA_BOUNCE_DY
-        # (the negative, reversed step) and sets the sprite's y from it (PRES-01, docs/mechanics/054: the
-        # shot's depth lives in that variable). A forward step or a missing branch is not a bounce.
+        # (6) THE SHOT REBOUNDS. In the blaster sprite a control_if gated on SHOT_BOUNCE arms `bounce timer` at
+        # BACURA_BOUNCE_ARM and runs a control_repeat_until (timer > BACURA_BOUNCE_FRAMES - 1) whose body steps
+        # the timer by TICK_TIMER_STEP and, past the arm, changes the clone's `shot depth` by BACURA_BOUNCE_DY
+        # (the negative, reversed step), sets the sprite's y from it (PRES-01, docs/mechanics/054: the shot's
+        # depth lives in that variable) and switches costume. A forward step, a missing branch or a one-frame
+        # timer step is not the arcade's rebound.
         blaster = next((t for t in project["targets"] if t.get("name") == "blaster"), None)
         bb = blaster["blocks"] if blaster else {}
 
@@ -8706,30 +8762,62 @@ class ScratchProjectTests(unittest.TestCase):
                 cur = bb[cur].get("next")
             return out
 
+        def changes(body, var_id, value):
+            return any(
+                s["opcode"] == "data_changevariableby"
+                and s["fields"]["VARIABLE"][1] == var_id
+                and _float_operand(s["inputs"].get("VALUE")) == value
+                for s in body
+            )
+
+        def rebound_loop(repeat_id):
+            b = bb[repeat_id]
+            if b["opcode"] != "control_repeat_until" or not subtree_has_num(
+                bref(b["inputs"].get("CONDITION")), director.BACURA_BOUNCE_FRAMES - 1
+            ):
+                return None
+            return [bb[i] for i in stack_of(bref(b["inputs"].get("SUBSTACK")))]
+
         def substack_reverses(if_id):
             for sid in stack_of(bref(bb[if_id]["inputs"].get("SUBSTACK"))):
-                b = bb[sid]
-                if b["opcode"] != "control_repeat":
+                body = rebound_loop(sid)
+                if body is None:
                     continue
-                if _num_operand(b["inputs"].get("TIMES")) != director.BACURA_BOUNCE_FRAMES:
-                    continue
-                body = [bb[i] for i in stack_of(bref(b["inputs"].get("SUBSTACK")))]
-                if any(
-                    s["opcode"] == "data_changevariableby"
-                    and s["fields"]["VARIABLE"][1] == director.SHOT_DEPTH_ID
-                    and _float_operand(s["inputs"].get("VALUE")) == director.BACURA_BOUNCE_DY
-                    for s in body
-                ) and any(s["opcode"] == "motion_sety" for s in body):
-                    return True
+                for frame in body:
+                    if frame["opcode"] != "control_if":
+                        continue
+                    moved = [bb[i] for i in stack_of(bref(frame["inputs"].get("SUBSTACK")))]
+                    if (
+                        changes(moved, director.SHOT_DEPTH_ID, director.BACURA_BOUNCE_DY)
+                        and any(m["opcode"] == "motion_sety" for m in moved)
+                        and any(m["opcode"] == "looks_switchcostumeto" for m in moved)
+                    ):
+                        return True
             return False
 
-        if not any(
-            b["opcode"] == "control_if"
-            and subtree_has_num(bref(b["inputs"].get("CONDITION")), director.SHOT_BOUNCE)
-            and substack_reverses(bid)
+        def rebounds_four_ticks(if_id):
+            outer = [bb[i] for i in stack_of(bref(bb[if_id]["inputs"].get("SUBSTACK")))]
+            armed = any(
+                o["opcode"] == "data_setvariableto"
+                and o["fields"]["VARIABLE"][1] == director.BOUNCE_TIMER_ID
+                and _float_operand(o["inputs"].get("VALUE")) == director.BACURA_BOUNCE_ARM
+                for o in outer
+            )
+            return armed and any(
+                body is not None and changes(body, director.BOUNCE_TIMER_ID, director.TICK_TIMER_STEP)
+                for body in (rebound_loop(i) for i in stack_of(bref(bb[if_id]["inputs"].get("SUBSTACK"))))
+            )
+
+        bounce_ifs = [
+            bid
             for bid, b in bb.items()
-        ):
+            if b["opcode"] == "control_if"
+            and subtree_has_num(bref(b["inputs"].get("CONDITION")), director.SHOT_BOUNCE)
+        ]
+        if not any(substack_reverses(bid) for bid in bounce_ifs):
             failures.add("shot-reverses-and-animates")
+        if not any(rebounds_four_ticks(bid) for bid in bounce_ifs):
+            failures.add("shot-rebounds-four-ticks")
 
         return failures
 
@@ -8739,8 +8827,8 @@ class ScratchProjectTests(unittest.TestCase):
     # touches neither score nor slab; the blaster clone reads that mark and reverses (BACURA_BOUNCE_DY) for
     # BACURA_BOUNCE_FRAMES before deleting. The live proof is the harness shot-bounce scenarios (slab lives,
     # shot reverses).
-    # roadmap-evidence: WPN-01 success  (test_bacura_bounce_authoring_present — the detector proc is warp and called from update bacura, marks a shot SHOT_BOUNCE through the doubled window, never resolves a hit or writes a Bacura field, and the blaster clone reverses at BACURA_BOUNCE_DY for BACURA_BOUNCE_FRAMES)
-    # roadmap-evidence: WPN-01 failure  (test_bacura_bounce_negative_fixtures — each contract clause corrupted bites)
+    # roadmap-evidence: WPN-01 success  (test_bacura_bounce_authoring_present — the detector proc is warp and called from update bacura, marks a shot SHOT_BOUNCE through the doubled window, never resolves a hit or writes a Bacura field, and the blaster clone reverses at BACURA_BOUNCE_DY and draws its rebound for four ticks — a bounce timer armed at BACURA_BOUNCE_ARM stepping TICK_TIMER_STEP to BACURA_BOUNCE_FRAMES; harness shot-rebounds-off-a-bacura-in-four-ticks)
+    # roadmap-evidence: WPN-01 failure  (test_bacura_bounce_negative_fixtures — each contract clause corrupted bites, including a rebound timer stepped one frame a tick)
     def test_bacura_bounce_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._wpn01_failures(project))
@@ -8828,6 +8916,16 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["inputs"]["VALUE"] = [1, [4, str(-director.BACURA_BOUNCE_DY)]]
 
+        def one_frame_timer_step(p: dict) -> None:
+            # The old build's length: one rebound frame a tick, so the eight frames play twice as long and far.
+            blaster = next(t for t in p["targets"] if t.get("name") == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"]["VARIABLE"][1] == director.BOUNCE_TIMER_ID
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, "1"]]
+
         cases = [
             ("bounce-detector-warp", unwarp_detector),
             ("bacura-update-calls-bounce", drop_bounce_call),
@@ -8835,6 +8933,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("bounce-window", break_window),
             ("bounce-not-scored", add_score),
             ("shot-reverses-and-animates", forward_bounce),
+            ("shot-rebounds-four-ticks", one_frame_timer_step),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -21809,9 +21908,9 @@ class ScratchProjectTests(unittest.TestCase):
 
         # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
         # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25. CAB-05: the
-        # death sprite, crosshair, bomb target and bomb draw only art rendered from the pin (resolution 1), so each
-        # sets the shared sprite scale on the green flag.
-        for name in ("solv_death", "target_a", "target_b", "bomb"):
+        # death sprite, crosshair, bomb target and bomb — and, since slice 21, the shot — draw only art rendered
+        # from the pin (resolution 1), so each sets the shared sprite scale on the green flag.
+        for name in ("solv_death", "target_a", "target_b", "bomb", "blaster"):
             pinned_sizes = [
                 (as_num(num(b["inputs"].get("SIZE"))), top_of(targets[name]["blocks"], bid))
                 for bid, b in targets[name]["blocks"].items()
@@ -21819,7 +21918,7 @@ class ScratchProjectTests(unittest.TestCase):
             ]
             if pinned_sizes != [(director.SPRITE_RENDER_SIZE, "event_whenflagclicked")]:
                 fails.add("PRES01-sprite-size")
-        for name in ("solvalou", "blaster"):
+        for name in ("solvalou",):
             bl = targets[name]["blocks"]
             found = [
                 (as_num(num(b["inputs"].get("SIZE"))), top_of(bl, bid))
@@ -22701,7 +22800,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "4880fe66f06dab0cf39146e39dc95102e58c057be4315553b5110452f1b32e1b",
+            "abce8e8bc109e1e0dd9a43c074509a8c92126f9633055776c5e9349d3e00071b",
             build_hash,
         )
 
