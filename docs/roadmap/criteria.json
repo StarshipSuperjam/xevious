@@ -3,7 +3,7 @@
   "criteria": [
     "AIR-01.toroid", "AIR-02.torkan", "AIR-03.zoshi", "AIR-04.jara", "AIR-05.kapi", "AIR-06.terrazi",
     "AIR-07.zakato", "AIR-08.brag-zakato", "AIR-09.sheonite", "AIR-10.spario", "AIR-11.bacura",
-    "AIR-07.teleport-art", "AIR-08.garu-zakato-art", "AIR-10.brag-spario-vanish", "AIR-10.spario-art",
+    "AIR-07.teleport-art", "AIR-08.garu-zakato-art", "AIR-10.brag-spario-survives", "AIR-10.spario-art",
     "AIR-11.bounce-burst", "AIR-12.pool", "AIR-12.radiating", "AIR-12.standard",
     "AREA-01.clock", "AREA-01.visual-terrain", "AREA-02.add-object", "AREA-02.air-dispatch", "AREA-02.data", "AREA-02.ground-dispatch", "AREA-03.tables", "AREA-04.loop",
     "BOSS-01.lifecycle", "BOSS-02.defenses", "BOSS-03.core", "BUILD-01.sprite-proof",
