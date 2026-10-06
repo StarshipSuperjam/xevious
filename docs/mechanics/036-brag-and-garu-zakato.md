@@ -35,7 +35,10 @@
   calls `init_garu_zakato_explosion` then `clr _TYPE`/`clr _STATE` — **no burst, no score**.
   `init_garu_zakato_explosion` emits a **16-bullet ring** from angle 0 (`addq #2`, `and #30`), then copies the
   Garu's cell (obj `0x3B`) into the **4 following objects** (`0x3C`-`0x3F`), writes the cardinal velocities from
-  `brag_spario_dX_tbl` / `brag_spario_dY_tbl` and `_TYPE = 9` (Brag Spario) into each.
+  `brag_spario_dX_tbl` / `brag_spario_dY_tbl` and `_TYPE = 9` (Brag Spario) into each. Only an idle object
+  takes the type up (`add_obj_handler` 4801-4815 runs only for an idle slot); an object already alive there
+  keeps its own handler, which never reads `_TYPE`, so it stays what it was — moved onto the Garu's cell with
+  that slot's Spario velocity — and gets no Spario.
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. Line citations are
   `src/xevious_main.68k` unless noted. Brag rnd: `handle_16_Brag_Zakato_rnd` 3863-3889 (`init_teleport`, `_PTS`
   600, the `zakato_teleport` gate, `brag_zakato_16_main` fuse `(rnd & 0x3f) + 1` = 1-64, `_CODE = 0x12`, aim over
@@ -143,7 +146,9 @@
   burst) — the same explicit-phase mapping recorded for Zakato. (4) **Fixed-adjacency detonation with a one-tick
   Sparios head start.** The arcade writes the 4 Brag Sparios into the 4 objects **immediately after** the Garu
   (obj `0x3C`-`0x3F` after `0x3B`); the port reproduces that adjacency by writing into `gslot+1 … gslot+4` in the
-  6-slot flying pool. Since slice 21 the Garu occupies the **second** flying slot, arcade obj `0x3B`, as the
+  6-slot flying pool, and, as the arcade does, gives a Spario only to a free slot: a slot that already holds an
+  enemy has that enemy moved onto the Garu's cell with the slot's Spario velocity (slice 21). Since slice 21
+  the Garu occupies the **second** flying slot, arcade obj `0x3B`, as the
   arcade places it, so `gslot+1 … gslot+4` is exactly obj `0x3C`-`0x3F` (both the schedule's add_object records
   and the debug key stamp it there; see [record 056](056-release-fidelity.md) (1)). Because those higher slot
   indices are reached **later in the same** `advance slots` pass, the 4 Sparios update once on the tick they

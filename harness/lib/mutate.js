@@ -17,6 +17,16 @@ function listNamed(t, name) {
   throw new Error(`mutate: no list '${name}' on '${t.name}'`);
 }
 
+// The proccode of the procedure whose definition holds block `id` (null for a block under a hat).
+function procOf(t, id) {
+  let top = id;
+  while (t.blocks[top].parent) top = t.blocks[top].parent;
+  const def = t.blocks[top];
+  if (def.opcode !== 'procedures_definition') return null;
+  const proto = t.blocks[def.inputs.custom_block[1]];
+  return proto && proto.mutation ? proto.mutation.proccode : null;
+}
+
 function variableId(t, name) {
   for (const id of Object.keys(t.variables || {})) {
     if (t.variables[id][0] === name) return id;
@@ -104,19 +114,11 @@ export function pinVariableSet(project, spriteName, varName, constValue) {
  */
 export function changeListReplaceLiteral(project, spriteName, listName, fromValue, toValue, withinProc = null) {
   const t = target(project, spriteName);
-  const procOf = (id) => {
-    let top = id;
-    while (t.blocks[top].parent) top = t.blocks[top].parent;
-    const def = t.blocks[top];
-    if (def.opcode !== 'procedures_definition') return null;
-    const proto = t.blocks[def.inputs.custom_block[1]];
-    return proto && proto.mutation ? proto.mutation.proccode : null;
-  };
   let patched = 0;
   for (const id of Object.keys(t.blocks)) {
     const b = t.blocks[id];
     if (b.opcode !== 'data_replaceitemoflist' || !b.fields.LIST || b.fields.LIST[0] !== listName) continue;
-    if (withinProc !== null && procOf(id) !== withinProc) continue;
+    if (withinProc !== null && procOf(t, id) !== withinProc) continue;
     const item = b.inputs.ITEM;
     if (Array.isArray(item) && Array.isArray(item[1]) && String(item[1][1]) === String(fromValue)) {
       b.inputs.ITEM = [1, [10, String(toValue)]];
@@ -235,12 +237,13 @@ export function changeVarEqualsOperand(project, spriteName, varName, fromValue, 
  * reporter-single-parent-steal fix), so BOTH copies of the fire guard are patched — exactly the intent:
  * the Logram then never fires at full-open.
  */
-export function changeListItemEqualsOperand(project, spriteName, listName, fromValue, toValue) {
+export function changeListItemEqualsOperand(project, spriteName, listName, fromValue, toValue, withinProc = null) {
   const t = target(project, spriteName);
   let patched = 0;
   for (const id of Object.keys(t.blocks)) {
     const b = t.blocks[id];
     if (b.opcode !== 'operator_equals' || !b.inputs.OPERAND1 || !b.inputs.OPERAND2) continue;
+    if (withinProc !== null && procOf(t, id) !== withinProc) continue;
     const lhsId = b.inputs.OPERAND1[1];
     const lhs = typeof lhsId === 'string' ? t.blocks[lhsId] : null;
     const isListItem =

@@ -8158,8 +8158,9 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     # AIR-08: the Garu detonation (garu_zakato_explode 4031 -> init_garu_zakato_explosion 5075). Called
     # with `slot index` = the detonating Garu. First emit a 16-bullet 360-degree ring (even angles
     # 0,2,..,30) from the Garu's cell via the shared radiating emitter; then spawn 4 Brag Sparios into the
-    # 4 flying slots ADJACENT to the Garu (the arcade clobbers obj 0x3C-0x3F, the 4 objects after the Garu
-    # at 0x3B) at the Garu's cell with the cardinal velocities from brag_spario_dX/dY_tbl; then FREE the
+    # 4 flying slots ADJACENT to the Garu (obj 0x3C-0x3F, the 4 objects after the Garu at 0x3B; a slot
+    # already holding an enemy is only repositioned, see below) at the Garu's cell with the cardinal
+    # velocities from brag_spario_dX/dY_tbl; then FREE the
     # Garu slot (the arcade clr TYPE/STATE — no self-burst, no score). The final restore of `slot index`
     # to the Garu's own slot both frees it AND restores the advance-slots loop cursor. CONTRACT: the Garu
     # occupies GARU_ZAKATO_SLOT (0x3B — the add_object schedule and the debug key both place it there), so
@@ -8186,7 +8187,11 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     )
     set_ring_angle = blocks.set_var("radiating angle", RADIATING_ANGLE_ID, number(0))
     # Spawn the 4 Brag Sparios into the adjacent slots (gslot+1 .. gslot+4): repoint `slot index`, copy
-    # the Garu's cell, set the cardinal velocity + type, then stamp state/code/points via the shared init.
+    # the Garu's cell and set the cardinal velocity in EVERY one of them, then, only where the slot is free,
+    # set the type and stamp state/code/points via the shared init. The arcade writes _X/_Y/_dX/_dY and
+    # _TYPE=9 into 0x3C-0x3F unconditionally (5084-5103), but the type is picked up only by an idle slot's
+    # add_obj_handler (4801-4815); a live enemy's handler never reads _TYPE and its free clears it, so a busy
+    # slot keeps its enemy, moved onto the Garu with the Spario's velocity, and gets no Spario.
     spawn_body: list[str] = []
     for k in range(GARU_SPARIO_COUNT):
         spawn_body += [
@@ -8195,8 +8200,13 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot y", SLOT_Y_ID, gy()),
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(BRAG_SPARIO_SPAWN_DX[k])),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(BRAG_SPARIO_SPAWN_DY[k])),
-            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BRAG_SPARIO_TYPE)),
-            blocks.call_proc(INIT_BRAG_SPARIO_PROCCODE, warp=True),
+            blocks.if_reporter(
+                blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0)),
+                [
+                    _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BRAG_SPARIO_TYPE)),
+                    blocks.call_proc(INIT_BRAG_SPARIO_PROCCODE, warp=True),
+                ],
+            ),
         ]
     # Free the Garu slot AND restore the loop cursor to it.
     free = [

@@ -2950,6 +2950,39 @@ class ScratchProjectTests(unittest.TestCase):
             and writes_const(detonate, director.SLOT_STATE_ID, 0)
         ):
             failures.add("garu-detonate-frees-garu")
+
+        # (23) A slot already holding an enemy gets no Spario: every Spario type stamp and init sits inside an
+        # `if slot type = 0`. The arcade writes _TYPE=9 into 0x3C-0x3F unconditionally, but only an idle slot's
+        # add_obj_handler picks it up (xevious_main.68k 4801-4815); a live enemy keeps its handler.
+        def in_free_slot_gate(target):
+            for b in blocks.values():
+                if b.get("opcode") != "control_if":
+                    continue
+                cond = blocks.get(ref(b["inputs"].get("CONDITION")))
+                if not cond or cond["opcode"] != "operator_equals" or _num_operand(cond["inputs"].get("OPERAND2")) != 0:
+                    continue
+                item = blocks.get(ref(cond["inputs"].get("OPERAND1")))
+                if not item or item["opcode"] != "data_itemoflist" or item["fields"]["LIST"][1] != director.SLOT_TYPE_ID:
+                    continue
+                bid = ref(b["inputs"].get("SUBSTACK"))
+                while bid in blocks:
+                    if blocks[bid] is target:
+                        return True
+                    bid = blocks[bid]["next"]
+            return False
+
+        spario_steps = [
+            b
+            for b in detonate
+            if (b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.INIT_BRAG_SPARIO_PROCCODE)
+            or (
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                and _const_item(b) == director.BRAG_SPARIO_TYPE
+            )
+        ]
+        if len(spario_steps) != 2 * director.GARU_SPARIO_COUNT or not all(in_free_slot_gate(b) for b in spario_steps):
+            failures.add("garu-detonate-spares-busy-slots")
         return failures
 
     # Roadmap closure evidence for leaf `air.special-pairs` (AIR-08): the Brag Zakato pair and the Garu
@@ -3059,6 +3092,15 @@ class ScratchProjectTests(unittest.TestCase):
                         b["inputs"]["NUM2"] = [1, [4, 0]]
             return corrupt
 
+        def regate_free_slot(host_proccode):
+            # Turn every `if ... = 0` in the proc into `= 9` → the Sparios no longer wait for a free slot.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if b["opcode"] == "operator_equals" and _num_operand(b["inputs"].get("OPERAND2")) == 0:
+                        b["inputs"]["OPERAND2"] = [1, [10, "9"]]
+            return corrupt
+
         cases = [
             ("brag-zakato-lifecycle-procs-warp", unwarp(director.UPDATE_BRAG_ZAKATO_PROCCODE)),
             ("garu-zakato-lifecycle-procs-warp", unwarp(director.GARU_ZAKATO_DETONATE_PROCCODE)),
@@ -3082,6 +3124,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("garu-detonate-spawns-four-sparios", noop_call_in(director.GARU_ZAKATO_DETONATE_PROCCODE, director.INIT_BRAG_SPARIO_PROCCODE)),
             ("garu-detonate-cardinal-velocities", repoint_write(director.GARU_ZAKATO_DETONATE_PROCCODE, director.SLOT_DX_ID)),
             ("garu-detonate-frees-garu", reitem(director.GARU_ZAKATO_DETONATE_PROCCODE, director.SLOT_STATE_ID, 1)),
+            ("garu-detonate-spares-busy-slots", regate_free_slot(director.GARU_ZAKATO_DETONATE_PROCCODE)),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -21571,7 +21614,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3e887925a4ad3270692f28800ef2c971ac097c0fe5e5da2b5a1e1810e0524fae",
+            "4887a1da369ff34216545494ffd50e0edbd0e5ac14869199c0b424b9cf18a1cc",
             build_hash,
         )
 

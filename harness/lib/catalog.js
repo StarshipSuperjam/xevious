@@ -3848,7 +3848,7 @@ export const SCENARIOS = [
   {
     key: 'garu-zakato-detonates-into-ring-and-four-sparios',
     behavior:
-      'A Garu Zakato whose fuse elapses DETONATES: it lays a 16-bullet 360-degree ring (the even radiating angles 0,2,..,30 at the 48-magnitude tier, from its own cell) AND spawns 4 Brag Sparios into the 4 flying slots ADJACENT to it (the arcade clobbers obj 0x3C-0x3F) at its cell with the four CARDINAL velocities (±32 on each axis, brag_spario_dX/dY_tbl), then VANISHES with no burst and no score (garu_zakato_explode 4031 → init_garu_zakato_explosion 5075).',
+      'A Garu Zakato whose fuse elapses DETONATES: it lays a 16-bullet 360-degree ring (the even radiating angles 0,2,..,30 at the 48-magnitude tier, from its own cell) AND spawns 4 Brag Sparios into the 4 flying slots ADJACENT to it (the arcade obj 0x3C-0x3F; here all four are free) at its cell with the four CARDINAL velocities (±32 on each axis, brag_spario_dX/dY_tbl), then VANISHES with no burst and no score (garu_zakato_explode 4031 → init_garu_zakato_explosion 5075).',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3870,7 +3870,8 @@ export const SCENARIOS = [
       }
       // The Garu occupies its own arcade slot 0x3B (GARU_ZAKATO_SLOT == JS 59, Scratch slot-index 60) — where the
       // add_object schedule places it — so its 4 successors, the slots the detonation writes (gslot+1..+4 == JS
-      // 60..63), are the last 4 flying slots: the arcade's obj 0x3C-0x3F clobber (xevious_main.68k:5084-5103).
+      // 60..63), are the last 4 flying slots: the arcade's obj 0x3C-0x3F (xevious_main.68k:5084-5103). All four
+      // are free here; garu-detonation-spares-a-busy-slot covers a slot that already holds an enemy.
       const garu = 59;
       const gx = 11 * 256;
       const gy = 9 * 256;
@@ -3953,6 +3954,77 @@ export const SCENARIOS = [
     // Empty `garu zakato detonate` so no ring/Sparios are laid and the Garu is never freed → the ring count,
     // Spario and free assertions all bite.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'garu zakato detonate'),
+  },
+  {
+    // AIR-08 (slice 21): the detonation writes its position and the Spario velocities into obj 0x3C-0x3F
+    // unconditionally, but the Spario type is taken up only by an IDLE slot (add_obj_handler,
+    // xevious_main.68k:4801-4815) — a live enemy keeps its own handler, which never reads _TYPE. So an
+    // enemy already in one of those slots is moved onto the Garu with that slot's Spario velocity and stays
+    // what it was; only the free slots get Sparios.
+    key: 'garu-detonation-spares-a-busy-slot',
+    behavior:
+      "A Garu Zakato detonating while one of the four slots after it holds a live enemy leaves that enemy in place as itself — moved onto the Garu's cell with that slot's cardinal velocity — and spawns Brag Sparios only in the free slots (5084-5103 with add_obj_handler 4801-4815)",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+        put('slot-dx', s, 0);
+        put('slot-dy', s, 0);
+      }
+      for (let js = 39; js <= 57; js += 1) {
+        put('slot-type', js, 0);
+        put('slot-state', js, 0);
+      }
+      const garu = 59; // obj 0x3B (JS 59); its successors 0x3C-0x3F are JS 60..63
+      const gx = 11 * 256;
+      const gy = 9 * 256;
+      put('slot-type', garu, 24); // GARU_ZAKATO_TYPE
+      put('slot-state', garu, 1);
+      put('slot-x', garu, gx);
+      put('slot-y', garu, gy);
+      put('slot-dx', garu, 48);
+      put('slot-dy', garu, 0);
+      put('slot-fire-timer', garu, 2); // elapses this tick
+      // A live Toroid in obj 0x3D (JS 61), well away from the Garu.
+      const busy = 61;
+      put('slot-type', busy, 10); // TOROID_TYPE
+      put('slot-state', busy, 1);
+      put('slot-x', busy, 4 * 256);
+      put('slot-y', busy, 20 * 256);
+      put('slot-dx', busy, 40);
+      put('slot-dy', busy, 8);
+      writeVar(vm, 'slot-index', garu + 1);
+      callProc(vm, 'Stage', 'update garu zakato');
+      step(vm, 1);
+      const read = (js) => ({
+        type: readVar(vm, 'slot-type')[js],
+        state: readVar(vm, 'slot-state')[js],
+        vel: `${readVar(vm, 'slot-dx')[js]},${readVar(vm, 'slot-dy')[js]}`,
+        atCell: readVar(vm, 'slot-x')[js] === gx && readVar(vm, 'slot-y')[js] === gy,
+      });
+      return { slots: [60, 61, 62, 63].map(read), garuType: readVar(vm, 'slot-type')[garu] };
+    },
+    assert(obs) {
+      const [a, b, c, d] = obs.slots;
+      assert.equal(obs.garuType, 0, 'precondition: the Garu detonated and freed its slot');
+      assert.equal(b.type, 10, 'the enemy already in obj 0x3D stays a Toroid — it does not become a Spario');
+      assert.equal(b.state, 1, 'the Toroid stays active');
+      assert.equal(b.atCell, true, "the Toroid is moved onto the Garu's cell, as the arcade's _X/_Y copy does");
+      assert.equal(b.vel, '0,-32', "the Toroid takes obj 0x3D's Spario velocity (brag_spario_dX/dY_tbl)");
+      assert.deepEqual([a.type, c.type, d.type], [9, 9, 9], 'the three free slots become Brag Sparios');
+      assert.deepEqual([a.vel, c.vel, d.vel], ['32,0', '-32,0', '0,32'], 'each free slot launches on its cardinal velocity');
+      assert.equal([a, c, d].every((x) => x.atCell && x.state === 1), true, "each Spario is active at the Garu's cell");
+    },
+    // Turn the free-slot test inside the detonation into `type = 9`: the busy Toroid's slot is overwritten
+    // with a Spario again (the pre-fix clobber) and the free slots no longer get one → the assertions bite.
+    negativeMutation: (p) =>
+      mutate.changeListItemEqualsOperand(p, 'Stage', 'slot type', 0, 9, 'garu zakato detonate'),
   },
   {
     key: 'bacura-spawns-into-band-one-per-second',
