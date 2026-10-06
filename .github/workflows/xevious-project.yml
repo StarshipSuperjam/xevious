@@ -31,7 +31,20 @@ jobs:
       - name: Verify mechanics evidence for behavior changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: python tools/check_mechanics_record.py "$BASE_SHA"
+        run: |
+          # A push that creates its branch reports an all-zero `before`, and a force-push can report
+          # one this clone no longer has; diffing against either errors instead of checking (#33).
+          # Fall back to the pushed commit's parent; a root commit has no prior tree to compare.
+          if [ -z "$BASE_SHA" ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            if git rev-parse -q --verify 'HEAD^' >/dev/null; then
+              BASE_SHA="$(git rev-parse 'HEAD^')"
+              echo "::notice::No usable push base; checking mechanics evidence against the parent commit ${BASE_SHA}"
+            else
+              echo "::notice::Root commit with no push base; there is no prior tree to check mechanics evidence against"
+              exit 0
+            fi
+          fi
+          python tools/check_mechanics_record.py "$BASE_SHA"
       - name: Verify roadmap issue closures
         if: github.event_name == 'pull_request'
         env:
@@ -43,9 +56,12 @@ jobs:
     # headless and asserts on state variables and clone counts. Kept a SEPARATE job so its
     # result is a distinct, informative check — it must not be added to the required-checks
     # ruleset, and a green run never substitutes for the operator's playtest.
+    # The scenario net outgrew a 10-minute budget in slice 21 (runs reached 9.7 minutes, then were
+    # cancelled at the limit), so it has 25. `node --test` discovers only *.test.js files; the
+    # release soak is `soak.js` so it runs in its own job below, not here.
     name: runtime-harness
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,3 +80,31 @@ jobs:
       - name: Run the headless runtime scenarios and their negative fixtures
         working-directory: harness
         run: node --test
+
+  runtime-soak:
+    # The release soak (#105): one accelerated real game through every area on the shipped build,
+    # asserting each area's schedule is consumed, the clone headroom holds and returns to baseline,
+    # and the run repeats exactly. A separate job with its own budget so the scenario net's time
+    # stays apart; like runtime-harness it is a regression tripwire, not a required check, and a
+    # green run never substitutes for the operator's playtest.
+    name: runtime-soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build the deterministic .sb3 the soak runs
+        run: python tools/scratch_project.py build
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: harness/.nvmrc
+      - name: Install harness dependencies (no install scripts)
+        working-directory: harness
+        run: npm ci --ignore-scripts
+      - name: Run the release soak
+        working-directory: harness
+        run: node --test soak.js
