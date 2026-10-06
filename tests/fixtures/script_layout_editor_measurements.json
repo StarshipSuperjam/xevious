@@ -1,0 +1,1684 @@
+{
+ "renderer": "scratch-blocks 1.3.0 dist/web/vertical.js (the block renderer behind the Scratch 3 editor)",
+ "loaded_through": "scratch-vm 5.0.300: loadProject, setEditingTarget, then the workspaceUpdate XML into Blockly.Xml.clearWorkspaceAndLoadFromXml, as scratch-gui does",
+ "method": "The sample blocks below were installed as one sprite's scripts in an sb3 and opened in that renderer at scale 1. block_heights is each drawn block's `height` (scratch-blocks BlockSvg.height); stack_heights is each top-level block's getHeightWidth().height. A shadow covered by another block is not drawn, so it has no measurement.",
+ "blocks": {
+  "sample-001": {
+   "opcode": "event_whenflagclicked",
+   "next": "sample-002",
+   "parent": null,
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": true,
+   "x": 0,
+   "y": 0
+  },
+  "sample-002": {
+   "opcode": "data_setvariableto",
+   "next": "sample-003",
+   "parent": "sample-001",
+   "inputs": {
+    "VALUE": [
+     1,
+     [
+      10,
+      "x"
+     ]
+    ]
+   },
+   "fields": {
+    "VARIABLE": [
+     "sample var",
+     "sample-var-id"
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-003": {
+   "opcode": "data_changevariableby",
+   "next": "sample-004",
+   "parent": "sample-002",
+   "inputs": {
+    "VALUE": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {
+    "VARIABLE": [
+     "sample var",
+     "sample-var-id"
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-004": {
+   "opcode": "data_replaceitemoflist",
+   "next": "sample-005",
+   "parent": "sample-003",
+   "inputs": {
+    "INDEX": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ],
+    "ITEM": [
+     3,
+     [
+      12,
+      "sample var",
+      "sample-var-id"
+     ],
+     [
+      10,
+      ""
+     ]
+    ]
+   },
+   "fields": {
+    "LIST": [
+     "sample list",
+     "sample-list-id"
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-005": {
+   "opcode": "event_broadcast",
+   "next": "sample-006",
+   "parent": "sample-004",
+   "inputs": {
+    "BROADCAST_INPUT": [
+     1,
+     [
+      11,
+      "sample message",
+      "sample-message-id"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-006": {
+   "opcode": "event_broadcastandwait",
+   "next": "sample-007",
+   "parent": "sample-005",
+   "inputs": {
+    "BROADCAST_INPUT": [
+     1,
+     [
+      11,
+      "sample message",
+      "sample-message-id"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-007": {
+   "opcode": "looks_cleargraphiceffects",
+   "next": "sample-008",
+   "parent": "sample-006",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-008": {
+   "opcode": "looks_goforwardbackwardlayers",
+   "next": "sample-009",
+   "parent": "sample-007",
+   "inputs": {
+    "NUM": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {
+    "FORWARD_BACKWARD": [
+     "forward",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-009": {
+   "opcode": "looks_gotofrontback",
+   "next": "sample-010",
+   "parent": "sample-008",
+   "inputs": {},
+   "fields": {
+    "FRONT_BACK": [
+     "front",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-010": {
+   "opcode": "looks_hide",
+   "next": "sample-011",
+   "parent": "sample-009",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-011": {
+   "opcode": "looks_seteffectto",
+   "next": "sample-012",
+   "parent": "sample-010",
+   "inputs": {
+    "VALUE": [
+     1,
+     [
+      4,
+      "0"
+     ]
+    ]
+   },
+   "fields": {
+    "EFFECT": [
+     "GHOST",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-012": {
+   "opcode": "looks_setsizeto",
+   "next": "sample-013",
+   "parent": "sample-011",
+   "inputs": {
+    "SIZE": [
+     1,
+     [
+      4,
+      "100"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-013": {
+   "opcode": "looks_show",
+   "next": "sample-014",
+   "parent": "sample-012",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-014": {
+   "opcode": "looks_switchcostumeto",
+   "next": "sample-016",
+   "parent": "sample-013",
+   "inputs": {
+    "COSTUME": [
+     1,
+     "sample-015"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-015": {
+   "opcode": "looks_costume",
+   "next": null,
+   "parent": "sample-014",
+   "inputs": {},
+   "fields": {
+    "COSTUME": [
+     "bezel",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-016": {
+   "opcode": "motion_changexby",
+   "next": "sample-017",
+   "parent": "sample-014",
+   "inputs": {
+    "DX": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-017": {
+   "opcode": "motion_changeyby",
+   "next": "sample-018",
+   "parent": "sample-016",
+   "inputs": {
+    "DY": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-018": {
+   "opcode": "motion_goto",
+   "next": "sample-020",
+   "parent": "sample-017",
+   "inputs": {
+    "TO": [
+     1,
+     "sample-019"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-019": {
+   "opcode": "motion_goto_menu",
+   "next": null,
+   "parent": "sample-018",
+   "inputs": {},
+   "fields": {
+    "TO": [
+     "_random_",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-020": {
+   "opcode": "motion_gotoxy",
+   "next": "sample-021",
+   "parent": "sample-018",
+   "inputs": {
+    "X": [
+     1,
+     [
+      4,
+      "0"
+     ]
+    ],
+    "Y": [
+     1,
+     [
+      4,
+      "0"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-021": {
+   "opcode": "motion_setx",
+   "next": "sample-022",
+   "parent": "sample-020",
+   "inputs": {
+    "X": [
+     1,
+     [
+      4,
+      "0"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-022": {
+   "opcode": "motion_sety",
+   "next": "sample-023",
+   "parent": "sample-021",
+   "inputs": {
+    "Y": [
+     1,
+     [
+      4,
+      "0"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-023": {
+   "opcode": "sound_play",
+   "next": "sample-025",
+   "parent": "sample-022",
+   "inputs": {
+    "SOUND_MENU": [
+     1,
+     "sample-024"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-024": {
+   "opcode": "sound_sounds_menu",
+   "next": null,
+   "parent": "sample-023",
+   "inputs": {},
+   "fields": {
+    "SOUND_MENU": [
+     "pop",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-025": {
+   "opcode": "sound_playuntildone",
+   "next": "sample-027",
+   "parent": "sample-023",
+   "inputs": {
+    "SOUND_MENU": [
+     1,
+     "sample-026"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-026": {
+   "opcode": "sound_sounds_menu",
+   "next": null,
+   "parent": "sample-025",
+   "inputs": {},
+   "fields": {
+    "SOUND_MENU": [
+     "pop",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-027": {
+   "opcode": "sound_setvolumeto",
+   "next": "sample-028",
+   "parent": "sample-025",
+   "inputs": {
+    "VOLUME": [
+     1,
+     [
+      4,
+      "100"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-028": {
+   "opcode": "sound_stopallsounds",
+   "next": "sample-029",
+   "parent": "sample-027",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-029": {
+   "opcode": "control_create_clone_of",
+   "next": "sample-031",
+   "parent": "sample-028",
+   "inputs": {
+    "CLONE_OPTION": [
+     1,
+     "sample-030"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-030": {
+   "opcode": "control_create_clone_of_menu",
+   "next": null,
+   "parent": "sample-029",
+   "inputs": {},
+   "fields": {
+    "CLONE_OPTION": [
+     "_myself_",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-031": {
+   "opcode": "control_wait",
+   "next": "sample-032",
+   "parent": "sample-029",
+   "inputs": {
+    "DURATION": [
+     1,
+     [
+      4,
+      "0"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-032": {
+   "opcode": "data_setvariableto",
+   "next": "sample-037",
+   "parent": "sample-031",
+   "inputs": {
+    "VALUE": [
+     3,
+     "sample-033",
+     [
+      10,
+      "0"
+     ]
+    ]
+   },
+   "fields": {
+    "VARIABLE": [
+     "sample var",
+     "sample-var-id"
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-033": {
+   "opcode": "operator_add",
+   "next": null,
+   "parent": "sample-032",
+   "inputs": {
+    "NUM1": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ],
+    "NUM2": [
+     3,
+     "sample-034",
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-034": {
+   "opcode": "data_itemoflist",
+   "next": null,
+   "parent": "sample-033",
+   "inputs": {
+    "INDEX": [
+     3,
+     "sample-035",
+     [
+      7,
+      "1"
+     ]
+    ]
+   },
+   "fields": {
+    "LIST": [
+     "sample list",
+     "sample-list-id"
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-035": {
+   "opcode": "operator_mod",
+   "next": null,
+   "parent": "sample-034",
+   "inputs": {
+    "NUM1": [
+     3,
+     "sample-036",
+     [
+      4,
+      "1"
+     ]
+    ],
+    "NUM2": [
+     1,
+     [
+      4,
+      "2"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-036": {
+   "opcode": "motion_xposition",
+   "next": null,
+   "parent": "sample-035",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-037": {
+   "opcode": "looks_switchcostumeto",
+   "next": null,
+   "parent": "sample-032",
+   "inputs": {
+    "COSTUME": [
+     3,
+     "sample-038",
+     "sample-039"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-038": {
+   "opcode": "looks_costume",
+   "next": null,
+   "parent": "sample-037",
+   "inputs": {},
+   "fields": {
+    "COSTUME": [
+     "bezel",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-039": {
+   "opcode": "looks_costume",
+   "next": null,
+   "parent": "sample-037",
+   "inputs": {},
+   "fields": {
+    "COSTUME": [
+     "bezel",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-040": {
+   "opcode": "event_whenbroadcastreceived",
+   "next": "sample-041",
+   "parent": null,
+   "inputs": {},
+   "fields": {
+    "BROADCAST_OPTION": [
+     "sample message",
+     "sample-message-id"
+    ]
+   },
+   "shadow": false,
+   "topLevel": true,
+   "x": 0,
+   "y": 1424
+  },
+  "sample-041": {
+   "opcode": "control_if",
+   "next": "sample-042",
+   "parent": "sample-040",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-042": {
+   "opcode": "control_if_else",
+   "next": "sample-046",
+   "parent": "sample-041",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-043": {
+   "opcode": "operator_and",
+   "next": null,
+   "parent": "sample-046",
+   "inputs": {
+    "OPERAND1": [
+     2,
+     "sample-044"
+    ],
+    "OPERAND2": [
+     2,
+     "sample-045"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-044": {
+   "opcode": "operator_equals",
+   "next": null,
+   "parent": "sample-043",
+   "inputs": {
+    "OPERAND1": [
+     3,
+     [
+      12,
+      "sample var",
+      "sample-var-id"
+     ],
+     [
+      10,
+      ""
+     ]
+    ],
+    "OPERAND2": [
+     1,
+     [
+      10,
+      "a"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-045": {
+   "opcode": "operator_lt",
+   "next": null,
+   "parent": "sample-043",
+   "inputs": {
+    "OPERAND1": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ],
+    "OPERAND2": [
+     1,
+     [
+      4,
+      "2"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-046": {
+   "opcode": "control_if_else",
+   "next": "sample-049",
+   "parent": "sample-042",
+   "inputs": {
+    "CONDITION": [
+     2,
+     "sample-043"
+    ],
+    "SUBSTACK2": [
+     2,
+     "sample-047"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-047": {
+   "opcode": "looks_hide",
+   "next": "sample-048",
+   "parent": "sample-046",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-048": {
+   "opcode": "looks_show",
+   "next": null,
+   "parent": "sample-047",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-049": {
+   "opcode": "control_repeat",
+   "next": "sample-051",
+   "parent": "sample-046",
+   "inputs": {
+    "TIMES": [
+     1,
+     [
+      4,
+      "10"
+     ]
+    ],
+    "SUBSTACK": [
+     2,
+     "sample-050"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-050": {
+   "opcode": "looks_hide",
+   "next": null,
+   "parent": "sample-049",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-051": {
+   "opcode": "control_repeat_until",
+   "next": "sample-058",
+   "parent": "sample-049",
+   "inputs": {
+    "CONDITION": [
+     2,
+     "sample-052"
+    ],
+    "SUBSTACK": [
+     2,
+     "sample-057"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-052": {
+   "opcode": "operator_not",
+   "next": null,
+   "parent": "sample-051",
+   "inputs": {
+    "OPERAND": [
+     2,
+     "sample-053"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-053": {
+   "opcode": "operator_or",
+   "next": null,
+   "parent": "sample-052",
+   "inputs": {
+    "OPERAND1": [
+     2,
+     "sample-054"
+    ],
+    "OPERAND2": [
+     2,
+     "sample-055"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-054": {
+   "opcode": "operator_gt",
+   "next": null,
+   "parent": "sample-053",
+   "inputs": {
+    "OPERAND1": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ],
+    "OPERAND2": [
+     1,
+     [
+      4,
+      "0"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-055": {
+   "opcode": "sensing_keypressed",
+   "next": null,
+   "parent": "sample-053",
+   "inputs": {
+    "KEY_OPTION": [
+     1,
+     "sample-056"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-056": {
+   "opcode": "sensing_keyoptions",
+   "next": null,
+   "parent": "sample-055",
+   "inputs": {},
+   "fields": {
+    "KEY_OPTION": [
+     "space",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-057": {
+   "opcode": "looks_show",
+   "next": null,
+   "parent": "sample-051",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-058": {
+   "opcode": "control_stop",
+   "next": "sample-059",
+   "parent": "sample-051",
+   "inputs": {},
+   "fields": {
+    "STOP_OPTION": [
+     "other scripts in sprite",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false,
+   "mutation": {
+    "tagName": "mutation",
+    "children": [],
+    "hasnext": "true"
+   }
+  },
+  "sample-059": {
+   "opcode": "looks_hide",
+   "next": "sample-060",
+   "parent": "sample-058",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-060": {
+   "opcode": "control_delete_this_clone",
+   "next": null,
+   "parent": "sample-059",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-061": {
+   "opcode": "event_whenkeypressed",
+   "next": "sample-062",
+   "parent": null,
+   "inputs": {},
+   "fields": {
+    "KEY_OPTION": [
+     "space",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": true,
+   "x": 0,
+   "y": 2448
+  },
+  "sample-062": {
+   "opcode": "control_forever",
+   "next": null,
+   "parent": "sample-061",
+   "inputs": {
+    "SUBSTACK": [
+     2,
+     "sample-063"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-063": {
+   "opcode": "control_if",
+   "next": "sample-067",
+   "parent": "sample-062",
+   "inputs": {
+    "CONDITION": [
+     2,
+     "sample-064"
+    ],
+    "SUBSTACK": [
+     2,
+     "sample-066"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-064": {
+   "opcode": "operator_not",
+   "next": null,
+   "parent": "sample-063",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-065": {
+   "opcode": "control_stop",
+   "next": null,
+   "parent": "sample-066",
+   "inputs": {},
+   "fields": {
+    "STOP_OPTION": [
+     "all",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false,
+   "mutation": {
+    "tagName": "mutation",
+    "children": [],
+    "hasnext": "false"
+   }
+  },
+  "sample-066": {
+   "opcode": "looks_hide",
+   "next": "sample-065",
+   "parent": "sample-063",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-067": {
+   "opcode": "looks_show",
+   "next": null,
+   "parent": "sample-063",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-068": {
+   "opcode": "control_start_as_clone",
+   "next": "sample-069",
+   "parent": null,
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": true,
+   "x": 0,
+   "y": 2848
+  },
+  "sample-069": {
+   "opcode": "control_stop",
+   "next": null,
+   "parent": "sample-068",
+   "inputs": {},
+   "fields": {
+    "STOP_OPTION": [
+     "this script",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-070": {
+   "opcode": "procedures_definition",
+   "next": "sample-074",
+   "parent": null,
+   "inputs": {
+    "custom_block": [
+     1,
+     "sample-071"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": true,
+   "x": 0,
+   "y": 2992
+  },
+  "sample-071": {
+   "opcode": "procedures_prototype",
+   "next": null,
+   "parent": "sample-070",
+   "inputs": {
+    "sample-arg-a": [
+     1,
+     "sample-072"
+    ],
+    "sample-arg-b": [
+     1,
+     "sample-073"
+    ]
+   },
+   "fields": {},
+   "shadow": true,
+   "topLevel": false,
+   "mutation": {
+    "tagName": "mutation",
+    "children": [],
+    "proccode": "sample %s %s",
+    "argumentids": "[\"sample-arg-a\", \"sample-arg-b\"]",
+    "argumentnames": "[\"a\", \"b\"]",
+    "argumentdefaults": "[\"\", \"\"]",
+    "warp": "true"
+   }
+  },
+  "sample-072": {
+   "opcode": "argument_reporter_string_number",
+   "next": null,
+   "parent": "sample-071",
+   "inputs": {},
+   "fields": {
+    "VALUE": [
+     "a",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-073": {
+   "opcode": "argument_reporter_string_number",
+   "next": null,
+   "parent": "sample-071",
+   "inputs": {},
+   "fields": {
+    "VALUE": [
+     "b",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-074": {
+   "opcode": "procedures_call",
+   "next": "sample-082",
+   "parent": "sample-070",
+   "inputs": {
+    "sample-arg-a": [
+     3,
+     "sample-075",
+     [
+      10,
+      ""
+     ]
+    ],
+    "sample-arg-b": [
+     3,
+     "sample-077",
+     [
+      10,
+      ""
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false,
+   "mutation": {
+    "tagName": "mutation",
+    "children": [],
+    "proccode": "sample %s %s",
+    "argumentids": "[\"sample-arg-a\", \"sample-arg-b\"]",
+    "warp": "true"
+   }
+  },
+  "sample-075": {
+   "opcode": "operator_join",
+   "next": null,
+   "parent": "sample-074",
+   "inputs": {
+    "STRING1": [
+     1,
+     [
+      10,
+      "a"
+     ]
+    ],
+    "STRING2": [
+     3,
+     "sample-076",
+     [
+      10,
+      "b"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-076": {
+   "opcode": "operator_letter_of",
+   "next": null,
+   "parent": "sample-075",
+   "inputs": {
+    "LETTER": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ],
+    "STRING": [
+     1,
+     [
+      10,
+      "abc"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-077": {
+   "opcode": "operator_mathop",
+   "next": null,
+   "parent": "sample-074",
+   "inputs": {
+    "NUM": [
+     3,
+     "sample-078",
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {
+    "OPERATOR": [
+     "abs",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-078": {
+   "opcode": "operator_round",
+   "next": null,
+   "parent": "sample-077",
+   "inputs": {
+    "NUM": [
+     3,
+     "sample-079",
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-079": {
+   "opcode": "operator_multiply",
+   "next": null,
+   "parent": "sample-078",
+   "inputs": {
+    "NUM1": [
+     3,
+     "sample-080",
+     [
+      4,
+      "1"
+     ]
+    ],
+    "NUM2": [
+     1,
+     [
+      4,
+      "3"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-080": {
+   "opcode": "operator_divide",
+   "next": null,
+   "parent": "sample-079",
+   "inputs": {
+    "NUM1": [
+     1,
+     [
+      4,
+      "6"
+     ]
+    ],
+    "NUM2": [
+     3,
+     "sample-081",
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-081": {
+   "opcode": "operator_subtract",
+   "next": null,
+   "parent": "sample-080",
+   "inputs": {
+    "NUM1": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ],
+    "NUM2": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-082": {
+   "opcode": "control_if_else",
+   "next": null,
+   "parent": "sample-074",
+   "inputs": {
+    "SUBSTACK": [
+     2,
+     "sample-083"
+    ],
+    "SUBSTACK2": [
+     2,
+     "sample-093"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-083": {
+   "opcode": "control_repeat",
+   "next": null,
+   "parent": "sample-082",
+   "inputs": {
+    "TIMES": [
+     1,
+     [
+      4,
+      "2"
+     ]
+    ],
+    "SUBSTACK": [
+     2,
+     "sample-084"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-084": {
+   "opcode": "control_if",
+   "next": "sample-092",
+   "parent": "sample-083",
+   "inputs": {
+    "CONDITION": [
+     2,
+     "sample-090"
+    ],
+    "SUBSTACK": [
+     2,
+     "sample-085"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-085": {
+   "opcode": "control_if",
+   "next": null,
+   "parent": "sample-084",
+   "inputs": {
+    "CONDITION": [
+     2,
+     "sample-086"
+    ],
+    "SUBSTACK": [
+     2,
+     "sample-091"
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-086": {
+   "opcode": "data_listcontainsitem",
+   "next": null,
+   "parent": "sample-085",
+   "inputs": {
+    "ITEM": [
+     1,
+     [
+      10,
+      "a"
+     ]
+    ]
+   },
+   "fields": {
+    "LIST": [
+     "sample list",
+     "sample-list-id"
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-087": {
+   "opcode": "sensing_of",
+   "next": null,
+   "parent": "sample-090",
+   "inputs": {
+    "OBJECT": [
+     1,
+     "sample-088"
+    ]
+   },
+   "fields": {
+    "PROPERTY": [
+     "x position",
+     null
+    ]
+   },
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-088": {
+   "opcode": "sensing_of_object_menu",
+   "next": null,
+   "parent": "sample-087",
+   "inputs": {},
+   "fields": {
+    "OBJECT": [
+     "_stage_",
+     null
+    ]
+   },
+   "shadow": true,
+   "topLevel": false
+  },
+  "sample-089": {
+   "opcode": "motion_yposition",
+   "next": null,
+   "parent": "sample-090",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-090": {
+   "opcode": "operator_gt",
+   "next": null,
+   "parent": "sample-084",
+   "inputs": {
+    "OPERAND1": [
+     3,
+     "sample-087",
+     [
+      10,
+      ""
+     ]
+    ],
+    "OPERAND2": [
+     3,
+     "sample-089",
+     [
+      10,
+      ""
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-091": {
+   "opcode": "looks_hide",
+   "next": null,
+   "parent": "sample-085",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-092": {
+   "opcode": "looks_show",
+   "next": null,
+   "parent": "sample-084",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-093": {
+   "opcode": "looks_hide",
+   "next": null,
+   "parent": "sample-082",
+   "inputs": {},
+   "fields": {},
+   "shadow": false,
+   "topLevel": false
+  },
+  "sample-094": {
+   "opcode": "operator_add",
+   "next": null,
+   "parent": null,
+   "inputs": {
+    "NUM1": [
+     1,
+     [
+      4,
+      "1"
+     ]
+    ],
+    "NUM2": [
+     1,
+     [
+      4,
+      "2"
+     ]
+    ]
+   },
+   "fields": {},
+   "shadow": false,
+   "topLevel": true,
+   "x": 0,
+   "y": 3696
+  }
+ },
+ "block_heights": {
+  "sample-001": 56,
+  "sample-002": 56,
+  "sample-003": 56,
+  "sample-004": 56,
+  "sample-005": 56,
+  "sample-006": 56,
+  "sample-007": 56,
+  "sample-008": 56,
+  "sample-009": 56,
+  "sample-010": 56,
+  "sample-011": 56,
+  "sample-012": 56,
+  "sample-013": 56,
+  "sample-014": 56,
+  "sample-015": 32,
+  "sample-016": 56,
+  "sample-017": 56,
+  "sample-018": 56,
+  "sample-019": 32,
+  "sample-020": 56,
+  "sample-021": 56,
+  "sample-022": 56,
+  "sample-023": 56,
+  "sample-024": 32,
+  "sample-025": 56,
+  "sample-026": 32,
+  "sample-027": 56,
+  "sample-028": 56,
+  "sample-029": 56,
+  "sample-030": 32,
+  "sample-031": 56,
+  "sample-032": 80,
+  "sample-033": 64,
+  "sample-034": 56,
+  "sample-035": 48,
+  "sample-036": 40,
+  "sample-037": 56,
+  "sample-038": 40,
+  "sample-040": 56,
+  "sample-041": 112,
+  "sample-042": 168,
+  "sample-043": 56,
+  "sample-044": 48,
+  "sample-045": 40,
+  "sample-046": 256,
+  "sample-047": 56,
+  "sample-048": 56,
+  "sample-049": 136,
+  "sample-050": 56,
+  "sample-051": 152,
+  "sample-052": 56,
+  "sample-053": 48,
+  "sample-054": 40,
+  "sample-055": 40,
+  "sample-056": 32,
+  "sample-057": 56,
+  "sample-058": 56,
+  "sample-059": 56,
+  "sample-060": 48,
+  "sample-061": 56,
+  "sample-062": 304,
+  "sample-063": 184,
+  "sample-064": 40,
+  "sample-065": 48,
+  "sample-066": 56,
+  "sample-067": 56,
+  "sample-068": 56,
+  "sample-069": 48,
+  "sample-070": 72,
+  "sample-071": 56,
+  "sample-072": 40,
+  "sample-073": 40,
+  "sample-074": 88,
+  "sample-075": 48,
+  "sample-076": 40,
+  "sample-077": 72,
+  "sample-078": 64,
+  "sample-079": 56,
+  "sample-080": 48,
+  "sample-081": 40,
+  "sample-082": 512,
+  "sample-083": 352,
+  "sample-084": 224,
+  "sample-085": 136,
+  "sample-086": 40,
+  "sample-087": 40,
+  "sample-088": 32,
+  "sample-089": 40,
+  "sample-090": 48,
+  "sample-091": 56,
+  "sample-092": 56,
+  "sample-093": 56,
+  "sample-094": 40
+ },
+ "stack_heights": {
+  "sample-001": 1376,
+  "sample-040": 976,
+  "sample-061": 352,
+  "sample-068": 96,
+  "sample-070": 656,
+  "sample-094": 40
+ }
+}

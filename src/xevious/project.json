@@ -10630,8 +10630,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-stage-002": {
           "opcode": "procedures_prototype",
@@ -11224,8 +11224,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 896
         },
         "gd-stage-031": {
           "opcode": "procedures_prototype",
@@ -11986,8 +11986,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1704
         },
         "gd-stage-064": {
           "opcode": "procedures_prototype",
@@ -12561,8 +12561,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 2672
         },
         "gd-stage-083": {
           "opcode": "procedures_prototype",
@@ -13569,8 +13569,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 620
+          "x": 0,
+          "y": 4096
         },
         "gd-stage-125": {
           "opcode": "procedures_prototype",
@@ -14218,8 +14218,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 770
+          "x": 0,
+          "y": 4824
         },
         "gd-stage-158": {
           "opcode": "procedures_prototype",
@@ -15422,8 +15422,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 920
+          "x": 0,
+          "y": 6320
         },
         "gd-stage-207": {
           "opcode": "procedures_prototype",
@@ -16786,8 +16786,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 1070
+          "x": 0,
+          "y": 7984
         },
         "gd-stage-262": {
           "opcode": "procedures_prototype",
@@ -17978,8 +17978,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 1220
+          "x": 0,
+          "y": 9512
         },
         "gd-stage-309": {
           "opcode": "procedures_prototype",
@@ -19131,8 +19131,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 1370
+          "x": 0,
+          "y": 10992
         },
         "gd-stage-355": {
           "opcode": "procedures_prototype",
@@ -20368,8 +20368,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 1520
+          "x": 0,
+          "y": 12536
         },
         "gd-stage-404": {
           "opcode": "procedures_prototype",
@@ -21753,8 +21753,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 1670
+          "x": 0,
+          "y": 14208
         },
         "gd-stage-460": {
           "opcode": "procedures_prototype",
@@ -22990,8 +22990,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 1820
+          "x": 0,
+          "y": 15752
         },
         "gd-stage-509": {
           "opcode": "procedures_prototype",
@@ -24194,8 +24194,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 1970
+          "x": 0,
+          "y": 17248
         },
         "gd-stage-558": {
           "opcode": "procedures_prototype",
@@ -25356,8 +25356,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 2120
+          "x": 0,
+          "y": 19008
         },
         "gd-stage-604": {
           "opcode": "procedures_prototype",
@@ -26478,8 +26478,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 2270
+          "x": 0,
+          "y": 20400
         },
         "gd-stage-649": {
           "opcode": "procedures_prototype",
@@ -26682,8 +26682,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 2420
+          "x": 0,
+          "y": 20760
         },
         "gd-stage-656": {
           "opcode": "procedures_prototype",
@@ -27682,8 +27682,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 2570
+          "x": 0,
+          "y": 22248
         },
         "gd-stage-696": {
           "opcode": "procedures_prototype",
@@ -28661,8 +28661,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 2720
+          "x": 0,
+          "y": 23552
         },
         "gd-stage-735": {
           "opcode": "procedures_prototype",
@@ -29314,8 +29314,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 2870
+          "x": 0,
+          "y": 24552
         },
         "gd-stage-761": {
           "opcode": "procedures_prototype",
@@ -33173,8 +33173,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 3020
+          "x": 0,
+          "y": 26064
         },
         "gd-stage-949": {
           "opcode": "procedures_prototype",
@@ -50551,8 +50551,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 3170
+          "x": 0,
+          "y": 32584
         },
         "gd-stage-1831": {
           "opcode": "procedures_prototype",
@@ -64091,8 +64091,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 3320
+          "x": 0,
+          "y": 35816
         },
         "gd-stage-2515": {
           "opcode": "procedures_prototype",
@@ -65084,8 +65084,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 3470
+          "x": 0,
+          "y": 37224
         },
         "gd-stage-2559": {
           "opcode": "procedures_prototype",
@@ -65333,8 +65333,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 3620
+          "x": 0,
+          "y": 37576
         },
         "gd-stage-2571": {
           "opcode": "procedures_prototype",
@@ -65977,8 +65977,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 3770
+          "x": 0,
+          "y": 38024
         },
         "gd-stage-2601": {
           "opcode": "procedures_prototype",
@@ -66192,8 +66192,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 3920
+          "x": 0,
+          "y": 38432
         },
         "gd-stage-2611": {
           "opcode": "procedures_prototype",
@@ -66881,8 +66881,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 4070
+          "x": 0,
+          "y": 39448
         },
         "gd-stage-2641": {
           "opcode": "procedures_prototype",
@@ -68189,8 +68189,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 4220
+          "x": 0,
+          "y": 40616
         },
         "gd-stage-2704": {
           "opcode": "procedures_prototype",
@@ -68721,8 +68721,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 4370
+          "x": 0,
+          "y": 41616
         },
         "gd-stage-2728": {
           "opcode": "procedures_prototype",
@@ -69036,8 +69036,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 4520
+          "x": 0,
+          "y": 42208
         },
         "gd-stage-2743": {
           "opcode": "procedures_prototype",
@@ -72247,8 +72247,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 4670
+          "x": 0,
+          "y": 45688
         },
         "gd-stage-2876": {
           "opcode": "procedures_prototype",
@@ -72619,8 +72619,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 4820
+          "x": 0,
+          "y": 46376
         },
         "gd-stage-2893": {
           "opcode": "procedures_prototype",
@@ -72975,8 +72975,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 4970
+          "x": 0,
+          "y": 46952
         },
         "gd-stage-2910": {
           "opcode": "procedures_prototype",
@@ -73372,8 +73372,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 5120
+          "x": 0,
+          "y": 47688
         },
         "gd-stage-2929": {
           "opcode": "procedures_prototype",
@@ -77107,8 +77107,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 5270
+          "x": 0,
+          "y": 51864
         },
         "gd-stage-3083": {
           "opcode": "procedures_prototype",
@@ -91325,8 +91325,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 5420
+          "x": 0,
+          "y": 64240
         },
         "gd-stage-3729": {
           "opcode": "procedures_prototype",
@@ -94554,8 +94554,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 5570
+          "x": 0,
+          "y": 67736
         },
         "gd-stage-3862": {
           "opcode": "procedures_prototype",
@@ -99898,8 +99898,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 5720
+          "x": 0,
+          "y": 75864
         },
         "gd-stage-4101": {
           "opcode": "procedures_prototype",
@@ -101827,8 +101827,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 5870
+          "x": 0,
+          "y": 77024
         },
         "gd-stage-4186": {
           "opcode": "procedures_prototype",
@@ -102022,8 +102022,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 6020
+          "x": 0,
+          "y": 77352
         },
         "gd-stage-4195": {
           "opcode": "procedures_prototype",
@@ -102479,8 +102479,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 6170
+          "x": 0,
+          "y": 77832
         },
         "gd-stage-4215": {
           "opcode": "procedures_prototype",
@@ -102936,8 +102936,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 6320
+          "x": 0,
+          "y": 78312
         },
         "gd-stage-4235": {
           "opcode": "procedures_prototype",
@@ -104583,8 +104583,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 6470
+          "x": 0,
+          "y": 78968
         },
         "gd-stage-4313": {
           "opcode": "procedures_prototype",
@@ -108334,8 +108334,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 6620
+          "x": 0,
+          "y": 81712
         },
         "gd-stage-4480": {
           "opcode": "procedures_prototype",
@@ -111033,8 +111033,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 6770
+          "x": 0,
+          "y": 83456
         },
         "gd-stage-4604": {
           "opcode": "procedures_prototype",
@@ -113982,8 +113982,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 6920
+          "x": 0,
+          "y": 85712
         },
         "gd-stage-4737": {
           "opcode": "procedures_prototype",
@@ -117560,8 +117560,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 7070
+          "x": 0,
+          "y": 88576
         },
         "gd-stage-4894": {
           "opcode": "procedures_prototype",
@@ -121235,8 +121235,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 7220
+          "x": 0,
+          "y": 91472
         },
         "gd-stage-5055": {
           "opcode": "procedures_prototype",
@@ -124740,8 +124740,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 7370
+          "x": 0,
+          "y": 94088
         },
         "gd-stage-5211": {
           "opcode": "procedures_prototype",
@@ -130478,8 +130478,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 7520
+          "x": 0,
+          "y": 98656
         },
         "gd-stage-5460": {
           "opcode": "procedures_prototype",
@@ -132472,8 +132472,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 7670
+          "x": 0,
+          "y": 99768
         },
         "gd-stage-5553": {
           "opcode": "procedures_prototype",
@@ -135224,8 +135224,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 7820
+          "x": 0,
+          "y": 101512
         },
         "gd-stage-5678": {
           "opcode": "procedures_prototype",
@@ -139626,8 +139626,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 7970
+          "x": 0,
+          "y": 104888
         },
         "gd-stage-5872": {
           "opcode": "procedures_prototype",
@@ -140122,8 +140122,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 8120
+          "x": 0,
+          "y": 105488
         },
         "gd-stage-5895": {
           "opcode": "procedures_prototype",
@@ -142356,8 +142356,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 8270
+          "x": 0,
+          "y": 106872
         },
         "gd-stage-5999": {
           "opcode": "procedures_prototype",
@@ -143977,8 +143977,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 8420
+          "x": 0,
+          "y": 109328
         },
         "gd-stage-6059": {
           "opcode": "procedures_prototype",
@@ -147314,8 +147314,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 8570
+          "x": 0,
+          "y": 110072
         },
         "gd-stage-6223": {
           "opcode": "procedures_prototype",
@@ -149417,8 +149417,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 8720
+          "x": 0,
+          "y": 110864
         },
         "gd-stage-6322": {
           "opcode": "procedures_prototype",
@@ -149898,8 +149898,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 8870
+          "x": 0,
+          "y": 111824
         },
         "gd-stage-6344": {
           "opcode": "procedures_prototype",
@@ -152460,8 +152460,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 9020
+          "x": 0,
+          "y": 114664
         },
         "gd-stage-6449": {
           "opcode": "procedures_prototype",
@@ -153871,8 +153871,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 9170
+          "x": 0,
+          "y": 116192
         },
         "gd-stage-6508": {
           "opcode": "procedures_prototype",
@@ -153973,8 +153973,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 9320
+          "x": 0,
+          "y": 116408
         },
         "gd-stage-6512": {
           "opcode": "procedures_prototype",
@@ -157677,8 +157677,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 9470
+          "x": 0,
+          "y": 121128
         },
         "gd-stage-6681": {
           "opcode": "procedures_prototype",
@@ -159124,8 +159124,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 9620
+          "x": 0,
+          "y": 123288
         },
         "gd-stage-6747": {
           "opcode": "procedures_prototype",
@@ -160413,8 +160413,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 9770
+          "x": 0,
+          "y": 125376
         },
         "gd-stage-6802": {
           "opcode": "procedures_prototype",
@@ -183172,8 +183172,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 9920
+          "x": 0,
+          "y": 147416
         },
         "gd-stage-7743": {
           "opcode": "procedures_prototype",
@@ -185018,8 +185018,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 10070
+          "x": 0,
+          "y": 149664
         },
         "gd-stage-7822": {
           "opcode": "procedures_prototype",
@@ -185290,8 +185290,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 10220
+          "x": 0,
+          "y": 150240
         },
         "gd-stage-7834": {
           "opcode": "procedures_prototype",
@@ -185831,8 +185831,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 10370
+          "x": 0,
+          "y": 151184
         },
         "gd-stage-7860": {
           "opcode": "procedures_prototype",
@@ -185915,8 +185915,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 10520
+          "x": 0,
+          "y": 151400
         },
         "gd-stage-7864": {
           "opcode": "procedures_prototype",
@@ -186244,8 +186244,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 10670
+          "x": 0,
+          "y": 151992
         },
         "gd-stage-7878": {
           "opcode": "procedures_prototype",
@@ -186759,8 +186759,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 10820
+          "x": 0,
+          "y": 152648
         },
         "gd-stage-7898": {
           "opcode": "procedures_prototype",
@@ -187069,8 +187069,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 10970
+          "x": 0,
+          "y": 153344
         },
         "gd-stage-7913": {
           "opcode": "procedures_prototype",
@@ -188017,8 +188017,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 11120
+          "x": 0,
+          "y": 154216
         },
         "gd-stage-7954": {
           "opcode": "procedures_prototype",
@@ -189266,8 +189266,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 11270
+          "x": 0,
+          "y": 156496
         },
         "gd-stage-8001": {
           "opcode": "procedures_prototype",
@@ -189705,8 +189705,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 11420
+          "x": 0,
+          "y": 157336
         },
         "gd-stage-8018": {
           "opcode": "procedures_prototype",
@@ -190328,8 +190328,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 11570
+          "x": 0,
+          "y": 158408
         },
         "gd-stage-8044": {
           "opcode": "data_setvariableto",
@@ -190788,8 +190788,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 11720
+          "x": 0,
+          "y": 159472
         },
         "gd-stage-8065": {
           "opcode": "control_forever",
@@ -191159,8 +191159,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 11870
+          "x": 0,
+          "y": 160048
         },
         "gd-stage-8083": {
           "opcode": "control_forever",
@@ -191487,8 +191487,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 12020
+          "x": 0,
+          "y": 160736
         },
         "gd-stage-8099": {
           "opcode": "data_setvariableto",
@@ -191572,8 +191572,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 12170
+          "x": 0,
+          "y": 160976
         },
         "gd-stage-8103": {
           "opcode": "data_setvariableto",
@@ -191657,8 +191657,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 12320
+          "x": 0,
+          "y": 161216
         },
         "gd-stage-8107": {
           "opcode": "operator_equals",
@@ -192162,8 +192162,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 12470
+          "x": 0,
+          "y": 162128
         },
         "gd-stage-8129": {
           "opcode": "operator_add",
@@ -192298,8 +192298,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 12620
+          "x": 0,
+          "y": 162384
         },
         "gd-stage-8135": {
           "opcode": "operator_add",
@@ -192434,8 +192434,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 12770
+          "x": 0,
+          "y": 162640
         },
         "gd-stage-8141": {
           "opcode": "sensing_keyoptions",
@@ -193441,8 +193441,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 12920
+          "x": 0,
+          "y": 164096
         },
         "gd-stage-8184": {
           "opcode": "sound_sounds_menu",
@@ -193485,8 +193485,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 13070
+          "x": 0,
+          "y": 164248
         },
         "gd-stage-8187": {
           "opcode": "sound_sounds_menu",
@@ -193529,8 +193529,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 13220
+          "x": 0,
+          "y": 164400
         },
         "gd-stage-8190": {
           "opcode": "data_setvariableto",
@@ -193846,8 +193846,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 13370
+          "x": 0,
+          "y": 164648
         },
         "gd-stage-8207": {
           "opcode": "control_if",
@@ -193909,8 +193909,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 13520
+          "x": 0,
+          "y": 165248
         },
         "gd-stage-8210": {
           "opcode": "procedures_call",
@@ -194050,8 +194050,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 13670
+          "x": 0,
+          "y": 165496
         },
         "gd-stage-8216": {
           "opcode": "operator_subtract",
@@ -195778,8 +195778,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 13820
+          "x": 0,
+          "y": 168176
         },
         "gd-stage-8291": {
           "opcode": "data_setvariableto",
@@ -195894,8 +195894,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 13970
+          "x": 0,
+          "y": 168464
         },
         "gd-stage-8296": {
           "opcode": "data_setvariableto",
@@ -196705,8 +196705,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 14120
+          "x": 0,
+          "y": 169784
         },
         "gd-stage-8331": {
           "opcode": "control_repeat_until",
@@ -197546,8 +197546,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 14270
+          "x": 0,
+          "y": 171160
         },
         "gd-stage-8367": {
           "opcode": "sound_sounds_menu",
@@ -197820,8 +197820,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 14420
+          "x": 0,
+          "y": 171640
         },
         "gd-stage-8381": {
           "opcode": "control_repeat_until",
@@ -199055,8 +199055,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 14570
+          "x": 0,
+          "y": 174024
         },
         "gd-stage-8438": {
           "opcode": "control_if",
@@ -199847,8 +199847,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 14720
+          "x": 0,
+          "y": 175560
         },
         "gd-stage-8474": {
           "opcode": "data_setvariableto",
@@ -201087,8 +201087,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 14870
+          "x": 0,
+          "y": 177616
         },
         "gd-stage-8530": {
           "opcode": "data_setvariableto",
@@ -201483,8 +201483,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 15020
+          "x": 0,
+          "y": 178440
         },
         "gd-stage-8548": {
           "opcode": "control_if",
@@ -201840,8 +201840,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-solvalou-002": {
           "opcode": "control_stop",
@@ -201987,8 +201987,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 344
         },
         "gd-solvalou-010": {
           "opcode": "motion_gotoxy",
@@ -202252,8 +202252,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 832
         },
         "gd-solvalou-023": {
           "opcode": "looks_setsizeto",
@@ -202285,8 +202285,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 984
         },
         "gd-solvalou-025": {
           "opcode": "data_setvariableto",
@@ -205755,8 +205755,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-blaster-002": {
           "opcode": "control_stop",
@@ -205881,7 +205881,7 @@
           "topLevel": false
         },
         "gd-blaster-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-blaster-009",
           "parent": "gd-blaster-007",
           "inputs": {},
@@ -205890,7 +205890,7 @@
           "topLevel": false
         },
         "gd-blaster-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-blaster-008",
           "inputs": {},
@@ -205906,8 +205906,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-blaster-011": {
           "opcode": "looks_setsizeto",
@@ -205939,8 +205939,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 536
         },
         "gd-blaster-013": {
           "opcode": "procedures_prototype",
@@ -206559,22 +206559,13 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 1424
         },
         "gd-blaster-040": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "data_setvariableto",
           "next": "gd-blaster-041",
           "parent": "gd-blaster-039",
-          "inputs": {},
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-blaster-041": {
-          "opcode": "data_setvariableto",
-          "next": "gd-blaster-042",
-          "parent": "gd-blaster-040",
           "inputs": {
             "VALUE": [
               1,
@@ -206593,8 +206584,17 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-blaster-042": {
+        "gd-blaster-041": {
           "opcode": "looks_hide",
+          "next": "gd-blaster-042",
+          "parent": "gd-blaster-040",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-042": {
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-blaster-041",
           "inputs": {},
@@ -206615,8 +206615,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 620
+          "x": 0,
+          "y": 1664
         },
         "gd-blaster-044": {
           "opcode": "control_repeat_until",
@@ -207423,8 +207423,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 770
+          "x": 0,
+          "y": 2688
         },
         "gd-blaster-084": {
           "opcode": "control_repeat_until",
@@ -209210,8 +209210,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-area-01a-002": {
           "opcode": "control_stop",
@@ -209578,8 +209578,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 296
         },
         "gd-area-01a-020": {
           "opcode": "looks_gotofrontback",
@@ -209668,8 +209668,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-area-01b-002": {
           "opcode": "control_stop",
@@ -210036,8 +210036,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 296
         },
         "gd-area-01b-020": {
           "opcode": "looks_gotofrontback",
@@ -210147,8 +210147,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-start-screen-002": {
           "opcode": "control_stop",
@@ -210273,7 +210273,7 @@
           "topLevel": false
         },
         "gd-start-screen-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-start-screen-009",
           "parent": "gd-start-screen-007",
           "inputs": {},
@@ -210282,7 +210282,7 @@
           "topLevel": false
         },
         "gd-start-screen-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-start-screen-008",
           "inputs": {},
@@ -210303,8 +210303,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-start-screen-011": {
           "opcode": "looks_hide",
@@ -210323,8 +210323,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 536
         },
         "gd-start-screen-013": {
           "opcode": "looks_setsizeto",
@@ -210356,8 +210356,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 688
         },
         "gd-start-screen-015": {
           "opcode": "looks_costume",
@@ -223396,8 +223396,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 620
+          "x": 0,
+          "y": 27192
         },
         "gd-start-screen-685": {
           "opcode": "looks_hide",
@@ -230849,8 +230849,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-solv-death-002": {
           "opcode": "control_stop",
@@ -230991,8 +230991,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 344
         },
         "gd-solv-death-010": {
           "opcode": "looks_setsizeto",
@@ -231024,8 +231024,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 496
         },
         "gd-solv-death-012": {
           "opcode": "looks_hide",
@@ -231049,8 +231049,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 648
         },
         "gd-solv-death-014": {
           "opcode": "data_setvariableto",
@@ -231518,8 +231518,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 620
+          "x": 0,
+          "y": 2208
         },
         "gd-solv-death-038": {
           "opcode": "operator_lt",
@@ -232637,8 +232637,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-target-a-002": {
           "opcode": "control_stop",
@@ -232779,8 +232779,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 344
         },
         "gd-target-a-010": {
           "opcode": "looks_setsizeto",
@@ -232812,8 +232812,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 496
         },
         "gd-target-a-012": {
           "opcode": "looks_hide",
@@ -232837,8 +232837,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 648
         },
         "gd-target-a-014": {
           "opcode": "control_repeat_until",
@@ -233447,8 +233447,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-target-b-002": {
           "opcode": "control_stop",
@@ -233589,8 +233589,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 344
         },
         "gd-target-b-010": {
           "opcode": "looks_setsizeto",
@@ -233622,8 +233622,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 496
         },
         "gd-target-b-012": {
           "opcode": "looks_hide",
@@ -233647,8 +233647,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 648
         },
         "gd-target-b-014": {
           "opcode": "control_repeat_until",
@@ -234135,8 +234135,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-bomb-002": {
           "opcode": "control_stop",
@@ -234277,8 +234277,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 344
         },
         "gd-bomb-010": {
           "opcode": "looks_setsizeto",
@@ -234310,8 +234310,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 496
         },
         "gd-bomb-012": {
           "opcode": "looks_hide",
@@ -234335,8 +234335,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 648
         },
         "gd-bomb-014": {
           "opcode": "control_repeat_until",
@@ -235442,8 +235442,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-hud-002": {
           "opcode": "control_stop",
@@ -235568,7 +235568,7 @@
           "topLevel": false
         },
         "gd-hud-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-hud-009",
           "parent": "gd-hud-007",
           "inputs": {},
@@ -235577,7 +235577,7 @@
           "topLevel": false
         },
         "gd-hud-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-hud-008",
           "inputs": {},
@@ -235598,8 +235598,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-hud-011": {
           "opcode": "procedures_prototype",
@@ -235914,8 +235914,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1024
         },
         "gd-hud-026": {
           "opcode": "looks_setsizeto",
@@ -235947,8 +235947,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 470
+          "x": 0,
+          "y": 1176
         },
         "gd-hud-028": {
           "opcode": "data_setvariableto",
@@ -240896,8 +240896,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 620
+          "x": 0,
+          "y": 10560
         },
         "gd-hud-299": {
           "opcode": "data_setvariableto",
@@ -244001,8 +244001,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 770
+          "x": 0,
+          "y": 16144
         },
         "gd-hud-457": {
           "opcode": "control_delete_this_clone",
@@ -244479,8 +244479,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-toroid-002": {
           "opcode": "control_stop",
@@ -244605,7 +244605,7 @@
           "topLevel": false
         },
         "gd-toroid-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-toroid-009",
           "parent": "gd-toroid-007",
           "inputs": {},
@@ -244614,7 +244614,7 @@
           "topLevel": false
         },
         "gd-toroid-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-toroid-008",
           "inputs": {},
@@ -244635,8 +244635,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-toroid-011": {
           "opcode": "data_setvariableto",
@@ -244993,8 +244993,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-toroid-032": {
           "opcode": "control_repeat_until",
@@ -246447,8 +246447,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-enemy-bullet-002": {
           "opcode": "control_stop",
@@ -246573,7 +246573,7 @@
           "topLevel": false
         },
         "gd-enemy-bullet-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-enemy-bullet-009",
           "parent": "gd-enemy-bullet-007",
           "inputs": {},
@@ -246582,7 +246582,7 @@
           "topLevel": false
         },
         "gd-enemy-bullet-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-enemy-bullet-008",
           "inputs": {},
@@ -246603,8 +246603,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-enemy-bullet-011": {
           "opcode": "data_setvariableto",
@@ -247611,8 +247611,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 2400
         },
         "gd-enemy-bullet-071": {
           "opcode": "control_repeat_until",
@@ -248336,8 +248336,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-terrazi-002": {
           "opcode": "control_stop",
@@ -248462,7 +248462,7 @@
           "topLevel": false
         },
         "gd-terrazi-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-terrazi-009",
           "parent": "gd-terrazi-007",
           "inputs": {},
@@ -248471,7 +248471,7 @@
           "topLevel": false
         },
         "gd-terrazi-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-terrazi-008",
           "inputs": {},
@@ -248492,8 +248492,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-terrazi-011": {
           "opcode": "data_setvariableto",
@@ -248850,8 +248850,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-terrazi-032": {
           "opcode": "control_repeat_until",
@@ -250280,8 +250280,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-kapi-002": {
           "opcode": "control_stop",
@@ -250406,7 +250406,7 @@
           "topLevel": false
         },
         "gd-kapi-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-kapi-009",
           "parent": "gd-kapi-007",
           "inputs": {},
@@ -250415,7 +250415,7 @@
           "topLevel": false
         },
         "gd-kapi-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-kapi-008",
           "inputs": {},
@@ -250436,8 +250436,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-kapi-011": {
           "opcode": "data_setvariableto",
@@ -250794,8 +250794,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-kapi-032": {
           "opcode": "control_repeat_until",
@@ -252481,8 +252481,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-torkan-002": {
           "opcode": "control_stop",
@@ -252607,7 +252607,7 @@
           "topLevel": false
         },
         "gd-torkan-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-torkan-009",
           "parent": "gd-torkan-007",
           "inputs": {},
@@ -252616,7 +252616,7 @@
           "topLevel": false
         },
         "gd-torkan-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-torkan-008",
           "inputs": {},
@@ -252637,8 +252637,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-torkan-011": {
           "opcode": "data_setvariableto",
@@ -252995,8 +252995,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-torkan-032": {
           "opcode": "control_repeat_until",
@@ -254729,8 +254729,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-zoshi-002": {
           "opcode": "control_stop",
@@ -254855,7 +254855,7 @@
           "topLevel": false
         },
         "gd-zoshi-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-zoshi-009",
           "parent": "gd-zoshi-007",
           "inputs": {},
@@ -254864,7 +254864,7 @@
           "topLevel": false
         },
         "gd-zoshi-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-zoshi-008",
           "inputs": {},
@@ -254885,8 +254885,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-zoshi-011": {
           "opcode": "data_setvariableto",
@@ -255243,8 +255243,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-zoshi-032": {
           "opcode": "control_repeat_until",
@@ -256738,8 +256738,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-jara-002": {
           "opcode": "control_stop",
@@ -256864,7 +256864,7 @@
           "topLevel": false
         },
         "gd-jara-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-jara-009",
           "parent": "gd-jara-007",
           "inputs": {},
@@ -256873,7 +256873,7 @@
           "topLevel": false
         },
         "gd-jara-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-jara-008",
           "inputs": {},
@@ -256894,8 +256894,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-jara-011": {
           "opcode": "data_setvariableto",
@@ -257252,8 +257252,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-jara-032": {
           "opcode": "control_repeat_until",
@@ -259045,8 +259045,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-zakato-002": {
           "opcode": "control_stop",
@@ -259171,7 +259171,7 @@
           "topLevel": false
         },
         "gd-zakato-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-zakato-009",
           "parent": "gd-zakato-007",
           "inputs": {},
@@ -259180,7 +259180,7 @@
           "topLevel": false
         },
         "gd-zakato-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-zakato-008",
           "inputs": {},
@@ -259201,8 +259201,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-zakato-011": {
           "opcode": "data_setvariableto",
@@ -259559,8 +259559,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-zakato-032": {
           "opcode": "control_repeat_until",
@@ -262548,8 +262548,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-giddo-spario-002": {
           "opcode": "control_stop",
@@ -262674,7 +262674,7 @@
           "topLevel": false
         },
         "gd-giddo-spario-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-giddo-spario-009",
           "parent": "gd-giddo-spario-007",
           "inputs": {},
@@ -262683,7 +262683,7 @@
           "topLevel": false
         },
         "gd-giddo-spario-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-giddo-spario-008",
           "inputs": {},
@@ -262704,8 +262704,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-giddo-spario-011": {
           "opcode": "data_setvariableto",
@@ -263062,8 +263062,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-giddo-spario-032": {
           "opcode": "control_repeat_until",
@@ -264375,8 +264375,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-brag-spario-002": {
           "opcode": "control_stop",
@@ -264501,7 +264501,7 @@
           "topLevel": false
         },
         "gd-brag-spario-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-brag-spario-009",
           "parent": "gd-brag-spario-007",
           "inputs": {},
@@ -264510,7 +264510,7 @@
           "topLevel": false
         },
         "gd-brag-spario-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-brag-spario-008",
           "inputs": {},
@@ -264531,8 +264531,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-brag-spario-011": {
           "opcode": "data_setvariableto",
@@ -264889,8 +264889,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-brag-spario-032": {
           "opcode": "control_repeat_until",
@@ -265823,8 +265823,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-garu-zakato-002": {
           "opcode": "control_stop",
@@ -265949,7 +265949,7 @@
           "topLevel": false
         },
         "gd-garu-zakato-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-garu-zakato-009",
           "parent": "gd-garu-zakato-007",
           "inputs": {},
@@ -265958,7 +265958,7 @@
           "topLevel": false
         },
         "gd-garu-zakato-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-garu-zakato-008",
           "inputs": {},
@@ -265979,8 +265979,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-garu-zakato-011": {
           "opcode": "data_setvariableto",
@@ -266337,8 +266337,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-garu-zakato-032": {
           "opcode": "control_repeat_until",
@@ -267688,8 +267688,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-bacura-002": {
           "opcode": "control_stop",
@@ -267814,7 +267814,7 @@
           "topLevel": false
         },
         "gd-bacura-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-bacura-009",
           "parent": "gd-bacura-007",
           "inputs": {},
@@ -267823,7 +267823,7 @@
           "topLevel": false
         },
         "gd-bacura-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-bacura-008",
           "inputs": {},
@@ -267844,8 +267844,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-bacura-011": {
           "opcode": "data_setvariableto",
@@ -268702,8 +268702,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 2112
         },
         "gd-bacura-062": {
           "opcode": "control_repeat_until",
@@ -269543,8 +269543,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-sheonite-002": {
           "opcode": "control_stop",
@@ -269669,7 +269669,7 @@
           "topLevel": false
         },
         "gd-sheonite-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-sheonite-009",
           "parent": "gd-sheonite-007",
           "inputs": {},
@@ -269678,7 +269678,7 @@
           "topLevel": false
         },
         "gd-sheonite-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-sheonite-008",
           "inputs": {},
@@ -269699,8 +269699,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-sheonite-011": {
           "opcode": "data_setvariableto",
@@ -270057,8 +270057,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 1152
         },
         "gd-sheonite-032": {
           "opcode": "control_repeat_until",
@@ -271377,8 +271377,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-bonus-flag-002": {
           "opcode": "control_stop",
@@ -271503,7 +271503,7 @@
           "topLevel": false
         },
         "gd-bonus-flag-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-bonus-flag-009",
           "parent": "gd-bonus-flag-007",
           "inputs": {},
@@ -271512,7 +271512,7 @@
           "topLevel": false
         },
         "gd-bonus-flag-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-bonus-flag-008",
           "inputs": {},
@@ -271533,8 +271533,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-bonus-flag-011": {
           "opcode": "data_setvariableto",
@@ -271641,8 +271641,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 672
         },
         "gd-bonus-flag-017": {
           "opcode": "control_repeat_until",
@@ -272349,8 +272349,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-easter-egg-002": {
           "opcode": "control_stop",
@@ -272496,8 +272496,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 344
         },
         "gd-easter-egg-010": {
           "opcode": "looks_hide",
@@ -272521,8 +272521,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 496
         },
         "gd-easter-egg-012": {
           "opcode": "control_repeat_until",
@@ -272796,8 +272796,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-ground-002": {
           "opcode": "control_stop",
@@ -272922,7 +272922,7 @@
           "topLevel": false
         },
         "gd-ground-008": {
-          "opcode": "control_delete_this_clone",
+          "opcode": "looks_hide",
           "next": "gd-ground-009",
           "parent": "gd-ground-007",
           "inputs": {},
@@ -272931,7 +272931,7 @@
           "topLevel": false
         },
         "gd-ground-009": {
-          "opcode": "looks_hide",
+          "opcode": "control_delete_this_clone",
           "next": null,
           "parent": "gd-ground-008",
           "inputs": {},
@@ -272952,8 +272952,8 @@
           },
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 170
+          "x": 0,
+          "y": 384
         },
         "gd-ground-011": {
           "opcode": "data_setvariableto",
@@ -273810,8 +273810,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 320
+          "x": 0,
+          "y": 2112
         },
         "gd-ground-062": {
           "opcode": "control_repeat_until",
@@ -289488,8 +289488,8 @@
           "fields": {},
           "shadow": false,
           "topLevel": true,
-          "x": 20,
-          "y": 20
+          "x": 0,
+          "y": 0
         },
         "gd-bezel-002": {
           "opcode": "looks_costume",

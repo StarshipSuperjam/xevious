@@ -15,6 +15,7 @@ import sys
 from typing import Any
 
 import scratch_project
+import script_layout
 import terrain_render
 
 
@@ -3315,7 +3316,6 @@ class Blocks:
         self.target = target.replace("_", "-")
         self.blocks: dict[str, dict[str, Any]] = {}
         self.counter = 0
-        self.y = 20
 
     def add(
         self,
@@ -3338,20 +3338,24 @@ class Blocks:
             "shadow": shadow,
             "topLevel": top_level,
         }
-        if top_level:
-            block["x"] = 20
-            block["y"] = self.y
-            self.y += 150
         if mutation is not None:
             block["mutation"] = mutation
         self.blocks[block_id] = block
         return block_id
 
+    def _link(self, upper: str, lower: str) -> None:
+        if script_layout.is_cap(self.blocks[upper]):
+            raise AssertionError(
+                f"{upper}: nothing may follow {self.blocks[upper]['opcode']}; the editor "
+                "refuses to load a sprite with a block chained under a cap"
+            )
+        self.blocks[upper]["next"] = lower
+        self.blocks[lower]["parent"] = upper
+
     def chain(self, parent: str, children: list[str]) -> None:
         previous = parent
         for child in children:
-            self.blocks[previous]["next"] = child
-            self.blocks[child]["parent"] = previous
+            self._link(previous, child)
             previous = child
 
     def substack(self, control: str, children: list[str], name: str = "SUBSTACK") -> None:
@@ -3360,8 +3364,7 @@ class Blocks:
         self.blocks[control]["inputs"][name] = [2, children[0]]
         self.blocks[children[0]]["parent"] = control
         for left, right in zip(children, children[1:]):
-            self.blocks[left]["next"] = right
-            self.blocks[right]["parent"] = left
+            self._link(left, right)
 
     def flag(self) -> str:
         return self.add("event_whenflagclicked", top_level=True)
@@ -11695,10 +11698,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
 def common_stop(blocks: Blocks, *, hide: bool, clones: bool = False) -> None:
     hat = blocks.receive("director stop")
     commands = [blocks.stop_others(), blocks.stop_all_sounds_unless_kept()]
-    if clones:
-        commands.append(blocks.add("control_delete_this_clone"))
     if hide:
         commands.append(blocks.hide())
+    # Last: a clone stops here, the original carries on past it to nothing.
+    if clones:
+        commands.append(blocks.add("control_delete_this_clone"))
     blocks.chain(hat, commands)
 
 
@@ -13110,9 +13114,9 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks.chain(
         reset,
         [
-            blocks.add("control_delete_this_clone"),
             blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS)),
             blocks.hide(),
+            blocks.add("control_delete_this_clone"),
         ],
     )
 
@@ -17308,6 +17312,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             target["variables"] = target["variables"] | {
                 BONUS_FLAG_CLONE_SLOT_ID: ["bonus flag clone slot", 0],
             }
+    # Last, once every script exists: place each sprite's scripts so none overlap in the editor.
+    for target in result["targets"]:
+        script_layout.lay_out(target["blocks"])
     return result
 
 
