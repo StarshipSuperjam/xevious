@@ -65,8 +65,7 @@ class EditorMeasurementTests(unittest.TestCase):
         measured = [self.blocks[block_id] for block_id in FIXTURE["block_heights"]]
         table_kinds = {kind for kind, _ in sl.SHAPES.values()}
         self.assertEqual(table_kinds - {sl.SHAPES[b["opcode"]][0] for b in measured}, set())
-        drawn_kinds = {"hat", "define", "stack", "cap", "c", "c_cap", "reporter", "field"}
-        self.assertEqual(drawn_kinds - {sl._kind(b) for b in measured}, set())
+        self.assertEqual(sl.DRAWN_KINDS - {sl._kind(b) for b in measured}, set())
         mouth_counts = {len(mouths) for kind, mouths in sl.SHAPES.values() if kind == "c"}
         self.assertEqual(mouth_counts - {len(sl.SHAPES[b["opcode"]][1]) for b in measured
                                          if sl._kind(b) == "c"}, set())

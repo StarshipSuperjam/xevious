@@ -116,7 +116,10 @@ SHAPES: dict[str, tuple[str, tuple[str, ...]]] = {
 LONE_FIELD_PRIMITIVES = {4, 5, 6, 7, 8, 9, 10, 11}
 REPORTER_PRIMITIVES = {12, 13}
 
-# Drawn kinds (see `_kind`) with a next connection: anything chained under one that lacks
+# Every kind `_kind` can return: the shapes the renderer draws, each measured in the editor.
+DRAWN_KINDS = frozenset({"hat", "define", "stack", "cap", "c", "c_cap", "reporter", "field"})
+
+# Drawn kinds with a next connection: anything chained under one that lacks
 # it is something the editor refuses to load (see `is_cap`).
 _HAS_NEXT = {"hat", "define", "stack", "c"}
 
@@ -139,9 +142,10 @@ def _kind(block: dict[str, Any]) -> str:
         # scratch-blocks builds control_stop with a next connection only when its mutation
         # says hasnext (what "other scripts in sprite" sets); with no mutation it is a cap.
         mutation = block.get("mutation") or {}
-        return "stack" if str(mutation.get("hasnext", "false")).lower() == "true" else "cap"
-    if kind == "menu":
-        return "field" if block.get("shadow") else "reporter"
+        kind = "stack" if str(mutation.get("hasnext", "false")).lower() == "true" else "cap"
+    elif kind == "menu":
+        kind = "field" if block.get("shadow") else "reporter"
+    assert kind in DRAWN_KINDS, f"script_layout: {block['opcode']} resolves to unknown kind {kind!r}"
     return kind
 
 
