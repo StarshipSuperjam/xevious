@@ -17,7 +17,8 @@ Original public project: <https://scratch.mit.edu/projects/195680409/>
 - Arrow keys: move the Solvalou
 - Space: fire the Zapper at flying enemies
 - B: drop a Blaster bomb on the ground target under the bomb sight
-- Initials entry: up / down arrows change the letter, Space accepts it
+- Initials entry: up / down arrows change the letter, Space accepts it; hold B
+  for lowercase (a space entered with B held becomes a full stop)
 
 The coin key, the two-player selector and the initials controls are this
 port's stand-ins for cabinet hardware. READY, the player's explosion, the forest

@@ -74,7 +74,8 @@ normative home):
 Per-state input rules (the port's own, with the keys in the control mapping below): title accepts the
 coin key, the up/down 1P/2P selector and the start (Space), and coins are accepted in every state; the
 initials-entry screen accepts its up/down scroll and Space commit; READY, player-dead, respawning, and game-over accept no gameplay input; playing accepts
-movement, fire, and bomb. (Earlier slices carried two temporary keyboard fixtures — `D` to request
+movement, fire, and bomb, except while the craft explodes (the dying window), when movement, new shots and
+new bomb presses are refused and the shots and bombs already in flight carry on. (Earlier slices carried two temporary keyboard fixtures — `D` to request
 respawn and `G` to request terminal death — solely to exercise the death paths before any enemy could
 kill the craft; now that live flying enemies and their bullets deal real lethal contact, those fixtures
 are removed; the later `T`/`G`/`P` playtest keys that summoned or isolated a single enemy family and froze
@@ -170,7 +171,9 @@ credit per press, capped at 99, per [Cabinet flow](cabinet-flow.md)). No other k
 **high-score initials-entry screen**
 (reached when a finished game's score qualifies for the five-entry table — see [Cabinet flow](cabinet-flow.md)),
 the **up/down arrows scroll the current initial** through the 27-symbol set (A–Z and space, wrapping both ways)
-and **Space confirms the current letter and advances to the next of the ten cells**; entry is forward-only (no
+and **Space confirms the current letter and advances to the next of the ten cells**; holding **B** shows and
+commits the letter in lowercase, and a space committed with B held is stored as a full stop (the arcade's
+`check_lowercase`); entry is forward-only (no
 cursor-back or rubout) and **auto-completes on the tenth letter or when a fixed overall time limit (about 68
 seconds, counted from when entry begins and not reset by input) runs out** (a control remap recorded like the
 `C` coin key — the arcade cycled letters with the joystick left/right and committed with the fire button; this

@@ -69,7 +69,7 @@ is a four-digit BCD add of the thousands whose carry is dropped (163–171), so 
 9,960,000 + 60,000 becomes 20,000, and every award then grants a craft until the threshold climbs back past
 the score (at the cap it never can, which is the cap quirk above). The stop-after-two test (156–162) reads
 the low three bits of the inverted DIP switch byte, of which only bit 2 is part of the bonus setting, and
-needs the value 6: bit 2 set, so the bonus setting index must be odd, and bits 0–1 set to 1,0 from the
+needs the value 6: bit 2 set, so the bonus setting index must be odd, and bit 1 set and bit 0 clear from the
 neighbouring switch field, so it is not a bonus setting on its own. At the port's fixed bonus setting
 (index 0), bit 2 is clear, so the stop is unreachable in this build. Which pair of tables
 applies to which lives setting differs between the reference's own two selection sites:

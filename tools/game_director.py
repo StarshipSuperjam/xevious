@@ -698,9 +698,8 @@ AREA_MAP_COLUMNS = _load_terrain_columns()
 # the runtime consume reads an area's slice by indexing the lists with the live `area number` — no code
 # path is per-area (that is why slice 6 moves no runtime block). Every handler's variable `params`
 # (slot/sprite_y, mask, row, count, formation_offset, path, ...) is carried faithfully as an opaque JSON
-# PAYLOAD so no field is dropped and the schema never has to grow; the handlers themselves (spawn,
-# formation, difficulty, boss) arrive with the enemy slices (8+), so the per-record dispatch is an empty
-# seam.
+# PAYLOAD so no field is dropped and the schema never has to grow; `_consume_schedule` dispatches each
+# record on its handler name to the spawn, formation, difficulty, boss and add_object steps.
 SCHEDULE_HANDLER_ID = "area-schedule-handler"
 SCHEDULE_TRIGGER_ROW_ID = "area-schedule-trigger-row"
 SCHEDULE_PAYLOAD_ID = "area-schedule-payload"
@@ -1119,11 +1118,11 @@ UPDATE_ANDOR_BRAGZA_PROCCODE = "update andor bragza"
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
 PLAYER_HIT_ID = "player-hit"
-# Debug/test invulnerability flag (default 0). When 1, the walk still RAISES `player hit` on contact
+# Test-only invulnerability flag (default 0). When 1, the walk still RAISES `player hit` on contact
 # but the death is not triggered — a dormant hook the headless harness sets so its agency-less craft
 # survives while it observes the schedule/spawner (a stationary craft with no shooting/dodging is
 # killed by homing enemies within one headless pump). Never set by game logic, so real play is
-# unaffected; it is the seam a future "invulnerability" easter-egg key could toggle.
+# unaffected (tests/test_release_audit.py fails a build that writes it).
 INVULN_ID = "invuln"
 # #158 (PLY-02): the player-explosion window. The arcade keeps the whole world running through the craft's
 # explosion and the pause after it (`explode_solvalou` .. `finish_solvalou_exploding`, xevious_main.68k
