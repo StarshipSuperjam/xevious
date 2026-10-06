@@ -69,6 +69,10 @@ function suppressGroundSpawns(vm) {
 // shot-vs-air detector resolves the overlap on the first tick — before the spawner refills anything.
 // Returns the Toroid's expected award (its value-table entry). Writes the slot lists directly (the
 // blaster clone normally mirrors the shot's position; here we place it), so no firing/aiming is needed.
+// Slot numbering (#165): `readVar` hands back the Scratch list as a 0-based JS array, while the generator's slot
+// constants are Scratch's 1-based item numbers, so JS index i is Scratch slot i + 1. `shotSlot = 36` is therefore
+// Scratch slot 37 — SHOT_SLOTS[0], arcade object 0x24, the FIRST player-shot slot — and not the craft
+// (SOLVALOU_SLOT = Scratch 36, JS 35). `enemySlot = 63` is Scratch 64, arcade 0x3F, the last flying slot.
 function seedAirKill(vm, { enemySlot = 63, shotSlot = 36, cellX = 5000, cellY = 4000 } = {}) {
   const put = (id, i, v) => {
     const a = readVar(vm, id);
@@ -4750,6 +4754,75 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'one second cntr', 0),
   },
   {
+    // #165: the band is the limit. The admit is clamped at BACURA_BAND_SIZE (16) — a port guard: the arcade's
+    // band is its physical limit and its quotas stay well under it (main_fn_5__inc_num_bacura 5201-5217) — so a
+    // quota that would pass the band spends its increments without admitting, and the init loop never stamps a
+    // slab past the band into the neighbouring slots (ground slot 16 below, the bomb target 33 above).
+    key: 'bacura-admits-stop-at-the-band',
+    behavior:
+      'AIR-11 (.play): with the reserved band one slab short of full and a quota of 3 still to admit, the pump fills the band (16 slabs) and admits no further, spends the rest of the quota, and never writes the slots either side of the band',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen'); // only our pump calls drive the band (as above)
+      const BAND_LO = 16, BAND_HI = 31; // JS indices for Bacura slots 17..32
+      const BELOW = BAND_LO - 1, ABOVE = BAND_HI + 1; // ground slot 16, bomb-target slot 33
+      const type = () => readVar(vm, 'slot-type');
+      const stateList = () => readVar(vm, 'slot-state');
+      for (let s = BELOW; s <= ABOVE; s += 1) {
+        type()[s] = 0;
+        stateList()[s] = 0;
+      }
+      writeVar(vm, 'num-bacura', 15);
+      writeVar(vm, 'bacura-inc-cnt', 3);
+      writeVar(vm, 'one-second-cntr', 2); // the first admit lands on the first pump; the next two a second apart
+      const counts = [];
+      const neighbours = [];
+      for (let i = 0; i < 3 * 30 + 5; i += 1) {
+        callProc(vm, 'Stage', 'pump bacura');
+        step(vm, 1);
+        counts.push(Number(readVar(vm, 'num-bacura')));
+        neighbours.push([type()[BELOW], stateList()[BELOW], type()[ABOVE], stateList()[ABOVE]].map(Number));
+      }
+      const banded = [];
+      for (let s = BAND_LO; s <= BAND_HI; s += 1) if (Number(type()[s]) === 1) banded.push(s);
+      return {
+        maxCount: Math.max(...counts),
+        finalCount: counts[counts.length - 1],
+        incLeft: Number(readVar(vm, 'bacura-inc-cnt')),
+        bandedCount: banded.length,
+        neighboursUntouched: neighbours.every((n) => n.every((v) => v === 0)),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.maxCount, 16, `the count stops at the 16-slot band (max ${obs.maxCount})`);
+      assert.equal(obs.finalCount, 16, 'the count settles at the band size');
+      assert.equal(obs.incLeft, 0, 'the clamped increments are still spent');
+      assert.equal(obs.bandedCount, 16, 'all 16 band slots hold a slab');
+      assert.equal(obs.neighboursUntouched, true, 'the slots either side of the band are never written');
+    },
+    // Lift the clamp (`num bacura < 16` -> `< 99`): the count passes the band and the init loop stamps slabs past
+    // its top into the bomb-target slot, so the count and neighbour assertions bite.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      const vid = Object.keys(stage.variables).find((id) => stage.variables[id][0] === 'num bacura');
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        const left = b.inputs && b.inputs.OPERAND1;
+        if (
+          b.opcode === 'operator_lt'
+          && Array.isArray(left) && Array.isArray(left[1]) && left[1][0] === 12 && left[1][2] === vid
+          && Array.isArray(b.inputs.OPERAND2) && Number(b.inputs.OPERAND2[1][1]) === 16
+        ) {
+          b.inputs.OPERAND2 = [1, [4, '99']];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error("mutate: no `num bacura < 16` clamp on the Stage");
+    },
+  },
+  {
     key: 'bacura-drifts-down-the-field-indestructibly',
     behavior:
       'AIR-11 (.play): a live Bacura slab drifts DOWN the scroll axis at its own velocity each tick (slot x += 64/tick = 1 px/frame, dy = 0) and stays present — the slab is never destroyed or scored by the walk that advances it',
@@ -4956,6 +5029,92 @@ export const SCENARIOS = [
     // The old build's length: stepping the rebound clock one frame a tick plays the eight frames twice as long
     // and twice as far, so the four-tick assertion bites.
     negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'blaster', 'bounce timer', 2, 1),
+  },
+  {
+    // #165: the two scenarios above prove the detector's mark (with a seeded shot) and the rebound (with a
+    // hand-set mark). This one joins them: a FIRED shot meets a live slab, the real `check shot bacura` marks it,
+    // and the same shot clone then draws its rebound, backs off and deletes; the slab survives, nothing scores.
+    key: 'bacura-detector-bounce-rebounds-and-deletes',
+    behavior:
+      'WPN-01 / AIR-11 (.play): a fired shot that meets a Bacura is marked by the live detector, then rebounds (four mirrored rebound frames, backing off) and deletes, while the slab keeps its slot and nothing is scored',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      suppressGroundSpawns(vm);
+      const slab = 20; // JS; a mid-band Bacura slot
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const samples = [];
+      let target = null;
+      const seq = vm.runtime.sequencer;
+      const original = seq.stepThread;
+      seq.stepThread = function hooked(thread) {
+        original.call(this, thread);
+        const t = thread.target;
+        if (!t || t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') return;
+        if (!vm.runtime.targets.includes(t)) return;
+        const top = t.blocks.getBlock(thread.topBlock);
+        if (!top || top.opcode !== 'control_start_as_clone') return;
+        const slot = Number(Object.values(t.variables).find((v) => v.name === 'clone slot').value) - 1;
+        if (target === null) target = t.id;
+        if (t.id !== target) return;
+        const shotState = Number(readVar(vm, 'slot-state')[slot]);
+        samples.push({ costume: t.sprite.costumes[t.currentCostume].name, y: t.y, state: shotState });
+        // Keep the flying band and the rest of the Bacura band empty, and hold ONE live slab on the shot's own
+        // position until the detector marks it, so the walk's next shot pass finds the overlap.
+        for (const s of [...Array(16).keys()].map((i) => 16 + i).concat([58, 59, 60, 61, 62, 63])) {
+          if (s === slab) continue;
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        if (samples.length >= 2 && !samples.some((sample) => sample.state === 6)) {
+          put('slot-type', slab, 1);
+          put('slot-state', slab, 1);
+          put('slot-x', slab, readVar(vm, 'slot-x')[slot]);
+          put('slot-y', slab, readVar(vm, 'slot-y')[slot]);
+          put('slot-dx', slab, 0);
+          put('slot-dy', slab, 0);
+        }
+      };
+      const score0 = Number(readVar(vm, 'eco-score'));
+      try {
+        keyDown(vm, ' ');
+        for (let i = 0; i < 20 && target === null; i += 1) step(vm, 1);
+        keyUp(vm, ' ');
+        assert.ok(target !== null, 'precondition: a shot was fired');
+        for (let i = 0; i < 40 && vm.runtime.targets.some((t) => t.id === target); i += 1) step(vm, 1);
+      } finally {
+        seq.stepThread = original;
+      }
+      const marked = samples.findIndex((sample) => sample.state === 6);
+      return {
+        marked,
+        rebound: marked >= 0 ? samples.slice(marked + 1).map((s) => s.costume) : [],
+        ys: marked >= 0 ? samples.slice(marked).map((s) => s.y) : [],
+        deleted: !vm.runtime.targets.some((t) => t.id === target),
+        slabAlive: Number(readVar(vm, 'slot-type')[slab]) === 1,
+        scoreDelta: Number(readVar(vm, 'eco-score')) - score0,
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.marked > 0, `the live detector marked the fired shot for the bounce (sample ${obs.marked})`);
+      assert.deepEqual(
+        obs.rebound,
+        ['01', '02', '03', '04'].map((code) => `zapper-shot/rebound/${code}/x`),
+        'the marked shot draws its four rebound frames',
+      );
+      for (let i = 1; i < obs.ys.length; i += 1) {
+        assert.ok(obs.ys[i] < obs.ys[i - 1], `the rebounding shot backs off (${obs.ys.join(', ')})`);
+      }
+      assert.equal(obs.deleted, true, 'the shot deletes after the rebound');
+      assert.equal(obs.slabAlive, true, 'the slab survives the bounce');
+      assert.equal(obs.scoreDelta, 0, 'the bounce scores nothing');
+    },
+    // Empty the detector: the shot is never marked, flies on and deletes off the top, so the mark and rebound
+    // assertions bite.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check shot bacura'),
   },
   {
     key: 'bacura-touch-raises-craft-death',
