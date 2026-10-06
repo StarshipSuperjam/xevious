@@ -59,7 +59,7 @@ presentation is the arcade's 56-frame explosion plus 32-frame pause, owned by
 frames — normatively owned by [Scoring, lives, and game over](scoring-lives-and-game-over.md). The invented
 READY and GAME OVER speech bubbles are removed: READY is the tick-counted hold, and GAME OVER is drawn in the
 HUD's own glyphs. The arcade also runs the forest wait after the **last** death, before initials entry or
-GAME OVER; the port does not yet (record 055 deviation 2; the slice-21 leaf `player.final-forest-wait`).
+GAME OVER; the port holds it too, as 32 paced frames of forest ([record 056](../mechanics/056-release-fidelity.md) item 3).
 
 The reset scopes' postconditions (this document is their
 normative home):

@@ -16087,6 +16087,138 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("death-pause-craft-at-zero")
         return failures
 
+    @staticmethod
+    def _forest_wait_failures(project: dict) -> set:
+        """PLY-02.forest-wait (slice 21): after the LAST death (craft = 0) solv_death's player-dead entry shows the
+        forest filler alone and holds FOREST_WAIT_TICKS paced frames (the arcade's 64-frame wait, xevious_main.68k
+        508-546), leaves the area clock alone, and only then runs the epoch-guarded `death complete` hand-off."""
+        # roadmap-evidence: PLY-02 success  (PLY-02.forest-wait: test_final_forest_wait — the craft-0 forest hold precedes the epoch-guarded hand-off; harness final-forest-wait-before-game-over measures it live)
+        # roadmap-evidence: PLY-02 failure  (PLY-02.forest-wait: test_final_forest_wait_negative_fixtures — a short hold, a hold on every death, a missing forest and a clock reset each bite; the harness negative empties the hold)
+        failures = set()
+        death = next(t for t in project["targets"] if t["name"] == "solv_death")
+        blocks = death["blocks"]
+
+        def var_id(inp):
+            return inp[1][2] if isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], list) and len(inp[1]) > 2 else None
+
+        def chain(start):
+            out, bid = [], start
+            while bid:
+                out.append(bid)
+                bid = blocks[bid].get("next")
+            return out
+
+        def broadcasts(bid, name):
+            b = blocks[bid]
+            return b["opcode"] == "event_broadcast" and b["inputs"]["BROADCAST_INPUT"][1][1] == name
+
+        waits = []
+        for bid, b in blocks.items():
+            if not isinstance(b, dict) or b.get("opcode") != "control_if":
+                continue
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {})
+            if (
+                cond.get("opcode") == "operator_equals"
+                and var_id(cond["inputs"].get("OPERAND1")) == director.LIVES_ID
+                and _num_operand(cond["inputs"].get("OPERAND2")) == 0
+            ):
+                waits.append(bid)
+        if len(waits) != 1:
+            return {"final-death-wait"}
+        wait = waits[0]
+        body = chain((blocks[wait]["inputs"].get("SUBSTACK") or [None, None])[1])
+        holds = [
+            x for x in body
+            if blocks[x]["opcode"] == "control_repeat"
+            and _num_operand(blocks[x]["inputs"].get("TIMES")) == director.FOREST_WAIT_TICKS == 32
+            and blocks[(blocks[x]["inputs"].get("SUBSTACK") or [None, None])[1] or ""]["opcode"] == "control_wait"
+        ]
+        if len(holds) != 1:
+            failures.add("final-death-wait")
+        sets = {
+            blocks[x]["fields"]["VARIABLE"][1]: (blocks[x]["inputs"]["VALUE"][1] or [None, None])[1]
+            for x in body
+            if blocks[x]["opcode"] == "data_setvariableto"
+        }
+        forest = director.terrain_render.terrain_state(0, 0, director.terrain_render.NO_PREVIOUS_COLUMN)
+        even, odd = director.TERRAIN_STRIP_VARS["even"], director.TERRAIN_STRIP_VARS["odd"]
+        draws = [i for i, x in enumerate(body) if broadcasts(x, "terrain draw")]
+        if (
+            forest.even.costume != director.terrain_render.FILLER_COSTUME
+            or not forest.even.shown
+            or forest.odd.shown
+            or str(sets.get(even["costume"][1])) != director.terrain_render.FILLER_COSTUME
+            or str(sets.get(even["shown"][1])) != "1"
+            or str(sets.get(odd["shown"][1])) != "0"
+            or not draws
+            or not holds
+            or draws[0] > body.index(holds[0])
+        ):
+            failures.add("final-death-forest")
+        if {director.AREA_PROGRESS_ID, director.SCROLL_ROW_ID} & set(sets):
+            failures.add("final-death-clock-untouched")
+        after = blocks[wait].get("next")
+        if not (
+            after
+            and blocks[after]["opcode"] == "control_if"
+            and blocks[(blocks[after]["inputs"].get("CONDITION") or [None, None])[1]]["opcode"] == "operator_and"
+            and any(broadcasts(x, "death complete") for x in chain(blocks[after]["inputs"]["SUBSTACK"][1]))
+        ):
+            failures.add("final-death-wait-before-handoff")
+        return failures
+
+    def test_final_forest_wait(self) -> None:
+        self.assertEqual(set(), self._forest_wait_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_final_forest_wait_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._forest_wait_failures(base))
+
+        def death_blocks(p):
+            return next(t for t in p["targets"] if t["name"] == "solv_death")["blocks"]
+
+        def wait_if(blocks):
+            return next(
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "control_if"
+                and blocks[b["inputs"]["CONDITION"][1]]["opcode"] == "operator_equals"
+            )
+
+        def short_hold(p):
+            blocks = death_blocks(p)
+            for b in blocks.values():
+                if isinstance(b, dict) and b.get("opcode") == "control_repeat" and _num_operand(b["inputs"].get("TIMES")) == 32:
+                    b["inputs"]["TIMES"] = [1, [6, "16"]]
+
+        def every_death(p):
+            # Hold on the wrong death (craft = 1, a death with craft left) instead of the last one.
+            blocks = death_blocks(p)
+            cond = blocks[blocks[wait_if(blocks)]["inputs"]["CONDITION"][1]]
+            cond["inputs"]["OPERAND2"] = [1, [10, "1"]]
+
+        def no_forest(p):
+            blocks = death_blocks(p)
+            for b in blocks.values():
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.TERRAIN_STRIP_VARS["even"]["costume"][1]:
+                    b["inputs"]["VALUE"] = [1, [10, director.terrain_render.BAND_COSTUMES[0]]]
+
+        def clock_reset(p):
+            blocks = death_blocks(p)
+            for b in blocks.values():
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.TERRAIN_STRIP_VARS["odd"]["shown"][1]:
+                    b["fields"]["VARIABLE"] = ["area progress", director.AREA_PROGRESS_ID]
+
+        for expected, mutate in (
+            ("final-death-wait", short_hold),
+            ("final-death-wait", every_death),
+            ("final-death-forest", no_forest),
+            ("final-death-clock-untouched", clock_reset),
+        ):
+            with self.subTest(expected=expected, mutate=mutate.__name__):
+                project = copy.deepcopy(base)
+                mutate(project)
+                self.assertIn(expected, self._forest_wait_failures(project))
+
     def test_death_decision_is_lives_driven(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._ply02_failures(project))
@@ -19526,7 +19658,16 @@ class ScratchProjectTests(unittest.TestCase):
             for times in (director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS, director.POST_DEATH_PAUSE_TICKS)
         ):
             fails.add("B5B10-pause")
-        if count("solv_death", "control_wait") != 0:
+        # No wall-clock wait times the death. The one wait allowed is the final forest hold's `wait 0` (one paced
+        # frame per iteration, PLY-02.forest-wait), inside its FOREST_WAIT_TICKS repeat.
+        death_blocks_ = blocks["solv_death"]
+        if any(
+            num(b["inputs"].get("DURATION")) != 0
+            or death_blocks_.get(b.get("parent"), {}).get("opcode") != "control_repeat"
+            or num(death_blocks_[b["parent"]]["inputs"].get("TIMES")) != director.FOREST_WAIT_TICKS
+            for b in death_blocks_.values()
+            if b["opcode"] == "control_wait"
+        ):
             fails.add("B5B10-wall-clock")
 
         # PRES-01 — the craft clamps its own position at the four stop lines (no border sprites to touch):
@@ -19808,6 +19949,10 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_a", lambda b: b["opcode"] == "looks_switchcostumeto")
             b["opcode"] = "looks_show"
 
+        def timed_death_wait(p):  # B5/B10: time the forest hold by the wall clock (wait 0.1 s per frame)
+            b = first(p, "solv_death", lambda b: b["opcode"] == "control_wait")
+            b["inputs"]["DURATION"] = [1, [5, "0.1"]]
+
         def break_drop_receive(p):  # B2: regress the bomb sprite back to a drop-sound receiver
             b = first(p, "bomb", lambda b: b["opcode"] == "event_whenbroadcastreceived")
             b["fields"]["BROADCAST_OPTION"][0] = "bomb"
@@ -19868,6 +20013,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("B5B10-explosion", break_explosion_holds),
             ("CAB05-death-hidden-pause", show_through_pause),
             ("B5B10-pause", break_death_pause),
+            ("B5B10-wall-clock", timed_death_wait),
             ("B6-crosshair-costume", break_crosshair_costume),
             ("B6-crosshair-not-receiver", couple_crosshair_to_bomb),
             ("B7-marker-show", break_marker),
@@ -21656,7 +21802,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "c2d1a2ad4c59dd8a497edd525a819d9668a6f6117c7e36a4fbd370509b07df37",
+            "61d7062ce8330ba08371486409dc9aa08536871d531b64df3bac665660eec3f9",
             build_hash,
         )
 

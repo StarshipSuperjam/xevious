@@ -272438,7 +272438,7 @@
         },
         "gd-solv-death-014": {
           "opcode": "data_setvariableto",
-          "next": "gd-solv-death-047",
+          "next": "gd-solv-death-061",
           "parent": "gd-solv-death-013",
           "inputs": {
             "VALUE": [
@@ -272966,18 +272966,319 @@
           "topLevel": false
         },
         "gd-solv-death-041": {
-          "opcode": "looks_hide",
-          "next": "gd-solv-death-043",
-          "parent": "gd-solv-death-047",
-          "inputs": {},
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-solv-death-054",
+          "inputs": {
+            "OPERAND1": [
+              3,
+              [
+                12,
+                "craft",
+                "eco-craft"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-solv-death-042": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-043",
+          "parent": "gd-solv-death-054",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                10,
+                "terrain filler"
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain even costume",
+              "terrain-even-costume"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-043": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-044",
+          "parent": "gd-solv-death-042",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain even x",
+              "terrain-even-x"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-044": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-045",
+          "parent": "gd-solv-death-043",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                310
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain even y",
+              "terrain-even-y"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-045": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-046",
+          "parent": "gd-solv-death-044",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain even shown",
+              "terrain-even-shown"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-046": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-047",
+          "parent": "gd-solv-death-045",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                10,
+                "terrain band 1"
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain odd costume",
+              "terrain-odd-costume"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-047": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-048",
+          "parent": "gd-solv-death-046",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                -140
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain odd x",
+              "terrain-odd-x"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-048": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-049",
+          "parent": "gd-solv-death-047",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                -330
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain odd y",
+              "terrain-odd-y"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-049": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-050",
+          "parent": "gd-solv-death-048",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain odd shown",
+              "terrain-odd-shown"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-050": {
+          "opcode": "data_setvariableto",
+          "next": "gd-solv-death-051",
+          "parent": "gd-solv-death-049",
+          "inputs": {
+            "VALUE": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {
+            "VARIABLE": [
+              "terrain even behind",
+              "terrain-even-behind"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-051": {
+          "opcode": "event_broadcast",
+          "next": "gd-solv-death-052",
+          "parent": "gd-solv-death-050",
+          "inputs": {
+            "BROADCAST_INPUT": [
+              1,
+              [
+                11,
+                "terrain draw",
+                "broadcastMsgId-terrain-draw"
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-052": {
+          "opcode": "control_repeat",
+          "next": null,
+          "parent": "gd-solv-death-051",
+          "inputs": {
+            "TIMES": [
+              1,
+              [
+                4,
+                32
+              ]
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-solv-death-053"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-053": {
+          "opcode": "control_wait",
+          "next": null,
+          "parent": "gd-solv-death-052",
+          "inputs": {
+            "DURATION": [
+              1,
+              [
+                4,
+                0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-054": {
+          "opcode": "control_if",
+          "next": "gd-solv-death-057",
+          "parent": "gd-solv-death-055",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-solv-death-041"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-solv-death-042"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-055": {
+          "opcode": "looks_hide",
+          "next": "gd-solv-death-054",
+          "parent": "gd-solv-death-061",
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-solv-death-056": {
           "opcode": "event_broadcast",
           "next": null,
-          "parent": "gd-solv-death-043",
+          "parent": "gd-solv-death-057",
           "inputs": {
             "BROADCAST_INPUT": [
               1,
@@ -272992,46 +273293,46 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-043": {
+        "gd-solv-death-057": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-solv-death-041",
+          "parent": "gd-solv-death-054",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-solv-death-044"
+              "gd-solv-death-058"
             ],
             "SUBSTACK": [
               2,
-              "gd-solv-death-042"
+              "gd-solv-death-056"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-044": {
+        "gd-solv-death-058": {
           "opcode": "operator_and",
           "next": null,
-          "parent": "gd-solv-death-043",
+          "parent": "gd-solv-death-057",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-solv-death-045"
+              "gd-solv-death-059"
             ],
             "OPERAND2": [
               2,
-              "gd-solv-death-046"
+              "gd-solv-death-060"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-045": {
+        "gd-solv-death-059": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-solv-death-044",
+          "parent": "gd-solv-death-058",
           "inputs": {
             "OPERAND1": [
               3,
@@ -273062,10 +273363,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-046": {
+        "gd-solv-death-060": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-solv-death-044",
+          "parent": "gd-solv-death-058",
           "inputs": {
             "OPERAND1": [
               3,
@@ -273091,28 +273392,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-047": {
+        "gd-solv-death-061": {
           "opcode": "control_if",
-          "next": "gd-solv-death-056",
+          "next": "gd-solv-death-070",
           "parent": "gd-solv-death-014",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-solv-death-048"
+              "gd-solv-death-062"
             ],
             "SUBSTACK": [
               2,
-              "gd-solv-death-041"
+              "gd-solv-death-055"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-048": {
+        "gd-solv-death-062": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-solv-death-047",
+          "parent": "gd-solv-death-061",
           "inputs": {
             "OPERAND1": [
               3,
@@ -273138,19 +273439,19 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-049": {
+        "gd-solv-death-063": {
           "opcode": "looks_hide",
-          "next": "gd-solv-death-050",
-          "parent": "gd-solv-death-056",
+          "next": "gd-solv-death-064",
+          "parent": "gd-solv-death-070",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-050": {
+        "gd-solv-death-064": {
           "opcode": "control_repeat",
-          "next": "gd-solv-death-052",
-          "parent": "gd-solv-death-049",
+          "next": "gd-solv-death-066",
+          "parent": "gd-solv-death-063",
           "inputs": {
             "TIMES": [
               1,
@@ -273164,10 +273465,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-051": {
+        "gd-solv-death-065": {
           "opcode": "event_broadcast",
           "next": null,
-          "parent": "gd-solv-death-052",
+          "parent": "gd-solv-death-066",
           "inputs": {
             "BROADCAST_INPUT": [
               1,
@@ -273182,46 +273483,46 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-052": {
+        "gd-solv-death-066": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-solv-death-050",
+          "parent": "gd-solv-death-064",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-solv-death-053"
+              "gd-solv-death-067"
             ],
             "SUBSTACK": [
               2,
-              "gd-solv-death-051"
+              "gd-solv-death-065"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-053": {
+        "gd-solv-death-067": {
           "opcode": "operator_and",
           "next": null,
-          "parent": "gd-solv-death-052",
+          "parent": "gd-solv-death-066",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-solv-death-054"
+              "gd-solv-death-068"
             ],
             "OPERAND2": [
               2,
-              "gd-solv-death-055"
+              "gd-solv-death-069"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-054": {
+        "gd-solv-death-068": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-solv-death-053",
+          "parent": "gd-solv-death-067",
           "inputs": {
             "OPERAND1": [
               3,
@@ -273252,10 +273553,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-055": {
+        "gd-solv-death-069": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-solv-death-053",
+          "parent": "gd-solv-death-067",
           "inputs": {
             "OPERAND1": [
               3,
@@ -273281,28 +273582,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-056": {
+        "gd-solv-death-070": {
           "opcode": "control_if",
           "next": null,
-          "parent": "gd-solv-death-047",
+          "parent": "gd-solv-death-061",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-solv-death-057"
+              "gd-solv-death-071"
             ],
             "SUBSTACK": [
               2,
-              "gd-solv-death-049"
+              "gd-solv-death-063"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-solv-death-057": {
+        "gd-solv-death-071": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-solv-death-056",
+          "parent": "gd-solv-death-070",
           "inputs": {
             "OPERAND1": [
               3,

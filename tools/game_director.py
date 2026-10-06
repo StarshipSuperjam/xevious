@@ -68,6 +68,8 @@ PLAYER_EXPLOSION_FLIP_TICKS = 2
 READY_HOLD_TICKS = 32  # port READY beat, sized to the arcade's 64-frame post-death forest wait (511, 535-536;
 # CAB-05). The arcade runs that wait only after a death (scroll is off only then, 2087) and draws no craft in it;
 # the port keeps its READY hold on the first life too and shows the craft, a port reading recorded in 055.
+FOREST_WAIT_TICKS = 32  # PLY-02.forest-wait: the arcade's 64-frame forest wait after the LAST death (511, 535-536),
+# held in paced frames in `player-dead` (the walk is off there) before the game-over route or the 2P handoff.
 GAME_OVER_HOLD_TICKS = 64  # arcade 128-frame GAME OVER hold (`game_over` 549-591; ECO-04)
 
 # SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
@@ -10675,6 +10677,17 @@ def _initial_terrain_strip_vars() -> dict[str, list[Any]]:
     return values
 
 
+def _forest_terrain(blocks: Blocks) -> list[str]:
+    """PLY-02.forest-wait: show the forest filler alone, as `fill_bg_with_forest` (xevious_main.68k 648-669) does
+    after a death (510). The strips are set straight to the re-top's terrain state (all forest on screen) and drawn;
+    the area clock is left alone — the arcade fills the plane without moving the scroll counter, and the two-player
+    handoff's checkpoint still reads the death row afterwards."""
+    sets = []
+    for var_id, (name, value) in _initial_terrain_strip_vars().items():
+        sets.append(blocks.set_var(name, var_id, text(value) if isinstance(value, str) else number(value)))
+    return [*sets, blocks.send("terrain draw")]
+
+
 def install_update_terrain(blocks: Blocks) -> None:
     # AREA-01 (slice 20): see UPDATE_TERRAIN_PROCCODE. Runs in the walk after the clock and the ground objects
     # move, and at the end of every re-top, so the strips always read the state of the current clock.
@@ -11417,7 +11430,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # last player of a two-player game (the other already out, so the alternate condition above is false). On
     # the no-craft branch the ECO-04 best-five check + initials routing run HERE, at the death decision, BEFORE
     # any GAME OVER hold — faithful to the arcade's order, which calls check_for_high_score once the game ends
-    # (after the 64-frame forest wait, 534-536, which the port does not have) and reaches the game_over hold only
+    # (after the 64-frame forest wait, 534-536, which the port holds in solv_death's player-dead entry just before
+    # this handler, FOREST_WAIT_TICKS) and reaches the game_over hold only
     # after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
     # RECORDS the decision (kept on both branches, not removed, so the transition-cleanup opcode sequence and
     # the reset-scope matrix stay byte-identical) — it is no longer the input.
@@ -11968,8 +11982,8 @@ def _attract_demo_launch(blocks: Blocks, state: str) -> str:
 def _game_over_route(blocks: Blocks) -> list[str]:
     # ECO-04 (slice 19): the end-of-game best-five check + initials routing, run at the DEATH decision (the last
     # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade's order,
-    # which calls check_for_high_score once the game ends (after the 64-frame forest wait, 534-536, which the port
-    # does not have) and reaches the game_over hold only after name entry
+    # which calls check_for_high_score once the game ends (after the 64-frame forest wait, 534-536, held before the
+    # death-complete handler runs, FOREST_WAIT_TICKS) and reaches the game_over hold only after name entry
     # (xevious_main.68k:546 jra check_for_high_score; :1671-1672 a non-qualifier -> game_over; :1757-1769
     # name_entry_finished -> game_over). `qualified` = the final score REACHES-OR-BEATS fifth place in the live
     # table (`>=`, a tie places — the move_high_score_entry_down fall-through, :1653-1656), OR'd over the OTHER
@@ -12925,10 +12939,22 @@ def death_blocks() -> dict[str, dict[str, Any]]:
         blocks.receive("death draw"),
         [_if_else(blocks, _craft_drawn_reporter(blocks), draw_frame, [blocks.hide()])],
     )
-    # The window has already run in `playing`, so player-dead only hands straight on to the death-complete route
-    # (epoch-guarded, as before, against a superseding transition).
+    # The window has already run in `playing`, so player-dead only hands on to the death-complete route
+    # (epoch-guarded, as before, against a superseding transition). PLY-02.forest-wait (slice 21): the arcade
+    # fills the background with forest and waits 64 frames after EVERY death, before it looks at the craft left
+    # (`main_gameplay_loop` 508-546: the fill at 510, the 64-frame timer 511/535-536, the craft-left test 544).
+    # After a death with craft left the port's READY hold stands in for that wait (READY_HOLD_TICKS); after the
+    # LAST death (no craft left — the game-over route, or a two-player handoff from an eliminated player) the
+    # port now holds the forest for FOREST_WAIT_TICKS paced frames here, before the epoch check, so a superseding
+    # transition during the hold still drops the hand-off. A demo never reaches player-dead (it ends at the
+    # window's end), so it gets no wait, as in the arcade (1326-1334).
+    final_wait = blocks.if_reporter(
+        blocks.op_eq(variable("craft", LIVES_ID), number(0)),
+        [*_forest_terrain(blocks), blocks.hold_frames(FOREST_WAIT_TICKS)],
+    )
     death_body = [
         blocks.hide(),
+        final_wait,
         blocks.if_epoch_state(
             DEATH_EPOCH_ID, "player-dead", [blocks.send("death complete")]
         ),

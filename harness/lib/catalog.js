@@ -41,6 +41,13 @@ const AREA_MAP_COLUMNS = JSON.parse(
   readFileSync(new URL('../../docs/spec/data/terrain.json', import.meta.url)),
 ).area_offset_in_map_tbl.values;
 const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
+// Every sprite that draws an object slot (the craft, its shots, bomb and sight, enemies, bullets, ground objects),
+// as opposed to the terrain strips, the HUD, the bezel and the attract text.
+const FIELD_SPRITES = [
+  'solvalou', 'blaster', 'target_a', 'target_b', 'bomb', 'toroid', 'enemy_bullet', 'terrazi', 'kapi', 'torkan',
+  'zoshi', 'jara', 'zakato', 'giddo-spario', 'brag-spario', 'garu-zakato', 'bacura', 'sheonite', 'bonus-flag',
+  'easter-egg', 'ground',
+];
 // Suppress ALL ground-object spawns for the rest of the run by emptying the schedule's ground-object
 // type column (the ground analogue of forcing the flying type table to the non-shooting Toroid). With no
 // type to stamp, the ground dispatch spawns nothing, so the first ground firer — the Logram, which opens
@@ -1757,6 +1764,81 @@ export const SCENARIOS = [
     },
     // Remove player-dead -> game-over so it cannot reach title → assertion fails.
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> game-over'),
+  },
+  {
+    key: 'final-forest-wait-before-game-over',
+    behavior:
+      'After the LAST death the screen shows only forest, every object cleared, and holds 32 frames (the arcade '
+      + '64-frame wait, xevious_main 508-546; the object clear 4745-4748) before the game-over route, with the area clock left at the death row; a death '
+      + 'with craft left goes straight on to the respawn (its READY hold stands in for the wait)',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'invuln', 0);
+      // One frame per pump while not playing: the hold is paced (`wait 0` each frame), so the pumps counted in
+      // player-dead are its frames. Count them for a death with craft left first, then for the last death.
+      // A single pump can run the whole 44-tick window (the walk settles many ticks per pump), so the pumps are
+      // counted by the state each one ends in, until the death has moved on (the epoch advanced past the window).
+      // The arcade's object pass wipes all 64 objects once the scroll is disabled (main_fn_2__handle_objects
+      // 4745-4748), so the wait shows no enemy, bullet, ground object or bomb sight: count what the field still
+      // holds — busy slots and visible clones of every object sprite (the terrain strips and the HUD stay).
+      const fieldBusy = () => {
+        const busy = readVar(vm, 'slot-type').filter((t) => Number(t) !== 0).length;
+        const shown = vm.runtime.targets.filter(
+          (t) => !t.isStage && t.visible && t.sprite && FIELD_SPRITES.includes(t.sprite.name),
+        ).length;
+        return busy + shown;
+      };
+      const deadPumps = (craft, movedOn) => {
+        writeVar(vm, 'eco-craft', craft);
+        const epoch0 = epoch(vm);
+        seedCraftHit(vm);
+        const busyAtHit = fieldBusy();
+        let busyInWait = 0;
+        let pumps = 0;
+        let forest = true;
+        let progress = null;
+        let progressKept = true;
+        for (let t = 0; t < 240 && !(epoch(vm) > epoch0 && movedOn(state(vm))); t += 1) {
+          step(vm, 1);
+          if (state(vm) !== 'player-dead') continue;
+          pumps += 1;
+          busyInWait = Math.max(busyInWait, fieldBusy());
+          const p = Number(readVar(vm, 'area-progress'));
+          if (progress === null) progress = p;
+          progressKept = progressKept && p === progress;
+          if (pumps >= 2) {
+            forest = forest
+              && readVar(vm, 'terrain-even-costume') === 'terrain filler'
+              && Number(readVar(vm, 'terrain-even-shown')) === 1
+              && Number(readVar(vm, 'terrain-odd-shown')) === 0;
+          }
+        }
+        return { pumps, forest, progressKept, busyAtHit, busyInWait, next: state(vm) };
+      };
+      const respawn = deadPumps(3, (s) => s === 'respawning' || s === 'playing');
+      assert.ok(stepUntil(vm, (v) => state(v) === 'playing'), 'the respawn returns to playing');
+      writeVar(vm, 'invuln', 0);
+      const last = deadPumps(1, (s) => s !== 'playing' && s !== 'player-dead');
+      return { respawn, last };
+    },
+    assert(obs) {
+      assert.ok(['respawning', 'playing'].includes(obs.respawn.next), `a death with craft left respawns (${obs.respawn.next})`);
+      assert.ok(obs.respawn.pumps <= 3, `a death with craft left adds no wait (${obs.respawn.pumps} pumps in player-dead)`);
+      assert.notEqual(obs.last.next, 'player-dead', 'the last death leaves player-dead');
+      assert.notEqual(obs.last.next, 'respawning', 'the last death does not respawn');
+      assert.ok(
+        obs.last.pumps >= 32 && obs.last.pumps <= 36,
+        `the last death holds the 32-frame forest wait (${obs.last.pumps} pumps in player-dead)`,
+      );
+      assert.equal(obs.last.forest, true, 'only forest is on screen during the wait');
+      assert.equal(obs.last.progressKept, true, 'the wait leaves the area clock at the death row');
+      assert.ok(obs.last.busyAtHit > 0, `the field holds objects when the craft is hit (${obs.last.busyAtHit})`);
+      assert.equal(obs.last.busyInWait, 0, 'the wait shows no object: every slot is free and no object clone is shown');
+    },
+    // Gate the wait on craft = -1 (never true): the last death then hands straight on to the game-over route,
+    // so its pumps in player-dead drop to the respawn's and the forest is never drawn.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'solv_death', 'craft', 0, -1),
   },
   {
     key: 'enemy-bullet-fires',
