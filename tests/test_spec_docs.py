@@ -1154,6 +1154,11 @@ class DifficultyAndFormations(unittest.TestCase):
     # roadmap-evidence: DIF-01 failure  (live-pressure-density negative pins formation count off the table; _live_pressure_failures break_loop_times)
     # roadmap-evidence: DIF-02 success  (harness live-pressure-adaptive: the score adjust crosses the raise-only fold ceiling)
     # roadmap-evidence: DIF-02 failure  (live-pressure-adaptive negative severs the adjust dispatch)
+
+    # Roadmap closure evidence for leaf `difficulty.ship-number-divisor` (slice 21): the re-tune divides the
+    # BCD thousands by the per-player ship number, faithful to the arcade loop, cap and byte add.
+    # roadmap-evidence: DIF-02 success  (DIF-02.ship-divisor: test_score_retune_division_matches_the_arcade_loop; test_score_retune_rule; harness ship-number-divisor and ship-number-lifecycle)
+    # roadmap-evidence: DIF-02 failure  (DIF-02.ship-divisor: ship-number-divisor negative divides by the craft left; ship-number-lifecycle negative freezes the count)
     # roadmap-evidence: DIF-03 success  (test_scratch_project.py::test_live_pressure_contract fire-reload-reads-mask; harness terrazi-fires-under-mask)
     # roadmap-evidence: DIF-03 failure  (test_live_pressure_negative_fixtures break_fire_reload; terrazi-fires-under-mask negative neutralizes the shared gate)
     # roadmap-evidence: FORM-01 success (harness live-pressure-density variation proof; test_live_pressure_contract spawn-gates-empty-slot)
@@ -1203,7 +1208,7 @@ class DifficultyAndFormations(unittest.TestCase):
         ]
 
         def raise_once(ai):
-            ai += inc
+            ai = (ai + inc) % director.AI_LEVEL_WRAP  # add.b: a byte add (sub 324)
             if ai >= director.AI_LEVEL_FOLD_THRESHOLD:
                 ai -= director.AI_LEVEL_FOLD_SUBTRACT
             return ai
@@ -1212,22 +1217,63 @@ class DifficultyAndFormations(unittest.TestCase):
         self.assertEqual(64, raise_once(126))  # 128 -> fold -> 64
         self.assertEqual(65, raise_once(127))  # 129 -> fold -> 65
         self.assertLess(raise_once(127), director.AI_LEVEL_FOLD_THRESHOLD)
+        self.assertEqual(0, raise_once(254), "254 + 2 wraps to 0 in the byte, below the fold")
+
+    @staticmethod
+    def _avg_score_per_solvalou(d1: int, d2: int) -> int:
+        """avg_score_per_solvalou (xevious_sub.68k 360-372), step for step: a 16-step restoring division of
+        the word d1 by the byte d2, the remainder in the byte d0 with the `roxl.b` carry as its ninth bit."""
+        d0 = 0
+        for _ in range(16):
+            x = (d1 >> 15) & 1  # add.w d1,d1: the top bit goes to X
+            d1 = (d1 << 1) & 0xFFFF
+            carry = (d0 >> 7) & 1  # roxl.b #1,d0: X in at the bottom, the top bit out to C
+            d0 = ((d0 << 1) | x) & 0xFF
+            if carry or d0 >= d2:  # jcs 2f / cmp.b d2,d0; jcs 3f
+                d0 = (d0 - d2) & 0xFF
+                d1 = (d1 + 1) & 0xFFFF
+        return d1
+
+    @staticmethod
+    def _bcd_thousands(score: int) -> int:
+        """`move.w (curr_player_score_msb),d1`: the four BCD digits of the score's thousands, read as binary."""
+        k = score // 1000
+        return sum(((k // 10**place) % 10) << (4 * place) for place in range(4))
+
+    def _retune(self, score: int, ship: int, ai: int) -> int:
+        """sub_2_fn_23__adjust_AI_level_based_on_score (sub 344-353) as the port emits it: the BCD dividend,
+        floor division with 0xFFFF for a ship number of 0, the SIGNED cap at 16, the byte add."""
+        dividend = self._bcd_thousands(score)
+        q = director.AI_ADJUST_ZERO_DIVISOR if ship == 0 else dividend // ship
+        if director.AI_ADJUST_CAP < q < director.AI_ADJUST_SIGNED_ESCAPE:
+            q = director.AI_ADJUST_CAP
+        return (ai + q) % director.AI_LEVEL_WRAP
+
+    def test_score_retune_division_matches_the_arcade_loop(self):
+        # The port divides with floor() and special-cases a ship number of 0; prove that closed form IS the
+        # arcade's bit-serial loop, over every divisor byte and dividends spread across the BCD word.
+        dividends = sorted({*range(0, 0x9999 + 1, 97), 0x0020, 0x0999, 0x7FFF, 0x8000, 0x9999})
+        for d2 in range(0x100):
+            for d1 in dividends:
+                want = 0xFFFF if d2 == 0 else d1 // d2
+                self.assertEqual(want, self._avg_score_per_solvalou(d1, d2), f"{d1:#06x} / {d2}")
+        self.assertEqual(director.AI_ADJUST_ZERO_DIVISOR, self._avg_score_per_solvalou(0x0020, 0))
 
     def test_score_retune_rule(self):
-        # DIF-02 score-adaptive re-tune (sub_2_fn_23 / avg_score_per_solvalou): the addend is the
-        # player's score in thousands divided by the craft in reserve, floored, capped at 16, and
-        # only when reserve > 0 (no divide-by-zero). Reserve is the live `craft` count (the reference
-        # divides by solvalou_number with no subtraction).
-        def retune(score, craft):
-            if craft <= 0:
-                return 0
-            return min(16, (score // 1000) // craft)
-
-        self.assertEqual(0, retune(500, 3), "score below 1000 adds nothing")
-        self.assertEqual(1, retune(3000, 3), "3k over 3 craft -> 1")
-        self.assertEqual(5, retune(20000, 4), "20k over 4 craft -> 5")
-        self.assertEqual(16, retune(200000, 3), "66 over 3 = 22, capped at 16")
-        self.assertEqual(0, retune(50000, 0), "zero craft is guarded, adds nothing")
+        # DIF-02 (slice 21, difficulty.ship-number-divisor): the addend is the score's BCD thousands word read
+        # as binary, divided by the ship number (the craft in play, from 1), capped at 16 by a SIGNED compare,
+        # added as a byte. Not the craft left, and not the decimal thousands.
+        self.assertEqual(0x20, self._bcd_thousands(20000), "20,000 points divide as 0x20 = 32")
+        self.assertEqual(0x0999, self._bcd_thousands(999000))
+        self.assertEqual(0, self._retune(500, 1, 0), "under 1,000 points adds nothing")
+        self.assertEqual(10, self._retune(20000, 3, 0), "0x20 / ship 3 = 10 (decimal 20 / 3 would give 6)")
+        self.assertEqual(16, self._retune(20000, 1, 0), "0x20 / ship 1 = 32, capped at 16")
+        self.assertEqual(120 + 16, self._retune(999000, 1, 120), "the re-tune is not folded")
+        self.assertEqual((120 + 0xFFFF) % 256, self._retune(20000, 0, 120), "a ship number of 0 adds 0xFFFF as a byte")
+        self.assertEqual((5 + 0x8000) % 256, self._retune(8000000, 1, 5), "0x8000 passes the signed cap uncapped")
+        self.assertEqual((5 + 0x9999) % 256, self._retune(9999000, 1, 5), "0x9999 adds its low byte uncapped")
+        self.assertEqual(5 + 16, self._retune(9999000, 2, 5), "on ship 2 the top score divides to 0x4CCC, capped")
+        self.assertEqual((250 + 16) % 256, self._retune(999000, 1, 250), "the byte add wraps")
 
     def test_formation_index_in_domain_over_committed_schedules(self):
         # FORM-01 / DIF-01 / DIF-02 range proof: walk the committed schedules in the accelerated
@@ -1241,7 +1287,7 @@ class DifficultyAndFormations(unittest.TestCase):
         # The margin is real, not accidental: consecutive adjusts between raises are few, so the raise's
         # single -0x40 fold always recovers a < 0x80 index; if a future schedule or DIP change broke
         # that, THIS fixture reddens rather than the guard silently freezing the formation.
-        DIF02_MAX_ADDEND = 16  # the score-per-craft re-tune is capped at 16 (docs/spec)
+        DIF02_MAX_ADDEND = director.AI_ADJUST_CAP  # the score-per-ship re-tune is capped at 16 (docs/spec)
         areas = {a["area"]: a["records"] for a in json.loads((DATA / "area-schedules.json").read_text())["areas"]}
         inc = json.loads((DATA / "difficulty.json").read_text())["difficulty_tbl"]["values"][
             director.DIFFICULTY_DIP_INDEX
@@ -1256,13 +1302,15 @@ class DifficultyAndFormations(unittest.TestCase):
             for record in areas[area]:
                 handler = record["handler"]
                 if handler == "raise_ai_level_and_set_formation":
-                    ai += inc
+                    ai = (ai + inc) % director.AI_LEVEL_WRAP  # a byte add (add.b), then the fold
                     if ai >= director.AI_LEVEL_FOLD_THRESHOLD:
                         ai -= director.AI_LEVEL_FOLD_SUBTRACT
                     index = ai
                     raises += 1
                 elif handler == "adjust_ai_level_from_score":
-                    ai += DIF02_MAX_ADDEND  # worst case; the reference does NOT fold this add
+                    # worst case short of the uncapped escape (8,000,000 points or a ship number wrapped to
+                    # 0, where the port's guard is a recorded port necessity); a byte add, not folded
+                    ai = (ai + DIF02_MAX_ADDEND) % director.AI_LEVEL_WRAP
                     adjusts += 1
                     continue  # adjust re-tunes the level but selects no formation
                 elif handler == "set_flying_formation":

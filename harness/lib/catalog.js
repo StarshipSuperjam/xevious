@@ -2701,6 +2701,113 @@ export const SCENARIOS = [
       mutate.changeEqualsOperand(p, 'Stage', 'adjust_ai_level_from_score', '__never__'),
   },
   {
+    // DIF-02 (slice 21, difficulty.ship-number-divisor): the re-tune divides the score's BCD thousands word, read
+    // as binary, by the per-player ship number (sub_2_fn_23 344-353, avg_score_per_solvalou 360-372).
+    key: 'ship-number-divisor',
+    behavior:
+      'DIF-02.ship-divisor: the score re-tune divides the BCD thousands by the ship number (20,000 points on ship 3 '
+      + 'adds 0x20/3 = 10 per record, not 20/3 or 20/craft), and a ship number of 0 adds 0xFFFF as a byte',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk and run the real `advance area` exactly once on area 1's first adjust record (the
+      // live-pressure-adaptive set-up), once per case.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const triggers = readVar(vm, 'area-schedule-trigger-row');
+      const start = Number(readVar(vm, 'area-schedule-start')[0]);
+      let idx = start - 1;
+      while (idx < handlers.length && handlers[idx] !== 'adjust_ai_level_from_score') idx += 1;
+      assert.ok(idx < handlers.length, "precondition: area 1's schedule has a score-adjust record");
+      const row = Number(triggers[idx]);
+      // Area 1 holds two re-tune records on this row (sub 868: `0x9B, 0x57, 0x9B, 0x57`); the tick runs both.
+      let records = 0;
+      while (handlers[idx + records] === 'adjust_ai_level_from_score' && Number(triggers[idx + records]) === row) records += 1;
+      const after = (((0x0d00 - row * 256 - 128) % 0x10000) + 0x10000) % 0x10000;
+      const adjust = ({ score, ship, craft, ai }) => {
+        writeVar(vm, 'area-number', 1);
+        writeVar(vm, 'area-schedule-cursor', idx + 1);
+        writeVar(vm, 'area-progress', after - 32);
+        writeVar(vm, 'difficulty-ai-level', ai);
+        writeVar(vm, 'difficulty-ship-number', ship);
+        writeVar(vm, 'eco-score', score);
+        writeVar(vm, 'eco-craft', craft);
+        callProc(vm, 'Stage', 'advance area');
+        step(vm, 2);
+        return {
+          onRow: Number(readVar(vm, 'area-scroll-row')) === row,
+          consumed: Number(readVar(vm, 'area-schedule-cursor')) > idx + records,
+          ai: Number(readVar(vm, 'difficulty-ai-level')),
+        };
+      };
+      return {
+        records,
+        bcd: adjust({ score: 20000, ship: 3, craft: 1, ai: 120 }),
+        zero: adjust({ score: 20000, ship: 0, craft: 3, ai: 120 }),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.records, 2, "precondition: area 1's first re-tune row holds the source's pair of records");
+      for (const c of [obs.bcd, obs.zero]) {
+        assert.ok(c.onRow && c.consumed, 'precondition: the tick consumes both adjust records');
+      }
+      assert.equal(obs.bcd.ai, 120 + 2 * 10, `20,000 points on ship 3 adds 0x20/3 = 10 per record (got ${obs.bcd.ai - 120})`);
+      assert.equal(obs.zero.ai, (120 + 2 * 0xffff) % 256, `a ship number of 0 adds 0xFFFF as a byte (got ${obs.zero.ai})`);
+    },
+    // Divide by the craft left instead of the ship number (the pre-slice-21 port): 0x20 / 1 = 32, capped to 16.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let hit = 0;
+      for (const b of Object.values(stage.blocks)) {
+        if (!b || b.opcode !== 'operator_divide') continue;
+        const num2 = b.inputs.NUM2;
+        if (Array.isArray(num2) && Array.isArray(num2[1]) && num2[1][0] === 12 && num2[1][2] === 'difficulty-ship-number') {
+          num2[1] = [12, 'craft', 'eco-craft'];
+          hit += 1;
+        }
+      }
+      if (hit !== 1) throw new Error(`ship-number-divisor negative: expected one divide by ship number, found ${hit}`);
+    },
+  },
+  {
+    // DIF-02 (slice 21): `solvalou_number` is 1 at the game start (main 444), one more as each death's pause ends
+    // (finish_solvalou_exploding 2086), and a 2P start copies player 1's fresh 1 to player 2 (456-460).
+    key: 'ship-number-lifecycle',
+    behavior:
+      'DIF-02.ship-divisor: the ship number starts at 1, counts up by one as a death pause ends, and a two-player '
+      + 'start gives both players ship number 1',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const atStart = Number(readVar(vm, 'difficulty-ship-number'));
+      writeVar(vm, 'invuln', 0);
+      writeVar(vm, 'eco-craft', 3);
+      const epoch0 = epoch(vm);
+      seedCraftHit(vm);
+      const respawned = stepUntil(vm, (v) => epoch(v) > epoch0 && state(v) === 'playing');
+      const afterDeath = Number(readVar(vm, 'difficulty-ship-number'));
+      const vm2 = await loadArtifact();
+      assert.ok(reachPlaying2P(vm2), 'precondition: a two-player game reaches playing');
+      return {
+        atStart,
+        respawned,
+        afterDeath,
+        p1: Number(readVar(vm2, 'difficulty-ship-number')),
+        p2: Number(readVar(vm2, 'other-ship-number')),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.atStart, 1, 'the first craft is ship number 1');
+      assert.ok(obs.respawned, 'the death respawns');
+      assert.equal(obs.afterDeath, 2, 'the next craft is ship number 2');
+      assert.deepEqual([obs.p1, obs.p2], [1, 1], 'a two-player start gives both players ship number 1');
+    },
+    // Pin every `ship number` write to 1: the count never goes up, so the next craft still reads 1.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'ship number', 1),
+  },
+  {
     key: 'toroid-wave-spawns-and-moves',
     behavior:
       'The formation spawner fills flying slots with live Toroids that then move under their own velocity each tick, drawn by six persistent clones',
@@ -9324,16 +9431,16 @@ export const SCENARIOS = [
   },
   {
     // CAB-03 (cabinet.two-player, slice 18): the `swap players` primitive — the port's
-    // swap_curr_other_player (xevious_main 671-679). It exchanges every one of the 14 persistent
+    // swap_curr_other_player (xevious_main 671-679). It exchanges every one of the 15 persistent
     // per-player fields between the current player's live vars and the inactive player's `other <x>`
     // shadow, and touches nothing else. This commit installs the proc with no trigger yet; the
     // alternation that calls it (and its CAB-03 acceptance evidence) arrive in a later commit.
     key: 'player-context-swap',
     behavior:
-      '`swap players` exchanges all 14 persistent per-player fields (score, craft, next bonus, area, ai level, ground-stop row, 8 fire masks) with the inactive-player shadow and leaves the shared RNG seed untouched',
+      '`swap players` exchanges all 15 persistent per-player fields (score, craft, next bonus, area, ai level, ship number, ground-stop row, 8 fire masks) with the inactive-player shadow and leaves the shared RNG seed untouched',
     playtestStep: 1,
     async drive(vm) {
-      // The 14 persistent per-player fields as (live id, shadow id) pairs — the same set the
+      // The 15 persistent per-player fields as (live id, shadow id) pairs — the same set the
       // generator derives from PLAYER_CONTEXT_FIELDS. Seed each live var and its `other <x>` shadow to
       // DISJOINT sentinel ranges (live = 100+i, shadow = 200+i) so that a field left un-swapped, or one
       // whose value leaks in from a different field, is caught by that field's exact assertion. If a
@@ -9345,6 +9452,7 @@ export const SCENARIOS = [
         ['eco-next-bonus', 'other-next-bonus'],
         ['area-number', 'other-area-number'],
         ['difficulty-ai-level', 'other-ai-level'],
+        ['difficulty-ship-number', 'other-ship-number'],
         ['ground-stop-firing-row', 'other-ground-stop-firing-row'],
         ['fire-mask-derota', 'other-fire-mask-derota'],
         ['fire-mask-logram', 'other-fire-mask-logram'],

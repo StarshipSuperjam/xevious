@@ -1387,6 +1387,11 @@
       "name": "difficulty increment",
       "scope": "Stage"
     },
+    "difficulty-ship-number": {
+      "kind": "variable",
+      "name": "ship number",
+      "scope": "Stage"
+    },
     "domogram-frame-ord": {
       "kind": "list",
       "name": "domogram frame ord",
@@ -1755,6 +1760,11 @@
     "other-score": {
       "kind": "variable",
       "name": "other score",
+      "scope": "Stage"
+    },
+    "other-ship-number": {
+      "kind": "variable",
+      "name": "other ship number",
       "scope": "Stage"
     },
     "pending-object-slot": {

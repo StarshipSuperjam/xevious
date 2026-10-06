@@ -1448,6 +1448,8 @@ class ScratchProjectTests(unittest.TestCase):
         # is machinery, above.
         difficulty_state_names = {
             "ai level",
+            # DIF-02 (slice 21): the per-player craft-in-play count the score re-tune divides by.
+            "ship number",
             "formation count",
             "formation type offset",
             # DIF-03 per-family fire-permission masks + the ground-stop-firing row.
@@ -1914,6 +1916,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.SCHEDULE_FIRED_ID,
             # DIF-01/FORM-01/DIF-03 difficulty-director state: Stage-only-written.
             director.AI_LEVEL_ID,
+            director.SHIP_NUMBER_ID,
             director.FORMATION_COUNT_ID,
             director.FORMATION_TYPE_OFFSET_ID,
             director.GROUND_STOP_FIRING_ROW_ID,
@@ -16219,6 +16222,122 @@ class ScratchProjectTests(unittest.TestCase):
                 mutate(project)
                 self.assertIn(expected, self._forest_wait_failures(project))
 
+    @staticmethod
+    def _ship_number_failures(project: dict) -> set:
+        """DIF-02.ship-divisor (slice 21): the score re-tune divides by the per-player `ship number` (the arcade's
+        `solvalou_number`), which is 1 at the game start (main 444), one more, as a byte, when the death window
+        ends (2086), swapped with the other player, and never the craft left."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def var_id(inp):
+            return inp[1][2] if isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], list) and len(inp[1]) > 2 else None
+
+        def reporter(inp):
+            return blocks.get(inp[1]) if isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], str) else None
+
+        def sets_of(var):
+            return [
+                (bid, b) for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var
+            ]
+
+        def enclosing_if(bid):
+            # The control_if whose SUBSTACK chain holds `bid` (parent pointers run back through the siblings).
+            cur = bid
+            while cur:
+                parent = blocks[cur].get("parent")
+                if parent and blocks[parent]["opcode"] in ("control_if", "control_if_else") and cur in (
+                    (blocks[parent]["inputs"].get("SUBSTACK") or [None, None])[1],
+                    (blocks[parent]["inputs"].get("SUBSTACK2") or [None, None])[1],
+                ):
+                    return parent
+                cur = parent
+            return None
+
+        # (1) the count: `ship number` = (ship number + 1) mod 256, inside the `dying tick > 43` window end.
+        counted = False
+        for bid, b in sets_of(director.SHIP_NUMBER_ID):
+            mod = reporter(b["inputs"].get("VALUE"))
+            add = reporter(mod["inputs"].get("NUM1")) if mod and mod["opcode"] == "operator_mod" else None
+            if not (
+                add and add["opcode"] == "operator_add"
+                and var_id(add["inputs"].get("NUM1")) == director.SHIP_NUMBER_ID
+                and _num_operand(add["inputs"].get("NUM2")) == 1
+                and _num_operand(mod["inputs"].get("NUM2")) == director.SHIP_NUMBER_WRAP == 256
+            ):
+                continue
+            gate = enclosing_if(bid)
+            cond = reporter(blocks[gate]["inputs"].get("CONDITION")) if gate else None
+            if (
+                cond and cond["opcode"] == "operator_gt"
+                and var_id(cond["inputs"].get("OPERAND1")) == director.DYING_TICK_ID
+                and _num_operand(cond["inputs"].get("OPERAND2")) == director.DYING_WINDOW_TICKS - 1
+            ):
+                counted = True
+        if not counted:
+            failures.add("ship-number-counts-at-window-end")
+        # (2) the start: the new-game reset sets it to 1.
+        if not any(_num_operand(b["inputs"].get("VALUE")) == 1 for _bid, b in sets_of(director.SHIP_NUMBER_ID)):
+            failures.add("ship-number-starts-at-1")
+        # (3) the divisor: the re-tune divides by `ship number`, and nothing on the Stage divides by the craft left.
+        divisors = [
+            var_id(b["inputs"].get("NUM2")) for b in blocks.values()
+            if isinstance(b, dict) and b.get("opcode") == "operator_divide"
+        ]
+        if divisors.count(director.SHIP_NUMBER_ID) != 1 or director.LIVES_ID in divisors:
+            failures.add("ship-number-divides")
+        # (4) per player: `ship number` is one of the swapped fields.
+        if ("ship number", director.SHIP_NUMBER_ID, "other ship number", "other-ship-number") not in director.PLAYER_CONTEXT_FIELDS:
+            failures.add("ship-number-per-player")
+        return failures
+
+    def test_ship_number_divisor(self) -> None:
+        self.assertEqual(set(), self._ship_number_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_ship_number_divisor_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ship_number_failures(base))
+
+        def stage_blocks(p):
+            return next(t for t in p["targets"] if t["isStage"])["blocks"]
+
+        def ship_sets(p):
+            return [
+                b for b in stage_blocks(p).values()
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto"
+                and b["fields"]["VARIABLE"][1] == director.SHIP_NUMBER_ID
+            ]
+
+        def never_counts(p):
+            # The window end writes a literal 1 instead of counting up.
+            for b in ship_sets(p):
+                if isinstance(b["inputs"]["VALUE"][1], str):
+                    b["inputs"]["VALUE"] = [1, [10, "1"]]
+
+        def starts_at_0(p):
+            for b in ship_sets(p):
+                if _num_operand(b["inputs"]["VALUE"]) == 1:
+                    b["inputs"]["VALUE"] = [1, [10, "0"]]
+
+        def divides_by_craft(p):
+            for b in stage_blocks(p).values():
+                if isinstance(b, dict) and b.get("opcode") == "operator_divide":
+                    num2 = b["inputs"].get("NUM2")
+                    if isinstance(num2, list) and isinstance(num2[1], list) and num2[1][2:3] == [director.SHIP_NUMBER_ID]:
+                        num2[1] = [12, "craft", director.LIVES_ID]
+
+        for expected, mutate in (
+            ("ship-number-counts-at-window-end", never_counts),
+            ("ship-number-starts-at-1", starts_at_0),
+            ("ship-number-divides", divides_by_craft),
+        ):
+            with self.subTest(expected=expected, mutate=mutate.__name__):
+                project = copy.deepcopy(base)
+                mutate(project)
+                self.assertIn(expected, self._ship_number_failures(project))
+
     def test_death_decision_is_lives_driven(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._ply02_failures(project))
@@ -16341,7 +16460,7 @@ class ScratchProjectTests(unittest.TestCase):
         def break_decision(p):
             # Target the DEATH-decision `craft > threshold` specifically — the operator_gt that is the
             # CONDITION of the control_if_else (as _ply02_failures identifies it), not any other craft
-            # comparison on the Stage (e.g. DIF-02's `craft > 0` re-tune guard).
+            # comparison on the Stage (e.g. DIF-02's `ship number = 0` re-tune branch).
             s = next(t for t in p["targets"] if t["isStage"])
             blocks = s["blocks"]
             decision = next(
@@ -21802,7 +21921,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "61d7062ce8330ba08371486409dc9aa08536871d531b64df3bac665660eec3f9",
+            "e8a99d55f42d15b9a6c7c354453c83b986ce383cd85f26f64cc4b5b0f763e37a",
             build_hash,
         )
 

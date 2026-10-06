@@ -705,6 +705,16 @@ FORMATION_COUNT_ID = "formation-count"
 FORMATION_TYPE_OFFSET_ID = "formation-type-offset"
 FORMATION_INDEX_ID = "formation-index"  # transient lookup index (machinery)
 AI_ADJUST_ID = "difficulty-ai-adjust"  # DIF-02 transient score re-tune addend (machinery)
+# DIF-02 (slice 21, difficulty.ship-number-divisor): the arcade's per-player `solvalou_number` (xevious_ram 176,
+# inside the swapped 64-byte block) — the craft in play, counted from 1 at the game start (main 444) and up by one
+# as each death's pause ends (finish_solvalou_exploding 2086). A byte, so it wraps at 256. The score re-tune
+# divides by it (not by the craft left). Difficulty-director state: Stage-written, write-forbidden.
+SHIP_NUMBER_ID = "difficulty-ship-number"
+SHIP_NUMBER_WRAP = 0x100  # `solvalou_number` is a byte (addq.b)
+AI_LEVEL_WRAP = 0x100  # `enemy_AI_level` is a byte: the raise and the re-tune both `add.b` (sub 324, 352)
+AI_ADJUST_CAP = 16  # the re-tune's limit (sub 349-351: `cmp.w #16,d1; jle`)
+AI_ADJUST_SIGNED_ESCAPE = 0x8000  # a quotient >= 0x8000 is negative to the SIGNED `jle`, so it escapes the cap
+AI_ADJUST_ZERO_DIVISOR = 0xFFFF  # avg_score_per_solvalou (sub 360-372) yields 0xFFFF for a divisor of 0
 SCHEDULE_ARG_ID = "area-schedule-arg"  # 4th parallel schedule column (runtime scalar)
 # GND dispatch: an add_ground_object record needs THREE runtime scalars the single `schedule arg`
 # column cannot carry, so they ride three more parallel schedule columns — object type (the ground
@@ -1436,11 +1446,12 @@ RANK_CURSOR_ID = "cabinet-rank-cursor"
 # xevious_main 671-679). The port keeps the CURRENT player in the existing live vars and one `other <x>`
 # shadow per persistent per-player field holding the INACTIVE player's saved value. `swap players` exchanges
 # every pair on each craft-death alternation; `copy players` seeds `other` from the current player at a 2P
-# start (coined_up 454-460). The set is the 14 persistent fields the arcade swaps — score, craft, next bonus,
-# area number, ai level, ground-stop-firing row, and the 8 fire masks — verified complete against the arcade
-# block by the reference-fidelity pass (2026-09-30): the block's `solvalou_number` and `bonus_life_none` have
-# NO distinct port variable (the score-adaptive AI divides score/craft, both swapped; "bonuses off" is the
-# BONUS_DISABLED sentinel inside `next bonus`, swapped), so no per-player field leaks. The derived position/
+# start (coined_up 454-460). The set is the 15 persistent fields the arcade swaps — score, craft, next bonus,
+# area number, ai level, ship number, ground-stop-firing row, and the 8 fire masks — verified complete against
+# the arcade block by the reference-fidelity pass (2026-09-30): the block's `bonus_life_none` has NO distinct
+# port variable ("bonuses off" is the BONUS_DISABLED sentinel inside `next bonus`, swapped), so no per-player
+# field leaks. `solvalou_number` joined as `ship number` in slice 21, when the score re-tune stopped dividing by
+# the craft left and took the arcade's divisor. The derived position/
 # schedule fields (area progress, scroll row, terrain column, schedule cursor/fired) are NOT swapped — they
 # are rebuilt from `area number` by `_enter_area_top` on the incoming player's re-top. Each shadow is durable
 # per-player state the HUD may READ (the 2UP score row reads `other score`) but no sprite writes
@@ -1452,6 +1463,7 @@ PLAYER_CONTEXT_FIELDS = [
     ("next bonus", NEXT_BONUS_ID, "other next bonus", "other-next-bonus"),
     ("area number", AREA_NUMBER_ID, "other area number", "other-area-number"),
     ("ai level", AI_LEVEL_ID, "other ai level", "other-ai-level"),
+    ("ship number", SHIP_NUMBER_ID, "other ship number", "other-ship-number"),
     (
         "ground stop firing row",
         GROUND_STOP_FIRING_ROW_ID,
@@ -9437,10 +9449,15 @@ def _select_formation(blocks: Blocks, index_value: Any) -> list[str]:
     # `item N of list` returns "" (not 0) for N outside 1..len, silently poisoning arithmetic, so
     # the assignment is GUARDED on BOTH bounds: an out-of-domain index leaves the prior formation
     # unchanged (no faithful ROM-adjacent value exists to fabricate). The build-time fixture in
-    # tests/test_spec_docs.py proves the real committed schedules never leave the domain under this
-    # slice's full dynamics (raises, set-formation, AND DIF-02's un-folded score adjust at its
-    # worst-case cap), so the guard is a defensive dead branch; a future schedule/DIP change that
-    # broke that margin would redden that fixture, not fail silently here.
+    # tests/test_spec_docs.py proves the real committed schedules never leave the domain under the
+    # full dynamics (raises, set-formation, AND DIF-02's un-folded score adjust at its cap), so in
+    # play the guard is a dead branch; a future schedule/DIP change that broke that margin would
+    # redden that fixture, not fail silently here. The one way past it is DIF-02's uncapped escape
+    # (a quotient of 0x8000 or more, from 8,000,000 points on ship number 1, or a ship number wrapped to 0
+    # after 255 craft): the byte-wrapped level can then fold to 0x80-0xBF, where the arcade reads on past the
+    # normal table into the 64 entries stored after it (the super table's lead-in and first entries,
+    # xevious_sub.68k 451-459). The extracted table (formations.json) stops at 127, so there the guard
+    # keeping the prior formation is a port necessity (record 056 item 4).
     if isinstance(index_value, str):
         set_index = blocks.set_var_expr("formation index", FORMATION_INDEX_ID, index_value)
     else:
@@ -10136,18 +10153,23 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop]
 
     # DIF-01 raise: add the cabinet increment to the AI level, fold back once at >= 0x80, then
-    # re-select the formation using the new AI level as the table index (no record offset).
+    # re-select the formation using the new AI level as the table index (no record offset). The add is a
+    # byte add (`add.b`, sub 324), so it wraps at 256 before the fold test (slice 21: a re-tune can leave the
+    # level anywhere in the byte).
     raise_body = [
         blocks.set_var_expr(
             "ai level",
             AI_LEVEL_ID,
-            blocks.op_add(
-                variable("ai level", AI_LEVEL_ID),
-                blocks.list_item(
-                    "difficulty increment",
-                    DIFFICULTY_INCREMENT_ID,
-                    number(DIFFICULTY_DIP_INDEX + 1),
+            blocks.op_mod(
+                blocks.op_add(
+                    variable("ai level", AI_LEVEL_ID),
+                    blocks.list_item(
+                        "difficulty increment",
+                        DIFFICULTY_INCREMENT_ID,
+                        number(DIFFICULTY_DIP_INDEX + 1),
+                    ),
                 ),
+                number(AI_LEVEL_WRAP),
             ),
         ),
         blocks.if_reporter(
@@ -10159,41 +10181,70 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     raise_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(RAISE_HANDLER)), raise_body
     )
-    # DIF-02 score re-tune: add floor(floor(score / 1000) / craft), capped at 16, to the AI level —
-    # so a player scoring heavily with craft in reserve meets sharper pressure. Guarded on craft > 0
-    # (no divide-by-zero). Unlike the raise, the reference does NOT fold this add back.
+    # DIF-02 score re-tune (sub_2_fn_23__adjust_AI_level_based_on_score, sub 344-353): divide the score's
+    # thousands by the ship number and add the quotient, capped at 16, to the AI level — so a player scoring
+    # heavily per craft spent meets sharper pressure. Faithful to the arcade arithmetic:
+    # - the dividend is the BCD thousands word read as binary (`move.w (curr_player_score_msb),d1`): the four
+    #   decimal digits of floor(score / 1000) become hex digits, so 20,000 points divide as 0x20 = 32;
+    # - avg_score_per_solvalou (360-372) gives floor(dividend / ship number), and 0xFFFF for a ship number of 0;
+    # - the cap is a SIGNED word compare (`cmp.w #16; jle`), so a quotient of 0x8000 or more passes uncapped;
+    # - the add is a byte add (`add.b`), so the level wraps at 256, and the re-tune does NOT fold.
+    def thousands_digit(place: int) -> str:
+        return blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("score", SCORE_ID), number(1000 * place))),
+            number(10),
+        )
+
+    bcd_thousands = blocks.op_add(
+        blocks.op_add(thousands_digit(1), blocks.op_mul(thousands_digit(10), number(0x10))),
+        blocks.op_add(
+            blocks.op_mul(thousands_digit(100), number(0x100)),
+            blocks.op_mul(thousands_digit(1000), number(0x1000)),
+        ),
+    )
+    divide = blocks.add("control_if_else")
+    zero_divisor = blocks.op_eq(variable("ship number", SHIP_NUMBER_ID), number(0))
+    blocks.blocks[divide]["inputs"]["CONDITION"] = [2, zero_divisor]
+    blocks.blocks[zero_divisor]["parent"] = divide
+    blocks.substack(divide, [blocks.set_var("ai adjust", AI_ADJUST_ID, number(AI_ADJUST_ZERO_DIVISOR))])
+    blocks.substack(
+        divide,
+        [
+            blocks.set_var_expr(
+                "ai adjust",
+                AI_ADJUST_ID,
+                blocks.op_floor(
+                    blocks.op_div(
+                        variable("ai adjust", AI_ADJUST_ID), variable("ship number", SHIP_NUMBER_ID)
+                    )
+                ),
+            )
+        ],
+        name="SUBSTACK2",
+    )
     adjust_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(ADJUST_HANDLER)),
         [
+            blocks.set_var_expr("ai adjust", AI_ADJUST_ID, bcd_thousands),
+            divide,
             blocks.if_reporter(
-                blocks.op_gt(variable("craft", LIVES_ID), number(0)),
-                [
-                    blocks.set_var_expr(
-                        "ai adjust",
-                        AI_ADJUST_ID,
-                        blocks.op_floor(
-                            blocks.op_div(
-                                blocks.op_floor(
-                                    blocks.op_div(variable("score", SCORE_ID), number(1000))
-                                ),
-                                variable("craft", LIVES_ID),
-                            )
-                        ),
+                blocks.op_and(
+                    blocks.op_gt(variable("ai adjust", AI_ADJUST_ID), number(AI_ADJUST_CAP)),
+                    blocks.op_lt(variable("ai adjust", AI_ADJUST_ID), number(AI_ADJUST_SIGNED_ESCAPE)),
+                ),
+                [blocks.set_var("ai adjust", AI_ADJUST_ID, number(AI_ADJUST_CAP))],
+            ),
+            blocks.set_var_expr(
+                "ai level",
+                AI_LEVEL_ID,
+                blocks.op_mod(
+                    blocks.op_add(
+                        variable("ai level", AI_LEVEL_ID),
+                        variable("ai adjust", AI_ADJUST_ID),
                     ),
-                    blocks.if_reporter(
-                        blocks.op_gt(variable("ai adjust", AI_ADJUST_ID), number(16)),
-                        [blocks.set_var("ai adjust", AI_ADJUST_ID, number(16))],
-                    ),
-                    blocks.set_var_expr(
-                        "ai level",
-                        AI_LEVEL_ID,
-                        blocks.op_add(
-                            variable("ai level", AI_LEVEL_ID),
-                            variable("ai adjust", AI_ADJUST_ID),
-                        ),
-                    ),
-                ],
-            )
+                    number(AI_LEVEL_WRAP),
+                ),
+            ),
         ],
     )
     # FORM-01 set-formation: the record's signed offset IS the table index (no AI level added).
@@ -10742,9 +10793,9 @@ def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
 
 def install_swap_players(blocks: Blocks) -> None:
     # CAB-03 (cabinet.two-player, slice 18): exchange the current and inactive players' saved state — the
-    # port's `swap_curr_other_player` (xevious_main 671-679). For each of the 14 persistent per-player fields
+    # port's `swap_curr_other_player` (xevious_main 671-679). For each of the 15 persistent per-player fields
     # (PLAYER_CONTEXT_FIELDS), swap the live var with its `other <x>` shadow through the single `swap tmp`
-    # scratch register (custom blocks have no locals). It touches ONLY those 14 pairs — never `rng state`
+    # scratch register (custom blocks have no locals). It touches ONLY those 15 pairs — never `rng state`
     # (shared/global), never any director/machinery var — so a 2P game stays deterministic from one shared
     # RNG stream. Called by the alternation path on each craft death (C3); defined here with no trigger yet.
     definition = _install_warp_proc(blocks, SWAP_PLAYERS_PROCCODE)
@@ -10763,7 +10814,7 @@ def install_swap_players(blocks: Blocks) -> None:
 def install_copy_players(blocks: Blocks) -> None:
     # CAB-03 (cabinet.two-player, slice 18): seed the inactive player's saved state from the current player —
     # the port's `coined_up` P2 seed (xevious_main 454-460), where a 2P start copies the freshly-built P1
-    # block into the other-player block so P2 begins identical-fresh. Copies the same 14 persistent fields
+    # block into the other-player block so P2 begins identical-fresh. Copies the same 15 persistent fields
     # current -> other; never touches `rng state` or any shared/director var. Called on a 2P start (C2);
     # defined here with no trigger yet.
     definition = _install_warp_proc(blocks, COPY_PLAYERS_PROCCODE)
@@ -11669,7 +11720,21 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.send("death draw"),
             blocks.if_reporter(
                 blocks.op_gt(variable("dying tick", DYING_TICK_ID), number(DYING_WINDOW_TICKS - 1)),
-                [real_or_demo],
+                [
+                    # DIF-02 (slice 21): the next craft's number, counted as the pause ends (`addq.b #1,
+                    # (solvalou_number)`, 2086), a byte that wraps. A demo counts too, as the arcade's does,
+                    # but every demo and game start resets it to 1, so a demo's count is never read (record 056
+                    # deviation 8: the arcade's demo keeps the last game's count and score).
+                    blocks.set_var_expr(
+                        "ship number",
+                        SHIP_NUMBER_ID,
+                        blocks.op_mod(
+                            blocks.op_add(variable("ship number", SHIP_NUMBER_ID), number(1)),
+                            number(SHIP_NUMBER_WRAP),
+                        ),
+                    ),
+                    real_or_demo,
+                ],
             ),
         ],
     )
@@ -11895,6 +11960,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                 ("cold-start", "new-game"),
                 [
                     blocks.set_var("ai level", AI_LEVEL_ID, number(0)),
+                    # DIF-02 (slice 21): the first craft is number 1 (main 444); a 2P start's `copy players`,
+                    # after this reset, gives player 2 the same 1 (456-460).
+                    blocks.set_var("ship number", SHIP_NUMBER_ID, number(1)),
                     blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
                     blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
                     blocks.set_var("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, number(0)),
@@ -16440,10 +16508,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_TYPE_OFFSET_ID,
         FORMATION_INDEX_ID,
         AI_ADJUST_ID,
+        SHIP_NUMBER_ID,
         GROUND_STOP_FIRING_ROW_ID,
         *(mask_id for _suffix, _name, mask_id in FIRE_MASK_FAMILIES),
         # CAB-03 (cabinet.two-player, slice 18): the active-player index and two-player flag (director state,
-        # write-forbidden), the swap scratch register (machinery), and the 14 `other <x>` per-player shadows.
+        # write-forbidden), the swap scratch register (machinery), and the 15 `other <x>` per-player shadows.
         CURR_PLAYER_ID,
         TWO_PLAYER_ID,
         SWAP_TMP_ID,
@@ -16642,6 +16711,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_INDEX_ID: ["formation index", 0],
         # DIF-02 transient score re-tune addend (machinery, like `formation index`).
         AI_ADJUST_ID: ["ai adjust", 0],
+        # DIF-02 (slice 21): the craft-in-play counter; every game and demo start resets it to 1.
+        SHIP_NUMBER_ID: ["ship number", 1],
         # DIF-03 per-family fire-permission masks + the ground-stop-firing row (difficulty-director
         # state, Stage-written, sprite-read, write-forbidden). Set by the schedule; consumed by the
         # enemy slices (8+). All reset to 0 on a world reset, alongside the AI level and formation.
@@ -16650,7 +16721,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # CAB-03 (cabinet.two-player, slice 18): the active-player index (0/1) and the two-player-game flag
         # (0/1) — director-control state, sprite-read, write-forbidden. Both default 0 (player one, one-player
         # game), reset only on a world reset (cold-start forces P1/1P). `swap tmp` is `swap players`'s scratch
-        # register (machinery). The 14 `other <x>` shadows hold the inactive player's saved state, all default
+        # register (machinery). The 15 `other <x>` shadows hold the inactive player's saved state, all default
         # 0 (untouched until a 2P game seeds `other` via `copy players`). They persist across death/respawn.
         CURR_PLAYER_ID: ["curr player", 0],
         TWO_PLAYER_ID: ["two player", 0],
