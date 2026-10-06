@@ -52,7 +52,8 @@
   `control_repeat_until` the timer passes `BACURA_BOUNCE_FRAMES − 1` steps the timer by `TICK_TIMER_STEP` (two
   arcade frames a tick); past the arm it moves the shot's depth by `BACURA_BOUNCE_DY` (−3.75 a tick) and draws
   rebound frame `floor(timer / 2)` — TIMER 1, 3, 5 and 7, the mirrored frames — then falls through to the shared
-  free+delete. So the rebound is four ticks, as long as the arcade's eight frames (slice 21,
+  free+delete. So the rebound is four ticks, as long as the arcade's eight frames, drawn from the rendered
+  0x118–0x11B burst (`AIR-11.bounce-burst`, the Bacura family's shot interaction; slice 21,
   [record 056](056-release-fidelity.md) item 9). Top-expiry (state still
   `SLOT_ACTIVE`) and air-kill spend (`SHOT_SPENT`) skip the branch and delete at once, exactly as before.
 - Scratch evidence: `install_check_shot_bacura` (the warp detector), its call in `install_update_bacura`'s
