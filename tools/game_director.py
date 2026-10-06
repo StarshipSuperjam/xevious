@@ -45,6 +45,9 @@ RETIRED_PLAYTEST_KEY_VARIABLE_IDS = (
     "debug-paused",
     "debug-pause-key-held",
 )
+# The title logo/sparkle clones' own tick counter, retired in slice 21 when the Stage `title tick` clock took over
+# (the clones only read that). Generation preserves unknown sprite variables, so it is dropped by name (idempotent).
+RETIRED_ATTRACT_TICK_ID = "attract-display-tick"
 # Weapon state cleared by the reset scopes (never director `game state`). The bomb
 # guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
 # run on different threads — share it; the reload counter is blaster-local.
@@ -17195,7 +17198,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # CAB-01: all attract-display state is sprite-local to start_screen (never a Stage
             # variable) — the role snapshotted into each clone at creation, the digit's place, and
             # the cached 10^place divisor. The clones only READ `credits`/`game state`.
-            target["variables"] = target["variables"] | {
+            target["variables"] = {
+                var_id: value
+                for var_id, value in target["variables"].items()
+                if var_id != RETIRED_ATTRACT_TICK_ID
+            } | {
                 ATTRACT_DISPLAY_ROLE_ID: ["attract role", 0],
                 ATTRACT_DISPLAY_PLACE_ID: ["attract place", 0],
                 ATTRACT_DISPLAY_DIVISOR_ID: ["attract divisor", 1],
@@ -17203,7 +17210,6 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 # and a name cell's per-tick cached letter (read once, then tested/rendered from the cache).
                 ATTRACT_DISPLAY_ROW_ID: ["attract row", 0],
                 ATTRACT_DISPLAY_CHAR_ID: ["attract char", ""],
-                # Slice 21: a title logo/sparkle clone's ticks since the title began.
             }
         elif target["name"] == "hud":
             # ECO-02: all HUD state is sprite-local (never a Stage variable) — the role

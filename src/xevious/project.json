@@ -210129,10 +210129,6 @@
         "attract-display-char": [
           "attract char",
           ""
-        ],
-        "attract-display-tick": [
-          "attract tick",
-          0
         ]
       },
       "lists": {},

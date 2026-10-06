@@ -1143,11 +1143,6 @@
       "name": "attract row",
       "scope": "start_screen"
     },
-    "attract-display-tick": {
-      "kind": "variable",
-      "name": "attract tick",
-      "scope": "start_screen"
-    },
     "audio-andor-drone-timer": {
       "kind": "variable",
       "name": "andor drone timer",

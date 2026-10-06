@@ -404,10 +404,21 @@ class ReleaseCatalogAudit(unittest.TestCase):
 # starts, B bombs, C inserts a coin (docs/spec/core-game-systems.md, control mapping).
 SHIPPED_KEYS = {"left arrow", "right arrow", "up arrow", "down arrow", "space", "b", "c"}
 INVULN = "invuln"
+# The game is played on the keyboard alone: no click hat, mouse read or typed-answer prompt ships.
+POINTER_AND_PROMPT_OPCODES = {
+    "event_whenthisspriteclicked",
+    "event_whenstageclicked",
+    "sensing_mousedown",
+    "sensing_mousex",
+    "sensing_mousey",
+    "sensing_askandwait",
+    "sensing_answer",
+}
 
 
 def debug_control_failures(project: dict) -> set[str]:
-    """Every way a development control could survive into the build: a key read outside the control mapping, a
+    """Every way a development control could survive into the build: a key read outside the control mapping or a
+    key read whose key is computed (so no menu names it), a click hat, a mouse read or a typed-answer prompt, a
     variable, list, broadcast or custom block named for debugging, or any block that sets the harness-only
     invulnerability hook (the game never sets it, so no key or control can reach it)."""
     failures = set()
@@ -418,7 +429,8 @@ def debug_control_failures(project: dict) -> set[str]:
                 label = value[0] if isinstance(value, list) else value
                 if "debug" in str(label).lower():
                     failures.add(f"debug-{kind}:{name}:{label}")
-        for block in target["blocks"].values():
+        blocks = target["blocks"]
+        for block in blocks.values():
             if not isinstance(block, dict):
                 continue
             opcode = block.get("opcode")
@@ -426,6 +438,17 @@ def debug_control_failures(project: dict) -> set[str]:
                 key = block["fields"]["KEY_OPTION"][0]
                 if key not in SHIPPED_KEYS:
                     failures.add(f"key:{name}:{key}")
+            elif opcode == "sensing_keypressed":
+                # The key must be the plain menu shadow; a reporter dropped over it (input type 3) could name any
+                # key at run time, and the menu check above would never see it.
+                key_input = block["inputs"].get("KEY_OPTION")
+                menu = blocks.get(key_input[1]) if key_input and isinstance(key_input[1], str) else None
+                if key_input is None or key_input[0] != 1 or not (
+                    isinstance(menu, dict) and menu.get("opcode") == "sensing_keyoptions"
+                ):
+                    failures.add(f"computed-key:{name}")
+            elif opcode in POINTER_AND_PROMPT_OPCODES:
+                failures.add(f"pointer:{name}:{opcode}")
             elif opcode == "procedures_prototype" and "debug" in block["mutation"]["proccode"].lower():
                 failures.add(f"debug-proc:{name}:{block['mutation']['proccode']}")
             elif opcode in ("data_setvariableto", "data_changevariableby"):
@@ -479,10 +502,106 @@ class ReleaseNoDebugControls(unittest.TestCase):
                                           "inputs": {}, "next": None, "parent": None, "shadow": False,
                                           "topLevel": True}
 
+        def computed_key(stage):
+            stage["blocks"]["neg-reporter"] = {"opcode": "data_variable", "fields": {}, "inputs": {}, "next": None,
+                                               "parent": "neg-pressed", "shadow": False, "topLevel": False}
+            stage["blocks"]["neg-menu"] = {"opcode": "sensing_keyoptions", "fields": {"KEY_OPTION": ["space", None]},
+                                           "inputs": {}, "next": None, "parent": "neg-pressed", "shadow": True,
+                                           "topLevel": False}
+            stage["blocks"]["neg-pressed"] = {"opcode": "sensing_keypressed",
+                                              "inputs": {"KEY_OPTION": [3, "neg-reporter", "neg-menu"]},
+                                              "fields": {}, "next": None, "parent": None, "shadow": False,
+                                              "topLevel": True}
+
+        def click_hat(stage):
+            stage["blocks"]["neg-click"] = {"opcode": "event_whenstageclicked", "fields": {}, "inputs": {},
+                                            "next": None, "parent": None, "shadow": False, "topLevel": True}
+
         self.assertIn("key:Stage:t", corrupt(key_t))
+        self.assertIn("computed-key:Stage", corrupt(computed_key))
+        self.assertIn("pointer:Stage:event_whenstageclicked", corrupt(click_hat))
         self.assertIn("debug-variables:Stage:debug spawn index", corrupt(debug_var))
         self.assertIn("debug-proc:Stage:debug pause toggle", corrupt(debug_proc))
         self.assertIn("invuln-written:Stage", corrupt(set_invuln))
+
+
+# The lists the build ships on purpose although no block reads them, each with its reason. Anything else no block
+# names is left over from a retired mechanic (generation keeps variables it does not recognise).
+UNREAD_DATA_TABLES = {
+    # ECO-03: the five-craft bonus tables, carried beside the three-craft ones the port's fixed lives setting reads,
+    # so the whole arcade table ships (scores.json).
+    "eco-first-bonus-5",
+    "eco-repeat-bonus-5",
+    # AREA-02: every schedule record's raw parameters, carried whole so no field of the arcade table is dropped;
+    # the runtime reads the decoded columns.
+    "area-schedule-payload",
+}
+
+
+def _named_ids(node, out: set[str]) -> None:
+    """Collect every variable or list id a block names: in a VARIABLE/LIST field, or a compact [12|13, name, id]
+    reporter in an input."""
+    if isinstance(node, dict):
+        for value in node.values():
+            _named_ids(value, out)
+    elif isinstance(node, list):
+        if len(node) >= 3 and node[0] in (12, 13) and isinstance(node[2], str):
+            out.add(node[2])
+        for value in node:
+            _named_ids(value, out)
+
+
+def unused_state_failures(project: dict) -> set[str]:
+    named: set[str] = set()
+    for target in project["targets"]:
+        for block in target["blocks"].values():
+            if isinstance(block, dict):
+                _named_ids(block.get("inputs", {}), named)
+                for field in block.get("fields", {}).values():
+                    if isinstance(field, list) and len(field) >= 2 and isinstance(field[1], str):
+                        named.add(field[1])
+            else:
+                _named_ids(block, named)
+    failures = set()
+    shipped = set()
+    for target in project["targets"]:
+        for kind in ("variables", "lists"):
+            for var_id, value in target.get(kind, {}).items():
+                shipped.add(var_id)
+                if var_id not in named and var_id not in UNREAD_DATA_TABLES:
+                    failures.add(f"unused-{kind}:{target['name']}:{value[0]}")
+    for var_id in UNREAD_DATA_TABLES:
+        if var_id not in shipped or var_id in named:
+            failures.add(f"stale-exception:{var_id}")
+    return failures
+
+
+class ReleaseNoUnusedState(unittest.TestCase):
+    """The release review found a title clone counter left in the build after the Stage clock replaced it. Every
+    variable and list the build ships is named by some block, apart from the data tables listed above."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as tmp:
+            built = Path(tmp) / "Xevious.sb3"
+            scratch.build_project(output=built)
+            with zipfile.ZipFile(built) as archive:
+                cls.project = json.loads(archive.read("project.json"))
+
+    def test_every_shipped_variable_is_used(self):
+        self.assertEqual(unused_state_failures(self.project), set())
+
+    def test_unused_state_check_bites(self):
+        project = json.loads(json.dumps(self.project))
+        screen = next(t for t in project["targets"] if t["name"] == "start_screen")
+        screen["variables"]["attract-display-tick"] = ["attract tick", 0]
+        self.assertEqual(unused_state_failures(project), {"unused-variables:start_screen:attract tick"})
+        # A listed table that a block starts to read must leave the exception list.
+        stage = next(t for t in project["targets"] if t["isStage"])
+        stage["blocks"]["neg-read"] = {"opcode": "data_itemoflist", "fields": {"LIST": ["schedule payload",
+                                       "area-schedule-payload"]}, "inputs": {}, "next": None, "parent": None,
+                                       "shadow": False, "topLevel": True}
+        self.assertIn("stale-exception:area-schedule-payload", unused_state_failures(project))
 
 
 if __name__ == "__main__":
