@@ -196,6 +196,27 @@ in the project unreferenced.
 
 The same rights caveat as the terrain and the Andor parts applies.
 
+## Enemy, shot and sparkle sprites rendered from the arcade sprite data
+
+The Giddo Spario's flight and hit frames at its four colours, the Zakato, Brag
+Zakato and Garu Zakato bodies at the pulsing colour, the Zakato self-destruct and
+teleport frames, the Brag Spario, the player's shot and its rebound off a Bacura,
+and the title-screen sparkle (slice 21, `presentation.reference-art`) are decoded
+from the same pinned reference graphics (`assets/amiga/xevious_gfx.c`: the bank-1
+sprite codes, their colour tables and the palette) by
+`tools/reference_art_render.py` into one 400×128 sheet,
+`src/xevious/assets/6092a276a7025f581ff091e182a011dd.png`, on the hidden
+`sprite_sheets` target; `--verify` re-derives it byte-for-byte at the pin. The
+`reference_art` entries in `assets/sprite-extraction/manifest.json` crop the
+frames from it, flip-expanding the Brag Spario, the shot, its rebound and the
+teleport sparkle.
+
+| Output | Description | Credit | Source | License |
+| --- | --- | --- | --- | --- |
+| Reference-art sheet and its Giddo Spario, Zakato body, self-destruct, teleport, Brag Spario, shot, rebound and title-sparkle costumes | Arcade enemy, shot and sparkle sprites at their colour steps and flips | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+
+The same rights caveat as the terrain and the Andor parts applies.
+
 ## Terrain area map (fan map, cross-check only — not used by the build)
 
 Operator-supplied source art, committed earlier for the terrain slice. The build

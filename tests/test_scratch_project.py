@@ -175,6 +175,12 @@ SPRITE_SHEET_HASHES = {
     "Effects": (
         "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c"
     ),
+    # Slice 21 (presentation.reference-art): the remaining enemy, shot and sparkle sprites — Giddo Spario,
+    # the pulsing Zakato bodies, the self-destruct and teleport frames, the Brag Spario, the shot and its
+    # rebound, the title sparkle — decoded from the pin by tools/reference_art_render.py.
+    "Reference Art": (
+        "f08c83fd6d59775ce8533965dcb9d840eadecd7546f62b13dbed939c8a1ea455"
+    ),
 }
 
 
@@ -392,7 +398,10 @@ class ScratchProjectTests(unittest.TestCase):
         # = the slice-20 CAB-05 text re-render at the drawn size (resolution 2, one 20-px column per character):
         # every HUD, attract, banner and credit PNG is replaced one for one; the HUD digits (20-px canvas) stay
         # distinct from the attract digits (18-px composite) and glyph/O still dedups to digit/0. Still 335.
-        self.assertEqual(335, len(assets))
+        # + the slice-21 reference-art sheet (tools/reference_art_render.py) on the sprite_sheets library and
+        # its 123 derivatives on the proof pen (Giddo Spario, the pulsing bodies, the self-destruct, the Brag
+        # Spario, the shot and its rebound, the title sparkle, the teleport sparkle). 335 + 1 + 123 = 459.
+        self.assertEqual(459, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -22344,13 +22353,13 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower", "Effects"):
+            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower", "Effects", "Reference Art"):
                 # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
                 # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
                 # the Andor rip only shows assembled octagons that cannot be sliced into separable
                 # part tiles (BOSS-01), the Sol Tower crops lack the tower's shadow, and the effects rows
-                # (CAB-05) need the reference's own codes at each colour step, so all four are rendered
-                # from the pin.
+                # (CAB-05) and the slice-21 reference art need the reference's own codes at each colour step
+                # and flip, so all five are rendered from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -22385,7 +22394,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "3ef6c889f63d8e250b6c3ad301e41f39d63f54edf84629d904d06651075ebfb7",
+            "19919060447cebfbc55e11a5c35a673a8da068346ea0ac20e592e2337f109515",
             build_hash,
         )
 

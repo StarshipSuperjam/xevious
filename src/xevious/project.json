@@ -331813,6 +331813,1113 @@
           "md5ext": "54c0e58fea28d81ccac081ab38fe4185.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/01/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "15db3612ae50af18a98fb6ae1d04ced1",
+          "md5ext": "15db3612ae50af18a98fb6ae1d04ced1.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/01/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "8ea4fcb60b5ecdfa01023378c0e56226",
+          "md5ext": "8ea4fcb60b5ecdfa01023378c0e56226.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/01/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "0d80e6de5af1bff37d561c7444bd8877",
+          "md5ext": "0d80e6de5af1bff37d561c7444bd8877.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/01/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "73e217c8e088343f5be20adbeaaa79cd",
+          "md5ext": "73e217c8e088343f5be20adbeaaa79cd.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/02/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "da00782a42ed87ef050bdda807e41688",
+          "md5ext": "da00782a42ed87ef050bdda807e41688.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/02/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e20d23e7abfbb7a9a86ee5731cb4980d",
+          "md5ext": "e20d23e7abfbb7a9a86ee5731cb4980d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/02/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f8bf4241d8d2af3b8db6839a0a887932",
+          "md5ext": "f8bf4241d8d2af3b8db6839a0a887932.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/02/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9a9940c06fc827e7ca3edc3211f7aaf3",
+          "md5ext": "9a9940c06fc827e7ca3edc3211f7aaf3.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/03/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "8c8f2a07d818d9fb94d6c6a5519e7781",
+          "md5ext": "8c8f2a07d818d9fb94d6c6a5519e7781.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/03/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e5e521942efff215d2c17c334de27457",
+          "md5ext": "e5e521942efff215d2c17c334de27457.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/03/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "fc5703b7df9c9a1b418d75925fccb53d",
+          "md5ext": "fc5703b7df9c9a1b418d75925fccb53d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/03/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b6967d9e250dddc05ec0a4ffbf3ce0ec",
+          "md5ext": "b6967d9e250dddc05ec0a4ffbf3ce0ec.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/04/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "feaa85b39b756af7aafb2deeca3fe75d",
+          "md5ext": "feaa85b39b756af7aafb2deeca3fe75d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/04/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b84ab55bd8f5e7b8f3ce301203b877de",
+          "md5ext": "b84ab55bd8f5e7b8f3ce301203b877de.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/04/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3ee32d6c4810afbb843df8917da13fa8",
+          "md5ext": "3ee32d6c4810afbb843df8917da13fa8.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/fly/04/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "2e909e8c8040f318b91f71bebfc42874",
+          "md5ext": "2e909e8c8040f318b91f71bebfc42874.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/01/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ee4f30685c1aa372aa58859cbfd1dd61",
+          "md5ext": "ee4f30685c1aa372aa58859cbfd1dd61.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/01/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "a4fc2f5e797a5242e625eeff87b20b1e",
+          "md5ext": "a4fc2f5e797a5242e625eeff87b20b1e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/01/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "46b187f398f54bd6f1c22976072c0460",
+          "md5ext": "46b187f398f54bd6f1c22976072c0460.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/01/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "079bd95ddb0b94a5b61d93a87390768d",
+          "md5ext": "079bd95ddb0b94a5b61d93a87390768d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/02/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "226d27b3751c46897ae7eed26f972ca9",
+          "md5ext": "226d27b3751c46897ae7eed26f972ca9.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/02/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "df109847107bbb3fc9aff7f8b27000d0",
+          "md5ext": "df109847107bbb3fc9aff7f8b27000d0.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/02/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "97672450d13f8b546dbf054edc0a2733",
+          "md5ext": "97672450d13f8b546dbf054edc0a2733.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/02/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "05d2b113425ff8312fe9286ccb26a18f",
+          "md5ext": "05d2b113425ff8312fe9286ccb26a18f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/03/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "daf3f6b7d16dc602b1586cd9de5d75c2",
+          "md5ext": "daf3f6b7d16dc602b1586cd9de5d75c2.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/03/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "15d4cf9c4eb222509d59c47e153d9742",
+          "md5ext": "15d4cf9c4eb222509d59c47e153d9742.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/03/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e3353f6ecd42af5b6f31363fe8da257d",
+          "md5ext": "e3353f6ecd42af5b6f31363fe8da257d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/03/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "02fdddfb9ea7e45c4b685978fc4b0ffa",
+          "md5ext": "02fdddfb9ea7e45c4b685978fc4b0ffa.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/04/c26",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b9c2f1fc4869098d4134984bc8735f27",
+          "md5ext": "b9c2f1fc4869098d4134984bc8735f27.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/04/c27",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "4321f62736b351c932845d26083e4de0",
+          "md5ext": "4321f62736b351c932845d26083e4de0.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/04/c28",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "147aadbacc5b64b56cf25e4850616b4c",
+          "md5ext": "147aadbacc5b64b56cf25e4850616b4c.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "giddo-spario/hit/04/c29",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "2bbcf947a0e54d7fadc3dcfa538a2d08",
+          "md5ext": "2bbcf947a0e54d7fadc3dcfa538a2d08.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-body/pulse/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "75df029be16b4e9d885e852686df486e",
+          "md5ext": "75df029be16b4e9d885e852686df486e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-zakato-body/pulse/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "7c40761fcd687edd79ee00b400fbb809",
+          "md5ext": "7c40761fcd687edd79ee00b400fbb809.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-zakato-body/pulse/c11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "1831e8c65fe7315dbaa5bb7a5192c661",
+          "md5ext": "1831e8c65fe7315dbaa5bb7a5192c661.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-zakato-body/pulse/c12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "599c81d18e486002edb8608b00b82607",
+          "md5ext": "599c81d18e486002edb8608b00b82607.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-zakato-body/pulse/c13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f74264200f94a7a3ecc061b5b83fc681",
+          "md5ext": "f74264200f94a7a3ecc061b5b83fc681.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "garu-zakato-body/pulse/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "892eb4b588bf9d9804b6b1dd9897e5ad",
+          "md5ext": "892eb4b588bf9d9804b6b1dd9897e5ad.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "garu-zakato-body/pulse/c11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "0bffdbcf18069f7585761f7614860266",
+          "md5ext": "0bffdbcf18069f7585761f7614860266.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "garu-zakato-body/pulse/c12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ca447650ed0150aaaf0e9c55f66075d5",
+          "md5ext": "ca447650ed0150aaaf0e9c55f66075d5.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "garu-zakato-body/pulse/c13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "49987e42d513c37f54293f03f8284c14",
+          "md5ext": "49987e42d513c37f54293f03f8284c14.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "garu-zakato-body/pulse/c14",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "042f945f818f9b76e6d4bc7379238687",
+          "md5ext": "042f945f818f9b76e6d4bc7379238687.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/01/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "8f24cf7cae6ad4578198709ca6c2d2da",
+          "md5ext": "8f24cf7cae6ad4578198709ca6c2d2da.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/01/c11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9b3aabe4d96f0a8010a6b57976ee4658",
+          "md5ext": "9b3aabe4d96f0a8010a6b57976ee4658.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/01/c12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3748f534d92aabc4de43f9d9d70dfa49",
+          "md5ext": "3748f534d92aabc4de43f9d9d70dfa49.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/01/c13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "1ecd4b6a87270b387736d045b99944c3",
+          "md5ext": "1ecd4b6a87270b387736d045b99944c3.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/01/c14",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "dcaf94d5eea8ce13279796c352cda14d",
+          "md5ext": "dcaf94d5eea8ce13279796c352cda14d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/02/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "6e784f609c7831c3fb38f2b6d9353f7c",
+          "md5ext": "6e784f609c7831c3fb38f2b6d9353f7c.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/02/c11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "1bd491becd6c359050f209e6eedf09f8",
+          "md5ext": "1bd491becd6c359050f209e6eedf09f8.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/02/c12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "69bf1fb071ff8e77d8c9cecb72cea478",
+          "md5ext": "69bf1fb071ff8e77d8c9cecb72cea478.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/02/c13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "360a1f38436e7e1f0389669f79de51aa",
+          "md5ext": "360a1f38436e7e1f0389669f79de51aa.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/02/c14",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9419418cc278ad37ba5aa880667271cc",
+          "md5ext": "9419418cc278ad37ba5aa880667271cc.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/03/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "da305ee26c746be8288ccaf8ceb76b42",
+          "md5ext": "da305ee26c746be8288ccaf8ceb76b42.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/03/c11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "c1c134dd8caa388219df6a065f6404c7",
+          "md5ext": "c1c134dd8caa388219df6a065f6404c7.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/03/c12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ebf975d96553e1a2a7c4eafdf971c346",
+          "md5ext": "ebf975d96553e1a2a7c4eafdf971c346.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/03/c13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "150d4eb73308ac2a90d7e30986a2273b",
+          "md5ext": "150d4eb73308ac2a90d7e30986a2273b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/03/c14",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "c310b20b1e595da1b6ee800632ef48d4",
+          "md5ext": "c310b20b1e595da1b6ee800632ef48d4.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/04/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "682b938c14a3dc2251d13f7423ada98d",
+          "md5ext": "682b938c14a3dc2251d13f7423ada98d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/04/c11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "afe68dee95817781f573312e053b1f2e",
+          "md5ext": "afe68dee95817781f573312e053b1f2e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/04/c12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "7f46a337513b21754ec5b68a9281cefa",
+          "md5ext": "7f46a337513b21754ec5b68a9281cefa.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/04/c13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9e0788e0056ec3a69d7a8015c127ffea",
+          "md5ext": "9e0788e0056ec3a69d7a8015c127ffea.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/04/c14",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3d0196cbad8c6c5cc963a8b12496c56e",
+          "md5ext": "3d0196cbad8c6c5cc963a8b12496c56e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/05/c10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "7eab481e8c99365c71eccac18fc34b25",
+          "md5ext": "7eab481e8c99365c71eccac18fc34b25.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/05/c11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3e7a16ca30a703782f0fa2fe8077aa9a",
+          "md5ext": "3e7a16ca30a703782f0fa2fe8077aa9a.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/05/c12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "590f071b73504b661035de7118e08116",
+          "md5ext": "590f071b73504b661035de7118e08116.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/05/c13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "0a7be76004d5ad5b6a877d011bbef36e",
+          "md5ext": "0a7be76004d5ad5b6a877d011bbef36e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-self-destruct/burst/05/c14",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "1e85bef8a455c46349e50b5bb3b45416",
+          "md5ext": "1e85bef8a455c46349e50b5bb3b45416.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-spario/spin/01/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "1b8b2bd79a02cf056989fcbdc7da023e",
+          "md5ext": "1b8b2bd79a02cf056989fcbdc7da023e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-spario/spin/01/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e09a1219fcbd7c8b09abf91246803bf4",
+          "md5ext": "e09a1219fcbd7c8b09abf91246803bf4.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-spario/spin/01/y",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "431eb14a7206e3da28295a06ba5a836b",
+          "md5ext": "431eb14a7206e3da28295a06ba5a836b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "brag-spario/spin/01/xy",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "08041b0806a5f7f1a4976be6440bff26",
+          "md5ext": "08041b0806a5f7f1a4976be6440bff26.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/01/c23/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9b022ea4e59559318c3c19bcb7b28e23",
+          "md5ext": "9b022ea4e59559318c3c19bcb7b28e23.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/01/c23/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3f5bd4f212fbce66f00d34059d752abe",
+          "md5ext": "3f5bd4f212fbce66f00d34059d752abe.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/01/c24/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "eb691780760d92753e2e4a6793f9502a",
+          "md5ext": "eb691780760d92753e2e4a6793f9502a.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/01/c24/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "639d879f5f38dab0d321c324e4a60d0e",
+          "md5ext": "639d879f5f38dab0d321c324e4a60d0e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/02/c23/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "6918caa80de9b10bbefed3b1c713045b",
+          "md5ext": "6918caa80de9b10bbefed3b1c713045b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/02/c23/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ea571fa98a9705bf41eddb3708d05f58",
+          "md5ext": "ea571fa98a9705bf41eddb3708d05f58.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/02/c24/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "830e5126b73d7d1f01862f77e0904979",
+          "md5ext": "830e5126b73d7d1f01862f77e0904979.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/fly/02/c24/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "2b4acd4c12013264f7cf1deee26427ec",
+          "md5ext": "2b4acd4c12013264f7cf1deee26427ec.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/01/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "b5724a261ef4b600933bf859bb914d94",
+          "md5ext": "b5724a261ef4b600933bf859bb914d94.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/01/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5befdcca57a84cc2939f4f2cd41eca2a",
+          "md5ext": "5befdcca57a84cc2939f4f2cd41eca2a.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/02/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "26e0a4e109abfc4ae1f1edbf695cd304",
+          "md5ext": "26e0a4e109abfc4ae1f1edbf695cd304.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/02/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "eb0fe42a5654ad83274e131070bada56",
+          "md5ext": "eb0fe42a5654ad83274e131070bada56.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/03/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "1fbf75dcb0b730e2dd8580bcd29327eb",
+          "md5ext": "1fbf75dcb0b730e2dd8580bcd29327eb.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/03/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e339f18bd43625c42244d0d0f134a9f4",
+          "md5ext": "e339f18bd43625c42244d0d0f134a9f4.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/04/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "cd7c297c218439bcd4ae85a7b7949224",
+          "md5ext": "cd7c297c218439bcd4ae85a7b7949224.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zapper-shot/rebound/04/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "631340afb2d7f6e0ec0bdd977d90ac2e",
+          "md5ext": "631340afb2d7f6e0ec0bdd977d90ac2e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/01",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "4132f94f63a3d6df77295310ee8bafdb",
+          "md5ext": "4132f94f63a3d6df77295310ee8bafdb.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/02",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "84c32e5cec259079a431bc81c4ca742c",
+          "md5ext": "84c32e5cec259079a431bc81c4ca742c.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/03",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "a56c06e4d3f1f0c26463569172dea7a4",
+          "md5ext": "a56c06e4d3f1f0c26463569172dea7a4.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/04",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "8d10af240f9641a986ea2e976f151aeb",
+          "md5ext": "8d10af240f9641a986ea2e976f151aeb.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/05",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "1f425ea6f2181284716821e428c1b89d",
+          "md5ext": "1f425ea6f2181284716821e428c1b89d.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/06",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "6ef65fc0218cf392a01fad105dd04795",
+          "md5ext": "6ef65fc0218cf392a01fad105dd04795.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/07",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "764e4e4de84d094de384f82d7d8d041f",
+          "md5ext": "764e4e4de84d094de384f82d7d8d041f.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/08",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ea4780f8cbe721a59954378bbd4cc287",
+          "md5ext": "ea4780f8cbe721a59954378bbd4cc287.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/09",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "25c475217e67a5467178fad7dbd937f9",
+          "md5ext": "25c475217e67a5467178fad7dbd937f9.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/10",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "aea5acaa523512b3020367c4a1571e9e",
+          "md5ext": "aea5acaa523512b3020367c4a1571e9e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/11",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "18d0361f5436a6f062333fb3e6d1bd9b",
+          "md5ext": "18d0361f5436a6f062333fb3e6d1bd9b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/12",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "136afbdcb0ab9dad93511912f8383622",
+          "md5ext": "136afbdcb0ab9dad93511912f8383622.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/13",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "cdfdd7b1589d0310702059b32372d072",
+          "md5ext": "cdfdd7b1589d0310702059b32372d072.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/14",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "ed68b0f753546bfd0ab1026f6b709a1e",
+          "md5ext": "ed68b0f753546bfd0ab1026f6b709a1e.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/15",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "0c9de4f94b09cf70bf60cd9ce10f6c17",
+          "md5ext": "0c9de4f94b09cf70bf60cd9ce10f6c17.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "title-sparkle/twinkle/16",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "3c692cdc82fb1df7cfc26ba769231d9b",
+          "md5ext": "3c692cdc82fb1df7cfc26ba769231d9b.png",
+          "rotationCenterX": 8,
+          "rotationCenterY": 8
+        },
+        {
+          "name": "zakato-teleport/sparkle/01/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "8fc857afa6f5eb8a3f2b68cad5cf061a",
+          "md5ext": "8fc857afa6f5eb8a3f2b68cad5cf061a.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/01/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "15860469496b89a406b532fda64ed84f",
+          "md5ext": "15860469496b89a406b532fda64ed84f.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/01/y",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "dd871fdc9f5052d6635a46496588f7c0",
+          "md5ext": "dd871fdc9f5052d6635a46496588f7c0.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/01/xy",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f7fc87a94c76bb371944a8168f681322",
+          "md5ext": "f7fc87a94c76bb371944a8168f681322.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/02/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "7a6cedc0f09bd73d1bbc71c7df3a222e",
+          "md5ext": "7a6cedc0f09bd73d1bbc71c7df3a222e.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/02/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "72ea042006b89d4e5b1cc68a497a2e04",
+          "md5ext": "72ea042006b89d4e5b1cc68a497a2e04.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/02/y",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "7db0f6bbdec2452162002d7313bda345",
+          "md5ext": "7db0f6bbdec2452162002d7313bda345.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/02/xy",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e3fb28baa0158b55098f84c1555b4205",
+          "md5ext": "e3fb28baa0158b55098f84c1555b4205.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/03/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "e0a56317a69aeadd26cd7a77eeeb66c9",
+          "md5ext": "e0a56317a69aeadd26cd7a77eeeb66c9.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/03/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "343c61b22e0b3373cf0e7c19821ae3ee",
+          "md5ext": "343c61b22e0b3373cf0e7c19821ae3ee.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/03/y",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "4fcdb593e4e09977a8a1513fe994400c",
+          "md5ext": "4fcdb593e4e09977a8a1513fe994400c.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/03/xy",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "39de30302859ba60252ecef92394c047",
+          "md5ext": "39de30302859ba60252ecef92394c047.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/04/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "9fa5db1f23d1752d1a92c1199383c060",
+          "md5ext": "9fa5db1f23d1752d1a92c1199383c060.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/04/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "086aefb7d6fb917403ffd56c47919e0f",
+          "md5ext": "086aefb7d6fb917403ffd56c47919e0f.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/04/y",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "15490cb42f66c79564fac25fa35899bf",
+          "md5ext": "15490cb42f66c79564fac25fa35899bf.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/04/xy",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "f95ba247d1ccbf2878f1b0a8f53569ff",
+          "md5ext": "f95ba247d1ccbf2878f1b0a8f53569ff.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/05/none",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "bb720910894d081f8360ca9096baea15",
+          "md5ext": "bb720910894d081f8360ca9096baea15.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/05/x",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "54fbc1e6766db914fd154ada1a9ea92d",
+          "md5ext": "54fbc1e6766db914fd154ada1a9ea92d.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/05/y",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "03171a1dfb3693d52134b2feed6e0a90",
+          "md5ext": "03171a1dfb3693d52134b2feed6e0a90.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
+        },
+        {
+          "name": "zakato-teleport/sparkle/05/xy",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "5c069e761f216df3c99cb0d41e7b6ecd",
+          "md5ext": "5c069e761f216df3c99cb0d41e7b6ecd.png",
+          "rotationCenterX": 16,
+          "rotationCenterY": 16
         }
       ],
       "sounds": [],
@@ -331906,6 +333013,15 @@
           "assetId": "92f9eb9bdf3015dee68c2169b50c2b8a",
           "md5ext": "92f9eb9bdf3015dee68c2169b50c2b8a.png",
           "rotationCenterX": 112,
+          "rotationCenterY": 64
+        },
+        {
+          "name": "Reference Art",
+          "bitmapResolution": 1,
+          "dataFormat": "png",
+          "assetId": "6092a276a7025f581ff091e182a011dd",
+          "md5ext": "6092a276a7025f581ff091e182a011dd.png",
+          "rotationCenterX": 200,
           "rotationCenterY": 64
         }
       ],

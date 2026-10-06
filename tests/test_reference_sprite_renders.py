@@ -3,6 +3,9 @@
 - The Sol Tower rise sheet (tools/sol_tower_render.py) re-derives byte-for-byte from the pin.
 - The CAB-05 effects sheet (tools/effects_sprite_render.py: the three explosions, crater, crosshair, bomb
   target and bomb) re-derives byte-for-byte from the pin, from the reference's own code and colour tables.
+- The slice-21 reference-art sheet (tools/reference_art_render.py: Giddo Spario, the pulsing Zakato bodies,
+  the self-destruct and teleport frames, the Brag Spario, the shot and its rebound, the title sparkle)
+  re-derives byte-for-byte from the pin; its sprite tables are read back from the source itself.
 - The fair Bacura craft-kill box (game_director.BACURA_FRAME_OPAQUE, a recorded divergence in
   docs/mechanics/037) uses each tumble frame's opaque extents exactly as the reference tiles draw them.
 
@@ -21,6 +24,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import andor_sprite_render as asr  # noqa: E402
 import effects_sprite_render as fx  # noqa: E402
 import game_director as director  # noqa: E402
+import reference_art_render as art  # noqa: E402
 import reference_checkout as checkout  # noqa: E402
 import sol_tower_render as sol  # noqa: E402
 
@@ -154,6 +158,87 @@ class EffectsRenderTests(unittest.TestCase):
         self.assertEqual(len(gfx.palette), fx.TRANSPARENT_ENTRY)
         with self.assertRaisesRegex(fx.SpriteExtractionError, "draws nothing"):
             fx._tile(gfx, 0xC0, 0)  # every pixel transparent -> "draws nothing"
+
+
+def _byte_table(label: str, source: str = "src/xevious_main.68k") -> list[int]:
+    """The `.byte` values under `label:` in the pinned source, up to the next blank or non-.byte line."""
+    lines = (REFERENCE / source).read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.split("|")[0].strip() == f"{label}:")
+    values: list[int] = []
+    for line in lines[start + 1:]:
+        body = line.split("|")[0].strip()
+        if not body.startswith(".byte"):
+            break
+        values += [int(token.strip(), 0) for token in body[len(".byte"):].split(",")]
+    return values
+
+
+class ReferenceArtRenderTests(unittest.TestCase):
+    """presentation.reference-art: the enemy, shot and sparkle cells (tools/reference_art_render.py)."""
+
+    def test_codes_and_colours(self) -> None:
+        # Bank 1 adds 0x100 (amiga.68k 1774-1778). handle_08_Giddo_Spario 5219-5239 / giddo_spario_hit
+        # 5241-5252; handle_09_Brag_Spario 3080-3121; bodies 3749 / 3877 / 4014; shot 2374-2388; rebound
+        # shot_destroyed 2400-2417; title sparkle attract_mode_title_screen 1217-1290.
+        self.assertEqual(art.GIDDO_FLY_CODES, [0x100, 0x101, 0x102, 0x103])
+        self.assertEqual(art.GIDDO_HIT_CODES, [0x104, 0x105, 0x106, 0x107])
+        self.assertEqual(art.GIDDO_CLUTS, [0x26, 0x27, 0x28, 0x29])
+        self.assertEqual((art.BRAG_SPARIO_CODE, art.BRAG_SPARIO_CLUT), (0x115, 0x26))
+        self.assertEqual((art.ZAKATO_BODY_CODE, art.BRAG_ZAKATO_BODY_CODE, art.GARU_ZAKATO_BODY_CODE),
+                         (0x111, 0x112, 0x113))
+        self.assertEqual(art.SHOT_CODES, [0x116, 0x117])
+        self.assertEqual(art.SHOT_CLUTS, [0x23, 0x24])
+        self.assertEqual((art.REBOUND_CODES, art.REBOUND_CLUT), ([0x118, 0x119, 0x11A, 0x11B], 0x23))
+        self.assertEqual((art.SPARKLE_CODES, art.SPARKLE_CLUT), (list(range(0x130, 0x140)), 0x0F))
+        self.assertEqual(art.TELEPORT_CLUT, 0x24)
+
+    def test_layout(self) -> None:
+        # Seven rows: Giddo flight, Giddo hit, bodies, self-destruct (the widest, 25 cells), Brag Spario + shot +
+        # rebound, sparkle, then the 32x32 teleport cells with every frame centred.
+        self.assertEqual((art.SHEET_WIDTH, art.SHEET_HEIGHT), (16 * 25, 16 * 6 + 32))
+        self.assertEqual(art.GIDDO_FLY_ORIGINS, [(16 * i, 0) for i in range(16)])
+        self.assertEqual(art.GIDDO_HIT_ORIGINS, [(16 * i, 16) for i in range(16)])
+        bodies = [art.ZAKATO_BODY_ORIGIN] + art.BRAG_ZAKATO_BODY_ORIGINS + art.GARU_ZAKATO_BODY_ORIGINS
+        self.assertEqual(bodies, [(16 * i, 32) for i in range(10)])
+        self.assertEqual(art.SELF_DESTRUCT_ORIGINS, [(16 * i, 48) for i in range(25)])
+        row5 = [art.BRAG_SPARIO_ORIGIN] + art.SHOT_ORIGINS + art.REBOUND_ORIGINS
+        self.assertEqual(row5, [(16 * i, 64) for i in range(9)])
+        self.assertEqual(art.SPARKLE_ORIGINS, [(16 * i, 80) for i in range(16)])
+        self.assertEqual(art.TELEPORT_ORIGINS, [(32 * i, 96) for i in range(5)])
+        self.assertEqual(fx.ONE_BY_ONE_ORIGIN + asr.TILE // 2, art.TELEPORT_CELL // 2)
+        self.assertEqual(fx.TWO_BY_TWO_ORIGIN + asr.TILE, art.TELEPORT_CELL // 2)
+
+    @unittest.skipIf(REFERENCE is None, "no verified reference checkout at the pin")
+    def test_tables_are_read_from_the_source(self) -> None:
+        # (code, attr) pairs; bank 1 is attr bit 7 and a 2x2 is attr bits 0-1 = 3. The renderer draws the five
+        # frames the timer reaches ((TIMER >> 2) & 7 < 5).
+        teleport = _byte_table("zakato_teleport_sprite_tbl")
+        pairs = list(zip(teleport[0::2], teleport[1::2]))[:5]
+        self.assertEqual(art.TELEPORT, [(art.BANK_1 + code, attr & 3 == 3) for code, attr in pairs])
+        self.assertTrue(all(attr & 0x80 for _, attr in pairs))
+        # zakato_explode never stores the attr byte, so its frames stay 1x1: only the codes matter.
+        explode = _byte_table("zakato_exploding_sprite_tbl")
+        self.assertEqual(art.SELF_DESTRUCT_CODES, [art.BANK_1 + code for code in explode[0::2][:5]])
+        pulsing = _byte_table("colour_lut_pulsing_2", "src/xevious_sub.68k")
+        self.assertEqual(art.PULSING_CLUTS, sorted(set(pulsing)))
+
+    @unittest.skipIf(REFERENCE is None, "no verified reference checkout at the pin")
+    def test_only_the_distinct_bodies_are_cut(self) -> None:
+        # The Zakato body is one picture at every pulsing colour and the Brag Zakato's 0x14 is that picture, so
+        # the sheet cuts the Zakato once and the Brag Zakato's other four; every cut body is distinct.
+        gfx = asr._Gfx(asr._read_reference(REFERENCE, asr.GFX_C))
+        zakato = fx._tile(gfx, art.ZAKATO_BODY_CODE, art.ZAKATO_BODY_CLUT)
+        for clut in art.PULSING_CLUTS:
+            self.assertEqual(fx._tile(gfx, art.ZAKATO_BODY_CODE, clut), zakato)
+        self.assertEqual(fx._tile(gfx, art.BRAG_ZAKATO_BODY_CODE, art.PULSING_CLUTS[-1]), zakato)
+        cut = [zakato]
+        cut += [fx._tile(gfx, art.BRAG_ZAKATO_BODY_CODE, clut) for clut in art.BRAG_ZAKATO_BODY_CLUTS]
+        cut += [fx._tile(gfx, art.GARU_ZAKATO_BODY_CODE, clut) for clut in art.PULSING_CLUTS]
+        self.assertEqual(len({tuple(tile) for tile in cut}), len(cut))
+
+    @unittest.skipIf(REFERENCE is None, "no verified reference checkout at the pin")
+    def test_committed_sheet_rerenders_at_the_pin(self) -> None:
+        self.assertEqual(art.main(["--checkout", str(REFERENCE), "--verify"]), 0)
 
 
 if __name__ == "__main__":

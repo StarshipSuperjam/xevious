@@ -38,8 +38,12 @@ class SpriteExtractorTests(unittest.TestCase):
         # handle_Bragza codes 0xb8..0xbb at CLUT 0x15), plus the slice-20 CAB-05 effects — 74 derivatives
         # rendered from the pin (7 player-explosion and 5 air-explosion frames each flip-expanded x4, 7
         # ground-explosion frames, 2 crater, 4 crosshair colours, 1 bomb target, 3 bomb codes x 4 colours),
-        # less the 2 retired rip crater crops (CAB-05: the crater now draws from the pinned render).
-        self.assertEqual(182, count)
+        # less the 2 retired rip crater crops (CAB-05: the crater now draws from the pinned render), plus the
+        # slice-21 reference art — 123 derivatives rendered from the pin by tools/reference_art_render.py
+        # (Giddo Spario 4 flight + 4 hit codes x 4 colours, 10 distinct pulsing bodies, 5 self-destruct codes x
+        # 5 colours, the Brag Spario x4 flips, the shot's 2 codes x 2 colours and 4 rebound codes x2 flips,
+        # 16 title-sparkle codes, and 5 teleport frames x4 flips).
+        self.assertEqual(305, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -251,6 +255,39 @@ class SpriteExtractorTests(unittest.TestCase):
                 f"bomb/fall/{code:02d}/c{clut:02x}"
                 for code in range(1, 4)
                 for clut in range(0x25, 0x29)
+            ]
+            # Slice 21 presentation.reference-art: the remaining enemy, shot and sparkle sprites, rendered from
+            # the pin by tools/reference_art_render.py. The Giddo Spario and the self-destruct are code-major
+            # over their colours; the Zakato body is one picture at every pulsing colour (and is the Brag
+            # Zakato's 0x14), so only the distinct bodies are cut. The Brag Spario and the teleport sparkle flip
+            # on bits 2-3, the shot and its rebound on bit 3 only.
+            + [
+                f"giddo-spario/{animation}/{code:02d}/c{clut:02x}"
+                for animation in ("fly", "hit")
+                for code in range(1, 5)
+                for clut in range(0x26, 0x2A)
+            ]
+            + ["zakato-body/pulse/c10"]
+            + [f"brag-zakato-body/pulse/c{clut:02x}" for clut in range(0x10, 0x14)]
+            + [f"garu-zakato-body/pulse/c{clut:02x}" for clut in range(0x10, 0x15)]
+            + [
+                f"zakato-self-destruct/burst/{code:02d}/c{clut:02x}"
+                for code in range(1, 6)
+                for clut in range(0x10, 0x15)
+            ]
+            + [f"brag-spario/spin/01/{token}" for token in ("none", "x", "y", "xy")]
+            + [
+                f"zapper-shot/fly/{code:02d}/c{clut:02x}/{token}"
+                for code in range(1, 3)
+                for clut in (0x23, 0x24)
+                for token in ("none", "x")
+            ]
+            + [f"zapper-shot/rebound/{code:02d}/{token}" for code in range(1, 5) for token in ("none", "x")]
+            + [f"title-sparkle/twinkle/{index:02d}" for index in range(1, 17)]
+            + [
+                f"zakato-teleport/sparkle/{index:02d}/{token}"
+                for index in range(1, 6)
+                for token in ("none", "x", "y", "xy")
             ],
             [costume["name"] for costume in toroid["costumes"]],
         )
@@ -270,6 +307,8 @@ class SpriteExtractorTests(unittest.TestCase):
                 or costume["name"].startswith("sol-tower/")  # 32x32 rise cells (tools/sol_tower_render.py)
                 # CAB-05: 32x32 explosion cells, every frame centred (tools/effects_sprite_render.py)
                 or costume["name"].startswith(("player-explosion/", "air-explosion/", "ground-explosion/"))
+                # Slice 21: 32x32 teleport-sparkle cells, every frame centred (tools/reference_art_render.py)
+                or costume["name"].startswith("zakato-teleport/")
             ):
                 expected_center = (16, 16)
             elif costume["name"].startswith("bacura/"):
