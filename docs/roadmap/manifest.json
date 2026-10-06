@@ -42,7 +42,7 @@
     {"key": "andor", "title": "Capability: Andor Genesis", "spec": "docs/spec/andor-genesis.md", "spec_status": "locked"},
     {"key": "cabinet", "title": "Capability: cabinet flow", "spec": "docs/spec/cabinet-flow.md", "spec_status": "locked"},
     {"key": "presentation", "title": "Capability: audio and presentation", "spec": "docs/spec/audio-and-presentation.md", "spec_status": "locked"},
-    {"key": "release", "title": "Capability: full-game release validation", "spec": null, "spec_status": "provisional"}
+    {"key": "release", "title": "Capability: full-game release validation", "spec": "docs/spec/release.md", "spec_status": "locked"}
   ],
   "leaves": [
     {"key":"build.sprite-proof","parent":"build","title":"History: deterministic sprite-extraction proof","slice":"1","milestone":"Recovery","status":"history","delivered_by":8,"criteria":["BUILD-01.sprite-proof"],"proof":"historical"},
@@ -116,11 +116,16 @@
 
     {"key":"area.visual-terrain","parent":"area","title":"Couple visual terrain and framing to the area clock","slice":"20","milestone":"Polish","status":"history","delivered_by":157,"blocked_by":["presentation.framing"],"criteria":["AREA-01.visual-terrain"],"proof":"playable","records":["AREA-01"]},
     {"key":"presentation.framing","parent":"presentation","issue":30,"title":"Choose and implement the playfield framing","slice":"20","milestone":"Polish","status":"history","delivered_by":156,"criteria":["PRES-01.framing"],"proof":"playable"},
-    {"key":"presentation.hud-yellow","parent":"economy","issue":31,"title":"Render the high-score value in yellow","slice":"20","milestone":"Polish","status":"planned","criteria":["PRES-02.hud-yellow"],"proof":"playable","records":["ECO-02"]},
-    {"key":"economy.stop-after-two","parent":"economy","title":"Resolve and implement the stop-after-two bonus-life setting","slice":"20","milestone":"Polish","status":"planned","criteria":["ECO-03.stop-after-two"],"proof":"playable","records":["ECO-03"]},
+    {"key":"presentation.hud-yellow","parent":"economy","issue":31,"title":"Blank the score's leading zeros, time the 1UP flash, and split the two-player banner","slice":"21","milestone":"Polish","status":"planned","criteria":["PRES-02.hud-yellow"],"proof":"playable","records":["ECO-02"]},
+    {"key":"economy.stop-after-two","parent":"economy","title":"Fix the second bonus-life threshold and record stop-after-two as unreachable","slice":"21","milestone":"Polish","status":"planned","criteria":["ECO-03.stop-after-two"],"proof":"playable","records":["ECO-03"]},
     {"key":"presentation.audio-animation","parent":"presentation","title":"Audio cues, animation timing, and presentation fidelity","slice":"20","milestone":"Polish","status":"history","delivered_by":159,"criteria":["CAB-05.presentation"],"proof":"playable","records":["CAB-05"]},
 
-    {"key":"release.full-soak","parent":"release","title":"Full-game area, clone, performance, and cabinet soak","slice":"21","milestone":"Polish","status":"provisional","blocked_by":["andor.core-destruction","cabinet.high-scores","presentation.audio-animation"],"criteria":["RELEASE-01.full-soak"],"proof":"playable"},
-    {"key":"release.audit","parent":"release","title":"Release provenance, license, catalog, and documentation audit","slice":"21","milestone":"Polish","status":"provisional","blocked_by":["release.full-soak"],"criteria":["RELEASE-02.audit"],"proof":"operator"}
+    {"key":"area.add-object-dispatch","parent":"area","title":"Spawn the area schedule's add_object entries: the bonus flag, Garu Zakato, and the scheduled flyers","slice":"21","milestone":"Polish","status":"planned","criteria":["AREA-02.add-object"],"proof":"playable","records":["AREA-02","SEC-02","AIR-08","AIR-02","AIR-05","AIR-06"]},
+    {"key":"difficulty.ship-number-divisor","parent":"difficulty","title":"Compute the score-adaptive AI adjust as the arcade does: raw score digits divided by the ship number","slice":"21","milestone":"Polish","status":"planned","criteria":["DIF-02.ship-divisor"],"proof":"playable","records":["DIF-02"]},
+    {"key":"player.final-forest-wait","parent":"player","title":"Hold the forest wait after the last death, before initials entry or GAME OVER","slice":"21","milestone":"Polish","status":"planned","criteria":["PLY-02.forest-wait"],"proof":"playable","records":["PLY-02"]},
+    {"key":"presentation.reference-art","parent":"presentation","title":"Draw the remaining enemy and title art from the reference graphics","slice":"21","milestone":"Polish","status":"planned","blocked_by":["presentation.audio-animation"],"criteria":["AIR-07.teleport-art","AIR-08.garu-zakato-art","AIR-10.brag-spario-survives","AIR-10.spario-art","AIR-11.bounce-burst","CAB-01.title-sparkle"],"proof":"playable","records":["AIR-07","AIR-08","AIR-10","AIR-11","CAB-01","CAB-05"]},
+
+    {"key":"release.full-soak","parent":"release","title":"Full-game area, clone, performance, and cabinet soak","slice":"21","milestone":"Polish","status":"planned","blocked_by":["andor.core-destruction","cabinet.high-scores","presentation.audio-animation","area.add-object-dispatch","difficulty.ship-number-divisor","player.final-forest-wait","presentation.reference-art","presentation.hud-yellow","economy.stop-after-two"],"criteria":["RELEASE-01.full-soak"],"proof":"playable"},
+    {"key":"release.audit","parent":"release","title":"Release provenance, license, catalog, and documentation audit","slice":"21","milestone":"Polish","status":"planned","blocked_by":["release.full-soak"],"criteria":["RELEASE-02.audit"],"proof":"operator"}
   ]
 }

@@ -25,3 +25,4 @@ leaf under a draft capability document is provisional and cannot close until tha
 | Boss and secrets | Secrets | [Secrets](secrets.md) |
 | Cabinet | Cabinet flow | [Cabinet flow](cabinet-flow.md) |
 | Polish | Audio and presentation | [Audio and presentation](audio-and-presentation.md) |
+| Polish | Release validation | [Release validation](release.md) |

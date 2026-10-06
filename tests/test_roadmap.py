@@ -39,11 +39,13 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("assigned to both" in item for item in roadmap.validate_manifest(changed)))
 
     def test_unsettled_spec_cannot_gain_executable_leaf(self) -> None:
-        # `presentation` is locked as of slice 20; `release` is still provisional (no spec yet), so a
-        # leaf under it must stay provisional until its own slice settles the description.
+        # Every parent is settled as of slice 21, so the test unsettles `release` in its own copy: a
+        # planned leaf under a provisional parent must be rejected, and the committed planned leaf proves it.
         changed = copy.deepcopy(self.manifest)
+        parent = next(item for item in changed["parents"] if item["key"] == "release")
         leaf = next(item for item in changed["leaves"] if item["key"] == "release.full-soak")
-        leaf["status"] = "planned"
+        self.assertEqual("planned", leaf["status"])
+        parent["spec_status"] = "provisional"
         self.assertTrue(any("must be provisional" in item for item in roadmap.validate_manifest(changed)))
 
     def test_blocker_cycle_is_rejected(self) -> None:
@@ -55,14 +57,16 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("blocker cycle" in item for item in roadmap.validate_manifest(changed)))
 
     def test_issue_body_carries_stable_identity_and_closure_contract(self) -> None:
-        # `release` is still provisional, so its leaves render "Executable now: no" —
-        # `presentation.framing` became executable when slice 20 locked the presentation description.
+        # `release` is locked as of slice 21, so its leaves render "Executable now: yes"; a provisional
+        # copy of the same parent must render "no".
         parent = next(item for item in self.manifest["parents"] if item["key"] == "release")
         leaf = next(item for item in self.manifest["leaves"] if item["key"] == "release.full-soak")
         body = roadmap.leaf_body(leaf, parent)
         self.assertIn("<!-- roadmap-key: release.full-soak -->", body)
-        self.assertIn("Executable now: **no**", body)
+        self.assertIn("Executable now: **yes**", body)
         self.assertIn("## Closure rule", body)
+        unsettled = dict(parent, spec_status="provisional")
+        self.assertIn("Executable now: **no**", roadmap.leaf_body(leaf, unsettled))
 
     def test_exact_criterion_roster_rejects_removed_or_bogus_obligation(self) -> None:
         for replacement in ([], ["SYS-01.nonsense"]):

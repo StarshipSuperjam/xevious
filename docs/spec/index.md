@@ -55,6 +55,7 @@ bind now; the delegated detail becomes binding when its document settles.
 | Andor Genesis | settled | [Andor Genesis](andor-genesis.md) |
 | Cabinet flow | settled | [Cabinet flow](cabinet-flow.md) |
 | Audio and presentation | settled | [Audio and presentation](audio-and-presentation.md) |
+| Release validation | settled | [Release validation](release.md) |
 
 The order this work gets built in is the [build order](build-plan.md) (a living document with no stage).
 

@@ -158,3 +158,12 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (slice-21 planning, 2026-10-05)
+
+Correction to deviation (6) and the matching status note above: it is not a deviation. The arcade's TYPE-6 bullet does **not** re-vector
+onto the craft each frame. `handle_06_Bullet` (`src/xevious_main.68k` 4278–4283) aims once, saves its resume
+point, and on every later frame only moves the bullet; while it is on screen `check_scroll_offscreen` leaves
+through `exit_caller` (59–60), so the aim never runs again and the bullet flies straight. The port's
+fire-once-aimed bullet ([record 026](026-enemy-bullets-and-collision-death.md)) therefore matches the arcade,
+and the matching lines in the locked aerial description are corrected to match the source.

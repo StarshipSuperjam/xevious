@@ -99,3 +99,16 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (slice-21 planning, 2026-10-05)
+
+Two notes on the status above. First, the ground-only permission demonstration (`gnd_stop_firing_row`)
+"tracked to the ground slice" is built: the ground firing families read the row before firing
+([041](041-ground-domes-and-turrets.md), [042](042-boza-logram.md), [043](043-grobda-and-domogram.md)).
+Second, a known error in DIF-02 is now tracked: the arcade's score-per-craft adjust divides by the ship number
+(`solvalou_number`: 1 at game start and +1 per death, read by `avg_score_per_solvalou` in
+`src/xevious_sub.68k`), while the port divides by the craft in reserve
+([record 021](021-score-adaptive-ai-level.md)). The dividend differs too: the arcade reads the score's
+thousands digits as a raw binary number (`curr_player_score_msb` at `sub_2_fn_23__adjust_AI_level_based_on_score`
+346, the source noting it at 356), so 20,000 points counts as 32, where the port uses the decimal thousands. The correction, with its amendment to the locked difficulty
+description, is the slice-21 leaf `difficulty.ship-number-divisor`.

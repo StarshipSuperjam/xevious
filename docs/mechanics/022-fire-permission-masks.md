@@ -13,3 +13,10 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (slice-21 planning, 2026-10-05)
+
+The **partial (foundation)** status above is historical. DIF-03 became built when the masks went live
+([record 032](032-live-pressure.md)), and the ground-only `gnd_stop_firing_row` gate this record sets now has
+its consumers: the ground firing families read it before they fire
+([041](041-ground-domes-and-turrets.md), [042](042-boza-logram.md), [043](043-grobda-and-domogram.md)).

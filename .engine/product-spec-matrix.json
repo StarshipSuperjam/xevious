@@ -569,6 +569,62 @@
       "who": "engine"
     },
     {
+      "criterion": "Every area 1–16 and the loop into 7 runs with its schedule fully consumed",
+      "digest": "sha256:9c834127f01aaa12e967bdaa68ac368f85f3560affa0f7c9f63644e0d2f4ec91",
+      "doc": "docs/spec/release.md",
+      "how_verified": "Headless soak run over the built project, recording every schedule step",
+      "position": 0,
+      "who": "engine"
+    },
+    {
+      "criterion": "Clone peak stays at least 50 under 300 and returns to baseline after deaths, game overs, and stop/reload",
+      "digest": "sha256:d3387966e14ef5427973a82944eb9b58ac292553939559e8fc4292a2dd731e2e",
+      "doc": "docs/spec/release.md",
+      "how_verified": "Headless soak counting clones and list lengths at every tick",
+      "position": 1,
+      "who": "engine"
+    },
+    {
+      "criterion": "Two seeded runs give the same trace at every area entry",
+      "digest": "sha256:5fa5c91d4f1c4b78ffdbc8665d1f3fe9132a527dcf39e015390cb870f2bfa149",
+      "doc": "docs/spec/release.md",
+      "how_verified": "Headless determinism run, compared trace by trace",
+      "position": 2,
+      "who": "engine"
+    },
+    {
+      "criterion": "The final `.sb3` plays correctly through the release checklist in Scratch 3",
+      "digest": "sha256:682f21958ab12ab504c7f1b7e7329fd3a6f4df26a096961f6bbe48b429faf59b",
+      "doc": "docs/spec/release.md",
+      "how_verified": "Operator plays the release checklist on the final build",
+      "position": 3,
+      "who": "operator"
+    },
+    {
+      "criterion": "Every asset in the build is credited with its source, and every credited asset ships",
+      "digest": "sha256:eaf73797cdcefea705d0fdeb4cf4128b8a95a84a7b4034eb3431ca1858a15602",
+      "doc": "docs/spec/release.md",
+      "how_verified": "Test cross-checking the asset credits, the provenance records, and the built `.sb3`",
+      "position": 4,
+      "who": "engine"
+    },
+    {
+      "criterion": "Every catalog row is built, excluded, or an accepted deviation; no Uncertain marker is left open",
+      "digest": "sha256:0dbb7ebc0824c968cfec27d8294944e0cac1b82e8d581cdba39bfd53f0ab3901",
+      "doc": "docs/spec/release.md",
+      "how_verified": "Catalog and capability-document review recorded in the audit",
+      "position": 5,
+      "who": "operator"
+    },
+    {
+      "criterion": "No debug control remains in the shipped build",
+      "digest": "sha256:8984c4eb24408c9d734b3173c80fb67e9a3b452b540ab3d44526c82fbecd00be",
+      "doc": "docs/spec/release.md",
+      "how_verified": "Structural test over the built project",
+      "position": 6,
+      "who": "engine"
+    },
+    {
       "criterion": "The build's generated score, lives, bonus, and high-score data equal [data/scores.json](data/scores.json)",
       "digest": "sha256:262c12c74adbfccda3f6dff2a5f58b72d05b64e6853dabacf3f0f17fd9e37d9d",
       "doc": "docs/spec/scoring-lives-and-game-over.md",
