@@ -473,7 +473,9 @@ export const SCENARIOS = [
       let reach = Infinity;
       // One harness step runs several ticks and a shot covers its last step-unit before row 0 in ONE tick, so
       // sampling only at step boundaries caught it there by luck (an intermittent red). Sample the shot slots
-      // after every thread step the sequencer runs instead.
+      // after every thread step the sequencer runs instead. The drawn height has the same trap under load (a
+      // loaded step runs more ticks, so a shot crossed the top band between samples: highest y 155, a red only
+      // in the full suite), so each shot clone's position is also sampled after its own thread steps.
       const seq = vm.runtime.sequencer;
       const original = seq.stepThread;
       seq.stepThread = function hooked(thread) {
@@ -481,6 +483,11 @@ export const SCENARIOS = [
         const types = readVar(vm, 'slot-type');
         const xs = readVar(vm, 'slot-x');
         for (const s of shotSlots) if (Number(types[s]) !== 0) reach = Math.min(reach, Number(xs[s]));
+        const t = thread.target;
+        if (t && !t.isStage && !t.isOriginal && t.sprite && t.sprite.name === 'blaster') {
+          if (!shots.has(t.id)) shots.set(t.id, -Infinity);
+          if (t.visible) shots.set(t.id, Math.max(shots.get(t.id), t.y));
+        }
       };
       keyDown(vm, ' ');
       try {
